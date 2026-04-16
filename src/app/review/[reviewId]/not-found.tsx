@@ -12,7 +12,7 @@ export default function ReviewDetailNotFound() {
       description="The selected review could not be located."
       navigation={
         <>
-          <Badge tone="warning">Missing record</Badge>
+          <Badge tone="warn">Missing record</Badge>
         </>
       }
     >

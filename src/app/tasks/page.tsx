@@ -10,13 +10,7 @@ import {
 } from "@/components/tasks/task-filter-controls";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import {
@@ -47,75 +41,27 @@ async function getTasksData(
   requestedGoalId: string | null,
 ) {
   const supabase = await createClient();
-
   const [projectsResult, goalsResult] = await Promise.all([
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
-    supabase
-      .from("goals")
-      .select("id, title, project_id")
-      .order("created_at", { ascending: false }),
+    supabase.from("goals").select("id, title, project_id").order("created_at", { ascending: false }),
   ]);
-
-  if (projectsResult.error) {
-    throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
-  }
-
-  if (goalsResult.error) {
-    throw new Error(`Failed to load goals: ${goalsResult.error.message}`);
-  }
-
-  const activeProjectId =
-    requestedProjectId &&
-    projectsResult.data.some((project) => project.id === requestedProjectId)
-      ? requestedProjectId
-      : null;
-  const visibleGoals = activeProjectId
-    ? goalsResult.data.filter((goal) => goal.project_id === activeProjectId)
-    : goalsResult.data;
-  const activeGoalId =
-    requestedGoalId && visibleGoals.some((goal) => goal.id === requestedGoalId)
-      ? requestedGoalId
-      : null;
-
+  if (projectsResult.error) throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
+  if (goalsResult.error) throw new Error(`Failed to load goals: ${goalsResult.error.message}`);
+  const activeProjectId = requestedProjectId && projectsResult.data.some((p) => p.id === requestedProjectId) ? requestedProjectId : null;
+  const visibleGoals = activeProjectId ? goalsResult.data.filter((g) => g.project_id === activeProjectId) : goalsResult.data;
+  const activeGoalId = requestedGoalId && visibleGoals.some((g) => g.id === requestedGoalId) ? requestedGoalId : null;
   const tasksQuery = supabase
     .from("tasks")
-    .select(
-      "id, title, description, status, priority, updated_at, project_id, goal_id, projects(name), goals(title)",
-    )
+    .select("id, title, description, status, priority, updated_at, project_id, goal_id, projects(name), goals(title)")
     .order("updated_at", { ascending: false });
-
-  if (activeStatus) {
-    tasksQuery.eq("status", activeStatus);
-  }
-
-  if (activeProjectId) {
-    tasksQuery.eq("project_id", activeProjectId);
-  }
-
-  if (activeGoalId) {
-    tasksQuery.eq("goal_id", activeGoalId);
-  }
-
+  if (activeStatus) tasksQuery.eq("status", activeStatus);
+  if (activeProjectId) tasksQuery.eq("project_id", activeProjectId);
+  if (activeGoalId) tasksQuery.eq("goal_id", activeGoalId);
   const tasksResult = await tasksQuery;
-
-  if (tasksResult.error) {
-    throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
-  }
-
+  if (tasksResult.error) throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
   const tasks = tasksResult.data;
-  const taskTotalDurations = await getTaskTotalDurationMap(
-    supabase,
-    tasks.map((task) => task.id),
-  );
-
-  return {
-    projects: projectsResult.data,
-    goals: visibleGoals,
-    tasks,
-    taskTotalDurations,
-    activeProjectId,
-    activeGoalId,
-  };
+  const taskTotalDurations = await getTaskTotalDurationMap(supabase, tasks.map((t) => t.id));
+  return { projects: projectsResult.data, goals: visibleGoals, tasks, taskTotalDurations, activeProjectId, activeGoalId };
 }
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
@@ -123,114 +69,86 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const statusParam = resolvedSearchParams.status;
   const projectParam = resolvedSearchParams.project?.trim() || null;
   const goalParam = resolvedSearchParams.goal?.trim() || null;
-  const activeStatus: string | null =
-    statusParam && isTaskStatus(statusParam) ? statusParam : null;
-  const taskUpdateError =
-    resolvedSearchParams.taskUpdateError?.slice(0, 180) ??
-    resolvedSearchParams.statusUpdateError?.slice(0, 180) ??
-    null;
+  const activeStatus: string | null = statusParam && isTaskStatus(statusParam) ? statusParam : null;
+  const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? resolvedSearchParams.statusUpdateError?.slice(0, 180) ?? null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
-  const {
-    projects,
-    goals,
-    tasks,
-    taskTotalDurations,
-    activeProjectId,
-    activeGoalId,
-  } = await getTasksData(activeStatus, projectParam, goalParam);
-  const returnPath = buildTaskFilterReturnPath("/tasks", {
-    status: activeStatus,
-    project: activeProjectId,
-    goal: activeGoalId,
-  });
+  const { projects, goals, tasks, taskTotalDurations, activeProjectId, activeGoalId } = await getTasksData(activeStatus, projectParam, goalParam);
+  const returnPath = buildTaskFilterReturnPath("/tasks", { status: activeStatus, project: activeProjectId, goal: activeGoalId });
 
   return (
     <TasksWorkspaceShell
-      eyebrow="Tasks Workspace"
+      eyebrow="Tasks · Execution Surface"
       title="Tasks"
       description="Track execution with status and goal filtering, quick status updates, and direct task creation."
       actions={
-        <Link
-          href="/tasks/projects"
-          className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/8 px-5 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
-        >
-          Projects
+        <Link href="/tasks/projects" className="btn-instrument btn-instrument-muted glass-label h-8 px-4 flex items-center gap-2">
+          Projects →
         </Link>
       }
-      navigation={
-        <>
-          <Badge tone="accent">Tasks</Badge>
-          <Badge>Filter + Mutations</Badge>
-          <Badge>Supabase Live</Badge>
-        </>
-      }
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader className="space-y-4">
-            <CardTitle>Task list</CardTitle>
-            <CardDescription>
-              Filter by status and goal, then update task state directly from the
-              list.
-            </CardDescription>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+
+        {/* ── Task table ──────────────────────────────────── */}
+        <Card label="Task List" title={`${tasks.length} item${tasks.length !== 1 ? "s" : ""}`}>
+          {/* Filters */}
+          <div className="mb-5">
             <TaskFilterControls
               basePath="/tasks"
               activeStatus={activeStatus}
               activeProjectId={activeProjectId}
               activeGoalId={activeGoalId}
-              goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+              goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
             />
-          </CardHeader>
-          <CardContent>
-            {tasks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-5 text-sm leading-7 text-slate-400">
-                No tasks found for this filter.
-              </div>
-            ) : (
-              <div className="space-y-3">
+          </div>
+
+          {tasks.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="glass-label text-etch">No tasks match current filters</p>
+            </div>
+          ) : (
+            <table className="instrument-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Project</th>
+                  <th>Status</th>
+                  <th>Priority</th>
+                  <th>Tracked</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
                 {tasks.map((task) => {
-                  const inlineError =
-                    taskUpdateTaskId === task.id ? taskUpdateError : null;
-
+                  const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
                   return (
-                    <article
-                      id={`task-${task.id}`}
-                      key={task.id}
-                      className="scroll-mt-24 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <h3 className="text-base font-medium text-slate-100">
-                            {task.title}
-                          </h3>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                            {task.projects?.name ?? "Unknown Project"}
-                            {task.goals?.title ? ` • ${task.goals.title}` : ""}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone={getTaskStatusTone(task.status)}>
-                            {formatTaskToken(task.status)}
-                          </Badge>
-                          <Badge>{formatTaskToken(task.priority)}</Badge>
-                        </div>
-                      </div>
-
-                      {task.description ? (
-                        <p className="mt-2 text-sm leading-7 text-slate-300">
-                          {task.description}
+                    <tr key={task.id} id={`task-${task.id}`} className="scroll-mt-20">
+                      <td>
+                        <p className="text-sm font-medium truncate max-w-[240px]" style={{ color: "var(--foreground)" }}>
+                          {task.title}
                         </p>
-                      ) : null}
-
-                      <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1 pt-2">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                            Inline update keeps your current task filter in place.
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Total tracked {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
-                          </p>
-                        </div>
+                        {task.goals?.title && (
+                          <p className="glass-label text-etch mt-0.5">{task.goals.title}</p>
+                        )}
+                      </td>
+                      <td>
+                        <span className="glass-label" style={{ color: "var(--muted-foreground)" }}>
+                          {task.projects?.name ?? "—"}
+                        </span>
+                      </td>
+                      <td>
+                        <Badge tone={getTaskStatusTone(task.status)}>
+                          {formatTaskToken(task.status)}
+                        </Badge>
+                      </td>
+                      <td>
+                        <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+                      </td>
+                      <td>
+                        <span className="glass-label text-etch font-mono tabular">
+                          {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
+                        </span>
+                      </td>
+                      <td>
                         <InlineTaskUpdateForm
                           action={updateTaskInlineAction}
                           taskId={task.id}
@@ -239,45 +157,34 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           defaultPriority={task.priority}
                           error={inlineError}
                         />
-                      </div>
-                    </article>
+                      </td>
+                    </tr>
                   );
                 })}
-              </div>
-            )}
-          </CardContent>
+              </tbody>
+            </table>
+          )}
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Create task</CardTitle>
-            <CardDescription>
-              Add a task with project/goal context and initial execution state.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {projects.length === 0 ? (
-              <div className="space-y-4">
-                <p className="rounded-2xl border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm leading-7 text-amber-100">
-                  Create at least one project before creating tasks.
-                </p>
-                <Link
-                  href="/tasks/projects/new"
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/90 px-5 text-sm font-medium text-slate-950 transition hover:bg-cyan-200"
-                >
-                  Create project
-                </Link>
-              </div>
-            ) : (
-              <CreateTaskForm
-                projects={projects}
-                goals={goals}
-                projectId={activeProjectId ?? undefined}
-                returnTo={returnPath}
-              />
-            )}
-          </CardContent>
+        {/* ── Create task ──────────────────────────────────── */}
+        <Card label="New Task" title="Create task">
+          {projects.length === 0 ? (
+            <div className="py-4 space-y-3">
+              <p className="glass-label text-etch">No projects yet. Create one first.</p>
+              <Link href="/tasks/projects/new" className="btn-instrument glass-label h-8 px-4 flex items-center justify-center">
+                Create project
+              </Link>
+            </div>
+          ) : (
+            <CreateTaskForm
+              projects={projects}
+              goals={goals}
+              projectId={activeProjectId ?? undefined}
+              returnTo={returnPath}
+            />
+          )}
         </Card>
+
       </div>
     </TasksWorkspaceShell>
   );

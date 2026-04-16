@@ -1,106 +1,462 @@
 @import "tailwindcss";
 
+/* ============================================================
+   EGA House — Instrument Design System (frontend-v2)
+   ============================================================ */
+
+/* Google Fonts — keeping Plus Jakarta Sans + DM Mono */
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap");
+
+/* ── CSS Font Variables (injected by next/font, these are fallbacks) ── */
 :root {
-  --background: #050816;
-  --foreground: #f8fafc;
+  /* ── Canvas ──────────────────────────────────────────── */
+  --background:           #0a0b0f;
+  --foreground:           #e8eaf0;
+  --muted-foreground:     #6b7280;
 
-  --color-canvas: #050816;
-  --color-canvas-muted: #090c17;
-  --color-surface: rgba(255, 255, 255, 0.05);
-  --color-surface-strong: rgba(255, 255, 255, 0.08);
-  --color-surface-muted: rgba(255, 255, 255, 0.03);
-  --color-border: rgba(255, 255, 255, 0.1);
-  --color-border-strong: rgba(103, 232, 249, 0.2);
-  --color-ink: #f8fafc;
-  --color-ink-muted: #cbd5e1;
-  --color-ink-soft: #94a3b8;
-  --color-accent: #67e8f9;
-  --color-accent-strong: #22d3ee;
-  --color-accent-ink: #082f49;
-  --color-success: #34d399;
-  --color-danger: #fb7185;
-  --color-warning: #fbbf24;
+  /* ── Surfaces / Instrument ───────────────────────────── */
+  --instrument:           #0f1117;
+  --instrument-raised:    #13151f;
+  --instrument-border:    1px solid rgba(255, 255, 255, 0.07);
 
-  --shadow-shell: 0 32px 120px rgba(2, 6, 23, 0.65);
-  --shadow-card: 0 22px 80px rgba(2, 6, 23, 0.48);
-  --radius-shell: 2rem;
-  --radius-panel: 1.75rem;
-  --radius-card: 1.5rem;
-  --radius-pill: 999px;
+  /* ── Borders ─────────────────────────────────────────── */
+  --border:               rgba(255, 255, 255, 0.07);
+  --border-strong:        rgba(255, 255, 255, 0.13);
 
-  --space-shell-x: clamp(1rem, 2vw, 1.5rem);
-  --space-shell-y: clamp(1.5rem, 3vw, 2rem);
-  --space-section: clamp(1.5rem, 2vw, 2rem);
-  --space-stack: 1rem;
+  /* ── Signals ─────────────────────────────────────────── */
+  --signal-live:          #22c55e;      /* green — active sessions */
+  --signal-warn:          #f59e0b;      /* amber — warnings */
+  --signal-error:         #ef4444;      /* red — errors */
+  --signal-info:          #3b82f6;      /* blue — info */
 
-  --font-sans:
-    "Avenir Next", "Segoe UI", "Helvetica Neue", "Noto Sans", sans-serif;
-  --font-mono:
-    "SFMono-Regular", "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono",
-    monospace;
+  /* ── Etch (very muted text) ──────────────────────────── */
+  --etch:                 rgba(232, 234, 240, 0.30);
+
+  /* ── Secondary (selection bg) ───────────────────────── */
+  --secondary:            rgba(255, 255, 255, 0.08);
+
+  /* ── Fonts ───────────────────────────────────────────── */
+  --font-display:         var(--font-plus-jakarta, "Plus Jakarta Sans", system-ui, sans-serif);
+  --font-mono:            var(--font-dm-mono, "DM Mono", "JetBrains Mono", monospace);
+
+  /* ── Sidebar ─────────────────────────────────────────── */
+  --sidebar-width:        128px;
+
+  /* ── Transitions ──────────────────────────────────────── */
+  --transition-precise:   150ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  --color-background:     var(--background);
+  --color-foreground:     var(--foreground);
+  --font-sans:            var(--font-display);
+  --font-mono:            var(--font-mono);
 }
 
-* {
-  box-sizing: border-box;
-}
+/* ── Reset ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
 html {
   min-height: 100%;
-  background:
-    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 34%),
-    linear-gradient(180deg, #050816 0%, #090c17 48%, #05070f 100%);
-  color: var(--color-ink);
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   scroll-behavior: smooth;
 }
 
 body {
   min-height: 100vh;
   margin: 0;
-  background: transparent;
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  text-rendering: optimizeLegibility;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.6;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
+a { color: inherit; text-decoration: none; }
+button, input, textarea, select { font: inherit; }
 
 ::selection {
-  background: rgba(103, 232, 249, 0.24);
-  color: #f8fafc;
+  background: var(--secondary);
+  color: var(--foreground);
 }
 
-::-webkit-scrollbar {
-  width: 0.85rem;
-  height: 0.85rem;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.45);
-}
-
+/* ── Scrollbar ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  border: 2px solid rgba(15, 23, 42, 0.45);
-  border-radius: var(--radius-pill);
-  background: rgba(103, 232, 249, 0.18);
+  border-radius: 2px;
+  background: rgba(255,255,255,0.08);
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
+/* ── Focus ──────────────────────────────────────────────── */
+:focus-visible {
+  outline: 1px solid rgba(255,255,255,0.3);
+  outline-offset: 2px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(103, 232, 249, 0.28);
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+/* Instrument card surface */
+.bg-instrument {
+  background: var(--instrument);
+}
+
+/* Instrument border (single consistent rule) */
+.instrument-border {
+  border: var(--instrument-border);
+}
+
+/* Glass-label: small uppercase mono tracking label */
+.glass-label {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+/* Live signal colour */
+.text-signal-live {
+  color: var(--signal-live);
+}
+.bg-signal-live {
+  background: var(--signal-live);
+}
+.text-signal-warn  { color: var(--signal-warn); }
+.text-signal-error { color: var(--signal-error); }
+.text-signal-info  { color: var(--signal-info); }
+
+/* Etch (very muted) */
+.text-etch {
+  color: var(--etch);
+}
+
+/* Muted foreground */
+.text-muted-foreground {
+  color: var(--muted-foreground);
+}
+
+/* Display font */
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Mono font */
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Tabular numbers */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Transition precise */
+.transition-precise {
+  transition: all var(--transition-precise);
+}
+
+/* ── Radial accent gradient (page header / hero) ─────────── */
+.bg-gradient-radial-accent {
+  background:
+    radial-gradient(ellipse 70% 120% at 50% -10%, rgba(34, 197, 94, 0.06) 0%, transparent 60%),
+    var(--background);
+}
+
+/* ── Border colour utility ───────────────────────────────── */
+.border-border {
+  border-color: var(--border);
+}
+.border-border-strong {
+  border-color: var(--border-strong);
+}
+
+/* ============================================================
+   APP SHELL
+   ============================================================ */
+
+.ega-shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+/* Sidebar */
+.ega-sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: var(--background);
+  border-right: var(--instrument-border);
+  display: flex;
+  flex-direction: column;
+  z-index: 40;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Main content area */
+.ega-main {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* TopBar */
+.ega-topbar {
+  height: 4rem;
+  flex-shrink: 0;
+  border-bottom: var(--instrument-border);
+  background: rgba(10, 11, 15, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+/* Page header */
+.ega-page-header {
+  padding: 2.5rem 2rem 2rem;
+  border-bottom: var(--instrument-border);
+  background: radial-gradient(ellipse 70% 120% at 50% -10%, rgba(34, 197, 94, 0.05) 0%, transparent 60%);
+}
+
+/* Content area */
+.ega-content {
+  flex: 1;
+  padding: 2rem;
+}
+
+/* ============================================================
+   SIDEBAR NAV
+   ============================================================ */
+
+/* Nav link */
+.sidebar-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.625rem 0.5rem;
+  border-radius: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--etch);
+  transition: color var(--transition-precise);
+  position: relative;
+  text-decoration: none;
+  text-align: center;
+}
+
+.sidebar-link:hover {
+  color: var(--foreground);
+}
+
+.sidebar-link.active {
+  color: var(--signal-live);
+}
+
+.sidebar-link.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 60%;
+  background: var(--signal-live);
+}
+
+/* Project dot in sidebar */
+.project-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+/* ============================================================
+   LIVE DOT ANIMATION
+   ============================================================ */
+@keyframes signal-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+  50%       { opacity: 0.85; box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+}
+
+.signal-dot-live {
+  animation: signal-pulse 2.4s ease-in-out infinite;
+}
+
+/* ============================================================
+   INSTRUMENT CARD
+   ============================================================ */
+
+/* Used directly as a wrapper — .instrument-border .bg-instrument .rounded-sm */
+.instrument-card {
+  border: var(--instrument-border);
+  background: var(--instrument);
+  border-radius: 2px;
+}
+
+/* Flat progress bar (2px) used in timer */
+.progress-flat {
+  height: 2px;
+  background: var(--border);
+  position: relative;
+}
+
+.progress-flat-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--foreground);
+  transition: width 0.5s ease-out;
+}
+
+/* ============================================================
+   BUTTONS (instrument style)
+   ============================================================ */
+
+.btn-instrument {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--foreground);
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all var(--transition-precise);
+}
+
+.btn-instrument:hover {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.btn-instrument-muted {
+  border-color: var(--border);
+  color: var(--muted-foreground);
+}
+
+.btn-instrument-muted:hover {
+  border-color: var(--border-strong);
+  color: var(--foreground);
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+
+.instrument-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.instrument-table th {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--etch);
+  text-align: left;
+  padding: 0 0.75rem 0.625rem;
+  border-bottom: var(--instrument-border);
+}
+
+.instrument-table td {
+  padding: 0.625rem 0.75rem;
+  vertical-align: middle;
+  border-bottom: var(--instrument-border);
+}
+
+.instrument-table tr:last-child td {
+  border-bottom: none;
+}
+
+.instrument-table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+/* ============================================================
+   INPUTS
+   ============================================================ */
+
+.input-instrument {
+  background: transparent;
+  border: var(--instrument-border);
+  border-radius: 2px;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  padding: 0.5rem 0.875rem;
+  width: 100%;
+  transition: border-color var(--transition-precise);
+}
+
+.input-instrument:hover {
+  border-color: rgba(255,255,255,0.13);
+}
+
+.input-instrument:focus {
+  outline: none;
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.input-instrument::placeholder {
+  color: var(--etch);
+}
+
+/* ============================================================
+   STATUS BADGES
+   ============================================================ */
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid;
+}
+
+.status-badge-active  { color: var(--signal-live);  border-color: rgba(34,197,94,0.3);  background: rgba(34,197,94,0.07); }
+.status-badge-muted   { color: var(--etch);          border-color: var(--border);         background: transparent; }
+.status-badge-warn    { color: var(--signal-warn);   border-color: rgba(245,158,11,0.3);  background: rgba(245,158,11,0.07); }
+.status-badge-error   { color: var(--signal-error);  border-color: rgba(239,68,68,0.3);   background: rgba(239,68,68,0.07); }
+.status-badge-info    { color: var(--signal-info);   border-color: rgba(59,130,246,0.3);  background: rgba(59,130,246,0.07); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+@media (max-width: 768px) {
+  :root { --sidebar-width: 0px; }
+  .ega-sidebar { display: none; }
+  .ega-main { margin-left: 0; }
+  .ega-page-header { padding: 1.5rem 1rem 1.25rem; }
+  .ega-content { padding: 1rem; }
 }

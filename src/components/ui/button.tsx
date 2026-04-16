@@ -1,32 +1,27 @@
 import type { ButtonHTMLAttributes } from "react";
-
 import { cn } from "@/lib/utils";
 
-const buttonVariants = {
-  primary:
-    "border border-cyan-300/20 bg-cyan-300/90 text-slate-950 hover:bg-cyan-200 hover:border-cyan-200/50",
-  secondary:
-    "border border-white/15 bg-white/8 text-slate-100 hover:border-cyan-300/40 hover:bg-cyan-300/10",
-  ghost:
-    "border border-transparent bg-transparent text-slate-200 hover:border-white/10 hover:bg-white/6",
-  danger:
-    "border border-rose-400/25 bg-rose-400/12 text-rose-100 hover:border-rose-300/40 hover:bg-rose-400/18",
-} as const;
-
-const buttonSizes = {
-  sm: "min-h-10 px-4 text-sm",
-  md: "min-h-12 px-5 text-sm",
-  lg: "min-h-14 px-6 text-base",
-} as const;
-
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: keyof typeof buttonVariants;
-  size?: keyof typeof buttonSizes;
+  variant?: "default" | "muted" | "ghost" | "danger";
+  size?: "sm" | "md" | "lg";
+};
+
+const variantClasses = {
+  default: "btn-instrument",
+  muted:   "btn-instrument btn-instrument-muted",
+  ghost:   "border border-transparent bg-transparent text-etch hover:text-foreground hover:border-[var(--border)]",
+  danger:  "border border-[rgba(239,68,68,0.4)] text-signal-error bg-transparent hover:bg-[rgba(239,68,68,0.08)]",
+};
+
+const sizeClasses = {
+  sm: "h-7 px-3 text-[10px]",
+  md: "h-8 px-4 text-[11px]",
+  lg: "h-10 px-5 text-xs",
 };
 
 export function Button({
   className,
-  variant = "primary",
+  variant = "default",
   size = "md",
   type = "button",
   ...props
@@ -35,13 +30,17 @@ export function Button({
     <button
       type={type}
       className={cn(
-        "inline-flex items-center justify-center rounded-full font-medium transition duration-200 disabled:cursor-not-allowed disabled:opacity-60",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950",
-        buttonVariants[variant],
-        buttonSizes[size],
+        variantClasses[variant],
+        sizeClasses[size],
+        "transition-precise disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--signal-live)]",
         className,
       )}
       {...props}
     />
   );
+}
+
+/* Export buttonVariants for compatibility with existing code referencing it */
+export function buttonVariants({ variant = "default", size = "md" }: { variant?: ButtonProps["variant"]; size?: ButtonProps["size"] } = {}) {
+  return cn(variantClasses[variant ?? "default"], sizeClasses[size ?? "md"]);
 }

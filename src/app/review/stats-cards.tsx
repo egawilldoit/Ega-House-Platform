@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { formatDurationLabel } from "@/lib/task-session";
+import { formatTaskToken } from "@/lib/task-domain";
 
-type WeeklyStats = {
+export type WeeklyStats = {
   tasksCreated: number;
   sessionsLogged: number;
   trackedSeconds: number;
@@ -9,55 +10,47 @@ type WeeklyStats = {
   goalStatusCounts: Array<{ status: string; count: number }>;
 };
 
-type StatsCardsProps = {
-  stats: WeeklyStats;
-};
+type StatsCardsProps = { stats: WeeklyStats };
 
-function formatStatusToken(value: string) {
-  return value
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (token) => token.toUpperCase());
+function formatStatusToken(status: string) {
+  return formatTaskToken(status);
 }
 
 export function StatsCards({ stats }: StatsCardsProps) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <article className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tasks created</p>
-        <p className="mt-2 text-2xl font-semibold text-slate-100">{stats.tasksCreated}</p>
-      </article>
+    <div className="space-y-3">
+      {/* Readout rows */}
+      {[
+        { label: "Tasks created", value: stats.tasksCreated },
+        { label: "Sessions logged", value: stats.sessionsLogged },
+        { label: "Goals touched", value: stats.goalsTouched },
+      ].map((row) => (
+        <div key={row.label} className="flex items-center justify-between border-b pb-2" style={{ borderColor: "var(--border)" }}>
+          <span className="glass-label text-etch">{row.label}</span>
+          <span className="font-mono tabular text-base font-medium" style={{ color: "var(--foreground)" }}>{row.value}</span>
+        </div>
+      ))}
 
-      <article className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Sessions logged</p>
-        <p className="mt-2 text-2xl font-semibold text-slate-100">{stats.sessionsLogged}</p>
-      </article>
+      {/* Focus time — highlighted */}
+      <div className="instrument-border rounded-sm px-4 py-3" style={{ borderColor: "rgba(34,197,94,0.2)", background: "rgba(34,197,94,0.05)" }}>
+        <div className="flex items-center justify-between">
+          <span className="glass-label text-signal-live">Focus time</span>
+          <span className="font-mono tabular text-lg font-medium text-signal-live">{formatDurationLabel(stats.trackedSeconds)}</span>
+        </div>
+      </div>
 
-      <article className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Tracked time</p>
-        <p className="mt-2 text-2xl font-semibold text-slate-100">
-          {formatDurationLabel(stats.trackedSeconds)}
-        </p>
-      </article>
-
-      <article className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Goals touched</p>
-        <p className="mt-2 text-2xl font-semibold text-slate-100">{stats.goalsTouched}</p>
-        {stats.goalStatusCounts.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {stats.goalStatusCounts.map((entry) => (
-              <Badge key={entry.status}>
-                {entry.count} {formatStatusToken(entry.status)}
-              </Badge>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-xs text-slate-400">No goal updates this week.</p>
-        )}
-      </article>
+      {/* Goal breakdown */}
+      {stats.goalStatusCounts.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 pt-1">
+          {stats.goalStatusCounts.map((entry) => (
+            <Badge key={entry.status} tone="muted">
+              {entry.count} {formatStatusToken(entry.status)}
+            </Badge>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-export type { WeeklyStats };
+export type { WeeklyStats as WeeklyStatsType };

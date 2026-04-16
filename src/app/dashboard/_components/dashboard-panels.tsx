@@ -47,7 +47,7 @@ const panelNoticeClassName =
   "min-h-[4.25rem] rounded-2xl px-4 py-3 text-sm leading-7";
 
 function getHealthTone(state: DashboardHealthData["state"]) {
-  return state === "healthy" ? "success" : "warning";
+  return state === "healthy" ? "success" : "warn";
 }
 
 function getProjectHref(slug: string | null | undefined) {
@@ -404,7 +404,7 @@ export function LinearProgressPanel({ project, error }: LinearProgressPanelProps
 
               <div className="mt-3 flex flex-wrap gap-2">
                 {project.targetDate ? (
-                  <Badge tone="warning">Target {formatDate(project.targetDate)}</Badge>
+                  <Badge tone="warn">Target {formatDate(project.targetDate)}</Badge>
                 ) : (
                   <Badge>Target not set</Badge>
                 )}

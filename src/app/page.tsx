@@ -1,116 +1,82 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-
 import { AppShell } from "@/components/layout/app-shell";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function Home() {
   const supabase = await createClient();
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (session) {
-    redirect("/tasks");
-  }
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) redirect("/tasks");
 
   return (
     <AppShell
-      eyebrow="Shared Foundation"
-      title="EGA House"
-      description="The visual system, app shell, and shared primitives are now in place for the goals, tasks, timer, and review surfaces."
+      eyebrow="EGA House · Operational Platform"
+      title="Command Interface"
+      description="Shared operational surface connecting tasks, goals, timer, and weekly reviews."
       actions={
-        <>
-          <Button className="min-w-36">Explore foundation</Button>
-          <Button variant="secondary" className="min-w-36">
-            Review auth flow
-          </Button>
-        </>
-      }
-      navigation={
-        <>
-          <Badge tone="accent">Goals</Badge>
-          <Badge>Tasks</Badge>
-          <Badge>Timer</Badge>
-          <Badge>Review</Badge>
-        </>
+        <Link href="/login" className="btn-instrument glass-label h-9 px-5 flex items-center gap-2">
+          Authenticate →
+        </Link>
       }
     >
-      <div className="grid gap-6 lg:grid-cols-[1.25fr_0.95fr]">
-        <Card>
-          <CardHeader>
-            <Badge tone="accent" className="w-fit">
-              Token Layer
-            </Badge>
-            <CardTitle>Shared design language</CardTitle>
-            <CardDescription>
-              Dark surfaces, cyan accents, rounded framing, and calm editorial
-              spacing copied forward from the old operational dashboard and
-              normalized for this repo.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                Surfaces
-              </p>
-              <p className="mt-2 text-sm leading-7 text-slate-300">
-                Shell, panel, and muted card tones are aligned for future app
-                pages.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                Typography
-              </p>
-              <p className="mt-2 text-sm leading-7 text-slate-300">
-                Sans and mono stacks are defined globally without pulling in a
-                separate page-level font system.
-              </p>
-            </div>
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4">
-              <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                Primitives
-              </p>
-              <p className="mt-2 text-sm leading-7 text-slate-300">
-                Buttons, inputs, badges, cards, and the shell are ready for the
-                next pages.
-              </p>
-            </div>
-          </CardContent>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+        {[
+          { label: "Surfaces", value: "05", sub: "Task · Goal · Timer · Review · Ops" },
+          { label: "Design Rev", value: "v2", sub: "Instrument cockpit interface" },
+          { label: "Data Layer", value: "Live", sub: "Supabase realtime backend" },
+          { label: "Stack", value: "N15", sub: "Next.js 15 · React 19 · TW v4" },
+        ].map((item) => (
+          <div key={item.label} className="instrument-border bg-instrument rounded-sm px-5 py-5">
+            <div className="glass-label text-etch mb-2">{item.label}</div>
+            <p className="font-mono tabular text-3xl font-medium" style={{ color: "var(--foreground)" }}>{item.value}</p>
+            <p className="glass-label text-etch mt-1.5">{item.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card label="Workspace" title="Platform surfaces">
+          <div className="space-y-1">
+            {[
+              { href: "/tasks",     label: "Tasks",     desc: "Create & filter execution tasks" },
+              { href: "/goals",     label: "Goals",     desc: "Track strategic objectives" },
+              { href: "/timer",     label: "Timer",     desc: "Focus session tracking" },
+              { href: "/review",    label: "Review",    desc: "Weekly reflection workflow" },
+              { href: "/dashboard", label: "Dashboard", desc: "Operational snapshot view" },
+            ].map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center justify-between px-3 py-2.5 rounded-sm transition-precise"
+                style={{ color: "var(--muted-foreground)" }}
+              >
+                <div>
+                  <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{item.label}</span>
+                  <span className="glass-label text-etch ml-3">{item.desc}</span>
+                </div>
+                <span className="text-etch">→</span>
+              </Link>
+            ))}
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <Badge tone="success" className="w-fit">
-              Next Build Step
-            </Badge>
-            <CardTitle>App pages can plug in directly</CardTitle>
-            <CardDescription>
-              The next shared pages can focus on data and workflow instead of
-              rebuilding layout and styling.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm leading-7 text-slate-300">
-              Start each subdomain with <code className="font-mono text-cyan-100">AppShell</code>,
-              compose page sections from <code className="font-mono text-cyan-100">Card</code>,
-              and use the OpenClaw utility from server code when a health probe
-              is needed.
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button variant="secondary">Shell ready</Button>
-              <Button variant="ghost">Probe ready</Button>
-            </div>
-          </CardContent>
+        <Card label="Design" title="Instrument design system">
+          <div className="grid grid-cols-2 gap-2.5">
+            {[
+              { label: "Canvas",      desc: "#0a0b0f deep black" },
+              { label: "Signal Live", desc: "22c55e emerald" },
+              { label: "Typography",  desc: "Plus Jakarta + DM Mono" },
+              { label: "Borders",     desc: "7% white opacity" },
+              { label: "Glass Label", desc: "Mono uppercase 11px" },
+              { label: "Animate",     desc: "150ms cubic-bezier" },
+            ].map((item) => (
+              <div key={item.label} className="instrument-border rounded-sm px-3 py-2.5">
+                <p className="glass-label text-etch mb-0.5">{item.label}</p>
+                <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>{item.desc}</p>
+              </div>
+            ))}
+          </div>
         </Card>
       </div>
     </AppShell>

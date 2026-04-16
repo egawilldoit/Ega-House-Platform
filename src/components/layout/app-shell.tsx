@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
+import { headers } from "next/headers";
+import { createClient } from "@/lib/supabase/server";
 
 import { cn } from "@/lib/utils";
-import { headers } from "next/headers";
+import { Sidebar, type SidebarProject } from "./sidebar";
+import { TopBar } from "./top-bar";
 
 type AppShellProps = {
   children: ReactNode;
@@ -10,55 +12,24 @@ type AppShellProps = {
   title: string;
   description?: string;
   actions?: ReactNode;
+  /** Legacy – no longer rendered */
   navigation?: ReactNode;
   className?: string;
   contentClassName?: string;
 };
 
-type WorkspaceNavItem = {
-  href: `/${string}`;
-  label: string;
-};
-
-const WORKSPACE_NAV_ITEMS: WorkspaceNavItem[] = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/tasks", label: "Tasks" },
-  { href: "/goals", label: "Goals" },
-  { href: "/timer", label: "Timer" },
-  { href: "/review", label: "Review" },
-];
-
-function isActiveWorkspace(pathname: string, href: `/${string}`) {
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-async function WorkspaceNav() {
-  const headerStore = await headers();
-  const pathname = headerStore.get("x-current-path") ?? "/";
-
-  return (
-    <nav aria-label="Workspace navigation" className="flex flex-wrap gap-2">
-      {WORKSPACE_NAV_ITEMS.map((item) => {
-        const isActive = isActiveWorkspace(pathname, item.href);
-
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={isActive ? "page" : undefined}
-            className={cn(
-              "inline-flex h-10 items-center rounded-full border px-4 text-sm font-medium transition",
-              isActive
-                ? "border-cyan-300/40 bg-cyan-400/15 text-cyan-100 shadow-[0_0_0_1px_rgba(103,232,249,0.12)]"
-                : "border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/20 hover:bg-white/[0.06] hover:text-white",
-            )}
-          >
-            {item.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+async function getSidebarProjects(): Promise<SidebarProject[]> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("projects")
+      .select("id, name")
+      .order("name", { ascending: true })
+      .limit(12);
+    return data ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function AppShell({
@@ -67,52 +38,58 @@ export async function AppShell({
   title,
   description,
   actions,
-  navigation,
   className,
   contentClassName,
 }: AppShellProps) {
+  const headerStore = await headers();
+  const currentPath = headerStore.get("x-current-path") ?? "/";
+  const projects = await getSidebarProjects();
+
   return (
-    <main
-      className={cn(
-        "flex min-h-screen px-4 py-6 text-slate-100 sm:px-6",
-        className,
-      )}
-    >
-      <section className="mx-auto flex w-full max-w-6xl flex-1 flex-col rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-[0_32px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-8">
-        <div className="flex flex-col gap-6 border-b border-white/8 pb-8">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-4">
-              {eyebrow ? (
-                <p className="text-xs font-medium uppercase tracking-[0.35em] text-cyan-200/70">
-                  {eyebrow}
-                </p>
-              ) : null}
-              <div className="space-y-3">
-                <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+    <div className={cn("min-h-dvh bg-background text-foreground flex selection:bg-secondary selection:text-foreground", className)}>
+      <Sidebar projects={projects} currentPath={currentPath} />
+
+      <main className="ega-main">
+        <TopBar />
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Page header */}
+          <div className="ega-page-header">
+            <div className="flex items-end justify-between gap-6">
+              <div>
+                {eyebrow && (
+                  <div className="glass-label text-signal-live mb-3">{eyebrow}</div>
+                )}
+                <h1
+                  className="text-4xl font-semibold tracking-tight"
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    color: "var(--foreground)",
+                  }}
+                >
                   {title}
                 </h1>
-                {description ? (
-                  <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
+                {description && (
+                  <p
+                    className="text-sm mt-2 max-w-2xl"
+                    style={{ color: "var(--muted-foreground)" }}
+                  >
                     {description}
                   </p>
-                ) : null}
+                )}
               </div>
+              {actions && (
+                <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>
+              )}
             </div>
-
-            {actions ? (
-              <div className="flex flex-wrap items-center gap-3">{actions}</div>
-            ) : null}
           </div>
 
-          <WorkspaceNav />
-
-          {navigation ? (
-            <div className="flex flex-wrap items-center gap-3">{navigation}</div>
-          ) : null}
+          {/* Content */}
+          <div className={cn("ega-content", contentClassName)}>
+            {children}
+          </div>
         </div>
-
-        <div className={cn("pt-8", contentClassName)}>{children}</div>
-      </section>
-    </main>
+      </main>
+    </div>
   );
 }

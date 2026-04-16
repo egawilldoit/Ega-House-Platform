@@ -22,12 +22,12 @@ export function WeekSelector({
   existingReviewCount,
 }: WeekSelectorProps) {
   return (
-    <div className="space-y-4 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
-      <form action="/review" method="get" className="space-y-3">
-        <label htmlFor="review-week-selector" className="text-sm font-medium text-slate-200">
-          Selected week
-        </label>
-        <div className="flex flex-wrap items-center gap-3">
+    <div className="space-y-4">
+      <form action="/review" method="get" className="flex flex-wrap items-end gap-3">
+        <div className="space-y-1.5 flex-1 min-w-[160px]">
+          <label htmlFor="review-week-selector" className="glass-label text-etch">
+            Selected week
+          </label>
           <Input
             id="review-week-selector"
             name="weekOf"
@@ -36,37 +36,39 @@ export function WeekSelector({
             required
             className="max-w-xs"
           />
-          <Button type="submit" variant="secondary">
-            View week
-          </Button>
         </div>
+        <Button type="submit" variant="muted" size="sm">
+          View week
+        </Button>
       </form>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-          {formatIsoDate(weekStart)} to {formatIsoDate(weekEnd)}
-        </p>
+        <div>
+          <span className="glass-label text-etch">
+            {formatIsoDate(weekStart)} — {formatIsoDate(weekEnd)}
+          </span>
+          <p className="glass-label text-etch mt-1">
+            {existingReviewCount > 0
+              ? `${existingReviewCount} saved ${existingReviewCount === 1 ? "review" : "reviews"} this week`
+              : "No saved review yet for this week"}
+          </p>
+        </div>
+
         <div className="flex items-center gap-2">
           <Link
             href={`/review?weekOf=${previousWeekOf}`}
-            className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
+            className="btn-instrument btn-instrument-muted glass-label h-7 px-3 flex items-center"
           >
-            Previous
+            ← Prev
           </Link>
           <Link
             href={`/review?weekOf=${nextWeekOf}`}
-            className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
+            className="btn-instrument btn-instrument-muted glass-label h-7 px-3 flex items-center"
           >
-            Next
+            Next →
           </Link>
         </div>
       </div>
-
-      <p className="text-sm leading-7 text-slate-300">
-        {existingReviewCount > 0
-          ? `${existingReviewCount} saved ${existingReviewCount === 1 ? "review" : "reviews"} for this week.`
-          : "No saved review yet for this week."}
-      </p>
     </div>
   );
 }
