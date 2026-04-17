@@ -126,14 +126,14 @@ async function getProjectsWithTaskContext() {
       completedTaskCount,
       progressPercent,
       statusCounts,
-      recentTasks: projectTasks.slice(0, 3),
+      recentTasks: projectTasks.slice(0, 2),
     } satisfies ProjectCardData;
   });
 }
 
 function EmptyState() {
   return (
-    <Card className="surface-empty bg-white">
+    <Card className="surface-empty bg-white max-w-3xl">
       <CardContent className="space-y-5 p-8">
         <Badge tone="info" className="w-fit">
           Projects
@@ -180,14 +180,14 @@ function ProjectCard({
       className="h-full scroll-mt-24 border-[var(--border)] bg-white transition hover:border-[var(--border-strong)]"
     >
       <CardContent className="flex h-full flex-col p-6">
-        <div className="mb-6 flex items-start justify-between gap-3">
+        <div className="mb-5 flex items-start justify-between gap-3">
           <Badge tone={getStatusTone(project.status)}>
             {formatTaskToken(project.status)}
           </Badge>
           <span className="glass-label text-etch">{project.slug}</span>
         </div>
 
-        <div className="mb-6 flex-1 space-y-4">
+        <div className="mb-5 flex-1 space-y-4">
           <div className="space-y-2">
             <h2 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">
               <Link
@@ -249,7 +249,7 @@ function ProjectCard({
                 {project.recentTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-3 py-3"
+                    className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-3 py-3"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <p className="text-sm font-medium leading-6 text-[color:var(--foreground)]">
@@ -340,7 +340,7 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
       </div>
 
       {projects.length ? (
-        <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3">
+        <div className="grid items-start gap-6 lg:grid-cols-2 2xl:grid-cols-3">
           {projects.map((project) => (
             <ProjectCard
               key={project.id}

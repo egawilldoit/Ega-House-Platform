@@ -21,12 +21,12 @@ export default function ReviewDetailNotFound() {
           <CardTitle>Missing review</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <p className="text-sm leading-7 text-slate-300">
+          <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
             This review entry does not exist or was removed.
           </p>
           <Link
             href="/review"
-            className="inline-flex min-h-10 items-center justify-center rounded-full border border-white/15 bg-white/8 px-4 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
+            className="btn-instrument btn-instrument-muted inline-flex min-h-10 items-center justify-center px-4 text-sm"
           >
             Back to review workspace
           </Link>

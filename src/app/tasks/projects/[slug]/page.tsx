@@ -246,7 +246,7 @@ export default async function ProjectDetailPage({
         ) : null}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_22rem]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
         <div className="space-y-6">
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
             <CardContent className="p-8">
@@ -257,44 +257,40 @@ export default async function ProjectDetailPage({
                 {focusedTask ? <Badge>{formatTaskToken(focusedTask.priority)}</Badge> : null}
               </div>
 
-              <h2 className="text-4xl font-semibold tracking-tight text-[color:var(--foreground)]">
-                {focusedTask?.title ?? project.name}
-              </h2>
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,0.55fr)]">
+                <div>
+                  <h2 className="text-4xl font-semibold tracking-tight text-[color:var(--foreground)]">
+                    {focusedTask?.title ?? project.name}
+                  </h2>
+                  <div className="mt-4 space-y-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                    <p>
+                      {focusedTask?.description?.trim() ||
+                        project.description?.trim() ||
+                        "No description has been added for this task yet."}
+                    </p>
+                  </div>
+                </div>
 
-              <div className="mt-6 grid gap-4 border-t border-[var(--border)] pt-6 sm:grid-cols-3">
-                <div>
-                  <p className="glass-label text-etch">Project</p>
-                  <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                    {project.name}
-                  </p>
+                <div className="grid gap-3 rounded-[1.1rem] border border-[var(--border)] bg-white/70 p-4 sm:grid-cols-3 lg:grid-cols-1">
+                  <div>
+                    <p className="glass-label text-etch">Project</p>
+                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                      {project.name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="glass-label text-etch">Goal</p>
+                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                      {focusedTask?.goals?.title ?? "No linked goal"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="glass-label text-etch">Updated</p>
+                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                      {focusedTask ? formatTimerDateTime(focusedTask.updated_at) : "No updates"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="glass-label text-etch">Goal</p>
-                  <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                    {focusedTask?.goals?.title ?? "No linked goal"}
-                  </p>
-                </div>
-                <div>
-                  <p className="glass-label text-etch">Updated</p>
-                  <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                    {focusedTask ? formatTimerDateTime(focusedTask.updated_at) : "No updates"}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-8">
-              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
-                Description
-              </h3>
-              <div className="mt-4 space-y-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
-                <p>
-                  {focusedTask?.description?.trim() ||
-                    project.description?.trim() ||
-                    "No description has been added for this task yet."}
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -344,7 +340,7 @@ export default async function ProjectDetailPage({
 
               {focusedTask ? (
                 <div className="space-y-3">
-                  <article className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
+                  <article className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium text-[color:var(--foreground)]">
@@ -380,7 +376,7 @@ export default async function ProjectDetailPage({
                       <article
                         key={task.id}
                         id={`task-${task.id}`}
-                        className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                        className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
@@ -427,7 +423,7 @@ export default async function ProjectDetailPage({
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
                 Time Tracking
               </h3>
-              <div className="flex flex-col items-center py-6">
+              <div className="flex flex-col items-center py-4">
                 <ProgressRing
                   percent={getTimeProgressPercent(focusedDurationSeconds)}
                   label={formatDurationLabel(focusedDurationSeconds)}
@@ -447,11 +443,11 @@ export default async function ProjectDetailPage({
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
                 Recent Activity
               </h3>
-              <div className="mt-6 space-y-3">
-                {tasks.slice(0, 4).map((task) => (
+              <div className="mt-5 space-y-3">
+                {tasks.slice(0, 3).map((task) => (
                   <div
                     key={task.id}
-                    className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                    className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
                   >
                     <p className="text-sm font-medium text-[color:var(--foreground)]">
                       {task.title}
@@ -473,7 +469,7 @@ export default async function ProjectDetailPage({
               <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
                 New tasks created here stay attached to {project.name}.
               </p>
-              <div className="mt-5">
+              <div className="mt-4">
                 <CreateTaskForm
                   projects={[{ id: project.id, name: project.name }]}
                   goals={goals}

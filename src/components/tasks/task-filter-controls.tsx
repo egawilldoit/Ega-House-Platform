@@ -129,7 +129,7 @@ export function TaskFilterControls({
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-2">
       <FilterPills
         label="Status"
         options={statusOptions}
@@ -161,19 +161,21 @@ export function TaskFilterControls({
       ) : null}
 
       {goalOptions.length > 0 ? (
-        <FilterPills
-          label="Goal"
-          options={goalFilterOptions}
-          activeValue={activeGoalId}
-          hrefForValue={(goal) =>
-            buildFilterHref(basePath, {
-              status: activeStatus,
-              priority: activePriority,
-              project: activeProjectId,
-              goal,
-            })
-          }
-        />
+        <div className={cn(includePriority ? "" : "lg:col-span-2")}>
+          <FilterPills
+            label="Goal"
+            options={goalFilterOptions}
+            activeValue={activeGoalId}
+            hrefForValue={(goal) =>
+              buildFilterHref(basePath, {
+                status: activeStatus,
+                priority: activePriority,
+                project: activeProjectId,
+                goal,
+              })
+            }
+          />
+        </div>
       ) : null}
 
       {includePriority ? (

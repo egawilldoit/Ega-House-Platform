@@ -46,9 +46,9 @@ function toFieldValue(value: string | null, fallback = "Not provided.") {
 
 function DetailField({ label, value }: { label: string; value: string | null }) {
   return (
-    <article className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-200">
+    <article className="rounded-[1.25rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
+      <p className="text-overline">{label}</p>
+      <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[color:var(--foreground)]">
         {toFieldValue(value)}
       </p>
     </article>
@@ -71,7 +71,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
       actions={
         <Link
           href="/review"
-          className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/8 px-5 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
+          className="btn-instrument btn-instrument-muted inline-flex min-h-12 items-center justify-center px-5 text-sm"
         >
           Back to review workspace
         </Link>
@@ -104,15 +104,15 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
             <CardTitle>Record metadata</CardTitle>
             <CardDescription>Lifecycle timestamps for this review record.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm leading-7 text-slate-300">
+          <CardContent className="space-y-2 text-sm leading-7 text-[color:var(--muted-foreground)]">
             <p>
-              <span className="text-slate-400">Created:</span> {formatDateTime(review.created_at)}
+              <span className="text-[color:var(--foreground)]">Created:</span> {formatDateTime(review.created_at)}
             </p>
             <p>
-              <span className="text-slate-400">Updated:</span> {formatDateTime(review.updated_at)}
+              <span className="text-[color:var(--foreground)]">Updated:</span> {formatDateTime(review.updated_at)}
             </p>
             <p>
-              <span className="text-slate-400">Review ID:</span> {review.id}
+              <span className="text-[color:var(--foreground)]">Review ID:</span> {review.id}
             </p>
           </CardContent>
         </Card>

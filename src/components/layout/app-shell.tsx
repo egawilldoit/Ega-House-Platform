@@ -52,27 +52,14 @@ export async function AppShell({
         <div className="flex-1 overflow-y-auto">
           {/* Page header */}
           <div className="ega-page-header">
-            <div className="flex items-end justify-between gap-6">
+            <div className="ega-shell-max ega-shell-page-head">
               <div>
                 {eyebrow && (
-                  <div className="sidebar-section-label mb-2" style={{ padding: 0 }}>{eyebrow}</div>
+                  <div className="sidebar-section-label ega-shell-eyebrow">{eyebrow}</div>
                 )}
-                <h1
-                  className="text-3xl font-bold tracking-tight"
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    color: "var(--foreground)",
-                  }}
-                >
-                  {title}
-                </h1>
+                <h1 className="ega-shell-title">{title}</h1>
                 {description && (
-                  <p
-                    className="text-sm mt-1.5 max-w-2xl"
-                    style={{ color: "var(--muted-foreground)" }}
-                  >
-                    {description}
-                  </p>
+                  <p className="ega-shell-description">{description}</p>
                 )}
               </div>
               {actions && (
@@ -82,7 +69,7 @@ export async function AppShell({
           </div>
 
           {/* Content */}
-          <div className={cn("ega-content", contentClassName)}>
+          <div className={cn("ega-content ega-shell-max", contentClassName)}>
             {children}
           </div>
         </div>

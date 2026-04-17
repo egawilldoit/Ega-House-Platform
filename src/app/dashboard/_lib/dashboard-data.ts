@@ -1,7 +1,9 @@
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
 import {
+  getCurrentDayWindow,
   formatDurationLabel,
+  getSessionDurationWithinWindowSeconds,
   getTaskSessionDurationSeconds,
 } from "@/lib/task-session";
 
@@ -16,6 +18,9 @@ const PANEL_ERROR_MESSAGES = {
   todaysTasks: "Could not load today's tasks right now.",
   activeTimer: "Could not load the active timer right now.",
   projectStatuses: "Could not load project statuses right now.",
+  goals: "Could not load goal visibility right now.",
+  timerSummary: "Could not load timer summary right now.",
+  latestReview: "Could not load weekly review summary right now.",
   linearProject: "Could not load the Linear snapshot right now.",
 } as const;
 
@@ -66,6 +71,36 @@ export type DashboardProjectStatus = {
   updatedAt: string;
 };
 
+export type DashboardGoalStatus = {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt: string;
+  projectName: string;
+  linkedTaskCount: number;
+  completedTaskCount: number;
+  progressPercent: number;
+};
+
+export type DashboardTimerSummary = {
+  trackedTodaySeconds: number;
+  trackedTodayLabel: string;
+  trackedTotalSeconds: number;
+  trackedTotalLabel: string;
+  sessionsTodayCount: number;
+  longestSessionSeconds: number | null;
+  longestSessionLabel: string | null;
+  longestSessionTaskTitle: string | null;
+};
+
+export type DashboardLatestReview = {
+  id: string;
+  weekStart: string;
+  weekEnd: string;
+  summary: string | null;
+  updatedAt: string;
+};
+
 export type DashboardLinearProject = {
   id: string;
   name: string;
@@ -83,6 +118,9 @@ export type DashboardData = {
   todaysTasks: PanelResult<DashboardTodayTask[]>;
   activeTimer: PanelResult<DashboardActiveSession | null>;
   projectStatuses: PanelResult<DashboardProjectStatus[]>;
+  goals: PanelResult<DashboardGoalStatus[]>;
+  timerSummary: PanelResult<DashboardTimerSummary>;
+  latestReview: PanelResult<DashboardLatestReview | null>;
   linearProject: PanelResult<DashboardLinearProject | null>;
 };
 
@@ -150,8 +188,22 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
       };
     }
 
+    const scopedTasks = data ?? [];
+    const fallbackTasks =
+      scopedTasks.length > 0
+        ? scopedTasks
+        : (
+            await supabase
+              .from("tasks")
+              .select(
+                "id, title, status, priority, updated_at, projects(name), goals(title)",
+              )
+              .order("updated_at", { ascending: false })
+              .limit(TODAY_TASK_LIMIT)
+          ).data ?? [];
+
     return {
-      data: (data ?? []).map((task) => ({
+      data: fallbackTasks.map((task) => ({
         id: task.id,
         title: task.title,
         status: task.status,
@@ -259,6 +311,186 @@ async function getProjectStatuses(): Promise<PanelResult<DashboardProjectStatus[
   }
 }
 
+async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
+  try {
+    const supabase = await createClient();
+    const [goalsResult, tasksResult] = await Promise.all([
+      supabase
+        .from("goals")
+        .select("id, title, status, updated_at, projects(name)")
+        .order("updated_at", { ascending: false })
+        .limit(6),
+      supabase
+        .from("tasks")
+        .select("id, goal_id, status")
+        .not("goal_id", "is", null),
+    ]);
+
+    if (goalsResult.error || tasksResult.error) {
+      return {
+        data: null,
+        error: PANEL_ERROR_MESSAGES.goals,
+      };
+    }
+
+    const taskCounts = (tasksResult.data ?? []).reduce<
+      Record<string, { total: number; completed: number }>
+    >((allCounts, task) => {
+      const goalId = task.goal_id;
+      if (!goalId) {
+        return allCounts;
+      }
+
+      const bucket = allCounts[goalId] ?? { total: 0, completed: 0 };
+      bucket.total += 1;
+      if (task.status === "done") {
+        bucket.completed += 1;
+      }
+      allCounts[goalId] = bucket;
+      return allCounts;
+    }, {});
+
+    return {
+      data: (goalsResult.data ?? []).map((goal) => {
+        const counts = taskCounts[goal.id] ?? { total: 0, completed: 0 };
+        const progressPercent =
+          counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0;
+
+        return {
+          id: goal.id,
+          title: goal.title,
+          status: goal.status,
+          updatedAt: goal.updated_at,
+          projectName: goal.projects?.name ?? "Unknown project",
+          linkedTaskCount: counts.total,
+          completedTaskCount: counts.completed,
+          progressPercent,
+        };
+      }),
+      error: null,
+    };
+  } catch {
+    return {
+      data: null,
+      error: PANEL_ERROR_MESSAGES.goals,
+    };
+  }
+}
+
+async function getTimerSummary(): Promise<PanelResult<DashboardTimerSummary>> {
+  try {
+    const supabase = await createClient();
+    const now = new Date();
+    const nowIso = now.toISOString();
+    const todayWindow = getCurrentDayWindow(now);
+
+    const { data, error } = await supabase
+      .from("task_sessions")
+      .select("task_id, started_at, ended_at, duration_seconds, tasks(title)")
+      .order("started_at", { ascending: false })
+      .limit(150);
+
+    if (error) {
+      return {
+        data: null,
+        error: PANEL_ERROR_MESSAGES.timerSummary,
+      };
+    }
+
+    const sessions = data ?? [];
+    const trackedTotalSeconds = sessions.reduce((total, session) => {
+      return total + getTaskSessionDurationSeconds(session, nowIso);
+    }, 0);
+    const trackedTodaySeconds = sessions.reduce((total, session) => {
+      return (
+        total +
+        getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso)
+      );
+    }, 0);
+
+    const sessionsTodayCount = sessions.filter((session) => {
+      return new Date(session.started_at).getTime() >= new Date(todayWindow.startIso).getTime();
+    }).length;
+
+    const longestSession = sessions.reduce<{
+      duration: number;
+      title: string | null;
+    } | null>((currentLongest, session) => {
+      const duration = getTaskSessionDurationSeconds(session, nowIso);
+      if (!currentLongest || duration > currentLongest.duration) {
+        return {
+          duration,
+          title: session.tasks?.title ?? "Untitled task",
+        };
+      }
+      return currentLongest;
+    }, null);
+
+    return {
+      data: {
+        trackedTodaySeconds,
+        trackedTodayLabel: formatDurationLabel(trackedTodaySeconds),
+        trackedTotalSeconds,
+        trackedTotalLabel: formatDurationLabel(trackedTotalSeconds),
+        sessionsTodayCount,
+        longestSessionSeconds: longestSession?.duration ?? null,
+        longestSessionLabel: longestSession
+          ? formatDurationLabel(longestSession.duration)
+          : null,
+        longestSessionTaskTitle: longestSession?.title ?? null,
+      },
+      error: null,
+    };
+  } catch {
+    return {
+      data: null,
+      error: PANEL_ERROR_MESSAGES.timerSummary,
+    };
+  }
+}
+
+async function getLatestReview(): Promise<PanelResult<DashboardLatestReview | null>> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("week_reviews")
+      .select("id, week_start, week_end, summary, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (error) {
+      return {
+        data: null,
+        error: PANEL_ERROR_MESSAGES.latestReview,
+      };
+    }
+
+    const review = data?.[0];
+    if (!review) {
+      return {
+        data: null,
+        error: null,
+      };
+    }
+
+    return {
+      data: {
+        id: review.id,
+        weekStart: review.week_start,
+        weekEnd: review.week_end,
+        summary: review.summary,
+        updatedAt: review.updated_at,
+      },
+      error: null,
+    };
+  } catch {
+    return {
+      data: null,
+      error: PANEL_ERROR_MESSAGES.latestReview,
+    };
+  }
+}
+
 async function getLinearProject(): Promise<PanelResult<DashboardLinearProject | null>> {
   try {
     const project = await getLinearProjectSnapshot();
@@ -300,12 +532,24 @@ async function getLinearProject(): Promise<PanelResult<DashboardLinearProject | 
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const [health, todaysTasks, activeTimer, projectStatuses, linearProject] =
+  const [
+    health,
+    todaysTasks,
+    activeTimer,
+    projectStatuses,
+    goals,
+    timerSummary,
+    latestReview,
+    linearProject,
+  ] =
     await Promise.all([
       getDashboardHealthData(),
       getTodaysTasks(),
       getActiveTimer(),
       getProjectStatuses(),
+      getGoals(),
+      getTimerSummary(),
+      getLatestReview(),
       getLinearProject(),
     ]);
 
@@ -314,6 +558,9 @@ export async function getDashboardData(): Promise<DashboardData> {
     todaysTasks,
     activeTimer,
     projectStatuses,
+    goals,
+    timerSummary,
+    latestReview,
     linearProject,
   };
 }

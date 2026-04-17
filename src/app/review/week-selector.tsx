@@ -22,7 +22,7 @@ export function WeekSelector({
   existingReviewCount,
 }: WeekSelectorProps) {
   return (
-    <div className="space-y-4 rounded-xl border border-[var(--border)] bg-white px-4 py-4">
+    <div className="space-y-4 rounded-xl border border-[var(--border)] bg-white px-4 py-4 lg:max-w-4xl">
       <form action="/review" method="get" className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5 flex-1 min-w-[160px]">
           <label htmlFor="review-week-selector" className="glass-label text-etch">

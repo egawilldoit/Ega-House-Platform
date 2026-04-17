@@ -57,7 +57,7 @@ export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
           minLength={20}
           placeholder="What worked, what failed, and what you will change next week."
           defaultValue={state.values.reflection}
-          className="min-h-44"
+          className="min-h-36"
         />
       </div>
 

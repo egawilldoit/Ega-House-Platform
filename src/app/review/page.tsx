@@ -202,7 +202,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
         </div>
       }
     >
-      <div className="mb-8">
+      <div className="mb-6">
         <WeekSelector
           selectedWeekOf={selectedWeekOf}
           weekStart={bounds.weekStart}
@@ -213,10 +213,10 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-12">
         <div className="md:col-span-8">
-          <Card className="h-full border-[var(--border)] bg-white">
-            <CardContent className="p-8">
+          <Card className="border-[var(--border)] bg-white">
+            <CardContent className="p-7">
               <div className="glass-label text-etch mb-4 flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-[var(--signal-live)]" />
                 Cycle Velocity
@@ -229,7 +229,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                 Weekly focus utilization against a 40-hour operating target, derived from
                 tracked task sessions and review-period activity.
               </p>
-              <div className="mt-8 flex flex-wrap gap-4">
+              <div className="mt-6 flex flex-wrap gap-4">
                 <div className="surface-subtle px-4 py-2 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--foreground)]">
                   +{weeklyStats.tasksCreated} tasks this cycle
                 </div>
@@ -256,7 +256,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
+      <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)]">
         <div className="space-y-6">
           <div>
             <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
@@ -336,72 +336,78 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
             </Card>
           </div>
 
-          <Card className="border-[var(--border)] bg-white">
-            <CardContent className="p-6">
-              <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
-                Save Reflection
-              </h2>
-              <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                Write or update the weekly review summary for the selected cycle.
-              </p>
-              <div className="mt-5">
-                <ReviewForm defaultWeekOf={selectedWeekOf} />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
-        <div>
-          <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
-            <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
-              Activity Stream
-            </h2>
-            <Link href="/review" className="glass-label text-signal-live">
-              View All
-            </Link>
-          </div>
+        <div className="space-y-6">
           <Card className="border-[var(--border)] bg-white">
             <CardContent className="p-6">
-              {pastReviews.length > 0 ? (
-                <div className="relative space-y-8 before:absolute before:bottom-2 before:left-4 before:top-2 before:w-px before:bg-[var(--border)]">
-                  {pastReviews.slice(0, 4).map((review, index) => (
-                    <div key={review.id} className="relative z-10 flex gap-4">
-                      <div
-                        className={`flex h-8 w-8 items-center justify-center rounded-full border ${
-                          index === 0
-                            ? "border-[var(--signal-live)] bg-[rgba(34,197,94,0.12)]"
-                            : "border-[var(--border)] bg-[color:var(--instrument-raised)]"
-                        }`}
-                      >
-                        <span
-                          className={`h-2.5 w-2.5 rounded-full ${
-                            index === 0 ? "bg-[var(--signal-live)]" : "bg-[color:var(--muted-foreground)]"
-                          }`}
-                        />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-baseline justify-between gap-3">
-                          <div className="text-sm font-semibold text-[color:var(--foreground)]">
-                            Review updated
-                          </div>
-                          <div className="text-xs text-[color:var(--muted-foreground)]">
-                            {formatDateTime(review.updated_at ?? review.created_at)}
-                          </div>
-                        </div>
-                        <div className="surface-subtle p-3 text-xs leading-6 text-[color:var(--muted-foreground)]">
-                          {toSummaryPreview(review.summary, 140)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
+                    Save Reflection
+                  </h2>
+                  <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
+                    Write or update the weekly review summary for the selected cycle.
+                  </p>
                 </div>
-              ) : (
-                <div className="surface-empty px-4 py-6 text-sm leading-7 text-[color:var(--muted-foreground)]">
-                  No saved reviews have been captured yet. Activity entries will appear here once a weekly reflection is saved.
-                </div>
-              )}
+                <Badge tone="muted">{formatIsoDate(bounds.weekStart)}</Badge>
+              </div>
+              <ReviewForm defaultWeekOf={selectedWeekOf} />
             </CardContent>
           </Card>
+
+          <div>
+            <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
+                Activity Stream
+              </h2>
+              <Link href="/review" className="glass-label text-signal-live">
+                View All
+              </Link>
+            </div>
+            <Card className="border-[var(--border)] bg-white">
+              <CardContent className="p-6">
+                {pastReviews.length > 0 ? (
+                  <div className="relative space-y-6 before:absolute before:bottom-2 before:left-4 before:top-2 before:w-px before:bg-[var(--border)]">
+                    {pastReviews.slice(0, 4).map((review, index) => (
+                      <div key={review.id} className="relative z-10 flex gap-4">
+                        <div
+                          className={`flex h-8 w-8 items-center justify-center rounded-full border ${
+                            index === 0
+                              ? "border-[var(--signal-live)] bg-[rgba(34,197,94,0.12)]"
+                              : "border-[var(--border)] bg-[color:var(--instrument-raised)]"
+                          }`}
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 rounded-full ${
+                              index === 0 ? "bg-[var(--signal-live)]" : "bg-[color:var(--muted-foreground)]"
+                            }`}
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-baseline justify-between gap-3">
+                            <div className="text-sm font-semibold text-[color:var(--foreground)]">
+                              Review updated
+                            </div>
+                            <div className="text-xs text-[color:var(--muted-foreground)]">
+                              {formatDateTime(review.updated_at ?? review.created_at)}
+                            </div>
+                          </div>
+                          <div className="surface-subtle mt-2 p-3 text-xs leading-6 text-[color:var(--muted-foreground)]">
+                            {toSummaryPreview(review.summary, 140)}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="surface-empty px-4 py-5 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                    No saved reviews have been captured yet. Activity entries will appear here once a weekly reflection is saved.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </AppShell>

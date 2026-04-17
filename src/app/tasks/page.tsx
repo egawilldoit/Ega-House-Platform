@@ -10,7 +10,15 @@ import {
 } from "@/components/tasks/task-filter-controls";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import {
@@ -131,6 +139,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     project: activeProjectId,
     goal: activeGoalId,
   });
+  const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
+  const blockedCount = tasks.filter((task) => task.status === "blocked").length;
 
   return (
     <TasksWorkspaceShell
@@ -146,19 +156,30 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Link>
       }
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
-        <Card className="border-[var(--border)] bg-white">
-          <CardContent className="p-6">
-            <div className="mb-5 flex items-end justify-between gap-4">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.32fr)_minmax(22rem,0.78fr)]">
+        <Card className="self-start border-[var(--border)] bg-white">
+          <CardHeader className="gap-4 border-b border-[var(--border)] pb-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="glass-label text-etch">Active Execution Queue</p>
-                <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                  {tasks.length} item{tasks.length !== 1 ? "s" : ""} in the current task slice.
-                </p>
+                <CardTitle className="mt-2">Operational task slice</CardTitle>
+                <CardDescription>
+                  {tasks.length} item{tasks.length !== 1 ? "s" : ""} in the current queue with
+                  inline state control.
+                </CardDescription>
               </div>
+              <CardAction className="flex-wrap">
+                <Badge tone="muted">{tasks.length} visible</Badge>
+                <Badge tone={blockedCount > 0 ? "warn" : "muted"}>
+                  {blockedCount} blocked
+                </Badge>
+                <Badge tone={inProgressCount > 0 ? "info" : "muted"}>
+                  {inProgressCount} in progress
+                </Badge>
+              </CardAction>
             </div>
 
-            <div className="mb-6">
+            <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
               <TaskFilterControls
                 basePath="/tasks"
                 activeStatus={activeStatus}
@@ -168,115 +189,178 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
               />
             </div>
+          </CardHeader>
 
+          <CardContent className="space-y-3 pt-5">
             {tasks.length === 0 ? (
-              <div className="surface-empty px-5 py-8 text-center">
+              <div className="surface-empty px-5 py-5 text-center">
                 <p className="glass-label text-etch">No tasks match current filters</p>
                 <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
                   Reset one or more filters to bring the execution queue back into view.
                 </p>
               </div>
             ) : (
-              <div className="space-y-3">
-                {tasks.map((task) => {
-                  const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
+              tasks.map((task) => {
+                const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
 
-                  return (
-                    <article
-                      key={task.id}
-                      id={`task-${task.id}`}
-                      className="scroll-mt-24 rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start gap-3">
-                            <span
-                              className={`mt-2 h-2 w-2 shrink-0 rounded-full ${getTaskSignalTone(
-                                task.status,
-                                task.priority,
-                              )}`}
-                            />
-                            <div className="min-w-0">
-                              <h2 className="truncate text-base font-medium text-[color:var(--foreground)]">
-                                {task.title}
-                              </h2>
-                              <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
-                                {task.projects?.name ?? "No project"}
-                                {task.goals?.title ? ` · ${task.goals.title}` : ""}
-                              </p>
-                              {task.description ? (
-                                <p className="mt-3 line-clamp-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                                  {task.description}
+                return (
+                  <article
+                    key={task.id}
+                    id={`task-${task.id}`}
+                    className="scroll-mt-24 rounded-[1.05rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                  >
+                    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
+                      <div className="min-w-0">
+                        <div className="flex items-start gap-3">
+                          <span
+                            className={`mt-2 h-2 w-2 shrink-0 rounded-full ${getTaskSignalTone(
+                              task.status,
+                              task.priority,
+                            )}`}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h2 className="truncate text-base font-medium text-[color:var(--foreground)]">
+                                  {task.title}
+                                </h2>
+                                <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
+                                  {task.projects?.name ?? "No project"}
+                                  {task.goals?.title ? ` · ${task.goals.title}` : ""}
                                 </p>
-                              ) : null}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2 xl:hidden">
+                                <Badge tone={getTaskStatusTone(task.status)}>
+                                  {formatTaskToken(task.status)}
+                                </Badge>
+                                <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+                              </div>
                             </div>
+
+                            {task.description ? (
+                              <p className="mt-3 max-w-2xl text-sm leading-6 text-[color:var(--muted-foreground)]">
+                                {task.description}
+                              </p>
+                            ) : null}
                           </div>
                         </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone={getTaskStatusTone(task.status)}>
-                            {formatTaskToken(task.status)}
-                          </Badge>
-                          <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
-                        </div>
                       </div>
 
-                      <div className="mt-4 flex flex-wrap items-start justify-between gap-4 border-t border-[var(--border)] pt-4">
-                        <div className="space-y-1 pt-1">
-                          <p className="glass-label text-etch">Tracked</p>
-                          <p className="text-sm text-[color:var(--foreground)]">
-                            {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
-                          </p>
-                        </div>
-
-                        <InlineTaskUpdateForm
-                          action={updateTaskInlineAction}
-                          taskId={task.id}
-                          returnTo={returnPath}
-                          defaultStatus={task.status}
-                          defaultPriority={task.priority}
-                          error={inlineError}
-                        />
+                      <div className="hidden flex-wrap gap-2 xl:flex">
+                        <Badge tone={getTaskStatusTone(task.status)}>
+                          {formatTaskToken(task.status)}
+                        </Badge>
+                        <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
                       </div>
-                    </article>
-                  );
-                })}
-              </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-4 border-t border-[var(--border)] pt-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
+                      <div className="grid min-w-32 gap-1 rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-3">
+                        <p className="glass-label text-etch">Tracked</p>
+                        <p className="text-sm font-medium text-[color:var(--foreground)]">
+                          {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
+                        </p>
+                      </div>
+
+                      <InlineTaskUpdateForm
+                        action={updateTaskInlineAction}
+                        taskId={task.id}
+                        returnTo={returnPath}
+                        defaultStatus={task.status}
+                        defaultPriority={task.priority}
+                        error={inlineError}
+                      />
+                    </div>
+                  </article>
+                );
+              })
             )}
           </CardContent>
+
+          <CardFooter className="justify-between">
+            <p className="text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+              Filters stay encoded in the URL for direct return to this queue slice.
+            </p>
+            <Link href="/tasks/projects" className="glass-label text-signal-live">
+              Manage projects
+            </Link>
+          </CardFooter>
         </Card>
 
-        <Card className="border-[var(--border)] bg-white">
-          <CardContent className="p-6">
-            <div className="mb-5">
+        <div className="space-y-6">
+          <Card className="border-[var(--border)] bg-white">
+            <CardHeader className="pb-4">
+              <p className="glass-label text-signal-live">Queue Summary</p>
+              <CardTitle className="text-xl">Workspace pressure</CardTitle>
+              <CardDescription>
+                Quick context for the current execution slice before you update or create work.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 pt-0 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
+                <p className="glass-label text-etch">Projects</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
+                  {projects.length}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                  selectable execution streams
+                </p>
+              </div>
+              <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
+                <p className="glass-label text-etch">Goals</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
+                  {goals.length}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                  available planning anchors
+                </p>
+              </div>
+              <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
+                <p className="glass-label text-etch">Visible</p>
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
+                  {tasks.length}
+                </p>
+                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                  task{tasks.length === 1 ? "" : "s"} in current slice
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="self-start border-[var(--border)] bg-white">
+            <CardHeader>
               <p className="glass-label text-signal-live">Initialize Task</p>
-              <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
+              <CardTitle className="text-xl">Create directly into the queue</CardTitle>
+              <CardDescription>
                 Open a new task directly into the current execution surface.
-              </p>
-            </div>
+              </CardDescription>
+            </CardHeader>
 
-            {projects.length === 0 ? (
-              <div className="space-y-3">
-                <div className="surface-empty px-4 py-5 text-center">
-                  <p className="glass-label text-etch">No projects yet. Create one first.</p>
+            <CardContent className="pt-0">
+              {projects.length === 0 ? (
+                <div className="space-y-3">
+                  <div className="surface-empty px-4 py-4 text-center">
+                    <p className="glass-label text-etch">No projects yet. Create one first.</p>
+                  </div>
+                  <Link
+                    href="/tasks/projects/new"
+                    className="btn-instrument flex h-9 items-center justify-center px-4"
+                  >
+                    Create project
+                  </Link>
                 </div>
-                <Link
-                  href="/tasks/projects/new"
-                  className="btn-instrument flex h-8 items-center justify-center px-4"
-                >
-                  Create project
-                </Link>
-              </div>
-            ) : (
-              <CreateTaskForm
-                projects={projects}
-                goals={goals}
-                projectId={activeProjectId ?? undefined}
-                returnTo={returnPath}
-              />
-            )}
-          </CardContent>
-        </Card>
+              ) : (
+                <CreateTaskForm
+                  projects={projects}
+                  goals={goals}
+                  projectId={activeProjectId ?? undefined}
+                  returnTo={returnPath}
+                />
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </TasksWorkspaceShell>
   );

@@ -24,7 +24,7 @@ export function InlineProjectStatusForm({
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="returnTo" value={returnTo} />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--border)] bg-white/80 p-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--border)] bg-white/80 p-2.5">
         <label className="space-y-2">
           <span className="glass-label text-etch">
             Status
