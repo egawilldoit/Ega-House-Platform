@@ -9,14 +9,14 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 const variantClasses = {
   default: "btn-instrument",
   muted:   "btn-instrument btn-instrument-muted",
-  ghost:   "border border-transparent bg-transparent text-etch hover:text-foreground hover:border-[var(--border)]",
-  danger:  "border border-[rgba(239,68,68,0.4)] text-signal-error bg-transparent hover:bg-[rgba(239,68,68,0.08)]",
+  ghost:   "border border-transparent bg-transparent text-[color:var(--muted-foreground)] hover:border-[var(--border)] hover:bg-[var(--secondary)] hover:text-[color:var(--foreground)]",
+  danger:  "border border-[rgba(198,40,40,0.18)] bg-[rgba(198,40,40,0.05)] text-signal-error hover:bg-[rgba(198,40,40,0.1)]",
 };
 
 const sizeClasses = {
-  sm: "h-7 px-3 text-[10px]",
-  md: "h-8 px-4 text-[11px]",
-  lg: "h-10 px-5 text-xs",
+  sm: "h-8 px-3 text-xs",
+  md: "h-9 px-4 text-sm",
+  lg: "h-10 px-5 text-sm",
 };
 
 export function Button({
@@ -32,7 +32,7 @@ export function Button({
       className={cn(
         variantClasses[variant],
         sizeClasses[size],
-        "transition-precise disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--signal-live)]",
+        "transition-precise disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]",
         className,
       )}
       {...props}

@@ -33,7 +33,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
   return (
     <form action={formAction} className="space-y-4">
       <div className="space-y-2">
-        <label htmlFor="title" className="text-sm font-medium text-slate-200">
+        <label htmlFor="title" className="glass-label text-etch">
           Goal title
         </label>
         <Input
@@ -42,11 +42,12 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
           required
           placeholder="Ship shared timer flow"
           defaultValue={state.values.title}
+          className="h-10"
         />
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="projectId" className="text-sm font-medium text-slate-200">
+        <label htmlFor="projectId" className="glass-label text-etch">
           Project
         </label>
         <select
@@ -54,7 +55,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
           name="projectId"
           required
           defaultValue={state.values.projectId}
-          className="min-h-12 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none transition focus:border-cyan-300/50 focus-visible:ring-4 focus-visible:ring-cyan-300/15"
+          className="input-instrument h-10 text-sm"
         >
           {projects.map((project) => (
             <option key={project.id} value={project.id}>
@@ -66,14 +67,14 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <label htmlFor="status" className="text-sm font-medium text-slate-200">
+          <label htmlFor="status" className="glass-label text-etch">
             Status
           </label>
           <select
             id="status"
             name="status"
             defaultValue={state.values.status}
-            className="min-h-12 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 text-sm text-white outline-none transition focus:border-cyan-300/50 focus-visible:ring-4 focus-visible:ring-cyan-300/15"
+            className="input-instrument h-10 text-sm"
           >
             {GOAL_STATUS_VALUES.map((status) => (
               <option key={status} value={status}>
@@ -84,7 +85,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="slug" className="text-sm font-medium text-slate-200">
+          <label htmlFor="slug" className="glass-label text-etch">
             Slug (optional)
           </label>
           <Input
@@ -92,6 +93,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
             name="slug"
             placeholder="timer-mvp"
             defaultValue={state.values.slug}
+            className="h-10"
           />
         </div>
       </div>
@@ -99,7 +101,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
       <div className="space-y-2">
         <label
           htmlFor="description"
-          className="text-sm font-medium text-slate-200"
+          className="glass-label text-etch"
         >
           Description (optional)
         </label>
@@ -108,14 +110,12 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
           name="description"
           defaultValue={state.values.description}
           placeholder="Outcome-focused detail for this goal."
+          className="min-h-28"
         />
       </div>
 
       {state.error ? (
-        <p
-          role="alert"
-          className="rounded-2xl border border-rose-400/35 bg-rose-400/10 px-4 py-3 text-sm leading-7 text-rose-100"
-        >
+        <p role="alert" className="feedback-block feedback-block-error">
           {state.error}
         </p>
       ) : null}

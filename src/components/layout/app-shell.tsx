@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
 import { cn } from "@/lib/utils";
@@ -41,13 +40,11 @@ export async function AppShell({
   className,
   contentClassName,
 }: AppShellProps) {
-  const headerStore = await headers();
-  const currentPath = headerStore.get("x-current-path") ?? "/";
   const projects = await getSidebarProjects();
 
   return (
     <div className={cn("min-h-dvh bg-background text-foreground flex selection:bg-secondary selection:text-foreground", className)}>
-      <Sidebar projects={projects} currentPath={currentPath} />
+      <Sidebar projects={projects} />
 
       <main className="ega-main">
         <TopBar />
@@ -58,10 +55,10 @@ export async function AppShell({
             <div className="flex items-end justify-between gap-6">
               <div>
                 {eyebrow && (
-                  <div className="glass-label text-signal-live mb-3">{eyebrow}</div>
+                  <div className="sidebar-section-label mb-2" style={{ padding: 0 }}>{eyebrow}</div>
                 )}
                 <h1
-                  className="text-4xl font-semibold tracking-tight"
+                  className="text-3xl font-bold tracking-tight"
                   style={{
                     fontFamily: "var(--font-display)",
                     color: "var(--foreground)",
@@ -71,7 +68,7 @@ export async function AppShell({
                 </h1>
                 {description && (
                   <p
-                    className="text-sm mt-2 max-w-2xl"
+                    className="text-sm mt-1.5 max-w-2xl"
                     style={{ color: "var(--muted-foreground)" }}
                   >
                     {description}

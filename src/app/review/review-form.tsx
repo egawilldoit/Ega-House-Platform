@@ -30,7 +30,7 @@ export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
   return (
     <form action={formAction} className="space-y-4">
       <div className="space-y-2">
-        <label htmlFor="weekOf" className="text-sm font-medium text-slate-200">
+        <label htmlFor="weekOf" className="glass-label text-etch">
           Week date
         </label>
         <Input
@@ -39,13 +39,14 @@ export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
           name="weekOf"
           required
           defaultValue={state.values.weekOf}
+          className="h-10"
         />
       </div>
 
       <div className="space-y-2">
         <label
           htmlFor="reflection"
-          className="text-sm font-medium text-slate-200"
+          className="glass-label text-etch"
         >
           Reflection
         </label>
@@ -61,16 +62,13 @@ export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
       </div>
 
       {state.error ? (
-        <p
-          role="alert"
-          className="rounded-2xl border border-rose-400/35 bg-rose-400/10 px-4 py-3 text-sm leading-7 text-rose-100"
-        >
+        <p role="alert" className="feedback-block feedback-block-error">
           {state.error}
         </p>
       ) : null}
 
       {state.saved ? (
-        <p className="rounded-2xl border border-emerald-400/35 bg-emerald-400/12 px-4 py-3 text-sm leading-7 text-emerald-100">
+        <p className="feedback-block feedback-block-success">
           Review saved.
         </p>
       ) : null}

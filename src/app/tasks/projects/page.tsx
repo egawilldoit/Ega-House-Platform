@@ -6,13 +6,7 @@ import { InlineProjectStatusForm } from "@/components/projects/inline-project-st
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import type { Tables } from "@/lib/supabase/database.types";
@@ -29,6 +23,8 @@ type TaskRow = Pick<
 
 type ProjectCardData = ProjectRow & {
   taskCount: number;
+  completedTaskCount: number;
+  progressPercent: number;
   statusCounts: Array<{ status: string; count: number }>;
   recentTasks: TaskRow[];
 };
@@ -52,6 +48,22 @@ function formatPriorityLabel(priority: string) {
 
 function getStatusTone(status: string) {
   return getTaskStatusTone(status);
+}
+
+function getProjectProgressTone(project: ProjectCardData) {
+  if (project.status === "done") {
+    return "bg-[var(--signal-live)] text-signal-live";
+  }
+
+  if (project.status === "paused") {
+    return "bg-[var(--etch)] text-etch";
+  }
+
+  if (project.progressPercent < 20 && project.taskCount > 0) {
+    return "bg-[var(--signal-error)] text-signal-error";
+  }
+
+  return "bg-[var(--signal-info)] text-[var(--signal-info)]";
 }
 
 async function getProjectsWithTaskContext() {
@@ -97,6 +109,12 @@ async function getProjectsWithTaskContext() {
       statusCountMap.set(task.status, (statusCountMap.get(task.status) ?? 0) + 1);
     }
 
+    const completedTaskCount = projectTasks.filter((task) => task.status === "done").length;
+    const progressPercent =
+      projectTasks.length > 0
+        ? Math.round((completedTaskCount / projectTasks.length) * 100)
+        : 0;
+
     const statusCounts = Array.from(statusCountMap.entries())
       .map(([status, count]) => ({ status, count }))
       .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
@@ -105,6 +123,8 @@ async function getProjectsWithTaskContext() {
     return {
       ...project,
       taskCount: projectTasks.length,
+      completedTaskCount,
+      progressPercent,
       statusCounts,
       recentTasks: projectTasks.slice(0, 3),
     } satisfies ProjectCardData;
@@ -113,27 +133,31 @@ async function getProjectsWithTaskContext() {
 
 function EmptyState() {
   return (
-    <Card className="border-dashed">
-      <CardHeader>
-        <Badge tone="accent" className="w-fit">
+    <Card className="surface-empty bg-white">
+      <CardContent className="space-y-5 p-8">
+        <Badge tone="info" className="w-fit">
           Projects
         </Badge>
-        <CardTitle>No projects yet</CardTitle>
-        <CardDescription>
-          The tasks workspace is wired to the real database, but there are no
-          project rows to show yet. Once projects and tasks exist, this view
-          will summarize task volume and recent execution context for each one.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-3">
-        <form action="/tasks/projects/new">
-          <Button variant="secondary" type="submit">
-            Create first project
-          </Button>
-        </form>
-        <p className="text-sm leading-7 text-slate-400">
-          Create one project to start attaching goals and tasks.
-        </p>
+        <div className="space-y-3">
+          <h2 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
+            No projects yet
+          </h2>
+          <p className="max-w-2xl text-sm leading-7 text-[color:var(--muted-foreground)]">
+            The tasks workspace is wired to the live database, but there are no
+            project rows to render yet. Once projects exist, this view will
+            summarize status, completion pressure, and direct task context.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <form action="/tasks/projects/new">
+            <Button variant="muted" type="submit">
+              Create first project
+            </Button>
+          </form>
+          <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
+            Create one project to start attaching goals and tasks.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -148,42 +172,108 @@ function ProjectCard({
   returnTo: string;
   inlineError?: string | null;
 }) {
+  const progressTone = getProjectProgressTone(project);
+
   return (
-    <Card id={`project-${project.id}`} className="h-full scroll-mt-24">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <Card
+      id={`project-${project.id}`}
+      className="h-full scroll-mt-24 border-[var(--border)] bg-white transition hover:border-[var(--border-strong)]"
+    >
+      <CardContent className="flex h-full flex-col p-6">
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <Badge tone={getStatusTone(project.status)}>
+            {formatTaskToken(project.status)}
+          </Badge>
+          <span className="glass-label text-etch">{project.slug}</span>
+        </div>
+
+        <div className="mb-6 flex-1 space-y-4">
           <div className="space-y-2">
-            <CardTitle>
+            <h2 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">
               <Link
                 href={`/tasks/projects/${project.slug}`}
-                className="transition hover:text-cyan-100"
+                className="transition hover:text-[var(--signal-live)]"
               >
                 {project.name}
               </Link>
-            </CardTitle>
-            <CardDescription className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500">
-              {project.slug}
-            </CardDescription>
+            </h2>
+            <p className="line-clamp-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
+              {project.description?.trim() || "No project description added yet."}
+            </p>
           </div>
+
+          <div className="flex items-center gap-2 text-sm text-[color:var(--muted-foreground)]">
+            <span className="glass-label text-[color:var(--foreground)]">
+              {project.completedTaskCount}/{project.taskCount}
+            </span>
+            <span>tasks completed</span>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[color:var(--instrument-raised)]">
+              <div
+                className={`h-full rounded-full ${progressTone.split(" ")[0]}`}
+                style={{ width: `${project.progressPercent}%` }}
+              />
+            </div>
+            <span className={`glass-label ${progressTone.split(" ")[1]}`}>
+              {project.progressPercent}%
+            </span>
+          </div>
+
           <div className="flex flex-wrap gap-2">
-            <Badge tone={getStatusTone(project.status)}>
-              {formatTaskToken(project.status)}
-            </Badge>
-            <Badge tone={project.taskCount > 0 ? "accent" : "neutral"}>
-              {project.taskCount} {project.taskCount === 1 ? "Task" : "Tasks"}
-            </Badge>
+            {project.statusCounts.length ? (
+              project.statusCounts.map((entry) => (
+                <Badge key={entry.status} tone={getStatusTone(entry.status)}>
+                  {entry.count} {formatStatusLabel(entry.status)}
+                </Badge>
+              ))
+            ) : (
+              <Badge>No task activity yet</Badge>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <p className="glass-label text-etch">Recent tasks</p>
+              <Link
+                href={`/tasks/projects/${project.slug}`}
+                className="glass-label text-signal-live"
+              >
+                Open
+              </Link>
+            </div>
+
+            {project.recentTasks.length ? (
+              <div className="space-y-2">
+                {project.recentTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-3 py-3"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <p className="text-sm font-medium leading-6 text-[color:var(--foreground)]">
+                        {task.title}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={getStatusTone(task.status)}>
+                          {formatStatusLabel(task.status)}
+                        </Badge>
+                        <Badge>{formatPriorityLabel(task.priority)}</Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="surface-empty px-4 py-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                No tasks are attached to this project yet.
+              </div>
+            )}
           </div>
         </div>
-        <CardDescription>
-          {project.description?.trim() || "No project description added yet."}
-        </CardDescription>
-      </CardHeader>
 
-      <CardContent className="space-y-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <p className="pt-2 text-xs uppercase tracking-[0.18em] text-slate-500">
-            Update project status inline.
-          </p>
+        <div className="mt-auto border-t border-[var(--border)] pt-4">
           <InlineProjectStatusForm
             action={updateProjectStatusAction}
             projectId={project.id}
@@ -191,65 +281,6 @@ function ProjectCard({
             defaultStatus={project.status}
             error={inlineError}
           />
-        </div>
-
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-            Project detail
-          </p>
-          <Link
-            href={`/tasks/projects/${project.slug}`}
-            className="text-sm font-medium text-cyan-100 transition hover:text-cyan-200"
-          >
-            Open project
-          </Link>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {project.statusCounts.length ? (
-            project.statusCounts.map((entry) => (
-              <Badge key={entry.status} tone={getStatusTone(entry.status)}>
-                {entry.count} {formatStatusLabel(entry.status)}
-              </Badge>
-            ))
-          ) : (
-            <Badge>No task activity yet</Badge>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-medium text-slate-200">Recent tasks</p>
-            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-              Updated in project
-            </p>
-          </div>
-
-          {project.recentTasks.length ? (
-            <div className="space-y-3">
-              {project.recentTasks.map((task) => (
-                <div
-                  key={task.id}
-                  className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <p className="text-sm font-medium leading-6 text-slate-100">
-                      {task.title}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge tone={getStatusTone(task.status)}>
-                        {formatStatusLabel(task.status)}
-                      </Badge>
-                      <Badge>{formatPriorityLabel(task.priority)}</Badge>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-5 text-sm leading-7 text-slate-400">
-              No tasks are attached to this project yet.
-            </div>
-          )}
         </div>
       </CardContent>
     </Card>
@@ -268,27 +299,48 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
   const projectUpdateProjectId = resolvedSearchParams.projectUpdateProjectId ?? null;
   const projects = await getProjectsWithTaskContext();
+  const totalProjects = projects.length;
+  const activeProjects = projects.filter((project) => project.status === "active").length;
+  const completedProjects = projects.filter((project) => project.status === "done").length;
 
   return (
     <TasksWorkspaceShell
-      eyebrow="Tasks Workspace"
+      eyebrow="Portfolio Overview"
       title="Projects"
-      description="Projects grounded in the live tasks schema, with task volume, recent execution context, and direct links into each project workspace."
+      description="Command index for project status, task pressure, and direct entry into each project workspace."
       actions={
         <form action="/tasks/projects/new">
-          <Button type="submit">Create project</Button>
+          <Button type="submit">New Project</Button>
         </form>
       }
-      navigation={
-        <>
-          <Badge tone="accent">Projects</Badge>
-          <Badge>Task Context</Badge>
-          <Badge>Detail Pages</Badge>
-        </>
-      }
     >
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-6 border-b border-[var(--border)] pb-6">
+        <div className="flex items-center gap-5">
+          <div className="text-right">
+            <p className="glass-label text-etch">Total</p>
+            <p className="text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">
+              {totalProjects}
+            </p>
+          </div>
+          <div className="h-12 w-px bg-[var(--border)]" />
+          <div className="text-right">
+            <p className="glass-label text-signal-live">Active</p>
+            <p className="text-3xl font-semibold tracking-tight text-signal-live">
+              {activeProjects}
+            </p>
+          </div>
+          <div className="h-12 w-px bg-[var(--border)]" />
+          <div className="text-right">
+            <p className="glass-label text-etch">Completed</p>
+            <p className="text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">
+              {completedProjects}
+            </p>
+          </div>
+        </div>
+      </div>
+
       {projects.length ? (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2 2xl:grid-cols-3">
           {projects.map((project) => (
             <ProjectCard
               key={project.id}

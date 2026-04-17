@@ -1,84 +1,81 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AppShell } from "@/components/layout/app-shell";
-import { Card } from "@/components/ui/card";
+
 import { createClient } from "@/lib/supabase/server";
 
-export default async function Home() {
+export default async function HomePage() {
   const supabase = await createClient();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session) redirect("/tasks");
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    redirect("/dashboard");
+  }
 
   return (
-    <AppShell
-      eyebrow="EGA House · Operational Platform"
-      title="Command Interface"
-      description="Shared operational surface connecting tasks, goals, timer, and weekly reviews."
-      actions={
-        <Link href="/login" className="btn-instrument glass-label h-9 px-5 flex items-center gap-2">
-          Authenticate →
-        </Link>
-      }
-    >
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
-        {[
-          { label: "Surfaces", value: "05", sub: "Task · Goal · Timer · Review · Ops" },
-          { label: "Design Rev", value: "v2", sub: "Instrument cockpit interface" },
-          { label: "Data Layer", value: "Live", sub: "Supabase realtime backend" },
-          { label: "Stack", value: "N15", sub: "Next.js 15 · React 19 · TW v4" },
-        ].map((item) => (
-          <div key={item.label} className="instrument-border bg-instrument rounded-sm px-5 py-5">
-            <div className="glass-label text-etch mb-2">{item.label}</div>
-            <p className="font-mono tabular text-3xl font-medium" style={{ color: "var(--foreground)" }}>{item.value}</p>
-            <p className="glass-label text-etch mt-1.5">{item.sub}</p>
-          </div>
-        ))}
-      </div>
+    <main className="min-h-dvh bg-[radial-gradient(ellipse_90%_120%_at_50%_-10%,rgba(34,197,94,0.1),transparent_55%),linear-gradient(180deg,#0a0b0f_0%,#0d1016_100%)] text-foreground">
+      <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col justify-center px-6 py-16 sm:px-10 lg:px-12">
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-end">
+          <section className="max-w-3xl">
+            <p className="glass-label text-signal-live">EGA House · Operational Platform</p>
+            <h1
+              className="mt-5 max-w-3xl text-5xl font-semibold tracking-tight sm:text-6xl"
+              style={{ fontFamily: "var(--font-display)" }}
+            >
+              One command surface for planning, execution, focus, and review.
+            </h1>
+            <p className="mt-6 max-w-2xl text-base leading-8 text-muted-foreground sm:text-lg">
+              EGA House keeps goals, tasks, timer sessions, and weekly reviews in
+              one shared workspace so operators can move from strategy to
+              execution without losing context.
+            </p>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card label="Workspace" title="Platform surfaces">
-          <div className="space-y-1">
-            {[
-              { href: "/tasks",     label: "Tasks",     desc: "Create & filter execution tasks" },
-              { href: "/goals",     label: "Goals",     desc: "Track strategic objectives" },
-              { href: "/timer",     label: "Timer",     desc: "Focus session tracking" },
-              { href: "/review",    label: "Review",    desc: "Weekly reflection workflow" },
-              { href: "/dashboard", label: "Dashboard", desc: "Operational snapshot view" },
-            ].map((item) => (
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center justify-between px-3 py-2.5 rounded-sm transition-precise"
-                style={{ color: "var(--muted-foreground)" }}
+                href="/login?next=%2Fdashboard"
+                className="btn-instrument h-10 px-5 text-xs"
               >
-                <div>
-                  <span className="text-sm font-medium" style={{ color: "var(--foreground)" }}>{item.label}</span>
-                  <span className="glass-label text-etch ml-3">{item.desc}</span>
-                </div>
-                <span className="text-etch">→</span>
+                Login
               </Link>
-            ))}
-          </div>
-        </Card>
+              <p className="text-sm text-etch">
+                Continue to your workspace after sign in.
+              </p>
+            </div>
+          </section>
 
-        <Card label="Design" title="Instrument design system">
-          <div className="grid grid-cols-2 gap-2.5">
+          <section className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
             {[
-              { label: "Canvas",      desc: "#0a0b0f deep black" },
-              { label: "Signal Live", desc: "22c55e emerald" },
-              { label: "Typography",  desc: "Plus Jakarta + DM Mono" },
-              { label: "Borders",     desc: "7% white opacity" },
-              { label: "Glass Label", desc: "Mono uppercase 11px" },
-              { label: "Animate",     desc: "150ms cubic-bezier" },
+              {
+                label: "Goals",
+                value: "Plan",
+                detail: "Strategic objectives and roadmap direction.",
+              },
+              {
+                label: "Tasks",
+                value: "Execute",
+                detail: "Operational work tracking with active delivery context.",
+              },
+              {
+                label: "Review",
+                value: "Reflect",
+                detail: "Cadence loop for weekly insight and system correction.",
+              },
             ].map((item) => (
-              <div key={item.label} className="instrument-border rounded-sm px-3 py-2.5">
-                <p className="glass-label text-etch mb-0.5">{item.label}</p>
-                <p className="text-xs" style={{ color: "var(--muted-foreground)" }}>{item.desc}</p>
-              </div>
+              <article
+                key={item.label}
+                className="instrument-border bg-instrument rounded-sm px-5 py-5"
+              >
+                <p className="glass-label text-etch">{item.label}</p>
+                <p className="mt-3 text-2xl font-medium tabular">{item.value}</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {item.detail}
+                </p>
+              </article>
             ))}
-          </div>
-        </Card>
+          </section>
+        </div>
       </div>
-    </AppShell>
+    </main>
   );
 }

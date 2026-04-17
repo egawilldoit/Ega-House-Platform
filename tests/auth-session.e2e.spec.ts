@@ -22,6 +22,7 @@ const workspaceHeadings = {
 } as const;
 
 const rootProtectedPaths = ["/tasks", "/goals", "/timer", "/review"] as const;
+const dashboardPath = "/dashboard";
 
 function getLoginUrl() {
   return `${protocol}://${loginHost}/login`;
@@ -93,10 +94,21 @@ test.describe("Cross-subdomain auth session", () => {
   test("unauthenticated requests to protected root routes redirect to login", async ({
     page,
   }) => {
-    for (const protectedPath of rootProtectedPaths) {
+    for (const protectedPath of [dashboardPath, ...rootProtectedPaths]) {
       await page.goto(`${protocol}://${loginHost}${protectedPath}`);
       await assertRedirectedToLoginWithNext(page, loginHost, protectedPath);
     }
+  });
+
+  test("signed-out visit to root renders public landing page", async ({ page }) => {
+    await page.goto(`${protocol}://${loginHost}/`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      "One command surface",
+    );
+    await expect(page.getByRole("link", { name: "Login" })).toHaveAttribute(
+      "href",
+      "/login?next=%2Fdashboard",
+    );
   });
 
   test("unauthenticated requests to protected subdomains redirect to login", async ({
@@ -124,6 +136,13 @@ test.describe("Cross-subdomain auth session", () => {
     page,
   }) => {
     await signInFromRootLogin(page);
+    await expect(page).toHaveURL(new RegExp(`^https://${loginHost}${dashboardPath}/?$`));
+    await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+
+    await page.goto(`${protocol}://${loginHost}/`, {
+      waitUntil: "domcontentloaded",
+    });
+    await expect(page).toHaveURL(new RegExp(`^https://${loginHost}${dashboardPath}/?$`));
 
     for (const [workspace, host] of Object.entries(workspaceHosts) as Array<
       [keyof typeof workspaceHosts, string]
@@ -135,7 +154,7 @@ test.describe("Cross-subdomain auth session", () => {
       ).toBeVisible();
     }
 
-    for (const path of rootProtectedPaths) {
+    for (const path of [dashboardPath, ...rootProtectedPaths]) {
       await page.goto(`${protocol}://${loginHost}${path}`, {
         waitUntil: "domcontentloaded",
       });

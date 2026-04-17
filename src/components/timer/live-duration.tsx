@@ -28,17 +28,17 @@ export function LiveDuration({ startedAt }: LiveDurationProps) {
   }, [startedAt]);
 
   return (
-    <div className="space-y-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-4 text-cyan-50 shadow-[0_0_0_1px_rgba(103,232,249,0.08)]">
-      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-cyan-200/80">
+    <div className="space-y-2 rounded-xl border border-[rgba(22,163,74,0.14)] bg-[rgba(22,163,74,0.045)] px-4 py-4 shadow-sm">
+      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-signal-live">
         Running duration
       </p>
       <p
-        className="font-mono text-3xl font-semibold tracking-[0.14em] text-cyan-50 sm:text-4xl"
+        className="font-mono text-3xl font-semibold tracking-[0.14em] text-[color:var(--foreground)] sm:text-4xl"
         suppressHydrationWarning
       >
         {formatDurationClock(elapsedSeconds)}
       </p>
-      <p className="text-sm text-cyan-100/80" suppressHydrationWarning>
+      <p className="text-sm text-[color:var(--muted-foreground)]" suppressHydrationWarning>
         {formatDurationLabel(elapsedSeconds)} elapsed
       </p>
     </div>

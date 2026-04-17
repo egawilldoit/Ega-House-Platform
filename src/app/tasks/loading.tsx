@@ -1,37 +1,33 @@
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function TaskRowSkeleton() {
   return (
-    <article className="rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4">
+    <article className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-5 w-56 max-w-full" />
-          <Skeleton className="h-3 w-40 max-w-full" />
+        <div className="flex-1 space-y-3">
+          <div className="flex items-start gap-3">
+            <Skeleton className="mt-2 h-2 w-2 rounded-full" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-5 w-56 max-w-full rounded-sm" />
+              <Skeleton className="h-3 w-40 max-w-full rounded-sm" />
+            </div>
+          </div>
+          <Skeleton className="h-4 w-full rounded-sm" />
+          <Skeleton className="h-4 w-11/12 rounded-sm" />
         </div>
         <div className="flex gap-2">
-          <Skeleton className="h-9 w-24 rounded-full" />
-          <Skeleton className="h-9 w-20 rounded-full" />
+          <Skeleton className="h-6 w-24 rounded-sm" />
+          <Skeleton className="h-6 w-20 rounded-sm" />
         </div>
       </div>
-      <div className="mt-3 space-y-2">
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-11/12" />
-      </div>
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-[var(--border)] pt-4">
         <div className="flex-1 space-y-2 pt-2">
-          <Skeleton className="h-3 w-64 max-w-full" />
-          <Skeleton className="h-3 w-36 max-w-full" />
+          <Skeleton className="h-3 w-20 max-w-full rounded-sm" />
+          <Skeleton className="h-4 w-24 max-w-full rounded-sm" />
         </div>
-        <Skeleton className="h-10 w-44 rounded-full" />
+        <Skeleton className="h-10 w-80 max-w-full rounded-sm" />
       </div>
     </article>
   );
@@ -40,56 +36,72 @@ function TaskRowSkeleton() {
 export default function TasksLoadingPage() {
   return (
     <TasksWorkspaceShell
-      eyebrow="Tasks Workspace"
+      eyebrow="Execution Workspace"
       title="Tasks"
-      description="Track execution with status and goal filtering, quick status updates, and direct task creation."
-      actions={<Skeleton className="h-12 w-28 rounded-full" />}
-      navigation={
-        <>
-          <Badge tone="accent">Tasks</Badge>
-          <Badge>Filter + Mutations</Badge>
-          <Badge>Supabase Live</Badge>
-        </>
-      }
+      description="Active execution queue with inline state control and task initialization."
+      actions={<Skeleton className="h-8 w-24 rounded-sm" />}
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader className="space-y-4">
-            <CardTitle>
-              <Skeleton className="h-7 w-28" />
-            </CardTitle>
-            <CardDescription>
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="mt-2 h-4 w-3/4" />
-            </CardDescription>
-            <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-10 w-28 rounded-full" />
-              <Skeleton className="h-10 w-40 rounded-full" />
-              <Skeleton className="h-10 w-36 rounded-full" />
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+          <CardContent className="p-6">
+            <div className="mb-5 flex items-end justify-between gap-4">
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-36 rounded-sm" />
+                <Skeleton className="h-4 w-48 rounded-sm" />
+              </div>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
+
+            <div className="mb-6 space-y-4">
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-14 rounded-sm" />
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-8 w-20 rounded-sm" />
+                  <Skeleton className="h-8 w-28 rounded-sm" />
+                  <Skeleton className="h-8 w-24 rounded-sm" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-16 rounded-sm" />
+                <div className="flex flex-wrap gap-2">
+                  <Skeleton className="h-8 w-24 rounded-sm" />
+                  <Skeleton className="h-8 w-32 rounded-sm" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
             <TaskRowSkeleton />
             <TaskRowSkeleton />
             <TaskRowSkeleton />
+            </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <Skeleton className="h-7 w-28" />
-            </CardTitle>
-            <CardDescription>
-              <Skeleton className="h-4 w-5/6" />
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-12 w-36 rounded-full" />
+        <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+          <CardContent className="p-6">
+            <div className="mb-5 space-y-2">
+              <Skeleton className="h-3 w-28 rounded-sm" />
+              <Skeleton className="h-4 w-48 rounded-sm" />
+            </div>
+            <div className="space-y-4">
+              <Skeleton className="h-3 w-12 rounded-sm" />
+              <Skeleton className="h-10 w-full rounded-sm" />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-16 rounded-sm" />
+                  <Skeleton className="h-10 w-full rounded-sm" />
+                </div>
+                <div className="space-y-2">
+                  <Skeleton className="h-3 w-16 rounded-sm" />
+                  <Skeleton className="h-10 w-full rounded-sm" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-3 w-24 rounded-sm" />
+                <Skeleton className="h-28 w-full rounded-sm" />
+              </div>
+              <Skeleton className="h-10 w-40 rounded-sm" />
+            </div>
           </CardContent>
         </Card>
       </div>

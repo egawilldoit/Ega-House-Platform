@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 import {
   TASK_PRIORITY_VALUES,
@@ -66,9 +67,7 @@ function FilterPills({
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium uppercase tracking-[0.22em] text-slate-500">
-        {label}
-      </p>
+      <p className="glass-label text-etch">{label}</p>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
           const isActive = option.value === activeValue;
@@ -78,11 +77,7 @@ function FilterPills({
               key={`${label}-${option.label}`}
               href={hrefForValue(option.value)}
               aria-current={isActive ? "page" : undefined}
-              className={
-                isActive
-                  ? "inline-flex min-h-10 items-center rounded-full border border-cyan-300/35 bg-cyan-300/15 px-4 text-xs font-medium uppercase tracking-[0.2em] text-cyan-100"
-                  : "inline-flex min-h-10 items-center rounded-full border border-white/12 bg-white/5 px-4 text-xs font-medium uppercase tracking-[0.2em] text-slate-300 transition hover:border-cyan-300/30 hover:text-cyan-100"
-              }
+              className={cn("filter-pill", isActive && "filter-pill-active")}
             >
               {option.label}
             </Link>

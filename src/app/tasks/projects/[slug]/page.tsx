@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { updateProjectStatusAction } from "@/app/tasks/projects/actions";
-import { updateTaskInlineAction } from "@/app/tasks/actions";
-import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
+import { updateTaskInlineAction } from "@/app/tasks/actions";
+import { updateProjectStatusAction } from "@/app/tasks/projects/actions";
+import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
   TaskFilterControls,
@@ -13,15 +13,10 @@ import {
 } from "@/components/tasks/task-filter-controls";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
+import { formatTimerDateTime } from "@/lib/timer-domain";
 import {
   TASK_STATUS_VALUES,
   formatTaskToken,
@@ -31,10 +26,7 @@ import {
 } from "@/lib/task-domain";
 import type { Tables } from "@/lib/supabase/database.types";
 
-type ProjectRow = Pick<
-  Tables<"projects">,
-  "id" | "name" | "slug" | "description" | "status"
->;
+type ProjectRow = Pick<Tables<"projects">, "id" | "name" | "slug" | "description" | "status">;
 type GoalRow = Pick<Tables<"goals">, "id" | "title" | "project_id">;
 type TaskRow = Pick<
   Tables<"tasks">,
@@ -113,6 +105,49 @@ async function getProjectDetail(slug: string) {
   };
 }
 
+function getTimeProgressPercent(seconds: number) {
+  const targetSeconds = 8 * 60 * 60;
+  return Math.max(0, Math.min(100, Math.round((seconds / targetSeconds) * 100)));
+}
+
+function ProgressRing({ percent, label }: { percent: number; label: string }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - percent / 100);
+
+  return (
+    <div className="relative flex h-32 w-32 items-center justify-center">
+      <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
+        <circle
+          className="stroke-[color:var(--border)]"
+          cx="50"
+          cy="50"
+          fill="none"
+          r={radius}
+          strokeWidth="6"
+        />
+        <circle
+          className="stroke-[var(--signal-live)]"
+          cx="50"
+          cy="50"
+          fill="none"
+          r={radius}
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          strokeWidth="6"
+        />
+      </svg>
+      <div className="absolute flex flex-col items-center">
+        <span className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
+          {label}
+        </span>
+        <span className="glass-label text-etch">Logged</span>
+      </div>
+    </div>
+  );
+}
+
 export async function generateMetadata({ params }: ProjectDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
   const projectDetail = await getProjectDetail(slug);
@@ -172,45 +207,110 @@ export default async function ProjectDetailPage({
     return true;
   });
 
+  const focusedTask = filteredTasks[0] ?? tasks[0] ?? null;
+  const siblingTasks = filteredTasks.slice(1);
+  const focusedDurationSeconds = focusedTask ? taskTotalDurations[focusedTask.id] ?? 0 : 0;
+  const completedRelatedTasks = filteredTasks.filter((task) => task.status === "done").length;
+
   return (
     <TasksWorkspaceShell
-      eyebrow="Tasks Workspace"
-      title={project.name}
+      eyebrow={project.slug}
+      title={focusedTask?.title ?? project.name}
       description={
+        focusedTask?.description?.trim() ||
         project.description?.trim() ||
-        "Project-scoped task view with direct task creation in the same workspace."
+        "Project-scoped task detail view for the active execution slice."
       }
       actions={
         <Link
           href="/tasks/projects"
-          className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/8 px-5 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
+          className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
         >
-          Back to projects
+          Back to Projects
         </Link>
       }
-      navigation={
-        <>
-          <Badge tone="accent">{project.slug}</Badge>
-          <Badge>{tasks.length} tasks</Badge>
-          <Badge>{goals.length} goals</Badge>
-        </>
-      }
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-2">
-                <CardTitle>Project tasks</CardTitle>
-                <CardDescription>
-                  Everything here is already scoped to {project.name}.
-                </CardDescription>
+      <div className="mb-8 flex flex-wrap items-center gap-2 border-b border-[var(--border)] pb-5">
+        <Link href="/tasks/projects" className="glass-label text-etch transition hover:text-signal-live">
+          Projects
+        </Link>
+        <span className="glass-label text-etch">/</span>
+        <span className="glass-label text-etch">{project.name}</span>
+        {focusedTask ? (
+          <>
+            <span className="glass-label text-etch">/</span>
+            <span className="glass-label text-[color:var(--foreground)]">
+              {focusedTask.id.slice(0, 8).toUpperCase()}
+            </span>
+          </>
+        ) : null}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_22rem]">
+        <div className="space-y-6">
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-8">
+              <div className="mb-6 flex flex-wrap items-center gap-2">
+                <Badge tone={getTaskStatusTone(focusedTask?.status ?? project.status)}>
+                  {formatTaskToken(focusedTask?.status ?? project.status)}
+                </Badge>
+                {focusedTask ? <Badge>{formatTaskToken(focusedTask.priority)}</Badge> : null}
               </div>
-              <div className="space-y-3">
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Badge tone={getTaskStatusTone(project.status)}>
-                    Project {formatTaskToken(project.status)}
-                  </Badge>
+
+              <h2 className="text-4xl font-semibold tracking-tight text-[color:var(--foreground)]">
+                {focusedTask?.title ?? project.name}
+              </h2>
+
+              <div className="mt-6 grid gap-4 border-t border-[var(--border)] pt-6 sm:grid-cols-3">
+                <div>
+                  <p className="glass-label text-etch">Project</p>
+                  <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                    {project.name}
+                  </p>
+                </div>
+                <div>
+                  <p className="glass-label text-etch">Goal</p>
+                  <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                    {focusedTask?.goals?.title ?? "No linked goal"}
+                  </p>
+                </div>
+                <div>
+                  <p className="glass-label text-etch">Updated</p>
+                  <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                    {focusedTask ? formatTimerDateTime(focusedTask.updated_at) : "No updates"}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-8">
+              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
+                Description
+              </h3>
+              <div className="mt-4 space-y-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                <p>
+                  {focusedTask?.description?.trim() ||
+                    project.description?.trim() ||
+                    "No description has been added for this task yet."}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-8">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
+                    Related Tasks
+                  </h3>
+                  <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
+                    {completedRelatedTasks}/{filteredTasks.length} completed in the current slice.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
                   {statusCounts.length ? (
                     statusCounts.map((entry) => (
                       <Badge key={entry.status} tone={getTaskStatusTone(entry.status)}>
@@ -221,6 +321,18 @@ export default async function ProjectDetailPage({
                     <Badge>No task activity yet</Badge>
                   )}
                 </div>
+              </div>
+
+              <div className="mb-6">
+                <TaskFilterControls
+                  basePath={`/tasks/projects/${project.slug}`}
+                  activeStatus={activeStatus}
+                  activePriority={activePriority}
+                  includePriority
+                />
+              </div>
+
+              <div className="mb-6 border-t border-[var(--border)] pt-4">
                 <InlineProjectStatusForm
                   action={updateProjectStatusAction}
                   projectId={project.id}
@@ -229,92 +341,149 @@ export default async function ProjectDetailPage({
                   error={projectUpdateProjectId === project.id ? projectUpdateError : null}
                 />
               </div>
-            </div>
 
-            <TaskFilterControls
-              basePath={`/tasks/projects/${project.slug}`}
-              activeStatus={activeStatus}
-              activePriority={activePriority}
-              includePriority
-            />
-          </CardHeader>
-          <CardContent>
-            {filteredTasks.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-5 text-sm leading-7 text-slate-400">
-                No tasks match the current project filters.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {filteredTasks.map((task) => {
-                  const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
-
-                  return (
-                    <article
-                      id={`task-${task.id}`}
-                      key={task.id}
-                      className="scroll-mt-24 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-4"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1">
-                          <h3 className="text-base font-medium text-slate-100">{task.title}</h3>
-                          <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
-                            {task.goals?.title ? task.goals.title : "No goal linked"}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge tone={getTaskStatusTone(task.status)}>
-                            {formatTaskToken(task.status)}
-                          </Badge>
-                          <Badge>{formatTaskToken(task.priority)}</Badge>
-                        </div>
+              {focusedTask ? (
+                <div className="space-y-3">
+                  <article className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-[color:var(--foreground)]">
+                          {focusedTask.title}
+                        </p>
+                        <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
+                          Focused task
+                        </p>
                       </div>
-
-                      {task.description ? (
-                        <p className="mt-2 text-sm leading-7 text-slate-300">{task.description}</p>
-                      ) : null}
-
-                      <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
-                        <div className="space-y-1 pt-2">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                            Update status or priority without leaving this project view.
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Total tracked {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
-                          </p>
-                        </div>
-                        <InlineTaskUpdateForm
-                          action={updateTaskInlineAction}
-                          taskId={task.id}
-                          returnTo={returnTo}
-                          defaultStatus={task.status}
-                          defaultPriority={task.priority}
-                          error={inlineError}
-                        />
+                      <div className="flex flex-wrap gap-2">
+                        <Badge tone={getTaskStatusTone(focusedTask.status)}>
+                          {formatTaskToken(focusedTask.status)}
+                        </Badge>
+                        <Badge>{formatTaskToken(focusedTask.priority)}</Badge>
                       </div>
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    </div>
+                    <div className="mt-4 border-t border-[var(--border)] pt-4">
+                      <InlineTaskUpdateForm
+                        action={updateTaskInlineAction}
+                        taskId={focusedTask.id}
+                        returnTo={returnTo}
+                        defaultStatus={focusedTask.status}
+                        defaultPriority={focusedTask.priority}
+                        error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
+                      />
+                    </div>
+                  </article>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Create task</CardTitle>
-            <CardDescription>
-              New tasks from this form stay attached to {project.name} automatically.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CreateTaskForm
-              projects={[{ id: project.id, name: project.name }]}
-              goals={goals}
-              projectId={project.id}
-              returnTo={returnTo}
-            />
-          </CardContent>
-        </Card>
+                  {siblingTasks.map((task) => {
+                    const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
+
+                    return (
+                      <article
+                        key={task.id}
+                        id={`task-${task.id}`}
+                        className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-[color:var(--foreground)]">
+                              {task.title}
+                            </p>
+                            <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
+                              {task.goals?.title ?? "No linked goal"}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge tone={getTaskStatusTone(task.status)}>
+                              {formatTaskToken(task.status)}
+                            </Badge>
+                            <Badge>{formatTaskToken(task.priority)}</Badge>
+                          </div>
+                        </div>
+                        <div className="mt-4 border-t border-[var(--border)] pt-4">
+                          <InlineTaskUpdateForm
+                            action={updateTaskInlineAction}
+                            taskId={task.id}
+                            returnTo={returnTo}
+                            defaultStatus={task.status}
+                            defaultPriority={task.priority}
+                            error={inlineError}
+                          />
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="surface-empty px-4 py-5 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                  No tasks match the current project filters.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-6">
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
+                Time Tracking
+              </h3>
+              <div className="flex flex-col items-center py-6">
+                <ProgressRing
+                  percent={getTimeProgressPercent(focusedDurationSeconds)}
+                  label={formatDurationLabel(focusedDurationSeconds)}
+                />
+                <p className="mt-4 text-xs uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
+                  Focused task duration
+                </p>
+              </div>
+              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+                Logged against the currently focused task in this project slice.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
+                Recent Activity
+              </h3>
+              <div className="mt-6 space-y-3">
+                {tasks.slice(0, 4).map((task) => (
+                  <div
+                    key={task.id}
+                    className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                  >
+                    <p className="text-sm font-medium text-[color:var(--foreground)]">
+                      {task.title}
+                    </p>
+                    <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                      Updated {formatTimerDateTime(task.updated_at)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
+                Create Related Task
+              </h3>
+              <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
+                New tasks created here stay attached to {project.name}.
+              </p>
+              <div className="mt-5">
+                <CreateTaskForm
+                  projects={[{ id: project.id, name: project.name }]}
+                  goals={goals}
+                  projectId={project.id}
+                  returnTo={returnTo}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </TasksWorkspaceShell>
   );

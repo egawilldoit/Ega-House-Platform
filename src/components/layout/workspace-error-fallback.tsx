@@ -3,13 +3,6 @@
 import Link from "next/link";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 type WorkspaceErrorFallbackProps = {
   reset: () => void;
@@ -30,52 +23,66 @@ export function WorkspaceErrorFallback({
   homeHref = "/",
 }: WorkspaceErrorFallbackProps) {
   return (
-    <main className="flex min-h-screen px-4 py-6 text-slate-100 sm:px-6">
-      <section className="mx-auto flex w-full max-w-6xl flex-1 flex-col rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-[0_32px_120px_rgba(2,6,23,0.65)] backdrop-blur sm:p-8">
-        <div className="flex flex-col gap-4 border-b border-white/8 pb-8">
-          <p className="text-xs font-medium uppercase tracking-[0.35em] text-cyan-200/70">
-            {scopeLabel}
-          </p>
-          <h1 className="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            Something went wrong
-          </h1>
-          <p className="max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
-            This area hit an unexpected error. You can retry now or switch to another
-            workspace.
-          </p>
-          <nav aria-label="Workspace navigation" className="flex flex-wrap gap-2">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-6 py-12">
+      <div className="pointer-events-none absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-[var(--signal-live)] via-transparent to-transparent" />
+      <section className="relative z-10 w-full max-w-3xl rounded-[1.75rem] border border-[var(--border)] bg-[color:var(--instrument)] p-10 text-center shadow-sm">
+        <div className="mx-auto mb-8 flex h-20 w-20 items-center justify-center rounded-full bg-[rgba(239,68,68,0.12)]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[rgba(239,68,68,0.28)] text-3xl font-semibold text-[var(--signal-error)]">
+            !
+          </div>
+        </div>
+
+        <p className="glass-label text-etch">{scopeLabel}</p>
+        <h1 className="mt-4 text-4xl font-semibold tracking-tight text-[color:var(--foreground)] sm:text-5xl">
+          Workspace Disconnected
+        </h1>
+        <p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-[color:var(--muted-foreground)] sm:text-base">
+          Unable to retrieve the current workspace payload from the primary node.
+          Retry the connection or switch to another stable surface.
+        </p>
+
+        <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <Button onClick={reset} className="min-w-44">
+            Retry Connection
+          </Button>
+          <Link
+            href={homeHref}
+            className="btn-instrument btn-instrument-muted flex min-w-44 items-center justify-center"
+          >
+            Go to Home
+          </Link>
+        </div>
+
+        <div className="mt-12 border-t border-[var(--border)] pt-8 text-left">
+          <div className="glass-label text-etch mb-5 px-1">Recovery Options</div>
+          <nav aria-label="Workspace navigation" className="grid gap-4 sm:grid-cols-2">
             {WORKSPACE_LINKS.map((workspace) => (
               <Link
                 key={workspace.href}
                 href={workspace.href}
-                className="inline-flex h-10 items-center rounded-full border border-white/10 bg-white/[0.03] px-4 text-sm font-medium text-slate-300 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white"
+                className="group flex items-start gap-4 rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] p-4 transition hover:border-[var(--border-strong)]"
               >
-                {workspace.label}
+                <div className="flex h-10 w-10 items-center justify-center rounded-sm bg-[rgba(34,197,94,0.08)] text-lg font-semibold text-[var(--signal-live)] transition group-hover:bg-[var(--signal-live)] group-hover:text-black">
+                  {"›"}
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-[color:var(--foreground)]">
+                    {workspace.label}
+                  </div>
+                  <div className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                    Open {workspace.label.toLowerCase()} workspace
+                  </div>
+                </div>
               </Link>
             ))}
           </nav>
         </div>
 
-        <div className="pt-8">
-          <Card>
-            <CardHeader>
-              <CardTitle>Recovery actions</CardTitle>
-              <CardDescription>
-                Retry the current route or return to a stable page.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3">
-              <Button variant="secondary" onClick={reset}>
-                Try again
-              </Button>
-              <Link
-                href={homeHref}
-                className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/15 bg-white/8 px-5 text-sm font-medium text-slate-100 transition duration-200 hover:border-cyan-300/40 hover:bg-cyan-300/10"
-              >
-                Go to home
-              </Link>
-            </CardContent>
-          </Card>
+        <div className="mt-8 flex justify-center">
+          <div className="inline-flex items-center gap-2 rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
+            <span className="h-2 w-2 rounded-full bg-[var(--signal-error)]" />
+            ERR_CODE: TSK-503-ND
+          </div>
         </div>
       </section>
     </main>

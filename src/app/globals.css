@@ -1,60 +1,52 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* ============================================================
-   EGA House — Instrument Design System (frontend-v2)
-   ============================================================ */
-
-/* Google Fonts — keeping Plus Jakarta Sans + DM Mono */
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Mono:wght@400;500&display=swap");
-
-/* ── CSS Font Variables (injected by next/font, these are fallbacks) ── */
 :root {
-  /* ── Canvas ──────────────────────────────────────────── */
-  --background:           #0a0b0f;
-  --foreground:           #e8eaf0;
-  --muted-foreground:     #6b7280;
+  --background: #f5f3ee;
+  --foreground: #1a1a1a;
+  --muted-foreground: #6b7280;
 
-  /* ── Surfaces / Instrument ───────────────────────────── */
-  --instrument:           #0f1117;
-  --instrument-raised:    #13151f;
-  --instrument-border:    1px solid rgba(255, 255, 255, 0.07);
+  --instrument: #ffffff;
+  --instrument-raised: #faf9f7;
+  --instrument-border: 1px solid #e8e5de;
 
-  /* ── Borders ─────────────────────────────────────────── */
-  --border:               rgba(255, 255, 255, 0.07);
-  --border-strong:        rgba(255, 255, 255, 0.13);
+  --border: #e8e5de;
+  --border-strong: #d6d3cb;
 
-  /* ── Signals ─────────────────────────────────────────── */
-  --signal-live:          #22c55e;      /* green — active sessions */
-  --signal-warn:          #f59e0b;      /* amber — warnings */
-  --signal-error:         #ef4444;      /* red — errors */
-  --signal-info:          #3b82f6;      /* blue — info */
+  --signal-live: #2e7d32;
+  --signal-warn: #e65100;
+  --signal-error: #c62828;
+  --signal-info: #1565c0;
 
-  /* ── Etch (very muted text) ──────────────────────────── */
-  --etch:                 rgba(232, 234, 240, 0.30);
+  --accent: #2e7d32;
+  --accent-light: #e8f5e9;
+  --accent-lighter: #f1f8e9;
 
-  /* ── Secondary (selection bg) ───────────────────────── */
-  --secondary:            rgba(255, 255, 255, 0.08);
+  --etch: #9ca3af;
+  --secondary: #f0ede6;
 
-  /* ── Fonts ───────────────────────────────────────────── */
-  --font-display:         var(--font-plus-jakarta, "Plus Jakarta Sans", system-ui, sans-serif);
-  --font-mono:            var(--font-dm-mono, "DM Mono", "JetBrains Mono", monospace);
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* ── Sidebar ─────────────────────────────────────────── */
-  --sidebar-width:        128px;
-
-  /* ── Transitions ──────────────────────────────────────── */
-  --transition-precise:   150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --sidebar-width: 260px;
+  --transition-precise: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --radius-card: 1.125rem;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.03);
+  --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);
 }
 
 @theme inline {
-  --color-background:     var(--background);
-  --color-foreground:     var(--foreground);
-  --font-sans:            var(--font-display);
-  --font-mono:            var(--font-mono);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-display);
+  --font-mono: var(--font-mono);
 }
 
-/* ── Reset ──────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
 html {
   min-height: 100%;
@@ -75,128 +67,100 @@ body {
   line-height: 1.6;
 }
 
-a { color: inherit; text-decoration: none; }
-button, input, textarea, select { font: inherit; }
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
 
 ::selection {
-  background: var(--secondary);
+  background: #c8e6c9;
   color: var(--foreground);
 }
 
-/* ── Scrollbar ──────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  border-radius: 2px;
-  background: rgba(255,255,255,0.08);
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
 
-/* ── Focus ──────────────────────────────────────────────── */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d6d3cb;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b0ada5;
+}
+
 :focus-visible {
-  outline: 1px solid rgba(255,255,255,0.3);
+  outline: 2px solid rgba(46, 125, 50, 0.35);
   outline-offset: 2px;
 }
 
-/* ============================================================
-   UTILITY CLASSES
-   ============================================================ */
+/* ─── Utility classes ─── */
 
-/* Instrument card surface */
 .bg-instrument {
   background: var(--instrument);
 }
 
-/* Instrument border (single consistent rule) */
 .instrument-border {
   border: var(--instrument-border);
 }
 
-/* Glass-label: small uppercase mono tracking label */
 .glass-label {
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.12em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  line-height: 1;
+  line-height: 1.2;
 }
 
-/* Live signal colour */
-.text-signal-live {
-  color: var(--signal-live);
-}
-.bg-signal-live {
-  background: var(--signal-live);
-}
+.text-signal-live { color: var(--signal-live); }
+.bg-signal-live   { background: var(--signal-live); }
 .text-signal-warn  { color: var(--signal-warn); }
 .text-signal-error { color: var(--signal-error); }
 .text-signal-info  { color: var(--signal-info); }
+.text-etch         { color: var(--etch); }
+.text-muted-foreground { color: var(--muted-foreground); }
+.font-display { font-family: var(--font-display); }
+.font-mono    { font-family: var(--font-mono); }
+.tabular      { font-variant-numeric: tabular-nums; }
+.transition-precise { transition: all var(--transition-precise); }
 
-/* Etch (very muted) */
-.text-etch {
-  color: var(--etch);
-}
+.border-border { border-color: var(--border); }
+.border-border-strong { border-color: var(--border-strong); }
 
-/* Muted foreground */
-.text-muted-foreground {
-  color: var(--muted-foreground);
-}
-
-/* Display font */
-.font-display {
-  font-family: var(--font-display);
-}
-
-/* Mono font */
-.font-mono {
-  font-family: var(--font-mono);
-}
-
-/* Tabular numbers */
-.tabular {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Transition precise */
-.transition-precise {
-  transition: all var(--transition-precise);
-}
-
-/* ── Radial accent gradient (page header / hero) ─────────── */
 .bg-gradient-radial-accent {
   background:
-    radial-gradient(ellipse 70% 120% at 50% -10%, rgba(34, 197, 94, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 120% at 50% -10%, rgba(46, 125, 50, 0.05) 0%, transparent 60%),
     var(--background);
 }
 
-/* ── Border colour utility ───────────────────────────────── */
-.border-border {
-  border-color: var(--border);
-}
-.border-border-strong {
-  border-color: var(--border-strong);
-}
-
-/* ============================================================
-   APP SHELL
-   ============================================================ */
+/* ─── App Shell ─── */
 
 .ega-shell {
   display: flex;
   min-height: 100dvh;
 }
 
-/* Sidebar */
 .ega-sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  background: var(--background);
-  border-right: var(--instrument-border);
+  inset: 0 auto 0 0;
+  background: #ffffff;
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -204,7 +168,6 @@ button, input, textarea, select { font: inherit; }
   overflow-x: hidden;
 }
 
-/* Main content area */
 .ega-main {
   flex: 1;
   min-width: 0;
@@ -212,63 +175,75 @@ button, input, textarea, select { font: inherit; }
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  background: var(--background);
 }
 
-/* TopBar */
 .ega-topbar {
   height: 4rem;
   flex-shrink: 0;
-  border-bottom: var(--instrument-border);
-  background: rgba(10, 11, 15, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   position: sticky;
   top: 0;
   z-index: 30;
 }
 
-/* Page header */
 .ega-page-header {
-  padding: 2.5rem 2rem 2rem;
-  border-bottom: var(--instrument-border);
-  background: radial-gradient(ellipse 70% 120% at 50% -10%, rgba(34, 197, 94, 0.05) 0%, transparent 60%);
+  padding: 2rem 2rem 1.5rem;
+  background: var(--background);
 }
 
-/* Content area */
 .ega-content {
   flex: 1;
-  padding: 2rem;
+  padding: 0 2rem 2rem;
+  background: var(--background);
 }
 
-/* ============================================================
-   SIDEBAR NAV
-   ============================================================ */
+/* ─── Sidebar Navigation ─── */
 
-/* Nav link */
-.sidebar-link {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.625rem 0.5rem;
-  border-radius: 0;
-  font-family: var(--font-mono);
+.sidebar-section-label {
+  font-family: var(--font-display);
   font-size: 0.625rem;
-  letter-spacing: 0.08em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--etch);
-  transition: color var(--transition-precise);
+  padding: 0 1.25rem;
+  margin-bottom: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.sidebar-link {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.625rem;
+  margin: 0.125rem 0.625rem;
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted-foreground);
+  transition: all var(--transition-precise);
   position: relative;
   text-decoration: none;
-  text-align: center;
+  text-align: left;
 }
 
 .sidebar-link:hover {
-  color: var(--foreground);
+  background: var(--accent-light);
+  color: var(--accent);
 }
 
 .sidebar-link.active {
-  color: var(--signal-live);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .sidebar-link.active::before {
@@ -277,97 +252,228 @@ button, input, textarea, select { font: inherit; }
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 2px;
-  height: 60%;
-  background: var(--signal-live);
+  width: 3px;
+  height: 55%;
+  border-radius: 999px;
+  background: var(--accent);
 }
 
-/* Project dot in sidebar */
+.sidebar-link .sidebar-badge {
+  margin-left: auto;
+  font-size: 0.625rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+  line-height: 1.4;
+}
+
 .project-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
   flex-shrink: 0;
 }
 
-/* ============================================================
-   LIVE DOT ANIMATION
-   ============================================================ */
 @keyframes signal-pulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
-  50%       { opacity: 0.85; box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(46, 125, 50, 0.22);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: 0 0 0 5px rgba(46, 125, 50, 0);
+  }
 }
 
 .signal-dot-live {
   animation: signal-pulse 2.4s ease-in-out infinite;
 }
 
-/* ============================================================
-   INSTRUMENT CARD
-   ============================================================ */
+/* ─── Cards ─── */
 
-/* Used directly as a wrapper — .instrument-border .bg-instrument .rounded-sm */
 .instrument-card {
-  border: var(--instrument-border);
+  border: 1px solid var(--border);
   background: var(--instrument);
-  border-radius: 2px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow var(--transition-precise);
 }
 
-/* Flat progress bar (2px) used in timer */
-.progress-flat {
-  height: 2px;
-  background: var(--border);
+.instrument-card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* ─── Stat Cards ─── */
+
+.stat-card {
+  border: 1px solid var(--border);
+  background: var(--instrument);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem 1.5rem;
   position: relative;
+  transition: all var(--transition-precise);
+}
+
+.stat-card:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+.stat-card-highlight {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.stat-card-highlight .stat-card-label,
+.stat-card-highlight .stat-card-detail {
+  color: rgba(255,255,255,0.8);
+}
+
+.stat-card-highlight .stat-card-value {
+  color: #ffffff;
+}
+
+.stat-card-highlight .stat-card-arrow {
+  background: rgba(255,255,255,0.18);
+  color: #ffffff;
+}
+
+.stat-card-arrow {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.25rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--secondary);
+  color: var(--muted-foreground);
+  transition: all var(--transition-precise);
+}
+
+.stat-card:hover .stat-card-arrow {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.stat-card-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  margin-bottom: 0.625rem;
+}
+
+.stat-card-value {
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--foreground);
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
+}
+
+.stat-card-detail {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  margin-top: 0.625rem;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.stat-card-detail .trend-up {
+  color: var(--signal-live);
+}
+
+/* ─── Progress ─── */
+
+.progress-flat {
+  height: 6px;
+  border-radius: 999px;
+  background: #e8e5de;
+  position: relative;
+  overflow: hidden;
 }
 
 .progress-flat-fill {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0 auto 0 0;
   height: 100%;
-  background: var(--foreground);
+  background: var(--signal-live);
   transition: width 0.5s ease-out;
 }
 
-/* ============================================================
-   BUTTONS (instrument style)
-   ============================================================ */
+/* ─── Buttons ─── */
 
 .btn-instrument {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.375rem 0.75rem;
-  border: 1px solid var(--foreground);
-  background: transparent;
-  color: var(--foreground);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  border-radius: 2px;
+  gap: 0.5rem;
+  min-height: 2.375rem;
+  padding: 0.5rem 1.125rem;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 0.75rem;
   cursor: pointer;
   transition: all var(--transition-precise);
+  box-shadow: 0 1px 2px rgba(46, 125, 50, 0.15);
 }
 
 .btn-instrument:hover {
-  background: var(--foreground);
-  color: var(--background);
+  background: #1b5e20;
+  border-color: #1b5e20;
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(46, 125, 50, 0.25);
 }
 
 .btn-instrument-muted {
+  background: #ffffff;
+  color: var(--foreground);
   border-color: var(--border);
-  color: var(--muted-foreground);
+  box-shadow: none;
 }
 
 .btn-instrument-muted:hover {
+  background: #faf9f7;
   border-color: var(--border-strong);
   color: var(--foreground);
 }
 
-/* ============================================================
-   TABLES
-   ============================================================ */
+/* ─── Search ─── */
+
+.shell-search {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--instrument-raised);
+  transition:
+    border-color var(--transition-precise),
+    background var(--transition-precise),
+    box-shadow var(--transition-precise);
+}
+
+.shell-search:focus-within {
+  border-color: rgba(46, 125, 50, 0.3);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.08);
+}
+
+/* ─── Tables ─── */
 
 .instrument-table {
   width: 100%;
@@ -375,20 +481,21 @@ button, input, textarea, select { font: inherit; }
 }
 
 .instrument-table th {
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.14em;
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--etch);
+  color: var(--muted-foreground);
   text-align: left;
-  padding: 0 0.75rem 0.625rem;
-  border-bottom: var(--instrument-border);
+  padding: 0 0.75rem 0.75rem;
+  border-bottom: 1px solid var(--border);
 }
 
 .instrument-table td {
-  padding: 0.625rem 0.75rem;
+  padding: 0.875rem 0.75rem;
   vertical-align: middle;
-  border-bottom: var(--instrument-border);
+  border-bottom: 1px solid var(--border);
 }
 
 .instrument-table tr:last-child td {
@@ -396,67 +503,185 @@ button, input, textarea, select { font: inherit; }
 }
 
 .instrument-table tr:hover td {
-  background: rgba(255,255,255,0.02);
+  background: var(--instrument-raised);
 }
 
-/* ============================================================
-   INPUTS
-   ============================================================ */
+/* ─── Inputs ─── */
 
 .input-instrument {
-  background: transparent;
-  border: var(--instrument-border);
-  border-radius: 2px;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
   color: var(--foreground);
   font-size: 0.875rem;
-  padding: 0.5rem 0.875rem;
+  padding: 0.625rem 0.875rem;
   width: 100%;
-  transition: border-color var(--transition-precise);
+  transition:
+    border-color var(--transition-precise),
+    box-shadow var(--transition-precise),
+    background var(--transition-precise);
 }
 
 .input-instrument:hover {
-  border-color: rgba(255,255,255,0.13);
+  border-color: var(--border-strong);
 }
 
 .input-instrument:focus {
   outline: none;
-  border-color: rgba(34, 197, 94, 0.4);
+  border-color: rgba(46, 125, 50, 0.45);
+  box-shadow: 0 0 0 3px rgba(46, 125, 50, 0.1);
 }
 
 .input-instrument::placeholder {
-  color: var(--etch);
+  color: var(--muted-foreground);
 }
 
-/* ============================================================
-   STATUS BADGES
-   ============================================================ */
+/* ─── Badges ─── */
 
 .status-badge {
   display: inline-flex;
   align-items: center;
-  padding: 0.125rem 0.5rem;
-  border-radius: 2px;
-  font-family: var(--font-mono);
-  font-size: 0.6rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  padding: 0.25rem 0.625rem;
+  border-radius: 999px;
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
   border: 1px solid;
 }
 
-.status-badge-active  { color: var(--signal-live);  border-color: rgba(34,197,94,0.3);  background: rgba(34,197,94,0.07); }
-.status-badge-muted   { color: var(--etch);          border-color: var(--border);         background: transparent; }
-.status-badge-warn    { color: var(--signal-warn);   border-color: rgba(245,158,11,0.3);  background: rgba(245,158,11,0.07); }
-.status-badge-error   { color: var(--signal-error);  border-color: rgba(239,68,68,0.3);   background: rgba(239,68,68,0.07); }
-.status-badge-info    { color: var(--signal-info);   border-color: rgba(59,130,246,0.3);  background: rgba(59,130,246,0.07); }
+.status-badge-active {
+  color: #1b5e20;
+  border-color: #a5d6a7;
+  background: #e8f5e9;
+}
 
-/* ============================================================
-   RESPONSIVE
-   ============================================================ */
+.status-badge-muted {
+  color: #52525b;
+  border-color: #e8e5de;
+  background: var(--instrument-raised);
+}
+
+.status-badge-warn {
+  color: #e65100;
+  border-color: #ffcc80;
+  background: #fff3e0;
+}
+
+.status-badge-error {
+  color: #c62828;
+  border-color: #ef9a9a;
+  background: #ffebee;
+}
+
+.status-badge-info {
+  color: #1565c0;
+  border-color: #90caf9;
+  background: #e3f2fd;
+}
+
+/* ─── Surfaces ─── */
+
+.surface-subtle {
+  border: 1px solid var(--border);
+  background: var(--instrument-raised);
+  border-radius: 0.75rem;
+}
+
+.surface-empty {
+  border: 1px dashed var(--border-strong);
+  background: linear-gradient(180deg, #ffffff 0%, var(--instrument-raised) 100%);
+  border-radius: var(--radius-card);
+}
+
+/* ─── Feedback ─── */
+
+.feedback-block {
+  border-radius: 0.75rem;
+  border: 1px solid;
+  padding: 0.75rem 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.feedback-block-error {
+  color: #c62828;
+  border-color: rgba(198, 40, 40, 0.18);
+  background: rgba(198, 40, 40, 0.04);
+}
+
+.feedback-block-success {
+  color: #1b5e20;
+  border-color: rgba(46, 125, 50, 0.18);
+  background: rgba(46, 125, 50, 0.05);
+}
+
+.feedback-block-warn {
+  color: #e65100;
+  border-color: rgba(230, 81, 0, 0.18);
+  background: rgba(255, 152, 0, 0.06);
+}
+
+.feedback-block-info {
+  color: #1565c0;
+  border-color: rgba(21, 101, 192, 0.16);
+  background: rgba(21, 101, 192, 0.04);
+}
+
+/* ─── Filter Pills ─── */
+
+.filter-pill {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--instrument-raised);
+  padding: 0 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  transition:
+    border-color var(--transition-precise),
+    color var(--transition-precise),
+    background var(--transition-precise);
+}
+
+.filter-pill:hover {
+  border-color: var(--border-strong);
+  color: var(--foreground);
+  background: #ffffff;
+}
+
+.filter-pill-active {
+  border-color: rgba(46, 125, 50, 0.18);
+  background: rgba(46, 125, 50, 0.05);
+  color: #1b5e20;
+}
+
+/* ─── Responsive ─── */
 
 @media (max-width: 768px) {
-  :root { --sidebar-width: 0px; }
-  .ega-sidebar { display: none; }
-  .ega-main { margin-left: 0; }
-  .ega-page-header { padding: 1.5rem 1rem 1.25rem; }
-  .ega-content { padding: 1rem; }
+  :root {
+    --sidebar-width: 0px;
+  }
+
+  .ega-sidebar {
+    display: none;
+  }
+
+  .ega-main {
+    margin-left: 0;
+  }
+
+  .ega-page-header {
+    padding: 1.5rem 1rem 1.25rem;
+  }
+
+  .ega-content {
+    padding: 0 1rem 1rem;
+  }
 }

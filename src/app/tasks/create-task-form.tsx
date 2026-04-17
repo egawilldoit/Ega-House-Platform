@@ -51,7 +51,7 @@ export function CreateTaskForm({
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="returnTo" value={state.values.returnTo} />
       <div className="space-y-2">
-        <label htmlFor="title" className="text-xs font-semibold text-[var(--color-ink-muted)] uppercase tracking-wider">
+        <label htmlFor="title" className="glass-label text-etch">
           Title
         </label>
         <Input
@@ -60,6 +60,7 @@ export function CreateTaskForm({
           required
           placeholder="Ship timer session recovery"
           defaultValue={state.values.title}
+          className="h-10"
         />
       </div>
 
@@ -74,7 +75,7 @@ export function CreateTaskForm({
           {isProjectScoped ? (
             <>
               <input type="hidden" name="projectId" value={state.values.projectId} />
-              <div className="flex h-9 items-center input-instrument px-3.5 text-sm" style={{ color: "var(--muted-foreground)" }}>
+              <div className="input-instrument flex h-10 items-center px-3.5 text-sm" style={{ color: "var(--muted-foreground)" }}>
                 {projects.find((project) => project.id === state.values.projectId)?.name ??
                   "Selected project"}
               </div>
@@ -85,7 +86,7 @@ export function CreateTaskForm({
               name="projectId"
               defaultValue={state.values.projectId}
               required
-              className="input-instrument h-8 text-xs"
+              className="input-instrument h-10 text-sm"
             >
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
@@ -97,14 +98,14 @@ export function CreateTaskForm({
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="goalId" className="text-xs font-semibold text-[var(--color-ink-muted)] uppercase tracking-wider">
+          <label htmlFor="goalId" className="glass-label text-etch">
             Goal (optional)
           </label>
           <select
             id="goalId"
             name="goalId"
             defaultValue={state.values.goalId}
-            className="h-9 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] px-3.5 text-sm text-white outline-none transition hover:border-[var(--border-strong)] focus:border-[var(--accent-green-border)] focus:ring-2 focus:ring-[var(--accent-green)] focus:ring-opacity-15"
+            className="input-instrument h-10 text-sm"
           >
             <option value="">No goal</option>
             {goals.map((goal) => (
@@ -118,14 +119,14 @@ export function CreateTaskForm({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
-          <label htmlFor="status" className="text-xs font-semibold text-[var(--color-ink-muted)] uppercase tracking-wider">
+          <label htmlFor="status" className="glass-label text-etch">
             Initial status
           </label>
           <select
             id="status"
             name="status"
             defaultValue={state.values.status}
-            className="h-9 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] px-3.5 text-sm text-white outline-none transition hover:border-[var(--border-strong)] focus:border-[var(--accent-green-border)] focus:ring-2 focus:ring-[var(--accent-green)] focus:ring-opacity-15"
+            className="input-instrument h-10 text-sm"
           >
             {TASK_STATUS_VALUES.map((status) => (
               <option key={status} value={status}>
@@ -146,7 +147,7 @@ export function CreateTaskForm({
             id="priority"
             name="priority"
             defaultValue={state.values.priority}
-            className="h-9 w-full rounded-xl border border-[var(--border-default)] bg-[var(--bg-input)] px-3.5 text-sm text-white outline-none transition hover:border-[var(--border-strong)] focus:border-[var(--accent-green-border)] focus:ring-2 focus:ring-[var(--accent-green)] focus:ring-opacity-15"
+            className="input-instrument h-10 text-sm"
           >
             {TASK_PRIORITY_VALUES.map((priority) => (
               <option key={priority} value={priority}>
@@ -169,21 +170,18 @@ export function CreateTaskForm({
           name="description"
           placeholder="Capture scope, constraints, and delivery notes."
           defaultValue={state.values.description}
+          className="min-h-28"
         />
       </div>
 
       {state.error ? (
-        <div
-          role="alert"
-          className="rounded-sm px-4 py-3 text-xs"
-          style={{ border: "1px solid rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.05)", color: "var(--signal-error)" }}
-        >
+        <div role="alert" className="feedback-block feedback-block-error">
           {state.error}
         </div>
       ) : null}
 
       <Button type="submit" disabled={isPending || projects.length === 0}>
-        {isPending ? "Creating task..." : "Create task"}
+        {isPending ? "Initializing..." : "Initialize task"}
       </Button>
     </form>
   );

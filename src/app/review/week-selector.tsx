@@ -22,7 +22,7 @@ export function WeekSelector({
   existingReviewCount,
 }: WeekSelectorProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rounded-xl border border-[var(--border)] bg-white px-4 py-4">
       <form action="/review" method="get" className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5 flex-1 min-w-[160px]">
           <label htmlFor="review-week-selector" className="glass-label text-etch">
@@ -57,13 +57,13 @@ export function WeekSelector({
         <div className="flex items-center gap-2">
           <Link
             href={`/review?weekOf=${previousWeekOf}`}
-            className="btn-instrument btn-instrument-muted glass-label h-7 px-3 flex items-center"
+            className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center px-3"
           >
             ← Prev
           </Link>
           <Link
             href={`/review?weekOf=${nextWeekOf}`}
-            className="btn-instrument btn-instrument-muted glass-label h-7 px-3 flex items-center"
+            className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center px-3"
           >
             Next →
           </Link>

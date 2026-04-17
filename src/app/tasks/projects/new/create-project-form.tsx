@@ -39,7 +39,7 @@ export function CreateProjectForm() {
   return (
     <form action={formAction} className="space-y-5">
       <div className="space-y-2">
-        <label htmlFor="name" className="text-sm font-medium text-slate-200">
+        <label htmlFor="name" className="glass-label text-etch">
           Name
         </label>
         <Input
@@ -67,7 +67,7 @@ export function CreateProjectForm() {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="slug" className="text-sm font-medium text-slate-200">
+        <label htmlFor="slug" className="glass-label text-etch">
           Slug
         </label>
         <Input
@@ -86,16 +86,13 @@ export function CreateProjectForm() {
             event.currentTarget.value = nextValue;
           }}
         />
-        <p className="text-xs leading-6 text-slate-400">
+        <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
           Lowercase letters, numbers, and hyphens only.
         </p>
       </div>
 
       <div className="space-y-2">
-        <label
-          htmlFor="description"
-          className="text-sm font-medium text-slate-200"
-        >
+        <label htmlFor="description" className="glass-label text-etch">
           Description (optional)
         </label>
         <Textarea
@@ -107,10 +104,7 @@ export function CreateProjectForm() {
       </div>
 
       {state.error ? (
-        <div
-          role="alert"
-          className="rounded-2xl border border-rose-400/35 bg-rose-400/10 px-4 py-3 text-sm leading-7 text-rose-100"
-        >
+        <div role="alert" className="feedback-block feedback-block-error">
           {state.error}
         </div>
       ) : null}
@@ -121,7 +115,7 @@ export function CreateProjectForm() {
         </Button>
         <Link
           href="/tasks/projects"
-          className="inline-flex min-h-12 items-center justify-center rounded-full border border-transparent bg-transparent px-5 text-sm font-medium text-slate-200 transition duration-200 hover:border-white/10 hover:bg-white/6"
+          className="btn-instrument btn-instrument-muted inline-flex min-h-10 items-center justify-center px-5"
         >
           Cancel
         </Link>

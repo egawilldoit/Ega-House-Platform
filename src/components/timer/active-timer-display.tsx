@@ -35,7 +35,7 @@ export function ActiveTimerDisplay({
   totalTrackedDurationSeconds,
 }: ActiveTimerDisplayProps) {
   return (
-    <div className="space-y-4 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+    <div className="space-y-4 rounded-xl border border-[var(--border)] bg-[color:var(--instrument-raised)] p-4">
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
         <div className="space-y-4">
           <div className="space-y-2">
@@ -53,22 +53,22 @@ export function ActiveTimerDisplay({
             </div>
 
             <div className="space-y-1">
-              <p className="text-lg font-semibold text-slate-50">
+              <p className="text-lg font-semibold text-[color:var(--foreground)]">
                 {session.tasks?.title ?? "Untitled task"}
               </p>
-              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">
+              <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted-foreground)]">
                 {session.tasks?.projects?.name ?? "Unknown project"}
-                {session.tasks?.goals?.title ? ` • ${session.tasks.goals.title}` : ""}
+                {session.tasks?.goals?.title ? ` · ${session.tasks.goals.title}` : ""}
               </p>
             </div>
           </div>
 
           {session.tasks?.description ? (
-            <p className="text-sm leading-7 text-slate-300">
+            <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
               {session.tasks.description}
             </p>
           ) : (
-            <p className="text-sm leading-7 text-slate-400">
+            <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
               No additional task notes attached to this active session.
             </p>
           )}
@@ -78,7 +78,7 @@ export function ActiveTimerDisplay({
             {taskContextHref ? (
               <Link
                 href={taskContextHref}
-                className="inline-flex min-h-10 items-center rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/15"
+                className="btn-instrument btn-instrument-muted h-9 px-4 text-sm"
               >
                 Open task in project workspace
               </Link>

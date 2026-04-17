@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
+
+import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
 
@@ -19,7 +22,16 @@ function LoginFormFallback() {
   );
 }
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    redirect("/dashboard");
+  }
+
   return (
     <main className="relative flex min-h-screen overflow-hidden bg-[linear-gradient(135deg,#f7f1e8_0%,#efe6d6_38%,#d8e0dd_100%)] text-slate-950">
       <div className="pointer-events-none absolute inset-0">
@@ -34,19 +46,19 @@ export default function LoginPage() {
             Root Domain Access
           </p>
           <h1 className="mt-8 max-w-xl text-5xl font-semibold tracking-[-0.08em] text-balance sm:text-6xl lg:text-7xl">
-            Enter the control room.
+            Enter control room.
           </h1>
           <p className="mt-6 max-w-lg text-base leading-8 text-slate-700 sm:text-lg">
-            Sign in once on the root domain and move across goals, tasks, timer,
-            and review with the existing shared-session flow.
+            Sign in once on root domain, then continue into dashboard, goals,
+            tasks, timer, and review with existing shared-session flow.
           </p>
           <div className="mt-10 grid max-w-xl gap-4 sm:grid-cols-3">
             <div className="rounded-[1.5rem] border border-black/10 bg-white/60 p-4 backdrop-blur">
               <p className="font-mono text-[0.68rem] uppercase tracking-[0.28em] text-slate-500">
-                Goals
+                Dashboard
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-700">
-                Strategic planning and roadmap workspaces.
+                Operational snapshot after successful sign in.
               </p>
             </div>
             <div className="rounded-[1.5rem] border border-black/10 bg-white/60 p-4 backdrop-blur">

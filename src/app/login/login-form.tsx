@@ -109,7 +109,7 @@ export function LoginForm() {
 
       if (!safeRedirect) {
         startTransition(() => {
-          router.replace("/tasks");
+          router.replace("/dashboard");
           router.refresh();
         });
         return;
