@@ -1,11 +1,13 @@
 "use client";
 
 import type { KeyboardEvent } from "react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { LayoutDashboard, Target, Timer, ListChecks, NotebookTabs } from "lucide-react";
 
 import type { AppsLauncherIconKey, AppsLauncherItem } from "./launcher-items";
+import { focusShellHeadingFromShortcutNavigation } from "@/components/layout/workspace-keyboard-shortcuts";
+
 import { getNextLauncherIndex, isLauncherActivationKey } from "./launcher-navigation";
 
 const ICON_MAP: Record<AppsLauncherIconKey, typeof LayoutDashboard> = {
@@ -29,6 +31,21 @@ function getGridColumnCount() {
 
 export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
   const tileRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+
+  useEffect(() => {
+    const focusId = window.requestAnimationFrame(() => {
+      const marker = window.sessionStorage.getItem("ega:shortcut-route-target");
+      if (marker === "/apps") {
+        tileRefs.current[0]?.focus();
+        window.sessionStorage.removeItem("ega:shortcut-route-target");
+        return;
+      }
+
+      focusShellHeadingFromShortcutNavigation("/apps");
+    });
+
+    return () => window.cancelAnimationFrame(focusId);
+  }, []);
 
   const handleTileKeyDown = (event: KeyboardEvent<HTMLAnchorElement>, index: number) => {
     const nextIndex = getNextLauncherIndex({

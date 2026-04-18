@@ -1,9 +1,10 @@
 import React from "react";
 import Link from "next/link";
-import { Search, Bell, Mail } from "lucide-react";
+import { Search, Bell, Keyboard, Mail } from "lucide-react";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { TopBarSignalCluster } from "./shell-signals";
+import { workspaceShortcutEvents } from "./workspace-keyboard-shortcuts";
 
 export function TopBar({ metrics }: { metrics: WorkspaceShellMetrics }) {
   return (
@@ -31,6 +32,19 @@ export function TopBar({ metrics }: { metrics: WorkspaceShellMetrics }) {
           >
             Apps
           </Link>
+
+          <button
+            type="button"
+            className="hidden items-center gap-2 rounded-full border border-[var(--border)] bg-white/80 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--muted-foreground)] transition-precise hover:bg-[var(--secondary)] hover:text-[var(--foreground)] lg:inline-flex"
+            aria-label="Open keyboard shortcuts"
+            onClick={() => window.dispatchEvent(new CustomEvent(workspaceShortcutEvents.openHelp))}
+          >
+            <Keyboard className="size-3.5" strokeWidth={1.8} />
+            Shortcuts
+            <kbd className="rounded border border-[var(--border)] bg-white px-1.5 py-0.5 text-[10px] font-semibold text-etch">
+              ?
+            </kbd>
+          </button>
 
           <button
             className="transition-precise relative rounded-full p-2 text-[var(--muted-foreground)] hover:bg-[var(--secondary)] hover:text-[var(--foreground)]"

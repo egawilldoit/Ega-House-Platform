@@ -5,6 +5,7 @@ import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
 import { Sidebar, type SidebarGoal, type SidebarProject } from "./sidebar";
 import { TopBar } from "./top-bar";
+import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
 
 type AppShellProps = {
   children: ReactNode;
@@ -66,6 +67,7 @@ export async function AppShell({
       <Sidebar projects={projects} goals={goals} metrics={metrics} />
 
       <main className="ega-main">
+        <WorkspaceKeyboardShortcuts />
         <TopBar metrics={metrics} />
 
         <div className="flex-1 overflow-y-auto">
@@ -76,7 +78,7 @@ export async function AppShell({
                 {eyebrow && (
                   <div className="sidebar-section-label ega-shell-eyebrow">{eyebrow}</div>
                 )}
-                <h1 className="ega-shell-title">{title}</h1>
+                <h1 tabIndex={-1} data-shell-page-title className="ega-shell-title focus:outline-none">{title}</h1>
                 {description && (
                   <p className="ega-shell-description">{description}</p>
                 )}
