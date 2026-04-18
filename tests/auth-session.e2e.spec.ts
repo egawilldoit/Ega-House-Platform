@@ -162,7 +162,21 @@ test.describe("Cross-subdomain auth session", () => {
     }
   });
 
-  test("logout flow coverage is intentionally pending because no sign-out path exists yet", async () => {
-    test.skip(true, "No logout UI or sign-out route is currently implemented in the app.");
+  test("logout from shell clears session and forces protected routes back to login", async ({
+    page,
+  }) => {
+    await signInFromRootLogin(page);
+    await expect(page).toHaveURL(new RegExp(`^https://${loginHost}${dashboardPath}/?$`));
+
+    await page.getByRole("button", { name: "Logout" }).click();
+    await page.waitForURL((url) => url.hostname === loginHost && url.pathname === "/login", {
+      timeout: 20_000,
+    });
+    await expect(page.getByRole("heading", { level: 2, name: "Sign in to continue" })).toBeVisible();
+
+    await page.goto(`${protocol}://${loginHost}${dashboardPath}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await assertRedirectedToLoginWithNext(page, loginHost, dashboardPath);
   });
 });

@@ -150,12 +150,14 @@ export function TaskFilterControls({
     })),
   ];
   const dueFilterOptions: FilterOption[] = TASK_DUE_FILTER_VALUES.map((value) => ({
-    value,
-    label:
+      value,
+      label:
       value === "all"
         ? "All"
         : value === "overdue"
           ? "Overdue"
+          : value === "due_today"
+            ? "Due today"
           : value === "due_soon"
             ? "Due soon"
             : "No due date",

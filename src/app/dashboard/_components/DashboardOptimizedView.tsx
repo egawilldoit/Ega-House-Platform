@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -12,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatIsoDate } from "@/lib/review-week";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import { formatTimerDateTime } from "@/lib/timer-domain";
@@ -25,6 +27,7 @@ import type {
 
 type DashboardOptimizedViewProps = {
   data: DashboardData;
+  ownerUserId: string | null;
   completedCount: number;
   completionRate: number | null;
   urgentCount: number;
@@ -117,6 +120,8 @@ function TaskRow({ task }: { task: DashboardTodayTask }) {
 }
 
 function GoalRow({ goal }: { goal: DashboardGoalStatus }) {
+  const nextStepPreview = getGoalNextStepPreview(goal.nextStep, 72);
+
   return (
     <article className="ega-dashboard-list-row">
       <div className="min-w-0">
@@ -126,6 +131,11 @@ function GoalRow({ goal }: { goal: DashboardGoalStatus }) {
         <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
           {goal.projectName} · {goal.completedTaskCount}/{goal.linkedTaskCount} linked tasks complete
         </p>
+        {nextStepPreview ? (
+          <p className="mt-1 truncate text-xs text-[color:var(--muted-foreground)]">
+            Next: {nextStepPreview}
+          </p>
+        ) : null}
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <div className="hidden min-w-20 text-right sm:block">
@@ -160,6 +170,7 @@ function ProjectRow({ project }: { project: DashboardProjectStatus }) {
 
 export function DashboardOptimizedView({
   data,
+  ownerUserId,
   completedCount,
   completionRate,
   urgentCount,
@@ -212,6 +223,12 @@ export function DashboardOptimizedView({
         </div>
       }
     >
+      <OwnerScopedRealtimeRefresh
+        ownerUserId={ownerUserId}
+        channelPrefix="dashboard"
+        tables={["task_sessions", "tasks"]}
+      />
+
       <section className="ega-dashboard-hero ega-dashboard-hero-compact">
         <div className="ega-dashboard-hero-copy">
           <p className="glass-label text-[color:var(--signal-live)]">Live Workspace State</p>

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { createClient } from "@/lib/supabase/server";
+
 import { DashboardOptimizedView } from "./_components/DashboardOptimizedView";
 import { getDashboardData } from "./_lib/dashboard-data";
 
@@ -10,6 +12,10 @@ export const metadata: Metadata = {
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const { todaysTasks, projectStatuses } = data;
 
   const tasks = todaysTasks.data ?? [];
@@ -25,6 +31,7 @@ export default async function DashboardPage() {
   return (
     <DashboardOptimizedView
       data={data}
+      ownerUserId={user?.id ?? null}
       completedCount={completedCount}
       completionRate={completionRate}
       urgentCount={urgentCount}

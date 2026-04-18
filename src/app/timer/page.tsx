@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { LiveDuration } from "@/components/timer/live-duration";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,9 @@ function getTaskContextHref(taskId: string | null | undefined, projectSlug: stri
 
 async function getTimerData() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   const now = new Date();
   const nowIso = now.toISOString();
   const todayWindow = getCurrentDayWindow(now);
@@ -147,6 +151,7 @@ async function getTimerData() {
     );
 
   return {
+    ownerUserId: user?.id ?? null,
     tasks: tasksResult.data,
     openSessions: openSessionsResult.data,
     todayTaskBreakdown,
@@ -202,6 +207,7 @@ export default async function TimerPage({
   const resolvedSearchParams = await searchParams;
   const actionError = resolvedSearchParams.actionError?.slice(0, 180) ?? null;
   const {
+    ownerUserId,
     tasks,
     openSessions,
     todayTaskBreakdown,
@@ -247,6 +253,12 @@ export default async function TimerPage({
         </div>
       }
     >
+      <OwnerScopedRealtimeRefresh
+        ownerUserId={ownerUserId}
+        channelPrefix="timer"
+        tables={["task_sessions"]}
+      />
+
       {hasSessionConflict ? (
         <div className="feedback-block feedback-block-warn mb-5 flex items-center justify-between gap-4 px-5 py-4">
           <p className="glass-label text-signal-warn">

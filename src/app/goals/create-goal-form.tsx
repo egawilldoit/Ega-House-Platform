@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { GOAL_NEXT_STEP_MAX_LENGTH } from "@/lib/goal-next-step";
 import { GOAL_STATUS_VALUES, formatTaskToken } from "@/lib/task-domain";
 
 import { type CreateGoalFormState, createGoalAction } from "./actions";
@@ -20,6 +21,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
       title: "",
       projectId: projects[0]?.id ?? "",
       description: "",
+      nextStep: "",
       status: "draft",
       slug: "",
     },
@@ -120,6 +122,20 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
               defaultValue={state.values.description}
               placeholder="Outcome-focused detail for this goal."
               className="min-h-24"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="next_step" className="glass-label text-etch">
+              Next step (optional)
+            </label>
+            <Input
+              id="next_step"
+              name="next_step"
+              defaultValue={state.values.nextStep}
+              maxLength={GOAL_NEXT_STEP_MAX_LENGTH}
+              placeholder="Ship first deploy-ready timer run."
+              className="h-10"
             />
           </div>
         </div>

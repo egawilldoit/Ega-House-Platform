@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { InlineGoalNextStepForm } from "@/components/goals/inline-goal-next-step-form";
 import { InlineGoalStatusForm } from "@/components/goals/inline-goal-status-form";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,9 +15,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 
-import { updateGoalStatusAction } from "./actions";
+import { updateGoalNextStepAction, updateGoalStatusAction } from "./actions";
 import { CreateGoalForm } from "./create-goal-form";
 
 export const metadata: Metadata = {
@@ -29,6 +31,7 @@ type GoalsPageProps = {
     goal?: string;
     goalUpdateError?: string;
     goalUpdateGoalId?: string;
+    goalUpdateField?: string;
   }>;
 };
 
@@ -42,6 +45,7 @@ type GoalView = {
   id: string;
   title: string;
   description: string | null;
+  nextStep: string | null;
   status: string;
   updatedAt: string;
   projectName: string | null;
@@ -55,7 +59,7 @@ async function getGoalsData() {
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
     supabase
       .from("goals")
-      .select("id, title, description, status, updated_at, projects(name)")
+      .select("id, title, description, next_step, status, updated_at, projects(name)")
       .order("updated_at", { ascending: false }),
     supabase
       .from("tasks")
@@ -93,6 +97,7 @@ async function getGoalsData() {
       id: goal.id,
       title: goal.title,
       description: goal.description,
+      nextStep: goal.next_step,
       status: goal.status,
       updatedAt: goal.updated_at,
       projectName: goal.projects?.name ?? null,
@@ -144,6 +149,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   const resolvedSearchParams = await searchParams;
   const goalUpdateError = resolvedSearchParams.goalUpdateError?.slice(0, 180) ?? null;
   const goalUpdateGoalId = resolvedSearchParams.goalUpdateGoalId ?? null;
+  const goalUpdateField = resolvedSearchParams.goalUpdateField ?? null;
   const { projects, goals } = await getGoalsData();
   const focusedGoal =
     goals.find((goal) => goal.id === resolvedSearchParams.goal) ?? goals[0] ?? null;
@@ -237,7 +243,11 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                     goalId={focusedGoal.id}
                     returnTo={`/goals?goal=${focusedGoal.id}`}
                     defaultStatus={focusedGoal.status}
-                    error={goalUpdateGoalId === focusedGoal.id ? goalUpdateError : null}
+                    error={
+                      goalUpdateGoalId === focusedGoal.id && goalUpdateField === "status"
+                        ? goalUpdateError
+                        : null
+                    }
                   />
                 </div>
               </CardContent>
@@ -261,6 +271,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
               <CardContent className="space-y-2 pt-0">
                 {goals.map((goal) => {
                   const isActiveGoal = goal.id === focusedGoal.id;
+                  const nextStepPreview = getGoalNextStepPreview(goal.nextStep, 70);
 
                   return (
                     <Link
@@ -279,6 +290,11 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                         <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
                           {goal.projectName ?? "Unassigned"} · {goal.progressPercent}% progress
                         </p>
+                        {nextStepPreview ? (
+                          <p className="mt-1 truncate text-xs text-[color:var(--muted-foreground)]">
+                            Next: {nextStepPreview}
+                          </p>
+                        ) : null}
                       </div>
                       <Badge tone={getTaskStatusTone(goal.status)}>
                         {formatTaskToken(goal.status)}
@@ -330,6 +346,25 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                   {focusedGoal.description?.trim() ||
                     "This goal does not have an extended description yet. Use the initiatives below to drive visible progress."}
                 </p>
+                {focusedGoal.nextStep?.trim() ? (
+                  <p className="mt-4 text-sm text-[color:var(--foreground)]">
+                    <span className="glass-label text-signal-live">Next step</span>{" "}
+                    {focusedGoal.nextStep.trim()}
+                  </p>
+                ) : null}
+                <div className="mt-5 border-t border-[var(--border)] pt-4">
+                  <InlineGoalNextStepForm
+                    action={updateGoalNextStepAction}
+                    goalId={focusedGoal.id}
+                    returnTo={`/goals?goal=${focusedGoal.id}`}
+                    defaultNextStep={focusedGoal.nextStep}
+                    error={
+                      goalUpdateGoalId === focusedGoal.id && goalUpdateField === "next_step"
+                        ? goalUpdateError
+                        : null
+                    }
+                  />
+                </div>
               </CardContent>
               <CardFooter className="justify-between">
                 <p className="text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">

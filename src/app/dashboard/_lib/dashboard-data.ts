@@ -75,6 +75,7 @@ export type DashboardProjectStatus = {
 export type DashboardGoalStatus = {
   id: string;
   title: string;
+  nextStep: string | null;
   status: string;
   updatedAt: string;
   projectName: string;
@@ -319,7 +320,7 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
     const [goalsResult, tasksResult] = await Promise.all([
       supabase
         .from("goals")
-        .select("id, title, status, updated_at, projects(name)")
+        .select("id, title, next_step, status, updated_at, projects(name)")
         .order("updated_at", { ascending: false })
         .limit(6),
       supabase
@@ -361,6 +362,7 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
         return {
           id: goal.id,
           title: goal.title,
+          nextStep: goal.next_step,
           status: goal.status,
           updatedAt: goal.updated_at,
           projectName: goal.projects?.name ?? "Unknown project",

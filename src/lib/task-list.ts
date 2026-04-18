@@ -1,4 +1,5 @@
 import {
+  isTaskDueToday,
   isTaskDueSoon,
   isTaskOverdue,
 } from "@/lib/task-due-date";
@@ -6,6 +7,7 @@ import {
 export const TASK_DUE_FILTER_VALUES = [
   "all",
   "overdue",
+  "due_today",
   "due_soon",
   "no_due_date",
 ] as const;
@@ -44,6 +46,8 @@ export function filterTasksByDueFilter<T extends TaskListLike>(
   switch (dueFilter) {
     case "overdue":
       return tasks.filter((task) => isTaskOverdue(task.due_date, task.status, today));
+    case "due_today":
+      return tasks.filter((task) => isTaskDueToday(task.due_date, task.status, today));
     case "due_soon":
       return tasks.filter((task) => isTaskDueSoon(task.due_date, task.status, today));
     case "no_due_date":

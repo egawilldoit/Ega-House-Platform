@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { toGoalNextStepWriteValue } from "@/lib/goal-next-step";
 import { createClient } from "@/lib/supabase/server";
 import { GOAL_STATUS_VALUES, isGoalStatus } from "@/lib/task-domain";
 
@@ -12,6 +13,7 @@ export type CreateGoalFormState = {
     title: string;
     projectId: string;
     description: string;
+    nextStep: string;
     status: string;
     slug: string;
   };
@@ -42,12 +44,16 @@ function redirectWithGoalsError(
   returnPath: string,
   errorMessage: string,
   goalId?: string,
+  field?: "status" | "next_step",
 ): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("goalUpdateError", errorMessage);
 
   if (goalId) {
     target.searchParams.set("goalUpdateGoalId", goalId);
+  }
+  if (field) {
+    target.searchParams.set("goalUpdateField", field);
   }
 
   redirect(`${target.pathname}${target.search}${goalId ? `#goal-${goalId}` : ""}`);
@@ -60,6 +66,7 @@ export async function createGoalAction(
   const title = String(formData.get("title") ?? "").trim();
   const projectId = String(formData.get("projectId") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  const nextStepResult = toGoalNextStepWriteValue(formData);
   const status = String(formData.get("status") ?? "draft").trim();
   const rawSlug = String(formData.get("slug") ?? "");
   const slug = normalizeSlug(rawSlug);
@@ -68,6 +75,7 @@ export async function createGoalAction(
     title,
     projectId,
     description,
+    nextStep: nextStepResult.value ?? "",
     status,
     slug,
   };
@@ -91,11 +99,16 @@ export async function createGoalAction(
     );
   }
 
+  if (nextStepResult.error) {
+    return createErrorState(nextStepResult.error, values);
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.from("goals").insert({
     title,
     project_id: projectId,
     description: description || null,
+    next_step: nextStepResult.value,
     status,
     slug: slug || null,
   });
@@ -112,6 +125,7 @@ export async function createGoalAction(
       title: "",
       projectId,
       description: "",
+      nextStep: "",
       status,
       slug: "",
     },
@@ -124,7 +138,7 @@ export async function updateGoalStatusAction(formData: FormData) {
   const status = String(formData.get("status") ?? "").trim();
 
   if (!goalId || !isGoalStatus(status)) {
-    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId);
+    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "status");
   }
 
   const updatedAt = new Date().toISOString();
@@ -138,10 +152,43 @@ export async function updateGoalStatusAction(formData: FormData) {
     .eq("id", goalId);
 
   if (error) {
-    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId);
+    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "status");
   }
 
   revalidatePath("/goals");
+  revalidatePath("/dashboard");
   revalidatePath("/tasks/projects");
+  redirect(`${returnPath}#goal-${goalId}`);
+}
+
+export async function updateGoalNextStepAction(formData: FormData) {
+  const returnPath = getGoalsReturnPath(formData.get("returnTo"));
+  const goalId = String(formData.get("goalId") ?? "").trim();
+  const nextStepResult = toGoalNextStepWriteValue(formData);
+
+  if (!goalId) {
+    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "next_step");
+  }
+
+  if (nextStepResult.error) {
+    redirectWithGoalsError(returnPath, nextStepResult.error, goalId, "next_step");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("goals")
+    .update({
+      next_step: nextStepResult.value,
+      updated_at: updatedAt,
+    })
+    .eq("id", goalId);
+
+  if (error) {
+    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "next_step");
+  }
+
+  revalidatePath("/goals");
+  revalidatePath("/dashboard");
   redirect(`${returnPath}#goal-${goalId}`);
 }

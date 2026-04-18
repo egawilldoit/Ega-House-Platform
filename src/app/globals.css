@@ -310,11 +310,34 @@ select {
   margin-left: auto;
   font-size: 0.625rem;
   font-weight: 700;
-  background: var(--accent);
-  color: #fff;
   border-radius: 999px;
   padding: 0.125rem 0.5rem;
   line-height: 1.4;
+  border: 1px solid transparent;
+}
+
+.sidebar-link .sidebar-badge-active {
+  background: #e8f5e9;
+  color: #1b5e20;
+  border-color: #a5d6a7;
+}
+
+.sidebar-link .sidebar-badge-muted {
+  background: var(--instrument-raised);
+  color: #52525b;
+  border-color: #e8e5de;
+}
+
+.sidebar-link .sidebar-badge-warn {
+  background: #fff3e0;
+  color: #e65100;
+  border-color: #ffcc80;
+}
+
+.sidebar-link .sidebar-badge-error {
+  background: #ffebee;
+  color: #c62828;
+  border-color: #ef9a9a;
 }
 
 .project-dot {

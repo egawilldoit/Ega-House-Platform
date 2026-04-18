@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { cn } from "@/lib/utils";
 import { Sidebar, type SidebarGoal, type SidebarProject } from "./sidebar";
@@ -54,17 +55,18 @@ export async function AppShell({
   className,
   contentClassName,
 }: AppShellProps) {
-  const [projects, goals] = await Promise.all([
+  const [projects, goals, metrics] = await Promise.all([
     getSidebarProjects(),
     getSidebarGoals(),
+    getWorkspaceShellMetrics(),
   ]);
 
   return (
     <div className={cn("min-h-dvh bg-background text-foreground flex selection:bg-secondary selection:text-foreground", className)}>
-      <Sidebar projects={projects} goals={goals} />
+      <Sidebar projects={projects} goals={goals} metrics={metrics} />
 
       <main className="ega-main">
-        <TopBar />
+        <TopBar metrics={metrics} />
 
         <div className="flex-1 overflow-y-auto">
           {/* Page header */}

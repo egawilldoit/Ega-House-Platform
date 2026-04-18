@@ -67,6 +67,15 @@ test("filters due soon tasks and keeps today in range", () => {
   assert.deepEqual(filtered.map((task) => task.id), ["task-3", "task-1"]);
 });
 
+test("filters due-today tasks separately from the broader due-soon range", () => {
+  const filtered = applyTaskListQuery([...sampleTasks], {
+    dueFilter: "due_today",
+    today: "2026-04-18",
+  });
+
+  assert.deepEqual(filtered.map((task) => task.id), ["task-3"]);
+});
+
 test("filters tasks without a due date", () => {
   const filtered = applyTaskListQuery([...sampleTasks], {
     dueFilter: "no_due_date",

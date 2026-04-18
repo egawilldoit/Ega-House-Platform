@@ -1,7 +1,11 @@
+import React from "react";
 import Link from "next/link";
 import { Search, Bell, Mail } from "lucide-react";
+import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 
-export function TopBar() {
+import { TopBarSignalCluster } from "./shell-signals";
+
+export function TopBar({ metrics }: { metrics: WorkspaceShellMetrics }) {
   return (
     <header className="ega-topbar px-8 py-5">
       <div className="ega-shell-max flex items-center justify-between gap-6">
@@ -19,10 +23,7 @@ export function TopBar() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 rounded-full border border-[var(--border)] bg-white/70 px-3 py-2 text-[11px] font-medium uppercase tracking-[0.14em] text-[color:var(--muted-foreground)] md:inline-flex">
-            <span className="signal-dot-live h-2 w-2 rounded-full bg-[var(--signal-live)]" />
-            Workspace live
-          </div>
+          <TopBarSignalCluster metrics={metrics} />
 
           <Link
             href="/apps"

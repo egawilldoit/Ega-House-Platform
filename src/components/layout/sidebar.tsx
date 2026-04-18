@@ -5,13 +5,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { QuickTaskSheet } from "@/components/tasks/quick-task-sheet";
+import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
+import {
+  getSidebarTaskSignalBadge,
+  SidebarSignalBadge,
+} from "./shell-signals";
+import { SidebarLogout } from "./sidebar-logout";
 
 type NavItem = {
   href: `/${string}`;
   label: string;
   icon: ReactNode;
-  badge?: string;
 };
 
 const NAV_ITEMS: NavItem[] = [
@@ -30,7 +35,6 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: "/tasks",
     label: "Tasks",
-    badge: "12+",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M9 11l3 3L22 4" />
@@ -95,17 +99,6 @@ const GENERAL_ITEMS: NavItem[] = [
       </svg>
     ),
   },
-  {
-    href: "/login" as `/${string}`,
-    label: "Logout",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
-        <polyline points="16 17 21 12 16 7" />
-        <line x1="21" y1="12" x2="9" y2="12" />
-      </svg>
-    ),
-  },
 ];
 
 function isActive(pathname: string, href: `/${string}`) {
@@ -140,10 +133,12 @@ export type SidebarGoal = {
 type SidebarProps = {
   projects?: SidebarProject[];
   goals?: SidebarGoal[];
+  metrics: WorkspaceShellMetrics;
 };
 
-export function Sidebar({ projects = [], goals = [] }: SidebarProps) {
+export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
   const currentPath = usePathname();
+  const taskBadge = getSidebarTaskSignalBadge(metrics);
 
   return (
     <aside className="ega-sidebar">
@@ -172,6 +167,14 @@ export function Sidebar({ projects = [], goals = [] }: SidebarProps) {
 
         {NAV_ITEMS.map((item) => {
           const active = isActive(currentPath, item.href);
+          const badge =
+            item.href === "/tasks"
+              ? taskBadge
+              : item.href === "/timer" && metrics.hasActiveTimer
+                ? { label: "Live", tone: "active" as const }
+                : item.href === "/review" && metrics.reviewMissing
+                  ? { label: "Due", tone: "warn" as const }
+                  : null;
           return (
             <Link
               key={item.href}
@@ -181,8 +184,8 @@ export function Sidebar({ projects = [], goals = [] }: SidebarProps) {
             >
               <span className="opacity-75">{item.icon}</span>
               {item.label}
-              {item.badge && (
-                <span className="sidebar-badge">{item.badge}</span>
+              {badge && (
+                <SidebarSignalBadge label={badge.label} tone={badge.tone} />
               )}
             </Link>
           );
@@ -227,6 +230,7 @@ export function Sidebar({ projects = [], goals = [] }: SidebarProps) {
             {item.label}
           </Link>
         ))}
+        <SidebarLogout />
 
         <div className="h-4" />
       </nav>
