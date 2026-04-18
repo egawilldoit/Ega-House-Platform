@@ -17,6 +17,7 @@ type ReviewExportRecord = {
 type ReviewExportStatSources = {
   taskCount: number;
   sessionRows: Array<{
+    task_id: string;
     started_at: string;
     ended_at: string | null;
     duration_seconds: number | null;

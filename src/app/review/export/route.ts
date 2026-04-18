@@ -38,7 +38,16 @@ export async function GET(request: Request) {
 
   const statSourcesByWeek: Record<
     string,
-    { taskCount: number; sessionRows: Array<{ started_at: string; ended_at: string | null; duration_seconds: number | null }>; goalStatuses: string[] }
+    {
+      taskCount: number;
+      sessionRows: Array<{
+        task_id: string;
+        started_at: string;
+        ended_at: string | null;
+        duration_seconds: number | null;
+      }>;
+      goalStatuses: string[];
+    }
   > = {};
 
   if (selectedWeekOf && (reviews?.length ?? 0) > 0) {
@@ -52,7 +61,7 @@ export async function GET(request: Request) {
         .lt("created_at", window.endExclusiveIso),
       supabase
         .from("task_sessions")
-        .select("started_at, ended_at, duration_seconds")
+        .select("task_id, started_at, ended_at, duration_seconds")
         .gte("started_at", window.startIso)
         .lt("started_at", window.endExclusiveIso),
       supabase

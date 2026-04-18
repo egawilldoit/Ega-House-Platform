@@ -29,11 +29,13 @@ test("buildReviewExportCsv includes review fields and computed weekly stats", ()
         taskCount: 3,
         sessionRows: [
           {
+            task_id: "task-1",
             started_at: "2026-04-14T09:00:00.000Z",
             ended_at: "2026-04-14T10:00:00.000Z",
             duration_seconds: null,
           },
           {
+            task_id: "task-2",
             started_at: "2026-04-15T09:00:00.000Z",
             ended_at: "2026-04-15T09:30:00.000Z",
             duration_seconds: 1800,
