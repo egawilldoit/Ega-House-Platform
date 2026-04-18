@@ -30,7 +30,6 @@ import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
 
 import type {
   DashboardData,
-  DashboardFocusQueueTask,
   DashboardGoalStatus,
   DashboardProjectStatus,
   DashboardTodayTask,
@@ -140,33 +139,6 @@ function TaskRow({ task, showPinAction = true }: { task: DashboardTodayTask; sho
             compact
           />
         ) : null}
-      </div>
-    </article>
-  );
-}
-
-function FocusQueueRow({ task }: { task: DashboardFocusQueueTask }) {
-  return (
-    <article className="ega-dashboard-list-row">
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-[color:var(--foreground)]">
-          {task.title}
-        </p>
-        <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
-          #{task.focusRank} · {task.projectName}
-          {task.goalTitle ? ` · ${task.goalTitle}` : ""}
-          {task.estimateMinutes ? ` · Est. ${formatTaskEstimate(task.estimateMinutes)}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
-        <FocusPinToggleForm
-          action={unpinTaskAction}
-          taskId={task.id}
-          returnTo="/dashboard"
-          isPinned
-          compact
-        />
       </div>
     </article>
   );
@@ -426,7 +398,6 @@ export function DashboardOptimizedView({
 }: DashboardOptimizedViewProps) {
   const {
     health,
-    focusQueue,
     focusPanel,
     activeTimer,
     todayPlanner,
