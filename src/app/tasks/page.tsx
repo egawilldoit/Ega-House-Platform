@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { updateTaskInlineAction } from "@/app/tasks/actions";
+import {
+  pinTaskAction,
+  unpinTaskAction,
+  updateTaskInlineAction,
+} from "@/app/tasks/actions";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
+import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
@@ -21,6 +26,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
@@ -91,7 +97,7 @@ async function getTasksData(
   const tasksQuery = supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, updated_at, project_id, goal_id, projects(name), goals(title)",
+      "id, title, description, status, priority, due_date, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
     )
     .order("updated_at", { ascending: false });
   if (activeStatus) {
@@ -171,6 +177,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const blockedCount = tasks.filter((task) => task.status === "blocked").length;
   const overdueCount = tasks.filter((task) => isTaskOverdue(task.due_date, task.status)).length;
   const dueSoonCount = tasks.filter((task) => isTaskDueSoon(task.due_date, task.status)).length;
+  const focusQueue = sortFocusQueueTasks(tasks);
 
   return (
     <TasksWorkspaceShell
@@ -273,6 +280,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                   {formatTaskToken(task.status)}
                                 </Badge>
                                 <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+                                {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                               </div>
                             </div>
 
@@ -296,6 +304,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           {formatTaskToken(task.status)}
                         </Badge>
                         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+                                {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                       </div>
                     </div>
 
@@ -316,6 +325,15 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         defaultDueDate={task.due_date}
                         error={inlineError}
                       />
+                      <div className="lg:justify-self-end">
+                        <FocusPinToggleForm
+                          action={task.focus_rank ? unpinTaskAction : pinTaskAction}
+                          taskId={task.id}
+                          returnTo={returnPath}
+                          isPinned={task.focus_rank !== null}
+                          compact
+                        />
+                      </div>
                     </div>
                   </article>
                 );
@@ -334,6 +352,46 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Card>
 
         <div className="space-y-6">
+          <Card className="border-[var(--border)] bg-white">
+            <CardHeader className="pb-4">
+              <p className="glass-label text-signal-live">Focus Queue</p>
+              <CardTitle className="text-xl">Pinned tasks</CardTitle>
+              <CardDescription>
+                A lightweight execution queue independent from priority.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-0">
+              {focusQueue.length > 0 ? (
+                focusQueue.slice(0, 5).map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
+                        {task.title}
+                      </p>
+                      <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+                        #{task.focus_rank} · {task.projects?.name ?? "No project"}
+                      </p>
+                    </div>
+                    <FocusPinToggleForm
+                      action={unpinTaskAction}
+                      taskId={task.id}
+                      returnTo={returnPath}
+                      isPinned
+                      compact
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                  Pin tasks from the queue to build a deliberate focus order.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card className="border-[var(--border)] bg-white">
             <CardHeader className="pb-4">
               <p className="glass-label text-signal-live">Queue Summary</p>

@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
+import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -22,9 +23,11 @@ import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatIsoDate } from "@/lib/review-week";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import { formatTimerDateTime } from "@/lib/timer-domain";
+import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 
 import type {
   DashboardData,
+  DashboardFocusQueueTask,
   DashboardGoalStatus,
   DashboardProjectStatus,
   DashboardTodayTask,
@@ -119,6 +122,40 @@ function TaskRow({ task }: { task: DashboardTodayTask }) {
       <div className="flex shrink-0 flex-wrap gap-2">
         <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+        {task.focusRank ? <Badge tone="info">Pinned #{task.focusRank}</Badge> : null}
+        <FocusPinToggleForm
+          action={task.focusRank ? unpinTaskAction : pinTaskAction}
+          taskId={task.id}
+          returnTo="/dashboard"
+          isPinned={task.focusRank !== null}
+          compact
+        />
+      </div>
+    </article>
+  );
+}
+
+function FocusQueueRow({ task }: { task: DashboardFocusQueueTask }) {
+  return (
+    <article className="ega-dashboard-list-row">
+      <div className="min-w-0">
+        <p className="truncate text-sm font-semibold text-[color:var(--foreground)]">
+          {task.title}
+        </p>
+        <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
+          #{task.focusRank} · {task.projectName}
+          {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
+        <FocusPinToggleForm
+          action={unpinTaskAction}
+          taskId={task.id}
+          returnTo="/dashboard"
+          isPinned
+          compact
+        />
       </div>
     </article>
   );
@@ -189,6 +226,7 @@ export function DashboardOptimizedView({
   const {
     health,
     todaysTasks,
+    focusQueue,
     activeTimer,
     projectStatuses,
     goals,
@@ -413,6 +451,38 @@ export function DashboardOptimizedView({
             ) : (
               <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
                 No tasks found yet. Create a task and it will surface here automatically.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-transparent bg-white">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <p className="glass-label text-[color:var(--signal-live)]">Focus Queue</p>
+                <CardTitle className="mt-2 text-xl">Pinned order</CardTitle>
+                <CardDescription>
+                  A compact queue independent from priority, ready for timer suggestions.
+                </CardDescription>
+              </div>
+              <CardAction>
+                <Link href="/tasks" className="glass-label text-signal-live">
+                  Open tasks
+                </Link>
+              </CardAction>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            {focusQueue.error ? (
+              <div className="feedback-block feedback-block-error">{focusQueue.error}</div>
+            ) : (focusQueue.data ?? []).length > 0 ? (
+              (focusQueue.data ?? []).slice(0, 4).map((task) => (
+                <FocusQueueRow key={task.id} task={task} />
+              ))
+            ) : (
+              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                Pin tasks from execution surfaces to establish queue order.
               </div>
             )}
           </CardContent>

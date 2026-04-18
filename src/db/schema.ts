@@ -73,6 +73,7 @@ export const tasks = pgTable(
     description: text("description"),
     status: varchar("status", { length: 64 }).notNull().default("todo"),
     priority: varchar("priority", { length: 32 }).notNull().default("medium"),
+    focusRank: integer("focus_rank"),
     dueDate: date("due_date"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -81,7 +82,10 @@ export const tasks = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("tasks_owner_user_id_idx").on(table.ownerUserId)],
+  (table) => [
+    index("tasks_owner_user_id_idx").on(table.ownerUserId),
+    index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
+  ],
 );
 
 export const taskSessions = pgTable(
@@ -104,7 +108,6 @@ export const taskSessions = pgTable(
   },
   (table) => [index("task_sessions_owner_user_id_idx").on(table.ownerUserId)],
 );
-
 export const weekReviews = pgTable(
   "week_reviews",
   {

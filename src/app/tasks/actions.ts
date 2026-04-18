@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import type { TablesInsert } from "@/lib/supabase/database.types";
+import { isTaskPinned } from "@/lib/focus-queue";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import {
   TASK_PRIORITY_VALUES,
@@ -86,6 +87,15 @@ function getTasksPathname(returnPath: string) {
   return new URL(returnPath, "https://egawilldoit.online").pathname;
 }
 
+function getTaskSurfaceReturnPath(rawReturnTo: unknown) {
+  const returnTo = String(rawReturnTo ?? "").trim();
+  if (returnTo.startsWith("/tasks") || returnTo.startsWith("/dashboard")) {
+    return returnTo;
+  }
+
+  return "/tasks";
+}
+
 function revalidateTaskSurfaces(returnTo: string) {
   revalidatePath("/tasks");
   revalidatePath("/tasks/projects");
@@ -107,6 +117,45 @@ function redirectWithTasksError(
   }
 
   redirect(`${target.pathname}${target.search}${taskId ? `#task-${taskId}` : ""}`);
+}
+
+function redirectWithTaskSurfaceError(
+  returnPath: string,
+  errorMessage: string,
+  taskId?: string,
+) {
+  const target = new URL(returnPath, "https://egawilldoit.online");
+  target.searchParams.set("taskUpdateError", errorMessage);
+
+  if (taskId) {
+    target.searchParams.set("taskUpdateTaskId", taskId);
+  }
+
+  const anchor = target.pathname.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
+  redirect(`${target.pathname}${target.search}${anchor}`);
+}
+
+async function getVisibleTaskFocusRank(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  taskId: string,
+) {
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, focus_rank")
+    .eq("id", taskId)
+    .maybeSingle();
+
+  if (error || !data) {
+    return {
+      errorMessage: "Selected task is unavailable.",
+      focusRank: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    focusRank: data.focus_rank,
+  };
 }
 
 async function getVisibleTaskScope(
@@ -453,4 +502,90 @@ export async function updateTaskInlineAction(formData: FormData) {
 
   revalidateTaskSurfaces(returnPath);
   redirect(`${returnPath}#task-${taskId}`);
+}
+
+export async function pinTaskAction(formData: FormData) {
+  const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+
+  if (!taskId) {
+    redirectWithTaskSurfaceError(returnPath, "Task pin request is invalid.");
+  }
+
+  const supabase = await createClient();
+  const taskResult = await getVisibleTaskFocusRank(supabase, taskId);
+
+  if (taskResult.errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, taskResult.errorMessage, taskId);
+  }
+
+  if (isTaskPinned(taskResult.focusRank)) {
+    const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
+    redirect(`${returnPath}${anchor}`);
+  }
+
+  const { data: highestRankRows, error: highestRankError } = await supabase
+    .from("tasks")
+    .select("focus_rank")
+    .not("focus_rank", "is", null)
+    .order("focus_rank", { ascending: false })
+    .limit(1);
+
+  if (highestRankError) {
+    redirectWithTaskSurfaceError(returnPath, "Unable to update focus queue right now.", taskId);
+  }
+
+  const nextFocusRank = (highestRankRows?.[0]?.focus_rank ?? 0) + 1;
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update({
+      focus_rank: nextFocusRank,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId);
+
+  if (updateError) {
+    redirectWithTaskSurfaceError(returnPath, "Unable to pin task right now.", taskId);
+  }
+
+  revalidateTaskSurfaces(returnPath);
+  const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
+  redirect(`${returnPath}${anchor}`);
+}
+
+export async function unpinTaskAction(formData: FormData) {
+  const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+
+  if (!taskId) {
+    redirectWithTaskSurfaceError(returnPath, "Task unpin request is invalid.");
+  }
+
+  const supabase = await createClient();
+  const taskResult = await getVisibleTaskFocusRank(supabase, taskId);
+
+  if (taskResult.errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, taskResult.errorMessage, taskId);
+  }
+
+  if (!isTaskPinned(taskResult.focusRank)) {
+    const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
+    redirect(`${returnPath}${anchor}`);
+  }
+
+  const { error: updateError } = await supabase
+    .from("tasks")
+    .update({
+      focus_rank: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", taskId);
+
+  if (updateError) {
+    redirectWithTaskSurfaceError(returnPath, "Unable to unpin task right now.", taskId);
+  }
+
+  revalidateTaskSurfaces(returnPath);
+  const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
+  redirect(`${returnPath}${anchor}`);
 }

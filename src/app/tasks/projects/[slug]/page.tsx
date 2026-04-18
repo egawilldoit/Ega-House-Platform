@@ -3,9 +3,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
-import { updateTaskInlineAction } from "@/app/tasks/actions";
+import {
+  pinTaskAction,
+  unpinTaskAction,
+  updateTaskInlineAction,
+} from "@/app/tasks/actions";
 import { updateProjectStatusAction } from "@/app/tasks/projects/actions";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
+import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
@@ -16,6 +21,7 @@ import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
@@ -40,7 +46,15 @@ type ProjectRow = Pick<Tables<"projects">, "id" | "name" | "slug" | "description
 type GoalRow = Pick<Tables<"goals">, "id" | "title" | "project_id">;
 type TaskRow = Pick<
   Tables<"tasks">,
-  "id" | "title" | "description" | "status" | "priority" | "due_date" | "updated_at" | "goal_id"
+  | "id"
+  | "title"
+  | "description"
+  | "status"
+  | "priority"
+  | "due_date"
+  | "updated_at"
+  | "goal_id"
+  | "focus_rank"
 > & {
   goals: Pick<Tables<"goals">, "title"> | null;
 };
@@ -84,7 +98,9 @@ async function getProjectDetail(slug: string) {
       .order("created_at", { ascending: false }),
     supabase
       .from("tasks")
-      .select("id, title, description, status, priority, due_date, updated_at, goal_id, goals(title)")
+      .select(
+        "id, title, description, status, priority, due_date, updated_at, goal_id, focus_rank, goals(title)",
+      )
       .eq("project_id", project.id)
       .order("updated_at", { ascending: false }),
   ]);
@@ -237,6 +253,7 @@ export default async function ProjectDetailPage({
 
   const focusedTask = filteredTasks[0] ?? null;
   const siblingTasks = filteredTasks.slice(1);
+  const focusQueue = sortFocusQueueTasks(filteredTasks);
   const focusedDurationSeconds = focusedTask ? taskTotalDurations[focusedTask.id] ?? 0 : 0;
   const completedRelatedTasks = filteredTasks.filter((task) => task.status === "done").length;
 
@@ -283,6 +300,7 @@ export default async function ProjectDetailPage({
                   {formatTaskToken(focusedTask?.status ?? project.status)}
                 </Badge>
                 {focusedTask ? <Badge>{formatTaskToken(focusedTask.priority)}</Badge> : null}
+                {focusedTask?.focus_rank ? <Badge tone="info">Pinned #{focusedTask.focus_rank}</Badge> : null}
               </div>
 
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,0.55fr)]">
@@ -409,6 +427,9 @@ export default async function ProjectDetailPage({
                           {formatTaskToken(focusedTask.status)}
                         </Badge>
                         <Badge>{formatTaskToken(focusedTask.priority)}</Badge>
+                        {focusedTask.focus_rank ? (
+                          <Badge tone="info">Pinned #{focusedTask.focus_rank}</Badge>
+                        ) : null}
                       </div>
                     </div>
                     <div className="mt-4 border-t border-[var(--border)] pt-4">
@@ -421,6 +442,15 @@ export default async function ProjectDetailPage({
                         defaultDueDate={focusedTask.due_date}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
                       />
+                      <div className="mt-3">
+                        <FocusPinToggleForm
+                          action={focusedTask.focus_rank ? unpinTaskAction : pinTaskAction}
+                          taskId={focusedTask.id}
+                          returnTo={returnTo}
+                          isPinned={focusedTask.focus_rank !== null}
+                          compact
+                        />
+                      </div>
                     </div>
                   </article>
 
@@ -452,6 +482,7 @@ export default async function ProjectDetailPage({
                               {formatTaskToken(task.status)}
                             </Badge>
                             <Badge>{formatTaskToken(task.priority)}</Badge>
+                            {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                           </div>
                         </div>
                         <div className="mt-4 border-t border-[var(--border)] pt-4">
@@ -464,6 +495,15 @@ export default async function ProjectDetailPage({
                             defaultDueDate={task.due_date}
                             error={inlineError}
                           />
+                          <div className="mt-3">
+                            <FocusPinToggleForm
+                              action={task.focus_rank ? unpinTaskAction : pinTaskAction}
+                              taskId={task.id}
+                              returnTo={returnTo}
+                              isPinned={task.focus_rank !== null}
+                              compact
+                            />
+                          </div>
                         </div>
                       </article>
                     );
@@ -479,6 +519,47 @@ export default async function ProjectDetailPage({
         </div>
 
         <div className="space-y-6">
+          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
+            <CardContent className="p-6">
+              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
+                Focus Queue
+              </h3>
+              <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
+                Project-specific pinned order, kept separate from priority labels.
+              </p>
+              <div className="mt-4 space-y-3">
+                {focusQueue.length > 0 ? (
+                  focusQueue.slice(0, 4).map((task) => (
+                    <div
+                      key={task.id}
+                      className="flex items-center justify-between gap-3 rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
+                          {task.title}
+                        </p>
+                        <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+                          #{task.focus_rank}
+                        </p>
+                      </div>
+                      <FocusPinToggleForm
+                        action={unpinTaskAction}
+                        taskId={task.id}
+                        returnTo={returnTo}
+                        isPinned
+                        compact
+                      />
+                    </div>
+                  ))
+                ) : (
+                  <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                    Pin tasks in this project to build a focused execution order.
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">

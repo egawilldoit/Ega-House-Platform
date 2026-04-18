@@ -1,6 +1,7 @@
 import { type GoalHealth, toGoalHealthOrNull } from "@/lib/goal-health";
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
+import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
   getCurrentDayWindow,
   formatDurationLabel,
@@ -17,6 +18,7 @@ import {
 const TODAY_TASK_LIMIT = 8;
 const PANEL_ERROR_MESSAGES = {
   todaysTasks: "Could not load today's tasks right now.",
+  focusQueue: "Could not load focus queue right now.",
   activeTimer: "Could not load the active timer right now.",
   projectStatuses: "Could not load project statuses right now.",
   goals: "Could not load goal visibility right now.",
@@ -46,7 +48,19 @@ export type DashboardTodayTask = {
   title: string;
   status: string;
   priority: string;
+  focusRank: number | null;
   dueDate: string | null;
+  updatedAt: string;
+  projectName: string;
+  goalTitle: string | null;
+};
+
+export type DashboardFocusQueueTask = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  focusRank: number;
   updatedAt: string;
   projectName: string;
   goalTitle: string | null;
@@ -120,6 +134,7 @@ export type DashboardLinearProject = {
 export type DashboardData = {
   health: DashboardHealthData;
   todaysTasks: PanelResult<DashboardTodayTask[]>;
+  focusQueue: PanelResult<DashboardFocusQueueTask[]>;
   activeTimer: PanelResult<DashboardActiveSession | null>;
   projectStatuses: PanelResult<DashboardProjectStatus[]>;
   goals: PanelResult<DashboardGoalStatus[]>;
@@ -178,7 +193,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "id, title, status, priority, due_date, updated_at, projects(name), goals(title)",
+        "id, title, status, priority, due_date, updated_at, focus_rank, projects(name), goals(title)",
       )
       .gte("updated_at", startIso)
       .lt("updated_at", endIso)
@@ -200,7 +215,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
             await supabase
               .from("tasks")
               .select(
-                "id, title, status, priority, due_date, updated_at, projects(name), goals(title)",
+                "id, title, status, priority, due_date, updated_at, focus_rank, projects(name), goals(title)",
               )
               .order("updated_at", { ascending: false })
               .limit(TODAY_TASK_LIMIT)
@@ -212,6 +227,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
         title: task.title,
         status: task.status,
         priority: task.priority,
+        focusRank: task.focus_rank,
         dueDate: task.due_date,
         updatedAt: task.updated_at,
         projectName: task.projects?.name ?? "Unknown project",
@@ -223,6 +239,47 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
     return {
       data: null,
       error: PANEL_ERROR_MESSAGES.todaysTasks,
+    };
+  }
+}
+
+async function getFocusQueue(): Promise<PanelResult<DashboardFocusQueueTask[]>> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("tasks")
+      .select("id, title, status, priority, updated_at, focus_rank, projects(name), goals(title)")
+      .not("focus_rank", "is", null)
+      .order("focus_rank", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(8);
+
+    if (error) {
+      return {
+        data: null,
+        error: PANEL_ERROR_MESSAGES.focusQueue,
+      };
+    }
+
+    const queue = sortFocusQueueTasks(data ?? []).map((task) => ({
+      id: task.id,
+      title: task.title,
+      status: task.status,
+      priority: task.priority,
+      focusRank: task.focus_rank ?? 0,
+      updatedAt: task.updated_at,
+      projectName: task.projects?.name ?? "Unknown project",
+      goalTitle: task.goals?.title ?? null,
+    }));
+
+    return {
+      data: queue,
+      error: null,
+    };
+  } catch {
+    return {
+      data: null,
+      error: PANEL_ERROR_MESSAGES.focusQueue,
     };
   }
 }
@@ -542,6 +599,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   const [
     health,
     todaysTasks,
+    focusQueue,
     activeTimer,
     projectStatuses,
     goals,
@@ -552,6 +610,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     await Promise.all([
       getDashboardHealthData(),
       getTodaysTasks(),
+      getFocusQueue(),
       getActiveTimer(),
       getProjectStatuses(),
       getGoals(),
@@ -563,6 +622,7 @@ export async function getDashboardData(): Promise<DashboardData> {
   return {
     health,
     todaysTasks,
+    focusQueue,
     activeTimer,
     projectStatuses,
     goals,

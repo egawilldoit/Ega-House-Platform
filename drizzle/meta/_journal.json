@@ -78,6 +78,13 @@
       "when": 1776528924872,
       "tag": "0010_black_toad_men",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1776531725604,
+      "tag": "0011_perpetual_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }
