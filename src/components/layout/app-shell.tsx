@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 import { cn } from "@/lib/utils";
-import { Sidebar, type SidebarProject } from "./sidebar";
+import { Sidebar, type SidebarGoal, type SidebarProject } from "./sidebar";
 import { TopBar } from "./top-bar";
 
 type AppShellProps = {
@@ -31,6 +31,20 @@ async function getSidebarProjects(): Promise<SidebarProject[]> {
   }
 }
 
+async function getSidebarGoals(): Promise<SidebarGoal[]> {
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("goals")
+      .select("id, title, project_id")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    return data ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function AppShell({
   children,
   eyebrow,
@@ -40,11 +54,14 @@ export async function AppShell({
   className,
   contentClassName,
 }: AppShellProps) {
-  const projects = await getSidebarProjects();
+  const [projects, goals] = await Promise.all([
+    getSidebarProjects(),
+    getSidebarGoals(),
+  ]);
 
   return (
     <div className={cn("min-h-dvh bg-background text-foreground flex selection:bg-secondary selection:text-foreground", className)}>
-      <Sidebar projects={projects} />
+      <Sidebar projects={projects} goals={goals} />
 
       <main className="ega-main">
         <TopBar />

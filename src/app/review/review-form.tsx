@@ -7,19 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
 import { type SaveReviewFormState, saveReviewAction } from "./actions";
+import { type ReviewFormValues } from "./review-form-state";
 
 type ReviewFormProps = {
-  defaultWeekOf: string;
+  defaultValues: ReviewFormValues;
 };
 
-export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
+export function ReviewForm({ defaultValues }: ReviewFormProps) {
   const initialState: SaveReviewFormState = {
     error: null,
     saved: false,
-    values: {
-      reflection: "",
-      weekOf: defaultWeekOf,
-    },
+    values: defaultValues,
   };
 
   const [state, formAction, isPending] = useActionState(
@@ -44,20 +42,58 @@ export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label
-          htmlFor="reflection"
-          className="glass-label text-etch"
-        >
-          Reflection
+        <label htmlFor="summary" className="glass-label text-etch">
+          Summary
         </label>
         <Textarea
-          id="reflection"
-          name="reflection"
+          id="summary"
+          name="summary"
           required
           minLength={20}
-          placeholder="What worked, what failed, and what you will change next week."
-          defaultValue={state.values.reflection}
+          placeholder="Summarize the week, what changed, and the overall outcome."
+          defaultValue={state.values.summary}
           className="min-h-36"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <label htmlFor="wins" className="glass-label text-etch">
+            Wins
+          </label>
+          <Textarea
+            id="wins"
+            name="wins"
+            placeholder="Key progress, shipped work, or positive outcomes."
+            defaultValue={state.values.wins}
+            className="min-h-32"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label htmlFor="blockers" className="glass-label text-etch">
+            Blockers
+          </label>
+          <Textarea
+            id="blockers"
+            name="blockers"
+            placeholder="What slowed the week down or still needs resolution."
+            defaultValue={state.values.blockers}
+            className="min-h-32"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <label htmlFor="nextSteps" className="glass-label text-etch">
+          Next steps
+        </label>
+        <Textarea
+          id="nextSteps"
+          name="nextSteps"
+          placeholder="What should happen next in the coming week."
+          defaultValue={state.values.nextSteps}
+          className="min-h-32"
         />
       </div>
 
@@ -69,7 +105,7 @@ export function ReviewForm({ defaultWeekOf }: ReviewFormProps) {
 
       {state.saved ? (
         <p className="feedback-block feedback-block-success">
-          Review saved.
+          Review saved. You can keep editing this week and save again.
         </p>
       ) : null}
 

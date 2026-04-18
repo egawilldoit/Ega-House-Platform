@@ -1,9 +1,21 @@
-import { date, integer, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import {
+  date,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+  varchar,
+} from "drizzle-orm/pg-core";
 
 export const projects = pgTable(
   "projects",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
     name: varchar("name", { length: 256 }).notNull(),
     slug: varchar("slug", { length: 256 }).notNull(),
     description: text("description"),
@@ -15,13 +27,20 @@ export const projects = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [uniqueIndex("projects_slug_unique").on(table.slug)],
+  (table) => [
+    index("projects_owner_user_id_idx").on(table.ownerUserId),
+    uniqueIndex("projects_owner_user_id_slug_unique").on(
+      table.ownerUserId,
+      table.slug,
+    ),
+  ],
 );
 
 export const goals = pgTable(
   "goals",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id),
@@ -36,12 +55,14 @@ export const goals = pgTable(
       .defaultNow()
       .notNull(),
   },
+  (table) => [index("goals_owner_user_id_idx").on(table.ownerUserId)],
 );
 
 export const tasks = pgTable(
   "tasks",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id),
@@ -57,12 +78,14 @@ export const tasks = pgTable(
       .defaultNow()
       .notNull(),
   },
+  (table) => [index("tasks_owner_user_id_idx").on(table.ownerUserId)],
 );
 
 export const taskSessions = pgTable(
   "task_sessions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
     taskId: uuid("task_id")
       .notNull()
       .references(() => tasks.id),
@@ -76,12 +99,14 @@ export const taskSessions = pgTable(
       .defaultNow()
       .notNull(),
   },
+  (table) => [index("task_sessions_owner_user_id_idx").on(table.ownerUserId)],
 );
 
 export const weekReviews = pgTable(
   "week_reviews",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
     weekStart: date("week_start").notNull(),
     weekEnd: date("week_end").notNull(),
     summary: text("summary"),
@@ -95,4 +120,5 @@ export const weekReviews = pgTable(
       .defaultNow()
       .notNull(),
   },
+  (table) => [index("week_reviews_owner_user_id_idx").on(table.ownerUserId)],
 );

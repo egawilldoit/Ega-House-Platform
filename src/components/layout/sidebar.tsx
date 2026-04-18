@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { QuickTaskSheet } from "@/components/tasks/quick-task-sheet";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -130,11 +131,18 @@ export type SidebarProject = {
   name: string;
 };
 
-type SidebarProps = {
-  projects?: SidebarProject[];
+export type SidebarGoal = {
+  id: string;
+  title: string;
+  project_id: string;
 };
 
-export function Sidebar({ projects = [] }: SidebarProps) {
+type SidebarProps = {
+  projects?: SidebarProject[];
+  goals?: SidebarGoal[];
+};
+
+export function Sidebar({ projects = [], goals = [] }: SidebarProps) {
   const currentPath = usePathname();
 
   return (
@@ -154,6 +162,8 @@ export function Sidebar({ projects = [] }: SidebarProps) {
           <div className="text-sm font-bold text-[color:var(--foreground)]">EGA House</div>
         </div>
       </div>
+
+      <QuickTaskSheet projects={projects} goals={goals} />
 
       {/* Primary nav */}
       <nav className="flex flex-col items-stretch pt-5 flex-1" aria-label="Main navigation">

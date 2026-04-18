@@ -50,6 +50,13 @@
       "when": 1776331620000,
       "tag": "0006_add_project_status",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1776500962333,
+      "tag": "0007_amused_boomer",
+      "breakpoints": true
     }
   ]
 }

@@ -14,6 +14,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          owner_user_id: string | null
           project_id: string
           slug: string | null
           status: string
@@ -24,6 +25,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          owner_user_id?: string | null
           project_id: string
           slug?: string | null
           status?: string
@@ -34,6 +36,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          owner_user_id?: string | null
           project_id?: string
           slug?: string | null
           status?: string
@@ -56,6 +59,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          owner_user_id: string | null
           slug: string
           status: string
           updated_at: string
@@ -65,6 +69,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          owner_user_id?: string | null
           slug: string
           status?: string
           updated_at?: string
@@ -74,6 +79,7 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          owner_user_id?: string | null
           slug?: string
           status?: string
           updated_at?: string
@@ -86,6 +92,7 @@ export type Database = {
           duration_seconds: number | null
           ended_at: string | null
           id: string
+          owner_user_id: string | null
           started_at: string
           task_id: string
           updated_at: string
@@ -95,6 +102,7 @@ export type Database = {
           duration_seconds?: number | null
           ended_at?: string | null
           id?: string
+          owner_user_id?: string | null
           started_at: string
           task_id: string
           updated_at?: string
@@ -104,6 +112,7 @@ export type Database = {
           duration_seconds?: number | null
           ended_at?: string | null
           id?: string
+          owner_user_id?: string | null
           started_at?: string
           task_id?: string
           updated_at?: string
@@ -124,6 +133,7 @@ export type Database = {
           description: string | null
           goal_id: string | null
           id: string
+          owner_user_id: string | null
           priority: string
           project_id: string
           status: string
@@ -135,6 +145,7 @@ export type Database = {
           description?: string | null
           goal_id?: string | null
           id?: string
+          owner_user_id?: string | null
           priority?: string
           project_id: string
           status?: string
@@ -146,6 +157,7 @@ export type Database = {
           description?: string | null
           goal_id?: string | null
           id?: string
+          owner_user_id?: string | null
           priority?: string
           project_id?: string
           status?: string
@@ -175,6 +187,7 @@ export type Database = {
           created_at: string
           id: string
           next_steps: string | null
+          owner_user_id: string | null
           summary: string | null
           updated_at: string
           week_end: string
@@ -186,6 +199,7 @@ export type Database = {
           created_at?: string
           id?: string
           next_steps?: string | null
+          owner_user_id?: string | null
           summary?: string | null
           updated_at?: string
           week_end: string
@@ -197,6 +211,7 @@ export type Database = {
           created_at?: string
           id?: string
           next_steps?: string | null
+          owner_user_id?: string | null
           summary?: string | null
           updated_at?: string
           week_end?: string

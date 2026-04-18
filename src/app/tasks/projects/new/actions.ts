@@ -73,7 +73,9 @@ export async function createProjectAction(
   if (error) {
     const duplicateSlug =
       error.code === "23505" ||
-      error.message.toLowerCase().includes("projects_slug_unique");
+      error.message
+        .toLowerCase()
+        .includes("projects_owner_user_id_slug_unique");
 
     if (duplicateSlug) {
       return createErrorState(

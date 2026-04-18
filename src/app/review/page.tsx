@@ -17,6 +17,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getTaskSessionDurationSeconds } from "@/lib/task-session";
 
 import { ReviewForm } from "./review-form";
+import {
+  getEmptyReviewFormValues,
+  getReviewFormValuesFromRecord,
+} from "./review-form-state";
 import { WeekSelector } from "./week-selector";
 
 export const metadata: Metadata = {
@@ -64,7 +68,7 @@ async function getSelectedWeekReviews(weekStart: string, weekEnd: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("week_reviews")
-    .select("id, summary, created_at, updated_at")
+    .select("id, summary, wins, blockers, next_steps, created_at, updated_at")
     .eq("week_start", weekStart)
     .eq("week_end", weekEnd)
     .order("updated_at", { ascending: false });
@@ -182,6 +186,9 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
     Math.round((weeklyStats.trackedSeconds / (40 * 60 * 60)) * 100),
   );
   const selectedReview = selectedWeekReviews[0] ?? null;
+  const reviewFormDefaults = selectedReview
+    ? getReviewFormValuesFromRecord(selectedReview, selectedWeekOf)
+    : getEmptyReviewFormValues(selectedWeekOf);
   const blockerCount = weeklyStats.goalStatusCounts
     .filter((entry) => ["paused", "draft"].includes(entry.status))
     .reduce((sum, entry) => sum + entry.count, 0);
@@ -347,12 +354,15 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                     Save Reflection
                   </h2>
                   <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                    Write or update the weekly review summary for the selected cycle.
+                    Write or update the weekly review fields for the selected cycle.
                   </p>
                 </div>
                 <Badge tone="muted">{formatIsoDate(bounds.weekStart)}</Badge>
               </div>
-              <ReviewForm defaultWeekOf={selectedWeekOf} />
+              <ReviewForm
+                key={`${selectedWeekOf}:${selectedReview?.id ?? "new"}`}
+                defaultValues={reviewFormDefaults}
+              />
             </CardContent>
           </Card>
 
