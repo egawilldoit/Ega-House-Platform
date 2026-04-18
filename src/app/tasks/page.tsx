@@ -44,6 +44,7 @@ import {
   isTaskStatus,
 } from "@/lib/task-domain";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 
 export const metadata: Metadata = {
   title: "Tasks | EGA House",
@@ -107,7 +108,7 @@ async function getTasksData(
   const tasksQuery = supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
     )
     .order("updated_at", { ascending: false });
   if (activeStatus) {
@@ -312,11 +313,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               </p>
                             ) : null}
 
-                            <TaskDueDateLabel
-                              dueDate={task.due_date}
-                              status={task.status}
-                              className="mt-3"
-                            />
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
+                              {task.estimate_minutes ? (
+                                <Badge tone="muted">Est. {formatTaskEstimate(task.estimate_minutes)}</Badge>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -331,11 +333,21 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                     </div>
 
                     <div className="mt-4 grid gap-4 border-t border-[var(--border)] pt-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
-                      <div className="grid min-w-32 gap-1 rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-3">
-                        <p className="glass-label text-etch">Tracked</p>
-                        <p className="text-sm font-medium text-[color:var(--foreground)]">
-                          {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
-                        </p>
+                      <div className="flex flex-wrap gap-3">
+                        <div className="grid min-w-32 gap-1 rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-3">
+                          <p className="glass-label text-etch">Tracked</p>
+                          <p className="text-sm font-medium text-[color:var(--foreground)]">
+                            {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
+                          </p>
+                        </div>
+                        {task.estimate_minutes ? (
+                          <div className="grid min-w-32 gap-1 rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-3">
+                            <p className="glass-label text-etch">Estimate</p>
+                            <p className="text-sm font-medium text-[color:var(--foreground)]">
+                              {formatTaskEstimate(task.estimate_minutes)}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
 
                       <InlineTaskUpdateForm
@@ -345,6 +357,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         defaultStatus={task.status}
                         defaultPriority={task.priority}
                         defaultDueDate={task.due_date}
+                        defaultEstimateMinutes={task.estimate_minutes}
                         error={inlineError}
                       />
                       <div className="lg:justify-self-end">

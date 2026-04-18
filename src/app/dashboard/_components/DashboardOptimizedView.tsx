@@ -23,6 +23,7 @@ import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatIsoDate } from "@/lib/review-week";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import { formatTimerDateTime } from "@/lib/timer-domain";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 
 import type {
@@ -117,7 +118,12 @@ function TaskRow({ task }: { task: DashboardTodayTask }) {
           {task.projectName}
           {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
         </p>
-        <TaskDueDateLabel dueDate={task.dueDate} status={task.status} className="mt-2" />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <TaskDueDateLabel dueDate={task.dueDate} status={task.status} />
+          {task.estimateMinutes ? (
+            <Badge tone="muted">Est. {formatTaskEstimate(task.estimateMinutes)}</Badge>
+          ) : null}
+        </div>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
         <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
@@ -144,7 +150,8 @@ function FocusQueueRow({ task }: { task: DashboardFocusQueueTask }) {
         </p>
         <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
           #{task.focusRank} · {task.projectName}
-          {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
+          {task.goalTitle ? ` · ${task.goalTitle}` : ""}
+          {task.estimateMinutes ? ` · Est. ${formatTaskEstimate(task.estimateMinutes)}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
         </p>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">

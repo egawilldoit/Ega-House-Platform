@@ -192,6 +192,7 @@ export type Database = {
           created_at: string
           due_date: string | null
           description: string | null
+          estimate_minutes: number | null
           focus_rank: number | null
           goal_id: string | null
           id: string
@@ -206,6 +207,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           description?: string | null
+          estimate_minutes?: number | null
           focus_rank?: number | null
           goal_id?: string | null
           id?: string
@@ -220,6 +222,7 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           description?: string | null
+          estimate_minutes?: number | null
           focus_rank?: number | null
           goal_id?: string | null
           id?: string

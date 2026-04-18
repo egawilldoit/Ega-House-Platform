@@ -39,6 +39,7 @@ export function CreateTaskForm({
       status: "todo",
       priority: "medium",
       dueDate: "",
+      estimateMinutes: "",
       returnTo,
     },
   };
@@ -195,6 +196,23 @@ export function CreateTaskForm({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="estimateMinutes" className="glass-label text-etch">
+                Estimate (minutes)
+              </label>
+              <Input
+                id="estimateMinutes"
+                name="estimateMinutes"
+                type="number"
+                min="0"
+                step="15"
+                inputMode="numeric"
+                placeholder="90"
+                defaultValue={state.values.estimateMinutes}
+                className="h-10"
+              />
             </div>
           </div>
 

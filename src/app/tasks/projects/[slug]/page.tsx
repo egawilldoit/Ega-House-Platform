@@ -32,6 +32,7 @@ import {
   type TaskSortValue,
 } from "@/lib/task-list";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import {
   TASK_STATUS_VALUES,
@@ -52,6 +53,7 @@ type TaskRow = Pick<
   | "status"
   | "priority"
   | "due_date"
+  | "estimate_minutes"
   | "updated_at"
   | "goal_id"
   | "focus_rank"
@@ -99,7 +101,7 @@ async function getProjectDetail(slug: string) {
     supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, updated_at, goal_id, focus_rank, goals(title)",
+        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
       )
       .eq("project_id", project.id)
       .order("updated_at", { ascending: false }),
@@ -315,7 +317,12 @@ export default async function ProjectDetailPage({
                         "No description has been added for this task yet."}
                     </p>
                     {focusedTask ? (
-                      <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
+                        {focusedTask.estimate_minutes ? (
+                          <Badge tone="muted">Est. {formatTaskEstimate(focusedTask.estimate_minutes)}</Badge>
+                        ) : null}
+                      </div>
                     ) : null}
                   </div>
                 </div>
@@ -348,6 +355,14 @@ export default async function ProjectDetailPage({
                         </p>
                       )}
                     </div>
+                  </div>
+                  <div>
+                    <p className="glass-label text-etch">Estimate</p>
+                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
+                      {focusedTask?.estimate_minutes
+                        ? formatTaskEstimate(focusedTask.estimate_minutes)
+                        : "No estimate"}
+                    </p>
                   </div>
                   <div>
                     <p className="glass-label text-etch">Updated</p>
@@ -416,11 +431,12 @@ export default async function ProjectDetailPage({
                         <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
                           Focused task
                         </p>
-                        <TaskDueDateLabel
-                          dueDate={focusedTask.due_date}
-                          status={focusedTask.status}
-                          className="mt-2"
-                        />
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
+                          {focusedTask.estimate_minutes ? (
+                            <Badge tone="muted">Est. {formatTaskEstimate(focusedTask.estimate_minutes)}</Badge>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Badge tone={getTaskStatusTone(focusedTask.status)}>
@@ -440,6 +456,7 @@ export default async function ProjectDetailPage({
                         defaultStatus={focusedTask.status}
                         defaultPriority={focusedTask.priority}
                         defaultDueDate={focusedTask.due_date}
+                        defaultEstimateMinutes={focusedTask.estimate_minutes}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
                       />
                       <div className="mt-3">
@@ -471,11 +488,12 @@ export default async function ProjectDetailPage({
                             <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
                               {task.goals?.title ?? "No linked goal"}
                             </p>
-                            <TaskDueDateLabel
-                              dueDate={task.due_date}
-                              status={task.status}
-                              className="mt-2"
-                            />
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
+                              {task.estimate_minutes ? (
+                                <Badge tone="muted">Est. {formatTaskEstimate(task.estimate_minutes)}</Badge>
+                              ) : null}
+                            </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Badge tone={getTaskStatusTone(task.status)}>
@@ -493,6 +511,7 @@ export default async function ProjectDetailPage({
                             defaultStatus={task.status}
                             defaultPriority={task.priority}
                             defaultDueDate={task.due_date}
+                            defaultEstimateMinutes={task.estimate_minutes}
                             error={inlineError}
                           />
                           <div className="mt-3">

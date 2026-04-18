@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { TablesInsert } from "@/lib/supabase/database.types";
 import { isTaskPinned } from "@/lib/focus-queue";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
+import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -25,6 +26,7 @@ export type CreateTaskFormState = {
     status: string;
     priority: string;
     dueDate: string;
+    estimateMinutes: string;
     returnTo: string;
   };
 };
@@ -42,6 +44,7 @@ export type CreateTasksBulkFormState = {
     status: string;
     priority: string;
     dueDate: string;
+    estimateMinutes: string;
     returnTo: string;
   };
 };
@@ -55,6 +58,7 @@ type BulkTaskComposerRowInput = {
   status?: string;
   priority?: string;
   dueDate?: string;
+  estimateMinutes?: string;
 };
 
 function createErrorState(
@@ -177,9 +181,7 @@ async function getVisibleTaskScope(
   return {
     errorMessage: null,
     projectIds: new Set((projectsResult.data ?? []).map((project) => project.id)),
-    goalsById: new Map(
-      (goalsResult.data ?? []).map((goal) => [goal.id, goal]),
-    ),
+    goalsById: new Map((goalsResult.data ?? []).map((goal) => [goal.id, goal])),
   };
 }
 
@@ -265,6 +267,7 @@ function toTaskInsertRow(row: BulkTaskComposerRowInput) {
     status: String(row.status ?? "").trim(),
     priority: String(row.priority ?? "").trim(),
     due_date: String(row.dueDate ?? "").trim() || null,
+    estimate_minutes: normalizeTaskEstimateInput(row.estimateMinutes).value,
   } satisfies TablesInsert<"tasks">;
 }
 
@@ -279,8 +282,10 @@ export async function createTaskAction(
   const status = String(formData.get("status") ?? "todo").trim();
   const priority = String(formData.get("priority") ?? "medium").trim();
   const rawDueDate = String(formData.get("dueDate") ?? "").trim();
+  const rawEstimateMinutes = String(formData.get("estimateMinutes") ?? "").trim();
   const returnTo = getTasksReturnPath(formData.get("returnTo"));
   const dueDateResult = normalizeTaskDueDateInput(rawDueDate);
+  const estimateResult = normalizeTaskEstimateInput(rawEstimateMinutes);
 
   const values = {
     title,
@@ -290,6 +295,7 @@ export async function createTaskAction(
     status,
     priority,
     dueDate: rawDueDate,
+    estimateMinutes: rawEstimateMinutes,
     returnTo,
   };
 
@@ -319,6 +325,10 @@ export async function createTaskAction(
     return createErrorState(dueDateResult.error, values);
   }
 
+  if (estimateResult.error) {
+    return createErrorState(estimateResult.error, values);
+  }
+
   const { errorMessage } = await insertTasks([{
     title,
     project_id: projectId,
@@ -327,6 +337,7 @@ export async function createTaskAction(
     status,
     priority,
     due_date: dueDateResult.value,
+    estimate_minutes: estimateResult.value,
   }]);
 
   if (errorMessage) {
@@ -346,6 +357,7 @@ export async function createTaskAction(
       status: "todo",
       priority: "medium",
       dueDate: "",
+      estimateMinutes: "",
       returnTo,
     },
   };
@@ -367,6 +379,7 @@ export async function createTasksBulkAction(
     status: "todo",
     priority: "medium",
     dueDate: "",
+    estimateMinutes: "",
     returnTo,
   };
 
@@ -388,6 +401,7 @@ export async function createTasksBulkAction(
     const lineLabel = row.lineNumber ? `Line ${row.lineNumber}` : "Row";
     const taskRow = toTaskInsertRow(row);
     const dueDateResult = normalizeTaskDueDateInput(row.dueDate);
+    const estimateResult = normalizeTaskEstimateInput(row.estimateMinutes);
 
     if (!taskRow.title) {
       skippedLines.push({ value: lineLabel, reason: "Task title is required." });
@@ -423,7 +437,16 @@ export async function createTasksBulkAction(
       continue;
     }
 
+    if (estimateResult.error) {
+      skippedLines.push({
+        value: taskRow.title || lineLabel,
+        reason: estimateResult.error,
+      });
+      continue;
+    }
+
     taskRow.due_date = dueDateResult.value;
+    taskRow.estimate_minutes = estimateResult.value;
 
     const scopeError = getTaskRowScopeError(
       taskRow,
@@ -468,6 +491,7 @@ export async function createTasksBulkAction(
       status: "todo",
       priority: "medium",
       dueDate: "",
+      estimateMinutes: "",
       returnTo,
     },
   };
@@ -479,8 +503,15 @@ export async function updateTaskInlineAction(formData: FormData) {
   const status = String(formData.get("status") ?? "").trim();
   const priority = String(formData.get("priority") ?? "").trim();
   const dueDateResult = normalizeTaskDueDateInput(formData.get("dueDate"));
+  const estimateResult = normalizeTaskEstimateInput(formData.get("estimateMinutes"));
 
-  if (!taskId || !isTaskStatus(status) || !isTaskPriority(priority) || dueDateResult.error) {
+  if (
+    !taskId ||
+    !isTaskStatus(status) ||
+    !isTaskPriority(priority) ||
+    dueDateResult.error ||
+    estimateResult.error
+  ) {
     redirectWithTasksError(returnPath, "Task update request is invalid.", taskId);
   }
 
@@ -492,6 +523,7 @@ export async function updateTaskInlineAction(formData: FormData) {
       status,
       priority,
       due_date: dueDateResult.value,
+      estimate_minutes: estimateResult.value,
       updated_at: updatedAt,
     })
     .eq("id", taskId);

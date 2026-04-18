@@ -73,6 +73,7 @@ export const tasks = pgTable(
     description: text("description"),
     status: varchar("status", { length: 64 }).notNull().default("todo"),
     priority: varchar("priority", { length: 32 }).notNull().default("medium"),
+    estimateMinutes: integer("estimate_minutes"),
     focusRank: integer("focus_rank"),
     dueDate: date("due_date"),
     createdAt: timestamp("created_at", { withTimezone: true })

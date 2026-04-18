@@ -13,6 +13,7 @@ type InlineTaskUpdateFormProps = {
   defaultStatus: string;
   defaultPriority: string;
   defaultDueDate: string | null;
+  defaultEstimateMinutes: number | null;
   error?: string | null;
 };
 
@@ -23,6 +24,7 @@ export function InlineTaskUpdateForm({
   defaultStatus,
   defaultPriority,
   defaultDueDate,
+  defaultEstimateMinutes,
   error,
 }: InlineTaskUpdateFormProps) {
   return (
@@ -75,6 +77,21 @@ export function InlineTaskUpdateForm({
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="glass-label text-etch">
+            Estimate
+          </span>
+          <Input
+            name="estimateMinutes"
+            type="number"
+            min="0"
+            step="15"
+            inputMode="numeric"
+            defaultValue={defaultEstimateMinutes ?? ""}
+            className="min-h-9 min-w-28 px-3 py-0 text-sm"
+          />
         </label>
 
         <Button size="sm" type="submit" variant="muted">

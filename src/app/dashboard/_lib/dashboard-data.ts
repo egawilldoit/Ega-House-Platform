@@ -51,6 +51,7 @@ export type DashboardTodayTask = {
   priority: string;
   focusRank: number | null;
   dueDate: string | null;
+  estimateMinutes: number | null;
   updatedAt: string;
   projectName: string;
   goalTitle: string | null;
@@ -62,6 +63,7 @@ export type DashboardFocusQueueTask = {
   status: string;
   priority: string;
   focusRank: number;
+  estimateMinutes: number | null;
   updatedAt: string;
   projectName: string;
   goalTitle: string | null;
@@ -194,7 +196,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "id, title, status, priority, due_date, updated_at, focus_rank, projects(name), goals(title)",
+        "id, title, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
       )
       .gte("updated_at", startIso)
       .lt("updated_at", endIso)
@@ -216,7 +218,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
             await supabase
               .from("tasks")
               .select(
-                "id, title, status, priority, due_date, updated_at, focus_rank, projects(name), goals(title)",
+                "id, title, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
               )
               .order("updated_at", { ascending: false })
               .limit(TODAY_TASK_LIMIT)
@@ -230,6 +232,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
         priority: task.priority,
         focusRank: task.focus_rank,
         dueDate: task.due_date,
+        estimateMinutes: task.estimate_minutes,
         updatedAt: task.updated_at,
         projectName: task.projects?.name ?? "Unknown project",
         goalTitle: task.goals?.title ?? null,
@@ -249,7 +252,7 @@ async function getFocusQueue(): Promise<PanelResult<DashboardFocusQueueTask[]>> 
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("tasks")
-      .select("id, title, status, priority, updated_at, focus_rank, projects(name), goals(title)")
+      .select("id, title, status, priority, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)")
       .not("focus_rank", "is", null)
       .order("focus_rank", { ascending: true })
       .order("updated_at", { ascending: false })

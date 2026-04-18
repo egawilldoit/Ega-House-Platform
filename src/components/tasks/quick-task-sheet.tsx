@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { workspaceShortcutEvents } from "@/components/layout/workspace-keyboard-shortcuts";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -66,6 +67,7 @@ type MultiTaskDraft = {
   status: string;
   priority: string;
   dueDate: string;
+  estimateMinutes: string;
   description: string;
 };
 
@@ -90,6 +92,7 @@ function createEmptyDraft(defaultProjectId: string): MultiTaskDraft {
     status: "todo",
     priority: "medium",
     dueDate: "",
+    estimateMinutes: "",
     description: "",
   };
 }
@@ -111,6 +114,10 @@ function getDraftErrors(draft: MultiTaskDraft, goals: QuickTaskSheetGoal[]) {
 
   if (!isTaskPriority(draft.priority)) {
     errors.push(`Priority "${draft.priority}" is invalid.`);
+  }
+
+  if (draft.estimateMinutes.trim() && !/^\d+$/.test(draft.estimateMinutes.trim())) {
+    errors.push("Estimate must be a whole number of minutes.");
   }
 
   if (
@@ -149,6 +156,7 @@ function QuickTaskSheetPanel({
       status: "todo",
       priority: "medium",
       dueDate: "",
+      estimateMinutes: "",
       returnTo: DEFAULT_RETURN_TO,
     },
   };
@@ -165,6 +173,7 @@ function QuickTaskSheetPanel({
       status: "todo",
       priority: "medium",
       dueDate: "",
+      estimateMinutes: "",
       returnTo: DEFAULT_RETURN_TO,
     },
   };
@@ -197,6 +206,14 @@ function QuickTaskSheetPanel({
       onSuccess("multi", bulkState.skippedLines.length);
     }
   }, [bulkState.skippedLines.length, bulkState.success, onSuccess]);
+
+  useEffect(() => {
+    const focusId = window.requestAnimationFrame(() => {
+      document.getElementById("quick-task-title")?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(focusId);
+  }, []);
 
   function updateDraft(
     draftId: string,
@@ -279,6 +296,7 @@ function QuickTaskSheetPanel({
       status: draft.status,
       priority: draft.priority,
       dueDate: draft.dueDate,
+      estimateMinutes: draft.estimateMinutes,
     })),
   );
 
@@ -446,6 +464,22 @@ function QuickTaskSheetPanel({
                             </option>
                           ))}
                         </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label htmlFor="quick-task-estimate" className="glass-label text-etch">
+                          Estimate (minutes)
+                        </label>
+                        <Input
+                          id="quick-task-estimate"
+                          name="estimateMinutes"
+                          type="number"
+                          min="0"
+                          step="15"
+                          inputMode="numeric"
+                          defaultValue={singleState.values.estimateMinutes}
+                          className="h-10"
+                        />
                       </div>
                     </div>
 
@@ -639,13 +673,28 @@ function QuickTaskSheetPanel({
                               </select>
                             </div>
 
-                            <div className="space-y-2 sm:col-span-2">
+                            <div className="space-y-2">
                               <label className="glass-label text-etch">Due date</label>
                               <Input
                                 type="date"
                                 value={draft.dueDate}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "dueDate", event.target.value)
+                                }
+                                className="h-10"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <label className="glass-label text-etch">Estimate (minutes)</label>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="15"
+                                inputMode="numeric"
+                                value={draft.estimateMinutes}
+                                onChange={(event) =>
+                                  updateDraftField(draft.id, "estimateMinutes", event.target.value)
                                 }
                                 className="h-10"
                               />
@@ -754,6 +803,18 @@ export function QuickTaskSheet({
 
     router.refresh();
   }
+
+  useEffect(() => {
+    const openFromShortcut = () => {
+      setActiveTab("single");
+      setOpen(true);
+    };
+
+    window.addEventListener(workspaceShortcutEvents.openQuickTask, openFromShortcut);
+    return () => {
+      window.removeEventListener(workspaceShortcutEvents.openQuickTask, openFromShortcut);
+    };
+  }, []);
 
   return (
     <Sheet
