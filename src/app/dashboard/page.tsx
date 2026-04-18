@@ -16,9 +16,9 @@ export default async function DashboardPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const { todaysTasks, projectStatuses } = data;
+  const { todayPlanner, projectStatuses } = data;
 
-  const tasks = todaysTasks.data ?? [];
+  const tasks = todayPlanner.data?.all ?? [];
   const completedCount = tasks.filter((task) => task.status === "done").length;
   const completionRate =
     tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : null;

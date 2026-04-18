@@ -5,6 +5,7 @@ import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-r
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   getGoalHealthLabel,
   getGoalHealthTone,
@@ -25,6 +26,7 @@ import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
+import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
 
 import type {
   DashboardData,
@@ -53,12 +55,12 @@ function getGreeting() {
 
 function getHeroSummary(taskCount: number, completionRate: number | null) {
   if (taskCount > 0) {
-    return `${taskCount} recent task${taskCount === 1 ? "" : "s"} in focus${
+    return `${taskCount} task${taskCount === 1 ? "" : "s"} in today's lane${
       completionRate !== null ? ` · ${completionRate}% done` : ""
     }`;
   }
 
-  return "No live task changes yet. The dashboard is now pulling your existing workspace state.";
+  return "No work is in today's lane yet. Pin a task, start a timer, or set a due date to shape the day.";
 }
 
 function toPreviewText(value: string | null | undefined, max = 180) {
@@ -94,7 +96,7 @@ function DashboardMetric({
   );
 }
 
-function TaskRow({ task }: { task: DashboardTodayTask }) {
+function TaskRow({ task, showPinAction = true }: { task: DashboardTodayTask; showPinAction?: boolean }) {
   return (
     <article className="ega-dashboard-list-row">
       <div className="min-w-0">
@@ -129,13 +131,15 @@ function TaskRow({ task }: { task: DashboardTodayTask }) {
         <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
         {task.focusRank ? <Badge tone="info">Pinned #{task.focusRank}</Badge> : null}
-        <FocusPinToggleForm
-          action={task.focusRank ? unpinTaskAction : pinTaskAction}
-          taskId={task.id}
-          returnTo="/dashboard"
-          isPinned={task.focusRank !== null}
-          compact
-        />
+        {showPinAction ? (
+          <FocusPinToggleForm
+            action={task.focusRank ? unpinTaskAction : pinTaskAction}
+            taskId={task.id}
+            returnTo="/dashboard"
+            isPinned={task.focusRank !== null}
+            compact
+          />
+        ) : null}
       </div>
     </article>
   );
@@ -221,6 +225,196 @@ function ProjectRow({ project }: { project: DashboardProjectStatus }) {
   );
 }
 
+function getTaskContextHref(taskId: string, projectSlug: string | null | undefined) {
+  if (!projectSlug) {
+    return "/tasks";
+  }
+
+  return `/tasks/projects/${projectSlug}#task-${taskId}`;
+}
+
+function FocusPanel({
+  activeTimer,
+  activeTimerError,
+  focusPanel,
+  focusPanelError,
+}: {
+  activeTimer: DashboardData["activeTimer"]["data"];
+  activeTimerError: string | null;
+  focusPanel: DashboardData["focusPanel"]["data"];
+  focusPanelError: string | null;
+}) {
+  if (activeTimer) {
+    const activeTaskHref = getTaskContextHref(activeTimer.taskId, activeTimer.projectSlug);
+
+    return (
+      <div className="space-y-4">
+        <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="active">Timer running</Badge>
+            <Badge tone={getTaskStatusTone(activeTimer.taskStatus)}>
+              {formatTaskToken(activeTimer.taskStatus)}
+            </Badge>
+            <Badge tone="muted">{formatTaskToken(activeTimer.taskPriority)}</Badge>
+          </div>
+          <p className="mt-3 text-sm font-semibold text-[color:var(--foreground)]">
+            {activeTimer.taskTitle}
+          </p>
+          <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
+            {activeTimer.projectName}
+            {activeTimer.goalTitle ? ` · ${activeTimer.goalTitle}` : ""} · Started{" "}
+            {formatTimerDateTime(activeTimer.startedAt)}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="active">{activeTimer.elapsedLabel}</Badge>
+          <Link href={activeTaskHref} className="btn-instrument btn-instrument-muted">
+            Open task
+          </Link>
+          <Link href="/timer" className="btn-instrument">
+            Open timer
+          </Link>
+          <form action={stopTimerAction}>
+            <input type="hidden" name="sessionId" value={activeTimer.sessionId} />
+            <input type="hidden" name="returnTo" value="/dashboard" />
+            <Button type="submit" variant="danger" size="sm">
+              Stop timer
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (focusPanelError) {
+    return <div className="feedback-block feedback-block-error">{focusPanelError}</div>;
+  }
+
+  if (!focusPanel) {
+    return (
+      <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+        Focus recommendation is warming up.
+      </div>
+    );
+  }
+
+  if (focusPanel.state === "blocked_only") {
+    return (
+      <div className="space-y-3">
+        <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+          {focusPanel.blockedTaskCount} open task
+          {focusPanel.blockedTaskCount === 1 ? " is" : "s are"} blocked. Unblock work or update status to resume execution.
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge tone="danger">Blocked only</Badge>
+          <Badge tone="muted">{focusPanel.openTaskCount} open</Badge>
+          {focusPanel.pinnedTaskCount > 0 ? (
+            <Badge tone="muted">{focusPanel.pinnedTaskCount} pinned</Badge>
+          ) : null}
+        </div>
+        <Link href="/tasks" className="btn-instrument btn-instrument-muted">
+          Open tasks
+        </Link>
+      </div>
+    );
+  }
+
+  if (focusPanel.state === "empty") {
+    return (
+      <div className="space-y-3">
+        <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+          No actionable tasks are available yet. Capture a task or reopen a completed item to start focus time.
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/tasks" className="btn-instrument btn-instrument-muted">
+            Open tasks
+          </Link>
+          <Link href="/timer" className="btn-instrument btn-instrument-muted">
+            Open timer
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const { recommendation } = focusPanel;
+  const recommendedTask = recommendation.task;
+  const recommendedTaskHref = getTaskContextHref(
+    recommendedTask.id,
+    recommendedTask.projectSlug,
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="active">Recommended next</Badge>
+          <Badge tone={getTaskStatusTone(recommendedTask.status)}>
+            {formatTaskToken(recommendedTask.status)}
+          </Badge>
+          <Badge tone="muted">{formatTaskToken(recommendedTask.priority)}</Badge>
+          <TaskDueDateLabel dueDate={recommendedTask.dueDate} status={recommendedTask.status} />
+        </div>
+        <p className="mt-3 text-sm font-semibold text-[color:var(--foreground)]">
+          {recommendedTask.title}
+        </p>
+        <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
+          {recommendedTask.projectName}
+          {recommendedTask.goalTitle ? ` · ${recommendedTask.goalTitle}` : ""}
+          {recommendedTask.estimateMinutes
+            ? ` · Est. ${formatTaskEstimate(recommendedTask.estimateMinutes)}`
+            : ""}
+          {" · "}
+          Updated {formatTimerDateTime(recommendedTask.updatedAt)}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {recommendation.signals.slice(0, 4).map((signal) => (
+          <Badge key={signal} tone="info">
+            {signal}
+          </Badge>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <form action={startTimerAction}>
+          <input type="hidden" name="taskId" value={recommendedTask.id} />
+          <input type="hidden" name="returnTo" value="/dashboard" />
+          <Button type="submit" size="sm">
+            Start focus timer
+          </Button>
+        </form>
+        <FocusPinToggleForm
+          action={recommendedTask.focusRank ? unpinTaskAction : pinTaskAction}
+          taskId={recommendedTask.id}
+          returnTo="/dashboard"
+          isPinned={recommendedTask.focusRank !== null}
+          compact
+        />
+        <Link href={recommendedTaskHref} className="btn-instrument btn-instrument-muted">
+          Open task
+        </Link>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Badge tone="muted">{recommendation.openTaskCount} open</Badge>
+        {recommendation.blockedTaskCount > 0 ? (
+          <Badge tone="warn">{recommendation.blockedTaskCount} blocked</Badge>
+        ) : null}
+        {recommendation.pinnedTaskCount > 0 ? (
+          <Badge tone="muted">{recommendation.pinnedTaskCount} pinned</Badge>
+        ) : null}
+      </div>
+
+      {activeTimerError ? (
+        <div className="feedback-block feedback-block-error">{activeTimerError}</div>
+      ) : null}
+    </div>
+  );
+}
+
 export function DashboardOptimizedView({
   data,
   ownerUserId,
@@ -232,9 +426,10 @@ export function DashboardOptimizedView({
 }: DashboardOptimizedViewProps) {
   const {
     health,
-    todaysTasks,
     focusQueue,
+    focusPanel,
     activeTimer,
+    todayPlanner,
     projectStatuses,
     goals,
     timerSummary,
@@ -242,7 +437,8 @@ export function DashboardOptimizedView({
     linearProject,
   } = data;
 
-  const tasks = todaysTasks.data ?? [];
+  const tasks = todayPlanner.data?.all ?? [];
+  const planner = todayPlanner.data;
   const goalItems = goals.data ?? [];
   const projectItems = projectStatuses.data ?? [];
   const summary = timerSummary.data;
@@ -438,7 +634,7 @@ export function DashboardOptimizedView({
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="glass-label text-[color:var(--signal-live)]">Execution Queue</p>
-                <CardTitle className="mt-2 text-xl">Recent tasks</CardTitle>
+                <CardTitle className="mt-2 text-xl">Today planner</CardTitle>
                 <CardDescription>
                   The newest work items shaping today&apos;s execution pressure.
                 </CardDescription>
@@ -451,13 +647,36 @@ export function DashboardOptimizedView({
             </div>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
-            {todaysTasks.error ? (
-              <div className="feedback-block feedback-block-error">{todaysTasks.error}</div>
-            ) : tasks.length > 0 ? (
-              tasks.slice(0, 5).map((task) => <TaskRow key={task.id} task={task} />)
+            {todayPlanner.error ? (
+              <div className="feedback-block feedback-block-error">{todayPlanner.error}</div>
+            ) : planner && planner.all.length > 0 ? (
+              <div className="space-y-4">
+                {[
+                  { key: "planned", label: "Planned", items: planner.planned },
+                  { key: "in-progress", label: "In progress", items: planner.inProgress },
+                  { key: "blocked", label: "Blocked", items: planner.blocked },
+                  { key: "completed", label: "Completed", items: planner.completed, showPinAction: false },
+                ]
+                  .filter((section) => section.items.length > 0)
+                  .map((section) => (
+                    <div key={section.key} className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="glass-label text-etch">{section.label}</p>
+                        <Badge tone="muted">{section.items.length}</Badge>
+                      </div>
+                      {section.items.slice(0, 4).map((task) => (
+                        <TaskRow
+                          key={task.id}
+                          task={task}
+                          showPinAction={section.showPinAction !== false}
+                        />
+                      ))}
+                    </div>
+                  ))}
+              </div>
             ) : (
               <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                No tasks found yet. Create a task and it will surface here automatically.
+                Nothing is in today&apos;s execution lane yet. Pin a task, start a timer, or give work a due date to shape the plan.
               </div>
             )}
           </CardContent>
@@ -467,10 +686,10 @@ export function DashboardOptimizedView({
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="glass-label text-[color:var(--signal-live)]">Focus Queue</p>
-                <CardTitle className="mt-2 text-xl">Pinned order</CardTitle>
+                <p className="glass-label text-[color:var(--signal-live)]">Focus Panel</p>
+                <CardTitle className="mt-2 text-xl">Next best work</CardTitle>
                 <CardDescription>
-                  A compact queue independent from priority, ready for timer suggestions.
+                  Uses active timer, pinned tasks, due pressure, in-progress momentum, and recent activity to recommend what to do next.
                 </CardDescription>
               </div>
               <CardAction>
@@ -481,17 +700,12 @@ export function DashboardOptimizedView({
             </div>
           </CardHeader>
           <CardContent className="space-y-3 pt-0">
-            {focusQueue.error ? (
-              <div className="feedback-block feedback-block-error">{focusQueue.error}</div>
-            ) : (focusQueue.data ?? []).length > 0 ? (
-              (focusQueue.data ?? []).slice(0, 4).map((task) => (
-                <FocusQueueRow key={task.id} task={task} />
-              ))
-            ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                Pin tasks from execution surfaces to establish queue order.
-              </div>
-            )}
+            <FocusPanel
+              activeTimer={activeTimer.data}
+              activeTimerError={activeTimer.error}
+              focusPanel={focusPanel.data}
+              focusPanelError={focusPanel.error}
+            />
           </CardContent>
         </Card>
 
