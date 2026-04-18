@@ -1,7 +1,7 @@
 export const TASK_STATUS_VALUES = ["todo", "in_progress", "done", "blocked"] as const;
 export const TASK_PRIORITY_VALUES = ["low", "medium", "high", "urgent"] as const;
 export const GOAL_STATUS_VALUES = ["draft", "active", "done", "paused"] as const;
-export const PROJECT_STATUS_VALUES = ["planned", "active", "done", "paused"] as const;
+export const PROJECT_STATUS_VALUES = ["planned", "active", "done", "paused", "archived"] as const;
 
 export type TaskStatus = (typeof TASK_STATUS_VALUES)[number];
 export type TaskPriority = (typeof TASK_PRIORITY_VALUES)[number];

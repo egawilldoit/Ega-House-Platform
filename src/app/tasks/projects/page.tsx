@@ -1,12 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { updateProjectStatusAction } from "@/app/tasks/projects/actions";
+import {
+  archiveProjectAction,
+  unarchiveProjectAction,
+  updateProjectStatusAction,
+} from "@/app/tasks/projects/actions";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  type ProjectViewFilter,
+  PROJECT_ARCHIVE_STATUS,
+  isProjectArchivedStatus,
+  normalizeProjectViewFilter,
+} from "@/lib/project-archive";
 import { createClient } from "@/lib/supabase/server";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import type { Tables } from "@/lib/supabase/database.types";
@@ -27,6 +37,13 @@ type ProjectCardData = ProjectRow & {
   progressPercent: number;
   statusCounts: Array<{ status: string; count: number }>;
   recentTasks: TaskRow[];
+};
+
+type ProjectSummary = {
+  total: number;
+  active: number;
+  completed: number;
+  archived: number;
 };
 
 export const metadata: Metadata = {
@@ -66,20 +83,39 @@ function getProjectProgressTone(project: ProjectCardData) {
   return "bg-[var(--signal-info)] text-[var(--signal-info)]";
 }
 
-async function getProjectsWithTaskContext() {
+async function getProjectsWithTaskContext(view: ProjectViewFilter) {
   const supabase = await createClient();
-
-  const { data: projects, error: projectsError } = await supabase
+  const projectsQuery = supabase
     .from("projects")
     .select("id, name, slug, description, status, created_at, updated_at")
     .order("updated_at", { ascending: false });
+
+  if (view === "active") {
+    projectsQuery.neq("status", PROJECT_ARCHIVE_STATUS);
+  } else if (view === "archived") {
+    projectsQuery.eq("status", PROJECT_ARCHIVE_STATUS);
+  }
+
+  const [{ data: projects, error: projectsError }, { data: projectSummaryRows, error: projectSummaryError }] =
+    await Promise.all([projectsQuery, supabase.from("projects").select("status")]);
 
   if (projectsError) {
     throw new Error(`Failed to load projects: ${projectsError.message}`);
   }
 
+  if (projectSummaryError) {
+    throw new Error(`Failed to load project summary: ${projectSummaryError.message}`);
+  }
+
+  const summary: ProjectSummary = {
+    total: projectSummaryRows.length,
+    active: projectSummaryRows.filter((project) => project.status === "active").length,
+    completed: projectSummaryRows.filter((project) => project.status === "done").length,
+    archived: projectSummaryRows.filter((project) => isProjectArchivedStatus(project.status)).length,
+  };
+
   if (!projects.length) {
-    return [];
+    return { projects: [], summary };
   }
 
   const projectIds = projects.map((project) => project.id);
@@ -101,37 +137,40 @@ async function getProjectsWithTaskContext() {
     tasksByProject.set(task.project_id, projectTasks);
   }
 
-  return projects.map((project) => {
-    const projectTasks = tasksByProject.get(project.id) ?? [];
-    const statusCountMap = new Map<string, number>();
+  return {
+    projects: projects.map((project) => {
+      const projectTasks = tasksByProject.get(project.id) ?? [];
+      const statusCountMap = new Map<string, number>();
 
-    for (const task of projectTasks) {
-      statusCountMap.set(task.status, (statusCountMap.get(task.status) ?? 0) + 1);
-    }
+      for (const task of projectTasks) {
+        statusCountMap.set(task.status, (statusCountMap.get(task.status) ?? 0) + 1);
+      }
 
-    const completedTaskCount = projectTasks.filter((task) => task.status === "done").length;
-    const progressPercent =
-      projectTasks.length > 0
-        ? Math.round((completedTaskCount / projectTasks.length) * 100)
-        : 0;
+      const completedTaskCount = projectTasks.filter((task) => task.status === "done").length;
+      const progressPercent =
+        projectTasks.length > 0
+          ? Math.round((completedTaskCount / projectTasks.length) * 100)
+          : 0;
 
-    const statusCounts = Array.from(statusCountMap.entries())
-      .map(([status, count]) => ({ status, count }))
-      .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
-      .slice(0, 3);
+      const statusCounts = Array.from(statusCountMap.entries())
+        .map(([status, count]) => ({ status, count }))
+        .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
+        .slice(0, 3);
 
-    return {
-      ...project,
-      taskCount: projectTasks.length,
-      completedTaskCount,
-      progressPercent,
-      statusCounts,
-      recentTasks: projectTasks.slice(0, 2),
-    } satisfies ProjectCardData;
-  });
+      return {
+        ...project,
+        taskCount: projectTasks.length,
+        completedTaskCount,
+        progressPercent,
+        statusCounts,
+        recentTasks: projectTasks.slice(0, 2),
+      } satisfies ProjectCardData;
+    }),
+    summary,
+  };
 }
 
-function EmptyState() {
+function EmptyState({ hasArchivedProjects }: { hasArchivedProjects: boolean }) {
   return (
     <Card className="surface-empty bg-white max-w-3xl">
       <CardContent className="space-y-5 p-8">
@@ -143,9 +182,9 @@ function EmptyState() {
             No projects yet
           </h2>
           <p className="max-w-2xl text-sm leading-7 text-[color:var(--muted-foreground)]">
-            The tasks workspace is wired to the live database, but there are no
-            project rows to render yet. Once projects exist, this view will
-            summarize status, completion pressure, and direct task context.
+            {hasArchivedProjects
+              ? "Archived projects are hidden from the default view. Switch to Archived or All to inspect them."
+              : "The tasks workspace is wired to the live database, but there are no project rows to render yet. Once projects exist, this view will summarize status, completion pressure, and direct task context."}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -155,7 +194,9 @@ function EmptyState() {
             </Button>
           </form>
           <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
-            Create one project to start attaching goals and tasks.
+            {hasArchivedProjects
+              ? "Archived projects remain reachable through explicit project views."
+              : "Create one project to start attaching goals and tasks."}
           </p>
         </div>
       </CardContent>
@@ -167,12 +208,20 @@ function ProjectCard({
   project,
   returnTo,
   inlineError,
+  archiveError,
+  activeView,
 }: {
   project: ProjectCardData;
   returnTo: string;
   inlineError?: string | null;
+  archiveError?: string | null;
+  activeView: ProjectViewFilter;
 }) {
   const progressTone = getProjectProgressTone(project);
+  const isArchived = isProjectArchivedStatus(project.status);
+  const detailHref = `/tasks/projects/${project.slug}${
+    activeView === "active" ? "" : `?view=${activeView}`
+  }`;
 
   return (
     <Card
@@ -181,19 +230,17 @@ function ProjectCard({
     >
       <CardContent className="flex h-full flex-col p-6">
         <div className="mb-5 flex items-start justify-between gap-3">
-          <Badge tone={getStatusTone(project.status)}>
-            {formatTaskToken(project.status)}
-          </Badge>
-          <span className="glass-label text-etch">{project.slug}</span>
+          <Badge tone={getStatusTone(project.status)}>{formatTaskToken(project.status)}</Badge>
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {isArchived ? <Badge tone="warn">Archived</Badge> : null}
+            <span className="glass-label text-etch">{project.slug}</span>
+          </div>
         </div>
 
         <div className="mb-5 flex-1 space-y-4">
           <div className="space-y-2">
             <h2 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">
-              <Link
-                href={`/tasks/projects/${project.slug}`}
-                className="transition hover:text-[var(--signal-live)]"
-              >
+              <Link href={detailHref} className="transition hover:text-[var(--signal-live)]">
                 {project.name}
               </Link>
             </h2>
@@ -236,10 +283,7 @@ function ProjectCard({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <p className="glass-label text-etch">Recent tasks</p>
-              <Link
-                href={`/tasks/projects/${project.slug}`}
-                className="glass-label text-signal-live"
-              >
+              <Link href={detailHref} className="glass-label text-signal-live">
                 Open
               </Link>
             </div>
@@ -274,13 +318,31 @@ function ProjectCard({
         </div>
 
         <div className="mt-auto border-t border-[var(--border)] pt-4">
-          <InlineProjectStatusForm
-            action={updateProjectStatusAction}
-            projectId={project.id}
-            returnTo={returnTo}
-            defaultStatus={project.status}
-            error={inlineError}
-          />
+          {!isArchived ? (
+            <InlineProjectStatusForm
+              action={updateProjectStatusAction}
+              projectId={project.id}
+              returnTo={returnTo}
+              defaultStatus={project.status}
+              error={inlineError}
+            />
+          ) : (
+            <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+              Archived projects stay visible for reference. Linked goals and tasks keep their
+              current states until you update those records directly.
+            </p>
+          )}
+
+          <div className="mt-4 border-t border-[var(--border)] pt-4">
+            {archiveError ? <p className="feedback-block feedback-block-error mb-3">{archiveError}</p> : null}
+            <form action={isArchived ? unarchiveProjectAction : archiveProjectAction}>
+              <input type="hidden" name="projectId" value={project.id} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Button type="submit" variant={isArchived ? "muted" : "danger"} size="sm">
+                {isArchived ? "Unarchive Project" : "Archive Project"}
+              </Button>
+            </form>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -289,19 +351,24 @@ function ProjectCard({
 
 type TasksProjectsPageProps = {
   searchParams: Promise<{
+    view?: string;
     projectUpdateError?: string;
     projectUpdateProjectId?: string;
+    projectUpdateField?: string;
   }>;
 };
 
 export default async function TasksProjectsPage({ searchParams }: TasksProjectsPageProps) {
   const resolvedSearchParams = await searchParams;
+  const activeView = normalizeProjectViewFilter(resolvedSearchParams.view);
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
   const projectUpdateProjectId = resolvedSearchParams.projectUpdateProjectId ?? null;
-  const projects = await getProjectsWithTaskContext();
-  const totalProjects = projects.length;
-  const activeProjects = projects.filter((project) => project.status === "active").length;
-  const completedProjects = projects.filter((project) => project.status === "done").length;
+  const projectUpdateField = resolvedSearchParams.projectUpdateField ?? null;
+  const { projects, summary } = await getProjectsWithTaskContext(activeView);
+  const totalProjects = summary.total;
+  const activeProjects = summary.active;
+  const completedProjects = summary.completed;
+  const archivedProjects = summary.archived;
 
   return (
     <TasksWorkspaceShell
@@ -314,6 +381,41 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
         </form>
       }
     >
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <Link
+          href="/tasks/projects?view=active"
+          className={`glass-label rounded-full px-3 py-1 ${
+            activeView === "active"
+              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+              : "text-[color:var(--muted-foreground)]"
+          }`}
+        >
+          Active
+        </Link>
+        <Link
+          href="/tasks/projects?view=archived"
+          className={`glass-label rounded-full px-3 py-1 ${
+            activeView === "archived"
+              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+              : "text-[color:var(--muted-foreground)]"
+          }`}
+        >
+          Archived
+        </Link>
+        <Link
+          href="/tasks/projects?view=all"
+          className={`glass-label rounded-full px-3 py-1 ${
+            activeView === "all"
+              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+              : "text-[color:var(--muted-foreground)]"
+          }`}
+        >
+          All
+        </Link>
+        <Badge tone="muted">{totalProjects} total</Badge>
+        <Badge tone={archivedProjects > 0 ? "warn" : "muted"}>{archivedProjects} archived</Badge>
+      </div>
+
       <div className="mb-8 flex flex-wrap items-end justify-between gap-6 border-b border-[var(--border)] pb-6">
         <div className="flex items-center gap-5">
           <div className="text-right">
@@ -345,15 +447,23 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
             <ProjectCard
               key={project.id}
               project={project}
-              returnTo="/tasks/projects"
+              returnTo={`/tasks/projects?view=${activeView}`}
               inlineError={
-                projectUpdateProjectId === project.id ? projectUpdateError : null
+                projectUpdateProjectId === project.id && projectUpdateField === "status"
+                  ? projectUpdateError
+                  : null
               }
+              archiveError={
+                projectUpdateProjectId === project.id && projectUpdateField === "archive"
+                  ? projectUpdateError
+                  : null
+              }
+              activeView={activeView}
             />
           ))}
         </div>
       ) : (
-        <EmptyState />
+        <EmptyState hasArchivedProjects={archivedProjects > 0} />
       )}
     </TasksWorkspaceShell>
   );

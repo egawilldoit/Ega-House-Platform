@@ -34,7 +34,7 @@ export function InlineProjectStatusForm({
             defaultValue={defaultStatus}
             className="input-instrument min-h-9 min-w-32 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
           >
-            {PROJECT_STATUS_VALUES.map((statusValue) => (
+            {PROJECT_STATUS_VALUES.filter((statusValue) => statusValue !== "archived").map((statusValue) => (
               <option key={statusValue} value={statusValue}>
                 {formatTaskToken(statusValue)}
               </option>

@@ -8,7 +8,11 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
 } from "@/app/tasks/actions";
-import { updateProjectStatusAction } from "@/app/tasks/projects/actions";
+import {
+  archiveProjectAction,
+  unarchiveProjectAction,
+  updateProjectStatusAction,
+} from "@/app/tasks/projects/actions";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
@@ -19,7 +23,12 @@ import {
 } from "@/components/tasks/task-filter-controls";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  isProjectArchivedStatus,
+  normalizeProjectViewFilter,
+} from "@/lib/project-archive";
 import { createClient } from "@/lib/supabase/server";
 import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
@@ -64,6 +73,7 @@ type TaskRow = Pick<
 type ProjectDetailPageProps = {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{
+    view?: string;
     status?: string;
     priority?: string;
     due?: string;
@@ -72,6 +82,7 @@ type ProjectDetailPageProps = {
     taskUpdateTaskId?: string;
     projectUpdateError?: string;
     projectUpdateProjectId?: string;
+    projectUpdateField?: string;
   }>;
 };
 
@@ -207,6 +218,7 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
+  const activeView = normalizeProjectViewFilter(resolvedSearchParams.view);
   const activeStatus =
     resolvedSearchParams.status && isTaskStatus(resolvedSearchParams.status)
       ? resolvedSearchParams.status
@@ -227,14 +239,28 @@ export default async function ProjectDetailPage({
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
   const projectUpdateProjectId = resolvedSearchParams.projectUpdateProjectId ?? null;
+  const projectUpdateField = resolvedSearchParams.projectUpdateField ?? null;
 
   const { project, goals, tasks, statusCounts, taskTotalDurations } = projectDetail;
-  const returnTo = buildTaskFilterReturnPath(`/tasks/projects/${project.slug}`, {
+  const projectIsArchived = isProjectArchivedStatus(project.status);
+  const baseProjectsHref =
+    activeView === "active" ? "/tasks/projects" : `/tasks/projects?view=${activeView}`;
+  const taskFilterBasePath =
+    activeView === "active"
+      ? `/tasks/projects/${project.slug}`
+      : `/tasks/projects/${project.slug}?view=${activeView}`;
+  let returnTo = buildTaskFilterReturnPath(`/tasks/projects/${project.slug}`, {
     status: activeStatus,
     priority: activePriority,
     due: activeDueFilter,
     sort: activeSort,
   });
+
+  if (activeView !== "active") {
+    const target = new URL(returnTo, "https://egawilldoit.online");
+    target.searchParams.set("view", activeView);
+    returnTo = `${target.pathname}${target.search}`;
+  }
   const filteredTasks = applyTaskListQuery(
     tasks.filter((task) => {
       if (activeStatus && task.status !== activeStatus) {
@@ -270,7 +296,7 @@ export default async function ProjectDetailPage({
       }
       actions={
         <Link
-          href="/tasks/projects"
+          href={baseProjectsHref}
           className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
         >
           Back to Projects
@@ -278,7 +304,7 @@ export default async function ProjectDetailPage({
       }
     >
       <div className="mb-8 flex flex-wrap items-center gap-2 border-b border-[var(--border)] pb-5">
-        <Link href="/tasks/projects" className="glass-label text-etch transition hover:text-signal-live">
+        <Link href={baseProjectsHref} className="glass-label text-etch transition hover:text-signal-live">
           Projects
         </Link>
         <span className="glass-label text-etch">/</span>
@@ -301,6 +327,7 @@ export default async function ProjectDetailPage({
                 <Badge tone={getTaskStatusTone(focusedTask?.status ?? project.status)}>
                   {formatTaskToken(focusedTask?.status ?? project.status)}
                 </Badge>
+                {projectIsArchived ? <Badge tone="warn">Archived Project</Badge> : null}
                 {focusedTask ? <Badge>{formatTaskToken(focusedTask.priority)}</Badge> : null}
                 {focusedTask?.focus_rank ? <Badge tone="info">Pinned #{focusedTask.focus_rank}</Badge> : null}
               </div>
@@ -316,6 +343,11 @@ export default async function ProjectDetailPage({
                         project.description?.trim() ||
                         "No description has been added for this task yet."}
                     </p>
+                    {projectIsArchived && !focusedTask ? (
+                      <p className="rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                        This project is archived for reference. Linked goals and tasks remain visible here and keep their own current states until you update them directly.
+                      </p>
+                    ) : null}
                     {focusedTask ? (
                       <div className="flex flex-wrap items-center gap-2">
                         <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
@@ -401,7 +433,7 @@ export default async function ProjectDetailPage({
 
               <div className="mb-6">
                 <TaskFilterControls
-                  basePath={`/tasks/projects/${project.slug}`}
+                  basePath={taskFilterBasePath}
                   activeStatus={activeStatus}
                   activePriority={activePriority}
                   activeDueFilter={activeDueFilter}
@@ -411,13 +443,46 @@ export default async function ProjectDetailPage({
               </div>
 
               <div className="mb-6 border-t border-[var(--border)] pt-4">
-                <InlineProjectStatusForm
-                  action={updateProjectStatusAction}
-                  projectId={project.id}
-                  returnTo={returnTo}
-                  defaultStatus={project.status}
-                  error={projectUpdateProjectId === project.id ? projectUpdateError : null}
-                />
+                {!projectIsArchived ? (
+                  <InlineProjectStatusForm
+                    action={updateProjectStatusAction}
+                    projectId={project.id}
+                    returnTo={returnTo}
+                    defaultStatus={project.status}
+                    error={
+                      projectUpdateProjectId === project.id && projectUpdateField === "status"
+                        ? projectUpdateError
+                        : null
+                    }
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+                      Archived projects can be restored at any time. Archiving does not automatically archive linked goals or tasks.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone="muted">{goals.length} goals linked</Badge>
+                      <Badge tone="muted">{tasks.length} tasks linked</Badge>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-6 border-t border-[var(--border)] pt-4">
+                {projectUpdateProjectId === project.id && projectUpdateField === "archive" ? (
+                  <p className="feedback-block feedback-block-error mb-3">{projectUpdateError}</p>
+                ) : null}
+                <form action={projectIsArchived ? unarchiveProjectAction : archiveProjectAction}>
+                  <input type="hidden" name="projectId" value={project.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <Button
+                    type="submit"
+                    variant={projectIsArchived ? "muted" : "danger"}
+                    size="sm"
+                  >
+                    {projectIsArchived ? "Unarchive Project" : "Archive Project"}
+                  </Button>
+                </form>
               </div>
 
               {focusedTask ? (
@@ -631,15 +696,23 @@ export default async function ProjectDetailPage({
                 Create Related Task
               </h3>
               <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                New tasks created here stay attached to {project.name}.
+                {projectIsArchived
+                  ? `Restore ${project.name} before adding new execution work.`
+                  : `New tasks created here stay attached to ${project.name}.`}
               </p>
               <div className="mt-4">
-                <CreateTaskForm
-                  projects={[{ id: project.id, name: project.name }]}
-                  goals={goals}
-                  projectId={project.id}
-                  returnTo={returnTo}
-                />
+                {projectIsArchived ? (
+                  <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                    This archived project remains visible for review, but new tasks should wait until the project is active again.
+                  </div>
+                ) : (
+                  <CreateTaskForm
+                    projects={[{ id: project.id, name: project.name }]}
+                    goals={goals}
+                    projectId={project.id}
+                    returnTo={returnTo}
+                  />
+                )}
               </div>
             </CardContent>
           </Card>
