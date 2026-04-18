@@ -5,13 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { resolveSessionConflict } from "@/app/timer/session-recovery";
-
-const TIMER_PATH = "/timer";
-
-function getReturnPath(rawReturnTo: unknown) {
-  const returnTo = String(rawReturnTo ?? "").trim();
-  return returnTo.startsWith(TIMER_PATH) ? returnTo : TIMER_PATH;
-}
+import { getTimerActionReturnPath } from "@/app/timer/return-path";
 
 function redirectToTimer(returnPath: string, errorMessage?: string): never {
   if (!errorMessage) {
@@ -24,7 +18,7 @@ function redirectToTimer(returnPath: string, errorMessage?: string): never {
 }
 
 export async function startTimerAction(formData: FormData) {
-  const returnPath = getReturnPath(formData.get("returnTo"));
+  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
 
   if (!taskId) {
@@ -65,11 +59,12 @@ export async function startTimerAction(formData: FormData) {
 
   revalidatePath("/timer");
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
   redirectToTimer(returnPath);
 }
 
 export async function stopTimerAction(formData: FormData) {
-  const returnPath = getReturnPath(formData.get("returnTo"));
+  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
   const submittedSessionId = String(formData.get("sessionId") ?? "").trim();
   const supabase = await createClient();
 
@@ -123,11 +118,12 @@ export async function stopTimerAction(formData: FormData) {
 
   revalidatePath("/timer");
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
   redirectToTimer(returnPath);
 }
 
 export async function resolveSessionConflictAction(formData: FormData) {
-  const returnPath = getReturnPath(formData.get("returnTo"));
+  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
   const supabase = await createClient();
 
   const { data: openSessions, error: openSessionsError } = await supabase
@@ -162,5 +158,6 @@ export async function resolveSessionConflictAction(formData: FormData) {
 
   revalidatePath("/timer");
   revalidatePath("/tasks");
+  revalidatePath("/dashboard");
   redirectToTimer(returnPath);
 }
