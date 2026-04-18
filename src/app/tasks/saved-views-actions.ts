@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
 import { createClient } from "@/lib/supabase/server";
 import {
   getTaskSavedViewNameError,
@@ -37,7 +38,7 @@ function redirectWithSavedViewFeedback(
 async function getVisibleTaskScope(supabase: Awaited<ReturnType<typeof createClient>>) {
   const [projectsResult, goalsResult] = await Promise.all([
     supabase.from("projects").select("id"),
-    supabase.from("goals").select("id, project_id"),
+    supabase.from("goals").select("id, project_id").neq("status", GOAL_ARCHIVE_STATUS),
   ]);
 
   if (projectsResult.error || goalsResult.error) {

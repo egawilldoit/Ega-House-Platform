@@ -15,6 +15,8 @@ test("normalizes unsupported goal view values to active", () => {
 test("normalizes goal view values", () => {
   assert.equal(normalizeGoalViewFilter(" archived "), "archived");
   assert.equal(normalizeGoalViewFilter("all"), "all");
+  assert.equal(normalizeGoalViewFilter(undefined), "active");
+  assert.equal(normalizeGoalViewFilter(42), "active");
 });
 
 test("detects archived goal statuses", () => {
