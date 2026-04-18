@@ -16,6 +16,7 @@ import {
 } from "@/lib/review-week";
 import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
+import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review-most-tracked";
 import { getTaskSessionDurationSeconds } from "@/lib/task-session";
 
 import { ReviewForm } from "./review-form";
@@ -41,6 +42,30 @@ type WeeklyStats = {
   goalsTouched: number;
   goalStatusCounts: Array<{ status: string; count: number }>;
 };
+
+async function getMostTrackedInsights(
+  weekStart: string,
+  weekEnd: string,
+): Promise<MostTrackedInsights> {
+  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("task_sessions")
+    .select(
+      "task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(id, name, slug), goals(id, title))",
+    )
+    .lt("started_at", endExclusiveIso)
+    .or(`ended_at.is.null,ended_at.gte.${startIso}`);
+
+  if (error) {
+    throw new Error(`Failed to load most tracked insights: ${error.message}`);
+  }
+
+  return buildMostTrackedInsights(data ?? [], {
+    startIso,
+    endIso: endExclusiveIso,
+  });
+}
 
 function toSummaryPreview(summary: string | null, maxLength = 200) {
   const normalized = summary?.trim() ?? "";
@@ -172,6 +197,75 @@ function StatPanel({
   );
 }
 
+function MostTrackedSection({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: MostTrackedInsights[keyof MostTrackedInsights];
+}) {
+  return (
+    <div>
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[color:var(--foreground)]">{title}</h3>
+        <Badge tone="muted">{rows.length}</Badge>
+      </div>
+      {rows.length > 0 ? (
+        <div className="space-y-2">
+          {rows.map((row, index) => {
+            const content = (
+              <>
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[rgba(34,197,94,0.1)] text-xs font-semibold text-signal-live">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-[color:var(--foreground)]">
+                      {row.label}
+                    </div>
+                    <div className="truncate text-xs text-[color:var(--muted-foreground)]">
+                      {row.detail}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-[color:var(--foreground)]">
+                    {row.trackedLabel}
+                  </div>
+                  <div className="text-xs text-[color:var(--muted-foreground)]">
+                    {row.sessionCount} session{row.sessionCount === 1 ? "" : "s"}
+                  </div>
+                </div>
+              </>
+            );
+
+            const className =
+              "flex items-center justify-between gap-4 rounded-[0.95rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-3";
+
+            return row.href ? (
+              <Link
+                key={row.id}
+                href={row.href}
+                className={`${className} transition hover:bg-[color:var(--instrument-raised)]`}
+              >
+                {content}
+              </Link>
+            ) : (
+              <div key={row.id} className={className}>
+                {content}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="surface-empty px-4 py-4 text-sm text-[color:var(--muted-foreground)]">
+          No tracked {title.toLowerCase()} in this weekly window yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   const resolvedSearchParams = await searchParams;
   const selectedWeekOf =
@@ -182,12 +276,14 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   if (!bounds) {
     throw new Error("Failed to resolve selected week.");
   }
-  const [pastReviews, selectedWeekReviews, weeklyStats, sessionHeatmap] = await Promise.all([
-    getPastReviews(),
-    getSelectedWeekReviews(bounds.weekStart, bounds.weekEnd),
-    getWeeklyStats(bounds.weekStart, bounds.weekEnd),
-    getRecentSessionHeatmap(),
-  ]);
+  const [pastReviews, selectedWeekReviews, weeklyStats, sessionHeatmap, mostTrackedInsights] =
+    await Promise.all([
+      getPastReviews(),
+      getSelectedWeekReviews(bounds.weekStart, bounds.weekEnd),
+      getWeeklyStats(bounds.weekStart, bounds.weekEnd),
+      getRecentSessionHeatmap(),
+      getMostTrackedInsights(bounds.weekStart, bounds.weekEnd),
+    ]);
 
   const cycleVelocity = Math.min(
     100,
@@ -280,6 +376,29 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
 
       <div className="mt-6">
         <SessionHeatmap data={sessionHeatmap} />
+      </div>
+
+      <div className="mt-6">
+        <Card className="border-[var(--border)] bg-white">
+          <CardContent className="p-6">
+            <div className="mb-5 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
+                  Most Tracked This Week
+                </h2>
+                <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
+                  Ranked directly from task session time inside the selected weekly window.
+                </p>
+              </div>
+              <Badge tone="muted">Task sessions</Badge>
+            </div>
+            <div className="grid gap-6 lg:grid-cols-3">
+              <MostTrackedSection title="Tasks" rows={mostTrackedInsights.tasks} />
+              <MostTrackedSection title="Projects" rows={mostTrackedInsights.projects} />
+              <MostTrackedSection title="Goals" rows={mostTrackedInsights.goals} />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)]">
