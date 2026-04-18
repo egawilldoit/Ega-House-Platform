@@ -250,12 +250,12 @@ export default async function TimerPage({
           <span className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">
             Today
           </span>
-          <Link
-            href="/review"
+          <a
+            href="/timer/export"
             className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
           >
-            Export
-          </Link>
+            Export CSV
+          </a>
         </div>
       }
     >
@@ -316,6 +316,7 @@ export default async function TimerPage({
                 <CardTitle className="mt-2 text-xl">Session timeline</CardTitle>
                 <CardDescription>
                   Recent completed work grouped by recency, with duration and project context.
+                  Use Export CSV to download the full timer session report.
                 </CardDescription>
               </div>
               <CardAction>

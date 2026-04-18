@@ -207,7 +207,13 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
       title="Weekly Review"
       description="Weekly summary, highlights, blockers, and saved reflection snapshots."
       actions={
-        <div className="text-right">
+        <div className="flex flex-col items-end gap-2 text-right">
+          <a
+            href={`/review/export?weekOf=${selectedWeekOf}`}
+            className="btn-instrument btn-instrument-muted flex h-8 items-center px-4"
+          >
+            Export CSV
+          </a>
           <div className="text-sm font-semibold text-signal-live">
             {formatIsoDate(bounds.weekStart)} - {formatIsoDate(bounds.weekEnd)}
           </div>
@@ -242,7 +248,8 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
               </div>
               <p className="mt-4 max-w-xl text-sm leading-7 text-[color:var(--muted-foreground)]">
                 Weekly focus utilization against a 40-hour operating target, derived from
-                tracked task sessions and review-period activity.
+                tracked task sessions and review-period activity. Export CSV to download the
+                selected cycle with saved reflection fields and computed weekly stats.
               </p>
               <div className="mt-6 flex flex-wrap gap-4">
                 <div className="surface-subtle px-4 py-2 text-xs font-medium uppercase tracking-[0.16em] text-[color:var(--foreground)]">
