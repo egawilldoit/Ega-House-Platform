@@ -48,6 +48,7 @@ export const goals = pgTable(
     slug: varchar("slug", { length: 256 }),
     description: text("description"),
     nextStep: text("next_step"),
+    health: varchar("health", { length: 32 }),
     status: varchar("status", { length: 64 }).notNull().default("draft"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

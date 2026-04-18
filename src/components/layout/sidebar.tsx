@@ -89,7 +89,7 @@ const GENERAL_ITEMS: NavItem[] = [
     ),
   },
   {
-    href: "/dashboard" as `/${string}`,
+    href: "/help" as `/${string}`,
     label: "Help",
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

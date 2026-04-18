@@ -26,6 +26,10 @@ import {
 import { formatTimerDateTime } from "@/lib/timer-domain";
 
 import { resolveSessionConflictAction, startTimerAction, stopTimerAction } from "./actions";
+import {
+  getTimerStartEmptyStateCopy,
+  getTimerStartTaskOptions,
+} from "./task-selection";
 
 export const metadata: Metadata = {
   title: "Timer | EGA House",
@@ -56,6 +60,7 @@ async function getTimerData() {
       supabase
         .from("tasks")
         .select("id, title, status, projects(name, slug)")
+        .neq("status", "done")
         .order("updated_at", { ascending: false })
         .limit(100),
       supabase
@@ -232,7 +237,8 @@ export default async function TimerPage({
     sessionHistory[0] ?? null,
   );
   const topBreakdown = todayTaskBreakdown.slice(0, 3);
-  const sessionControlTaskOptions = tasks.slice(0, 100);
+  const sessionControlTaskOptions = getTimerStartTaskOptions(tasks).slice(0, 100);
+  const sessionControlEmptyStateCopy = getTimerStartEmptyStateCopy(tasks.length);
 
   return (
     <AppShell
@@ -433,7 +439,7 @@ export default async function TimerPage({
                       className="input-instrument mt-2 h-10 w-full text-sm"
                     >
                       {sessionControlTaskOptions.length === 0 ? (
-                        <option value="">No tasks</option>
+                        <option value="">{sessionControlEmptyStateCopy}</option>
                       ) : (
                         sessionControlTaskOptions.map((task) => (
                           <option key={task.id} value={task.id}>

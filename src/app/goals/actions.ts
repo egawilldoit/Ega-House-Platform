@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { toGoalHealthWriteValue } from "@/lib/goal-health";
 import { toGoalNextStepWriteValue } from "@/lib/goal-next-step";
 import { createClient } from "@/lib/supabase/server";
 import { GOAL_STATUS_VALUES, isGoalStatus } from "@/lib/task-domain";
@@ -14,6 +15,7 @@ export type CreateGoalFormState = {
     projectId: string;
     description: string;
     nextStep: string;
+    health: string;
     status: string;
     slug: string;
   };
@@ -44,7 +46,7 @@ function redirectWithGoalsError(
   returnPath: string,
   errorMessage: string,
   goalId?: string,
-  field?: "status" | "next_step",
+  field?: "status" | "health" | "next_step",
 ): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("goalUpdateError", errorMessage);
@@ -67,6 +69,7 @@ export async function createGoalAction(
   const projectId = String(formData.get("projectId") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const nextStepResult = toGoalNextStepWriteValue(formData);
+  const goalHealthResult = toGoalHealthWriteValue(formData);
   const status = String(formData.get("status") ?? "draft").trim();
   const rawSlug = String(formData.get("slug") ?? "");
   const slug = normalizeSlug(rawSlug);
@@ -76,6 +79,7 @@ export async function createGoalAction(
     projectId,
     description,
     nextStep: nextStepResult.value ?? "",
+    health: goalHealthResult.value ?? "",
     status,
     slug,
   };
@@ -103,12 +107,17 @@ export async function createGoalAction(
     return createErrorState(nextStepResult.error, values);
   }
 
+  if (goalHealthResult.error) {
+    return createErrorState(goalHealthResult.error, values);
+  }
+
   const supabase = await createClient();
   const { error } = await supabase.from("goals").insert({
     title,
     project_id: projectId,
     description: description || null,
     next_step: nextStepResult.value,
+    health: goalHealthResult.value,
     status,
     slug: slug || null,
   });
@@ -126,6 +135,7 @@ export async function createGoalAction(
       projectId,
       description: "",
       nextStep: "",
+      health: "",
       status,
       slug: "",
     },
@@ -158,6 +168,38 @@ export async function updateGoalStatusAction(formData: FormData) {
   revalidatePath("/goals");
   revalidatePath("/dashboard");
   revalidatePath("/tasks/projects");
+  redirect(`${returnPath}#goal-${goalId}`);
+}
+
+export async function updateGoalHealthAction(formData: FormData) {
+  const returnPath = getGoalsReturnPath(formData.get("returnTo"));
+  const goalId = String(formData.get("goalId") ?? "").trim();
+  const goalHealthResult = toGoalHealthWriteValue(formData);
+
+  if (!goalId) {
+    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "health");
+  }
+
+  if (goalHealthResult.error) {
+    redirectWithGoalsError(returnPath, goalHealthResult.error, goalId, "health");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("goals")
+    .update({
+      health: goalHealthResult.value,
+      updated_at: updatedAt,
+    })
+    .eq("id", goalId);
+
+  if (error) {
+    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "health");
+  }
+
+  revalidatePath("/goals");
+  revalidatePath("/dashboard");
   redirect(`${returnPath}#goal-${goalId}`);
 }
 

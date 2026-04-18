@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { GOAL_HEALTH_VALUES, getGoalHealthLabel } from "@/lib/goal-health";
 import { GOAL_NEXT_STEP_MAX_LENGTH } from "@/lib/goal-next-step";
 import { GOAL_STATUS_VALUES, formatTaskToken } from "@/lib/task-domain";
 
@@ -22,6 +23,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
       projectId: projects[0]?.id ?? "",
       description: "",
       nextStep: "",
+      health: "",
       status: "draft",
       slug: "",
     },
@@ -96,24 +98,40 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="slug" className="glass-label text-etch">
-                Slug (optional)
+              <label htmlFor="health" className="glass-label text-etch">
+                Health
               </label>
-              <Input
-                id="slug"
-                name="slug"
-                placeholder="timer-mvp"
-                defaultValue={state.values.slug}
-                className="h-10"
-              />
+              <select
+                id="health"
+                name="health"
+                defaultValue={state.values.health}
+                className="input-instrument h-10 text-sm"
+              >
+                <option value="">Not set</option>
+                {GOAL_HEALTH_VALUES.map((healthValue) => (
+                  <option key={healthValue} value={healthValue}>
+                    {getGoalHealthLabel(healthValue)}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           <div className="space-y-2">
-            <label
-              htmlFor="description"
-              className="glass-label text-etch"
-            >
+            <label htmlFor="slug" className="glass-label text-etch">
+              Slug (optional)
+            </label>
+            <Input
+              id="slug"
+              name="slug"
+              placeholder="timer-mvp"
+              defaultValue={state.values.slug}
+              className="h-10"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="description" className="glass-label text-etch">
               Description (optional)
             </label>
             <Textarea

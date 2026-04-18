@@ -5,6 +5,11 @@ import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-r
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import {
+  getGoalHealthLabel,
+  getGoalHealthTone,
+  toGoalHealthOrNull,
+} from "@/lib/goal-health";
+import {
   Card,
   CardAction,
   CardContent,
@@ -121,6 +126,7 @@ function TaskRow({ task }: { task: DashboardTodayTask }) {
 
 function GoalRow({ goal }: { goal: DashboardGoalStatus }) {
   const nextStepPreview = getGoalNextStepPreview(goal.nextStep, 72);
+  const goalHealth = toGoalHealthOrNull(goal.health);
 
   return (
     <article className="ega-dashboard-list-row">
@@ -147,6 +153,9 @@ function GoalRow({ goal }: { goal: DashboardGoalStatus }) {
           </div>
         </div>
         <Badge tone={getTaskStatusTone(goal.status)}>{formatTaskToken(goal.status)}</Badge>
+        {goalHealth ? (
+          <Badge tone={getGoalHealthTone(goalHealth)}>{getGoalHealthLabel(goalHealth)}</Badge>
+        ) : null}
       </div>
     </article>
   );

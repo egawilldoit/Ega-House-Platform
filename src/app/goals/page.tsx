@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { InlineGoalHealthForm } from "@/components/goals/inline-goal-health-form";
 import { AppShell } from "@/components/layout/app-shell";
 import { InlineGoalNextStepForm } from "@/components/goals/inline-goal-next-step-form";
 import { InlineGoalStatusForm } from "@/components/goals/inline-goal-status-form";
 import { Badge } from "@/components/ui/badge";
+import {
+  getGoalHealthLabel,
+  getGoalHealthTone,
+  toGoalHealthOrNull,
+} from "@/lib/goal-health";
 import {
   Card,
   CardAction,
@@ -18,7 +24,11 @@ import { createClient } from "@/lib/supabase/server";
 import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 
-import { updateGoalNextStepAction, updateGoalStatusAction } from "./actions";
+import {
+  updateGoalHealthAction,
+  updateGoalNextStepAction,
+  updateGoalStatusAction,
+} from "./actions";
 import { CreateGoalForm } from "./create-goal-form";
 
 export const metadata: Metadata = {
@@ -46,6 +56,7 @@ type GoalView = {
   title: string;
   description: string | null;
   nextStep: string | null;
+  health: string | null;
   status: string;
   updatedAt: string;
   projectName: string | null;
@@ -59,7 +70,7 @@ async function getGoalsData() {
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
     supabase
       .from("goals")
-      .select("id, title, description, next_step, status, updated_at, projects(name)")
+      .select("id, title, description, next_step, health, status, updated_at, projects(name)")
       .order("updated_at", { ascending: false }),
     supabase
       .from("tasks")
@@ -98,6 +109,7 @@ async function getGoalsData() {
       title: goal.title,
       description: goal.description,
       nextStep: goal.next_step,
+      health: goal.health,
       status: goal.status,
       updatedAt: goal.updated_at,
       projectName: goal.projects?.name ?? null,
@@ -153,6 +165,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   const { projects, goals } = await getGoalsData();
   const focusedGoal =
     goals.find((goal) => goal.id === resolvedSearchParams.goal) ?? goals[0] ?? null;
+  const focusedGoalHealth = focusedGoal ? toGoalHealthOrNull(focusedGoal.health) : null;
   const linkedTasks = focusedGoal?.linkedTasks ?? [];
   const activeGoalCount = goals.filter((goal) => goal.status === "active").length;
   const completedGoalCount = goals.filter((goal) => goal.status === "done").length;
@@ -232,6 +245,13 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                   <Badge tone={getTaskStatusTone(focusedGoal.status)}>
                     {formatTaskToken(focusedGoal.status)}
                   </Badge>
+                  {focusedGoalHealth ? (
+                    <Badge tone={getGoalHealthTone(focusedGoalHealth)}>
+                      {getGoalHealthLabel(focusedGoalHealth)}
+                    </Badge>
+                  ) : (
+                    <Badge tone="muted">Health not set</Badge>
+                  )}
                   <Badge tone="muted">{completedGoalCount} completed overall</Badge>
                 </div>
                 <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">
@@ -245,6 +265,19 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                     defaultStatus={focusedGoal.status}
                     error={
                       goalUpdateGoalId === focusedGoal.id && goalUpdateField === "status"
+                        ? goalUpdateError
+                        : null
+                    }
+                  />
+                </div>
+                <div className="mt-4 border-t border-[var(--border)] pt-4">
+                  <InlineGoalHealthForm
+                    action={updateGoalHealthAction}
+                    goalId={focusedGoal.id}
+                    returnTo={`/goals?goal=${focusedGoal.id}`}
+                    defaultHealth={focusedGoal.health}
+                    error={
+                      goalUpdateGoalId === focusedGoal.id && goalUpdateField === "health"
                         ? goalUpdateError
                         : null
                     }
@@ -272,6 +305,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                 {goals.map((goal) => {
                   const isActiveGoal = goal.id === focusedGoal.id;
                   const nextStepPreview = getGoalNextStepPreview(goal.nextStep, 70);
+                  const goalHealth = toGoalHealthOrNull(goal.health);
 
                   return (
                     <Link
@@ -296,9 +330,16 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                           </p>
                         ) : null}
                       </div>
-                      <Badge tone={getTaskStatusTone(goal.status)}>
-                        {formatTaskToken(goal.status)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge tone={getTaskStatusTone(goal.status)}>
+                          {formatTaskToken(goal.status)}
+                        </Badge>
+                        {goalHealth ? (
+                          <Badge tone={getGoalHealthTone(goalHealth)}>
+                            {getGoalHealthLabel(goalHealth)}
+                          </Badge>
+                        ) : null}
+                      </div>
                     </Link>
                   );
                 })}
@@ -336,9 +377,16 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                       Outcome framing and narrative guidance for the selected objective.
                     </CardDescription>
                   </div>
-                  <Badge tone={getTaskStatusTone(focusedGoal.status)}>
-                    {formatTaskToken(focusedGoal.status)}
-                  </Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={getTaskStatusTone(focusedGoal.status)}>
+                      {formatTaskToken(focusedGoal.status)}
+                    </Badge>
+                    {focusedGoalHealth ? (
+                      <Badge tone={getGoalHealthTone(focusedGoalHealth)}>
+                        {getGoalHealthLabel(focusedGoalHealth)}
+                      </Badge>
+                    ) : null}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0">

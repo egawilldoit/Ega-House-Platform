@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { SessionHeatmap } from "@/components/review/session-heatmap";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -13,6 +14,7 @@ import {
   isIsoDate,
   shiftIsoDateByDays,
 } from "@/lib/review-week";
+import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
 import { getTaskSessionDurationSeconds } from "@/lib/task-session";
 
@@ -131,6 +133,11 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
   };
 }
 
+async function getRecentSessionHeatmap() {
+  const supabase = await createClient();
+  return getRecentDailyTrackedTime(supabase);
+}
+
 function StatPanel({
   label,
   value,
@@ -175,10 +182,11 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   if (!bounds) {
     throw new Error("Failed to resolve selected week.");
   }
-  const [pastReviews, selectedWeekReviews, weeklyStats] = await Promise.all([
+  const [pastReviews, selectedWeekReviews, weeklyStats, sessionHeatmap] = await Promise.all([
     getPastReviews(),
     getSelectedWeekReviews(bounds.weekStart, bounds.weekEnd),
     getWeeklyStats(bounds.weekStart, bounds.weekEnd),
+    getRecentSessionHeatmap(),
   ]);
 
   const cycleVelocity = Math.min(
@@ -261,6 +269,10 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
             accent={blockerCount === 0}
           />
         </div>
+      </div>
+
+      <div className="mt-6">
+        <SessionHeatmap data={sessionHeatmap} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)]">
