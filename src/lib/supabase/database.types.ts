@@ -133,6 +133,60 @@ export type Database = {
           },
         ]
       }
+      task_saved_views: {
+        Row: {
+          created_at: string
+          due_filter: string
+          goal_id: string | null
+          id: string
+          name: string
+          owner_user_id: string | null
+          project_id: string | null
+          sort_value: string
+          status: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_filter?: string
+          goal_id?: string | null
+          id?: string
+          name: string
+          owner_user_id?: string | null
+          project_id?: string | null
+          sort_value?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_filter?: string
+          goal_id?: string | null
+          id?: string
+          name?: string
+          owner_user_id?: string | null
+          project_id?: string | null
+          sort_value?: string
+          status?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_saved_views_goal_id_goals_id_fk"
+            columns: ["goal_id"]
+            isOneToOne: false
+            referencedRelation: "goals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "task_saved_views_project_id_projects_id_fk"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           created_at: string

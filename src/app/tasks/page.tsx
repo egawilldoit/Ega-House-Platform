@@ -9,6 +9,7 @@ import {
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { TaskSavedViewsPanel } from "@/components/tasks/task-saved-views-panel";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
   TaskFilterControls,
@@ -59,6 +60,8 @@ type TasksPageProps = {
     taskUpdateError?: string;
     taskUpdateTaskId?: string;
     statusUpdateError?: string;
+    viewError?: string;
+    viewSuccess?: string;
   }>;
 };
 
@@ -70,18 +73,25 @@ async function getTasksData(
   activeSort: TaskSortValue,
 ) {
   const supabase = await createClient();
-  const [projectsResult, goalsResult] = await Promise.all([
+  const [projectsResult, goalsResult, savedViewsResult] = await Promise.all([
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
     supabase
       .from("goals")
       .select("id, title, project_id")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("task_saved_views")
+      .select("id, name, status, project_id, goal_id, due_filter, sort_value, updated_at")
+      .order("updated_at", { ascending: false }),
   ]);
   if (projectsResult.error) {
     throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
   }
   if (goalsResult.error) {
     throw new Error(`Failed to load goals: ${goalsResult.error.message}`);
+  }
+  if (savedViewsResult.error) {
+    throw new Error(`Failed to load saved views: ${savedViewsResult.error.message}`);
   }
   const activeProjectId =
     requestedProjectId && projectsResult.data.some((project) => project.id === requestedProjectId)
@@ -126,6 +136,7 @@ async function getTasksData(
     goals: visibleGoals,
     tasks,
     taskTotalDurations,
+    savedViews: savedViewsResult.data ?? [],
     activeProjectId,
     activeGoalId,
   };
@@ -164,8 +175,19 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     resolvedSearchParams.statusUpdateError?.slice(0, 180) ??
     null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
-  const { projects, goals, tasks, taskTotalDurations, activeProjectId, activeGoalId } =
-    await getTasksData(activeStatus, projectParam, goalParam, activeDueFilter, activeSort);
+  const savedViewFeedback = {
+    error: resolvedSearchParams.viewError?.slice(0, 180) ?? null,
+    success: resolvedSearchParams.viewSuccess?.slice(0, 180) ?? null,
+  };
+  const {
+    projects,
+    goals,
+    tasks,
+    taskTotalDurations,
+    savedViews,
+    activeProjectId,
+    activeGoalId,
+  } = await getTasksData(activeStatus, projectParam, goalParam, activeDueFilter, activeSort);
   const returnPath = buildTaskFilterReturnPath("/tasks", {
     status: activeStatus,
     project: activeProjectId,
@@ -352,6 +374,20 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Card>
 
         <div className="space-y-6">
+          <TaskSavedViewsPanel
+            currentFilters={{
+              status: activeStatus,
+              projectId: activeProjectId,
+              goalId: activeGoalId,
+              dueFilter: activeDueFilter,
+              sortValue: activeSort,
+            }}
+            savedViews={savedViews}
+            projectOptions={projects}
+            goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+            feedback={savedViewFeedback}
+          />
+
           <Card className="border-[var(--border)] bg-white">
             <CardHeader className="pb-4">
               <p className="glass-label text-signal-live">Focus Queue</p>

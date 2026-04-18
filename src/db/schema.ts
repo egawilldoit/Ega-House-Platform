@@ -108,6 +108,37 @@ export const taskSessions = pgTable(
   },
   (table) => [index("task_sessions_owner_user_id_idx").on(table.ownerUserId)],
 );
+export const taskSavedViews = pgTable(
+  "task_saved_views",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
+    name: varchar("name", { length: 80 }).notNull(),
+    status: varchar("status", { length: 64 }),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    goalId: uuid("goal_id").references(() => goals.id, { onDelete: "set null" }),
+    dueFilter: varchar("due_filter", { length: 32 }).notNull().default("all"),
+    sortValue: varchar("sort_value", { length: 32 })
+      .notNull()
+      .default("updated_desc"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("task_saved_views_owner_user_id_idx").on(table.ownerUserId),
+    uniqueIndex("task_saved_views_owner_user_id_name_unique").on(
+      table.ownerUserId,
+      table.name,
+    ),
+  ],
+);
+
 export const weekReviews = pgTable(
   "week_reviews",
   {
