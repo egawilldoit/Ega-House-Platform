@@ -6,12 +6,19 @@ import { AppShell } from "@/components/layout/app-shell";
 import { InlineGoalNextStepForm } from "@/components/goals/inline-goal-next-step-form";
 import { InlineGoalStatusForm } from "@/components/goals/inline-goal-status-form";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   type GoalHealth,
   getGoalHealthLabel,
   getGoalHealthTone,
   toGoalHealthOrNull,
 } from "@/lib/goal-health";
+import {
+  GOAL_ARCHIVE_STATUS,
+  type GoalViewFilter,
+  isGoalArchivedStatus,
+  normalizeGoalViewFilter,
+} from "@/lib/goal-archive";
 import {
   Card,
   CardAction,
@@ -26,6 +33,8 @@ import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 
 import {
+  archiveGoalAction,
+  unarchiveGoalAction,
   updateGoalHealthAction,
   updateGoalNextStepAction,
   updateGoalStatusAction,
@@ -40,6 +49,7 @@ export const metadata: Metadata = {
 type GoalsPageProps = {
   searchParams: Promise<{
     goal?: string;
+    view?: string;
     goalUpdateError?: string;
     goalUpdateGoalId?: string;
     goalUpdateField?: string;
@@ -65,19 +75,35 @@ type GoalView = {
   progressPercent: number;
 };
 
-async function getGoalsData() {
+type GoalSummary = {
+  total: number;
+  active: number;
+  completed: number;
+  archived: number;
+};
+
+async function getGoalsData(view: GoalViewFilter) {
   const supabase = await createClient();
-  const [projectsResult, goalsResult, tasksResult] = await Promise.all([
+  const goalsQuery = supabase
+    .from("goals")
+    .select("id, title, description, next_step, health, status, updated_at, projects(name)")
+    .order("updated_at", { ascending: false });
+
+  if (view === "active") {
+    goalsQuery.neq("status", GOAL_ARCHIVE_STATUS);
+  } else if (view === "archived") {
+    goalsQuery.eq("status", GOAL_ARCHIVE_STATUS);
+  }
+
+  const [projectsResult, goalsResult, tasksResult, goalSummaryResult] = await Promise.all([
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
-    supabase
-      .from("goals")
-      .select("id, title, description, next_step, health, status, updated_at, projects(name)")
-      .order("updated_at", { ascending: false }),
+    goalsQuery,
     supabase
       .from("tasks")
       .select("id, title, status, goal_id")
       .not("goal_id", "is", null)
       .order("updated_at", { ascending: false }),
+    supabase.from("goals").select("status"),
   ]);
   if (projectsResult.error) {
     throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
@@ -87,6 +113,9 @@ async function getGoalsData() {
   }
   if (tasksResult.error) {
     throw new Error(`Failed to load goal tasks: ${tasksResult.error.message}`);
+  }
+  if (goalSummaryResult.error) {
+    throw new Error(`Failed to load goals summary: ${goalSummaryResult.error.message}`);
   }
 
   const tasksByGoal = new Map<string, GoalTaskRow[]>();
@@ -119,7 +148,15 @@ async function getGoalsData() {
     } satisfies GoalView;
   });
 
-  return { projects: projectsResult.data, goals };
+  const goalSummaryRows = goalSummaryResult.data ?? [];
+  const summary: GoalSummary = {
+    total: goalSummaryRows.length,
+    active: goalSummaryRows.filter((goal) => goal.status === "active").length,
+    completed: goalSummaryRows.filter((goal) => goal.status === "done").length,
+    archived: goalSummaryRows.filter((goal) => isGoalArchivedStatus(goal.status)).length,
+  };
+
+  return { projects: projectsResult.data, goals, summary };
 }
 
 function MetricCard({
@@ -160,16 +197,22 @@ function MetricCard({
 
 export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   const resolvedSearchParams = await searchParams;
+  const activeView = normalizeGoalViewFilter(resolvedSearchParams.view);
   const goalUpdateError = resolvedSearchParams.goalUpdateError?.slice(0, 180) ?? null;
   const goalUpdateGoalId = resolvedSearchParams.goalUpdateGoalId ?? null;
   const goalUpdateField = resolvedSearchParams.goalUpdateField ?? null;
-  const { projects, goals } = await getGoalsData();
+  const { projects, goals, summary } = await getGoalsData(activeView);
   const focusedGoal =
     goals.find((goal) => goal.id === resolvedSearchParams.goal) ?? goals[0] ?? null;
   const focusedGoalHealth = focusedGoal ? toGoalHealthOrNull(focusedGoal.health) : null;
+  const focusedGoalIsArchived = focusedGoal ? isGoalArchivedStatus(focusedGoal.status) : false;
   const linkedTasks = focusedGoal?.linkedTasks ?? [];
-  const activeGoalCount = goals.filter((goal) => goal.status === "active").length;
-  const completedGoalCount = goals.filter((goal) => goal.status === "done").length;
+  const activeGoalCount = summary.active;
+  const completedGoalCount = summary.completed;
+  const archivedGoalCount = summary.archived;
+  const goalReturnTo = focusedGoal
+    ? `/goals?view=${activeView}&goal=${focusedGoal.id}`
+    : `/goals?view=${activeView}`;
 
   return (
     <AppShell
@@ -179,6 +222,42 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
         focusedGoal?.description?.trim() || "Track strategic goals attached to projects."
       }
     >
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <Link
+          href="/goals?view=active"
+          className={`glass-label rounded-full px-3 py-1 ${
+            activeView === "active"
+              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+              : "text-[color:var(--muted-foreground)]"
+          }`}
+        >
+          Active
+        </Link>
+        <Link
+          href="/goals?view=archived"
+          className={`glass-label rounded-full px-3 py-1 ${
+            activeView === "archived"
+              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+              : "text-[color:var(--muted-foreground)]"
+          }`}
+        >
+          Archived
+        </Link>
+        <Link
+          href="/goals?view=all"
+          className={`glass-label rounded-full px-3 py-1 ${
+            activeView === "all"
+              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+              : "text-[color:var(--muted-foreground)]"
+          }`}
+        >
+          All
+        </Link>
+        <Badge tone="muted">{summary.total} total</Badge>
+        <Badge tone={archivedGoalCount > 0 ? "warn" : "muted"}>
+          {archivedGoalCount} archived
+        </Badge>
+      </div>
       {focusedGoal ? (
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(19rem,0.82fr)_minmax(0,1.18fr)]">
           <div className="space-y-6">
@@ -187,7 +266,9 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                 <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
                   <span>{focusedGoal.projectName ?? "Unassigned project"}</span>
                   <span>/</span>
-                  <span className="text-signal-live">Active Goal</span>
+                  <span className="text-signal-live">
+                    {focusedGoalIsArchived ? "Archived Goal" : "Active Goal"}
+                  </span>
                 </div>
                 <CardTitle className="text-xl">Goal overview</CardTitle>
                 <CardDescription>
@@ -228,7 +309,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
               <MetricCard
                 label="Active Goals"
                 value={activeGoalCount.toString()}
-                detail={`${goals.length} goals in workspace`}
+                detail={`${summary.total} goals in workspace`}
                 accent
               />
             </div>
@@ -238,7 +319,9 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                 <p className="glass-label text-signal-live">Current Status</p>
                 <CardTitle className="text-xl">Delivery posture</CardTitle>
                 <CardDescription>
-                  Update the active goal without leaving the detail screen.
+                  {focusedGoalIsArchived
+                    ? "Archived goals stay available for reference and can be restored."
+                    : "Update the active goal without leaving the detail screen."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
@@ -258,24 +341,26 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                 <p className="mt-3 text-sm text-[color:var(--muted-foreground)]">
                   Last updated {new Date(focusedGoal.updatedAt).toLocaleString("en-US")}
                 </p>
-                <div className="mt-5 border-t border-[var(--border)] pt-4">
-                  <InlineGoalStatusForm
-                    action={updateGoalStatusAction}
-                    goalId={focusedGoal.id}
-                    returnTo={`/goals?goal=${focusedGoal.id}`}
-                    defaultStatus={focusedGoal.status}
-                    error={
-                      goalUpdateGoalId === focusedGoal.id && goalUpdateField === "status"
-                        ? goalUpdateError
-                        : null
-                    }
-                  />
-                </div>
+                {!focusedGoalIsArchived ? (
+                  <div className="mt-5 border-t border-[var(--border)] pt-4">
+                    <InlineGoalStatusForm
+                      action={updateGoalStatusAction}
+                      goalId={focusedGoal.id}
+                      returnTo={goalReturnTo}
+                      defaultStatus={focusedGoal.status}
+                      error={
+                        goalUpdateGoalId === focusedGoal.id && goalUpdateField === "status"
+                          ? goalUpdateError
+                          : null
+                      }
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-4 border-t border-[var(--border)] pt-4">
                   <InlineGoalHealthForm
                     action={updateGoalHealthAction}
                     goalId={focusedGoal.id}
-                    returnTo={`/goals?goal=${focusedGoal.id}`}
+                    returnTo={goalReturnTo}
                     defaultHealth={focusedGoal.health}
                     error={
                       goalUpdateGoalId === focusedGoal.id && goalUpdateField === "health"
@@ -283,6 +368,24 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                         : null
                     }
                   />
+                </div>
+                <div className="mt-4 border-t border-[var(--border)] pt-4">
+                  {goalUpdateGoalId === focusedGoal.id && goalUpdateField === "archive" ? (
+                    <div className="mb-3 rounded-lg border border-[rgba(198,40,40,0.2)] bg-[rgba(198,40,40,0.06)] px-3 py-2 text-sm text-signal-error">
+                      {goalUpdateError}
+                    </div>
+                  ) : null}
+                  <form action={focusedGoalIsArchived ? unarchiveGoalAction : archiveGoalAction}>
+                    <input type="hidden" name="goalId" value={focusedGoal.id} />
+                    <input type="hidden" name="returnTo" value={goalReturnTo} />
+                    <Button
+                      type="submit"
+                      variant={focusedGoalIsArchived ? "muted" : "danger"}
+                      size="sm"
+                    >
+                      {focusedGoalIsArchived ? "Unarchive Goal" : "Archive Goal"}
+                    </Button>
+                  </form>
                 </div>
               </CardContent>
             </Card>
@@ -298,7 +401,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                     </CardDescription>
                   </div>
                   <CardAction>
-                    <Badge tone="muted">{goals.length} total</Badge>
+                    <Badge tone="muted">{goals.length} shown</Badge>
                   </CardAction>
                 </div>
               </CardHeader>
@@ -311,7 +414,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                   return (
                     <Link
                       key={goal.id}
-                      href={`/goals?goal=${goal.id}`}
+                      href={`/goals?view=${activeView}&goal=${goal.id}`}
                       className={`flex items-center justify-between gap-3 rounded-[1rem] border px-4 py-3 transition ${
                         isActiveGoal
                           ? "border-[rgba(23,123,82,0.16)] bg-[rgba(23,123,82,0.05)]"
@@ -405,7 +508,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                   <InlineGoalNextStepForm
                     action={updateGoalNextStepAction}
                     goalId={focusedGoal.id}
-                    returnTo={`/goals?goal=${focusedGoal.id}`}
+                    returnTo={goalReturnTo}
                     defaultNextStep={focusedGoal.nextStep}
                     error={
                       goalUpdateGoalId === focusedGoal.id && goalUpdateField === "next_step"
@@ -494,14 +597,20 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
               <Badge tone="info" className="w-fit">
                 Goals
               </Badge>
-              <CardTitle className="text-2xl">No goals yet</CardTitle>
+              <CardTitle className="text-2xl">
+                {summary.total > 0 ? "No goals in this view" : "No goals yet"}
+              </CardTitle>
               <CardDescription className="max-w-2xl">
-                Create a project goal to start tracking progress against a defined outcome.
+                {summary.total > 0
+                  ? "Archived goals are hidden by default. Open Archived or All to review them."
+                  : "Create a project goal to start tracking progress against a defined outcome."}
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
               <div className="surface-empty px-5 py-5 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                The detail view will populate once the first strategic goal exists in the workspace.
+                {summary.total > 0
+                  ? "Switch the goal view above to access archived items."
+                  : "The detail view will populate once the first strategic goal exists in the workspace."}
               </div>
             </CardContent>
           </Card>

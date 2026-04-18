@@ -1,4 +1,5 @@
 import { type GoalHealth, toGoalHealthOrNull } from "@/lib/goal-health";
+import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
 import { sortFocusQueueTasks } from "@/lib/focus-queue";
@@ -380,6 +381,7 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
       supabase
         .from("goals")
         .select("id, title, next_step, health, status, updated_at, projects(name)")
+        .neq("status", GOAL_ARCHIVE_STATUS)
         .order("updated_at", { ascending: false })
         .limit(6),
       supabase

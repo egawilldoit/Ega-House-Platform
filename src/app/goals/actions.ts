@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { toGoalHealthWriteValue } from "@/lib/goal-health";
 import { toGoalNextStepWriteValue } from "@/lib/goal-next-step";
+import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
 import { createClient } from "@/lib/supabase/server";
 import { GOAL_STATUS_VALUES, isGoalStatus } from "@/lib/task-domain";
 
@@ -46,7 +47,7 @@ function redirectWithGoalsError(
   returnPath: string,
   errorMessage: string,
   goalId?: string,
-  field?: "status" | "health" | "next_step",
+  field?: "status" | "health" | "next_step" | "archive",
 ): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("goalUpdateError", errorMessage);
@@ -234,4 +235,41 @@ export async function updateGoalNextStepAction(formData: FormData) {
   revalidatePath("/goals");
   revalidatePath("/dashboard");
   redirect(`${returnPath}#goal-${goalId}`);
+}
+
+async function updateGoalArchiveState(formData: FormData, status: string) {
+  const returnPath = getGoalsReturnPath(formData.get("returnTo"));
+  const goalId = String(formData.get("goalId") ?? "").trim();
+
+  if (!goalId) {
+    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "archive");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("goals")
+    .update({
+      status,
+      updated_at: updatedAt,
+    })
+    .eq("id", goalId);
+
+  if (error) {
+    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "archive");
+  }
+
+  revalidatePath("/goals");
+  revalidatePath("/dashboard");
+  revalidatePath("/tasks");
+  revalidatePath("/tasks/projects");
+  redirect(`${returnPath}#goal-${goalId}`);
+}
+
+export async function archiveGoalAction(formData: FormData) {
+  await updateGoalArchiveState(formData, GOAL_ARCHIVE_STATUS);
+}
+
+export async function unarchiveGoalAction(formData: FormData) {
+  await updateGoalArchiveState(formData, "active");
 }
