@@ -127,6 +127,7 @@ export async function createGoalAction(
   }
 
   revalidatePath("/goals");
+  revalidatePath("/dashboard");
 
   return {
     error: null,

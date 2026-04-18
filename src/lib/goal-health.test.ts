@@ -31,6 +31,13 @@ test("keeps valid goal health value", () => {
   });
 });
 
+test("trims goal health input before validation", () => {
+  assert.deepEqual(normalizeGoalHealthInput("  off_track  "), {
+    value: "off_track",
+    error: null,
+  });
+});
+
 test("rejects unknown goal health value", () => {
   assert.deepEqual(normalizeGoalHealthInput("critical"), {
     value: null,
@@ -70,6 +77,7 @@ test("returns display mapping for all goal health values", () => {
 
 test("converts arbitrary values to a narrowed goal health or null", () => {
   assert.equal(toGoalHealthOrNull("on_track"), "on_track");
+  assert.equal(toGoalHealthOrNull("  at_risk  "), "at_risk");
   assert.equal(toGoalHealthOrNull("unknown"), null);
   assert.equal(toGoalHealthOrNull(null), null);
 });

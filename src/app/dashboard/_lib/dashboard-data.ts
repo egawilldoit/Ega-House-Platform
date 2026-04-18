@@ -1,3 +1,4 @@
+import { type GoalHealth, toGoalHealthOrNull } from "@/lib/goal-health";
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -76,7 +77,7 @@ export type DashboardGoalStatus = {
   id: string;
   title: string;
   nextStep: string | null;
-  health: string | null;
+  health: GoalHealth | null;
   status: string;
   updatedAt: string;
   projectName: string;
@@ -364,7 +365,7 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
           id: goal.id,
           title: goal.title,
           nextStep: goal.next_step,
-          health: goal.health,
+          health: toGoalHealthOrNull(goal.health),
           status: goal.status,
           updatedAt: goal.updated_at,
           projectName: goal.projects?.name ?? "Unknown project",

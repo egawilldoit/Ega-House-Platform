@@ -7,6 +7,7 @@ import { InlineGoalNextStepForm } from "@/components/goals/inline-goal-next-step
 import { InlineGoalStatusForm } from "@/components/goals/inline-goal-status-form";
 import { Badge } from "@/components/ui/badge";
 import {
+  type GoalHealth,
   getGoalHealthLabel,
   getGoalHealthTone,
   toGoalHealthOrNull,
@@ -56,7 +57,7 @@ type GoalView = {
   title: string;
   description: string | null;
   nextStep: string | null;
-  health: string | null;
+  health: GoalHealth | null;
   status: string;
   updatedAt: string;
   projectName: string | null;
@@ -109,7 +110,7 @@ async function getGoalsData() {
       title: goal.title,
       description: goal.description,
       nextStep: goal.next_step,
-      health: goal.health,
+      health: toGoalHealthOrNull(goal.health),
       status: goal.status,
       updatedAt: goal.updated_at,
       projectName: goal.projects?.name ?? null,
