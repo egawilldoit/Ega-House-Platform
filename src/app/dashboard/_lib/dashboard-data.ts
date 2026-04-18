@@ -45,6 +45,7 @@ export type DashboardTodayTask = {
   title: string;
   status: string;
   priority: string;
+  dueDate: string | null;
   updatedAt: string;
   projectName: string;
   goalTitle: string | null;
@@ -174,7 +175,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "id, title, status, priority, updated_at, projects(name), goals(title)",
+        "id, title, status, priority, due_date, updated_at, projects(name), goals(title)",
       )
       .gte("updated_at", startIso)
       .lt("updated_at", endIso)
@@ -196,7 +197,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
             await supabase
               .from("tasks")
               .select(
-                "id, title, status, priority, updated_at, projects(name), goals(title)",
+                "id, title, status, priority, due_date, updated_at, projects(name), goals(title)",
               )
               .order("updated_at", { ascending: false })
               .limit(TODAY_TASK_LIMIT)
@@ -208,6 +209,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
         title: task.title,
         status: task.status,
         priority: task.priority,
+        dueDate: task.due_date,
         updatedAt: task.updated_at,
         projectName: task.projects?.name ?? "Unknown project",
         goalTitle: task.goals?.title ?? null,

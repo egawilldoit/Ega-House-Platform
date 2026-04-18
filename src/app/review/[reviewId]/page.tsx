@@ -13,6 +13,8 @@ import {
 import { formatDateTime, formatIsoDate } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
 
+import { getReviewDetailFields, toFieldValue } from "../review-detail-state";
+
 type ReviewDetailPageProps = {
   params: Promise<{
     reviewId: string;
@@ -37,11 +39,6 @@ async function getReview(reviewId: string) {
   }
 
   return data;
-}
-
-function toFieldValue(value: string | null, fallback = "Not provided.") {
-  const trimmed = value?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : fallback;
 }
 
 function DetailField({ label, value }: { label: string; value: string | null }) {
@@ -92,10 +89,9 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <DetailField label="Summary / Reflection" value={review.summary} />
-            <DetailField label="Wins" value={review.wins} />
-            <DetailField label="Blockers" value={review.blockers} />
-            <DetailField label="Next steps" value={review.next_steps} />
+            {getReviewDetailFields(review).map((field) => (
+              <DetailField key={field.label} label={field.label} value={field.value} />
+            ))}
           </CardContent>
         </Card>
 

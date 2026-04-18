@@ -14,7 +14,7 @@ test("parses and trims review form fields from form data", () => {
   formData.set("summary", " Wrapped up the main cycle. ");
   formData.set("wins", "  Closed key bugs.  ");
   formData.set("blockers", " Waiting on review. ");
-  formData.set("nextSteps", " Start next sprint. ");
+  formData.set("next_steps", " Start next sprint. ");
 
   assert.deepEqual(getReviewFormValuesFromFormData(formData), {
     weekOf: "2026-04-18",
@@ -23,6 +23,18 @@ test("parses and trims review form fields from form data", () => {
     blockers: "Waiting on review.",
     nextSteps: "Start next sprint.",
   });
+});
+
+test("supports the legacy camelCase next steps form key", () => {
+  const formData = new FormData();
+  formData.set("weekOf", "2026-04-18");
+  formData.set("summary", "Wrapped up the main cycle.");
+  formData.set("nextSteps", " Keep legacy clients working. ");
+
+  assert.equal(
+    getReviewFormValuesFromFormData(formData).nextSteps,
+    "Keep legacy clients working.",
+  );
 });
 
 test("maps stored review columns back into form defaults", () => {

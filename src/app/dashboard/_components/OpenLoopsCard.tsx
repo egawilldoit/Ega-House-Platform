@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import type { DashboardTodayTask } from "../_lib/dashboard-data";
@@ -162,6 +163,9 @@ export function OpenLoopsCard({ tasks, error }: OpenLoopsCardProps) {
                       {task.projectName}
                       {task.goalTitle ? ` · ${task.goalTitle}` : ""}
                     </p>
+                    <div style={{ marginTop: "0.375rem" }}>
+                      <TaskDueDateLabel dueDate={task.dueDate} status={task.status} />
+                    </div>
                   </div>
                 </div>
                 <Badge tone={tone}>{label}</Badge>

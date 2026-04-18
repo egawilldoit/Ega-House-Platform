@@ -1,4 +1,12 @@
 import Link from "next/link";
+import {
+  DEFAULT_TASK_DUE_FILTER,
+  DEFAULT_TASK_SORT,
+  TASK_DUE_FILTER_VALUES,
+  TASK_SORT_VALUES,
+  type TaskDueFilter,
+  type TaskSortValue,
+} from "@/lib/task-list";
 import { cn } from "@/lib/utils";
 
 import {
@@ -13,6 +21,8 @@ type TaskFilterControlsProps = {
   activePriority?: string | null;
   activeProjectId?: string | null;
   activeGoalId?: string | null;
+  activeDueFilter?: TaskDueFilter;
+  activeSort?: TaskSortValue;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   includePriority?: boolean;
@@ -30,6 +40,8 @@ function buildFilterHref(
     priority?: string | null;
     project?: string | null;
     goal?: string | null;
+    due?: TaskDueFilter;
+    sort?: TaskSortValue;
   },
 ) {
   const searchParams = new URLSearchParams();
@@ -48,6 +60,14 @@ function buildFilterHref(
 
   if (filters.goal) {
     searchParams.set("goal", filters.goal);
+  }
+
+  if (filters.due && filters.due !== DEFAULT_TASK_DUE_FILTER) {
+    searchParams.set("due", filters.due);
+  }
+
+  if (filters.sort && filters.sort !== DEFAULT_TASK_SORT) {
+    searchParams.set("sort", filters.sort);
   }
 
   const query = searchParams.toString();
@@ -94,6 +114,8 @@ export function TaskFilterControls({
   activePriority = null,
   activeProjectId = null,
   activeGoalId = null,
+  activeDueFilter = DEFAULT_TASK_DUE_FILTER,
+  activeSort = DEFAULT_TASK_SORT,
   projectOptions = [],
   goalOptions = [],
   includePriority = false,
@@ -127,6 +149,26 @@ export function TaskFilterControls({
       label: goal.title,
     })),
   ];
+  const dueFilterOptions: FilterOption[] = TASK_DUE_FILTER_VALUES.map((value) => ({
+    value,
+    label:
+      value === "all"
+        ? "All"
+        : value === "overdue"
+          ? "Overdue"
+          : value === "due_soon"
+            ? "Due soon"
+            : "No due date",
+  }));
+  const sortOptions: FilterOption[] = TASK_SORT_VALUES.map((value) => ({
+    value,
+    label:
+      value === "updated_desc"
+        ? "Recent"
+        : value === "due_date_asc"
+          ? "Due soonest"
+          : "Due latest",
+  }));
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
@@ -140,6 +182,8 @@ export function TaskFilterControls({
             priority: activePriority,
             project: activeProjectId,
             goal: activeGoalId,
+            due: activeDueFilter,
+            sort: activeSort,
           })
         }
       />
@@ -155,6 +199,8 @@ export function TaskFilterControls({
               priority: activePriority,
               project,
               goal: activeGoalId,
+              due: activeDueFilter,
+              sort: activeSort,
             })
           }
         />
@@ -172,6 +218,8 @@ export function TaskFilterControls({
                 priority: activePriority,
                 project: activeProjectId,
                 goal,
+                due: activeDueFilter,
+                sort: activeSort,
               })
             }
           />
@@ -189,10 +237,44 @@ export function TaskFilterControls({
               priority,
               project: activeProjectId,
               goal: activeGoalId,
+              due: activeDueFilter,
+              sort: activeSort,
             })
           }
         />
       ) : null}
+
+      <FilterPills
+        label="Due date"
+        options={dueFilterOptions}
+        activeValue={activeDueFilter}
+        hrefForValue={(due) =>
+          buildFilterHref(basePath, {
+            status: activeStatus,
+            priority: activePriority,
+            project: activeProjectId,
+            goal: activeGoalId,
+            due: (due as TaskDueFilter | null) ?? DEFAULT_TASK_DUE_FILTER,
+            sort: activeSort,
+          })
+        }
+      />
+
+      <FilterPills
+        label="Sort"
+        options={sortOptions}
+        activeValue={activeSort}
+        hrefForValue={(sort) =>
+          buildFilterHref(basePath, {
+            status: activeStatus,
+            priority: activePriority,
+            project: activeProjectId,
+            goal: activeGoalId,
+            due: activeDueFilter,
+            sort: (sort as TaskSortValue | null) ?? DEFAULT_TASK_SORT,
+          })
+        }
+      />
     </div>
   );
 }
@@ -204,6 +286,8 @@ export function buildTaskFilterReturnPath(
     priority?: string | null;
     project?: string | null;
     goal?: string | null;
+    due?: TaskDueFilter;
+    sort?: TaskSortValue;
   },
 ) {
   return buildFilterHref(basePath, filters);

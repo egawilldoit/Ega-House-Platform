@@ -38,6 +38,7 @@ export function CreateTaskForm({
       description: "",
       status: "todo",
       priority: "medium",
+      dueDate: "",
       returnTo,
     },
   };
@@ -160,6 +161,19 @@ export function CreateTaskForm({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="dueDate" className="glass-label text-etch">
+                Due date (optional)
+              </label>
+              <Input
+                id="dueDate"
+                name="dueDate"
+                type="date"
+                defaultValue={state.values.dueDate}
+                className="h-10"
+              />
             </div>
 
             <div className="space-y-2">

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -11,6 +12,7 @@ type InlineTaskUpdateFormProps = {
   returnTo: string;
   defaultStatus: string;
   defaultPriority: string;
+  defaultDueDate: string | null;
   error?: string | null;
 };
 
@@ -20,6 +22,7 @@ export function InlineTaskUpdateForm({
   returnTo,
   defaultStatus,
   defaultPriority,
+  defaultDueDate,
   error,
 }: InlineTaskUpdateFormProps) {
   return (
@@ -43,6 +46,18 @@ export function InlineTaskUpdateForm({
               </option>
             ))}
           </select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="glass-label text-etch">
+            Due date
+          </span>
+          <Input
+            name="dueDate"
+            type="date"
+            defaultValue={defaultDueDate ?? ""}
+            className="min-h-9 min-w-36 px-3 py-0 text-sm"
+          />
         </label>
 
         <label className="space-y-2">

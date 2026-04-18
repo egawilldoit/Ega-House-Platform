@@ -17,6 +17,17 @@ function trimFormValue(value: FormDataEntryValue | string | null | undefined) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function getFormValue(formData: FormData, ...keys: string[]) {
+  for (const key of keys) {
+    const value = formData.get(key);
+    if (typeof value === "string") {
+      return trimFormValue(value);
+    }
+  }
+
+  return "";
+}
+
 export function getEmptyReviewFormValues(weekOf: string): ReviewFormValues {
   return {
     summary: "",
@@ -31,11 +42,11 @@ export function getReviewFormValuesFromFormData(
   formData: FormData,
 ): ReviewFormValues {
   return {
-    summary: trimFormValue(formData.get("summary")),
-    wins: trimFormValue(formData.get("wins")),
-    blockers: trimFormValue(formData.get("blockers")),
-    nextSteps: trimFormValue(formData.get("nextSteps")),
-    weekOf: trimFormValue(formData.get("weekOf")),
+    summary: getFormValue(formData, "summary"),
+    wins: getFormValue(formData, "wins"),
+    blockers: getFormValue(formData, "blockers"),
+    nextSteps: getFormValue(formData, "next_steps", "nextSteps"),
+    weekOf: getFormValue(formData, "weekOf"),
   };
 }
 

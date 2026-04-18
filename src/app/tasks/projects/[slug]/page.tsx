@@ -6,6 +6,7 @@ import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import { updateTaskInlineAction } from "@/app/tasks/actions";
 import { updateProjectStatusAction } from "@/app/tasks/projects/actions";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
+import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
   TaskFilterControls,
@@ -15,6 +16,15 @@ import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import {
+  DEFAULT_TASK_DUE_FILTER,
+  DEFAULT_TASK_SORT,
+  applyTaskListQuery,
+  isTaskDueFilter,
+  isTaskSortValue,
+  type TaskDueFilter,
+  type TaskSortValue,
+} from "@/lib/task-list";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import {
@@ -30,7 +40,7 @@ type ProjectRow = Pick<Tables<"projects">, "id" | "name" | "slug" | "description
 type GoalRow = Pick<Tables<"goals">, "id" | "title" | "project_id">;
 type TaskRow = Pick<
   Tables<"tasks">,
-  "id" | "title" | "description" | "status" | "priority" | "updated_at" | "goal_id"
+  "id" | "title" | "description" | "status" | "priority" | "due_date" | "updated_at" | "goal_id"
 > & {
   goals: Pick<Tables<"goals">, "title"> | null;
 };
@@ -40,6 +50,8 @@ type ProjectDetailPageProps = {
   searchParams: Promise<{
     status?: string;
     priority?: string;
+    due?: string;
+    sort?: string;
     taskUpdateError?: string;
     taskUpdateTaskId?: string;
     projectUpdateError?: string;
@@ -72,7 +84,7 @@ async function getProjectDetail(slug: string) {
       .order("created_at", { ascending: false }),
     supabase
       .from("tasks")
-      .select("id, title, description, status, priority, updated_at, goal_id, goals(title)")
+      .select("id, title, description, status, priority, due_date, updated_at, goal_id, goals(title)")
       .eq("project_id", project.id)
       .order("updated_at", { ascending: false }),
   ]);
@@ -85,7 +97,7 @@ async function getProjectDetail(slug: string) {
     throw new Error(`Failed to load project tasks: ${tasksResult.error.message}`);
   }
 
-  const allTasks = tasksResult.data as TaskRow[];
+  const allTasks = (tasksResult.data ?? []) as TaskRow[];
   const statusCounts = TASK_STATUS_VALUES.map((status) => ({
     status,
     count: allTasks.filter((task) => task.status === status).length,
@@ -185,6 +197,14 @@ export default async function ProjectDetailPage({
     resolvedSearchParams.priority && isTaskPriority(resolvedSearchParams.priority)
       ? resolvedSearchParams.priority
       : null;
+  const activeDueFilter: TaskDueFilter =
+    resolvedSearchParams.due && isTaskDueFilter(resolvedSearchParams.due)
+      ? resolvedSearchParams.due
+      : DEFAULT_TASK_DUE_FILTER;
+  const activeSort: TaskSortValue =
+    resolvedSearchParams.sort && isTaskSortValue(resolvedSearchParams.sort)
+      ? resolvedSearchParams.sort
+      : DEFAULT_TASK_SORT;
   const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
@@ -194,20 +214,28 @@ export default async function ProjectDetailPage({
   const returnTo = buildTaskFilterReturnPath(`/tasks/projects/${project.slug}`, {
     status: activeStatus,
     priority: activePriority,
+    due: activeDueFilter,
+    sort: activeSort,
   });
-  const filteredTasks = tasks.filter((task) => {
-    if (activeStatus && task.status !== activeStatus) {
-      return false;
-    }
+  const filteredTasks = applyTaskListQuery(
+    tasks.filter((task) => {
+      if (activeStatus && task.status !== activeStatus) {
+        return false;
+      }
 
-    if (activePriority && task.priority !== activePriority) {
-      return false;
-    }
+      if (activePriority && task.priority !== activePriority) {
+        return false;
+      }
 
-    return true;
-  });
+      return true;
+    }),
+    {
+      dueFilter: activeDueFilter,
+      sortValue: activeSort,
+    },
+  );
 
-  const focusedTask = filteredTasks[0] ?? tasks[0] ?? null;
+  const focusedTask = filteredTasks[0] ?? null;
   const siblingTasks = filteredTasks.slice(1);
   const focusedDurationSeconds = focusedTask ? taskTotalDurations[focusedTask.id] ?? 0 : 0;
   const completedRelatedTasks = filteredTasks.filter((task) => task.status === "done").length;
@@ -268,6 +296,9 @@ export default async function ProjectDetailPage({
                         project.description?.trim() ||
                         "No description has been added for this task yet."}
                     </p>
+                    {focusedTask ? (
+                      <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
+                    ) : null}
                   </div>
                 </div>
 
@@ -283,6 +314,22 @@ export default async function ProjectDetailPage({
                     <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
                       {focusedTask?.goals?.title ?? "No linked goal"}
                     </p>
+                  </div>
+                  <div>
+                    <p className="glass-label text-etch">Due</p>
+                    <div className="mt-2">
+                      {focusedTask?.due_date ? (
+                        <TaskDueDateLabel
+                          dueDate={focusedTask.due_date}
+                          status={focusedTask.status}
+                          textClassName="text-sm font-medium text-[color:var(--foreground)]"
+                        />
+                      ) : (
+                        <p className="text-sm font-medium text-[color:var(--foreground)]">
+                          No due date
+                        </p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="glass-label text-etch">Updated</p>
@@ -324,6 +371,8 @@ export default async function ProjectDetailPage({
                   basePath={`/tasks/projects/${project.slug}`}
                   activeStatus={activeStatus}
                   activePriority={activePriority}
+                  activeDueFilter={activeDueFilter}
+                  activeSort={activeSort}
                   includePriority
                 />
               </div>
@@ -349,6 +398,11 @@ export default async function ProjectDetailPage({
                         <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
                           Focused task
                         </p>
+                        <TaskDueDateLabel
+                          dueDate={focusedTask.due_date}
+                          status={focusedTask.status}
+                          className="mt-2"
+                        />
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Badge tone={getTaskStatusTone(focusedTask.status)}>
@@ -364,6 +418,7 @@ export default async function ProjectDetailPage({
                         returnTo={returnTo}
                         defaultStatus={focusedTask.status}
                         defaultPriority={focusedTask.priority}
+                        defaultDueDate={focusedTask.due_date}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
                       />
                     </div>
@@ -386,6 +441,11 @@ export default async function ProjectDetailPage({
                             <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
                               {task.goals?.title ?? "No linked goal"}
                             </p>
+                            <TaskDueDateLabel
+                              dueDate={task.due_date}
+                              status={task.status}
+                              className="mt-2"
+                            />
                           </div>
                           <div className="flex flex-wrap gap-2">
                             <Badge tone={getTaskStatusTone(task.status)}>
@@ -401,6 +461,7 @@ export default async function ProjectDetailPage({
                             returnTo={returnTo}
                             defaultStatus={task.status}
                             defaultPriority={task.priority}
+                            defaultDueDate={task.due_date}
                             error={inlineError}
                           />
                         </div>
@@ -452,9 +513,12 @@ export default async function ProjectDetailPage({
                     <p className="text-sm font-medium text-[color:var(--foreground)]">
                       {task.title}
                     </p>
-                    <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                      Updated {formatTimerDateTime(task.updated_at)}
-                    </p>
+                    <div className="mt-1 space-y-1">
+                      <p className="text-xs text-[color:var(--muted-foreground)]">
+                        Updated {formatTimerDateTime(task.updated_at)}
+                      </p>
+                      <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
+                    </div>
                   </div>
                 ))}
               </div>

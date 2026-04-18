@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
+import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -105,6 +106,7 @@ function TaskRow({ task }: { task: DashboardTodayTask }) {
           {task.projectName}
           {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
         </p>
+        <TaskDueDateLabel dueDate={task.dueDate} status={task.status} className="mt-2" />
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
         <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>

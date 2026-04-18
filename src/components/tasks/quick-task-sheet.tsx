@@ -65,6 +65,7 @@ type MultiTaskDraft = {
   goalId: string;
   status: string;
   priority: string;
+  dueDate: string;
   description: string;
 };
 
@@ -88,6 +89,7 @@ function createEmptyDraft(defaultProjectId: string): MultiTaskDraft {
     goalId: "",
     status: "todo",
     priority: "medium",
+    dueDate: "",
     description: "",
   };
 }
@@ -146,6 +148,7 @@ function QuickTaskSheetPanel({
       description: "",
       status: "todo",
       priority: "medium",
+      dueDate: "",
       returnTo: DEFAULT_RETURN_TO,
     },
   };
@@ -161,6 +164,7 @@ function QuickTaskSheetPanel({
       description: "",
       status: "todo",
       priority: "medium",
+      dueDate: "",
       returnTo: DEFAULT_RETURN_TO,
     },
   };
@@ -274,6 +278,7 @@ function QuickTaskSheetPanel({
       description: draft.description,
       status: draft.status,
       priority: draft.priority,
+      dueDate: draft.dueDate,
     })),
   );
 
@@ -410,6 +415,19 @@ function QuickTaskSheetPanel({
                             </option>
                           ))}
                         </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label htmlFor="quick-task-due-date" className="glass-label text-etch">
+                          Due date
+                        </label>
+                        <Input
+                          id="quick-task-due-date"
+                          name="dueDate"
+                          type="date"
+                          defaultValue={singleState.values.dueDate}
+                          className="h-10"
+                        />
                       </div>
 
                       <div className="space-y-2">
@@ -617,8 +635,20 @@ function QuickTaskSheetPanel({
                                   <option key={priority} value={priority}>
                                     {formatTaskToken(priority)}
                                   </option>
-                                ))}
+                                  ))}
                               </select>
+                            </div>
+
+                            <div className="space-y-2 sm:col-span-2">
+                              <label className="glass-label text-etch">Due date</label>
+                              <Input
+                                type="date"
+                                value={draft.dueDate}
+                                onChange={(event) =>
+                                  updateDraftField(draft.id, "dueDate", event.target.value)
+                                }
+                                className="h-10"
+                              />
                             </div>
                           </div>
 

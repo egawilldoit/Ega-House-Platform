@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { updateTaskInlineAction } from "@/app/tasks/actions";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
+import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
   TaskFilterControls,
@@ -20,12 +21,22 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/server";
+import {
+  DEFAULT_TASK_DUE_FILTER,
+  DEFAULT_TASK_SORT,
+  applyTaskListQuery,
+  isTaskDueFilter,
+  isTaskSortValue,
+  type TaskDueFilter,
+  type TaskSortValue,
+} from "@/lib/task-list";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import {
   formatTaskToken,
   getTaskStatusTone,
   isTaskStatus,
 } from "@/lib/task-domain";
+import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 
 export const metadata: Metadata = {
   title: "Tasks | EGA House",
@@ -37,6 +48,8 @@ type TasksPageProps = {
     status?: string;
     project?: string;
     goal?: string;
+    due?: string;
+    sort?: string;
     taskUpdateError?: string;
     taskUpdateTaskId?: string;
     statusUpdateError?: string;
@@ -47,6 +60,8 @@ async function getTasksData(
   activeStatus: string | null,
   requestedProjectId: string | null,
   requestedGoalId: string | null,
+  activeDueFilter: TaskDueFilter,
+  activeSort: TaskSortValue,
 ) {
   const supabase = await createClient();
   const [projectsResult, goalsResult] = await Promise.all([
@@ -76,7 +91,7 @@ async function getTasksData(
   const tasksQuery = supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, updated_at, project_id, goal_id, projects(name), goals(title)",
+      "id, title, description, status, priority, due_date, updated_at, project_id, goal_id, projects(name), goals(title)",
     )
     .order("updated_at", { ascending: false });
   if (activeStatus) {
@@ -92,7 +107,10 @@ async function getTasksData(
   if (tasksResult.error) {
     throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
   }
-  const tasks = tasksResult.data;
+  const tasks = applyTaskListQuery(tasksResult.data ?? [], {
+    dueFilter: activeDueFilter,
+    sortValue: activeSort,
+  });
   const taskTotalDurations = await getTaskTotalDurationMap(
     supabase,
     tasks.map((task) => task.id),
@@ -125,22 +143,34 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const statusParam = resolvedSearchParams.status;
   const projectParam = resolvedSearchParams.project?.trim() || null;
   const goalParam = resolvedSearchParams.goal?.trim() || null;
+  const dueParam = resolvedSearchParams.due?.trim() || DEFAULT_TASK_DUE_FILTER;
+  const sortParam = resolvedSearchParams.sort?.trim() || DEFAULT_TASK_SORT;
   const activeStatus: string | null =
     statusParam && isTaskStatus(statusParam) ? statusParam : null;
+  const activeDueFilter: TaskDueFilter = isTaskDueFilter(dueParam)
+    ? dueParam
+    : DEFAULT_TASK_DUE_FILTER;
+  const activeSort: TaskSortValue = isTaskSortValue(sortParam)
+    ? sortParam
+    : DEFAULT_TASK_SORT;
   const taskUpdateError =
     resolvedSearchParams.taskUpdateError?.slice(0, 180) ??
     resolvedSearchParams.statusUpdateError?.slice(0, 180) ??
     null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
   const { projects, goals, tasks, taskTotalDurations, activeProjectId, activeGoalId } =
-    await getTasksData(activeStatus, projectParam, goalParam);
+    await getTasksData(activeStatus, projectParam, goalParam, activeDueFilter, activeSort);
   const returnPath = buildTaskFilterReturnPath("/tasks", {
     status: activeStatus,
     project: activeProjectId,
     goal: activeGoalId,
+    due: activeDueFilter,
+    sort: activeSort,
   });
   const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
   const blockedCount = tasks.filter((task) => task.status === "blocked").length;
+  const overdueCount = tasks.filter((task) => isTaskOverdue(task.due_date, task.status)).length;
+  const dueSoonCount = tasks.filter((task) => isTaskDueSoon(task.due_date, task.status)).length;
 
   return (
     <TasksWorkspaceShell
@@ -176,6 +206,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 <Badge tone={inProgressCount > 0 ? "info" : "muted"}>
                   {inProgressCount} in progress
                 </Badge>
+                <Badge tone={overdueCount > 0 ? "error" : "muted"}>
+                  {overdueCount} overdue
+                </Badge>
+                <Badge tone={dueSoonCount > 0 ? "warn" : "muted"}>
+                  {dueSoonCount} due soon
+                </Badge>
               </CardAction>
             </div>
 
@@ -185,6 +221,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 activeStatus={activeStatus}
                 activeProjectId={activeProjectId}
                 activeGoalId={activeGoalId}
+                activeDueFilter={activeDueFilter}
+                activeSort={activeSort}
                 projectOptions={projects}
                 goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
               />
@@ -243,6 +281,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                 {task.description}
                               </p>
                             ) : null}
+
+                            <TaskDueDateLabel
+                              dueDate={task.due_date}
+                              status={task.status}
+                              className="mt-3"
+                            />
                           </div>
                         </div>
                       </div>
@@ -269,6 +313,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         returnTo={returnPath}
                         defaultStatus={task.status}
                         defaultPriority={task.priority}
+                        defaultDueDate={task.due_date}
                         error={inlineError}
                       />
                     </div>

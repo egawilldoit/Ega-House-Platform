@@ -85,12 +85,12 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="nextSteps" className="glass-label text-etch">
+        <label htmlFor="next_steps" className="glass-label text-etch">
           Next steps
         </label>
         <Textarea
-          id="nextSteps"
-          name="nextSteps"
+          id="next_steps"
+          name="next_steps"
           placeholder="What should happen next in the coming week."
           defaultValue={state.values.nextSteps}
           className="min-h-32"
