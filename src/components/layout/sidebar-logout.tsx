@@ -2,10 +2,8 @@
 
 import { useActionState } from "react";
 
-import {
-  INITIAL_SIGN_OUT_FORM_STATE,
-  signOutAction,
-} from "./logout-actions";
+import { signOutAction } from "./logout-actions";
+import { INITIAL_SIGN_OUT_FORM_STATE } from "./logout-state";
 
 export function SidebarLogout() {
   const [state, formAction, isPending] = useActionState(

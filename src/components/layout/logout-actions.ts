@@ -5,14 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 import { executeSignOut } from "./logout-logic";
-
-export type SignOutFormState = {
-  error: string | null;
-};
-
-export const INITIAL_SIGN_OUT_FORM_STATE: SignOutFormState = {
-  error: null,
-};
+import type { SignOutFormState } from "./logout-state";
 
 export async function signOutAction(
   _previousState: SignOutFormState,
