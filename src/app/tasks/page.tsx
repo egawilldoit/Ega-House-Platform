@@ -45,6 +45,7 @@ import {
 } from "@/lib/task-domain";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { isMissingSupabaseTable } from "@/lib/supabase-error";
 
 export const metadata: Metadata = {
   title: "Tasks | EGA House",
@@ -91,7 +92,11 @@ async function getTasksData(
   if (goalsResult.error) {
     throw new Error(`Failed to load goals: ${goalsResult.error.message}`);
   }
-  if (savedViewsResult.error) {
+  const savedViewsUnavailable = isMissingSupabaseTable(
+    savedViewsResult.error,
+    "public.task_saved_views",
+  );
+  if (savedViewsResult.error && !savedViewsUnavailable) {
     throw new Error(`Failed to load saved views: ${savedViewsResult.error.message}`);
   }
   const activeProjectId =
@@ -137,7 +142,8 @@ async function getTasksData(
     goals: visibleGoals,
     tasks,
     taskTotalDurations,
-    savedViews: savedViewsResult.data ?? [],
+    savedViews: savedViewsUnavailable ? [] : (savedViewsResult.data ?? []),
+    savedViewsUnavailable,
     activeProjectId,
     activeGoalId,
   };
@@ -186,9 +192,18 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     tasks,
     taskTotalDurations,
     savedViews,
+    savedViewsUnavailable,
     activeProjectId,
     activeGoalId,
   } = await getTasksData(activeStatus, projectParam, goalParam, activeDueFilter, activeSort);
+  const resolvedSavedViewFeedback = {
+    error:
+      savedViewFeedback.error ??
+      (savedViewsUnavailable
+        ? "Saved views are temporarily unavailable while database schema updates propagate."
+        : null),
+    success: savedViewFeedback.success,
+  };
   const returnPath = buildTaskFilterReturnPath("/tasks", {
     status: activeStatus,
     project: activeProjectId,
@@ -398,8 +413,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             savedViews={savedViews}
             projectOptions={projects}
             goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
-            feedback={savedViewFeedback}
-          />
+              feedback={resolvedSavedViewFeedback}
+            />
 
           <Card className="border-[var(--border)] bg-white">
             <CardHeader className="pb-4">

@@ -10,6 +10,10 @@ import {
   normalizeTaskSavedViewFilters,
   validateTaskSavedViewScope,
 } from "@/lib/task-saved-views";
+import { isMissingSupabaseTable } from "@/lib/supabase-error";
+
+const SAVED_VIEWS_UNAVAILABLE_MESSAGE =
+  "Saved views are temporarily unavailable while database schema updates propagate.";
 
 function getTasksReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
@@ -127,8 +131,9 @@ export async function createTaskSavedViewAction(formData: FormData) {
 
   if (error) {
     redirectWithSavedViewFeedback(returnPath, {
-      error:
-        error.code === "23505"
+      error: isMissingSupabaseTable(error, "public.task_saved_views")
+        ? SAVED_VIEWS_UNAVAILABLE_MESSAGE
+        : error.code === "23505"
           ? "A saved view with that name already exists."
           : "Unable to save the current filters right now.",
     });
@@ -171,8 +176,9 @@ export async function updateTaskSavedViewAction(formData: FormData) {
 
   if (error) {
     redirectWithSavedViewFeedback(returnPath, {
-      error:
-        error.code === "23505"
+      error: isMissingSupabaseTable(error, "public.task_saved_views")
+        ? SAVED_VIEWS_UNAVAILABLE_MESSAGE
+        : error.code === "23505"
           ? "A saved view with that name already exists."
           : "Unable to update the saved view right now.",
     });
@@ -194,7 +200,11 @@ export async function deleteTaskSavedViewAction(formData: FormData) {
   const { error } = await supabase.from("task_saved_views").delete().eq("id", viewId);
 
   if (error) {
-    redirectWithSavedViewFeedback(returnPath, { error: "Unable to delete the saved view right now." });
+    redirectWithSavedViewFeedback(returnPath, {
+      error: isMissingSupabaseTable(error, "public.task_saved_views")
+        ? SAVED_VIEWS_UNAVAILABLE_MESSAGE
+        : "Unable to delete the saved view right now.",
+    });
   }
 
   revalidatePath("/tasks");
