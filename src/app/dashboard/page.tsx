@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/services/auth-service";
 
 import { DashboardOptimizedView } from "./_components/DashboardOptimizedView";
 import { getDashboardData } from "./_lib/dashboard-data";
@@ -12,10 +12,7 @@ export const metadata: Metadata = {
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   const { todayPlanner, projectStatuses } = data;
 
   const tasks = todayPlanner.data?.all ?? [];

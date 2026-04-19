@@ -15,15 +15,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
-import {
-  formatDurationLabel,
-  getCurrentDayWindow,
-  getSessionDurationWithinWindowSeconds,
-  getTaskSessionDurationSeconds,
-  getTaskTotalDurationMap,
-} from "@/lib/task-session";
+import { formatDurationLabel } from "@/lib/task-session";
 import { formatTimerDateTime } from "@/lib/timer-domain";
+import { getCurrentUser } from "@/lib/services/auth-service";
+import { getTimerWorkspaceData } from "@/lib/services/timer-service";
 
 import { resolveSessionConflictAction, startTimerAction, stopTimerAction } from "./actions";
 import {
@@ -44,125 +39,14 @@ function getTaskContextHref(taskId: string | null | undefined, projectSlug: stri
 }
 
 async function getTimerData() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const now = new Date();
-  const nowIso = now.toISOString();
-  const todayWindow = getCurrentDayWindow(now);
-  const nextDayStartIso = new Date(
-    new Date(todayWindow.startIso).getTime() + 24 * 60 * 60 * 1000,
-  ).toISOString();
-
-  const [tasksResult, openSessionsResult, completedSessionsResult, todaySessionsResult] =
-    await Promise.all([
-      supabase
-        .from("tasks")
-        .select("id, title, status, projects(name, slug)")
-        .neq("status", "done")
-        .order("updated_at", { ascending: false })
-        .limit(100),
-      supabase
-        .from("task_sessions")
-        .select(
-          "id, task_id, started_at, tasks(id, title, description, status, priority, goals(title), projects(name, slug))",
-        )
-        .is("ended_at", null)
-        .order("started_at", { ascending: false }),
-      supabase
-        .from("task_sessions")
-        .select(
-          "id, task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(name))",
-        )
-        .not("ended_at", "is", null)
-        .order("started_at", { ascending: false })
-        .limit(80),
-      supabase
-        .from("task_sessions")
-        .select("id, task_id, started_at, ended_at, duration_seconds, tasks(id, title)")
-        .lt("started_at", nextDayStartIso)
-        .or(`ended_at.gte.${todayWindow.startIso},ended_at.is.null`)
-        .order("started_at", { ascending: false }),
-    ]);
-
-  if (tasksResult.error) {
-    throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
-  }
-  if (openSessionsResult.error) {
-    throw new Error(`Failed to load open sessions: ${openSessionsResult.error.message}`);
-  }
-  if (completedSessionsResult.error) {
-    throw new Error(`Failed to load completed sessions: ${completedSessionsResult.error.message}`);
-  }
-  if (todaySessionsResult.error) {
-    throw new Error(`Failed to load today's sessions: ${todaySessionsResult.error.message}`);
-  }
-
-  const taskIds = [
-    ...new Set([
-      ...tasksResult.data.map((task) => task.id),
-      ...openSessionsResult.data.map((session) => session.task_id),
-      ...completedSessionsResult.data.map((session) => session.tasks?.id).filter(Boolean),
-      ...todaySessionsResult.data.map((session) => session.task_id),
-    ]),
-  ] as string[];
-  const taskTotalDurations = await getTaskTotalDurationMap(supabase, taskIds, nowIso);
-
-  const todayTaskDurationMap = todaySessionsResult.data.reduce<
-    Record<string, { taskTitle: string; durationSeconds: number }>
-  >((totals, session) => {
-    const durationSeconds = getSessionDurationWithinWindowSeconds(
-      session,
-      todayWindow,
-      nowIso,
-    );
-    if (durationSeconds <= 0) {
-      return totals;
-    }
-    const existing = totals[session.task_id];
-    totals[session.task_id] = {
-      taskTitle: existing?.taskTitle ?? session.tasks?.title ?? "Untitled task",
-      durationSeconds: (existing?.durationSeconds ?? 0) + durationSeconds,
-    };
-    return totals;
-  }, {});
-
-  const todayTaskBreakdown = Object.entries(todayTaskDurationMap)
-    .map(([taskId, details]) => ({
-      taskId,
-      taskTitle: details.taskTitle,
-      durationSeconds: details.durationSeconds,
-    }))
-    .sort((left, right) => right.durationSeconds - left.durationSeconds);
-  const todayTotalDurationSeconds = todayTaskBreakdown.reduce(
-    (sum, row) => sum + row.durationSeconds,
-    0,
-  );
-
-  const sessionHistory = completedSessionsResult.data
-    .map((session) => ({
-      id: session.id,
-      taskId: session.task_id,
-      taskTitle: session.tasks?.title ?? "Untitled task",
-      projectName: session.tasks?.projects?.name ?? "Unknown project",
-      startedAt: session.started_at,
-      endedAt: session.ended_at,
-      durationSeconds: getTaskSessionDurationSeconds(session, nowIso),
-    }))
-    .sort(
-      (left, right) =>
-        new Date(right.startedAt).getTime() - new Date(left.startedAt).getTime(),
-    );
+  const [workspaceData, user] = await Promise.all([
+    getTimerWorkspaceData(),
+    getCurrentUser(),
+  ]);
 
   return {
     ownerUserId: user?.id ?? null,
-    tasks: tasksResult.data,
-    openSessions: openSessionsResult.data,
-    todayTaskBreakdown,
-    todayTotalDurationSeconds,
-    sessionHistory,
-    taskTotalDurations,
+    ...workspaceData,
   };
 }
 

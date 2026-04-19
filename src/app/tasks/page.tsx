@@ -26,26 +26,25 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { createClient } from "@/lib/supabase/server";
 import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
-  applyTaskListQuery,
   isTaskDueFilter,
   isTaskSortValue,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
-import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
+import { formatDurationLabel } from "@/lib/task-session";
 import {
   formatTaskToken,
   getTaskStatusTone,
   isTaskStatus,
+  type TaskStatus,
 } from "@/lib/task-domain";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
-import { isMissingSupabaseTable } from "@/lib/supabase-error";
+import { getTasksWorkspaceData } from "@/lib/services/task-service";
 
 export const metadata: Metadata = {
   title: "Tasks | EGA House",
@@ -67,88 +66,6 @@ type TasksPageProps = {
   }>;
 };
 
-async function getTasksData(
-  activeStatus: string | null,
-  requestedProjectId: string | null,
-  requestedGoalId: string | null,
-  activeDueFilter: TaskDueFilter,
-  activeSort: TaskSortValue,
-) {
-  const supabase = await createClient();
-  const [projectsResult, goalsResult, savedViewsResult] = await Promise.all([
-    supabase.from("projects").select("id, name").order("name", { ascending: true }),
-    supabase
-      .from("goals")
-      .select("id, title, project_id")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("task_saved_views")
-      .select("id, name, status, project_id, goal_id, due_filter, sort_value, updated_at")
-      .order("updated_at", { ascending: false }),
-  ]);
-  if (projectsResult.error) {
-    throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
-  }
-  if (goalsResult.error) {
-    throw new Error(`Failed to load goals: ${goalsResult.error.message}`);
-  }
-  const savedViewsUnavailable = isMissingSupabaseTable(
-    savedViewsResult.error,
-    "public.task_saved_views",
-  );
-  if (savedViewsResult.error && !savedViewsUnavailable) {
-    throw new Error(`Failed to load saved views: ${savedViewsResult.error.message}`);
-  }
-  const activeProjectId =
-    requestedProjectId && projectsResult.data.some((project) => project.id === requestedProjectId)
-      ? requestedProjectId
-      : null;
-  const visibleGoals = activeProjectId
-    ? goalsResult.data.filter((goal) => goal.project_id === activeProjectId)
-    : goalsResult.data;
-  const activeGoalId =
-    requestedGoalId && visibleGoals.some((goal) => goal.id === requestedGoalId)
-      ? requestedGoalId
-      : null;
-  const tasksQuery = supabase
-    .from("tasks")
-    .select(
-      "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
-    )
-    .order("updated_at", { ascending: false });
-  if (activeStatus) {
-    tasksQuery.eq("status", activeStatus);
-  }
-  if (activeProjectId) {
-    tasksQuery.eq("project_id", activeProjectId);
-  }
-  if (activeGoalId) {
-    tasksQuery.eq("goal_id", activeGoalId);
-  }
-  const tasksResult = await tasksQuery;
-  if (tasksResult.error) {
-    throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
-  }
-  const tasks = applyTaskListQuery(tasksResult.data ?? [], {
-    dueFilter: activeDueFilter,
-    sortValue: activeSort,
-  });
-  const taskTotalDurations = await getTaskTotalDurationMap(
-    supabase,
-    tasks.map((task) => task.id),
-  );
-  return {
-    projects: projectsResult.data,
-    goals: visibleGoals,
-    tasks,
-    taskTotalDurations,
-    savedViews: savedViewsUnavailable ? [] : (savedViewsResult.data ?? []),
-    savedViewsUnavailable,
-    activeProjectId,
-    activeGoalId,
-  };
-}
-
 function getTaskSignalTone(status: string, priority: string) {
   if (status === "blocked" || priority === "urgent") {
     return "bg-[var(--signal-error)]";
@@ -169,7 +86,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const goalParam = resolvedSearchParams.goal?.trim() || null;
   const dueParam = resolvedSearchParams.due?.trim() || DEFAULT_TASK_DUE_FILTER;
   const sortParam = resolvedSearchParams.sort?.trim() || DEFAULT_TASK_SORT;
-  const activeStatus: string | null =
+  const activeStatus: TaskStatus | null =
     statusParam && isTaskStatus(statusParam) ? statusParam : null;
   const activeDueFilter: TaskDueFilter = isTaskDueFilter(dueParam)
     ? dueParam
@@ -195,7 +112,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     savedViewsUnavailable,
     activeProjectId,
     activeGoalId,
-  } = await getTasksData(activeStatus, projectParam, goalParam, activeDueFilter, activeSort);
+  } = await getTasksWorkspaceData({
+    activeStatus,
+    requestedProjectId: projectParam,
+    requestedGoalId: goalParam,
+    activeDueFilter,
+    activeSort,
+  });
   const resolvedSavedViewFeedback = {
     error:
       savedViewFeedback.error ??

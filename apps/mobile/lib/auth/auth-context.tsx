@@ -1,27 +1,171 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import { configureMobileApiClient } from '@/lib/api/client';
+import {
+  loginMobile,
+  logoutMobileSession as logoutApiSession,
+  refreshMobileSession as refreshApiSession,
+} from '@/lib/api/auth';
+import { mobileSessionStorage } from '@/lib/storage/session';
+import type { MobileAuthSession, MobileAuthUser, StoredMobileSession } from '@/types/auth';
 
 type AuthContextValue = {
+  isReady: boolean;
   isAuthenticated: boolean;
-  // Temporary shell only. Next step: accept credentials and call mobile auth API.
-  signIn: () => void;
-  // Temporary shell only. Next step: call logout endpoint and clear persisted session.
-  signOut: () => void;
+  session: MobileAuthSession | null;
+  user: MobileAuthUser | null;
+  error: string | null;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  clearError: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  // Temporary in-memory state for current bootstrap flow.
-  // TODO(EGA-Next): initialize from mobileSessionStorage and keep it in sync.
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+const REFRESH_BUFFER_SECONDS = 45;
 
-  const value = useMemo(
+function isSessionNearExpiry(session: MobileAuthSession) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return session.expiresAt <= nowSeconds + REFRESH_BUFFER_SECONDS;
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [isReady, setIsReady] = useState(false);
+  const [sessionBundle, setSessionBundle] = useState<StoredMobileSession | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const persistSession = useCallback(async (value: StoredMobileSession) => {
+    setSessionBundle(value);
+    await mobileSessionStorage.setSession(value);
+  }, []);
+
+  const clearSession = useCallback(async () => {
+    setSessionBundle(null);
+    await mobileSessionStorage.clearSession();
+  }, []);
+
+  const signOut = useCallback(async () => {
+    try {
+      if (sessionBundle?.session.accessToken) {
+        await logoutApiSession();
+      }
+    } catch {
+      // Local session is still cleared below.
+    }
+
+    setError(null);
+    await clearSession();
+  }, [clearSession, sessionBundle?.session.accessToken]);
+
+  const signIn = useCallback(
+    async (email: string, password: string) => {
+      setError(null);
+      const response = await loginMobile({
+        email: email.trim(),
+        password,
+      });
+
+      await persistSession({
+        session: response.session,
+        user: response.user,
+      });
+    },
+    [persistSession],
+  );
+
+  const clearError = useCallback(() => setError(null), []);
+
+  useEffect(() => {
+    configureMobileApiClient({
+      getSession: async () => sessionBundle,
+      setSession: async (value) => {
+        setSessionBundle(value);
+        await mobileSessionStorage.setSession(value);
+      },
+      clearSession: async () => {
+        await clearSession();
+      },
+      onUnauthorized: () => {
+        setError('Your session expired. Please sign in again.');
+        setSessionBundle(null);
+      },
+    });
+  }, [clearSession, sessionBundle]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function bootstrap() {
+      const restored = await mobileSessionStorage.getSession();
+      if (isCancelled) {
+        return;
+      }
+
+      if (!restored) {
+        setSessionBundle(null);
+        setIsReady(true);
+        return;
+      }
+
+      if (!isSessionNearExpiry(restored.session)) {
+        setSessionBundle(restored);
+        setIsReady(true);
+        return;
+      }
+
+      try {
+        const refreshed = await refreshApiSession(restored.session.refreshToken);
+        const nextBundle = {
+          session: refreshed.session,
+          user: refreshed.user ?? restored.user,
+        };
+
+        if (!isCancelled) {
+          await persistSession(nextBundle);
+        }
+      } catch {
+        if (!isCancelled) {
+          await clearSession();
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsReady(true);
+        }
+      }
+    }
+
+    bootstrap().catch(async () => {
+      if (!isCancelled) {
+        await clearSession();
+        setIsReady(true);
+      }
+    });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [clearSession, persistSession]);
+
+  const value = useMemo<AuthContextValue>(
     () => ({
-      isAuthenticated,
-      signIn: () => setIsAuthenticated(true),
-      signOut: () => setIsAuthenticated(false),
+      isReady,
+      isAuthenticated: Boolean(sessionBundle?.session.accessToken),
+      session: sessionBundle?.session ?? null,
+      user: sessionBundle?.user ?? null,
+      error,
+      signIn,
+      signOut,
+      clearError,
     }),
-    [isAuthenticated],
+    [clearError, error, isReady, sessionBundle, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,15 +1,17 @@
 import { type GoalHealth, toGoalHealthOrNull } from "@/lib/goal-health";
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
-import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { buildTodayPlanner } from "@/lib/today-planner";
 import {
   getCurrentDayWindow,
-  formatDurationLabel,
   getSessionDurationWithinWindowSeconds,
-  getTaskSessionDurationSeconds,
 } from "@/lib/task-session";
+import { getFocusQueueTasks } from "@/lib/services/focus-queue-service";
+import {
+  getActiveTimerSession,
+  getTimerSummary as getTimerSummaryData,
+} from "@/lib/services/timer-service";
 
 import {
   getLinearProjectSnapshot,
@@ -412,36 +414,16 @@ async function getFocusPanel(): Promise<PanelResult<FocusPanelCandidateState>> {
 
 async function getFocusQueue(): Promise<PanelResult<DashboardFocusQueueTask[]>> {
   try {
-    const supabase = await createClient();
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("id, title, status, priority, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)")
-      .not("focus_rank", "is", null)
-      .order("focus_rank", { ascending: true })
-      .order("updated_at", { ascending: false })
-      .limit(8);
-
-    if (error) {
+    const queueResult = await getFocusQueueTasks({ limit: 8 });
+    if (queueResult.errorMessage || !queueResult.data) {
       return {
         data: null,
         error: PANEL_ERROR_MESSAGES.focusQueue,
       };
     }
 
-    const queue = sortFocusQueueTasks(data ?? []).map((task) => ({
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      priority: task.priority,
-      focusRank: task.focus_rank ?? 0,
-      estimateMinutes: task.estimate_minutes,
-      updatedAt: task.updated_at,
-      projectName: task.projects?.name ?? "Unknown project",
-      goalTitle: task.goals?.title ?? null,
-    }));
-
     return {
-      data: queue,
+      data: queueResult.data,
       error: null,
     };
   } catch {
@@ -454,28 +436,14 @@ async function getFocusQueue(): Promise<PanelResult<DashboardFocusQueueTask[]>> 
 
 async function getActiveTimer(): Promise<PanelResult<DashboardActiveSession | null>> {
   try {
-    const supabase = await createClient();
-    const nowIso = new Date().toISOString();
-
-    const { data, error } = await supabase
-      .from("task_sessions")
-      .select(
-        "id, task_id, started_at, ended_at, duration_seconds, tasks(id, title, status, priority, goals(title), projects(name, slug))",
-      )
-      .is("ended_at", null)
-      .order("started_at", { ascending: false })
-      .limit(1);
-
-    if (error) {
+    const activeSessionResult = await getActiveTimerSession();
+    if (activeSessionResult.errorMessage) {
       return {
         data: null,
         error: PANEL_ERROR_MESSAGES.activeTimer,
       };
     }
-
-    const activeSession = data?.[0];
-
-    if (!activeSession) {
+    if (!activeSessionResult.data) {
       return {
         data: null,
         error: null,
@@ -483,20 +451,7 @@ async function getActiveTimer(): Promise<PanelResult<DashboardActiveSession | nu
     }
 
     return {
-      data: {
-        sessionId: activeSession.id,
-        taskId: activeSession.task_id,
-        startedAt: activeSession.started_at,
-        elapsedLabel: formatDurationLabel(
-          getTaskSessionDurationSeconds(activeSession, nowIso),
-        ),
-        taskTitle: activeSession.tasks?.title ?? "Untitled task",
-        taskStatus: activeSession.tasks?.status ?? "todo",
-        taskPriority: activeSession.tasks?.priority ?? "medium",
-        projectName: activeSession.tasks?.projects?.name ?? "Unknown project",
-        projectSlug: activeSession.tasks?.projects?.slug ?? null,
-        goalTitle: activeSession.tasks?.goals?.title ?? null,
-      },
+      data: activeSessionResult.data,
       error: null,
     };
   } catch {
@@ -611,66 +566,16 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
 
 async function getTimerSummary(): Promise<PanelResult<DashboardTimerSummary>> {
   try {
-    const supabase = await createClient();
-    const now = new Date();
-    const nowIso = now.toISOString();
-    const todayWindow = getCurrentDayWindow(now);
-
-    const { data, error } = await supabase
-      .from("task_sessions")
-      .select("task_id, started_at, ended_at, duration_seconds, tasks(title)")
-      .order("started_at", { ascending: false })
-      .limit(150);
-
-    if (error) {
+    const summaryResult = await getTimerSummaryData({ limit: 150 });
+    if (summaryResult.errorMessage || !summaryResult.data) {
       return {
         data: null,
         error: PANEL_ERROR_MESSAGES.timerSummary,
       };
     }
 
-    const sessions = data ?? [];
-    const trackedTotalSeconds = sessions.reduce((total, session) => {
-      return total + getTaskSessionDurationSeconds(session, nowIso);
-    }, 0);
-    const trackedTodaySeconds = sessions.reduce((total, session) => {
-      return (
-        total +
-        getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso)
-      );
-    }, 0);
-
-    const sessionsTodayCount = sessions.filter((session) => {
-      return new Date(session.started_at).getTime() >= new Date(todayWindow.startIso).getTime();
-    }).length;
-
-    const longestSession = sessions.reduce<{
-      duration: number;
-      title: string | null;
-    } | null>((currentLongest, session) => {
-      const duration = getTaskSessionDurationSeconds(session, nowIso);
-      if (!currentLongest || duration > currentLongest.duration) {
-        return {
-          duration,
-          title: session.tasks?.title ?? "Untitled task",
-        };
-      }
-      return currentLongest;
-    }, null);
-
     return {
-      data: {
-        trackedTodaySeconds,
-        trackedTodayLabel: formatDurationLabel(trackedTodaySeconds),
-        trackedTotalSeconds,
-        trackedTotalLabel: formatDurationLabel(trackedTotalSeconds),
-        sessionsTodayCount,
-        longestSessionSeconds: longestSession?.duration ?? null,
-        longestSessionLabel: longestSession
-          ? formatDurationLabel(longestSession.duration)
-          : null,
-        longestSessionTaskTitle: longestSession?.title ?? null,
-      },
+      data: summaryResult.data,
       error: null,
     };
   } catch {

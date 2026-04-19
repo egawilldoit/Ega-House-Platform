@@ -4,17 +4,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAuth } from '@/lib/auth/auth-context';
 
 export default function ProfileScreen() {
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
 
-  function onLogout() {
-    signOut();
+  async function onLogout() {
+    await signOut();
     router.replace('/(public)/welcome');
   }
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Profile</Text>
-      <Text style={styles.subtitle}>Signed in with demo auth.</Text>
+      <Text style={styles.subtitle}>
+        {user?.email ? `Signed in as ${user.email}` : 'Authenticated session active.'}
+      </Text>
       <Pressable onPress={onLogout} style={styles.button}>
         <Text style={styles.buttonText}>Logout</Text>
       </Pressable>

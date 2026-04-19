@@ -1,15 +1,23 @@
-import type { MobileAuthSession } from '@/types/auth';
+import * as SecureStore from 'expo-secure-store';
+
+import type { StoredMobileSession } from '@/types/auth';
 
 export interface MobileSessionStorage {
-  getSession(): Promise<MobileAuthSession | null>;
-  setSession(session: MobileAuthSession): Promise<void>;
+  getSession(): Promise<StoredMobileSession | null>;
+  setSession(session: StoredMobileSession): Promise<void>;
   clearSession(): Promise<void>;
 }
 
 type StoredSessionShape = {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
+  session: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+  };
+  user: {
+    id: string;
+    email: string;
+  };
 };
 
 function isStoredSessionShape(value: unknown): value is StoredSessionShape {
@@ -18,33 +26,46 @@ function isStoredSessionShape(value: unknown): value is StoredSessionShape {
   }
 
   const candidate = value as Record<string, unknown>;
+  const session = candidate.session as Record<string, unknown> | undefined;
+  const user = candidate.user as Record<string, unknown> | undefined;
+
   return (
-    typeof candidate.accessToken === 'string' &&
-    typeof candidate.refreshToken === 'string' &&
-    typeof candidate.expiresAt === 'number'
+    !!session &&
+    !!user &&
+    typeof session.accessToken === 'string' &&
+    typeof session.refreshToken === 'string' &&
+    typeof session.expiresAt === 'number' &&
+    typeof user.id === 'string' &&
+    typeof user.email === 'string'
   );
 }
 
-export function parseStoredSession(value: unknown): MobileAuthSession | null {
+export function parseStoredSession(value: unknown): StoredMobileSession | null {
   if (!isStoredSessionShape(value)) {
     return null;
   }
 
   return {
-    accessToken: value.accessToken,
-    refreshToken: value.refreshToken,
-    expiresAt: value.expiresAt,
+    session: {
+      accessToken: value.session.accessToken,
+      refreshToken: value.session.refreshToken,
+      expiresAt: value.session.expiresAt,
+    },
+    user: {
+      id: value.user.id,
+      email: value.user.email,
+    },
   };
 }
 
 export class InMemorySessionStorage implements MobileSessionStorage {
-  private session: MobileAuthSession | null = null;
+  private session: StoredMobileSession | null = null;
 
   async getSession() {
     return this.session;
   }
 
-  async setSession(session: MobileAuthSession) {
+  async setSession(session: StoredMobileSession) {
     this.session = session;
   }
 
@@ -53,6 +74,47 @@ export class InMemorySessionStorage implements MobileSessionStorage {
   }
 }
 
-// TODO(EGA-Next): Replace with Expo SecureStore-backed implementation.
-// Keep this non-persistent fallback so current temporary auth shell stays functional.
-export const mobileSessionStorage: MobileSessionStorage = new InMemorySessionStorage();
+const SESSION_STORAGE_KEY = 'ega.mobile.session';
+
+class SecureStoreSessionStorage implements MobileSessionStorage {
+  async getSession() {
+    try {
+      const raw = await SecureStore.getItemAsync(SESSION_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+
+      return parseStoredSession(JSON.parse(raw));
+    } catch {
+      return null;
+    }
+  }
+
+  async setSession(session: StoredMobileSession) {
+    await SecureStore.setItemAsync(SESSION_STORAGE_KEY, JSON.stringify(session));
+  }
+
+  async clearSession() {
+    await SecureStore.deleteItemAsync(SESSION_STORAGE_KEY);
+  }
+}
+
+const fallbackStorage = new InMemorySessionStorage();
+const secureStorage = new SecureStoreSessionStorage();
+
+export const mobileSessionStorage: MobileSessionStorage = {
+  async getSession() {
+    const secureSession = await secureStorage.getSession();
+    if (secureSession) {
+      return secureSession;
+    }
+
+    return fallbackStorage.getSession();
+  },
+  async setSession(session) {
+    await Promise.all([secureStorage.setSession(session), fallbackStorage.setSession(session)]);
+  },
+  async clearSession() {
+    await Promise.all([secureStorage.clearSession(), fallbackStorage.clearSession()]);
+  },
+};

@@ -3,9 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { createClient } from "@/lib/supabase/server";
 import type { TablesInsert } from "@/lib/supabase/database.types";
-import { isTaskPinned } from "@/lib/focus-queue";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
@@ -14,6 +12,17 @@ import {
   isTaskPriority,
   isTaskStatus,
 } from "@/lib/task-domain";
+import {
+  createTasks,
+  getTaskInsertScopeError,
+  getTaskScopeSnapshot,
+  updateTaskInline,
+  validateTaskInlineUpdateInput,
+} from "@/lib/services/task-service";
+import {
+  pinTaskInFocusQueue,
+  unpinTaskInFocusQueue,
+} from "@/lib/services/focus-queue-service";
 
 export type CreateTaskFormState = {
   error: string | null;
@@ -112,7 +121,7 @@ function redirectWithTasksError(
   returnPath: string,
   errorMessage: string,
   taskId?: string,
-) {
+): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("taskUpdateError", errorMessage);
 
@@ -127,7 +136,7 @@ function redirectWithTaskSurfaceError(
   returnPath: string,
   errorMessage: string,
   taskId?: string,
-) {
+): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("taskUpdateError", errorMessage);
 
@@ -137,112 +146,6 @@ function redirectWithTaskSurfaceError(
 
   const anchor = target.pathname.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
   redirect(`${target.pathname}${target.search}${anchor}`);
-}
-
-async function getVisibleTaskFocusRank(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  taskId: string,
-) {
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("id, focus_rank")
-    .eq("id", taskId)
-    .maybeSingle();
-
-  if (error || !data) {
-    return {
-      errorMessage: "Selected task is unavailable.",
-      focusRank: null,
-    };
-  }
-
-  return {
-    errorMessage: null,
-    focusRank: data.focus_rank,
-  };
-}
-
-async function getVisibleTaskScope(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-) {
-  const [projectsResult, goalsResult] = await Promise.all([
-    supabase.from("projects").select("id"),
-    supabase.from("goals").select("id, project_id"),
-  ]);
-
-  if (projectsResult.error || goalsResult.error) {
-    return {
-      errorMessage: "Unable to validate task scope right now.",
-      projectIds: new Set<string>(),
-      goalsById: new Map<string, { id: string; project_id: string }>(),
-    };
-  }
-
-  return {
-    errorMessage: null,
-    projectIds: new Set((projectsResult.data ?? []).map((project) => project.id)),
-    goalsById: new Map((goalsResult.data ?? []).map((goal) => [goal.id, goal])),
-  };
-}
-
-function getTaskRowScopeError(
-  row: TablesInsert<"tasks">,
-  projectIds: Set<string>,
-  goalsById: Map<string, { id: string; project_id: string }>,
-) {
-  if (!projectIds.has(row.project_id)) {
-    return "Selected project is unavailable.";
-  }
-
-  if (!row.goal_id) {
-    return null;
-  }
-
-  const goal = goalsById.get(row.goal_id);
-
-  if (!goal) {
-    return "Selected goal is unavailable.";
-  }
-
-  if (goal.project_id !== row.project_id) {
-    return "Selected goal does not belong to the chosen project.";
-  }
-
-  return null;
-}
-
-async function insertTasks(taskRows: TablesInsert<"tasks">[]) {
-  const supabase = await createClient();
-
-  if (taskRows.length === 0) {
-    return { errorMessage: "No tasks were provided." };
-  }
-
-  const taskScope = await getVisibleTaskScope(supabase);
-
-  if (taskScope.errorMessage) {
-    return { errorMessage: taskScope.errorMessage };
-  }
-
-  for (const row of taskRows) {
-    const scopeError = getTaskRowScopeError(
-      row,
-      taskScope.projectIds,
-      taskScope.goalsById,
-    );
-
-    if (scopeError) {
-      return { errorMessage: scopeError };
-    }
-  }
-
-  const { error } = await supabase.from("tasks").insert(taskRows);
-
-  if (error) {
-    return { errorMessage: "Unable to create task right now." };
-  }
-
-  return { errorMessage: null };
 }
 
 function parseBulkRowsPayload(rawRows: string): BulkTaskComposerRowInput[] {
@@ -329,16 +232,18 @@ export async function createTaskAction(
     return createErrorState(estimateResult.error, values);
   }
 
-  const { errorMessage } = await insertTasks([{
-    title,
-    project_id: projectId,
-    goal_id: goalId || null,
-    description: description || null,
-    status,
-    priority,
-    due_date: dueDateResult.value,
-    estimate_minutes: estimateResult.value,
-  }]);
+  const { errorMessage } = await createTasks([
+    {
+      title,
+      project_id: projectId,
+      goal_id: goalId || null,
+      description: description || null,
+      status,
+      priority,
+      due_date: dueDateResult.value,
+      estimate_minutes: estimateResult.value,
+    },
+  ]);
 
   if (errorMessage) {
     return createErrorState(errorMessage, values);
@@ -387,11 +292,12 @@ export async function createTasksBulkAction(
     return createBulkErrorState("Add at least one task card before creating tasks.", values);
   }
 
-  const supabase = await createClient();
-  const taskScope = await getVisibleTaskScope(supabase);
-
-  if (taskScope.errorMessage) {
-    return createBulkErrorState(taskScope.errorMessage, values);
+  const taskScopeResult = await getTaskScopeSnapshot();
+  if (taskScopeResult.errorMessage || !taskScopeResult.data) {
+    return createBulkErrorState(
+      taskScopeResult.errorMessage ?? "Unable to validate task scope right now.",
+      values,
+    );
   }
 
   const validRows: TablesInsert<"tasks">[] = [];
@@ -448,11 +354,7 @@ export async function createTasksBulkAction(
     taskRow.due_date = dueDateResult.value;
     taskRow.estimate_minutes = estimateResult.value;
 
-    const scopeError = getTaskRowScopeError(
-      taskRow,
-      taskScope.projectIds,
-      taskScope.goalsById,
-    );
+    const scopeError = getTaskInsertScopeError(taskRow, taskScopeResult.data);
 
     if (scopeError) {
       skippedLines.push({ value: taskRow.title, reason: scopeError });
@@ -470,10 +372,10 @@ export async function createTasksBulkAction(
     );
   }
 
-  const { error } = await supabase.from("tasks").insert(validRows);
+  const { errorMessage } = await createTasks(validRows);
 
-  if (error) {
-    return createBulkErrorState("Unable to create task right now.", values, skippedLines);
+  if (errorMessage) {
+    return createBulkErrorState(errorMessage, values, skippedLines);
   }
 
   revalidateTaskSurfaces(returnTo);
@@ -499,89 +401,45 @@ export async function createTasksBulkAction(
 
 export async function updateTaskInlineAction(formData: FormData) {
   const returnPath = getTasksReturnPath(formData.get("returnTo"));
-  const taskId = String(formData.get("taskId") ?? "").trim();
-  const status = String(formData.get("status") ?? "").trim();
-  const priority = String(formData.get("priority") ?? "").trim();
-  const dueDateResult = normalizeTaskDueDateInput(formData.get("dueDate"));
-  const estimateResult = normalizeTaskEstimateInput(formData.get("estimateMinutes"));
+  const validationResult = validateTaskInlineUpdateInput({
+    taskId: String(formData.get("taskId") ?? ""),
+    status: String(formData.get("status") ?? ""),
+    priority: String(formData.get("priority") ?? ""),
+    dueDate: formData.get("dueDate"),
+    estimateMinutes: formData.get("estimateMinutes"),
+  });
 
-  if (
-    !taskId ||
-    !isTaskStatus(status) ||
-    !isTaskPriority(priority) ||
-    dueDateResult.error ||
-    estimateResult.error
-  ) {
-    redirectWithTasksError(returnPath, "Task update request is invalid.", taskId);
+  if (validationResult.errorMessage || !validationResult.data) {
+    redirectWithTasksError(
+      returnPath,
+      validationResult.errorMessage ?? "Task update request is invalid.",
+      String(formData.get("taskId") ?? "").trim() || undefined,
+    );
   }
 
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("tasks")
-    .update({
-      status,
-      priority,
-      due_date: dueDateResult.value,
-      estimate_minutes: estimateResult.value,
-      updated_at: updatedAt,
-    })
-    .eq("id", taskId);
+  const validatedInput = validationResult.data;
+  const { errorMessage } = await updateTaskInline(validatedInput);
 
-  if (error) {
-    redirectWithTasksError(returnPath, "Unable to update task right now.", taskId);
+  if (errorMessage) {
+    redirectWithTasksError(returnPath, errorMessage, validatedInput.taskId);
   }
 
   revalidateTaskSurfaces(returnPath);
-  redirect(`${returnPath}#task-${taskId}`);
+  redirect(`${returnPath}#task-${validatedInput.taskId}`);
 }
 
 export async function pinTaskAction(formData: FormData) {
   const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
 
-  if (!taskId) {
-    redirectWithTaskSurfaceError(returnPath, "Task pin request is invalid.");
-  }
+  const { errorMessage } = await pinTaskInFocusQueue(taskId);
 
-  const supabase = await createClient();
-  const taskResult = await getVisibleTaskFocusRank(supabase, taskId);
-
-  if (taskResult.errorMessage) {
-    redirectWithTaskSurfaceError(returnPath, taskResult.errorMessage, taskId);
-  }
-
-  if (isTaskPinned(taskResult.focusRank)) {
-    const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
-    redirect(`${returnPath}${anchor}`);
-  }
-
-  const { data: highestRankRows, error: highestRankError } = await supabase
-    .from("tasks")
-    .select("focus_rank")
-    .not("focus_rank", "is", null)
-    .order("focus_rank", { ascending: false })
-    .limit(1);
-
-  if (highestRankError) {
-    redirectWithTaskSurfaceError(returnPath, "Unable to update focus queue right now.", taskId);
-  }
-
-  const nextFocusRank = (highestRankRows?.[0]?.focus_rank ?? 0) + 1;
-  const { error: updateError } = await supabase
-    .from("tasks")
-    .update({
-      focus_rank: nextFocusRank,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", taskId);
-
-  if (updateError) {
-    redirectWithTaskSurfaceError(returnPath, "Unable to pin task right now.", taskId);
+  if (errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
   }
 
   revalidateTaskSurfaces(returnPath);
-  const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
+  const anchor = returnPath.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
   redirect(`${returnPath}${anchor}`);
 }
 
@@ -589,35 +447,13 @@ export async function unpinTaskAction(formData: FormData) {
   const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
 
-  if (!taskId) {
-    redirectWithTaskSurfaceError(returnPath, "Task unpin request is invalid.");
-  }
+  const { errorMessage } = await unpinTaskInFocusQueue(taskId);
 
-  const supabase = await createClient();
-  const taskResult = await getVisibleTaskFocusRank(supabase, taskId);
-
-  if (taskResult.errorMessage) {
-    redirectWithTaskSurfaceError(returnPath, taskResult.errorMessage, taskId);
-  }
-
-  if (!isTaskPinned(taskResult.focusRank)) {
-    const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
-    redirect(`${returnPath}${anchor}`);
-  }
-
-  const { error: updateError } = await supabase
-    .from("tasks")
-    .update({
-      focus_rank: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", taskId);
-
-  if (updateError) {
-    redirectWithTaskSurfaceError(returnPath, "Unable to unpin task right now.", taskId);
+  if (errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
   }
 
   revalidateTaskSurfaces(returnPath);
-  const anchor = returnPath.startsWith("/tasks") ? `#task-${taskId}` : "";
+  const anchor = returnPath.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
   redirect(`${returnPath}${anchor}`);
 }

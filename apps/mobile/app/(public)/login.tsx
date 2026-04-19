@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useAuth } from '@/lib/auth/auth-context';
 
@@ -9,12 +9,14 @@ function isValidEmail(email: string) {
 }
 
 export default function LoginScreen() {
-  const { signIn } = useAuth();
+  const { signIn, error: authError, clearError } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function onLogin() {
+  async function onLogin() {
+    clearError();
     const trimmedEmail = email.trim();
 
     if (!isValidEmail(trimmedEmail)) {
@@ -28,8 +30,17 @@ export default function LoginScreen() {
     }
 
     setError('');
-    signIn();
-    router.replace('/(app)/(tabs)/tasks');
+    setIsSubmitting(true);
+    try {
+      await signIn(trimmedEmail, password);
+      router.replace('/(app)/(tabs)/tasks');
+    } catch (signInError) {
+      const message =
+        signInError instanceof Error ? signInError.message : 'Login failed. Try again.';
+      setError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -40,22 +51,38 @@ export default function LoginScreen() {
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
-          onChangeText={setEmail}
+          onChangeText={(value) => {
+            setEmail(value);
+            if (error) {
+              setError('');
+            }
+          }}
           placeholder="Email"
           style={styles.input}
           value={email}
+          editable={!isSubmitting}
         />
         <TextInput
           autoCapitalize="none"
-          onChangeText={setPassword}
+          onChangeText={(value) => {
+            setPassword(value);
+            if (error) {
+              setError('');
+            }
+          }}
           placeholder="Password"
           secureTextEntry
           style={styles.input}
           value={password}
+          editable={!isSubmitting}
         />
-        <Text style={styles.errorText}>{error || ' '}</Text>
-        <Pressable onPress={onLogin} style={styles.button}>
-          <Text style={styles.buttonText}>Login</Text>
+        <Text style={styles.errorText}>{error || authError || ' '}</Text>
+        <Pressable disabled={isSubmitting} onPress={onLogin} style={styles.button}>
+          {isSubmitting ? (
+            <ActivityIndicator color="#ffffff" />
+          ) : (
+            <Text style={styles.buttonText}>Login</Text>
+          )}
         </Pressable>
       </View>
     </View>
