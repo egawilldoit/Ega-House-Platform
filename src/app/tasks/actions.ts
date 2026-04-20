@@ -114,6 +114,7 @@ function revalidateTaskSurfaces(returnTo: string) {
   revalidatePath("/tasks/projects");
   revalidatePath(getTasksPathname(returnTo));
   revalidatePath("/dashboard");
+  revalidatePath("/today");
   revalidatePath("/timer");
 }
 

@@ -31,6 +31,7 @@ export async function startTimerAction(formData: FormData) {
   revalidatePath("/timer");
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/today");
   redirectToTimer(returnPath);
 }
 
@@ -45,6 +46,7 @@ export async function stopTimerAction(formData: FormData) {
   revalidatePath("/timer");
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/today");
   redirectToTimer(returnPath);
 }
 
@@ -58,5 +60,6 @@ export async function resolveSessionConflictAction(formData: FormData) {
   revalidatePath("/timer");
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/today");
   redirectToTimer(returnPath);
 }

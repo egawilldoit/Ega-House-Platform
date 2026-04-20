@@ -197,6 +197,7 @@ export type Database = {
           goal_id: string | null
           id: string
           owner_user_id: string | null
+          planned_for_date: string | null
           priority: string
           project_id: string
           status: string
@@ -212,6 +213,7 @@ export type Database = {
           goal_id?: string | null
           id?: string
           owner_user_id?: string | null
+          planned_for_date?: string | null
           priority?: string
           project_id: string
           status?: string
@@ -227,6 +229,7 @@ export type Database = {
           goal_id?: string | null
           id?: string
           owner_user_id?: string | null
+          planned_for_date?: string | null
           priority?: string
           project_id?: string
           status?: string

@@ -16,6 +16,14 @@ test("allows /dashboard return paths for timer actions", () => {
   );
 });
 
+test("allows /today return paths for timer actions", () => {
+  assert.equal(getTimerActionReturnPath("/today"), "/today");
+  assert.equal(
+    getTimerActionReturnPath("/today?section=in-progress"),
+    "/today?section=in-progress",
+  );
+});
+
 test("falls back to /timer for unsupported return paths", () => {
   assert.equal(getTimerActionReturnPath("/tasks"), "/timer");
   assert.equal(getTimerActionReturnPath(""), "/timer");

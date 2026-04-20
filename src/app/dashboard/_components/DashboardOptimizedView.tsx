@@ -611,8 +611,8 @@ export function DashboardOptimizedView({
                 </CardDescription>
               </div>
               <CardAction>
-                <Link href="/tasks" className="glass-label text-signal-live">
-                  View all
+                <Link href="/today" className="glass-label text-signal-live">
+                  Open Today
                 </Link>
               </CardAction>
             </div>

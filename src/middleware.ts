@@ -16,6 +16,7 @@ const PROTECTED_ROOT_PATH_PREFIXES: Array<`/${string}`> = [
   "/dashboard",
   "/goals",
   "/tasks",
+  "/today",
   "/timer",
   "/review",
 ];

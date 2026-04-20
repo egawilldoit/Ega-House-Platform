@@ -78,6 +78,7 @@ export const tasks = pgTable(
     estimateMinutes: integer("estimate_minutes"),
     focusRank: integer("focus_rank"),
     dueDate: date("due_date"),
+    plannedForDate: date("planned_for_date"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -88,6 +89,7 @@ export const tasks = pgTable(
   (table) => [
     index("tasks_owner_user_id_idx").on(table.ownerUserId),
     index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
+    index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
   ],
 );
 
