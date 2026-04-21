@@ -1,4 +1,4 @@
-import { Redirect, Slot } from 'expo-router';
+import { Redirect, Stack } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
 
 import { useAuth } from '@/lib/auth/auth-context';
@@ -18,5 +18,17 @@ export default function ProtectedLayout() {
     return <Redirect href="/(public)/welcome" />;
   }
 
-  return <Slot />;
+  return (
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="tasks/create"
+        options={{
+          headerShown: true,
+          presentation: 'modal',
+          title: 'Create Task',
+        }}
+      />
+    </Stack>
+  );
 }
