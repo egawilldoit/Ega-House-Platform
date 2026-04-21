@@ -41,6 +41,12 @@ type WeeklyStats = {
   trackedSeconds: number;
   goalsTouched: number;
   goalStatusCounts: Array<{ status: string; count: number }>;
+  blockedTasks: Array<{
+    id: string;
+    title: string;
+    blockedReason: string | null;
+    updatedAt: string;
+  }>;
 };
 
 async function getMostTrackedInsights(
@@ -110,7 +116,7 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
   const nowIso = new Date().toISOString();
   const sessionNowIso = nowIso < endExclusiveIso ? nowIso : endExclusiveIso;
   const supabase = await createClient();
-  const [tasksResult, sessionsResult, goalsResult] = await Promise.all([
+  const [tasksResult, sessionsResult, goalsResult, blockedTasksResult] = await Promise.all([
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
@@ -126,6 +132,12 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
       .select("id, status")
       .gte("updated_at", startIso)
       .lt("updated_at", endExclusiveIso),
+    supabase
+      .from("tasks")
+      .select("id, title, blocked_reason, updated_at")
+      .eq("status", "blocked")
+      .order("updated_at", { ascending: false })
+      .limit(6),
   ]);
   if (tasksResult.error) {
     throw new Error(`Failed to load weekly task stats: ${tasksResult.error.message}`);
@@ -135,6 +147,9 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
   }
   if (goalsResult.error) {
     throw new Error(`Failed to load weekly goal stats: ${goalsResult.error.message}`);
+  }
+  if (blockedTasksResult.error) {
+    throw new Error(`Failed to load blocked tasks: ${blockedTasksResult.error.message}`);
   }
   const trackedSeconds = (sessionsResult.data ?? []).reduce(
     (total, session) => total + getTaskSessionDurationSeconds(session, sessionNowIso),
@@ -155,6 +170,12 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
     trackedSeconds,
     goalsTouched: goalsResult.data?.length ?? 0,
     goalStatusCounts,
+    blockedTasks: (blockedTasksResult.data ?? []).map((task) => ({
+      id: task.id,
+      title: task.title,
+      blockedReason: task.blocked_reason,
+      updatedAt: task.updated_at,
+    })),
   };
 }
 
@@ -293,9 +314,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   const reviewFormDefaults = selectedReview
     ? getReviewFormValuesFromRecord(selectedReview, selectedWeekOf)
     : getEmptyReviewFormValues(selectedWeekOf);
-  const blockerCount = weeklyStats.goalStatusCounts
-    .filter((entry) => ["paused", "draft"].includes(entry.status))
-    .reduce((sum, entry) => sum + entry.count, 0);
+  const blockerCount = weeklyStats.blockedTasks.length;
 
   return (
     <AppShell
@@ -464,7 +483,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
               </span>
             </div>
 
-          <Card className="border-[rgba(239,68,68,0.16)] bg-[rgba(239,68,68,0.03)]">
+            <Card className="border-[rgba(239,68,68,0.16)] bg-[rgba(239,68,68,0.03)]">
               <CardContent className="p-5">
                 <div className="flex items-center gap-3">
                   <span className="text-[var(--signal-error)]">!</span>
@@ -472,11 +491,25 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                     Review completion risk
                   </span>
                 </div>
-                <p className="mt-3 text-sm leading-7 text-[color:var(--muted-foreground)]">
-                  {selectedReview
-                    ? "Reflection exists for this cycle. Remaining blocker risk comes from paused or draft goal movement inside the selected week."
-                    : "No saved reflection exists for this cycle yet. Capture a review summary to close the weekly reporting loop."}
-                </p>
+                {weeklyStats.blockedTasks.length > 0 ? (
+                  <div className="mt-3 space-y-2">
+                    {weeklyStats.blockedTasks.map((task) => (
+                      <div
+                        key={task.id}
+                        className="rounded-[0.8rem] border border-[rgba(220,38,38,0.16)] bg-white/60 px-3 py-2"
+                      >
+                        <p className="text-sm font-medium text-[color:var(--foreground)]">{task.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-[var(--signal-error)]">
+                          {task.blockedReason?.trim() || "Blocked with no reason recorded yet."}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                    No blocked tasks are currently active.
+                  </p>
+                )}
               </CardContent>
             </Card>
           </div>

@@ -35,6 +35,7 @@ export function mapTaskRecordToMobileTaskItem(
     id: task.id,
     title: task.title,
     description: task.description,
+    blockedReason: task.blocked_reason,
     status: task.status as MobileTaskListItem["status"],
     priority: task.priority as MobileTaskListItem["priority"],
     dueDate: task.due_date,

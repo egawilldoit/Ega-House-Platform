@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import {
   addTaskToToday,
+  clearCompletedFromToday,
   removeTaskFromToday,
   updateTodayTaskStatus,
 } from "@/lib/services/today-planner-service";
@@ -81,6 +82,18 @@ export async function completeTodayTaskAction(formData: FormData) {
   const taskId = String(formData.get("taskId") ?? "").trim();
 
   const result = await updateTodayTaskStatus(taskId, "done");
+
+  if (result.errorMessage) {
+    redirectWithActionError(returnPath, result.errorMessage);
+  }
+
+  revalidateTodaySurfaces(returnPath);
+  redirect(returnPath);
+}
+
+export async function clearCompletedFromTodayAction(formData: FormData) {
+  const returnPath = getTodayReturnPath(formData.get("returnTo"));
+  const result = await clearCompletedFromToday();
 
   if (result.errorMessage) {
     redirectWithActionError(returnPath, result.errorMessage);

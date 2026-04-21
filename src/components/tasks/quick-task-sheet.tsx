@@ -64,6 +64,7 @@ type MultiTaskDraft = {
   title: string;
   projectId: string;
   goalId: string;
+  blockedReason: string;
   status: string;
   priority: string;
   dueDate: string;
@@ -89,6 +90,7 @@ function createEmptyDraft(defaultProjectId: string): MultiTaskDraft {
     title: "",
     projectId: defaultProjectId,
     goalId: "",
+    blockedReason: "",
     status: "todo",
     priority: "medium",
     dueDate: "",
@@ -110,6 +112,10 @@ function getDraftErrors(draft: MultiTaskDraft, goals: QuickTaskSheetGoal[]) {
 
   if (!isTaskStatus(draft.status)) {
     errors.push(`Status "${draft.status}" is invalid.`);
+  }
+
+  if (draft.status === "blocked" && !draft.blockedReason.trim()) {
+    errors.push("Blocked reason is required when status is Blocked.");
   }
 
   if (!isTaskPriority(draft.priority)) {
@@ -141,6 +147,7 @@ function QuickTaskSheetPanel({
   const defaultProjectId = projects[0]?.id ?? "";
   const [singleProjectId, setSingleProjectId] = useState(defaultProjectId);
   const [singleGoalId, setSingleGoalId] = useState("");
+  const [singleStatus, setSingleStatus] = useState("todo");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
   ]);
@@ -153,6 +160,7 @@ function QuickTaskSheetPanel({
       projectId: defaultProjectId,
       goalId: "",
       description: "",
+      blockedReason: "",
       status: "todo",
       priority: "medium",
       dueDate: "",
@@ -170,6 +178,7 @@ function QuickTaskSheetPanel({
       projectId: defaultProjectId,
       goalId: "",
       description: "",
+      blockedReason: "",
       status: "todo",
       priority: "medium",
       dueDate: "",
@@ -200,6 +209,10 @@ function QuickTaskSheetPanel({
       onSuccess("single", 0);
     }
   }, [onSuccess, singleState.success]);
+
+  useEffect(() => {
+    setSingleStatus(singleState.values.status);
+  }, [singleState.values.status]);
 
   useEffect(() => {
     if (bulkState.success) {
@@ -293,6 +306,7 @@ function QuickTaskSheetPanel({
       projectId: draft.projectId,
       goalId: draft.goalId,
       description: draft.description,
+      blockedReason: draft.blockedReason,
       status: draft.status,
       priority: draft.priority,
       dueDate: draft.dueDate,
@@ -425,6 +439,7 @@ function QuickTaskSheetPanel({
                           id="quick-task-status"
                           name="status"
                           defaultValue={singleState.values.status}
+                          onChange={(event) => setSingleStatus(event.target.value)}
                           className="input-instrument h-10 text-sm"
                         >
                           {TASK_STATUS_VALUES.map((status) => (
@@ -447,6 +462,21 @@ function QuickTaskSheetPanel({
                           className="h-10"
                         />
                       </div>
+
+                      {singleStatus === "blocked" ? (
+                        <div className="space-y-2 sm:col-span-2">
+                          <label htmlFor="quick-task-blocked-reason" className="glass-label text-etch">
+                            Blocked reason
+                          </label>
+                          <Textarea
+                            id="quick-task-blocked-reason"
+                            name="blockedReason"
+                            placeholder="What is currently blocking this task?"
+                            defaultValue={singleState.values.blockedReason}
+                            className="min-h-20 resize-none"
+                          />
+                        </div>
+                      ) : null}
 
                       <div className="space-y-2">
                         <label htmlFor="quick-task-priority" className="glass-label text-etch">
@@ -672,6 +702,20 @@ function QuickTaskSheetPanel({
                                   ))}
                               </select>
                             </div>
+
+                            {draft.status === "blocked" ? (
+                              <div className="space-y-2 sm:col-span-2">
+                                <label className="glass-label text-etch">Blocked reason</label>
+                                <Textarea
+                                  value={draft.blockedReason}
+                                  onChange={(event) =>
+                                    updateDraftField(draft.id, "blockedReason", event.target.value)
+                                  }
+                                  placeholder="What is currently blocking this task?"
+                                  className="min-h-20 resize-none"
+                                />
+                              </div>
+                            ) : null}
 
                             <div className="space-y-2">
                               <label className="glass-label text-etch">Due date</label>

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { clearCompletedFromTodayAction } from "@/app/today/actions";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { TodaySection } from "@/components/today/today-section";
@@ -106,12 +107,9 @@ export default async function TodayPage({
                 <CardContent className="space-y-3 px-5 py-5 text-center">
                   <p className="glass-label text-etch">Nothing planned yet for today.</p>
                   <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-                    Add tasks from due today, pinned, or in-progress suggestions to create a focused execution lane.
+                    Add tasks from pinned or in-progress suggestions to create a focused execution lane.
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    <a href="#due-today-suggestions" className="btn-instrument btn-instrument-muted flex h-8 items-center px-3">
-                      Add from due today
-                    </a>
                     <a href="#pinned-suggestions" className="btn-instrument btn-instrument-muted flex h-8 items-center px-3">
                       Add from pinned
                     </a>
@@ -188,6 +186,17 @@ export default async function TodayPage({
               count={todayData.completed.length}
               tone="success"
               compactWhenEmpty
+              headerActions={todayData.summary.clearableCompletedCount > 0 ? (
+                <form action={clearCompletedFromTodayAction}>
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <button
+                    type="submit"
+                    className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs"
+                  >
+                    Clear completed from Today
+                  </button>
+                </form>
+              ) : null}
               emptyState={<div className="text-xs text-[color:var(--muted-foreground)]">No completed Today items yet.</div>}
             >
               {todayData.completed.map((task) => (
@@ -207,12 +216,6 @@ export default async function TodayPage({
               returnTo={returnTo}
               activeTimerSessionId={activeTimerSessionId}
               groups={[
-                {
-                  key: "due-today",
-                  title: "Due today",
-                  emptyText: "No tasks are due today.",
-                  items: todayData.suggestions.dueToday,
-                },
                 {
                   key: "pinned",
                   title: "Pinned / focus",

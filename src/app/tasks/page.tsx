@@ -251,6 +251,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               </p>
                             ) : null}
 
+                            {task.status === "blocked" && task.blocked_reason?.trim() ? (
+                              <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
+                                Blocked: {task.blocked_reason.trim()}
+                              </p>
+                            ) : null}
+
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
                               {task.estimate_minutes ? (
@@ -296,6 +302,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         defaultPriority={task.priority}
                         defaultDueDate={task.due_date}
                         defaultEstimateMinutes={task.estimate_minutes}
+                        defaultBlockedReason={task.blocked_reason}
                         error={inlineError}
                       />
                       <div className="lg:justify-self-end">

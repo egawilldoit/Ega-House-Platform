@@ -67,6 +67,7 @@ export type MobileTaskListItem = {
   id: string;
   title: string;
   description: string | null;
+  blockedReason: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
@@ -114,6 +115,7 @@ export type CreateTaskInput = {
   projectId: string;
   goalId: string | null;
   description: string | null;
+  blockedReason: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
@@ -126,6 +128,7 @@ export type UpdateTaskInput = {
   dueDate?: string | null;
   estimateMinutes?: number | null;
   description?: string | null;
+  blockedReason?: string | null;
 };
 
 export type TimerSessionSummary = {

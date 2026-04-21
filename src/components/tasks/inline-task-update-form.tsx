@@ -1,5 +1,10 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -14,6 +19,7 @@ type InlineTaskUpdateFormProps = {
   defaultPriority: string;
   defaultDueDate: string | null;
   defaultEstimateMinutes: number | null;
+  defaultBlockedReason: string | null;
   error?: string | null;
 };
 
@@ -25,8 +31,15 @@ export function InlineTaskUpdateForm({
   defaultPriority,
   defaultDueDate,
   defaultEstimateMinutes,
+  defaultBlockedReason,
   error,
 }: InlineTaskUpdateFormProps) {
+  const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
+
+  useEffect(() => {
+    setSelectedStatus(defaultStatus);
+  }, [defaultStatus]);
+
   return (
     <form action={action} className="space-y-3">
       <input type="hidden" name="taskId" value={taskId} />
@@ -40,6 +53,7 @@ export function InlineTaskUpdateForm({
           <select
             name="status"
             defaultValue={defaultStatus}
+            onChange={(event) => setSelectedStatus(event.target.value)}
             className="input-instrument min-h-9 min-w-28 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
           >
             {TASK_STATUS_VALUES.map((statusValue) => (
@@ -93,6 +107,20 @@ export function InlineTaskUpdateForm({
             className="min-h-9 min-w-28 px-3 py-0 text-sm"
           />
         </label>
+
+        {selectedStatus === "blocked" ? (
+          <label className="w-full space-y-2">
+            <span className="glass-label text-etch">
+              Blocked reason
+            </span>
+            <Textarea
+              name="blockedReason"
+              defaultValue={defaultBlockedReason ?? ""}
+              placeholder="What is currently blocking this task?"
+              className="min-h-20 w-full"
+            />
+          </label>
+        ) : null}
 
         <Button size="sm" type="submit" variant="muted">
           Save

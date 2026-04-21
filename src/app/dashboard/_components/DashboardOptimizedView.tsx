@@ -119,6 +119,11 @@ function TaskRow({ task, showPinAction = true }: { task: DashboardTodayTask; sho
           {task.projectName}
           {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
         </p>
+        {task.status === "blocked" && task.blockedReason?.trim() ? (
+          <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
+            Blocked: {task.blockedReason.trim()}
+          </p>
+        ) : null}
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <TaskDueDateLabel dueDate={task.dueDate} status={task.status} />
           {task.estimateMinutes ? (

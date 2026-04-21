@@ -71,6 +71,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       validationResult.data.estimateMinutes === undefined
         ? existingResult.data.estimate_minutes
         : validationResult.data.estimateMinutes,
+    blockedReason:
+      validationResult.data.blockedReason === undefined
+        ? existingResult.data.blocked_reason
+        : validationResult.data.blockedReason,
   };
 
   const inlineValidation = validateTaskInlineUpdateInput(merged);

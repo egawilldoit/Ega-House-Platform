@@ -16,6 +16,7 @@ import {
   createTasks,
   getTaskInsertScopeError,
   getTaskScopeSnapshot,
+  normalizeTaskBlockedReasonInput,
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "@/lib/services/task-service";
@@ -32,6 +33,7 @@ export type CreateTaskFormState = {
     projectId: string;
     goalId: string;
     description: string;
+    blockedReason: string;
     status: string;
     priority: string;
     dueDate: string;
@@ -50,6 +52,7 @@ export type CreateTasksBulkFormState = {
     projectId: string;
     goalId: string;
     description: string;
+    blockedReason: string;
     status: string;
     priority: string;
     dueDate: string;
@@ -64,6 +67,7 @@ type BulkTaskComposerRowInput = {
   projectId?: string;
   goalId?: string;
   description?: string;
+  blockedReason?: string;
   status?: string;
   priority?: string;
   dueDate?: string;
@@ -163,12 +167,16 @@ function parseBulkRowsPayload(rawRows: string): BulkTaskComposerRowInput[] {
 }
 
 function toTaskInsertRow(row: BulkTaskComposerRowInput) {
+  const status = String(row.status ?? "").trim();
+  const blockedReason = normalizeTaskBlockedReasonInput(row.blockedReason);
+
   return {
     title: String(row.title ?? "").trim(),
     project_id: String(row.projectId ?? "").trim(),
     goal_id: String(row.goalId ?? "").trim() || null,
     description: String(row.description ?? "").trim() || null,
-    status: String(row.status ?? "").trim(),
+    blocked_reason: status === "blocked" ? blockedReason : null,
+    status,
     priority: String(row.priority ?? "").trim(),
     due_date: String(row.dueDate ?? "").trim() || null,
     estimate_minutes: normalizeTaskEstimateInput(row.estimateMinutes).value,
@@ -183,6 +191,7 @@ export async function createTaskAction(
   const projectId = String(formData.get("projectId") ?? "").trim();
   const goalId = String(formData.get("goalId") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
+  const blockedReason = normalizeTaskBlockedReasonInput(formData.get("blockedReason"));
   const status = String(formData.get("status") ?? "todo").trim();
   const priority = String(formData.get("priority") ?? "medium").trim();
   const rawDueDate = String(formData.get("dueDate") ?? "").trim();
@@ -196,6 +205,7 @@ export async function createTaskAction(
     projectId,
     goalId,
     description,
+    blockedReason: blockedReason ?? "",
     status,
     priority,
     dueDate: rawDueDate,
@@ -225,6 +235,10 @@ export async function createTaskAction(
     );
   }
 
+  if (status === "blocked" && !blockedReason) {
+    return createErrorState("Blocked reason is required when status is Blocked.", values);
+  }
+
   if (dueDateResult.error) {
     return createErrorState(dueDateResult.error, values);
   }
@@ -239,6 +253,7 @@ export async function createTaskAction(
       project_id: projectId,
       goal_id: goalId || null,
       description: description || null,
+      blocked_reason: status === "blocked" ? blockedReason : null,
       status,
       priority,
       due_date: dueDateResult.value,
@@ -260,6 +275,7 @@ export async function createTaskAction(
       projectId,
       goalId: "",
       description: "",
+      blockedReason: "",
       status: "todo",
       priority: "medium",
       dueDate: "",
@@ -282,6 +298,7 @@ export async function createTasksBulkAction(
     projectId: "",
     goalId: "",
     description: "",
+    blockedReason: "",
     status: "todo",
     priority: "medium",
     dueDate: "",
@@ -332,6 +349,14 @@ export async function createTasksBulkAction(
       skippedLines.push({
         value: taskRow.title,
         reason: `Priority must be one of: ${TASK_PRIORITY_VALUES.join(", ")}.`,
+      });
+      continue;
+    }
+
+    if (taskRow.status === "blocked" && !taskRow.blocked_reason) {
+      skippedLines.push({
+        value: taskRow.title,
+        reason: "Blocked reason is required when status is Blocked.",
       });
       continue;
     }
@@ -391,6 +416,7 @@ export async function createTasksBulkAction(
       projectId: "",
       goalId: "",
       description: "",
+      blockedReason: "",
       status: "todo",
       priority: "medium",
       dueDate: "",
@@ -408,6 +434,7 @@ export async function updateTaskInlineAction(formData: FormData) {
     priority: String(formData.get("priority") ?? ""),
     dueDate: formData.get("dueDate"),
     estimateMinutes: formData.get("estimateMinutes"),
+    blockedReason: formData.get("blockedReason"),
   });
 
   if (validationResult.errorMessage || !validationResult.data) {

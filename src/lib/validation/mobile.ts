@@ -195,6 +195,7 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
   const projectId = String(record.projectId ?? "").trim();
   const goalId = String(record.goalId ?? "").trim() || null;
   const descriptionRaw = record.description;
+  const blockedReasonRaw = record.blockedReason;
   const statusValue = String(record.status ?? "").trim();
   const priorityValue = String(record.priority ?? "").trim();
   const dueDateResult = normalizeTaskDueDateInput(record.dueDate);
@@ -223,6 +224,17 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
     descriptionRaw === null || descriptionRaw === undefined
       ? null
       : String(descriptionRaw).trim() || null;
+  const blockedReason =
+    blockedReasonRaw === null || blockedReasonRaw === undefined
+      ? null
+      : String(blockedReasonRaw).trim() || null;
+
+  if (statusValue === "blocked" && !blockedReason) {
+    return createMobileApiError(
+      "VALIDATION_ERROR",
+      "Blocked reason is required when status is Blocked.",
+    );
+  }
 
   return {
     ok: true,
@@ -231,6 +243,7 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
       projectId,
       goalId,
       description,
+      blockedReason,
       status: statusValue,
       priority: priorityValue,
       dueDate: dueDateResult.value,
@@ -250,7 +263,8 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
   const hasDueDate = Object.prototype.hasOwnProperty.call(record, "dueDate");
   const hasEstimate = Object.prototype.hasOwnProperty.call(record, "estimateMinutes");
   const hasDescription = Object.prototype.hasOwnProperty.call(record, "description");
-  if (!hasStatus && !hasPriority && !hasDueDate && !hasEstimate && !hasDescription) {
+  const hasBlockedReason = Object.prototype.hasOwnProperty.call(record, "blockedReason");
+  if (!hasStatus && !hasPriority && !hasDueDate && !hasEstimate && !hasDescription && !hasBlockedReason) {
     return createMobileApiError(
       "VALIDATION_ERROR",
       "At least one mutable field must be provided.",
@@ -298,6 +312,14 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
       output.description = null;
     } else {
       output.description = String(record.description).trim() || null;
+    }
+  }
+
+  if (hasBlockedReason) {
+    if (record.blockedReason === null || record.blockedReason === undefined) {
+      output.blockedReason = null;
+    } else {
+      output.blockedReason = String(record.blockedReason).trim() || null;
     }
   }
 

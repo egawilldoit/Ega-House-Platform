@@ -4,6 +4,7 @@ import { isTaskDueToday, isTaskOverdue } from "@/lib/task-due-date";
 export type TodayPlannerTask = {
   id: string;
   title: string;
+  blocked_reason?: string | null;
   status: string;
   priority: string;
   focus_rank: number | null;

@@ -101,6 +101,7 @@ export async function POST(request: Request) {
         project_id: validationResult.data.projectId,
         goal_id: validationResult.data.goalId,
         description: validationResult.data.description,
+        blocked_reason: validationResult.data.blockedReason,
         status: validationResult.data.status,
         priority: validationResult.data.priority,
         due_date: validationResult.data.dueDate,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +36,7 @@ export function CreateTaskForm({
       projectId: selectedProjectId,
       goalId: "",
       description: "",
+      blockedReason: "",
       status: "todo",
       priority: "medium",
       dueDate: "",
@@ -48,7 +49,12 @@ export function CreateTaskForm({
     createTaskAction,
     initialState,
   );
+  const [selectedStatus, setSelectedStatus] = useState(state.values.status);
   const availableGoalCount = goals.length;
+
+  useEffect(() => {
+    setSelectedStatus(state.values.status);
+  }, [state.values.status]);
 
   return (
     <form action={formAction} className="space-y-4">
@@ -154,6 +160,7 @@ export function CreateTaskForm({
                 id="status"
                 name="status"
                 defaultValue={state.values.status}
+                onChange={(event) => setSelectedStatus(event.target.value)}
                 className="input-instrument h-10 text-sm"
               >
                 {TASK_STATUS_VALUES.map((status) => (
@@ -163,6 +170,21 @@ export function CreateTaskForm({
                 ))}
               </select>
             </div>
+
+            {selectedStatus === "blocked" ? (
+              <div className="space-y-2 sm:col-span-2">
+                <label htmlFor="blockedReason" className="glass-label text-etch">
+                  Blocked reason
+                </label>
+                <Textarea
+                  id="blockedReason"
+                  name="blockedReason"
+                  placeholder="What is currently blocking this task?"
+                  defaultValue={state.values.blockedReason}
+                  className="min-h-20"
+                />
+              </div>
+            ) : null}
 
             <div className="space-y-2">
               <label htmlFor="dueDate" className="glass-label text-etch">

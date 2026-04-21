@@ -73,6 +73,7 @@ export const tasks = pgTable(
     goalId: uuid("goal_id").references(() => goals.id),
     title: varchar("title", { length: 256 }).notNull(),
     description: text("description"),
+    blockedReason: text("blocked_reason"),
     status: varchar("status", { length: 64 }).notNull().default("todo"),
     priority: varchar("priority", { length: 32 }).notNull().default("medium"),
     estimateMinutes: integer("estimate_minutes"),

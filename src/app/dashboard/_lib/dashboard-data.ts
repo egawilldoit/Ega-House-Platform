@@ -56,6 +56,7 @@ export type DashboardHealthData = {
 export type DashboardTodayTask = {
   id: string;
   title: string;
+  blockedReason: string | null;
   status: string;
   priority: string;
   focusRank: number | null;
@@ -215,7 +216,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "id, title, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
+        "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
       )
       .gte("updated_at", startIso)
       .lt("updated_at", endIso)
@@ -237,7 +238,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
             await supabase
               .from("tasks")
               .select(
-                "id, title, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
+                "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
               )
               .order("updated_at", { ascending: false })
               .limit(TODAY_TASK_LIMIT)
@@ -247,6 +248,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
       data: fallbackTasks.map((task) => ({
         id: task.id,
         title: task.title,
+        blockedReason: task.blocked_reason,
         status: task.status,
         priority: task.priority,
         focusRank: task.focus_rank,
@@ -282,7 +284,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
       supabase
         .from("tasks")
         .select(
-          "id, title, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
+          "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
         )
         .order("updated_at", { ascending: false })
         .limit(120),
@@ -322,6 +324,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
       (tasksResult.data ?? []).map((task) => ({
         id: task.id,
         title: task.title,
+        blocked_reason: task.blocked_reason,
         status: task.status,
         priority: task.priority,
         focus_rank: task.focus_rank,
@@ -344,6 +347,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
       ...task
     }: (typeof planner.all)[number]): DashboardTodayTask => ({
       ...task,
+      blockedReason: task.blocked_reason ?? null,
       focusRank: focus_rank,
       dueDate: due_date,
       estimateMinutes: estimate_minutes,

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { TASK_STATUS_VALUES, isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { getActiveTimerSession, getTimerSummary } from "@/lib/services/timer-service";
+import { updateTaskInline, validateTaskInlineUpdateInput } from "@/lib/services/task-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -11,6 +12,7 @@ type TodayTaskRow = {
   id: string;
   title: string;
   description: string | null;
+  blocked_reason: string | null;
   status: string;
   priority: string;
   due_date: string | null;
@@ -26,6 +28,7 @@ export type TodayPlannerTask = {
   id: string;
   title: string;
   description: string | null;
+  blockedReason: string | null;
   status: TaskStatus;
   priority: string;
   dueDate: string | null;
@@ -37,6 +40,8 @@ export type TodayPlannerTask = {
   projectSlug: string | null;
   goalTitle: string | null;
   hasActiveTimer: boolean;
+  isDueToday: boolean;
+  isPlannedForToday: boolean;
 };
 
 export type TodayPlannerData = {
@@ -46,7 +51,6 @@ export type TodayPlannerData = {
   blocked: TodayPlannerTask[];
   completed: TodayPlannerTask[];
   suggestions: {
-    dueToday: TodayPlannerTask[];
     pinned: TodayPlannerTask[];
     inProgress: TodayPlannerTask[];
   };
@@ -55,6 +59,7 @@ export type TodayPlannerData = {
     inProgressCount: number;
     blockedCount: number;
     completedCount: number;
+    clearableCompletedCount: number;
     totalEstimateMinutes: number;
     trackedTodaySeconds: number;
     trackedTodayLabel: string;
@@ -69,7 +74,7 @@ function isKnownTaskStatus(value: string): value is TaskStatus {
   return isTaskStatus(value);
 }
 
-function mapTaskRow(row: TodayTaskRow, activeTaskId: string | null): TodayPlannerTask | null {
+function mapTaskRow(row: TodayTaskRow, activeTaskId: string | null, today: string): TodayPlannerTask | null {
   if (!isKnownTaskStatus(row.status)) {
     return null;
   }
@@ -78,6 +83,7 @@ function mapTaskRow(row: TodayTaskRow, activeTaskId: string | null): TodayPlanne
     id: row.id,
     title: row.title,
     description: row.description,
+    blockedReason: row.blocked_reason ?? null,
     status: row.status,
     priority: row.priority,
     dueDate: row.due_date,
@@ -89,6 +95,8 @@ function mapTaskRow(row: TodayTaskRow, activeTaskId: string | null): TodayPlanne
     projectSlug: row.projects?.slug ?? null,
     goalTitle: row.goals?.title ?? null,
     hasActiveTimer: row.id === activeTaskId,
+    isDueToday: row.due_date === today,
+    isPlannedForToday: row.planned_for_date === today,
   };
 }
 
@@ -139,34 +147,27 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
 export async function getTodayPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  activeTimerResult?: Awaited<ReturnType<typeof getActiveTimerSession>>;
+  timerSummaryResult?: Awaited<ReturnType<typeof getTimerSummary>>;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
   const today = getTodayLocalIsoDate(now);
 
-  const [selectedResult, dueTodayResult, pinnedResult, inProgressResult, activeTimerResult, timerSummaryResult] =
+  const [selectedResult, pinnedResult, inProgressResult, activeTimerResult, timerSummaryResult] =
     await Promise.all([
       supabase
         .from("tasks")
         .select(
-          "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
+          "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
         )
-        .eq("planned_for_date", today)
+        .or(`planned_for_date.eq.${today},due_date.eq.${today}`)
         .order("updated_at", { ascending: false })
-        .limit(200),
+        .limit(240),
       supabase
         .from("tasks")
         .select(
-          "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
-        )
-        .eq("due_date", today)
-        .neq("status", "done")
-        .order("updated_at", { ascending: false })
-        .limit(80),
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
+          "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
         )
         .not("focus_rank", "is", null)
         .neq("status", "done")
@@ -176,28 +177,38 @@ export async function getTodayPlannerData(options?: {
       supabase
         .from("tasks")
         .select(
-          "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
+          "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
         )
         .eq("status", "in_progress")
         .order("updated_at", { ascending: false })
         .limit(80),
-      getActiveTimerSession(),
-      getTimerSummary({ limit: 120 }),
+      options?.activeTimerResult ? Promise.resolve(options.activeTimerResult) : getActiveTimerSession(),
+      options?.timerSummaryResult ? Promise.resolve(options.timerSummaryResult) : getTimerSummary({ limit: 120 }),
     ]);
 
   if (selectedResult.error) {
     return { errorMessage: "Could not load Today plan right now.", data: null };
   }
 
-  if (dueTodayResult.error || pinnedResult.error || inProgressResult.error) {
+  if (pinnedResult.error || inProgressResult.error) {
     return { errorMessage: "Could not load Today suggestions right now.", data: null };
   }
 
   const activeTaskId = activeTimerResult.data?.taskId ?? null;
 
-  const selectedTasks = (selectedResult.data ?? [])
-    .map((row) => mapTaskRow(row as TodayTaskRow, activeTaskId))
-    .filter((task): task is TodayPlannerTask => task !== null);
+  const selectedTasksById = new Map<string, TodayPlannerTask>();
+  for (const row of (selectedResult.data ?? []) as TodayTaskRow[]) {
+    const mapped = mapTaskRow(row, activeTaskId, today);
+    if (!mapped) {
+      continue;
+    }
+
+    if (!selectedTasksById.has(mapped.id)) {
+      selectedTasksById.set(mapped.id, mapped);
+    }
+  }
+
+  const selectedTasks = [...selectedTasksById.values()];
 
   const selectedTaskIds = new Set(selectedTasks.map((task) => task.id));
 
@@ -207,17 +218,17 @@ export async function getTodayPlannerData(options?: {
     .sort(sortTodayTasks);
   const blocked = selectedTasks.filter((task) => task.status === "blocked").sort(sortTodayTasks);
   const completed = selectedTasks.filter((task) => task.status === "done").sort(sortTodayTasks);
+  const clearableCompletedCount = completed.filter((task) => task.isPlannedForToday).length;
 
   const toSuggestionSlice = (rows: TodayTaskRow[]) =>
     rows
-      .map((row) => mapTaskRow(row, activeTaskId))
+      .map((row) => mapTaskRow(row, activeTaskId, today))
       .filter((task): task is TodayPlannerTask => task !== null)
       .filter((task) => !selectedTaskIds.has(task.id) && task.status !== "done")
       .sort(sortSuggestionTasks)
       .slice(0, SUGGESTION_LIMIT);
 
   const suggestions = {
-    dueToday: toSuggestionSlice((dueTodayResult.data ?? []) as TodayTaskRow[]),
     pinned: toSuggestionSlice((pinnedResult.data ?? []) as TodayTaskRow[]),
     inProgress: toSuggestionSlice((inProgressResult.data ?? []) as TodayTaskRow[]),
   };
@@ -244,6 +255,7 @@ export async function getTodayPlannerData(options?: {
         inProgressCount: inProgress.length,
         blockedCount: blocked.length,
         completedCount: completed.length,
+        clearableCompletedCount,
         totalEstimateMinutes,
         trackedTodaySeconds,
         trackedTodayLabel,
@@ -362,16 +374,61 @@ export async function updateTodayTaskStatus(
     return { errorMessage: scope.errorMessage ?? "Task is unavailable." };
   }
 
+  const { data: taskData, error: taskLoadError } = await supabase
+    .from("tasks")
+    .select("status, priority, due_date, estimate_minutes, blocked_reason")
+    .eq("id", scope.taskId)
+    .maybeSingle();
+
+  if (taskLoadError || !taskData) {
+    return { errorMessage: "Unable to load task details right now." };
+  }
+
+  const validationResult = validateTaskInlineUpdateInput({
+    taskId: scope.taskId,
+    status,
+    priority: taskData.priority,
+    dueDate: taskData.due_date,
+    estimateMinutes: taskData.estimate_minutes,
+    blockedReason: status === "blocked" ? taskData.blocked_reason : null,
+  });
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage:
+        validationResult.errorMessage ?? "Task status update request is invalid.",
+    };
+  }
+
+  const updateResult = await updateTaskInline(validationResult.data, {
+    supabase,
+  });
+
+  if (updateResult.errorMessage) {
+    return { errorMessage: updateResult.errorMessage };
+  }
+
+  return { errorMessage: null };
+}
+
+export async function clearCompletedFromToday(options?: {
+  supabase?: SupabaseServerClient;
+  now?: Date;
+}) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const today = getTodayLocalIsoDate(options?.now ?? new Date());
+
   const { error } = await supabase
     .from("tasks")
     .update({
-      status,
+      planned_for_date: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", scope.taskId);
+    .eq("status", "done")
+    .eq("planned_for_date", today);
 
   if (error) {
-    return { errorMessage: "Unable to update task status right now." };
+    return { errorMessage: "Unable to clear completed Today items right now." };
   }
 
   return { errorMessage: null };

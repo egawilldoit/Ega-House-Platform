@@ -189,6 +189,7 @@ export type Database = {
       }
       tasks: {
         Row: {
+          blocked_reason: string | null
           created_at: string
           due_date: string | null
           description: string | null
@@ -205,6 +206,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          blocked_reason?: string | null
           created_at?: string
           due_date?: string | null
           description?: string | null
@@ -221,6 +223,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          blocked_reason?: string | null
           created_at?: string
           due_date?: string | null
           description?: string | null

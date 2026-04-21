@@ -59,6 +59,7 @@ type TaskRow = Pick<
   | "id"
   | "title"
   | "description"
+  | "blocked_reason"
   | "status"
   | "priority"
   | "due_date"
@@ -112,7 +113,7 @@ async function getProjectDetail(slug: string) {
     supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
+        "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
       )
       .eq("project_id", project.id)
       .order("updated_at", { ascending: false }),
@@ -343,6 +344,11 @@ export default async function ProjectDetailPage({
                         project.description?.trim() ||
                         "No description has been added for this task yet."}
                     </p>
+                    {focusedTask?.status === "blocked" && focusedTask.blocked_reason?.trim() ? (
+                      <p className="rounded-[0.9rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
+                        Blocked: {focusedTask.blocked_reason.trim()}
+                      </p>
+                    ) : null}
                     {projectIsArchived && !focusedTask ? (
                       <p className="rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
                         This project is archived for reference. Linked goals and tasks remain visible here and keep their own current states until you update them directly.
@@ -522,6 +528,7 @@ export default async function ProjectDetailPage({
                         defaultPriority={focusedTask.priority}
                         defaultDueDate={focusedTask.due_date}
                         defaultEstimateMinutes={focusedTask.estimate_minutes}
+                        defaultBlockedReason={focusedTask.blocked_reason}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
                       />
                       <div className="mt-3">
@@ -553,6 +560,11 @@ export default async function ProjectDetailPage({
                             <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
                               {task.goals?.title ?? "No linked goal"}
                             </p>
+                            {task.status === "blocked" && task.blocked_reason?.trim() ? (
+                              <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
+                                Blocked: {task.blocked_reason.trim()}
+                              </p>
+                            ) : null}
                             <div className="mt-2 flex flex-wrap items-center gap-2">
                               <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
                               {task.estimate_minutes ? (
@@ -577,6 +589,7 @@ export default async function ProjectDetailPage({
                             defaultPriority={task.priority}
                             defaultDueDate={task.due_date}
                             defaultEstimateMinutes={task.estimate_minutes}
+                            defaultBlockedReason={task.blocked_reason}
                             error={inlineError}
                           />
                           <div className="mt-3">

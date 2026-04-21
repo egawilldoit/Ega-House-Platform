@@ -40,6 +40,7 @@ export type TasksWorkspaceData = {
     id: string;
     title: string;
     description: string | null;
+    blocked_reason: string | null;
     status: string;
     priority: string;
     due_date: string | null;
@@ -75,6 +76,7 @@ export type ValidateTaskInlineUpdateInput = {
   priority: string;
   dueDate: unknown;
   estimateMinutes: unknown;
+  blockedReason: unknown;
 };
 
 export type ValidatedTaskInlineUpdateInput = {
@@ -83,7 +85,24 @@ export type ValidatedTaskInlineUpdateInput = {
   priority: TaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
+  blockedReason: string | null;
 };
+
+export function normalizeTaskBlockedReasonInput(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function getTaskBlockedReasonValidationError(
+  status: TaskStatus,
+  blockedReason: string | null,
+) {
+  if (status === "blocked" && !blockedReason) {
+    return "Blocked reason is required when status is Blocked.";
+  }
+
+  return null;
+}
 
 type CreateTaskScopeErrorResult = {
   errorMessage: string;
@@ -217,7 +236,7 @@ export async function getTasksWorkspaceData(
   const tasksQuery = supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
     )
     .order("updated_at", { ascending: false });
 
@@ -289,6 +308,14 @@ export async function createTasks(
   }
 
   for (const row of taskRows) {
+    const statusValue = String(row.status ?? "todo").trim();
+    const blockedReason = normalizeTaskBlockedReasonInput(row.blocked_reason);
+
+    if (statusValue === "blocked" && !blockedReason) {
+      return { errorMessage: "Blocked reason is required when status is Blocked." };
+    }
+
+    row.blocked_reason = statusValue === "blocked" ? blockedReason : null;
     const scopeError = getTaskInsertScopeError(row, taskScope.scope);
     if (scopeError) {
       return { errorMessage: scopeError };
@@ -313,6 +340,7 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
   const priority = input.priority.trim();
   const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
   const estimateResult = normalizeTaskEstimateInput(input.estimateMinutes);
+  const blockedReason = normalizeTaskBlockedReasonInput(input.blockedReason);
 
   if (!taskId) {
     return {
@@ -344,6 +372,15 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  const blockedReasonError = getTaskBlockedReasonValidationError(status, blockedReason);
+  if (blockedReasonError) {
+    return {
+      errorMessage: blockedReasonError,
+    };
+  }
+
+  const normalizedBlockedReason = status === "blocked" ? blockedReason : null;
+
   return {
     errorMessage: null,
     data: {
@@ -352,6 +389,7 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       priority,
       dueDate: dueDateResult.value,
       estimateMinutes: estimateResult.value,
+      blockedReason: normalizedBlockedReason,
     } satisfies ValidatedTaskInlineUpdateInput,
   };
 }
@@ -369,6 +407,7 @@ export async function updateTaskInline(
       priority: input.priority,
       due_date: input.dueDate,
       estimate_minutes: input.estimateMinutes,
+      blocked_reason: input.blockedReason,
       updated_at: updatedAtIso,
     })
     .eq("id", input.taskId);
@@ -397,7 +436,7 @@ export async function getTaskById(
   const { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
