@@ -64,12 +64,14 @@ export async function createMobileTask(input: CreateTaskInput) {
   });
 }
 
-export async function getMobileTaskById(taskId: string) {
+export async function fetchMobileTaskById(taskId: string) {
   return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {
     method: 'GET',
     auth: true,
   });
 }
+
+export const getMobileTaskById = fetchMobileTaskById;
 
 export async function updateMobileTask(taskId: string, input: UpdateTaskInput) {
   return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {

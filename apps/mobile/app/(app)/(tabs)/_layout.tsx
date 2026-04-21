@@ -23,6 +23,13 @@ export default function AppTabsLayout() {
       }}
     >
       <Tabs.Screen
+        name="today"
+        options={{
+          title: 'Today',
+          tabBarIcon: ({ color }) => <TabBarIcon color={color} name="sun-o" />,
+        }}
+      />
+      <Tabs.Screen
         name="tasks"
         options={{
           title: 'Tasks',

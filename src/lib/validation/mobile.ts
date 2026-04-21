@@ -328,3 +328,24 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
     data: output,
   };
 }
+
+export function validateMobileTodayStatusInput(body: unknown): ValidationResult<{
+  status: TaskStatus;
+}> {
+  const record = asObjectRecord(body);
+  if (!record) {
+    return createMobileApiError("INVALID_REQUEST", "Request body must be a JSON object.");
+  }
+
+  const status = String(record.status ?? "").trim();
+  if (!isTaskStatus(status)) {
+    return createMobileApiError("VALIDATION_ERROR", "Invalid task status.");
+  }
+
+  return {
+    ok: true,
+    data: {
+      status,
+    },
+  };
+}

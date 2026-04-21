@@ -110,6 +110,72 @@ export type MobileTaskMutationResponse = {
   task: MobileTaskListItem;
 };
 
+export type MobileTodayTaskItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  blockedReason: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string | null;
+  estimateMinutes: number | null;
+  updatedAt: string;
+  focusRank: number | null;
+  plannedForDate: string | null;
+  projectName: string;
+  projectSlug: string | null;
+  goalTitle: string | null;
+  hasActiveTimer: boolean;
+  isDueToday: boolean;
+  isPlannedForToday: boolean;
+};
+
+export type MobileTodaySummary = {
+  plannedCount: number;
+  inProgressCount: number;
+  blockedCount: number;
+  completedCount: number;
+  clearableCompletedCount: number;
+  totalEstimateMinutes: number;
+  trackedTodaySeconds: number;
+  trackedTodayLabel: string;
+};
+
+export type MobileTodayResponse = {
+  ok: true;
+  date: string;
+  sections: {
+    planned: MobileTodayTaskItem[];
+    inProgress: MobileTodayTaskItem[];
+    blocked: MobileTodayTaskItem[];
+    completed: MobileTodayTaskItem[];
+  };
+  suggestions: {
+    pinned: MobileTodayTaskItem[];
+    inProgress: MobileTodayTaskItem[];
+  };
+  summary: MobileTodaySummary;
+  activeTimer: {
+    sessionId: string;
+    taskId: string;
+  } | null;
+};
+
+export type MobileTodayTaskStatusMutationResponse = {
+  ok: true;
+  taskId: string;
+  status: TaskStatus;
+};
+
+export type MobileTodayTaskMutationResponse = {
+  ok: true;
+  taskId: string;
+};
+
+export type MobileTodayClearCompletedResponse = {
+  ok: true;
+};
+
 export type CreateTaskInput = {
   title: string;
   projectId: string;

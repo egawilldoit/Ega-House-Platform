@@ -88,6 +88,8 @@ export type UpdateTaskInput = {
   blockedReason?: string | null;
 };
 
+export type UpdateMobileTaskInput = UpdateTaskInput;
+
 export const MOBILE_TASK_STATUS_VALUES = [
   'todo',
   'in_progress',
