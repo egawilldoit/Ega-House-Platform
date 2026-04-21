@@ -37,3 +37,40 @@ export function isMissingSupabaseTable(
   );
 }
 
+export function isMissingSupabaseColumn(
+  error: SupabaseErrorLike | null | undefined,
+  table: string,
+  column: string,
+) {
+  if (!error) {
+    return false;
+  }
+
+  const diagnostic = [error.message, error.details, error.hint].filter(Boolean).join(" ");
+  if (diagnostic.length === 0) {
+    return false;
+  }
+
+  const normalized = diagnostic.toLowerCase();
+  const referencesTarget =
+    includesTableName(normalized, table) && normalized.includes(column.toLowerCase());
+  if (!referencesTarget) {
+    return false;
+  }
+
+  if (error.code === "42703" || error.code === "PGRST204") {
+    return true;
+  }
+
+  return (
+    normalized.includes("does not exist") ||
+      normalized.includes("could not find the") ||
+      normalized.includes("schema cache")
+  );
+}
+
+export function isMissingTasksBlockedReasonColumn(
+  error: SupabaseErrorLike | null | undefined,
+) {
+  return isMissingSupabaseColumn(error, "public.tasks", "blocked_reason");
+}

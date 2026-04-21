@@ -16,7 +16,10 @@ import {
   type TaskSortValue,
 } from "@/lib/task-list";
 import { getTaskTotalDurationMap } from "@/lib/task-session";
-import { isMissingSupabaseTable } from "@/lib/supabase-error";
+import {
+  isMissingSupabaseTable,
+  isMissingTasksBlockedReasonColumn,
+} from "@/lib/supabase-error";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -119,6 +122,12 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   }
 
   return createClient();
+}
+
+function isTasksBlockedReasonMissing(
+  error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null,
+) {
+  return isMissingTasksBlockedReasonColumn(error);
 }
 
 async function getVisibleTaskScope(
@@ -253,12 +262,44 @@ export async function getTasksWorkspaceData(
   }
 
   const tasksResult = await tasksQuery;
+  let rawTasks = tasksResult.data ?? [];
 
   if (tasksResult.error) {
-    throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
+    if (!isTasksBlockedReasonMissing(tasksResult.error)) {
+      throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
+    }
+
+    const fallbackQuery = supabase
+      .from("tasks")
+      .select(
+        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      )
+      .order("updated_at", { ascending: false });
+
+    if (filters.activeStatus) {
+      fallbackQuery.eq("status", filters.activeStatus);
+    }
+
+    if (activeProjectId) {
+      fallbackQuery.eq("project_id", activeProjectId);
+    }
+
+    if (activeGoalId) {
+      fallbackQuery.eq("goal_id", activeGoalId);
+    }
+
+    const fallbackResult = await fallbackQuery;
+    if (fallbackResult.error) {
+      throw new Error(`Failed to load tasks: ${fallbackResult.error.message}`);
+    }
+
+    rawTasks = (fallbackResult.data ?? []).map((task) => ({
+      ...task,
+      blocked_reason: null,
+    }));
   }
 
-  const tasks = applyTaskListQuery(tasksResult.data ?? [], {
+  const tasks = applyTaskListQuery(rawTasks, {
     dueFilter: filters.activeDueFilter,
     sortValue: filters.activeSort,
   });
@@ -322,7 +363,18 @@ export async function createTasks(
     }
   }
 
-  const { data, error } = await supabase.from("tasks").insert(taskRows).select("id");
+  let { data, error } = await supabase.from("tasks").insert(taskRows).select("id");
+
+  if (error && isTasksBlockedReasonMissing(error)) {
+    const fallbackRows = taskRows.map((row) => {
+      const nextRow = { ...row };
+      delete (nextRow as { blocked_reason?: unknown }).blocked_reason;
+      return nextRow;
+    });
+    const fallbackResult = await supabase.from("tasks").insert(fallbackRows).select("id");
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
 
   if (error) {
     return { errorMessage: "Unable to create task right now." };
@@ -400,7 +452,7 @@ export async function updateTaskInline(
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
-  const { error } = await supabase
+  let { error } = await supabase
     .from("tasks")
     .update({
       status: input.status,
@@ -411,6 +463,20 @@ export async function updateTaskInline(
       updated_at: updatedAtIso,
     })
     .eq("id", input.taskId);
+
+  if (error && isTasksBlockedReasonMissing(error)) {
+    const fallbackResult = await supabase
+      .from("tasks")
+      .update({
+        status: input.status,
+        priority: input.priority,
+        due_date: input.dueDate,
+        estimate_minutes: input.estimateMinutes,
+        updated_at: updatedAtIso,
+      })
+      .eq("id", input.taskId);
+    error = fallbackResult.error;
+  }
 
   if (error) {
     return { errorMessage: "Unable to update task right now." };
@@ -433,13 +499,33 @@ export async function getTaskById(
     };
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("tasks")
     .select(
       "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
+
+  if (error && isTasksBlockedReasonMissing(error)) {
+    const fallbackResult = await supabase
+      .from("tasks")
+      .select(
+        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      )
+      .eq("id", normalizedTaskId)
+      .maybeSingle();
+
+    if (!fallbackResult.error) {
+      data = fallbackResult.data
+        ? {
+            ...fallbackResult.data,
+            blocked_reason: null,
+          }
+        : null;
+      error = null;
+    }
+  }
 
   if (error) {
     return {
@@ -452,4 +538,69 @@ export async function getTaskById(
     errorMessage: null,
     data: data as TaskRecord | null,
   };
+}
+
+export async function deleteTaskSafely(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const normalizedTaskId = taskId.trim();
+
+  if (!normalizedTaskId) {
+    return { errorMessage: "Task id is required." };
+  }
+
+  const taskResult = await supabase
+    .from("tasks")
+    .select("id")
+    .eq("id", normalizedTaskId)
+    .maybeSingle();
+
+  if (taskResult.error) {
+    return { errorMessage: "Unable to load task right now." };
+  }
+
+  if (!taskResult.data) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const activeSessionResult = await supabase
+    .from("task_sessions")
+    .select("id")
+    .eq("task_id", normalizedTaskId)
+    .is("ended_at", null)
+    .limit(1);
+
+  if (activeSessionResult.error) {
+    return { errorMessage: "Unable to validate timer sessions for this task right now." };
+  }
+
+  if ((activeSessionResult.data ?? []).length > 0) {
+    return { errorMessage: "Stop the active timer on this task before deleting it." };
+  }
+
+  const sessionCountResult = await supabase
+    .from("task_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("task_id", normalizedTaskId);
+
+  if (sessionCountResult.error) {
+    return { errorMessage: "Unable to validate task history right now." };
+  }
+
+  if ((sessionCountResult.count ?? 0) > 0) {
+    return { errorMessage: "Task has tracked timer history and cannot be deleted safely." };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("tasks")
+    .delete()
+    .eq("id", normalizedTaskId);
+
+  if (deleteError) {
+    return { errorMessage: "Unable to delete task right now." };
+  }
+
+  return { errorMessage: null };
 }

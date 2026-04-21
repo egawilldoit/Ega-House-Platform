@@ -118,7 +118,7 @@ export function TodayTaskCard({
             <input type="hidden" name="taskId" value={task.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <Button type="submit" size="sm" variant="muted">
-              Mark complete
+              Mark done
             </Button>
           </form>
         ) : null}

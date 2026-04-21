@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import {
+  deleteTaskAction,
   pinTaskAction,
   unpinTaskAction,
   updateTaskInlineAction,
@@ -522,7 +523,9 @@ export default async function ProjectDetailPage({
                     <div className="mt-4 border-t border-[var(--border)] pt-4">
                       <InlineTaskUpdateForm
                         action={updateTaskInlineAction}
+                        deleteAction={deleteTaskAction}
                         taskId={focusedTask.id}
+                        taskTitle={focusedTask.title}
                         returnTo={returnTo}
                         defaultStatus={focusedTask.status}
                         defaultPriority={focusedTask.priority}
@@ -583,7 +586,9 @@ export default async function ProjectDetailPage({
                         <div className="mt-4 border-t border-[var(--border)] pt-4">
                           <InlineTaskUpdateForm
                             action={updateTaskInlineAction}
+                            deleteAction={deleteTaskAction}
                             taskId={task.id}
+                            taskTitle={task.title}
                             returnTo={returnTo}
                             defaultStatus={task.status}
                             defaultPriority={task.priority}

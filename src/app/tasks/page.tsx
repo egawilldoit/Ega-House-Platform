@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
+  deleteTaskAction,
   pinTaskAction,
   unpinTaskAction,
   updateTaskInlineAction,
@@ -296,7 +297,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
                       <InlineTaskUpdateForm
                         action={updateTaskInlineAction}
+                        deleteAction={deleteTaskAction}
                         taskId={task.id}
+                        taskTitle={task.title}
                         returnTo={returnPath}
                         defaultStatus={task.status}
                         defaultPriority={task.priority}

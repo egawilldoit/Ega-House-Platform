@@ -14,6 +14,7 @@ import {
 } from "@/lib/task-domain";
 import {
   createTasks,
+  deleteTaskSafely,
   getTaskInsertScopeError,
   getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
@@ -484,4 +485,27 @@ export async function unpinTaskAction(formData: FormData) {
   revalidateTaskSurfaces(returnPath);
   const anchor = returnPath.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
   redirect(`${returnPath}${anchor}`);
+}
+
+export async function deleteTaskAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const confirmDelete = String(formData.get("confirmDelete") ?? "").trim();
+
+  if (!taskId) {
+    redirectWithTasksError(returnPath, "Task delete request is invalid.");
+  }
+
+  if (confirmDelete !== "true") {
+    redirectWithTasksError(returnPath, "Task delete confirmation is required.", taskId);
+  }
+
+  const { errorMessage } = await deleteTaskSafely(taskId);
+
+  if (errorMessage) {
+    redirectWithTasksError(returnPath, errorMessage, taskId);
+  }
+
+  revalidateTaskSurfaces(returnPath);
+  redirect(returnPath);
 }
