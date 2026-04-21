@@ -98,7 +98,7 @@ export function CreateTaskForm({
               {isProjectScoped ? (
                 <>
                   <input type="hidden" name="projectId" value={state.values.projectId} />
-                  <div className="input-instrument flex h-10 items-center px-3.5 text-sm text-[color:var(--muted-foreground)]">
+                  <div className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] flex h-10 items-center px-3.5 text-sm text-[color:var(--muted-foreground)]">
                     {projects.find((project) => project.id === state.values.projectId)?.name ??
                       "Selected project"}
                   </div>
@@ -109,7 +109,7 @@ export function CreateTaskForm({
                   name="projectId"
                   defaultValue={state.values.projectId}
                   required
-                  className="input-instrument h-10 text-sm"
+                  className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
                 >
                   {projects.map((project) => (
                     <option key={project.id} value={project.id}>
@@ -128,7 +128,7 @@ export function CreateTaskForm({
                 id="goalId"
                 name="goalId"
                 defaultValue={state.values.goalId}
-                className="input-instrument h-10 text-sm"
+                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
               >
                 <option value="">No goal</option>
                 {goals.map((goal) => (
@@ -161,7 +161,7 @@ export function CreateTaskForm({
                 name="status"
                 defaultValue={state.values.status}
                 onChange={(event) => setSelectedStatus(event.target.value)}
-                className="input-instrument h-10 text-sm"
+                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
               >
                 {TASK_STATUS_VALUES.map((status) => (
                   <option key={status} value={status}>
@@ -210,7 +210,7 @@ export function CreateTaskForm({
                 id="priority"
                 name="priority"
                 defaultValue={state.values.priority}
-                className="input-instrument h-10 text-sm"
+                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
               >
                 {TASK_PRIORITY_VALUES.map((priority) => (
                   <option key={priority} value={priority}>

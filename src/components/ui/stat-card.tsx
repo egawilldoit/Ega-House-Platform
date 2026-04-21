@@ -1,9 +1,11 @@
 import type { HTMLAttributes, ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type StatCardProps = HTMLAttributes<HTMLDivElement> & {
   label: string;
   value: string | number;
+  icon?: LucideIcon;
   subtitle?: string;
   trend?: ReactNode;
   variant?: "default" | "green" | "cyan" | "muted";
@@ -33,6 +35,7 @@ const valueColors = {
 export function StatCard({
   label,
   value,
+  icon: Icon,
   subtitle,
   trend,
   variant = "default",
@@ -48,9 +51,14 @@ export function StatCard({
       )}
       {...props}
     >
-      <p className={cn("text-[11px] font-semibold uppercase tracking-[0.14em] mb-2", labelColors[variant])}>
-        {label}
-      </p>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className={cn("text-[11px] font-semibold uppercase tracking-[0.14em]", labelColors[variant])}>
+          {label}
+        </p>
+        {Icon ? (
+          <Icon className={cn("h-4 w-4 shrink-0", valueColors[variant])} aria-hidden="true" />
+        ) : null}
+      </div>
       <div className="flex items-end justify-between gap-2">
         <p
           className={cn("text-2xl font-bold tracking-tight leading-none", valueColors[variant])}

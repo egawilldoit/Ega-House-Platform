@@ -62,7 +62,7 @@ export function InlineTaskUpdateForm({
               name="status"
               defaultValue={defaultStatus}
               onChange={(event) => setSelectedStatus(event.target.value)}
-              className="input-instrument min-h-9 min-w-28 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
+              className="flex items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] min-h-9 min-w-28 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
             >
               {TASK_STATUS_VALUES.map((statusValue) => (
                 <option key={statusValue} value={statusValue}>
@@ -91,7 +91,7 @@ export function InlineTaskUpdateForm({
             <select
               name="priority"
               defaultValue={defaultPriority}
-              className="input-instrument min-h-9 min-w-24 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
+              className="flex items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] min-h-9 min-w-24 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
             >
               {TASK_PRIORITY_VALUES.map((priorityValue) => (
                 <option key={priorityValue} value={priorityValue}>

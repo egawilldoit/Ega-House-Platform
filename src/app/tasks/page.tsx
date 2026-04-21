@@ -219,7 +219,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   <article
                     key={task.id}
                     id={`task-${task.id}`}
-                    className="scroll-mt-24 rounded-[1.05rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                    className="scroll-mt-24 border-b border-[var(--border)] py-5 last:border-b-0"
                   >
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
                       <div className="min-w-0">

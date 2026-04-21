@@ -468,37 +468,59 @@ export function DashboardOptimizedView({
       />
 
       <section className="ega-dashboard-hero ega-dashboard-hero-compact">
-        <div className="ega-dashboard-hero-copy">
+        <div className="ega-dashboard-hero-copy relative overflow-hidden">
           <p className="glass-label text-[color:var(--signal-live)]">Live Workspace State</p>
-          <h2 className="ega-dashboard-hero-title">
-            {greeting}, <span>operator.</span>
-          </h2>
-          <p className="ega-dashboard-hero-subtitle">
-            {getHeroSummary(tasks.length, completionRate)}
-          </p>
+          <div className="flex items-center gap-6 mt-4">
+            <div className="relative w-16 h-16 flex-shrink-0">
+               <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+                  <path className="text-[var(--border)]" strokeWidth="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  <path className="text-[var(--signal-live)]" strokeWidth="3" strokeDasharray={`${completionRate || 0}, 100`} stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+               </svg>
+               <div className="absolute inset-0 flex items-center justify-center font-display text-sm font-bold text-gray-700">{completionRate || 0}%</div>
+            </div>
+            <div>
+              <h2 className="ega-dashboard-hero-title">
+                {greeting}, <span>operator.</span>
+              </h2>
+              <p className="ega-dashboard-hero-subtitle mt-2">
+                {getHeroSummary(tasks.length, completionRate)}
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="ega-dashboard-hero-rail">
-          <DashboardMetric
+        <div className="grid grid-cols-2 gap-3">
+          <StatCard
             label="Tasks In Focus"
             value={String(tasks.length)}
-            detail={completedCount > 0 ? `${completedCount} completed recently` : "Backlog surfaced when today is quiet"}
-            tone="accent"
+            subtitle={completedCount > 0 ? `${completedCount} completed recently` : "Backlog surfaced when today is quiet"}
+            variant="green"
+            icon={ListTodo}
+            className="border-t-4 border-t-[#177b52]"
+            trend={<ArrowUpRight className="w-3 h-3 text-[#177b52] inline-block mr-1" />}
           />
-          <DashboardMetric
+          <StatCard
             label="Urgent"
             value={String(urgentCount)}
-            detail={urgentCount > 0 ? "Immediate attention required" : "No urgent queue"}
+            subtitle={urgentCount > 0 ? "Immediate attention required" : "No urgent queue"}
+            variant={urgentCount > 0 ? "default" : "muted"}
+            icon={AlertCircle}
+            className={urgentCount > 0 ? "border-t-4 border-t-[var(--signal-warn)]" : ""}
+            trend={urgentCount > 0 ? <AlertTriangle className="w-3 h-3 text-[var(--signal-warn)] inline-block mr-1" /> : undefined}
           />
-          <DashboardMetric
+          <StatCard
             label="Tracked Today"
             value={summary?.trackedTodayLabel ?? "--"}
-            detail={summary ? summary.trackedTotalLabel : "Timer history unavailable"}
+            subtitle={summary ? summary.trackedTotalLabel : "Timer history unavailable"}
+            icon={ClockIcon}
+            className="border-t-4 border-t-[var(--signal-info)]"
           />
-          <DashboardMetric
+          <StatCard
             label="Projects"
             value={`${activeProjectCount}/${totalProjectCount}`}
-            detail="Active vs total projects"
+            subtitle="Active vs total projects"
+            icon={LayoutGrid}
+            className="border-t-4 border-t-[var(--foreground)]"
           />
         </div>
       </section>
@@ -518,7 +540,8 @@ export function DashboardOptimizedView({
                 {activeTimer.error ? <Badge tone="warn">Timer feed issue</Badge> : null}
               </div>
               {health.state !== "healthy" ? (
-                <div className="mt-4 rounded-[0.9rem] border border-[rgba(230,81,0,0.28)] bg-[rgba(230,81,0,0.08)] px-3 py-2 text-sm text-[color:var(--signal-warn)]">
+                <div className="mt-4 flex w-fit items-center gap-2 rounded-full border border-[rgba(230,81,0,0.28)] bg-[rgba(230,81,0,0.08)] px-3 py-1.5 text-xs font-semibold tracking-wide text-[color:var(--signal-warn)] shadow-sm">
+                  <AlertTriangle className="w-3.5 h-3.5" />
                   {health.statusText}
                 </div>
               ) : null}
@@ -589,10 +612,10 @@ export function DashboardOptimizedView({
             ) : latestReviewItem ? (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Badge tone="info">
+                  <Badge tone="info" className="rounded-full border-[#90caf9] bg-[#e3f2fd] px-3 text-[#1565c0] shadow-sm">
                     {formatIsoDate(latestReviewItem.weekStart)} - {formatIsoDate(latestReviewItem.weekEnd)}
                   </Badge>
-                  <Badge tone="muted">
+                  <Badge tone="muted" className="rounded-full px-3 shadow-sm">
                     Updated {formatTimerDateTime(latestReviewItem.updatedAt)}
                   </Badge>
                 </div>
@@ -611,15 +634,17 @@ export function DashboardOptimizedView({
             )}
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <DashboardMetric
+              <StatCard
                 label="Goals Visible"
                 value={String(goalItems.length)}
-                detail={goalItems.length > 0 ? "Existing goals pulled in from workspace" : "No goals yet"}
+                subtitle={goalItems.length > 0 ? "Existing goals pulled in from workspace" : "No goals yet"}
+                icon={Target}
               />
-              <DashboardMetric
+              <StatCard
                 label="Latest Check"
                 value={formatTimerDateTime(health.checkedAt)}
-                detail="OpenClaw health probe timestamp"
+                subtitle="OpenClaw health probe timestamp"
+                icon={ClockIcon}
               />
             </div>
           </CardContent>
