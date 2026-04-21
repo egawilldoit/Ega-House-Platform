@@ -244,6 +244,37 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
+async function finalizeOpenSessionById(args: {
+  supabase: SupabaseServerClient;
+  sessionId: string;
+  startedAtIso: string;
+  endedAtIso: string;
+}) {
+  const durationSeconds = getSafeDurationSeconds(args.startedAtIso, args.endedAtIso);
+
+  const { data, error } = await args.supabase
+    .from("task_sessions")
+    .update({
+      ended_at: args.endedAtIso,
+      duration_seconds: durationSeconds,
+      updated_at: args.endedAtIso,
+    })
+    .eq("id", args.sessionId)
+    .is("ended_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { errorMessage: "Unable to stop timer right now.", finalized: false };
+  }
+
+  return {
+    errorMessage: null,
+    finalized: Boolean(data),
+    durationSeconds,
+  };
+}
+
 function mapToActiveTimerSession(
   session: {
     id: string;
@@ -454,19 +485,15 @@ export async function stopTimerSession(
   }
 
   const endedAtIso = options?.nowIso ?? new Date().toISOString();
-  const durationSeconds = getSafeDurationSeconds(targetSession.started_at, endedAtIso);
+  const finalizeResult = await finalizeOpenSessionById({
+    supabase,
+    sessionId: targetSession.id,
+    startedAtIso: targetSession.started_at,
+    endedAtIso,
+  });
 
-  const { error: updateError } = await supabase
-    .from("task_sessions")
-    .update({
-      ended_at: endedAtIso,
-      duration_seconds: durationSeconds,
-      updated_at: endedAtIso,
-    })
-    .eq("id", targetSession.id);
-
-  if (updateError) {
-    return { errorMessage: "Unable to stop timer right now." };
+  if (finalizeResult.errorMessage) {
+    return { errorMessage: finalizeResult.errorMessage };
   }
 
   return { errorMessage: null };
@@ -501,28 +528,29 @@ export async function stopActiveTimerSessionsForTask(
   }
 
   const endedAtIso = options?.nowIso ?? new Date().toISOString();
+  let stoppedCount = 0;
 
   for (const session of openSessions) {
-    const durationSeconds = getSafeDurationSeconds(session.started_at, endedAtIso);
-    const { error: updateError } = await supabase
-      .from("task_sessions")
-      .update({
-        ended_at: endedAtIso,
-        duration_seconds: durationSeconds,
-        updated_at: endedAtIso,
-      })
-      .eq("id", session.id)
-      .is("ended_at", null);
+    const finalizeResult = await finalizeOpenSessionById({
+      supabase,
+      sessionId: session.id,
+      startedAtIso: session.started_at,
+      endedAtIso,
+    });
 
-    if (updateError) {
+    if (finalizeResult.errorMessage) {
       return {
         errorMessage: "Unable to stop the active timer session for this task right now.",
         stoppedCount: 0,
       };
     }
+
+    if (finalizeResult.finalized) {
+      stoppedCount += 1;
+    }
   }
 
-  return { errorMessage: null, stoppedCount: openSessions.length };
+  return { errorMessage: null, stoppedCount };
 }
 
 export async function updateTimerSessionTimestamps(
@@ -593,16 +621,14 @@ export async function resolveOpenTimerSessionConflict(options?: {
   }
 
   for (const session of resolution.sessionsToClose) {
-    const { error: updateError } = await supabase
-      .from("task_sessions")
-      .update({
-        ended_at: session.endedAtIso,
-        duration_seconds: session.durationSeconds,
-        updated_at: session.endedAtIso,
-      })
-      .eq("id", session.id);
+    const finalizeResult = await finalizeOpenSessionById({
+      supabase,
+      sessionId: session.id,
+      startedAtIso: openSessions.find((openSession) => openSession.id === session.id)?.started_at ?? session.endedAtIso,
+      endedAtIso: session.endedAtIso,
+    });
 
-    if (updateError) {
+    if (finalizeResult.errorMessage) {
       return { errorMessage: "Unable to resolve timer session conflict." };
     }
   }

@@ -124,28 +124,65 @@ function createTaskInlineSupabaseMock(options?: {
             return {
               eq(column: string, value: string) {
                 assert.equal(column, "id");
+                const state = {
+                  sessionId: value,
+                  requireOpen: false,
+                };
 
                 return {
                   is(isColumn: string, isValue: null) {
                     assert.equal(isColumn, "ended_at");
                     assert.equal(isValue, null);
-                    sessionUpdateCalls.push({ payload, sessionId: value });
+                    state.requireOpen = true;
+                    return this;
+                  },
+                  select(columns: string) {
+                    assert.equal(columns, "id");
 
-                    if (options?.failSessionUpdateId === value) {
-                      return Promise.resolve({ error: { message: "update failed" } });
-                    }
+                    return {
+                      maybeSingle: async () => {
+                        const session = sessions.find(
+                          (item) => item.id === state.sessionId,
+                        );
 
-                    const index = sessions.findIndex((session) => session.id === value);
-                    if (index >= 0) {
-                      sessions[index] = {
-                        ...sessions[index],
-                        ended_at: String(payload.ended_at ?? null),
-                        duration_seconds: Number(payload.duration_seconds ?? 0),
-                        updated_at: String(payload.updated_at ?? null),
-                      };
-                    }
+                        if (!session) {
+                          return { data: null, error: null };
+                        }
 
-                    return Promise.resolve({ error: null });
+                        if (state.requireOpen && session.ended_at !== null) {
+                          return { data: null, error: null };
+                        }
+
+                        sessionUpdateCalls.push({
+                          payload,
+                          sessionId: state.sessionId,
+                        });
+
+                        if (options?.failSessionUpdateId === state.sessionId) {
+                          return {
+                            data: null,
+                            error: { message: "update failed" },
+                          };
+                        }
+
+                        const index = sessions.findIndex(
+                          (item) => item.id === state.sessionId,
+                        );
+                        if (index >= 0) {
+                          sessions[index] = {
+                            ...sessions[index],
+                            ended_at: String(payload.ended_at ?? null),
+                            duration_seconds: Number(payload.duration_seconds ?? 0),
+                            updated_at: String(payload.updated_at ?? null),
+                          };
+                        }
+
+                        return {
+                          data: { id: state.sessionId },
+                          error: null,
+                        };
+                      },
+                    };
                   },
                 };
               },

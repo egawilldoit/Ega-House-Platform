@@ -23,7 +23,7 @@ export function getTaskSessionDurationSeconds(
   nowIso = new Date().toISOString(),
 ) {
   const sessionStartMs = toMs(session.started_at);
-  const sessionEndMs = toMs(session.ended_at ?? nowIso);
+  const sessionEndMs = session.ended_at ? toMs(session.ended_at) : toMs(nowIso);
 
   if (
     sessionStartMs !== null &&
@@ -56,7 +56,7 @@ export function getSessionDurationWithinWindowSeconds(
   nowIso = new Date().toISOString(),
 ) {
   const sessionStartMs = toMs(session.started_at);
-  const sessionEndMs = toMs(session.ended_at ?? nowIso);
+  const sessionEndMs = session.ended_at ? toMs(session.ended_at) : toMs(nowIso);
   const windowStartMs = toMs(window.startIso);
   const windowEndMs = toMs(window.endIso);
 
