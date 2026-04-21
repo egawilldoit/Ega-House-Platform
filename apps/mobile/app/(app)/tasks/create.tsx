@@ -1,6 +1,6 @@
+import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,6 +13,13 @@ import {
   View,
 } from 'react-native';
 
+import {
+  MobileScreen,
+  MobileScreenHeader,
+  SegmentedControl,
+  SurfaceCard,
+} from '@/components/mobile/primitives';
+import { mobileTheme } from '@/components/mobile/theme';
 import { createMobileTask, listMobileTasks } from '@/lib/api/tasks';
 import { notifyTasksChanged } from '@/lib/tasks/store';
 import {
@@ -105,20 +112,20 @@ function formatTaskToken(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-type OptionChipProps = {
+type ChoiceChipProps = {
   label: string;
   selected: boolean;
   onPress: () => void;
 };
 
-function OptionChip({ label, selected, onPress }: OptionChipProps) {
+function ChoiceChip({ label, selected, onPress }: ChoiceChipProps) {
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
-      style={[styles.optionChip, selected ? styles.optionChipSelected : null]}
+      style={[styles.choiceChip, selected ? styles.choiceChipSelected : null]}
     >
-      <Text style={[styles.optionChipText, selected ? styles.optionChipTextSelected : null]}>
+      <Text style={[styles.choiceChipText, selected ? styles.choiceChipTextSelected : null]}>
         {label}
       </Text>
     </Pressable>
@@ -274,8 +281,7 @@ export default function CreateTaskScreen() {
       notifyTasksChanged();
       router.replace('/tasks');
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unable to create task right now.';
+      const message = error instanceof Error ? error.message : 'Unable to create task right now.';
       setSubmitError(message);
     } finally {
       setIsSubmitting(false);
@@ -284,269 +290,255 @@ export default function CreateTaskScreen() {
 
   if (isLoadingOptions) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-        <Text style={styles.centerText}>Loading task form...</Text>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <ActivityIndicator />
+          <Text style={styles.centerText}>Loading task form...</Text>
+        </View>
+      </MobileScreen>
     );
   }
 
   if (loadError) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.errorText}>{loadError}</Text>
-        <Pressable onPress={() => loadFormOptions()} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Retry</Text>
-        </Pressable>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>{loadError}</Text>
+          <Pressable onPress={() => loadFormOptions()} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Retry</Text>
+          </Pressable>
+        </View>
+      </MobileScreen>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.screen}
-    >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.hero}>
-          <Text style={styles.title}>Create Task</Text>
-          <Text style={styles.subtitle}>
-            Add a task with the existing mobile backend contract. Project is required, goal is optional.
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Title</Text>
-          <TextInput
-            editable={!isSubmitting}
-            onChangeText={(value) => {
-              setTitle(value);
-              if (submitError) {
-                setSubmitError(null);
-              }
-            }}
-            placeholder="Ship the next execution step"
-            style={styles.input}
-            value={title}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Project</Text>
-          <View style={styles.optionGroup}>
-            {projects.map((project) => (
-              <OptionChip
-                key={project.id}
-                label={project.name}
-                onPress={() => {
-                  setProjectId(project.id);
-                  if (submitError) {
-                    setSubmitError(null);
-                  }
-                }}
-                selected={project.id === projectId}
-              />
-            ))}
-          </View>
-          {projects.length === 0 ? (
-            <Text style={styles.helperText}>
-              No projects are available for this workspace yet, so task creation is blocked.
-            </Text>
-          ) : null}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.label}>Goal</Text>
-          <View style={styles.optionGroup}>
-            <OptionChip
-              label="No goal"
-              onPress={() => {
-                setGoalId(null);
-                if (submitError) {
-                  setSubmitError(null);
-                }
-              }}
-              selected={goalId === null}
+    <MobileScreen padded={false}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.screen}
+      >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.pagePadding}>
+            <MobileScreenHeader
+              eyebrow="New task"
+              title="Create task"
+              description="Capture the next execution step with required project context."
             />
-            {goals.map((goal) => (
-              <OptionChip
-                key={goal.id}
-                label={goal.title}
-                onPress={() => {
-                  setGoalId(goal.id);
+
+            <SurfaceCard>
+              <Text style={styles.sectionLabel}>Title</Text>
+              <TextInput
+                editable={!isSubmitting}
+                onChangeText={(value) => {
+                  setTitle(value);
                   if (submitError) {
                     setSubmitError(null);
                   }
                 }}
-                selected={goal.id === goalId}
+                placeholder="Ship the next execution step"
+                style={styles.input}
+                value={title}
               />
-            ))}
-          </View>
-        </View>
+            </SurfaceCard>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Status</Text>
-          <View style={styles.optionGroup}>
-            {MOBILE_TASK_STATUS_VALUES.map((value) => (
-              <OptionChip
-                key={value}
-                label={formatTaskToken(value)}
-                onPress={() => {
-                  setStatus(value);
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionLabel}>Project</Text>
+              <View style={styles.optionGroup}>
+                {projects.map((project) => (
+                  <ChoiceChip
+                    key={project.id}
+                    label={project.name}
+                    onPress={() => {
+                      setProjectId(project.id);
+                      if (submitError) {
+                        setSubmitError(null);
+                      }
+                    }}
+                    selected={project.id === projectId}
+                  />
+                ))}
+              </View>
+              {projects.length === 0 ? (
+                <Text style={styles.helperText}>
+                  No projects are available for this workspace yet, so task creation is blocked.
+                </Text>
+              ) : null}
+
+              <Text style={styles.sectionLabel}>Goal</Text>
+              <View style={styles.optionGroup}>
+                <ChoiceChip
+                  label="No goal"
+                  onPress={() => {
+                    setGoalId(null);
+                    if (submitError) {
+                      setSubmitError(null);
+                    }
+                  }}
+                  selected={goalId === null}
+                />
+                {goals.map((goal) => (
+                  <ChoiceChip
+                    key={goal.id}
+                    label={goal.title}
+                    onPress={() => {
+                      setGoalId(goal.id);
+                      if (submitError) {
+                        setSubmitError(null);
+                      }
+                    }}
+                    selected={goal.id === goalId}
+                  />
+                ))}
+              </View>
+            </SurfaceCard>
+
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionLabel}>Status</Text>
+              <SegmentedControl
+                onChange={(next) => {
+                  setStatus(next);
                   if (submitError) {
                     setSubmitError(null);
                   }
                 }}
-                selected={value === status}
+                options={MOBILE_TASK_STATUS_VALUES.map((value) => ({
+                  label: formatTaskToken(value),
+                  value,
+                }))}
+                value={status}
               />
-            ))}
-          </View>
-        </View>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Priority</Text>
-          <View style={styles.optionGroup}>
-            {MOBILE_TASK_PRIORITY_VALUES.map((value) => (
-              <OptionChip
-                key={value}
-                label={formatTaskToken(value)}
-                onPress={() => {
-                  setPriority(value);
+              <Text style={styles.sectionLabel}>Priority</Text>
+              <SegmentedControl
+                onChange={(next) => {
+                  setPriority(next);
                   if (submitError) {
                     setSubmitError(null);
                   }
                 }}
-                selected={value === priority}
+                options={MOBILE_TASK_PRIORITY_VALUES.map((value) => ({
+                  label: formatTaskToken(value),
+                  value,
+                }))}
+                value={priority}
               />
-            ))}
-          </View>
-        </View>
+            </SurfaceCard>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Due Date</Text>
-          <View style={styles.optionGroup}>
-            <OptionChip
-              label="Today"
-              onPress={() => applyRelativeDueDate(0)}
-              selected={dueDate === todayDateValue}
-            />
-            <OptionChip
-              label="Tomorrow"
-              onPress={() => applyRelativeDueDate(1)}
-              selected={dueDate === tomorrowDateValue}
-            />
-            <OptionChip label="Clear" onPress={clearDueDate} selected={!dueDate} />
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            disabled={isSubmitting}
-            onPress={() => setIsDueDatePickerVisible((current) => !current)}
-            style={styles.dateField}
-          >
-            <Text style={styles.dateFieldLabel}>Selected date</Text>
-            <Text style={[styles.dateFieldValue, !dueDate ? styles.dateFieldPlaceholder : null]}>
-              {formatDisplayDate(dueDate)}
-            </Text>
-            <Text style={styles.dateFieldMeta}>
-              {dueDate ? `Backend value: ${dueDate}` : 'Optional'}
-            </Text>
-          </Pressable>
-          {isDueDatePickerVisible ? (
-            <View style={styles.datePickerCard}>
-              <DateTimePicker
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                mode="date"
-                onChange={onDueDateChange}
-                value={dueDatePickerValue}
-              />
-              {Platform.OS === 'ios' ? (
-                <View style={styles.datePickerActions}>
-                  <Pressable onPress={clearDueDate} style={styles.datePickerSecondaryButton}>
-                    <Text style={styles.datePickerSecondaryButtonText}>Clear</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setIsDueDatePickerVisible(false)}
-                    style={styles.datePickerPrimaryButton}
-                  >
-                    <Text style={styles.datePickerPrimaryButtonText}>Done</Text>
-                  </Pressable>
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionLabel}>Due date</Text>
+              <View style={styles.optionGroup}>
+                <ChoiceChip
+                  label="Today"
+                  onPress={() => applyRelativeDueDate(0)}
+                  selected={dueDate === todayDateValue}
+                />
+                <ChoiceChip
+                  label="Tomorrow"
+                  onPress={() => applyRelativeDueDate(1)}
+                  selected={dueDate === tomorrowDateValue}
+                />
+                <ChoiceChip label="Clear" onPress={clearDueDate} selected={!dueDate} />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                disabled={isSubmitting}
+                onPress={() => setIsDueDatePickerVisible((current) => !current)}
+                style={styles.dateField}
+              >
+                <Text style={styles.dateFieldLabel}>Selected date</Text>
+                <Text style={[styles.dateFieldValue, !dueDate ? styles.dateFieldPlaceholder : null]}>
+                  {formatDisplayDate(dueDate)}
+                </Text>
+                <Text style={styles.dateFieldMeta}>Optional</Text>
+              </Pressable>
+              {isDueDatePickerVisible ? (
+                <View style={styles.datePickerCard}>
+                  <DateTimePicker
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    mode="date"
+                    onChange={onDueDateChange}
+                    value={dueDatePickerValue}
+                  />
+                  {Platform.OS === 'ios' ? (
+                    <View style={styles.datePickerActions}>
+                      <Pressable onPress={clearDueDate} style={styles.datePickerSecondaryButton}>
+                        <Text style={styles.datePickerSecondaryButtonText}>Clear</Text>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setIsDueDatePickerVisible(false)}
+                        style={styles.datePickerPrimaryButton}
+                      >
+                        <Text style={styles.datePickerPrimaryButtonText}>Done</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
                 </View>
               ) : null}
-            </View>
-          ) : null}
-          <Text style={styles.helperText}>Picker selection still submits as YYYY-MM-DD.</Text>
-        </View>
+              <Text style={styles.helperText}>Picker selection still submits as YYYY-MM-DD.</Text>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Estimate Minutes</Text>
-          <TextInput
-            editable={!isSubmitting}
-            keyboardType="number-pad"
-            onChangeText={(value) => {
-              setEstimateMinutes(value);
-              if (submitError) {
-                setSubmitError(null);
-              }
-            }}
-            placeholder="30"
-            style={styles.input}
-            value={estimateMinutes}
-          />
-        </View>
+              <Text style={styles.sectionLabel}>Estimate minutes</Text>
+              <TextInput
+                editable={!isSubmitting}
+                keyboardType="number-pad"
+                onChangeText={(value) => {
+                  setEstimateMinutes(value);
+                  if (submitError) {
+                    setSubmitError(null);
+                  }
+                }}
+                placeholder="30"
+                style={styles.input}
+                value={estimateMinutes}
+              />
+            </SurfaceCard>
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Description</Text>
-          <TextInput
-            editable={!isSubmitting}
-            multiline
-            onChangeText={(value) => {
-              setDescription(value);
-              if (submitError) {
-                setSubmitError(null);
-              }
-            }}
-            placeholder="Optional task context"
-            style={[styles.input, styles.multilineInput]}
-            textAlignVertical="top"
-            value={description}
-          />
-        </View>
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionLabel}>Description</Text>
+              <TextInput
+                editable={!isSubmitting}
+                multiline
+                onChangeText={(value) => {
+                  setDescription(value);
+                  if (submitError) {
+                    setSubmitError(null);
+                  }
+                }}
+                placeholder="Optional task context"
+                style={[styles.input, styles.multilineInput]}
+                textAlignVertical="top"
+                value={description}
+              />
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Blocked Reason</Text>
-          <TextInput
-            editable={!isSubmitting}
-            multiline
-            onChangeText={(value) => {
-              setBlockedReason(value);
-              if (submitError) {
-                setSubmitError(null);
-              }
-            }}
-            placeholder="Required if status is Blocked"
-            style={[styles.input, styles.multilineInput]}
-            textAlignVertical="top"
-            value={blockedReason}
-          />
-        </View>
+              <Text style={styles.sectionLabel}>Blocked reason</Text>
+              <TextInput
+                editable={!isSubmitting}
+                multiline
+                onChangeText={(value) => {
+                  setBlockedReason(value);
+                  if (submitError) {
+                    setSubmitError(null);
+                  }
+                }}
+                placeholder="Required if status is Blocked"
+                style={[styles.input, styles.multilineInput]}
+                textAlignVertical="top"
+                value={blockedReason}
+              />
+            </SurfaceCard>
 
-        <Text style={styles.errorText}>{submitError || ' '}</Text>
+            <Text style={styles.errorText}>{submitError || ' '}</Text>
+          </View>
+        </ScrollView>
 
-        <View style={styles.actions}>
-          <Pressable
-            disabled={isSubmitting}
-            onPress={() => router.back()}
-            style={styles.secondaryButton}
-          >
+        <View style={styles.stickyBar}>
+          <Pressable disabled={isSubmitting} onPress={() => router.back()} style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonText}>Cancel</Text>
           </Pressable>
           <Pressable
             disabled={isSubmitting || projects.length === 0}
             onPress={onSubmit}
-            style={[
-              styles.primaryButton,
-              isSubmitting || projects.length === 0 ? styles.buttonDisabled : null,
-            ]}
+            style={[styles.primaryButton, isSubmitting || projects.length === 0 ? styles.buttonDisabled : null]}
           >
             {isSubmitting ? (
               <ActivityIndicator color="#ffffff" />
@@ -555,72 +547,85 @@ export default function CreateTaskScreen() {
             )}
           </Pressable>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 4,
-  },
   buttonDisabled: {
     opacity: 0.6,
   },
   centerText: {
-    color: '#475569',
+    color: mobileTheme.colors.textMuted,
     marginTop: 10,
   },
   centered: {
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
   },
+  choiceChip: {
+    backgroundColor: '#f8fafc',
+    borderColor: mobileTheme.colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  choiceChipSelected: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#93c5fd',
+  },
+  choiceChipText: {
+    color: mobileTheme.colors.textMuted,
+    fontWeight: '700',
+  },
+  choiceChipTextSelected: {
+    color: mobileTheme.colors.info,
+  },
   content: {
-    gap: 18,
-    padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 118,
+    paddingTop: 14,
   },
   dateField: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    borderColor: mobileTheme.colors.border,
     borderRadius: 12,
     borderWidth: 1,
-    gap: 4,
+    gap: 3,
+    marginTop: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
   dateFieldLabel: {
-    color: '#64748b',
+    color: mobileTheme.colors.textMuted,
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     textTransform: 'uppercase',
   },
   dateFieldMeta: {
-    color: '#64748b',
+    color: mobileTheme.colors.textSubtle,
     fontSize: 13,
   },
   dateFieldPlaceholder: {
-    color: '#94a3b8',
+    color: mobileTheme.colors.textSubtle,
   },
   dateFieldValue: {
-    color: '#0f172a',
+    color: mobileTheme.colors.text,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   datePickerActions: {
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'flex-end',
-    marginTop: 12,
+    marginTop: 10,
   },
   datePickerCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    borderColor: mobileTheme.colors.border,
     borderRadius: 12,
     borderWidth: 1,
     marginTop: 10,
@@ -629,7 +634,7 @@ const styles = StyleSheet.create({
   },
   datePickerPrimaryButton: {
     alignItems: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: mobileTheme.colors.accent,
     borderRadius: 10,
     justifyContent: 'center',
     minHeight: 40,
@@ -639,7 +644,7 @@ const styles = StyleSheet.create({
   datePickerPrimaryButtonText: {
     color: '#ffffff',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   datePickerSecondaryButton: {
     alignItems: 'center',
@@ -651,68 +656,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   datePickerSecondaryButtonText: {
-    color: '#0f172a',
+    color: mobileTheme.colors.text,
     fontSize: 14,
     fontWeight: '700',
   },
   errorText: {
-    color: '#dc2626',
+    color: mobileTheme.colors.danger,
     minHeight: 20,
+    paddingHorizontal: 2,
+    paddingTop: 12,
   },
   helperText: {
-    color: '#64748b',
+    color: mobileTheme.colors.textMuted,
     fontSize: 13,
     marginTop: 8,
   },
-  hero: {
-    gap: 6,
-  },
   input: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+    borderColor: mobileTheme.colors.border,
     borderRadius: 12,
     borderWidth: 1,
-    color: '#0f172a',
+    color: mobileTheme.colors.text,
+    marginTop: 8,
     paddingHorizontal: 14,
     paddingVertical: 12,
-  },
-  label: {
-    color: '#0f172a',
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 8,
   },
   multilineInput: {
     minHeight: 96,
     paddingTop: 12,
   },
-  optionChip: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  optionChipSelected: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
-  },
-  optionChipText: {
-    color: '#334155',
-    fontWeight: '600',
-  },
-  optionChipTextSelected: {
-    color: '#ffffff',
-  },
   optionGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
+    marginTop: 8,
+  },
+  pagePadding: {
+    paddingHorizontal: 14,
   },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#111827',
+    backgroundColor: mobileTheme.colors.accent,
     borderRadius: 12,
     flex: 1,
     justifyContent: 'center',
@@ -722,14 +706,10 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: '#ffffff',
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   screen: {
-    backgroundColor: '#f8fafc',
     flex: 1,
-  },
-  section: {
-    gap: 2,
   },
   secondaryButton: {
     alignItems: 'center',
@@ -741,18 +721,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   secondaryButtonText: {
-    color: '#0f172a',
+    color: mobileTheme.colors.text,
     fontSize: 15,
     fontWeight: '700',
   },
-  subtitle: {
-    color: '#475569',
-    fontSize: 15,
-    lineHeight: 22,
+  sectionLabel: {
+    color: mobileTheme.colors.text,
+    fontSize: 14,
+    fontWeight: '800',
+    marginTop: 12,
   },
-  title: {
-    color: '#0f172a',
-    fontSize: 28,
-    fontWeight: '700',
+  sectionSpacing: {
+    marginTop: 12,
+  },
+  stickyBar: {
+    backgroundColor: 'rgba(243, 245, 248, 0.98)',
+    borderTopColor: mobileTheme.colors.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    paddingBottom: 14,
+    paddingHorizontal: 14,
+    paddingTop: 12,
   },
 });

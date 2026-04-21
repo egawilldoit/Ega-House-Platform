@@ -1,6 +1,6 @@
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,6 +11,10 @@ import {
   View,
 } from 'react-native';
 
+import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { MobileScreen, MobileScreenHeader, PrimaryFab } from '@/components/mobile/primitives';
+import { TaskCard } from '@/components/mobile/TaskCard';
+import { mobileTheme } from '@/components/mobile/theme';
 import { listMobileTasks, updateMobileTask } from '@/lib/api/tasks';
 import { useTasksVersion } from '@/lib/tasks/store';
 import type {
@@ -22,8 +26,6 @@ import type {
 
 const STATUS_OPTIONS: MobileTaskStatus[] = ['todo', 'in_progress', 'done', 'blocked'];
 const PRIORITY_OPTIONS: MobileTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
-
-type InlineEditorField = 'status' | 'priority' | 'dueDate';
 
 function formatToken(value: string) {
   return value.replace(/_/g, ' ');
@@ -61,7 +63,7 @@ function buildDueDateOptions() {
     { label: 'Today', value: toIsoDate(now) },
     { label: 'Tomorrow', value: toIsoDate(addDays(now, 1)) },
     { label: 'Next 7 days', value: toIsoDate(addDays(now, 7)) },
-    { label: 'Clear', value: null },
+    { label: 'Clear due date', value: null },
   ];
 }
 
@@ -73,24 +75,6 @@ function getStatusOptions(task: MobileTaskListItem) {
   return STATUS_OPTIONS.filter((status) => status !== 'blocked');
 }
 
-function ListHeader({ taskCount }: { taskCount: number }) {
-  return (
-    <View style={styles.header}>
-      <View style={styles.headerCopy}>
-        <Text style={styles.title}>Tasks</Text>
-        <Text style={styles.subtitle}>
-          {taskCount > 0
-            ? `${taskCount} task${taskCount === 1 ? '' : 's'} synced from your workspace`
-            : 'Track and capture your next execution step'}
-        </Text>
-      </View>
-      <Pressable onPress={() => router.push('../tasks/create')} style={styles.createButton}>
-        <Text style={styles.createButtonText}>Create</Text>
-      </Pressable>
-    </View>
-  );
-}
-
 export default function TasksScreen() {
   const tasksVersion = useTasksVersion();
   const [isLoading, setIsLoading] = useState(true);
@@ -98,12 +82,15 @@ export default function TasksScreen() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<MobileTaskListItem[]>([]);
-  const [activeEditor, setActiveEditor] = useState<{
-    taskId: string;
-    field: InlineEditorField;
-  } | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [updatingTaskIds, setUpdatingTaskIds] = useState<Record<string, boolean>>({});
   const [taskErrors, setTaskErrors] = useState<Record<string, string | undefined>>({});
+
+  const dueDateOptions = useMemo(() => buildDueDateOptions(), []);
+  const activeTask = useMemo(
+    () => tasks.find((task) => task.id === activeTaskId) ?? null,
+    [activeTaskId, tasks],
+  );
 
   const loadTasks = useCallback(async () => {
     try {
@@ -146,16 +133,6 @@ export default function TasksScreen() {
     });
   }, [loadTasks]);
 
-  const toggleEditor = useCallback((taskId: string, field: InlineEditorField) => {
-    setActiveEditor((current) => {
-      if (current && current.taskId === taskId && current.field === field) {
-        return null;
-      }
-
-      return { taskId, field };
-    });
-  }, []);
-
   const mutateTask = useCallback(async (taskId: string, input: UpdateTaskInput) => {
     setUpdatingTaskIds((current) => ({ ...current, [taskId]: true }));
     setTaskErrors((current) => ({ ...current, [taskId]: undefined }));
@@ -163,7 +140,6 @@ export default function TasksScreen() {
     try {
       const response = await updateMobileTask(taskId, input);
       setTasks((current) => current.map((task) => (task.id === taskId ? response.task : task)));
-      setActiveEditor((current) => (current?.taskId === taskId ? null : current));
     } catch (updateError) {
       const message =
         updateError instanceof Error
@@ -176,19 +152,78 @@ export default function TasksScreen() {
     }
   }, []);
 
+  const actionSheetItems = useMemo<ActionSheetItem[]>(() => {
+    if (!activeTask) {
+      return [];
+    }
+
+    const statusItems = getStatusOptions(activeTask).map((status) => ({
+      key: `status-${status}`,
+      label: `Status: ${formatToken(status)}${status === activeTask.status ? ' (Current)' : ''}`,
+      disabled: status === activeTask.status,
+      onPress: () => {
+        mutateTask(activeTask.id, { status }).catch(() => {
+          // handled in mutateTask
+        });
+      },
+    }));
+
+    const priorityItems = PRIORITY_OPTIONS.map((priority) => ({
+      key: `priority-${priority}`,
+      label: `Priority: ${priority}${priority === activeTask.priority ? ' (Current)' : ''}`,
+      disabled: priority === activeTask.priority,
+      onPress: () => {
+        mutateTask(activeTask.id, { priority }).catch(() => {
+          // handled in mutateTask
+        });
+      },
+    }));
+
+    const dueItems = dueDateOptions.map((option) => ({
+      key: `due-${option.label}`,
+      label: option.label,
+      description: option.value ? `Set due to ${formatDueDate(option.value)}` : 'Remove due date',
+      disabled: option.value === activeTask.dueDate,
+      onPress: () => {
+        mutateTask(activeTask.id, { dueDate: option.value }).catch(() => {
+          // handled in mutateTask
+        });
+      },
+    }));
+
+    return [
+      {
+        key: 'open',
+        label: 'Open task details',
+        onPress: () => {
+          router.push({ pathname: '/(app)/tasks/[id]', params: { id: activeTask.id } });
+        },
+      },
+      ...statusItems,
+      ...priorityItems,
+      ...dueItems,
+    ];
+  }, [activeTask, dueDateOptions, mutateTask]);
+
   if (isLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-        <Text style={styles.subtitle}>Loading tasks...</Text>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <ActivityIndicator />
+          <Text style={styles.subtitle}>Loading tasks...</Text>
+        </View>
+      </MobileScreen>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.screen}>
-        <ListHeader taskCount={tasks.length} />
+      <MobileScreen>
+        <MobileScreenHeader
+          eyebrow="Execution"
+          title="Tasks"
+          description="Everything synced from your workspace"
+        />
         <View style={styles.centeredContent}>
           <Text style={styles.errorText}>{error}</Text>
           <Pressable
@@ -203,202 +238,89 @@ export default function TasksScreen() {
             <Text style={styles.primaryButtonText}>Retry</Text>
           </Pressable>
         </View>
-      </View>
+      </MobileScreen>
     );
   }
-
-  if (tasks.length === 0) {
-    return (
-      <View style={styles.screen}>
-        <ListHeader taskCount={0} />
-        <View style={styles.centeredContent}>
-          <Text style={styles.subtitle}>No tasks found for your current workspace.</Text>
-          <Pressable onPress={onRefresh} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Refresh</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
-  const dueDateOptions = buildDueDateOptions();
 
   return (
-    <FlatList
-      contentContainerStyle={styles.listContent}
-      data={tasks}
-      keyExtractor={(item) => item.id}
-      ListHeaderComponent={<ListHeader taskCount={tasks.length} />}
-      refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
-      renderItem={({ item }) => {
-        const isUpdating = Boolean(updatingTaskIds[item.id]);
-        const itemError = taskErrors[item.id];
-        const showStatusEditor =
-          activeEditor?.taskId === item.id && activeEditor?.field === 'status';
-        const showPriorityEditor =
-          activeEditor?.taskId === item.id && activeEditor?.field === 'priority';
-        const showDueDateEditor =
-          activeEditor?.taskId === item.id && activeEditor?.field === 'dueDate';
+    <MobileScreen padded={false}>
+      <FlatList
+        contentContainerStyle={styles.listContent}
+        data={tasks}
+        keyExtractor={(item) => item.id}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Text style={styles.subtitle}>No tasks found for your current workspace.</Text>
+            <Pressable onPress={onRefresh} style={styles.primaryButton}>
+              <Text style={styles.primaryButtonText}>Refresh</Text>
+            </Pressable>
+          </View>
+        }
+        ListHeaderComponent={
+          <View style={styles.headerWrap}>
+            <MobileScreenHeader
+              eyebrow="Execution"
+              title="Tasks"
+              description={
+                tasks.length > 0
+                  ? `${tasks.length} task${tasks.length === 1 ? '' : 's'} ready for action`
+                  : 'Track and capture your next execution step'
+              }
+            />
+          </View>
+        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+        renderItem={({ item }) => {
+          const isUpdating = Boolean(updatingTaskIds[item.id]);
+          const itemError = taskErrors[item.id];
 
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.cardMeta}>
-              {item.project.name}
-              {item.goal ? ` · ${item.goal.title}` : ''}
-            </Text>
-            <Text style={styles.cardMeta}>
-              {formatToken(item.status)} · {item.priority}
-            </Text>
-            <Text style={styles.cardMeta}>
-              {formatDueDate(item.dueDate)}
-              {item.estimateMinutes !== null ? ` · ${item.estimateMinutes}m` : ''}
-            </Text>
-            {item.status === 'blocked' && item.blockedReason ? (
-              <Text style={styles.blockedText}>Blocked: {item.blockedReason}</Text>
-            ) : null}
-
-            <View style={styles.quickActionsRow}>
-              <Pressable
-                disabled={isUpdating}
-                onPress={() =>
+          return (
+            <View style={styles.cardWrap}>
+              <TaskCard
+                blockedReason={item.status === 'blocked' ? item.blockedReason : null}
+                dueLabel={formatDueDate(item.dueDate)}
+                estimateLabel={item.estimateMinutes !== null ? `${item.estimateMinutes}m est` : undefined}
+                goal={item.goal?.title}
+                onActions={() => setActiveTaskId(item.id)}
+                onOpen={() =>
                   router.push({ pathname: '/(app)/tasks/[id]', params: { id: item.id } })
                 }
-                style={[styles.quickActionButton, isUpdating && styles.buttonDisabled]}
-              >
-                <Text style={styles.quickActionText}>Open</Text>
-              </Pressable>
-              <Pressable
-                disabled={isUpdating}
-                onPress={() => toggleEditor(item.id, 'status')}
-                style={[styles.quickActionButton, isUpdating && styles.buttonDisabled]}
-              >
-                <Text style={styles.quickActionText}>Status</Text>
-              </Pressable>
-              <Pressable
-                disabled={isUpdating}
-                onPress={() => toggleEditor(item.id, 'priority')}
-                style={[styles.quickActionButton, isUpdating && styles.buttonDisabled]}
-              >
-                <Text style={styles.quickActionText}>Priority</Text>
-              </Pressable>
-              <Pressable
-                disabled={isUpdating}
-                onPress={() => toggleEditor(item.id, 'dueDate')}
-                style={[styles.quickActionButton, isUpdating && styles.buttonDisabled]}
-              >
-                <Text style={styles.quickActionText}>Due date</Text>
-              </Pressable>
+                priority={item.priority}
+                project={item.project.name}
+                saving={isUpdating}
+                status={item.status}
+                title={item.title}
+              />
+              {itemError ? <Text style={styles.inlineErrorText}>{itemError}</Text> : null}
             </View>
+          );
+        }}
+      />
 
-            {showStatusEditor ? (
-              <View style={styles.inlineOptionsRow}>
-                {getStatusOptions(item).map((status) => (
-                  <Pressable
-                    key={status}
-                    disabled={isUpdating}
-                    onPress={() => mutateTask(item.id, { status })}
-                    style={[styles.optionChip, item.status === status && styles.optionChipSelected]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionChipText,
-                        item.status === status && styles.optionChipTextSelected,
-                      ]}
-                    >
-                      {formatToken(status)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
+      <PrimaryFab label="Create Task" onPress={() => router.push('../tasks/create')} />
 
-            {showPriorityEditor ? (
-              <View style={styles.inlineOptionsRow}>
-                {PRIORITY_OPTIONS.map((priority) => (
-                  <Pressable
-                    key={priority}
-                    disabled={isUpdating}
-                    onPress={() => mutateTask(item.id, { priority })}
-                    style={[
-                      styles.optionChip,
-                      item.priority === priority && styles.optionChipSelected,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionChipText,
-                        item.priority === priority && styles.optionChipTextSelected,
-                      ]}
-                    >
-                      {priority}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            {showDueDateEditor ? (
-              <View style={styles.inlineOptionsRow}>
-                {dueDateOptions.map((option) => (
-                  <Pressable
-                    key={option.label}
-                    disabled={isUpdating}
-                    onPress={() => mutateTask(item.id, { dueDate: option.value })}
-                    style={[
-                      styles.optionChip,
-                      item.dueDate === option.value && styles.optionChipSelected,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.optionChipText,
-                        item.dueDate === option.value && styles.optionChipTextSelected,
-                      ]}
-                    >
-                      {option.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            ) : null}
-
-            {isUpdating ? <Text style={styles.updatingText}>Saving...</Text> : null}
-            {itemError ? <Text style={styles.inlineErrorText}>{itemError}</Text> : null}
-          </View>
-        );
-      }}
-    />
+      <ActionSheet
+        footer={
+          activeTask && updatingTaskIds[activeTask.id] ? (
+            <Text style={styles.sheetMessage}>Updating task...</Text>
+          ) : null
+        }
+        items={actionSheetItems}
+        onClose={() => setActiveTaskId(null)}
+        subtitle={activeTask ? `${activeTask.project.name}${activeTask.goal ? ` · ${activeTask.goal.title}` : ''}` : undefined}
+        title={activeTask ? activeTask.title : 'Task actions'}
+        visible={Boolean(activeTask)}
+      />
+    </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  blockedText: {
-    color: '#b91c1c',
-    marginTop: 6,
-  },
-  buttonDisabled: {
-    opacity: 0.55,
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-  },
-  cardMeta: {
-    color: '#475569',
-    marginTop: 6,
-  },
-  cardTitle: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
+  cardWrap: {
+    marginBottom: 10,
   },
   centered: {
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
@@ -409,120 +331,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  createButton: {
+  emptyState: {
     alignItems: 'center',
-    backgroundColor: '#111827',
-    borderRadius: 12,
-    justifyContent: 'center',
-    minHeight: 42,
-    paddingHorizontal: 16,
-  },
-  createButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
+    marginTop: 64,
+    paddingHorizontal: 20,
   },
   errorText: {
-    color: '#dc2626',
+    color: mobileTheme.colors.danger,
     textAlign: 'center',
   },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'space-between',
-    marginBottom: 18,
-  },
-  headerCopy: {
-    flex: 1,
-    gap: 4,
+  headerWrap: {
+    paddingHorizontal: 14,
   },
   inlineErrorText: {
-    color: '#dc2626',
-    marginTop: 10,
-  },
-  inlineOptionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
+    color: mobileTheme.colors.danger,
+    marginTop: 8,
+    paddingHorizontal: 6,
   },
   listContent: {
-    backgroundColor: '#f8fafc',
-    gap: 10,
-    padding: 14,
-    paddingBottom: 24,
-  },
-  optionChip: {
-    backgroundColor: '#f1f5f9',
-    borderColor: '#cbd5e1',
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  optionChipSelected: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
-  },
-  optionChipText: {
-    color: '#334155',
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
-  },
-  optionChipTextSelected: {
-    color: '#ffffff',
+    paddingBottom: 96,
+    paddingTop: 14,
   },
   primaryButton: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    marginTop: 20,
+    backgroundColor: mobileTheme.colors.accent,
+    borderRadius: 12,
+    marginTop: 18,
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 11,
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  quickActionButton: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  quickActionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
-  },
-  quickActionText: {
-    color: '#0f172a',
+  sheetMessage: {
+    color: mobileTheme.colors.textMuted,
     fontSize: 12,
-    fontWeight: '700',
-  },
-  screen: {
-    backgroundColor: '#f8fafc',
-    flex: 1,
-    padding: 14,
-  },
-  subtitle: {
-    color: '#475569',
-    fontSize: 16,
-    lineHeight: 22,
-    marginTop: 8,
     textAlign: 'center',
   },
-  title: {
-    color: '#0f172a',
-    fontSize: 24,
-    fontWeight: '700',
-  },
-  updatingText: {
-    color: '#475569',
+  subtitle: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 15,
+    lineHeight: 21,
     marginTop: 10,
+    textAlign: 'center',
   },
 });

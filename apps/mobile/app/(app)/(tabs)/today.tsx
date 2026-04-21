@@ -11,6 +11,15 @@ import {
   View,
 } from 'react-native';
 
+import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import {
+  MobileScreen,
+  MobileScreenHeader,
+  MobileSectionHeader,
+  SurfaceCard,
+} from '@/components/mobile/primitives';
+import { TodayTaskCard } from '@/components/mobile/TodayTaskCard';
+import { mobileTheme } from '@/components/mobile/theme';
 import {
   addMobileTaskToToday,
   clearMobileTodayCompletedTasks,
@@ -54,11 +63,7 @@ function formatDueDate(value: string | null) {
     return value;
   }
 
-  return date.toLocaleDateString();
-}
-
-function formatStatus(value: MobileTaskStatus) {
-  return value.replace(/_/g, ' ');
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function formatMessage(error: unknown, fallback: string) {
@@ -67,15 +72,6 @@ function formatMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
-}
-
-function nextPriority(priority: MobileTaskPriority): MobileTaskPriority {
-  const index = PRIORITY_ORDER.indexOf(priority);
-  if (index < 0 || index === PRIORITY_ORDER.length - 1) {
-    return PRIORITY_ORDER[0];
-  }
-
-  return PRIORITY_ORDER[index + 1];
 }
 
 function getStatusActions(task: MobileTodayTask): Array<{ label: string; status: MobileTaskStatus }> {
@@ -124,6 +120,19 @@ export default function TodayScreen() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [isClearingCompleted, setIsClearingCompleted] = useState(false);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
+
+  const activeTask = useMemo(
+    () =>
+      today
+        ? [
+            ...today.sections.planned,
+            ...today.sections.inProgress,
+            ...today.sections.blocked,
+            ...today.sections.completed,
+          ].find((task) => task.id === activeTaskId) ?? null
+        : null,
+    [activeTaskId, today],
+  );
 
   const todayIso = useMemo(() => getLocalIsoDate(new Date()), []);
   const tomorrowIso = useMemo(() => getLocalIsoDate(addLocalDays(new Date(), 1)), []);
@@ -294,431 +303,471 @@ export default function TodayScreen() {
     }
   }, [loadToday]);
 
+  const actionSheetItems = useMemo<ActionSheetItem[]>(() => {
+    if (!activeTask) {
+      return [];
+    }
+
+    const statusItems = getStatusActions(activeTask).map((action) => ({
+      key: `status-${action.status}`,
+      label: action.label,
+      onPress: () => {
+        runStatusAction(activeTask, action.status).catch(() => {
+          // handled in runStatusAction state
+        });
+      },
+    }));
+
+    const priorityItems = PRIORITY_ORDER.map((priority) => ({
+      key: `priority-${priority}`,
+      label: `Priority: ${priority}${priority === activeTask.priority ? ' (Current)' : ''}`,
+      disabled: priority === activeTask.priority,
+      onPress: () => {
+        runInlineUpdate(activeTask, { priority }).catch(() => {
+          // handled in runInlineUpdate state
+        });
+      },
+    }));
+
+    const dueItems: ActionSheetItem[] = [
+      {
+        key: 'due-today',
+        label: 'Set due today',
+        disabled: activeTask.dueDate === todayIso,
+        onPress: () => {
+          runInlineUpdate(activeTask, { dueDate: todayIso }).catch(() => {
+            // handled in runInlineUpdate state
+          });
+        },
+      },
+      {
+        key: 'due-tomorrow',
+        label: 'Set due tomorrow',
+        disabled: activeTask.dueDate === tomorrowIso,
+        onPress: () => {
+          runInlineUpdate(activeTask, { dueDate: tomorrowIso }).catch(() => {
+            // handled in runInlineUpdate state
+          });
+        },
+      },
+      {
+        key: 'due-clear',
+        label: 'Clear due date',
+        disabled: activeTask.dueDate === null,
+        onPress: () => {
+          runInlineUpdate(activeTask, { dueDate: null }).catch(() => {
+            // handled in runInlineUpdate state
+          });
+        },
+      },
+    ];
+
+    return [
+      ...statusItems,
+      ...priorityItems,
+      ...dueItems,
+      ...(activeTask.isPlannedForToday
+        ? [
+            {
+              key: 'remove-today',
+              label: 'Remove from Today',
+              destructive: true,
+              onPress: () => {
+                runRemoveFromToday(activeTask).catch(() => {
+                  // handled in runRemoveFromToday state
+                });
+              },
+            } satisfies ActionSheetItem,
+          ]
+        : []),
+      {
+        key: 'open',
+        label: 'Open task details',
+        onPress: () => {
+          router.push({
+            pathname: '/(app)/tasks/[id]',
+            params: { id: activeTask.id },
+          });
+        },
+      },
+    ];
+  }, [
+    activeTask,
+    router,
+    runInlineUpdate,
+    runRemoveFromToday,
+    runStatusAction,
+    todayIso,
+    tomorrowIso,
+  ]);
+
   if (isLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-        <Text style={styles.subtitle}>Loading Today...</Text>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <ActivityIndicator />
+          <Text style={styles.subtitle}>Loading Today...</Text>
+        </View>
+      </MobileScreen>
     );
   }
 
   if (error && !today) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.title}>Today</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <Pressable
-          onPress={() => {
-            loadToday('initial').catch(() => {
-              // handled in loadToday state
-            });
-          }}
-          style={styles.button}
-        >
-          <Text style={styles.buttonText}>Retry</Text>
-        </Pressable>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <Text style={styles.title}>Today</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable
+            onPress={() => {
+              loadToday('initial').catch(() => {
+                // handled in loadToday state
+              });
+            }}
+            style={styles.button}
+          >
+            <Text style={styles.buttonText}>Retry</Text>
+          </Pressable>
+        </View>
+      </MobileScreen>
     );
   }
 
+  if (!today) {
+    return null;
+  }
+
   const todayCount = getTodayTaskCount(today);
+  const completedRatio =
+    todayCount > 0 ? Math.round((today.summary.completedCount / todayCount) * 100) : 0;
 
   return (
-    <SectionList
-      contentContainerStyle={styles.listContent}
-      keyExtractor={(item) => item.id}
-      sections={sections}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={() => {
-            loadToday('refresh').catch(() => {
-              // handled in loadToday state
-            });
-          }}
-        />
-      }
-      ListHeaderComponent={
-        today ? (
-          <View style={styles.headerCard}>
-            <Text style={styles.title}>Today</Text>
-            <Text style={styles.headerMeta}>
-              {formatDueDate(today.date)} · {today.summary.trackedTodayLabel} tracked
-            </Text>
-            <Text style={styles.headerMeta}>
-              {today.summary.plannedCount} planned · {today.summary.inProgressCount} in progress ·{' '}
-              {today.summary.blockedCount} blocked · {today.summary.completedCount} completed
-            </Text>
-            {todayCount === 0 ? (
-              <Text style={styles.emptyText}>Nothing in Today yet. Add tasks from suggestions below.</Text>
-            ) : null}
-            {today.summary.clearableCompletedCount > 0 ? (
-              <Pressable
-                disabled={isClearingCompleted}
-                onPress={() => {
-                  runClearCompleted().catch(() => {
-                    // handled in runClearCompleted state
-                  });
-                }}
-                style={[styles.secondaryButton, isClearingCompleted ? styles.buttonDisabled : null]}
-              >
-                <Text style={styles.secondaryButtonText}>
-                  {isClearingCompleted ? 'Clearing...' : 'Clear completed from Today'}
-                </Text>
-              </Pressable>
-            ) : null}
-            {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
-          </View>
-        ) : null
-      }
-      ListFooterComponent={
-        today ? (
-          <View style={styles.suggestionsCard}>
-            <Text style={styles.suggestionsTitle}>Suggestions</Text>
-            {today.suggestions.pinned.length === 0 && today.suggestions.inProgress.length === 0 ? (
-              <Text style={styles.sectionEmpty}>No suggestions right now.</Text>
-            ) : null}
-            {[
-              { key: 'Pinned / focus', items: today.suggestions.pinned },
-              { key: 'Recently active', items: today.suggestions.inProgress },
-            ].map((group) =>
-              group.items.length > 0 ? (
-                <View key={group.key} style={styles.suggestionGroup}>
-                  <Text style={styles.suggestionGroupTitle}>{group.key}</Text>
-                  {group.items.map((task) => {
-                    const isMutating = activeSuggestionId === task.id;
+    <MobileScreen padded={false}>
+      <SectionList
+        contentContainerStyle={styles.listContent}
+        keyExtractor={(item) => item.id}
+        sections={sections}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => {
+              loadToday('refresh').catch(() => {
+                // handled in loadToday state
+              });
+            }}
+          />
+        }
+        ListHeaderComponent={
+          today ? (
+            <View style={styles.pagePadding}>
+              <MobileScreenHeader
+                eyebrow={new Date(`${today.date}T00:00:00`).toLocaleDateString(undefined, {
+                  weekday: 'long',
+                })}
+                title="Today"
+                description={`${today.summary.trackedTodayLabel} tracked tasks in focus`}
+              />
 
-                    return (
-                      <View key={task.id} style={styles.suggestionRow}>
-                        <View style={styles.suggestionCopy}>
-                          <Text style={styles.suggestionTaskTitle}>{task.title}</Text>
-                          <Text style={styles.suggestionTaskMeta}>
-                            {task.projectName}
-                            {task.goalTitle ? ` · ${task.goalTitle}` : ''}
-                          </Text>
-                        </View>
-                        <Pressable
-                          disabled={isMutating}
-                          onPress={() => {
-                            runAddSuggestion(task).catch(() => {
-                              // handled in runAddSuggestion state
-                            });
-                          }}
-                          style={[styles.quickActionButton, isMutating ? styles.buttonDisabled : null]}
-                        >
-                          <Text style={styles.quickActionText}>{isMutating ? 'Adding...' : 'Add'}</Text>
-                        </Pressable>
-                      </View>
-                    );
-                  })}
+              <SurfaceCard>
+                <Text style={styles.summaryTitle}>Daily momentum</Text>
+                <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
+                <View style={styles.summaryStatsRow}>
+                  <View style={styles.statBlock}>
+                    <Text style={styles.statValue}>{today.summary.inProgressCount}</Text>
+                    <Text style={styles.statLabel}>In progress</Text>
+                  </View>
+                  <View style={styles.statBlock}>
+                    <Text style={styles.statValue}>{today.summary.completedCount}</Text>
+                    <Text style={styles.statLabel}>Completed</Text>
+                  </View>
+                  <View style={styles.statBlock}>
+                    <Text style={styles.statValue}>{completedRatio}%</Text>
+                    <Text style={styles.statLabel}>Completion</Text>
+                  </View>
                 </View>
-              ) : null,
-            )}
+                {todayCount === 0 ? (
+                  <Text style={styles.emptyText}>Nothing in Today yet. Add tasks from suggestions below.</Text>
+                ) : null}
+                {today.summary.clearableCompletedCount > 0 ? (
+                  <Pressable
+                    disabled={isClearingCompleted}
+                    onPress={() => {
+                      runClearCompleted().catch(() => {
+                        // handled in runClearCompleted state
+                      });
+                    }}
+                    style={styles.secondaryButton}
+                  >
+                    <Text style={styles.secondaryButtonText}>
+                      {isClearingCompleted ? 'Clearing...' : 'Clear completed'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
+              </SurfaceCard>
+            </View>
+          ) : null
+        }
+        ListFooterComponent={
+          today ? (
+            <View style={styles.pagePadding}>
+              <SurfaceCard>
+                <Text style={styles.suggestionsTitle}>Suggestions</Text>
+                {today.suggestions.pinned.length === 0 && today.suggestions.inProgress.length === 0 ? (
+                  <Text style={styles.sectionEmpty}>No suggestions right now.</Text>
+                ) : null}
+                {[
+                  { key: 'Pinned / focus', items: today.suggestions.pinned },
+                  { key: 'Recently active', items: today.suggestions.inProgress },
+                ].map((group) =>
+                  group.items.length > 0 ? (
+                    <View key={group.key} style={styles.suggestionGroup}>
+                      <Text style={styles.suggestionGroupTitle}>{group.key}</Text>
+                      {group.items.map((task) => {
+                        const isMutating = activeSuggestionId === task.id;
+
+                        return (
+                          <View key={task.id} style={styles.suggestionRow}>
+                            <View style={styles.suggestionCopy}>
+                              <Text style={styles.suggestionTaskTitle}>{task.title}</Text>
+                              <Text style={styles.suggestionTaskMeta}>
+                                {task.projectName}
+                                {task.goalTitle ? ` · ${task.goalTitle}` : ''}
+                              </Text>
+                            </View>
+                            <Pressable
+                              disabled={isMutating}
+                              onPress={() => {
+                                runAddSuggestion(task).catch(() => {
+                                  // handled in runAddSuggestion state
+                                });
+                              }}
+                              style={styles.addButton}
+                            >
+                              <Text style={styles.addButtonText}>{isMutating ? 'Adding...' : 'Add'}</Text>
+                            </Pressable>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ) : null,
+                )}
+              </SurfaceCard>
+            </View>
+          ) : null
+        }
+        renderSectionFooter={({ section }) =>
+          section.data.length === 0 ? (
+            <View style={styles.pagePadding}>
+              <Text style={styles.sectionEmpty}>{section.emptyText}</Text>
+            </View>
+          ) : null
+        }
+        renderSectionHeader={({ section }) => (
+          <View style={styles.pagePadding}>
+            <MobileSectionHeader count={section.data.length} title={section.title} />
           </View>
-        ) : null
-      }
-      renderSectionFooter={({ section }) =>
-        section.data.length === 0 ? <Text style={styles.sectionEmpty}>{section.emptyText}</Text> : null
-      }
-      renderSectionHeader={({ section }) => (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{section.title}</Text>
-          <Text style={styles.sectionCount}>{section.data.length}</Text>
-        </View>
-      )}
-      renderItem={({ item }) => {
-        const isMutating = activeTaskId === item.id;
-        const priorityValue = nextPriority(item.priority);
-        const statusActions = getStatusActions(item);
+        )}
+        renderItem={({ item }) => {
+          const isMutating = activeTaskId === item.id;
+          const statusActions = getStatusActions(item);
+          const primaryAction = statusActions[0];
 
-        return (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.cardMeta}>
-              {item.projectName}
-              {item.goalTitle ? ` · ${item.goalTitle}` : ''}
-            </Text>
-            <Text style={styles.cardMeta}>
-              {formatStatus(item.status)} · {item.priority}
-              {item.isDueToday ? ' · due today' : ''}
-            </Text>
-            <Text style={styles.cardMeta}>{formatDueDate(item.dueDate)}</Text>
-
-            {item.status === 'blocked' && item.blockedReason ? (
-              <Text style={styles.blockedText}>Blocked: {item.blockedReason}</Text>
-            ) : null}
-
-            <View style={styles.actionsRow}>
-              {statusActions.map((action) => (
-                <Pressable
-                  key={action.label}
-                  disabled={isMutating}
-                  onPress={() => {
-                    runStatusAction(item, action.status).catch(() => {
+          return (
+            <View style={styles.pagePadding}>
+              <View style={styles.cardWrap}>
+                <TodayTaskCard
+                  blockedReason={item.status === 'blocked' ? item.blockedReason : null}
+                  busy={isMutating}
+                  dueLabel={formatDueDate(item.dueDate)}
+                  goal={item.goalTitle}
+                  muted={item.status === 'done'}
+                  onActions={() => setActiveTaskId(item.id)}
+                  onOpen={() => {
+                    router.push({
+                      pathname: '/(app)/tasks/[id]',
+                      params: { id: item.id },
+                    });
+                  }}
+                  onPrimaryAction={() => {
+                    runStatusAction(item, primaryAction.status).catch(() => {
                       // handled in runStatusAction state
                     });
                   }}
-                  style={[styles.quickActionButton, isMutating ? styles.buttonDisabled : null]}
-                >
-                  <Text style={styles.quickActionText}>{action.label}</Text>
-                </Pressable>
-              ))}
-              <Pressable
-                disabled={isMutating}
-                onPress={() => {
-                  runInlineUpdate(item, { priority: priorityValue }).catch(() => {
-                    // handled in runInlineUpdate state
-                  });
-                }}
-                style={[styles.quickActionButton, isMutating ? styles.buttonDisabled : null]}
-              >
-                <Text style={styles.quickActionText}>Priority: {priorityValue}</Text>
-              </Pressable>
-              <Pressable
-                disabled={isMutating || item.dueDate === todayIso}
-                onPress={() => {
-                  runInlineUpdate(item, { dueDate: todayIso }).catch(() => {
-                    // handled in runInlineUpdate state
-                  });
-                }}
-                style={[
-                  styles.quickActionButton,
-                  isMutating || item.dueDate === todayIso ? styles.buttonDisabled : null,
-                ]}
-              >
-                <Text style={styles.quickActionText}>Due today</Text>
-              </Pressable>
-              <Pressable
-                disabled={isMutating || item.dueDate === tomorrowIso}
-                onPress={() => {
-                  runInlineUpdate(item, { dueDate: tomorrowIso }).catch(() => {
-                    // handled in runInlineUpdate state
-                  });
-                }}
-                style={[
-                  styles.quickActionButton,
-                  isMutating || item.dueDate === tomorrowIso ? styles.buttonDisabled : null,
-                ]}
-              >
-                <Text style={styles.quickActionText}>Due tomorrow</Text>
-              </Pressable>
-              <Pressable
-                disabled={isMutating || item.dueDate === null}
-                onPress={() => {
-                  runInlineUpdate(item, { dueDate: null }).catch(() => {
-                    // handled in runInlineUpdate state
-                  });
-                }}
-                style={[
-                  styles.quickActionButton,
-                  isMutating || item.dueDate === null ? styles.buttonDisabled : null,
-                ]}
-              >
-                <Text style={styles.quickActionText}>Clear due</Text>
-              </Pressable>
-              {item.isPlannedForToday ? (
-                <Pressable
-                  disabled={isMutating}
-                  onPress={() => {
-                    runRemoveFromToday(item).catch(() => {
-                      // handled in runRemoveFromToday state
-                    });
-                  }}
-                  style={[styles.quickActionButton, isMutating ? styles.buttonDisabled : null]}
-                >
-                  <Text style={styles.quickActionText}>Remove</Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                disabled={isMutating}
-                onPress={() => {
-                  router.push({
-                    pathname: '/(app)/tasks/[id]',
-                    params: { id: item.id },
-                  });
-                }}
-                style={[styles.quickActionButton, isMutating ? styles.buttonDisabled : null]}
-              >
-                <Text style={styles.quickActionText}>Open</Text>
-              </Pressable>
+                  primaryActionLabel={primaryAction.label}
+                  priority={item.priority}
+                  project={item.projectName}
+                  status={item.status}
+                  title={item.title}
+                />
+              </View>
             </View>
-          </View>
-        );
-      }}
-    />
+          );
+        }}
+      />
+
+      <ActionSheet
+        footer={
+          activeTaskId ? <Text style={styles.sheetFooter}>Running update...</Text> : null
+        }
+        items={actionSheetItems}
+        onClose={() => setActiveTaskId(null)}
+        subtitle={
+          activeTask ? `${activeTask.projectName}${activeTask.goalTitle ? ` · ${activeTask.goalTitle}` : ''}` : undefined
+        }
+        title={activeTask?.title ?? 'Task actions'}
+        visible={Boolean(activeTask)}
+      />
+    </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  blockedText: {
-    color: '#b91c1c',
-    marginTop: 6,
+  addButton: {
+    alignItems: 'center',
+    backgroundColor: '#eff6ff',
+    borderRadius: 10,
+    justifyContent: 'center',
+    minHeight: 36,
+    minWidth: 58,
+    paddingHorizontal: 12,
+  },
+  addButtonText: {
+    color: mobileTheme.colors.info,
+    fontSize: 12,
+    fontWeight: '800',
   },
   button: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.accent,
+    borderRadius: 12,
     marginTop: 20,
     paddingHorizontal: 18,
     paddingVertical: 12,
   },
-  buttonDisabled: {
-    opacity: 0.45,
-  },
   buttonText: {
     color: '#ffffff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
-  card: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    borderWidth: 1,
+  cardWrap: {
     marginBottom: 10,
-    padding: 14,
-  },
-  cardMeta: {
-    color: '#475569',
-    marginTop: 6,
-  },
-  cardTitle: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
   },
   centered: {
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
   },
   emptyText: {
-    color: '#334155',
+    color: mobileTheme.colors.textMuted,
     marginTop: 10,
   },
   errorText: {
-    color: '#dc2626',
+    color: mobileTheme.colors.danger,
     marginTop: 10,
-  },
-  headerCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 14,
-    padding: 14,
-  },
-  headerMeta: {
-    color: '#475569',
-    marginTop: 6,
   },
   listContent: {
-    backgroundColor: '#f8fafc',
-    padding: 14,
-    paddingBottom: 24,
+    paddingBottom: 30,
+    paddingTop: 12,
   },
-  quickActionButton: {
-    backgroundColor: '#e2e8f0',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  quickActionText: {
-    color: '#0f172a',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  actionsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
+  pagePadding: {
+    paddingHorizontal: 14,
   },
   secondaryButton: {
     alignSelf: 'flex-start',
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#eef2f7',
     borderRadius: 10,
     marginTop: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   secondaryButtonText: {
-    color: '#0f172a',
-    fontWeight: '600',
+    color: mobileTheme.colors.text,
+    fontWeight: '700',
   },
-  sectionCount: {
-    color: '#475569',
+  sectionEmpty: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 13,
+    marginBottom: 12,
+  },
+  sheetFooter: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  statBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  statLabel: {
+    color: mobileTheme.colors.textMuted,
     fontSize: 12,
     fontWeight: '600',
   },
-  sectionEmpty: {
-    color: '#64748b',
-    fontSize: 13,
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  sectionHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    marginTop: 6,
-  },
-  sectionTitle: {
-    color: '#0f172a',
-    fontSize: 18,
-    fontWeight: '700',
+  statValue: {
+    color: mobileTheme.colors.text,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   subtitle: {
-    color: '#475569',
-    fontSize: 16,
+    color: mobileTheme.colors.textMuted,
+    fontSize: 15,
     marginTop: 8,
     textAlign: 'center',
-  },
-  suggestionsCard: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    borderWidth: 1,
-    marginTop: 8,
-    padding: 14,
   },
   suggestionCopy: {
     flex: 1,
     marginRight: 12,
   },
   suggestionGroup: {
-    marginTop: 10,
+    marginTop: 14,
   },
   suggestionGroupTitle: {
-    color: '#334155',
-    fontSize: 13,
-    fontWeight: '700',
-    marginBottom: 6,
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   suggestionRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: 10,
   },
   suggestionsTitle: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
+    color: mobileTheme.colors.text,
+    fontSize: 18,
+    fontWeight: '800',
   },
   suggestionTaskMeta: {
-    color: '#64748b',
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 12,
     marginTop: 2,
   },
   suggestionTaskTitle: {
-    color: '#0f172a',
-    fontWeight: '600',
+    color: mobileTheme.colors.text,
+    fontWeight: '700',
+  },
+  summaryMeta: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+  summaryStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  summaryTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   title: {
-    color: '#0f172a',
-    fontSize: 24,
-    fontWeight: '700',
+    color: mobileTheme.colors.text,
+    fontSize: 28,
+    fontWeight: '800',
   },
 });

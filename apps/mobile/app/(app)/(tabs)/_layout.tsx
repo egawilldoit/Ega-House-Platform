@@ -20,6 +20,19 @@ export default function AppTabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+        tabBarInactiveTintColor: '#7c8aa0',
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '700',
+          marginBottom: 4,
+        },
+        tabBarStyle: {
+          backgroundColor: '#ffffff',
+          borderTopColor: '#dbe3ee',
+          borderTopWidth: 1,
+          height: 64,
+          paddingTop: 6,
+        },
       }}
     >
       <Tabs.Screen

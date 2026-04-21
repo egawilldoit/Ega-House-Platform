@@ -1,3 +1,5 @@
+import { useFocusEffect } from '@react-navigation/native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,9 +12,14 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 
+import {
+  MobileScreen,
+  MobileScreenHeader,
+  SegmentedControl,
+  SurfaceCard,
+} from '@/components/mobile/primitives';
+import { mobileTheme } from '@/components/mobile/theme';
 import { fetchMobileTaskById, updateMobileTask } from '@/lib/api/tasks';
 import type { MobileTaskListItem, MobileTaskPriority, MobileTaskStatus } from '@/types/tasks';
 
@@ -45,7 +52,11 @@ function formatDueDate(value: string | null) {
     return value;
   }
 
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function formatTimestamp(value: string) {
@@ -91,6 +102,19 @@ function parseEstimateMinutes(value: string): number | null | 'invalid' {
   }
 
   return parsed;
+}
+
+function isDraftDirty(task: MobileTaskListItem, draft: EditableTaskFields) {
+  const original = createEditableDraft(task);
+
+  return (
+    original.status !== draft.status ||
+    original.priority !== draft.priority ||
+    original.dueDate !== draft.dueDate ||
+    original.estimateMinutesText !== draft.estimateMinutesText ||
+    original.description !== draft.description ||
+    original.blockedReason !== draft.blockedReason
+  );
 }
 
 export default function TaskDetailScreen() {
@@ -194,314 +218,313 @@ export default function TaskDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.centered}>
-        <ActivityIndicator />
-        <Text style={styles.subtitle}>Loading task...</Text>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <ActivityIndicator />
+          <Text style={styles.subtitle}>Loading task...</Text>
+        </View>
+      </MobileScreen>
     );
   }
 
   if (loadError || !task || !draft) {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.title}>Task details</Text>
-        <Text style={styles.errorText}>{loadError ?? 'Task not found.'}</Text>
-        <Pressable onPress={onRetry} style={styles.primaryButton}>
-          <Text style={styles.primaryButtonText}>Retry</Text>
-        </Pressable>
-        <Pressable onPress={() => router.back()} style={styles.ghostButton}>
-          <Text style={styles.ghostButtonText}>Back</Text>
-        </Pressable>
-      </View>
+      <MobileScreen>
+        <View style={styles.centered}>
+          <Text style={styles.title}>Task details</Text>
+          <Text style={styles.errorText}>{loadError ?? 'Task not found.'}</Text>
+          <Pressable onPress={onRetry} style={styles.primaryButton}>
+            <Text style={styles.primaryButtonText}>Retry</Text>
+          </Pressable>
+          <Pressable onPress={() => router.back()} style={styles.ghostButton}>
+            <Text style={styles.ghostButtonText}>Back</Text>
+          </Pressable>
+        </View>
+      </MobileScreen>
     );
   }
 
+  const dirty = isDraftDirty(task, draft);
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.screen}
-    >
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.label}>Title</Text>
-          <Text style={styles.value}>{task.title}</Text>
-          <Text style={styles.meta}>
-            {task.project.name}
-            {task.goal ? ` · ${task.goal.title}` : ''}
-          </Text>
-          <Text style={styles.meta}>Updated {formatTimestamp(task.updatedAt)}</Text>
-        </View>
+    <MobileScreen padded={false}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboard}
+      >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.pagePadding}>
+            <MobileScreenHeader
+              eyebrow="Task"
+              title="Edit task"
+              description={dirty ? 'Unsaved changes' : 'All changes saved'}
+            />
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Status</Text>
-          <View style={styles.optionRow}>
-            {STATUS_OPTIONS.map((option) => {
-              const selected = draft.status === option;
-              return (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    setDraft((current) =>
-                      current ? { ...current, status: option, blockedReason: option === 'blocked' ? current.blockedReason : '' } : current,
-                    );
-                    setSuccessMessage(null);
-                    setSubmitError(null);
-                  }}
-                  style={[styles.optionChip, selected ? styles.optionChipActive : null]}
-                >
-                  <Text style={[styles.optionChipText, selected ? styles.optionChipTextActive : null]}>
-                    {formatTaskToken(option)}
-                  </Text>
+            <SurfaceCard>
+              <Text style={styles.taskTitle}>{task.title}</Text>
+              <Text style={styles.meta}>
+                {task.project.name}
+                {task.goal ? ` · ${task.goal.title}` : ''}
+              </Text>
+              <Text style={styles.meta}>Updated {formatTimestamp(task.updatedAt)}</Text>
+            </SurfaceCard>
+
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionTitle}>Status</Text>
+              <SegmentedControl
+                onChange={(status) => {
+                  setDraft((current) =>
+                    current
+                      ? {
+                          ...current,
+                          status,
+                          blockedReason: status === 'blocked' ? current.blockedReason : '',
+                        }
+                      : current,
+                  );
+                  setSuccessMessage(null);
+                  setSubmitError(null);
+                }}
+                options={STATUS_OPTIONS.map((option) => ({
+                  label: formatTaskToken(option),
+                  value: option,
+                }))}
+                value={draft.status}
+              />
+
+              <Text style={styles.sectionTitle}>Priority</Text>
+              <SegmentedControl
+                onChange={(priority) => {
+                  setDraft((current) => (current ? { ...current, priority } : current));
+                  setSuccessMessage(null);
+                  setSubmitError(null);
+                }}
+                options={PRIORITY_OPTIONS.map((option) => ({
+                  label: formatTaskToken(option),
+                  value: option,
+                }))}
+                value={draft.priority}
+              />
+            </SurfaceCard>
+
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionTitle}>Due date</Text>
+              <Text style={styles.dueValue}>{formatDueDate(draft.dueDate)}</Text>
+              <View style={styles.quickRow}>
+                <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(0))} style={styles.quickButton}>
+                  <Text style={styles.quickButtonText}>Today</Text>
                 </Pressable>
-              );
-            })}
-          </View>
-
-          <Text style={styles.sectionTitle}>Priority</Text>
-          <View style={styles.optionRow}>
-            {PRIORITY_OPTIONS.map((option) => {
-              const selected = draft.priority === option;
-              return (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    setDraft((current) => (current ? { ...current, priority: option } : current));
-                    setSuccessMessage(null);
-                    setSubmitError(null);
-                  }}
-                  style={[styles.optionChip, selected ? styles.optionChipActive : null]}
-                >
-                  <Text style={[styles.optionChipText, selected ? styles.optionChipTextActive : null]}>
-                    {formatTaskToken(option)}
-                  </Text>
+                <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(1))} style={styles.quickButton}>
+                  <Text style={styles.quickButtonText}>Tomorrow</Text>
                 </Pressable>
-              );
-            })}
+                <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(7))} style={styles.quickButton}>
+                  <Text style={styles.quickButtonText}>+7 days</Text>
+                </Pressable>
+                <Pressable onPress={() => applyQuickDueDate(null)} style={styles.quickButton}>
+                  <Text style={styles.quickButtonText}>Clear</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.sectionTitle}>Estimate (minutes)</Text>
+              <TextInput
+                value={draft.estimateMinutesText}
+                onChangeText={(value) => {
+                  setDraft((current) => (current ? { ...current, estimateMinutesText: value } : current));
+                  setSuccessMessage(null);
+                  setSubmitError(null);
+                }}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                placeholder="Optional"
+                style={styles.input}
+              />
+            </SurfaceCard>
+
+            <SurfaceCard style={styles.sectionSpacing}>
+              <Text style={styles.sectionTitle}>Description</Text>
+              <TextInput
+                multiline
+                value={draft.description}
+                onChangeText={(value) => {
+                  setDraft((current) => (current ? { ...current, description: value } : current));
+                  setSuccessMessage(null);
+                  setSubmitError(null);
+                }}
+                placeholder="Optional details"
+                style={[styles.input, styles.multilineInput]}
+                textAlignVertical="top"
+              />
+
+              <Text style={styles.sectionTitle}>Blocked reason</Text>
+              <TextInput
+                multiline
+                value={draft.blockedReason}
+                onChangeText={(value) => {
+                  setDraft((current) => (current ? { ...current, blockedReason: value } : current));
+                  setSuccessMessage(null);
+                  setSubmitError(null);
+                }}
+                placeholder={
+                  draft.status === 'blocked'
+                    ? 'Required for blocked tasks'
+                    : 'Only used when status is Blocked'
+                }
+                style={[styles.input, styles.multilineInput]}
+                textAlignVertical="top"
+              />
+              {draft.status !== 'blocked' ? (
+                <Text style={styles.helperText}>This field is ignored unless status is Blocked.</Text>
+              ) : null}
+            </SurfaceCard>
+
+            {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
+            {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+
+            <View style={styles.footerActions}>
+              <Pressable disabled={isSaving} onPress={() => router.back()} style={styles.ghostButton}>
+                <Text style={styles.ghostButtonText}>Back</Text>
+              </Pressable>
+              <Pressable disabled={isSaving} onPress={onSave} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>
+                  {isSaving ? 'Saving...' : dirty ? 'Save changes' : 'Saved'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Due date</Text>
-          <Text style={styles.value}>{formatDueDate(draft.dueDate)}</Text>
-          <View style={styles.optionRow}>
-            <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(0))} style={styles.quickButton}>
-              <Text style={styles.quickButtonText}>Today</Text>
-            </Pressable>
-            <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(1))} style={styles.quickButton}>
-              <Text style={styles.quickButtonText}>Tomorrow</Text>
-            </Pressable>
-            <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(7))} style={styles.quickButton}>
-              <Text style={styles.quickButtonText}>+7 days</Text>
-            </Pressable>
-            <Pressable onPress={() => applyQuickDueDate(null)} style={styles.quickButton}>
-              <Text style={styles.quickButtonText}>Clear</Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.sectionTitle}>Estimate (minutes)</Text>
-          <TextInput
-            value={draft.estimateMinutesText}
-            onChangeText={(value) => {
-              setDraft((current) => (current ? { ...current, estimateMinutesText: value } : current));
-              setSuccessMessage(null);
-              setSubmitError(null);
-            }}
-            keyboardType="number-pad"
-            inputMode="numeric"
-            placeholder="Optional"
-            style={styles.input}
-          />
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Description</Text>
-          <TextInput
-            multiline
-            value={draft.description}
-            onChangeText={(value) => {
-              setDraft((current) => (current ? { ...current, description: value } : current));
-              setSuccessMessage(null);
-              setSubmitError(null);
-            }}
-            placeholder="Optional details"
-            style={[styles.input, styles.multilineInput]}
-            textAlignVertical="top"
-          />
-
-          <Text style={styles.sectionTitle}>Blocked reason</Text>
-          <TextInput
-            multiline
-            value={draft.blockedReason}
-            onChangeText={(value) => {
-              setDraft((current) => (current ? { ...current, blockedReason: value } : current));
-              setSuccessMessage(null);
-              setSubmitError(null);
-            }}
-            placeholder={draft.status === 'blocked' ? 'Required for blocked tasks' : 'Only used when status is Blocked'}
-            style={[styles.input, styles.multilineInput]}
-            textAlignVertical="top"
-          />
-          {draft.status !== 'blocked' ? (
-            <Text style={styles.meta}>This field is ignored unless status is Blocked.</Text>
-          ) : null}
-        </View>
-
-        {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-        {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
-
-        <View style={styles.footerActions}>
-          <Pressable disabled={isSaving} onPress={() => router.back()} style={styles.ghostButton}>
-            <Text style={styles.ghostButtonText}>Back</Text>
-          </Pressable>
-          <Pressable disabled={isSaving} onPress={onSave} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>{isSaving ? 'Saving...' : 'Save changes'}</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 14,
-  },
   centered: {
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
   },
   content: {
-    gap: 12,
-    padding: 14,
-    paddingBottom: 24,
+    paddingBottom: 28,
+    paddingTop: 14,
+  },
+  dueValue: {
+    color: mobileTheme.colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 6,
   },
   errorText: {
-    color: '#dc2626',
+    color: mobileTheme.colors.danger,
+    marginTop: 12,
     textAlign: 'center',
   },
   footerActions: {
     flexDirection: 'row',
     gap: 10,
-    justifyContent: 'flex-end',
+    marginTop: 18,
   },
   ghostButton: {
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    borderWidth: 1,
+    alignItems: 'center',
+    backgroundColor: '#ecf2f8',
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 46,
     paddingHorizontal: 16,
-    paddingVertical: 12,
   },
   ghostButtonText: {
-    color: '#334155',
-    fontWeight: '600',
+    color: mobileTheme.colors.text,
+    fontWeight: '700',
+  },
+  helperText: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 8,
   },
   input: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderColor: mobileTheme.colors.border,
+    borderRadius: 12,
     borderWidth: 1,
-    color: '#0f172a',
+    color: mobileTheme.colors.text,
     fontSize: 15,
+    marginTop: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  label: {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
+  keyboard: {
+    flex: 1,
   },
   meta: {
-    color: '#64748b',
+    color: mobileTheme.colors.textMuted,
     marginTop: 6,
   },
   multilineInput: {
-    minHeight: 88,
+    minHeight: 92,
   },
-  optionChip: {
-    backgroundColor: '#ffffff',
-    borderColor: '#cbd5e1',
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  optionChipActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
-  },
-  optionChipText: {
-    color: '#334155',
-    fontWeight: '600',
-  },
-  optionChipTextActive: {
-    color: '#ffffff',
-  },
-  optionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 12,
-    marginTop: 8,
+  pagePadding: {
+    paddingHorizontal: 14,
   },
   primaryButton: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.accent,
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 46,
     paddingHorizontal: 16,
-    paddingVertical: 12,
   },
   primaryButtonText: {
     color: '#ffffff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
   quickButton: {
-    borderColor: '#cbd5e1',
+    backgroundColor: '#eef2f7',
     borderRadius: 10,
-    borderWidth: 1,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   quickButtonText: {
-    color: '#334155',
-    fontWeight: '600',
+    color: mobileTheme.colors.text,
+    fontWeight: '700',
   },
-  screen: {
-    backgroundColor: '#f8fafc',
-    flex: 1,
+  quickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  sectionSpacing: {
+    marginTop: 12,
   },
   sectionTitle: {
-    color: '#0f172a',
+    color: mobileTheme.colors.text,
     fontSize: 14,
-    fontWeight: '700',
-    marginTop: 4,
+    fontWeight: '800',
+    marginTop: 12,
   },
   subtitle: {
-    color: '#475569',
+    color: mobileTheme.colors.textMuted,
     fontSize: 16,
     marginTop: 8,
     textAlign: 'center',
   },
   successText: {
-    color: '#166534',
+    color: mobileTheme.colors.success,
+    marginTop: 12,
     textAlign: 'center',
   },
-  title: {
-    color: '#0f172a',
-    fontSize: 24,
-    fontWeight: '700',
+  taskTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    lineHeight: 28,
   },
-  value: {
-    color: '#0f172a',
-    fontSize: 18,
-    fontWeight: '700',
-    marginTop: 4,
+  title: {
+    color: mobileTheme.colors.text,
+    fontSize: 24,
+    fontWeight: '800',
   },
 });
