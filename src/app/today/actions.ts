@@ -26,6 +26,7 @@ function revalidateTodaySurfaces(returnPath: string) {
   revalidatePath("/dashboard");
   revalidatePath("/tasks");
   revalidatePath("/timer");
+  revalidatePath("/review");
 }
 
 function redirectWithActionError(returnPath: string, errorMessage: string): never {

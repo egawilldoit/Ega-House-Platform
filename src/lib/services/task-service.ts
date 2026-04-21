@@ -16,6 +16,7 @@ import {
   type TaskSortValue,
 } from "@/lib/task-list";
 import { getTaskTotalDurationMap } from "@/lib/task-session";
+import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
 import {
   isMissingSupabaseTable,
   isMissingTasksBlockedReasonColumn,
@@ -452,6 +453,18 @@ export async function updateTaskInline(
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+
+  if (input.status === "done") {
+    const stopResult = await stopActiveTimerSessionsForTask(input.taskId, {
+      supabase,
+      nowIso: updatedAtIso,
+    });
+
+    if (stopResult.errorMessage) {
+      return { errorMessage: stopResult.errorMessage };
+    }
+  }
+
   let { error } = await supabase
     .from("tasks")
     .update({

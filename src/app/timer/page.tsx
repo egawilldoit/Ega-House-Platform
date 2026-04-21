@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
+import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { LiveDuration } from "@/components/timer/live-duration";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { Badge } from "@/components/ui/badge";
@@ -494,16 +495,7 @@ export default async function TimerPage({
         </div>
       </div>
 
-      {actionError ? (
-        <div className="feedback-block feedback-block-error mt-4 px-5 py-3">
-          <p className="glass-label text-signal-error">{actionError}</p>
-        </div>
-      ) : null}
-      {actionSuccess ? (
-        <div className="feedback-block feedback-block-success mt-4 px-5 py-3">
-          <p className="glass-label text-signal-live">{actionSuccess}</p>
-        </div>
-      ) : null}
+      <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
     </AppShell>
   );
 }

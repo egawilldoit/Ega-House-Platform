@@ -59,6 +59,16 @@ export type TimerSummary = {
   longestSessionTaskTitle: string | null;
 };
 
+type TimerAggregateSessionRow = {
+  task_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  tasks?: {
+    title?: string | null;
+  } | null;
+};
+
 export type TimerWorkspaceData = {
   tasks: Array<{
     id: string;
@@ -265,6 +275,92 @@ function mapToActiveTimerSession(
   };
 }
 
+export function calculateTimerAggregates(
+  sessions: TimerAggregateSessionRow[],
+  options?: {
+    nowIso?: string;
+    todayWindow?: { startIso: string; endIso: string };
+  },
+) {
+  const nowIso = options?.nowIso ?? new Date().toISOString();
+  const todayWindow =
+    options?.todayWindow ?? getCurrentDayWindow(new Date(nowIso));
+
+  const todayTaskDurationMap = sessions.reduce<
+    Record<string, { taskTitle: string; durationSeconds: number }>
+  >((totals, session) => {
+    const durationSeconds = getSessionDurationWithinWindowSeconds(
+      session,
+      todayWindow,
+      nowIso,
+    );
+    if (durationSeconds <= 0) {
+      return totals;
+    }
+
+    const existing = totals[session.task_id];
+    totals[session.task_id] = {
+      taskTitle: existing?.taskTitle ?? session.tasks?.title ?? "Untitled task",
+      durationSeconds: (existing?.durationSeconds ?? 0) + durationSeconds,
+    };
+    return totals;
+  }, {});
+
+  const todayTaskBreakdown = Object.entries(todayTaskDurationMap)
+    .map(([taskId, details]) => ({
+      taskId,
+      taskTitle: details.taskTitle,
+      durationSeconds: details.durationSeconds,
+    }))
+    .sort((left, right) => right.durationSeconds - left.durationSeconds);
+
+  const todayTotalDurationSeconds = todayTaskBreakdown.reduce(
+    (sum, row) => sum + row.durationSeconds,
+    0,
+  );
+
+  const trackedTotalSeconds = sessions.reduce((total, session) => {
+    return total + getTaskSessionDurationSeconds(session, nowIso);
+  }, 0);
+
+  const trackedTodaySeconds = sessions.reduce((total, session) => {
+    return (
+      total +
+      getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso)
+    );
+  }, 0);
+
+  const sessionsTodayCount = sessions.filter((session) => {
+    return (
+      getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso) > 0
+    );
+  }).length;
+
+  const longestSession = sessions.reduce<{
+    duration: number;
+    title: string | null;
+  } | null>((currentLongest, session) => {
+    const duration = getTaskSessionDurationSeconds(session, nowIso);
+    if (!currentLongest || duration > currentLongest.duration) {
+      return {
+        duration,
+        title: session.tasks?.title ?? "Untitled task",
+      };
+    }
+    return currentLongest;
+  }, null);
+
+  return {
+    todayTaskBreakdown,
+    todayTotalDurationSeconds,
+    trackedTotalSeconds,
+    trackedTodaySeconds,
+    sessionsTodayCount,
+    longestSessionSeconds: longestSession?.duration ?? null,
+    longestSessionTaskTitle: longestSession?.title ?? null,
+  };
+}
+
 export async function getOpenTimerSessions(options?: {
   supabase?: SupabaseServerClient;
   limit?: number;
@@ -374,6 +470,59 @@ export async function stopTimerSession(
   }
 
   return { errorMessage: null };
+}
+
+export async function stopActiveTimerSessionsForTask(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient; nowIso?: string },
+) {
+  const normalizedTaskId = taskId.trim();
+  if (!normalizedTaskId) {
+    return { errorMessage: "Task is required.", stoppedCount: 0 };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const { data: openSessions, error: openSessionsError } = await supabase
+    .from("task_sessions")
+    .select("id, started_at")
+    .eq("task_id", normalizedTaskId)
+    .is("ended_at", null)
+    .order("started_at", { ascending: false });
+
+  if (openSessionsError) {
+    return {
+      errorMessage: "Unable to verify active timer sessions for this task right now.",
+      stoppedCount: 0,
+    };
+  }
+
+  if (!openSessions || openSessions.length === 0) {
+    return { errorMessage: null, stoppedCount: 0 };
+  }
+
+  const endedAtIso = options?.nowIso ?? new Date().toISOString();
+
+  for (const session of openSessions) {
+    const durationSeconds = getSafeDurationSeconds(session.started_at, endedAtIso);
+    const { error: updateError } = await supabase
+      .from("task_sessions")
+      .update({
+        ended_at: endedAtIso,
+        duration_seconds: durationSeconds,
+        updated_at: endedAtIso,
+      })
+      .eq("id", session.id)
+      .is("ended_at", null);
+
+    if (updateError) {
+      return {
+        errorMessage: "Unable to stop the active timer session for this task right now.",
+        stoppedCount: 0,
+      };
+    }
+  }
+
+  return { errorMessage: null, stoppedCount: openSessions.length };
 }
 
 export async function updateTimerSessionTimestamps(
@@ -527,34 +676,12 @@ export async function getTimerWorkspaceData(options?: {
   ] as string[];
   const taskTotalDurations = await getTaskTotalDurationMap(supabase, taskIds, nowIso);
 
-  const todayTaskDurationMap = todaySessionsResult.data.reduce<
-    Record<string, { taskTitle: string; durationSeconds: number }>
-  >((totals, session) => {
-    const durationSeconds = getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso);
-    if (durationSeconds <= 0) {
-      return totals;
-    }
-
-    const existing = totals[session.task_id];
-    totals[session.task_id] = {
-      taskTitle: existing?.taskTitle ?? session.tasks?.title ?? "Untitled task",
-      durationSeconds: (existing?.durationSeconds ?? 0) + durationSeconds,
-    };
-    return totals;
-  }, {});
-
-  const todayTaskBreakdown = Object.entries(todayTaskDurationMap)
-    .map(([taskId, details]) => ({
-      taskId,
-      taskTitle: details.taskTitle,
-      durationSeconds: details.durationSeconds,
-    }))
-    .sort((left, right) => right.durationSeconds - left.durationSeconds);
-
-  const todayTotalDurationSeconds = todayTaskBreakdown.reduce(
-    (sum, row) => sum + row.durationSeconds,
-    0,
-  );
+  const aggregateSummary = calculateTimerAggregates(todaySessionsResult.data, {
+    nowIso,
+    todayWindow,
+  });
+  const todayTaskBreakdown = aggregateSummary.todayTaskBreakdown;
+  const todayTotalDurationSeconds = aggregateSummary.todayTotalDurationSeconds;
 
   const sessionHistory = completedSessionsResult.data
     .map((session) => ({
@@ -640,40 +767,23 @@ export async function getTimerSummary(options?: {
   }
 
   const sessions = data ?? [];
-  const trackedTotalSeconds = sessions.reduce((total, session) => {
-    return total + getTaskSessionDurationSeconds(session, nowIso);
-  }, 0);
-  const trackedTodaySeconds = sessions.reduce((total, session) => {
-    return total + getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso);
-  }, 0);
-
-  const sessionsTodayCount = sessions.filter((session) => {
-    return new Date(session.started_at).getTime() >= new Date(todayWindow.startIso).getTime();
-  }).length;
-
-  const longestSession = sessions.reduce<{
-    duration: number;
-    title: string | null;
-  } | null>((currentLongest, session) => {
-    const duration = getTaskSessionDurationSeconds(session, nowIso);
-    if (!currentLongest || duration > currentLongest.duration) {
-      return {
-        duration,
-        title: session.tasks?.title ?? "Untitled task",
-      };
-    }
-    return currentLongest;
-  }, null);
+  const aggregateSummary = calculateTimerAggregates(sessions, {
+    nowIso,
+    todayWindow,
+  });
 
   const summary: TimerSummary = {
-    trackedTodaySeconds,
-    trackedTodayLabel: formatDurationLabel(trackedTodaySeconds),
-    trackedTotalSeconds,
-    trackedTotalLabel: formatDurationLabel(trackedTotalSeconds),
-    sessionsTodayCount,
-    longestSessionSeconds: longestSession?.duration ?? null,
-    longestSessionLabel: longestSession ? formatDurationLabel(longestSession.duration) : null,
-    longestSessionTaskTitle: longestSession?.title ?? null,
+    trackedTodaySeconds: aggregateSummary.trackedTodaySeconds,
+    trackedTodayLabel: formatDurationLabel(aggregateSummary.trackedTodaySeconds),
+    trackedTotalSeconds: aggregateSummary.trackedTotalSeconds,
+    trackedTotalLabel: formatDurationLabel(aggregateSummary.trackedTotalSeconds),
+    sessionsTodayCount: aggregateSummary.sessionsTodayCount,
+    longestSessionSeconds: aggregateSummary.longestSessionSeconds,
+    longestSessionLabel:
+      typeof aggregateSummary.longestSessionSeconds === "number"
+        ? formatDurationLabel(aggregateSummary.longestSessionSeconds)
+        : null,
+    longestSessionTaskTitle: aggregateSummary.longestSessionTaskTitle,
   };
 
   return {

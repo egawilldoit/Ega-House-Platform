@@ -121,6 +121,7 @@ function revalidateTaskSurfaces(returnTo: string) {
   revalidatePath("/dashboard");
   revalidatePath("/today");
   revalidatePath("/timer");
+  revalidatePath("/review");
 }
 
 function redirectWithTasksError(

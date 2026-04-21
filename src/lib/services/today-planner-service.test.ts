@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clearCompletedFromToday, getTodayPlannerData } from "./today-planner-service";
+import {
+  clearCompletedFromToday,
+  getTodayPlannerData,
+  updateTodayTaskStatus,
+} from "./today-planner-service";
 
 type QueryResult = {
   data: unknown[] | null;
@@ -424,4 +428,171 @@ test("clearCompletedFromToday only clears completed tasks manually planned for t
     status: "done",
     planned_for_date: "2026-04-20",
   });
+});
+
+function createTodayStatusSupabaseMock(options?: {
+  task?: {
+    id: string;
+    status: string;
+    priority: string;
+    due_date: string | null;
+    estimate_minutes: number | null;
+    blocked_reason: string | null;
+  };
+  sessions?: Array<{ id: string; task_id: string; started_at: string; ended_at: string | null }>;
+}) {
+  const task =
+    options?.task ?? {
+      id: "task-1",
+      status: "in_progress",
+      priority: "medium",
+      due_date: null,
+      estimate_minutes: null,
+      blocked_reason: null,
+    };
+  const sessions = [...(options?.sessions ?? [])];
+
+  const sessionUpdateCalls: Array<{ sessionId: string; payload: Record<string, unknown> }> = [];
+  const taskUpdateCalls: Array<{ taskId: string; payload: Record<string, unknown> }> = [];
+
+  const supabase = {
+    from(table: string) {
+      if (table === "tasks") {
+        return {
+          select(columns: string) {
+            if (columns === "id") {
+              return {
+                eq(column: string, value: string) {
+                  assert.equal(column, "id");
+                  assert.equal(value, task.id);
+                  return {
+                    maybeSingle() {
+                      return Promise.resolve({
+                        data: { id: task.id },
+                        error: null,
+                      });
+                    },
+                  };
+                },
+              };
+            }
+
+            assert.equal(columns, "status, priority, due_date, estimate_minutes, blocked_reason");
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "id");
+                assert.equal(value, task.id);
+                return {
+                  maybeSingle() {
+                    return Promise.resolve({
+                      data: {
+                        status: task.status,
+                        priority: task.priority,
+                        due_date: task.due_date,
+                        estimate_minutes: task.estimate_minutes,
+                        blocked_reason: task.blocked_reason,
+                      },
+                      error: null,
+                    });
+                  },
+                };
+              },
+            };
+          },
+          update(payload: Record<string, unknown>) {
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "id");
+                taskUpdateCalls.push({ taskId: value, payload });
+                return Promise.resolve({ error: null });
+              },
+            };
+          },
+        };
+      }
+
+      if (table === "task_sessions") {
+        return {
+          select(columns: string) {
+            assert.equal(columns, "id, started_at");
+            const chain = {
+              taskId: "",
+              eq(column: string, value: string) {
+                assert.equal(column, "task_id");
+                chain.taskId = value;
+                return chain;
+              },
+              is(column: string, value: null) {
+                assert.equal(column, "ended_at");
+                assert.equal(value, null);
+                return chain;
+              },
+              order(column: string) {
+                assert.equal(column, "started_at");
+                const data = sessions
+                  .filter((session) => session.task_id === chain.taskId && session.ended_at === null)
+                  .map((session) => ({ id: session.id, started_at: session.started_at }));
+                return Promise.resolve({ data, error: null });
+              },
+            };
+            return chain;
+          },
+          update(payload: Record<string, unknown>) {
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "id");
+                return {
+                  is(isColumn: string, isValue: null) {
+                    assert.equal(isColumn, "ended_at");
+                    assert.equal(isValue, null);
+                    sessionUpdateCalls.push({ sessionId: value, payload });
+                    return Promise.resolve({ error: null });
+                  },
+                };
+              },
+            };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    },
+  };
+
+  return {
+    supabase: supabase as never,
+    sessionUpdateCalls,
+    taskUpdateCalls,
+  };
+}
+
+test("Today status update to done uses shared auto-stop task workflow", async () => {
+  const mock = createTodayStatusSupabaseMock({
+    sessions: [
+      {
+        id: "session-1",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:45:00.000Z",
+        ended_at: null,
+      },
+      {
+        id: "session-other",
+        task_id: "task-2",
+        started_at: "2026-04-21T09:40:00.000Z",
+        ended_at: null,
+      },
+    ],
+  });
+
+  const result = await updateTodayTaskStatus("task-1", "done", {
+    supabase: mock.supabase,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(
+    mock.sessionUpdateCalls.map((entry) => entry.sessionId),
+    ["session-1"],
+  );
+  assert.equal(mock.taskUpdateCalls.length, 1);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.status, "done");
 });

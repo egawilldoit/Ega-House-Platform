@@ -6,7 +6,7 @@ import {
   getTaskSessionDurationSeconds,
 } from "./task-session";
 
-test("uses stored duration_seconds when available", () => {
+test("prefers timestamp-derived duration for completed sessions", () => {
   const durationSeconds = getTaskSessionDurationSeconds(
     {
       task_id: "task-1",
@@ -17,7 +17,57 @@ test("uses stored duration_seconds when available", () => {
     "2026-04-16T11:00:00.000Z",
   );
 
-  assert.equal(durationSeconds, 120);
+  assert.equal(durationSeconds, 3600);
+});
+
+test("completed session duration stays fixed when recomputed at a later now", () => {
+  const firstDuration = getTaskSessionDurationSeconds(
+    {
+      task_id: "task-1",
+      started_at: "2026-04-16T09:00:00.000Z",
+      ended_at: "2026-04-16T10:00:00.000Z",
+      duration_seconds: null,
+    },
+    "2026-04-16T10:30:00.000Z",
+  );
+
+  const laterDuration = getTaskSessionDurationSeconds(
+    {
+      task_id: "task-1",
+      started_at: "2026-04-16T09:00:00.000Z",
+      ended_at: "2026-04-16T10:00:00.000Z",
+      duration_seconds: null,
+    },
+    "2026-04-16T13:30:00.000Z",
+  );
+
+  assert.equal(firstDuration, 3600);
+  assert.equal(laterDuration, 3600);
+});
+
+test("active session duration increases when recomputed at a later now", () => {
+  const firstDuration = getTaskSessionDurationSeconds(
+    {
+      task_id: "task-1",
+      started_at: "2026-04-16T09:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+    },
+    "2026-04-16T10:00:00.000Z",
+  );
+
+  const laterDuration = getTaskSessionDurationSeconds(
+    {
+      task_id: "task-1",
+      started_at: "2026-04-16T09:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+    },
+    "2026-04-16T10:15:00.000Z",
+  );
+
+  assert.equal(firstDuration, 3600);
+  assert.equal(laterDuration, 4500);
 });
 
 test("computes overlap for an open session within a day window", () => {

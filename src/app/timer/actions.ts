@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { buildTimerRedirectHref } from "@/app/timer/flash-query";
 import { getTimerActionReturnPath } from "@/app/timer/return-path";
 import {
   resolveOpenTimerSessionConflict,
@@ -32,18 +33,7 @@ function redirectToTimer(
     anchor?: string;
   },
 ): never {
-  if (!options?.errorMessage && !options?.successMessage && !options?.anchor) {
-    redirect(returnPath);
-  }
-
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  if (options?.errorMessage) {
-    target.searchParams.set("actionError", options.errorMessage);
-  }
-  if (options?.successMessage) {
-    target.searchParams.set("actionSuccess", options.successMessage);
-  }
-  redirect(`${target.pathname}${target.search}${options?.anchor ?? ""}`);
+  redirect(buildTimerRedirectHref(returnPath, options));
 }
 
 export async function startTimerAction(formData: FormData) {

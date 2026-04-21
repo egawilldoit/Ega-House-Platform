@@ -13,15 +13,6 @@ type SessionWindow = {
   endIso: string;
 };
 
-function getDurationFromDates(startedAt: string, endedAt: string) {
-  return Math.max(
-    0,
-    Math.floor(
-      (new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 1000,
-    ),
-  );
-}
-
 function toMs(iso: string) {
   const value = new Date(iso).getTime();
   return Number.isFinite(value) ? value : null;
@@ -31,12 +22,22 @@ export function getTaskSessionDurationSeconds(
   session: TaskSessionDurationRow,
   nowIso = new Date().toISOString(),
 ) {
+  const sessionStartMs = toMs(session.started_at);
+  const sessionEndMs = toMs(session.ended_at ?? nowIso);
+
+  if (
+    sessionStartMs !== null &&
+    sessionEndMs !== null &&
+    sessionEndMs >= sessionStartMs
+  ) {
+    return Math.floor((sessionEndMs - sessionStartMs) / 1000);
+  }
+
   if (typeof session.duration_seconds === "number") {
     return Math.max(0, session.duration_seconds);
   }
 
-  const endTime = session.ended_at ?? nowIso;
-  return getDurationFromDates(session.started_at, endTime);
+  return 0;
 }
 
 export function getCurrentDayWindow(now = new Date()): SessionWindow {
