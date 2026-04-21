@@ -873,13 +873,13 @@ export function QuickTaskSheet({
       }}
     >
       <SheetTrigger asChild>
-        <Button className="mx-4 mt-4 h-auto justify-start gap-3 rounded-[0.9rem] border border-[rgba(23,123,82,0.14)] bg-[rgba(23,123,82,0.08)] px-4 py-3 text-left text-[color:var(--accent)] shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] hover:bg-[rgba(23,123,82,0.12)]">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[0.8rem] bg-white/80 text-[color:var(--accent)] shadow-[0_10px_24px_rgba(23,123,82,0.14)]">
+        <Button className="mx-4 mt-4 h-auto justify-start gap-3 rounded-xl border-transparent bg-[#177b52] px-4 py-3 text-left text-white shadow-sm hover:bg-[#125f3f]">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 text-white shadow-[0_10px_24px_rgba(23,123,82,0.14)]">
             <Plus className="h-4 w-4" />
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-semibold tracking-[-0.02em]">Quick task</span>
-            <span className="mt-0.5 block text-xs text-[color:var(--muted-foreground)]">
+            <span className="mt-0.5 block text-xs font-medium text-[#e5f5ee]">
               Capture one task or stage a batch without leaving the workspace.
             </span>
           </span>

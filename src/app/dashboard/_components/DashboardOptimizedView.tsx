@@ -29,7 +29,8 @@ import { formatTimerDateTime } from "@/lib/timer-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
-import { AlertTriangle, Clock3, FolderOpenDot, Target } from "lucide-react";
+import { AlertCircle, AlertTriangle, ArrowUpRight, Clock as ClockIcon, Clock3, FolderOpenDot, LayoutGrid, ListTodo, Target } from "lucide-react";
+import { StatCard } from "@/components/ui/stat-card";
 
 import type {
   DashboardData,

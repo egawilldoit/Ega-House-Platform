@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 type InstrumentTone = "active" | "muted" | "warn" | "error" | "info";
 
 // Legacy tones from getTaskStatusTone() — mapped to instrument equivalents
-type LegacyTone = "success" | "danger" | "accent" | "neutral";
+type LegacyTone = "success" | "danger" | "accent" | "neutral" | "default" | "warning" | "destructive";
 
 type BadgeTone = InstrumentTone | LegacyTone;
 
@@ -23,6 +23,9 @@ function resolveTone(tone: BadgeTone): string {
     danger:  "status-badge status-badge-error",
     accent:  "status-badge status-badge-info",
     neutral: "status-badge status-badge-muted",
+    default: "status-badge status-badge-muted",
+    warning: "status-badge status-badge-warn",
+    destructive: "status-badge status-badge-error",
   };
   return map[tone] ?? map.muted;
 }
