@@ -163,5 +163,11 @@ export const weekReviews = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("week_reviews_owner_user_id_idx").on(table.ownerUserId)],
+  (table) => [
+    index("week_reviews_owner_user_id_idx").on(table.ownerUserId),
+    uniqueIndex("week_reviews_owner_user_id_week_start_unique").on(
+      table.ownerUserId,
+      table.weekStart,
+    ),
+  ],
 );

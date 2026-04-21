@@ -11,6 +11,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type OpenSession = {
   id: string;
+  task_id: string;
   started_at: string;
 };
 
@@ -399,7 +400,7 @@ export async function getOpenTimerSessions(options?: {
   const supabase = await resolveSupabaseClient(options?.supabase);
   let query = supabase
     .from("task_sessions")
-    .select("id, started_at")
+    .select("id, task_id, started_at")
     .is("ended_at", null)
     .order("started_at", { ascending: false });
 
@@ -465,13 +466,14 @@ export async function stopTimerSession(
   const { data: openSessions, errorMessage } = await getOpenTimerSessions({ supabase });
 
   if (errorMessage || !openSessions) {
-    return { errorMessage: "Unable to load open timer sessions." };
+    return { errorMessage: "Unable to load open timer sessions.", stoppedTaskId: null };
   }
 
   if (openSessions.length > 1) {
     return {
       errorMessage:
         "Multiple open sessions detected. Resolve the conflict before stopping timers.",
+      stoppedTaskId: null,
     };
   }
 
@@ -481,7 +483,10 @@ export async function stopTimerSession(
     : openSessions[0];
 
   if (!targetSession) {
-    return { errorMessage: "No active timer session is available to stop." };
+    return {
+      errorMessage: "No active timer session is available to stop.",
+      stoppedTaskId: null,
+    };
   }
 
   const endedAtIso = options?.nowIso ?? new Date().toISOString();
@@ -493,10 +498,10 @@ export async function stopTimerSession(
   });
 
   if (finalizeResult.errorMessage) {
-    return { errorMessage: finalizeResult.errorMessage };
+    return { errorMessage: finalizeResult.errorMessage, stoppedTaskId: null };
   }
 
-  return { errorMessage: null };
+  return { errorMessage: null, stoppedTaskId: targetSession.task_id };
 }
 
 export async function stopActiveTimerSessionsForTask(

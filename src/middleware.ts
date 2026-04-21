@@ -15,6 +15,8 @@ const LOGIN_HOST = "www.egawilldoit.online";
 const PROTECTED_ROOT_PATH_PREFIXES: Array<`/${string}`> = [
   "/dashboard",
   "/goals",
+  "/shutdown",
+  "/startup",
   "/tasks",
   "/today",
   "/timer",

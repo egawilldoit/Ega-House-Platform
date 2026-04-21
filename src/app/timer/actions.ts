@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 
 import { buildTimerRedirectHref } from "@/app/timer/flash-query";
 import { getTimerActionReturnPath } from "@/app/timer/return-path";
+import { getTaskById, updateTaskInline } from "@/lib/services/task-service";
+import { isTaskPriority } from "@/lib/task-domain";
 import {
   resolveOpenTimerSessionConflict,
   startTimerForTask,
@@ -31,9 +33,19 @@ function redirectToTimer(
     errorMessage?: string;
     successMessage?: string;
     anchor?: string;
+    stoppedTaskId?: string;
   },
 ): never {
-  redirect(buildTimerRedirectHref(returnPath, options));
+  const target = new URL(
+    buildTimerRedirectHref(returnPath, options),
+    "https://egawilldoit.online",
+  );
+  if (options?.stoppedTaskId) {
+    target.searchParams.set("stoppedTaskId", options.stoppedTaskId);
+  } else {
+    target.searchParams.delete("stoppedTaskId");
+  }
+  redirect(`${target.pathname}${target.search}${target.hash}`);
 }
 
 export async function startTimerAction(formData: FormData) {
@@ -57,6 +69,70 @@ export async function stopTimerAction(formData: FormData) {
   }
 
   revalidateTimerSurfaces(returnPath);
+  redirectToTimer(returnPath, {
+    successMessage: "Timer stopped.",
+    stoppedTaskId: result.stoppedTaskId ?? undefined,
+  });
+}
+
+type CompleteStoppedTaskDependencies = {
+  getTaskById: typeof getTaskById;
+  updateTaskInline: typeof updateTaskInline;
+};
+
+export async function completeStoppedTaskById(
+  taskId: string,
+  dependencies: CompleteStoppedTaskDependencies = {
+    getTaskById,
+    updateTaskInline,
+  },
+) {
+  const normalizedTaskId = taskId.trim();
+  if (!normalizedTaskId) {
+    return { errorMessage: "Task update request is invalid." };
+  }
+
+  const taskResult = await dependencies.getTaskById(normalizedTaskId);
+  if (taskResult.errorMessage) {
+    return { errorMessage: taskResult.errorMessage };
+  }
+
+  if (!taskResult.data) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const updateResult = await dependencies.updateTaskInline({
+    taskId: taskResult.data.id,
+    status: "done",
+    priority: isTaskPriority(taskResult.data.priority)
+      ? taskResult.data.priority
+      : "medium",
+    dueDate: taskResult.data.due_date,
+    estimateMinutes: taskResult.data.estimate_minutes,
+    blockedReason: taskResult.data.blocked_reason,
+  });
+
+  return updateResult;
+}
+
+export async function completeStoppedTaskAction(formData: FormData) {
+  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const result = await completeStoppedTaskById(taskId);
+
+  if (result.errorMessage) {
+    redirectToTimer(returnPath, {
+      errorMessage: result.errorMessage,
+      stoppedTaskId: taskId || undefined,
+    });
+  }
+
+  revalidateTimerSurfaces(returnPath);
+  redirectToTimer(returnPath, { successMessage: "Task marked done." });
+}
+
+export async function dismissStoppedTaskPromptAction(formData: FormData) {
+  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
   redirectToTimer(returnPath);
 }
 

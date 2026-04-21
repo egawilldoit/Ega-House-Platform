@@ -146,18 +146,19 @@ async function getPastReviews() {
   return data;
 }
 
-async function getSelectedWeekReviews(weekStart: string, weekEnd: string) {
+async function getSelectedWeekReview(weekStart: string, weekEnd: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("week_reviews")
     .select("id, summary, wins, blockers, next_steps, created_at, updated_at")
     .eq("week_start", weekStart)
     .eq("week_end", weekEnd)
-    .order("updated_at", { ascending: false });
+    .order("updated_at", { ascending: false })
+    .limit(1);
   if (error) {
     throw new Error(`Failed to load selected week reviews: ${error.message}`);
   }
-  return data;
+  return data?.[0] ?? null;
 }
 
 async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<WeeklyStats> {
@@ -341,10 +342,10 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   if (!bounds) {
     throw new Error("Failed to resolve selected week.");
   }
-  const [pastReviews, selectedWeekReviews, weeklyStats, sessionHeatmap, mostTrackedInsights] =
+  const [pastReviews, selectedReview, weeklyStats, sessionHeatmap, mostTrackedInsights] =
     await Promise.all([
       getPastReviews(),
-      getSelectedWeekReviews(bounds.weekStart, bounds.weekEnd),
+      getSelectedWeekReview(bounds.weekStart, bounds.weekEnd),
       getWeeklyStats(bounds.weekStart, bounds.weekEnd),
       getRecentSessionHeatmap(),
       getMostTrackedInsights(bounds.weekStart, bounds.weekEnd),
@@ -354,7 +355,6 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
     100,
     Math.round((weeklyStats.trackedSeconds / (40 * 60 * 60)) * 100),
   );
-  const selectedReview = selectedWeekReviews[0] ?? null;
   const reviewFormDefaults = selectedReview
     ? getReviewFormValuesFromRecord(selectedReview, selectedWeekOf)
     : getEmptyReviewFormValues(selectedWeekOf);
@@ -389,7 +389,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
           weekEnd={bounds.weekEnd}
           previousWeekOf={shiftIsoDateByDays(selectedWeekOf, -7)}
           nextWeekOf={shiftIsoDateByDays(selectedWeekOf, 7)}
-          existingReviewCount={selectedWeekReviews.length}
+          existingReviewCount={selectedReview ? 1 : 0}
         />
       </div>
 

@@ -23,6 +23,8 @@ import { getCurrentUser } from "@/lib/services/auth-service";
 import { getTimerWorkspaceData } from "@/lib/services/timer-service";
 
 import {
+  completeStoppedTaskAction,
+  dismissStoppedTaskPromptAction,
   resolveSessionConflictAction,
   startTimerAction,
   stopTimerAction,
@@ -98,11 +100,16 @@ function MetricCard({
 export default async function TimerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ actionError?: string; actionSuccess?: string }>;
+  searchParams: Promise<{
+    actionError?: string;
+    actionSuccess?: string;
+    stoppedTaskId?: string;
+  }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const actionError = resolvedSearchParams.actionError?.slice(0, 180) ?? null;
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
+  const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const {
     ownerUserId,
     tasks,
@@ -131,6 +138,9 @@ export default async function TimerPage({
   const topBreakdown = todayTaskBreakdown.slice(0, 3);
   const sessionControlTaskOptions = getTimerStartTaskOptions(tasks).slice(0, 100);
   const sessionControlEmptyStateCopy = getTimerStartEmptyStateCopy(tasks.length);
+  const stoppedTaskTitle =
+    tasks.find((task) => task.id === stoppedTaskId)?.title ?? "this task";
+  const showStoppedTaskPrompt = Boolean(!activeSession && stoppedTaskId);
 
   return (
     <AppShell
@@ -318,6 +328,29 @@ export default async function TimerPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-0">
+              {showStoppedTaskPrompt ? (
+                <div className="mb-4 rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
+                  <p className="glass-label text-etch">Timer stopped</p>
+                  <p className="mt-2 text-sm text-[color:var(--foreground)]">
+                    Mark <span className="font-medium">{stoppedTaskTitle}</span> done?
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <form action={completeStoppedTaskAction}>
+                      <input type="hidden" name="taskId" value={stoppedTaskId ?? ""} />
+                      <input type="hidden" name="returnTo" value="/timer" />
+                      <Button type="submit" size="sm">
+                        Done
+                      </Button>
+                    </form>
+                    <form action={dismissStoppedTaskPromptAction}>
+                      <input type="hidden" name="returnTo" value="/timer" />
+                      <Button type="submit" size="sm" variant="muted">
+                        Skip
+                      </Button>
+                    </form>
+                  </div>
+                </div>
+              ) : null}
               {activeSession ? (
                 <div className="space-y-4">
                   <div className="surface-subtle p-4">

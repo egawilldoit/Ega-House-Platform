@@ -434,8 +434,39 @@ test("stopTimerSession sets ended_at and finalizes duration_seconds", async () =
   });
 
   assert.equal(result.errorMessage, null);
+  assert.equal(result.stoppedTaskId, "task-1");
   assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
   assert.equal(mock.sessions[0]?.duration_seconds, 1800);
+});
+
+test("stopTimerSession does not return a follow-up task id when stop fails", async () => {
+  const mock = createTimerServiceSupabaseMock([
+    {
+      id: "session-a",
+      task_id: "task-1",
+      started_at: "2026-04-21T09:30:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+    },
+    {
+      id: "session-b",
+      task_id: "task-2",
+      started_at: "2026-04-21T09:35:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+    },
+  ]);
+
+  const result = await stopTimerSession({
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(
+    result.errorMessage,
+    "Multiple open sessions detected. Resolve the conflict before stopping timers.",
+  );
+  assert.equal(result.stoppedTaskId, null);
 });
 
 test("stopped sessions remain fixed across later aggregate requests", async () => {

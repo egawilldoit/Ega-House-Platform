@@ -55,6 +55,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    href: "/shutdown",
+    label: "Shutdown",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 3v9" />
+        <path d="M8 5.5A8 8 0 1016 5.5" />
+      </svg>
+    ),
+  },
+  {
     href: "/goals",
     label: "Goals",
     icon: (
@@ -84,6 +94,17 @@ const NAV_ITEMS: NavItem[] = [
         <polyline points="14 2 14 8 20 8" />
         <line x1="16" y1="13" x2="8" y2="13" />
         <line x1="16" y1="17" x2="8" y2="17" />
+      </svg>
+    ),
+  },
+  {
+    href: "/startup",
+    label: "Startup",
+    icon: (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M5 12l5 5L20 7" />
+        <path d="M12 3v4" />
+        <path d="M3 12h4" />
       </svg>
     ),
   },

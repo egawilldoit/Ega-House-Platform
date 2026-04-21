@@ -17,6 +17,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
   const initialState: SaveReviewFormState = {
     error: null,
     saved: false,
+    saveMode: null,
     values: defaultValues,
   };
 
@@ -105,7 +106,9 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
 
       {state.saved ? (
         <p className="feedback-block feedback-block-success">
-          Review saved. You can keep editing this week and save again.
+          {state.saveMode === "created"
+            ? "Weekly review created. You can keep editing this week and save again."
+            : "Weekly review updated. You can keep editing this week and save again."}
         </p>
       ) : null}
 
