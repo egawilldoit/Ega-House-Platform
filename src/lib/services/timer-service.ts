@@ -14,6 +14,27 @@ type OpenSession = {
   started_at: string;
 };
 
+export type TimerSessionTimestampUpdateInput = {
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+};
+
+type TimerSessionTimestampUpdateValidationResult =
+  | {
+      errorMessage: string;
+      data: null;
+    }
+  | {
+      errorMessage: null;
+      data: {
+        sessionId: string;
+        startedAtIso: string;
+        endedAtIso: string;
+        durationSeconds: number;
+      };
+    };
+
 export type ActiveTimerSession = {
   sessionId: string;
   taskId: string;
@@ -92,6 +113,89 @@ function toMs(value: string) {
 
 function getSafeDurationSeconds(startedAtIso: string, endedAtIso: string) {
   return Math.max(0, Math.floor((toMs(endedAtIso) - toMs(startedAtIso)) / 1000));
+}
+
+function parseTimestampWithTimezone(value: string, label: "Start" | "End") {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    return {
+      errorMessage: `${label} timestamp is required.`,
+      isoValue: null,
+    };
+  }
+
+  if (
+    !/(?:Z|[+-]\d{2}:\d{2})$/i.test(normalizedValue) ||
+    Number.isNaN(Date.parse(normalizedValue))
+  ) {
+    return {
+      errorMessage: `${label} timestamp must be a valid ISO value with timezone, for example 2026-04-21T10:15:00Z.`,
+      isoValue: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    isoValue: new Date(normalizedValue).toISOString(),
+  };
+}
+
+export function validateTimerSessionTimestampUpdateInput(
+  input: TimerSessionTimestampUpdateInput,
+): TimerSessionTimestampUpdateValidationResult {
+  const sessionId = input.sessionId.trim();
+  if (!sessionId) {
+    return {
+      errorMessage: "Session update request is invalid.",
+      data: null,
+    };
+  }
+
+  const startedAtResult = parseTimestampWithTimezone(input.startedAt, "Start");
+  if (startedAtResult.errorMessage || !startedAtResult.isoValue) {
+    return {
+      errorMessage: startedAtResult.errorMessage ?? "Start timestamp is invalid.",
+      data: null,
+    };
+  }
+
+  const endedAtResult = parseTimestampWithTimezone(input.endedAt, "End");
+  if (endedAtResult.errorMessage || !endedAtResult.isoValue) {
+    return {
+      errorMessage: endedAtResult.errorMessage ?? "End timestamp is invalid.",
+      data: null,
+    };
+  }
+
+  const startedAtMs = toMs(startedAtResult.isoValue);
+  const endedAtMs = toMs(endedAtResult.isoValue);
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
+    return {
+      errorMessage: "Session timestamps are invalid.",
+      data: null,
+    };
+  }
+
+  if (endedAtMs < startedAtMs) {
+    return {
+      errorMessage: "End timestamp must be after the start timestamp.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: {
+      sessionId,
+      startedAtIso: startedAtResult.isoValue,
+      endedAtIso: endedAtResult.isoValue,
+      durationSeconds: getSafeDurationSeconds(
+        startedAtResult.isoValue,
+        endedAtResult.isoValue,
+      ),
+    },
+  };
 }
 
 function resolveSessionConflict(openSessions: OpenSession[], nowIso: string): SessionConflictResolution | null {
@@ -267,6 +371,57 @@ export async function stopTimerSession(
 
   if (updateError) {
     return { errorMessage: "Unable to stop timer right now." };
+  }
+
+  return { errorMessage: null };
+}
+
+export async function updateTimerSessionTimestamps(
+  input: TimerSessionTimestampUpdateInput,
+  options?: { supabase?: SupabaseServerClient; nowIso?: string },
+) {
+  const validationResult = validateTimerSessionTimestampUpdateInput(input);
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage:
+        validationResult.errorMessage ?? "Session update request is invalid.",
+    };
+  }
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const { data: existingSession, error: existingSessionError } = await supabase
+    .from("task_sessions")
+    .select("id, ended_at")
+    .eq("id", validationResult.data.sessionId)
+    .limit(1)
+    .maybeSingle();
+
+  if (existingSessionError) {
+    return { errorMessage: "Unable to load this session right now." };
+  }
+
+  if (!existingSession) {
+    return { errorMessage: "Session not found." };
+  }
+
+  if (!existingSession.ended_at) {
+    return { errorMessage: "Only completed sessions can be edited right now." };
+  }
+
+  const updatedAtIso = options?.nowIso ?? new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from("task_sessions")
+    .update({
+      started_at: validationResult.data.startedAtIso,
+      ended_at: validationResult.data.endedAtIso,
+      duration_seconds: validationResult.data.durationSeconds,
+      updated_at: updatedAtIso,
+    })
+    .eq("id", validationResult.data.sessionId)
+    .not("ended_at", "is", null);
+
+  if (updateError) {
+    return { errorMessage: "Unable to update this session right now." };
   }
 
   return { errorMessage: null };

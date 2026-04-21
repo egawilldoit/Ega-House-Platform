@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { LiveDuration } from "@/components/timer/live-duration";
+import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +21,12 @@ import { formatTimerDateTime } from "@/lib/timer-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getTimerWorkspaceData } from "@/lib/services/timer-service";
 
-import { resolveSessionConflictAction, startTimerAction, stopTimerAction } from "./actions";
+import {
+  resolveSessionConflictAction,
+  startTimerAction,
+  stopTimerAction,
+  updateSessionTimingAction,
+} from "./actions";
 import {
   getTimerStartEmptyStateCopy,
   getTimerStartTaskOptions,
@@ -91,10 +97,11 @@ function MetricCard({
 export default async function TimerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ actionError?: string }>;
+  searchParams: Promise<{ actionError?: string; actionSuccess?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const actionError = resolvedSearchParams.actionError?.slice(0, 180) ?? null;
+  const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const {
     ownerUserId,
     tasks,
@@ -241,6 +248,7 @@ export default async function TimerPage({
                         {rows.slice(0, 6).map((entry) => (
                           <div
                             key={entry.id}
+                            id={`session-${entry.id}`}
                             className="grid gap-3 rounded-[1rem] border border-transparent px-3 py-3 transition hover:border-[var(--border)] hover:bg-[color:var(--instrument-raised)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                           >
                             <div className="flex items-center gap-4">
@@ -268,6 +276,25 @@ export default async function TimerPage({
                                   ? ` - ${formatTimerDateTime(entry.endedAt)}`
                                   : ""}
                               </p>
+                            </div>
+                            <div className="md:col-span-2">
+                              <details className="rounded-[0.85rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-2">
+                                <summary className="cursor-pointer text-xs uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                                  Correct timing
+                                </summary>
+                                <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
+                                  Adjust the actual time worked for this session.
+                                </p>
+                                {entry.endedAt ? (
+                                  <SessionTimingEditor
+                                    sessionId={entry.id}
+                                    startedAt={entry.startedAt}
+                                    endedAt={entry.endedAt}
+                                    returnTo="/timer"
+                                    action={updateSessionTimingAction}
+                                  />
+                                ) : null}
+                              </details>
                             </div>
                           </div>
                         ))}
@@ -470,6 +497,11 @@ export default async function TimerPage({
       {actionError ? (
         <div className="feedback-block feedback-block-error mt-4 px-5 py-3">
           <p className="glass-label text-signal-error">{actionError}</p>
+        </div>
+      ) : null}
+      {actionSuccess ? (
+        <div className="feedback-block feedback-block-success mt-4 px-5 py-3">
+          <p className="glass-label text-signal-live">{actionSuccess}</p>
         </div>
       ) : null}
     </AppShell>
