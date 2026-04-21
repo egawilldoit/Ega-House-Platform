@@ -1,12 +1,17 @@
 import { createClient } from "@/lib/supabase/server";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { TASK_STATUS_VALUES, isTaskStatus, type TaskStatus } from "@/lib/task-domain";
+import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getActiveTimerSession, getTimerSummary } from "@/lib/services/timer-service";
 import { updateTaskInline, validateTaskInlineUpdateInput } from "@/lib/services/task-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 const SUGGESTION_LIMIT = 6;
+const TODAY_TASK_SELECT_WITH_BLOCKED_REASON =
+  "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)";
+const TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON =
+  "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)";
 
 type TodayTaskRow = {
   id: string;
@@ -144,6 +149,63 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
+async function queryTodayTaskRowsWithBlockedReasonFallback(
+  supabase: SupabaseServerClient,
+  mode: "selected" | "pinned" | "inProgress",
+  today: string,
+): Promise<{ data: TodayTaskRow[]; errorMessage: string | null }> {
+  const applyFilters = (query: ReturnType<SupabaseServerClient["from"]>) => {
+    if (mode === "selected") {
+      return query
+        .or(`planned_for_date.eq.${today},due_date.eq.${today}`)
+        .order("updated_at", { ascending: false })
+        .limit(240);
+    }
+
+    if (mode === "pinned") {
+      return query
+        .not("focus_rank", "is", null)
+        .neq("status", "done")
+        .order("focus_rank", { ascending: true })
+        .order("updated_at", { ascending: false })
+        .limit(80);
+    }
+
+    return query
+      .eq("status", "in_progress")
+      .order("updated_at", { ascending: false })
+      .limit(80);
+  };
+
+  const primaryResult = await applyFilters(
+    supabase.from("tasks").select(TODAY_TASK_SELECT_WITH_BLOCKED_REASON),
+  );
+
+  if (!primaryResult.error) {
+    return { data: (primaryResult.data ?? []) as TodayTaskRow[], errorMessage: null };
+  }
+
+  if (!isMissingTasksBlockedReasonColumn(primaryResult.error)) {
+    return { data: [], errorMessage: primaryResult.error.message };
+  }
+
+  const fallbackResult = await applyFilters(
+    supabase.from("tasks").select(TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON),
+  );
+
+  if (fallbackResult.error) {
+    return { data: [], errorMessage: fallbackResult.error.message };
+  }
+
+  return {
+    data: (fallbackResult.data ?? []).map((task: Omit<TodayTaskRow, "blocked_reason">) => ({
+      ...task,
+      blocked_reason: null,
+    })),
+    errorMessage: null,
+  };
+}
+
 export async function getTodayPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
@@ -156,48 +218,30 @@ export async function getTodayPlannerData(options?: {
 
   const [selectedResult, pinnedResult, inProgressResult, activeTimerResult, timerSummaryResult] =
     await Promise.all([
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
-        )
-        .or(`planned_for_date.eq.${today},due_date.eq.${today}`)
-        .order("updated_at", { ascending: false })
-        .limit(240),
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
-        )
-        .not("focus_rank", "is", null)
-        .neq("status", "done")
-        .order("focus_rank", { ascending: true })
-        .order("updated_at", { ascending: false })
-        .limit(80),
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)",
-        )
-        .eq("status", "in_progress")
-        .order("updated_at", { ascending: false })
-        .limit(80),
+      queryTodayTaskRowsWithBlockedReasonFallback(supabase, "selected", today),
+      queryTodayTaskRowsWithBlockedReasonFallback(supabase, "pinned", today),
+      queryTodayTaskRowsWithBlockedReasonFallback(supabase, "inProgress", today),
       options?.activeTimerResult ? Promise.resolve(options.activeTimerResult) : getActiveTimerSession(),
       options?.timerSummaryResult ? Promise.resolve(options.timerSummaryResult) : getTimerSummary({ limit: 120 }),
     ]);
 
-  if (selectedResult.error) {
+  if (selectedResult.errorMessage) {
+    console.error("Today planner selected query failed", selectedResult.errorMessage);
     return { errorMessage: "Could not load Today plan right now.", data: null };
   }
 
-  if (pinnedResult.error || inProgressResult.error) {
+  if (pinnedResult.errorMessage || inProgressResult.errorMessage) {
+    console.error("Today planner suggestions query failed", {
+      pinned: pinnedResult.errorMessage,
+      inProgress: inProgressResult.errorMessage,
+    });
     return { errorMessage: "Could not load Today suggestions right now.", data: null };
   }
 
   const activeTaskId = activeTimerResult.data?.taskId ?? null;
 
   const selectedTasksById = new Map<string, TodayPlannerTask>();
-  for (const row of (selectedResult.data ?? []) as TodayTaskRow[]) {
+  for (const row of selectedResult.data) {
     const mapped = mapTaskRow(row, activeTaskId, today);
     if (!mapped) {
       continue;
@@ -229,8 +273,8 @@ export async function getTodayPlannerData(options?: {
       .slice(0, SUGGESTION_LIMIT);
 
   const suggestions = {
-    pinned: toSuggestionSlice((pinnedResult.data ?? []) as TodayTaskRow[]),
-    inProgress: toSuggestionSlice((inProgressResult.data ?? []) as TodayTaskRow[]),
+    pinned: toSuggestionSlice(pinnedResult.data),
+    inProgress: toSuggestionSlice(inProgressResult.data),
   };
 
   const totalEstimateMinutes = selectedTasks.reduce(
@@ -374,11 +418,29 @@ export async function updateTodayTaskStatus(
     return { errorMessage: scope.errorMessage ?? "Task is unavailable." };
   }
 
-  const { data: taskData, error: taskLoadError } = await supabase
+  let { data: taskData, error: taskLoadError } = await supabase
     .from("tasks")
     .select("status, priority, due_date, estimate_minutes, blocked_reason")
     .eq("id", scope.taskId)
     .maybeSingle();
+
+  if (taskLoadError && isMissingTasksBlockedReasonColumn(taskLoadError)) {
+    const fallbackResult = await supabase
+      .from("tasks")
+      .select("status, priority, due_date, estimate_minutes")
+      .eq("id", scope.taskId)
+      .maybeSingle();
+
+    if (!fallbackResult.error) {
+      taskData = fallbackResult.data
+        ? {
+            ...fallbackResult.data,
+            blocked_reason: null,
+          }
+        : null;
+      taskLoadError = null;
+    }
+  }
 
   if (taskLoadError || !taskData) {
     return { errorMessage: "Unable to load task details right now." };
