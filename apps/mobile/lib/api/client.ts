@@ -17,9 +17,15 @@ type ApiClientSessionHandlers = {
 type JsonRecord = Record<string, unknown>;
 
 let sessionHandlers: ApiClientSessionHandlers | null = null;
+const DEFAULT_PRODUCTION_API_BASE_URL = 'https://www.egawilldoit.online';
+const API_DEBUG_PREFIX = '[mobile-api]';
 
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '');
+}
+
+function isExpoDevRuntime() {
+  return __DEV__;
 }
 
 function resolveFallbackApiBaseUrl() {
@@ -28,12 +34,12 @@ function resolveFallbackApiBaseUrl() {
     Constants.manifest2?.extra?.expoClient?.hostUri ??
     null;
 
-  if (!hostUri) {
-    return 'http://localhost:3000';
+  if (isExpoDevRuntime() && hostUri) {
+    const host = hostUri.split(':')[0];
+    return `http://${host}:3000`;
   }
 
-  const host = hostUri.split(':')[0];
-  return `http://${host}:3000`;
+  return DEFAULT_PRODUCTION_API_BASE_URL;
 }
 
 export function getApiBaseUrl() {
@@ -59,6 +65,52 @@ async function parseApiErrorMessage(response: Response) {
   return parsed?.error?.message || text || `Request failed (${response.status})`;
 }
 
+function logApiDiagnostic(event: string, details: Record<string, unknown>) {
+  console.info(API_DEBUG_PREFIX, event, details);
+}
+
+function buildNetworkErrorMessage(endpoint: string, error: unknown) {
+  const baseUrl = getApiBaseUrl();
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (!process.env.EXPO_PUBLIC_API_BASE_URL?.trim() && !isExpoDevRuntime()) {
+    return `Unable to reach ${endpoint}. Release build is using fallback API base URL ${baseUrl}. Set EXPO_PUBLIC_API_BASE_URL if this is not your production backend.`;
+  }
+
+  if (baseUrl.startsWith('http://') && !isExpoDevRuntime()) {
+    return `Unable to reach ${endpoint}. Android release builds require a reachable HTTPS API URL; current base URL is ${baseUrl}.`;
+  }
+
+  if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('10.0.2.2')) {
+    return `Unable to reach ${endpoint}. Mobile release builds cannot use local-only API hosts such as ${baseUrl}.`;
+  }
+
+  return `Unable to reach ${endpoint}: ${message}`;
+}
+
+async function fetchMobileApi(endpoint: string, init: RequestInit) {
+  try {
+    return await fetch(endpoint, init);
+  } catch (error) {
+    logApiDiagnostic('network-error', {
+      endpoint,
+      apiBaseUrl: getApiBaseUrl(),
+      hasExpoPublicApiBaseUrl: Boolean(process.env.EXPO_PUBLIC_API_BASE_URL?.trim()),
+      isDev: isExpoDevRuntime(),
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorCause:
+        error instanceof Error && 'cause' in error ? String(error.cause ?? '') : undefined,
+    });
+
+    const wrappedError = new Error(buildNetworkErrorMessage(endpoint, error)) as Error & {
+      cause?: unknown;
+    };
+    wrappedError.cause = error;
+    throw wrappedError;
+  }
+}
+
 async function performRefresh() {
   if (!sessionHandlers) {
     return false;
@@ -71,7 +123,8 @@ async function performRefresh() {
     return false;
   }
 
-  const response = await fetch(`${getApiBaseUrl()}/api/mobile/auth/refresh`, {
+  const endpoint = `${getApiBaseUrl()}/api/mobile/auth/refresh`;
+  const response = await fetchMobileApi(endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -82,6 +135,10 @@ async function performRefresh() {
   });
 
   if (!response.ok) {
+    logApiDiagnostic('refresh-failed', {
+      endpoint,
+      status: response.status,
+    });
     await sessionHandlers.clearSession();
     sessionHandlers.onUnauthorized();
     return false;
@@ -123,7 +180,8 @@ export async function mobileApiFetch<T>(
   } = options;
 
   const headers = await buildHeaders(requestInit.headers, auth);
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+  const endpoint = `${getApiBaseUrl()}${path}`;
+  const response = await fetchMobileApi(endpoint, {
     ...requestInit,
     headers,
   });
@@ -139,7 +197,13 @@ export async function mobileApiFetch<T>(
   }
 
   if (!response.ok) {
-    throw new Error(await parseApiErrorMessage(response));
+    const errorMessage = await parseApiErrorMessage(response);
+    logApiDiagnostic('http-error', {
+      endpoint,
+      status: response.status,
+      errorMessage,
+    });
+    throw new Error(errorMessage);
   }
 
   if (response.status === 204) {
