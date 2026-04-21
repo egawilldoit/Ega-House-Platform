@@ -6,10 +6,10 @@ import {
   saveShutdownReflectionNoteAction,
 } from "@/app/shutdown/actions";
 import { AppShell } from "@/components/layout/app-shell";
+import { ShutdownReflectionForm } from "@/components/shutdown/shutdown-reflection-form";
 import { ShutdownTaskList } from "@/components/shutdown/shutdown-task-list";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import { formatIsoDate } from "@/lib/review-week";
 import { getShutdownData } from "@/lib/services/shutdown-service";
 import { formatTaskDueDate } from "@/lib/task-due-date";
@@ -136,19 +136,10 @@ export default async function ShutdownPage({
                 <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
                   Save a short shutdown note into this week&apos;s review `next steps`.
                 </p>
-                <form action={saveShutdownReflectionNoteAction} className="space-y-3">
-                  <input type="hidden" name="returnTo" value="/shutdown" />
-                  <Textarea
-                    name="reflectionNote"
-                    maxLength={320}
-                    placeholder="What should tomorrow start with?"
-                    aria-label="Shutdown reflection note"
-                    className="min-h-[90px]"
-                  />
-                  <button type="submit" className="btn-instrument btn-instrument-muted h-8 px-3 text-xs">
-                    Save note
-                  </button>
-                </form>
+                <ShutdownReflectionForm
+                  action={saveShutdownReflectionNoteAction}
+                  returnTo="/shutdown"
+                />
 
                 {data.currentWeekReview ? (
                   <div className="surface-subtle space-y-1 p-3 text-xs text-[color:var(--muted-foreground)]">

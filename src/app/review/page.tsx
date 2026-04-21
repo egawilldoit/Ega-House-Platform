@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { SessionHeatmap } from "@/components/review/session-heatmap";
+import { WeekBarChart } from "@/components/review/week-bar-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -263,6 +264,19 @@ function StatPanel({
   );
 }
 
+function getVelocityBand(velocity: number) {
+  if (velocity >= 75) {
+    return { label: "High output", tone: "success" as const };
+  }
+  if (velocity >= 40) {
+    return { label: "On track", tone: "info" as const };
+  }
+  if (velocity >= 20) {
+    return { label: "Light week", tone: "warn" as const };
+  }
+  return { label: "Early cycle", tone: "muted" as const };
+}
+
 function MostTrackedSection({
   title,
   rows,
@@ -359,6 +373,9 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
     ? getReviewFormValuesFromRecord(selectedReview, selectedWeekOf)
     : getEmptyReviewFormValues(selectedWeekOf);
   const blockerCount = weeklyStats.blockedTasks.length;
+  const velocityBand = getVelocityBand(cycleVelocity);
+  const sparseHeatmap = sessionHeatmap.filter((entry) => entry.trackedSeconds > 0).length < 5;
+  const weekBarData = sessionHeatmap.slice(-7);
 
   return (
     <AppShell
@@ -405,6 +422,9 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
                 {cycleVelocity}
                 <span className="ml-1 text-2xl text-[color:var(--muted-foreground)]">%</span>
               </div>
+              <div className="mt-3">
+                <Badge tone={velocityBand.tone}>{velocityBand.label}</Badge>
+              </div>
               <p className="mt-4 max-w-xl text-sm leading-7 text-[color:var(--muted-foreground)]">
                 Weekly focus utilization against a 40-hour operating target, derived from
                 tracked task sessions and review-period activity. Export CSV to download the
@@ -438,7 +458,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
       </div>
 
       <div className="mt-6">
-        <SessionHeatmap data={sessionHeatmap} />
+        {sparseHeatmap ? <WeekBarChart data={weekBarData} /> : <SessionHeatmap data={sessionHeatmap} />}
       </div>
 
       <div className="mt-6">

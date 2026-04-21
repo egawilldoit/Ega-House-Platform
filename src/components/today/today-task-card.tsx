@@ -9,7 +9,8 @@ import {
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatTaskToken, getTaskStatusTone, TASK_STATUS_VALUES } from "@/lib/task-domain";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { formatTaskToken, TASK_STATUS_VALUES } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 
@@ -71,7 +72,7 @@ export function TodayTaskCard({
             {task.hasActiveTimer ? <Badge tone="active">Active timer</Badge> : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
+            <StatusBadge status={task.status} />
             <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
             {cardMeta.showDueTodayBadge ? <Badge tone="info">Due today</Badge> : null}
             {task.focusRank ? <Badge tone="info">Pinned #{task.focusRank}</Badge> : null}
@@ -123,39 +124,57 @@ export function TodayTaskCard({
           </form>
         ) : null}
 
-        <form action={updateTodayTaskStatusAction} className="flex items-center gap-2">
-          <input type="hidden" name="taskId" value={task.id} />
-          <input type="hidden" name="returnTo" value={returnTo} />
-          <select
-            name="status"
-            defaultValue={task.status}
-            aria-label={`Change status for ${task.title}`}
-            className="input-instrument min-h-8 min-w-32 px-2 py-0 text-[10px] uppercase tracking-[0.14em]"
-          >
-            {statusOptions.map((statusValue) => (
-              <option key={statusValue} value={statusValue}>
-                {formatTaskToken(statusValue)}
-              </option>
-            ))}
-          </select>
-          <Button type="submit" size="sm" variant="ghost">
-            Set
-          </Button>
-        </form>
+        <details className="action-overflow ml-auto">
+          <summary className="btn-instrument btn-instrument-muted flex h-8 cursor-pointer items-center px-3 text-xs">
+            More
+          </summary>
+          <div className="action-overflow-menu">
+            <div className="space-y-2">
+              <form action={updateTodayTaskStatusAction} className="space-y-2">
+                <input type="hidden" name="taskId" value={task.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <select
+                  name="status"
+                  defaultValue={task.status}
+                  aria-label={`Change status for ${task.title}`}
+                  className="input-instrument min-h-8 w-full px-2 py-0 text-[10px] uppercase tracking-[0.14em]"
+                >
+                  {statusOptions.map((statusValue) => (
+                    <option key={statusValue} value={statusValue}>
+                      {formatTaskToken(statusValue)}
+                    </option>
+                  ))}
+                </select>
+                <Button type="submit" size="sm" variant="ghost" className="w-full justify-center">
+                  Set status
+                </Button>
+              </form>
 
-        {cardMeta.canRemoveFromToday ? (
-          <form action={removeTaskFromTodayAction}>
-            <input type="hidden" name="taskId" value={task.id} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="ghost" aria-label={`${cardMeta.removeLabel} for ${task.title}`}>
-              {cardMeta.removeLabel}
-            </Button>
-          </form>
-        ) : null}
+              {cardMeta.canRemoveFromToday ? (
+                <form action={removeTaskFromTodayAction}>
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="ghost"
+                    className="w-full justify-center"
+                    aria-label={`${cardMeta.removeLabel} for ${task.title}`}
+                  >
+                    {cardMeta.removeLabel}
+                  </Button>
+                </form>
+              ) : null}
 
-        <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3">
-          Open
-        </Link>
+              <Link
+                href={getTaskHref(task)}
+                className="btn-instrument btn-instrument-muted flex h-8 w-full items-center justify-center px-3 text-xs"
+              >
+                Open task
+              </Link>
+            </div>
+          </div>
+        </details>
       </div>
     </article>
   );

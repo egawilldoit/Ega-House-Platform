@@ -3,8 +3,8 @@ import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
+import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
-import { LiveDuration } from "@/components/timer/live-duration";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatDurationLabel } from "@/lib/task-session";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getTimerWorkspaceData } from "@/lib/services/timer-service";
+import { Clock3 } from "lucide-react";
 
 import {
   completeStoppedTaskAction,
@@ -230,9 +232,11 @@ export default async function TimerPage({
           </CardHeader>
           <CardContent className="pt-0">
             {sessionHistory.length === 0 ? (
-              <div className="surface-empty px-4 py-4 text-sm text-[color:var(--muted-foreground)]">
-                No completed session entries yet.
-              </div>
+              <EmptyState
+                icon={Clock3}
+                title="No completed sessions yet"
+                description="Start a timer from a task to begin building session history."
+              />
             ) : (
               <div className="space-y-6">
                 {["Today", "Earlier"].map((groupLabel) => {
@@ -263,11 +267,7 @@ export default async function TimerPage({
                             className="grid gap-3 rounded-[1rem] border border-transparent px-3 py-3 transition hover:border-[var(--border)] hover:bg-[color:var(--instrument-raised)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
                           >
                             <div className="flex items-center gap-4">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[rgba(34,197,94,0.08)] text-[var(--signal-live)]">
-                                <span className="text-sm font-semibold">
-                                  {entry.projectName.slice(0, 1).toUpperCase()}
-                                </span>
-                              </div>
+                              <span className="h-2.5 w-2.5 rounded-full bg-[var(--signal-live)]" />
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
                                   {entry.taskTitle}
@@ -278,7 +278,7 @@ export default async function TimerPage({
                               </div>
                             </div>
                             <div className="text-left md:text-right">
-                              <p className="text-sm font-medium text-[color:var(--foreground)]">
+                              <p className="text-base font-semibold text-[color:var(--foreground)]">
                                 {formatDurationLabel(entry.durationSeconds)}
                               </p>
                               <p className="text-xs text-[color:var(--muted-foreground)]">
@@ -352,25 +352,12 @@ export default async function TimerPage({
                 </div>
               ) : null}
               {activeSession ? (
-                <div className="space-y-4">
-                  <div className="surface-subtle p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="accent">Active now</Badge>
-                      <Badge tone="muted">
-                        {activeSession.tasks?.projects?.name ?? "Unknown project"}
-                      </Badge>
-                      {activeSession.tasks?.goals?.title ? (
-                        <Badge tone="muted">{activeSession.tasks.goals.title}</Badge>
-                      ) : null}
-                    </div>
-                    <p className="mt-3 text-sm font-medium text-[color:var(--foreground)]">
-                      {activeSession.tasks?.title ?? "Untitled task"}
-                    </p>
-                    <div className="mt-4">
-                      <LiveDuration startedAt={activeSession.started_at} />
-                    </div>
-                  </div>
-                </div>
+                <ActiveTimerDisplay
+                  session={activeSession}
+                  taskContextHref={activeTaskContextHref}
+                  hasSessionConflict={hasSessionConflict}
+                  totalTrackedDurationSeconds={trackedTotalSeconds}
+                />
               ) : (
                 <form action={startTimerAction} className="space-y-3">
                   <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">

@@ -6,6 +6,8 @@ import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   getGoalHealthLabel,
   getGoalHealthTone,
@@ -27,6 +29,7 @@ import { formatTimerDateTime } from "@/lib/timer-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
+import { AlertTriangle, Clock3, FolderOpenDot, Target } from "lucide-react";
 
 import type {
   DashboardData,
@@ -132,7 +135,7 @@ function TaskRow({ task, showPinAction = true }: { task: DashboardTodayTask; sho
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap gap-2">
-        <Badge tone={getTaskStatusTone(task.status)}>{formatTaskToken(task.status)}</Badge>
+        <StatusBadge status={task.status} />
         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
         {task.focusRank ? <Badge tone="info">Pinned #{task.focusRank}</Badge> : null}
         {showPinAction ? (
@@ -177,7 +180,7 @@ function GoalRow({ goal }: { goal: DashboardGoalStatus }) {
             Progress
           </div>
         </div>
-        <Badge tone={getTaskStatusTone(goal.status)}>{formatTaskToken(goal.status)}</Badge>
+        <StatusBadge status={goal.status} label={formatTaskToken(goal.status)} />
         {goalHealth ? (
           <Badge tone={getGoalHealthTone(goalHealth)}>{getGoalHealthLabel(goalHealth)}</Badge>
         ) : null}
@@ -197,7 +200,7 @@ function ProjectRow({ project }: { project: DashboardProjectStatus }) {
           Updated {formatTimerDateTime(project.updatedAt)}
         </p>
       </div>
-      <Badge tone={getTaskStatusTone(project.status)}>{formatTaskToken(project.status)}</Badge>
+      <StatusBadge status={project.status} label={formatTaskToken(project.status)} />
     </article>
   );
 }
@@ -270,19 +273,24 @@ function FocusPanel({
 
   if (!focusPanel) {
     return (
-      <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-        Focus recommendation is warming up.
-      </div>
+      <EmptyState
+        icon={Clock3}
+        title="Focus recommendation is warming up"
+        description="The recommendation engine is collecting enough task context."
+      />
     );
   }
 
   if (focusPanel.state === "blocked_only") {
     return (
       <div className="space-y-3">
-        <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-          {focusPanel.blockedTaskCount} open task
-          {focusPanel.blockedTaskCount === 1 ? " is" : "s are"} blocked. Unblock work or update status to resume execution.
-        </div>
+        <EmptyState
+          icon={AlertTriangle}
+          title="Only blocked work detected"
+          description={`${focusPanel.blockedTaskCount} open task${
+            focusPanel.blockedTaskCount === 1 ? " is" : "s are"
+          } blocked. Unblock work or update status to resume execution.`}
+        />
         <div className="flex flex-wrap gap-2">
           <Badge tone="danger">Blocked only</Badge>
           <Badge tone="muted">{focusPanel.openTaskCount} open</Badge>
@@ -300,9 +308,11 @@ function FocusPanel({
   if (focusPanel.state === "empty") {
     return (
       <div className="space-y-3">
-        <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-          No actionable tasks are available yet. Capture a task or reopen a completed item to start focus time.
-        </div>
+        <EmptyState
+          icon={Target}
+          title="No actionable tasks yet"
+          description="Capture a task or reopen a completed item to start focus time."
+        />
         <div className="flex flex-wrap gap-2">
           <Link href="/tasks" className="btn-instrument btn-instrument-muted">
             Open tasks
@@ -440,9 +450,10 @@ export function DashboardOptimizedView({
       contentClassName="pb-20"
       actions={
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={health.state === "healthy" ? "active" : "warn"}>
-            {health.state === "healthy" ? "System healthy" : "Probe degraded"}
-          </Badge>
+          <StatusBadge
+            status={health.state === "healthy" ? "done" : "blocked"}
+            label={health.state === "healthy" ? "System healthy" : "Probe degraded"}
+          />
           <Badge tone="muted">
             {summary ? `${summary.sessionsTodayCount} sessions today` : "Timer summary pending"}
           </Badge>
@@ -498,12 +509,18 @@ export function DashboardOptimizedView({
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="active">Command center</Badge>
                 {linearProject.data?.status ? (
-                  <Badge tone={getTaskStatusTone(linearProject.data.status)}>
-                    {formatTaskToken(linearProject.data.status)}
-                  </Badge>
+                  <StatusBadge
+                    status={linearProject.data.status}
+                    label={formatTaskToken(linearProject.data.status)}
+                  />
                 ) : null}
                 {activeTimer.error ? <Badge tone="warn">Timer feed issue</Badge> : null}
               </div>
+              {health.state !== "healthy" ? (
+                <div className="mt-4 rounded-[0.9rem] border border-[rgba(230,81,0,0.28)] bg-[rgba(230,81,0,0.08)] px-3 py-2 text-sm text-[color:var(--signal-warn)]">
+                  {health.statusText}
+                </div>
+              ) : null}
 
               <div className="mt-5 max-w-3xl">
                 <p className="glass-label text-white/70">Current focus</p>
@@ -583,9 +600,13 @@ export function DashboardOptimizedView({
                 </p>
               </>
             ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                Save a weekly reflection and it will appear here as the dashboard narrative anchor.
-              </div>
+              <EmptyState
+                icon={Clock3}
+                title="Review memory is empty"
+                description="Save a weekly reflection and it will appear here as the dashboard narrative anchor."
+                actionLabel="Open review"
+                actionHref="/review"
+              />
             )}
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -651,9 +672,13 @@ export function DashboardOptimizedView({
                   ))}
               </div>
             ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                Nothing is in today&apos;s execution lane yet. Pin a task, start a timer, or give work a due date to shape the plan.
-              </div>
+              <EmptyState
+                icon={Target}
+                title="Today lane is empty"
+                description="Pin a task, start a timer, or set a due date to shape the plan."
+                actionLabel="Open Today"
+                actionHref="/today"
+              />
             )}
           </CardContent>
         </Card>
@@ -708,9 +733,13 @@ export function DashboardOptimizedView({
             ) : goalItems.length > 0 ? (
               goalItems.slice(0, 4).map((goal) => <GoalRow key={goal.id} goal={goal} />)
             ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                No goals exist yet. The create-goal form is already available on the goals screen.
-              </div>
+              <EmptyState
+                icon={Target}
+                title="No goals yet"
+                description="Create goals to anchor strategic execution progress."
+                actionLabel="Open goals"
+                actionHref="/goals"
+              />
             )}
           </CardContent>
         </Card>
@@ -740,9 +769,13 @@ export function DashboardOptimizedView({
             ) : projectItems.length > 0 ? (
               projectItems.slice(0, 5).map((project) => <ProjectRow key={project.id} project={project} />)
             ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                No projects exist yet. Project records will appear here once they are created.
-              </div>
+              <EmptyState
+                icon={FolderOpenDot}
+                title="No projects yet"
+                description="Project records will appear here once they are created."
+                actionLabel="Manage projects"
+                actionHref="/tasks/projects"
+              />
             )}
           </CardContent>
         </Card>
@@ -806,9 +839,11 @@ export function DashboardOptimizedView({
                 ) : null}
               </div>
             ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                Timer history could not be summarized yet.
-              </div>
+              <EmptyState
+                icon={Clock3}
+                title="Timer summary unavailable"
+                description="Tracked sessions will appear once timer history is available."
+              />
             )}
           </CardContent>
           <CardFooter>

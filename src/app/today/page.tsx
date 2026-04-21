@@ -10,9 +10,11 @@ import { TodaySummaryBar } from "@/components/today/today-summary-bar";
 import { TodayTaskCard } from "@/components/today/today-task-card";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getTodayPlannerData } from "@/lib/services/today-planner-service";
+import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Today | EGA House",
@@ -105,18 +107,21 @@ export default async function TodayPage({
             {allTodayCount === 0 ? (
               <Card className="border-[var(--border)] bg-white">
                 <CardContent className="space-y-3 px-5 py-5 text-center">
-                  <p className="glass-label text-etch">Nothing planned yet for today.</p>
-                  <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-                    Add tasks from pinned or in-progress suggestions to create a focused execution lane.
-                  </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    <a href="#pinned-suggestions" className="btn-instrument btn-instrument-muted flex h-8 items-center px-3">
-                      Add from pinned
-                    </a>
-                    <Link href="/tasks" className="btn-instrument flex h-8 items-center px-3">
-                      Open all tasks
-                    </Link>
-                  </div>
+                  <EmptyState
+                    icon={CalendarCheck2}
+                    title="Nothing planned yet for today"
+                    description="Add tasks from pinned or in-progress suggestions to create a focused execution lane."
+                    action={
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <a href="#pinned-suggestions" className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
+                          Add from pinned
+                        </a>
+                        <Link href="/tasks" className="btn-instrument flex h-8 items-center px-3 text-xs">
+                          Open all tasks
+                        </Link>
+                      </div>
+                    }
+                  />
                 </CardContent>
               </Card>
             ) : null}
@@ -126,9 +131,11 @@ export default async function TodayPage({
               count={todayData.planned.length}
               tone="muted"
               emptyState={
-                <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  No planned tasks yet.
-                </div>
+                <EmptyState
+                  icon={CircleDashed}
+                  title="No planned tasks"
+                  description="Pick from suggestions to build a focused plan for today."
+                />
               }
             >
               {todayData.planned.map((task) => (
@@ -146,9 +153,11 @@ export default async function TodayPage({
               count={todayData.inProgress.length}
               tone="info"
               emptyState={
-                <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  No active in-progress tasks in Today.
-                </div>
+                <EmptyState
+                  icon={CirclePlay}
+                  title="No in-progress tasks"
+                  description="Start a timer on a planned item to move it into active execution."
+                />
               }
             >
               {todayData.inProgress.map((task) => (
@@ -166,9 +175,11 @@ export default async function TodayPage({
               count={todayData.blocked.length}
               tone="warn"
               emptyState={
-                <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  No blocked tasks in Today.
-                </div>
+                <EmptyState
+                  icon={CircleOff}
+                  title="No blocked tasks"
+                  description="Blocked work will surface here when status is set to blocked."
+                />
               }
             >
               {todayData.blocked.map((task) => (
@@ -197,7 +208,13 @@ export default async function TodayPage({
                   </button>
                 </form>
               ) : null}
-              emptyState={<div className="text-xs text-[color:var(--muted-foreground)]">No completed Today items yet.</div>}
+              emptyState={
+                <EmptyState
+                  icon={CircleCheck}
+                  title="No completed items yet"
+                  description="Completed Today tasks will appear here for quick cleanup."
+                />
+              }
             >
               {todayData.completed.map((task) => (
                 <TodayTaskCard

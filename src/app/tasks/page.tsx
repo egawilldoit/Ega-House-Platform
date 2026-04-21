@@ -7,6 +7,7 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
 } from "@/app/tasks/actions";
+import { startTimerAction } from "@/app/timer/actions";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
@@ -18,6 +19,9 @@ import {
 } from "@/components/tasks/task-filter-controls";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Card,
   CardAction,
@@ -39,13 +43,13 @@ import {
 import { formatDurationLabel } from "@/lib/task-session";
 import {
   formatTaskToken,
-  getTaskStatusTone,
   isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
+import { ListChecks } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Tasks | EGA House",
@@ -200,12 +204,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
           <CardContent className="space-y-3 pt-5">
             {tasks.length === 0 ? (
-              <div className="surface-empty px-5 py-5 text-center">
-                <p className="glass-label text-etch">No tasks match current filters</p>
-                <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  Reset one or more filters to bring the execution queue back into view.
-                </p>
-              </div>
+              <EmptyState
+                icon={ListChecks}
+                title="No tasks match current filters"
+                description="Reset one or more filters to bring the execution queue back into view."
+                actionLabel="Reset filters"
+                actionHref="/tasks"
+              />
             ) : (
               tasks.map((task) => {
                 const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
@@ -238,9 +243,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               </div>
 
                               <div className="flex flex-wrap gap-2 xl:hidden">
-                                <Badge tone={getTaskStatusTone(task.status)}>
-                                  {formatTaskToken(task.status)}
-                                </Badge>
+                                <StatusBadge status={task.status} />
                                 <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
                                 {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                               </div>
@@ -269,9 +272,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       </div>
 
                       <div className="hidden flex-wrap gap-2 xl:flex">
-                        <Badge tone={getTaskStatusTone(task.status)}>
-                          {formatTaskToken(task.status)}
-                        </Badge>
+                        <StatusBadge status={task.status} />
                         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
                                 {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                       </div>
@@ -307,16 +308,26 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         defaultEstimateMinutes={task.estimate_minutes}
                         defaultBlockedReason={task.blocked_reason}
                         error={inlineError}
+                        overflowActions={
+                          <>
+                            <form action={startTimerAction}>
+                              <input type="hidden" name="taskId" value={task.id} />
+                              <input type="hidden" name="returnTo" value={returnPath} />
+                              <Button type="submit" size="sm" variant="ghost" className="w-full justify-center">
+                                Start timer
+                              </Button>
+                            </form>
+                            <FocusPinToggleForm
+                              action={task.focus_rank ? unpinTaskAction : pinTaskAction}
+                              taskId={task.id}
+                              returnTo={returnPath}
+                              isPinned={task.focus_rank !== null}
+                              className="w-full"
+                              fullWidth
+                            />
+                          </>
+                        }
                       />
-                      <div className="lg:justify-self-end">
-                        <FocusPinToggleForm
-                          action={task.focus_rank ? unpinTaskAction : pinTaskAction}
-                          taskId={task.id}
-                          returnTo={returnPath}
-                          isPinned={task.focus_rank !== null}
-                          compact
-                        />
-                      </div>
                     </div>
                   </article>
                 );

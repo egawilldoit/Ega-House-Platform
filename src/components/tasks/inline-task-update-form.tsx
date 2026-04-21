@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ type InlineTaskUpdateFormProps = {
   defaultEstimateMinutes: number | null;
   defaultBlockedReason: string | null;
   error?: string | null;
+  overflowActions?: ReactNode;
 };
 
 export function InlineTaskUpdateForm({
@@ -37,6 +38,7 @@ export function InlineTaskUpdateForm({
   defaultEstimateMinutes,
   defaultBlockedReason,
   error,
+  overflowActions,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
   const updateFormId = `task-update-${taskId}`;
@@ -132,26 +134,6 @@ export function InlineTaskUpdateForm({
       </form>
 
       <div className="flex w-full flex-wrap items-center justify-end gap-2">
-        <form
-          action={deleteAction}
-          onSubmit={(event) => {
-            if (
-              !window.confirm(
-                `Delete "${taskTitle}"? This is permanent and is blocked if the task has timer history.`,
-              )
-            ) {
-              event.preventDefault();
-            }
-          }}
-        >
-          <input type="hidden" name="taskId" value={taskId} />
-          <input type="hidden" name="returnTo" value={returnTo} />
-          <input type="hidden" name="confirmDelete" value="true" />
-          <Button size="sm" type="submit" variant="danger">
-            Delete
-          </Button>
-        </form>
-
         {defaultStatus !== "done" ? (
           <form action={action}>
             <input type="hidden" name="taskId" value={taskId} />
@@ -174,6 +156,36 @@ export function InlineTaskUpdateForm({
         <Button size="sm" type="submit" form={updateFormId}>
           Save
         </Button>
+
+        <details className="action-overflow">
+          <summary className="btn-instrument btn-instrument-muted flex h-8 cursor-pointer items-center px-3 text-xs">
+            More
+          </summary>
+          <div className="action-overflow-menu">
+            <div className="space-y-2">
+              {overflowActions}
+              <form
+                action={deleteAction}
+                onSubmit={(event) => {
+                  if (
+                    !window.confirm(
+                      `Delete "${taskTitle}"? This is permanent and is blocked if the task has timer history.`,
+                    )
+                  ) {
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <input type="hidden" name="taskId" value={taskId} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <input type="hidden" name="confirmDelete" value="true" />
+                <Button size="sm" type="submit" variant="danger" className="w-full justify-center">
+                  Delete task
+                </Button>
+              </form>
+            </div>
+          </div>
+        </details>
       </div>
 
       {error ? (

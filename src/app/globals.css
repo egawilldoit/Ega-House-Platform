@@ -708,14 +708,15 @@ select {
 
 .filter-pill {
   display: inline-flex;
+  gap: 0.375rem;
   min-height: 2rem;
   align-items: center;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: var(--instrument-raised);
+  background: rgba(255, 255, 255, 0.82);
   padding: 0 0.75rem;
   font-size: 0.625rem;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted-foreground);
@@ -732,9 +733,40 @@ select {
 }
 
 .filter-pill-active {
-  border-color: rgba(46, 125, 50, 0.18);
-  background: rgba(46, 125, 50, 0.05);
-  color: #1b5e20;
+  border-color: rgba(20, 32, 19, 0.14);
+  background: linear-gradient(135deg, #1b8b5d, #177b52);
+  color: #ffffff;
+  box-shadow: 0 4px 10px rgba(23, 123, 82, 0.22);
+}
+
+.status-badge-app {
+  font-weight: 700;
+}
+
+.action-overflow {
+  position: relative;
+}
+
+.action-overflow > summary {
+  list-style: none;
+}
+
+.action-overflow > summary::-webkit-details-marker {
+  display: none;
+}
+
+.action-overflow-menu {
+  position: absolute;
+  right: 0;
+  z-index: 10;
+  margin-top: 0.375rem;
+  min-width: 13rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 0.5rem;
+  box-shadow: 0 14px 28px rgba(20, 32, 19, 0.12);
+  backdrop-filter: blur(12px);
 }
 
 /* ─── Dashboard Bento Grid ─── */

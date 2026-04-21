@@ -9,6 +9,8 @@ import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-contro
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterPill } from "@/components/ui/filter-pill";
 import { Input } from "@/components/ui/input";
 import type { Tables } from "@/lib/supabase/database.types";
 import {
@@ -17,6 +19,7 @@ import {
   type TaskSavedViewFilters,
 } from "@/lib/task-saved-views";
 import { formatTaskToken } from "@/lib/task-domain";
+import { Bookmark } from "lucide-react";
 
 type TaskSavedViewRow = Pick<
   Tables<"task_saved_views">,
@@ -152,7 +155,12 @@ export function TaskSavedViewsPanel({
         {savedViews.length > 0 ? (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
-              <Link href="/tasks" className={currentReturnPath === "/tasks" ? "filter-pill filter-pill-active" : "filter-pill"}>All tasks</Link>
+              <FilterPill
+                href="/tasks"
+                label="All tasks"
+                active={currentReturnPath === "/tasks"}
+                ariaCurrent={currentReturnPath === "/tasks" ? "page" : undefined}
+              />
               {savedViews.map((view) => {
                 const isActive = areTaskSavedViewFiltersEqual(
                   currentFilters,
@@ -160,14 +168,13 @@ export function TaskSavedViewsPanel({
                 );
 
                 return (
-                  <Link
+                  <FilterPill
                     key={view.id}
                     href={getSavedViewHref(view)}
-                    aria-current={isActive ? "page" : undefined}
-                    className={isActive ? "filter-pill filter-pill-active" : "filter-pill"}
-                  >
-                    {view.name}
-                  </Link>
+                    label={view.name}
+                    active={isActive}
+                    ariaCurrent={isActive ? "page" : undefined}
+                  />
                 );
               })}
             </div>
@@ -217,9 +224,11 @@ export function TaskSavedViewsPanel({
             </div>
           </div>
         ) : (
-          <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-            No saved views yet. Save the current filters to build reusable task slices.
-          </div>
+          <EmptyState
+            icon={Bookmark}
+            title="No saved views yet"
+            description="Save the current filters to create reusable task slices."
+          />
         )}
       </CardContent>
     </Card>

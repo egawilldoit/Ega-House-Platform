@@ -2,7 +2,10 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskDueDate } from "@/lib/task-due-date";
+import { NotebookPen } from "lucide-react";
 
 type ShutdownTaskListItem = {
   id: string;
@@ -25,22 +28,6 @@ type ShutdownTaskListProps = {
   returnTo?: string;
 };
 
-function getStatusTone(status: string): "muted" | "warn" | "success" | "info" {
-  if (status === "blocked") {
-    return "warn";
-  }
-
-  if (status === "done") {
-    return "success";
-  }
-
-  if (status === "in_progress") {
-    return "info";
-  }
-
-  return "muted";
-}
-
 export function ShutdownTaskList({
   title,
   description,
@@ -59,9 +46,11 @@ export function ShutdownTaskList({
         </div>
 
         {tasks.length === 0 ? (
-          <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-            {emptyMessage}
-          </div>
+          <EmptyState
+            icon={NotebookPen}
+            title={`No ${title.toLowerCase()} yet`}
+            description={emptyMessage}
+          />
         ) : (
           <div className="space-y-2">
             {tasks.map((task) => (
@@ -85,7 +74,7 @@ export function ShutdownTaskList({
                       {task.goalTitle ? ` · ${task.goalTitle}` : ""}
                     </p>
                   </div>
-                  <Badge tone={getStatusTone(task.status)}>{task.status.replace("_", " ")}</Badge>
+                  <StatusBadge status={task.status} />
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">

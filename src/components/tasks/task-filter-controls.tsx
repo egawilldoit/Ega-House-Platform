@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
@@ -14,6 +13,7 @@ import {
   TASK_STATUS_VALUES,
   formatTaskToken,
 } from "@/lib/task-domain";
+import { FilterPill } from "@/components/ui/filter-pill";
 
 type TaskFilterControlsProps = {
   basePath: string;
@@ -93,14 +93,13 @@ function FilterPills({
           const isActive = option.value === activeValue;
 
           return (
-            <Link
+            <FilterPill
               key={`${label}-${option.label}`}
               href={hrefForValue(option.value)}
-              aria-current={isActive ? "page" : undefined}
-              className={cn("filter-pill", isActive && "filter-pill-active")}
-            >
-              {option.label}
-            </Link>
+              label={option.label}
+              active={isActive}
+              ariaCurrent={isActive ? "page" : undefined}
+            />
           );
         })}
       </div>

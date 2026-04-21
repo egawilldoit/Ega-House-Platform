@@ -6,8 +6,10 @@ import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { formatTaskToken } from "@/lib/task-domain";
+import { Lightbulb } from "lucide-react";
 
 type SuggestionGroup = {
   key: string;
@@ -127,9 +129,11 @@ export function TodaySuggestionsPanel({
                 ) : null}
               </div>
             ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                {group.emptyText}
-              </div>
+              <EmptyState
+                icon={Lightbulb}
+                title={`No ${group.title.toLowerCase()} suggestions`}
+                description={group.emptyText}
+              />
             )}
           </section>
         ))}
