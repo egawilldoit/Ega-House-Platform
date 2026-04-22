@@ -75,8 +75,18 @@ export async function GET(request: Request) {
       } satisfies MobileTaskListResponse,
       { status: 200 },
     );
-  } catch {
-    return mobileErrorResponse("INTERNAL_ERROR", "Unable to load tasks right now.", 500);
+  } catch (error) {
+    return mobileErrorResponse(
+      "INTERNAL_ERROR",
+      "Unable to load tasks right now.",
+      500,
+      undefined,
+      {
+        cause: error,
+        route: "/api/mobile/tasks",
+        operation: "GET",
+      },
+    );
   }
 }
 

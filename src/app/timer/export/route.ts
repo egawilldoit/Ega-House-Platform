@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { captureServerException } from "@/lib/monitoring/capture-server-exception";
 import { buildTimerExportCsv } from "@/lib/timer-export";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,10 @@ export async function GET() {
     .order("started_at", { ascending: false });
 
   if (error) {
+    captureServerException(error, {
+      area: "route.timer-export",
+      operation: "load_sessions",
+    });
     return Response.json({ error: "Unable to export timer sessions right now." }, { status: 500 });
   }
 

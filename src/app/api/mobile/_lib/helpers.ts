@@ -5,6 +5,7 @@ import type {
   MobileApiErrorResponse,
   MobileTaskListItem,
 } from "@/lib/contracts/mobile";
+import { captureServerException } from "@/lib/monitoring/capture-server-exception";
 import type { TaskRecord } from "@/lib/services/task-service";
 import { isTaskDueToday, isTaskOverdue } from "@/lib/task-due-date";
 import type { TaskStatus } from "@/lib/task-domain";
@@ -14,7 +15,28 @@ export function mobileErrorResponse(
   message: string,
   status: number,
   details?: Record<string, unknown>,
+  options?: {
+    cause?: unknown;
+    route?: string;
+    operation?: string;
+    report?: boolean;
+  },
 ) {
+  const shouldReport = options?.report ?? status >= 500;
+  if (shouldReport) {
+    captureServerException(options?.cause ?? new Error(message), {
+      area: "api.mobile",
+      operation: options?.operation ?? "mobileErrorResponse",
+      extras: {
+        code,
+        status,
+        message,
+        route: options?.route,
+        details,
+      },
+    });
+  }
+
   const payload: MobileApiErrorResponse = {
     ok: false,
     error: {

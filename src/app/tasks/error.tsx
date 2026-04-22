@@ -1,5 +1,8 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
+import { useEffect } from "react";
+
 import { WorkspaceErrorFallback } from "@/components/layout/workspace-error-fallback";
 
 type TasksErrorPageProps = {
@@ -8,7 +11,9 @@ type TasksErrorPageProps = {
 };
 
 export default function TasksErrorPage({ error, reset }: TasksErrorPageProps) {
-  void error;
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
 
   return <WorkspaceErrorFallback reset={reset} scopeLabel="Tasks Workspace" />;
 }

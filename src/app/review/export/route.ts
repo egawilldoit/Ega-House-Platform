@@ -5,6 +5,7 @@ import {
   getReviewExportWeekOf,
   getReviewExportWindow,
 } from "@/lib/review-export";
+import { captureServerException } from "@/lib/monitoring/capture-server-exception";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,13 @@ export async function GET(request: Request) {
   const { data: reviews, error: reviewsError } = await reviewQuery;
 
   if (reviewsError) {
+    captureServerException(reviewsError, {
+      area: "route.review-export",
+      operation: "load_reviews",
+      extras: {
+        selectedWeekOf,
+      },
+    });
     return Response.json({ error: "Unable to export review data right now." }, { status: 500 });
   }
 
@@ -72,6 +80,13 @@ export async function GET(request: Request) {
     ]);
 
     if (tasksResult.error || sessionsResult.error || goalsResult.error) {
+      captureServerException(tasksResult.error ?? sessionsResult.error ?? goalsResult.error, {
+        area: "route.review-export",
+        operation: "load_review_stats",
+        extras: {
+          selectedWeekOf,
+        },
+      });
       return Response.json({ error: "Unable to export review stats right now." }, { status: 500 });
     }
 

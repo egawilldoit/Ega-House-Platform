@@ -1,5 +1,8 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
+import { useEffect } from "react";
+
 import { WorkspaceErrorFallback } from "@/components/layout/workspace-error-fallback";
 
 type GlobalErrorPageProps = {
@@ -8,7 +11,9 @@ type GlobalErrorPageProps = {
 };
 
 export default function GlobalErrorPage({ error, reset }: GlobalErrorPageProps) {
-  void error;
+  useEffect(() => {
+    Sentry.captureException(error);
+  }, [error]);
 
   return (
     <html lang="en" className="h-full antialiased">
