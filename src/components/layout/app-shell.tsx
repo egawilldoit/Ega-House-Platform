@@ -22,12 +22,48 @@ type AppShellProps = {
 async function getSidebarProjects(): Promise<SidebarProject[]> {
   try {
     const supabase = await createClient();
-    const { data } = await supabase
+    const { data: projectRows, error: projectsError } = await supabase
       .from("projects")
-      .select("id, name")
-      .order("name", { ascending: true })
-      .limit(12);
-    return data ?? [];
+      .select("id, name, slug, status, updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(24);
+
+    if (projectsError || !projectRows?.length) {
+      return [];
+    }
+
+    const projectIds = projectRows.map((project) => project.id);
+    const { data: taskRows } = await supabase
+      .from("tasks")
+      .select("project_id, status")
+      .in("project_id", projectIds)
+      .neq("status", "done")
+      .limit(1000);
+
+    const activeTaskCounts = new Map<string, number>();
+    for (const task of taskRows ?? []) {
+      activeTaskCounts.set(
+        task.project_id,
+        (activeTaskCounts.get(task.project_id) ?? 0) + 1,
+      );
+    }
+
+    return projectRows
+      .map((project, index) => ({
+        id: project.id,
+        name: project.name,
+        slug: project.slug,
+        status: project.status,
+        activeTaskCount: activeTaskCounts.get(project.id) ?? 0,
+        isPinned: index < 6 && project.status !== "archived",
+      }))
+      .sort((left, right) => {
+        if (left.isPinned !== right.isPinned) {
+          return left.isPinned ? -1 : 1;
+        }
+
+        return left.name.localeCompare(right.name);
+      });
   } catch {
     return [];
   }

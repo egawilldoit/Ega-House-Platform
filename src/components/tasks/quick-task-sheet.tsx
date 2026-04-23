@@ -873,14 +873,14 @@ export function QuickTaskSheet({
       }}
     >
       <SheetTrigger asChild>
-        <Button className="mx-4 mt-4 h-auto w-[calc(100%-2rem)] items-start justify-start gap-2.5 rounded-xl border-transparent bg-[#177b52] px-3 py-2.5 text-left text-white shadow-sm hover:bg-[#125f3f]">
-          <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white shadow-[0_10px_24px_rgba(23,123,82,0.14)]">
-            <Plus className="h-4 w-4" />
+        <Button className="mx-2.5 mt-3 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 rounded-xl border border-[rgba(23,123,82,0.12)] bg-[rgba(23,123,82,0.1)] px-3 py-2.5 text-left text-[color:var(--foreground)] shadow-none hover:border-[rgba(23,123,82,0.18)] hover:bg-[rgba(23,123,82,0.14)]">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-white shadow-[0_10px_22px_rgba(23,123,82,0.16)]">
+            <Plus className="h-3.5 w-3.5" />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold leading-5 tracking-[-0.02em]">Quick task</span>
-            <span className="mt-0.5 block text-xs font-medium leading-4 text-[#e5f5ee]">
-              Capture one task or stage a batch.
+            <span className="block text-sm font-semibold leading-5 tracking-normal">Quick task</span>
+            <span className="mt-0.5 block text-xs font-semibold leading-4 text-[color:var(--muted-foreground)]">
+              Capture or batch create.
             </span>
           </span>
         </Button>
