@@ -56,6 +56,13 @@ export async function listMobileTasks(params: ListMobileTasksParams = {}) {
   });
 }
 
+export async function getMobileTaskById(taskId: string) {
+  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {
+    method: 'GET',
+    auth: true,
+  });
+}
+
 export async function createMobileTask(input: CreateTaskInput) {
   return mobileApiFetch<MobileTaskMutationResponse>('/api/mobile/tasks', {
     method: 'POST',
@@ -63,15 +70,6 @@ export async function createMobileTask(input: CreateTaskInput) {
     body: JSON.stringify(input),
   });
 }
-
-export async function fetchMobileTaskById(taskId: string) {
-  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {
-    method: 'GET',
-    auth: true,
-  });
-}
-
-export const getMobileTaskById = fetchMobileTaskById;
 
 export async function updateMobileTask(taskId: string, input: UpdateTaskInput) {
   return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {

@@ -41,49 +41,53 @@ export function TaskCard({
     <View style={styles.cardShell}>
       <SurfaceCard style={styles.card}>
         <View style={[styles.leftAccent, { backgroundColor: statusColors.color }]} />
-
-        <Text numberOfLines={2} style={styles.title}>
-          {title}
-        </Text>
-        <Text numberOfLines={1} style={styles.meta}>
-          {project}
-          {goal ? ` · ${goal}` : ''}
-        </Text>
-
-        <View style={styles.indicatorsRow}>
-          <InfoBadge
-            backgroundColor={statusColors.background}
-            dot={statusColors.dot}
-            label={formatStatus(status)}
-            textColor={statusColors.color}
-          />
-          <InfoBadge
-            backgroundColor={priorityColors.background}
-            dot={priorityColors.dot}
-            label={priority}
-            textColor={priorityColors.color}
-          />
-          <View style={styles.rowSpacer} />
-          <Text style={[styles.metaStrong, !hasDueDate ? styles.metaQuiet : null]}>
-            {`📅 ${dueLabel}`}
+        <Pressable disabled={saving} onPress={onOpen} style={styles.mainTapArea}>
+          <Text numberOfLines={2} style={styles.title}>
+            {title}
           </Text>
-          {estimateLabel ? <Text style={styles.metaQuiet}>{estimateLabel}</Text> : null}
-        </View>
+          <Text numberOfLines={1} style={styles.meta}>
+            {project}
+            {goal ? ` · ${goal}` : ''}
+          </Text>
 
-        {blockedReason ? (
-          <View style={styles.blockedBox}>
-            <Text numberOfLines={2} style={styles.blockedText}>
-              {blockedReason}
+          <View style={styles.indicatorsRow}>
+            <InfoBadge
+              backgroundColor={statusColors.background}
+              dot={statusColors.dot}
+              label={formatStatus(status)}
+              textColor={statusColors.color}
+            />
+            <InfoBadge
+              backgroundColor={priorityColors.background}
+              dot={priorityColors.dot}
+              label={priority}
+              textColor={priorityColors.color}
+            />
+            <View style={styles.rowSpacer} />
+            <Text style={[styles.metaStrong, !hasDueDate ? styles.metaQuiet : null]}>
+              {`📅 ${dueLabel}`}
             </Text>
+            {estimateLabel ? <Text style={styles.metaQuiet}>{estimateLabel}</Text> : null}
           </View>
-        ) : null}
+
+          {blockedReason ? (
+            <View style={styles.blockedBox}>
+              <Text numberOfLines={2} style={styles.blockedText}>
+                {blockedReason}
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
 
         <View style={styles.actionsRow}>
-          <Pressable disabled={saving} onPress={onOpen} style={styles.primaryAction}>
+          <Pressable disabled={saving} onPress={onOpen} style={styles.secondaryAction}>
             {saving ? (
-              <ActivityIndicator color={mobileTheme.colors.textOnAccent} size="small" />
+              <ActivityIndicator color={mobileTheme.colors.accentDark} size="small" />
             ) : (
-              <Text style={styles.primaryActionText}>Open</Text>
+              <>
+                <Ionicons color={mobileTheme.colors.accentDark} name="open-outline" size={15} />
+                <Text style={styles.secondaryActionText}>Edit</Text>
+              </>
             )}
           </Pressable>
           <Pressable
@@ -145,6 +149,9 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: mobileTheme.spacing.sm,
   },
+  mainTapArea: {
+    borderRadius: mobileTheme.radius.sm,
+  },
   leftAccent: {
     borderBottomLeftRadius: mobileTheme.radius.card,
     borderTopLeftRadius: mobileTheme.radius.card,
@@ -170,18 +177,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: mobileTheme.font.bold,
   },
-  primaryAction: {
+  secondaryAction: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accent,
+    backgroundColor: mobileTheme.colors.accentSoft,
     borderRadius: mobileTheme.radius.pill,
     flex: 1,
+    flexDirection: 'row',
+    gap: 6,
     justifyContent: 'center',
     minHeight: 40,
   },
-  primaryActionText: {
-    color: mobileTheme.colors.textOnAccent,
+  secondaryActionText: {
+    color: mobileTheme.colors.accentDark,
     fontSize: 13,
-    fontWeight: mobileTheme.font.extrabold,
+    fontWeight: mobileTheme.font.bold,
     letterSpacing: 0.2,
   },
   rowSpacer: {

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -17,15 +17,16 @@ import {
   EmptyState,
   MobileScreen,
   MobileScreenHeader,
+  SegmentedControl,
   PrimaryFab,
   SkeletonCard,
   SurfaceCard,
 } from '@/components/mobile/primitives';
 import { TaskCard } from '@/components/mobile/TaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
-import { listMobileTasks, updateMobileTask } from '@/lib/api/tasks';
-import { useTasksVersion } from '@/lib/tasks/store';
+import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
 import type {
+  MobileTaskDueFilter,
   MobileTaskListItem,
   MobileTaskPriority,
   MobileTaskStatus,
@@ -34,6 +35,21 @@ import type {
 
 const STATUS_OPTIONS: MobileTaskStatus[] = ['todo', 'in_progress', 'done', 'blocked'];
 const PRIORITY_OPTIONS: MobileTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
+const EMPTY_TASKS: MobileTaskListItem[] = [];
+const STATUS_FILTER_OPTIONS: Array<{ label: string; value: MobileTaskStatus | 'all' }> = [
+  { label: 'All', value: 'all' },
+  { label: 'To do', value: 'todo' },
+  { label: 'In progress', value: 'in_progress' },
+  { label: 'Blocked', value: 'blocked' },
+  { label: 'Done', value: 'done' },
+];
+const DUE_FILTER_OPTIONS: Array<{ label: string; value: MobileTaskDueFilter }> = [
+  { label: 'All dates', value: 'all' },
+  { label: 'Overdue', value: 'overdue' },
+  { label: 'Due today', value: 'due_today' },
+  { label: 'Due soon', value: 'due_soon' },
+  { label: 'No due date', value: 'no_due_date' },
+];
 
 function formatToken(value: string) {
   return value.replace(/_/g, ' ');
@@ -84,81 +100,61 @@ function getStatusOptions(task: MobileTaskListItem) {
 }
 
 export default function TasksScreen() {
-  const tasksVersion = useTasksVersion();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tasks, setTasks] = useState<MobileTaskListItem[]>([]);
+  const [statusFilter, setStatusFilter] = useState<MobileTaskStatus | 'all'>('all');
+  const [dueFilter, setDueFilter] = useState<MobileTaskDueFilter>('all');
+  const tasksQuery = useTaskListQuery({
+    due: dueFilter,
+    status: statusFilter === 'all' ? null : statusFilter,
+  });
+  const updateTaskMutation = useUpdateTaskMutation();
+  const { refetch } = tasksQuery;
+
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [updatingTaskIds, setUpdatingTaskIds] = useState<Record<string, boolean>>({});
   const [taskErrors, setTaskErrors] = useState<Record<string, string | undefined>>({});
 
+  const tasks = tasksQuery.data?.tasks ?? EMPTY_TASKS;
+  const totalTaskCount = tasksQuery.data?.counters.total ?? 0;
+  const hasFilters = statusFilter !== 'all' || dueFilter !== 'all';
   const dueDateOptions = useMemo(() => buildDueDateOptions(), []);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
     [activeTaskId, tasks],
   );
 
-  const loadTasks = useCallback(async () => {
-    try {
-      const response = await listMobileTasks();
-      setTasks(response.tasks);
-      setError(null);
-    } catch (loadError) {
-      const message =
-        loadError instanceof Error ? loadError.message : 'Unable to load tasks right now.';
-      setError(message);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-      setHasLoadedOnce(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadTasks().catch(() => {
-      // Error state handled in loadTasks.
-    });
-  }, [loadTasks, tasksVersion]);
+  const loadError =
+    tasksQuery.error instanceof Error ? tasksQuery.error.message : 'Unable to load tasks right now.';
 
   useFocusEffect(
     useCallback(() => {
-      if (!hasLoadedOnce) {
-        return;
-      }
-
-      loadTasks().catch(() => {
-        // Error state handled in loadTasks.
+      refetch().catch(() => {
+        // Error state handled by query.
       });
-    }, [hasLoadedOnce, loadTasks]),
+    }, [refetch]),
   );
 
-  const onRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    loadTasks().catch(() => {
-      // Error state handled in loadTasks.
-    });
-  }, [loadTasks]);
+  const onRefresh = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
-  const mutateTask = useCallback(async (taskId: string, input: UpdateTaskInput) => {
-    setUpdatingTaskIds((current) => ({ ...current, [taskId]: true }));
-    setTaskErrors((current) => ({ ...current, [taskId]: undefined }));
+  const mutateTask = useCallback(
+    async (taskId: string, input: UpdateTaskInput) => {
+      setUpdatingTaskIds((current) => ({ ...current, [taskId]: true }));
+      setTaskErrors((current) => ({ ...current, [taskId]: undefined }));
 
-    try {
-      const response = await updateMobileTask(taskId, input);
-      setTasks((current) => current.map((task) => (task.id === taskId ? response.task : task)));
-    } catch (updateError) {
-      const message =
-        updateError instanceof Error
-          ? updateError.message
-          : 'Unable to update task right now.';
+      try {
+        await updateTaskMutation.mutateAsync({ taskId, input });
+      } catch (updateError) {
+        const message =
+          updateError instanceof Error ? updateError.message : 'Unable to update task right now.';
 
-      setTaskErrors((current) => ({ ...current, [taskId]: message }));
-    } finally {
-      setUpdatingTaskIds((current) => ({ ...current, [taskId]: false }));
-    }
-  }, []);
+        setTaskErrors((current) => ({ ...current, [taskId]: message }));
+      } finally {
+        setUpdatingTaskIds((current) => ({ ...current, [taskId]: false }));
+      }
+    },
+    [updateTaskMutation],
+  );
 
   const actionSheetItems = useMemo<ActionSheetItem[]>(() => {
     if (!activeTask) {
@@ -213,9 +209,16 @@ export default function TasksScreen() {
     ];
   }, [activeTask, dueDateOptions, mutateTask]);
 
-  if (isLoading) {
+  if (tasksQuery.isPending) {
     return (
       <MobileScreen>
+        <View style={styles.headerWrap}>
+          <MobileScreenHeader
+            eyebrow="Execution"
+            title="Tasks"
+            description="Everything synced from your workspace"
+          />
+        </View>
         <View style={styles.centered}>
           <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading tasks...</Text>
@@ -230,7 +233,7 @@ export default function TasksScreen() {
     );
   }
 
-  if (error) {
+  if (tasksQuery.isError) {
     return (
       <MobileScreen>
         <MobileScreenHeader
@@ -240,18 +243,10 @@ export default function TasksScreen() {
         />
         <SurfaceCard style={styles.errorCard}>
           <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{loadError}</Text>
         </SurfaceCard>
         <View style={styles.centeredContent}>
-          <Pressable
-            onPress={() => {
-              setIsLoading(true);
-              loadTasks().catch(() => {
-                // handled in loadTasks
-              });
-            }}
-            style={styles.primaryButton}
-          >
+          <Pressable onPress={onRefresh} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Retry</Text>
           </Pressable>
         </View>
@@ -269,12 +264,28 @@ export default function TasksScreen() {
           <EmptyState
             icon="clipboard-outline"
             iconSize={64}
-            title="Nothing here yet"
-            description="Create your first task to get started"
+            title={hasFilters ? 'No tasks match these filters' : 'Nothing here yet'}
+            description={
+              hasFilters
+                ? 'Try a different status or due-date filter.'
+                : 'Create your first task to get started.'
+            }
             action={
-              <Pressable onPress={onRefresh} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>Refresh</Text>
-              </Pressable>
+              hasFilters ? (
+                <Pressable
+                  onPress={() => {
+                    setStatusFilter('all');
+                    setDueFilter('all');
+                  }}
+                  style={styles.primaryButton}
+                >
+                  <Text style={styles.primaryButtonText}>Clear filters</Text>
+                </Pressable>
+              ) : (
+                <Pressable onPress={() => router.push('/(app)/tasks/create')} style={styles.primaryButton}>
+                  <Text style={styles.primaryButtonText}>Create task</Text>
+                </Pressable>
+              )
             }
           />
         }
@@ -286,12 +297,49 @@ export default function TasksScreen() {
               description={
                 tasks.length > 0
                   ? `${tasks.length} task${tasks.length === 1 ? '' : 's'} ready for action`
-                  : 'Track and capture your next execution step'
+                  : hasFilters
+                    ? 'No tasks match the current filters'
+                    : 'Track and capture your next execution step'
               }
             />
+            <View style={styles.filterSection}>
+              <View style={styles.filterHeaderRow}>
+                <Text style={styles.filterLabel}>Status</Text>
+                {hasFilters ? (
+                  <Pressable
+                    onPress={() => {
+                      setStatusFilter('all');
+                      setDueFilter('all');
+                    }}
+                    style={styles.clearFiltersButton}
+                  >
+                    <Text style={styles.clearFiltersText}>Clear</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+              <SegmentedControl
+                onChange={setStatusFilter}
+                options={STATUS_FILTER_OPTIONS}
+                value={statusFilter}
+              />
+              <Text style={styles.filterLabel}>Due date</Text>
+              <SegmentedControl
+                onChange={setDueFilter}
+                options={DUE_FILTER_OPTIONS}
+                value={dueFilter}
+              />
+              <Text style={styles.filterCountText}>
+                Showing {tasks.length} of {totalTaskCount} task{totalTaskCount === 1 ? '' : 's'}
+              </Text>
+            </View>
           </View>
         }
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={tasksQuery.isRefetching && !tasksQuery.isPending}
+            onRefresh={onRefresh}
+          />
+        }
         renderItem={({ item }) => {
           const isUpdating = Boolean(updatingTaskIds[item.id]);
           const itemError = taskErrors[item.id];
@@ -319,7 +367,7 @@ export default function TasksScreen() {
         }}
       />
 
-      <PrimaryFab label="Create Task" onPress={() => router.push('../tasks/create')} />
+      <PrimaryFab label="Create Task" onPress={() => router.push('/(app)/tasks/create')} />
 
       <ActionSheet
         footer={
@@ -367,6 +415,32 @@ const styles = StyleSheet.create({
     flex: 1,
     fontWeight: mobileTheme.font.semibold,
   },
+  filterCountText: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    marginTop: mobileTheme.spacing.sm,
+  },
+  filterHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: mobileTheme.spacing.xs,
+  },
+  filterLabel: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.bold,
+    marginTop: mobileTheme.spacing.sm,
+    textTransform: 'uppercase',
+  },
+  filterSection: {
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: 1,
+    marginTop: mobileTheme.spacing.sm,
+    padding: mobileTheme.spacing.sm,
+  },
   headerWrap: {
     paddingHorizontal: 16,
   },
@@ -379,6 +453,16 @@ const styles = StyleSheet.create({
     paddingBottom: 110,
     paddingHorizontal: 16,
     paddingTop: mobileTheme.spacing.sm,
+  },
+  clearFiltersButton: {
+    borderRadius: mobileTheme.radius.pill,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  clearFiltersText: {
+    color: mobileTheme.colors.accentDark,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.bold,
   },
   primaryButton: {
     backgroundColor: mobileTheme.colors.accent,

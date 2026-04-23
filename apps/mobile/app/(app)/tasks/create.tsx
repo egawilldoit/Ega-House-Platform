@@ -1,7 +1,7 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -21,103 +21,32 @@ import {
   SurfaceCard,
 } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
-import { createMobileTask, listMobileTasks } from '@/lib/api/tasks';
-import { notifyTasksChanged } from '@/lib/tasks/store';
+import {
+  formatDateOnlyValue,
+  formatDisplayDate,
+  formatTaskToken,
+  isDateOnlyValue,
+  normalizeOptionalText,
+  parseDateOnlyValue,
+  validateEstimateMinutesInput,
+} from '@/features/tasks/form-utils';
+import { useCreateTaskMutation, useTaskFormOptionsQuery } from '@/features/tasks/query';
 import {
   MOBILE_TASK_PRIORITY_VALUES,
   MOBILE_TASK_STATUS_VALUES,
   type CreateTaskInput,
-  type MobileTaskGoal,
   type MobileTaskPriority,
-  type MobileTaskProject,
   type MobileTaskStatus,
 } from '@/types/tasks';
-
-function isDateOnlyValue(value: string) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    return false;
-  }
-
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
-
-function normalizeOptionalText(value: string) {
-  const trimmed = value.trim();
-  return trimmed ? trimmed : null;
-}
-
-function formatDateOnlyValue(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function parseDateOnlyValue(value: string) {
-  if (!isDateOnlyValue(value)) {
-    return null;
-  }
-
-  const [year, month, day] = value.split('-').map((segment) => Number.parseInt(segment, 10));
-  return new Date(year, month - 1, day, 12, 0, 0, 0);
-}
-
-function formatDisplayDate(value: string) {
-  const parsed = parseDateOnlyValue(value);
-
-  if (!parsed) {
-    return 'No due date';
-  }
-
-  return parsed.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  });
-}
-
-function validateEstimate(value: string) {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return { value: null, error: null } as const;
-  }
-
-  if (!/^\d+$/.test(trimmed)) {
-    return {
-      value: null,
-      error: 'Estimate must be a whole number of minutes.',
-    } as const;
-  }
-
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    return {
-      value: null,
-      error: 'Estimate must be a whole number of minutes.',
-    } as const;
-  }
-
-  if (parsed > 60 * 24 * 365) {
-    return {
-      value: null,
-      error: 'Estimate is too large. Keep it under 525600 minutes.',
-    } as const;
-  }
-
-  return { value: parsed, error: null } as const;
-}
-
-function formatTaskToken(value: string) {
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
 
 type ChoiceChipProps = {
   label: string;
   selected: boolean;
   onPress: () => void;
 };
+
+const EMPTY_PROJECTS: { id: string; name: string }[] = [];
+const EMPTY_GOALS: { id: string; title: string }[] = [];
 
 function SectionLabel({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
   return (
@@ -143,12 +72,13 @@ function ChoiceChip({ label, selected, onPress }: ChoiceChipProps) {
 }
 
 export default function CreateTaskScreen() {
-  const [projects, setProjects] = useState<MobileTaskProject[]>([]);
-  const [goals, setGoals] = useState<MobileTaskGoal[]>([]);
-  const [isLoadingOptions, setIsLoadingOptions] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const optionsQuery = useTaskFormOptionsQuery();
+  const createTaskMutation = useCreateTaskMutation();
+
+  const projects = optionsQuery.data?.projects ?? EMPTY_PROJECTS;
+  const goals = optionsQuery.data?.goals ?? EMPTY_GOALS;
+
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState('');
@@ -161,51 +91,31 @@ export default function CreateTaskScreen() {
   const [description, setDescription] = useState('');
   const [blockedReason, setBlockedReason] = useState('');
 
-  const loadFormOptions = useCallback(async () => {
-    setIsLoadingOptions(true);
-    try {
-      const response = await listMobileTasks({ limit: 1 });
-      setProjects(response.projects);
-      setGoals(response.goals);
-      setProjectId((current) => {
-        if (current && response.projects.some((project) => project.id === current)) {
-          return current;
-        }
-
-        if (response.projects.length === 1) {
-          return response.projects[0].id;
-        }
-
-        return current;
-      });
-      setLoadError(null);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Unable to load task form options right now.';
-      setLoadError(message);
-    } finally {
-      setIsLoadingOptions(false);
-    }
-  }, []);
+  const isSubmitting = createTaskMutation.isPending;
 
   useEffect(() => {
-    loadFormOptions().catch(() => {
-      setIsLoadingOptions(false);
-      setLoadError('Unable to load task form options right now.');
-    });
-  }, [loadFormOptions]);
+    if (projectId && projects.some((project) => project.id === projectId)) {
+      return;
+    }
 
-  const todayDateValue = (() => {
+    if (projects.length === 1) {
+      setProjectId(projects[0].id);
+    }
+  }, [projectId, projects]);
+
+  const todayDateValue = useMemo(() => {
     const today = new Date();
     today.setHours(12, 0, 0, 0);
     return formatDateOnlyValue(today);
-  })();
-  const tomorrowDateValue = (() => {
+  }, []);
+
+  const tomorrowDateValue = useMemo(() => {
     const tomorrow = new Date();
     tomorrow.setHours(12, 0, 0, 0);
     tomorrow.setDate(tomorrow.getDate() + 1);
     return formatDateOnlyValue(tomorrow);
-  })();
+  }, []);
+
   const dueDatePickerValue = parseDateOnlyValue(dueDate) ?? new Date();
 
   function setDueDateValue(value: string) {
@@ -244,7 +154,7 @@ export default function CreateTaskScreen() {
     const trimmedDueDate = dueDate.trim();
     const normalizedDescription = normalizeOptionalText(description);
     const normalizedBlockedReason = normalizeOptionalText(blockedReason);
-    const estimateResult = validateEstimate(estimateMinutes);
+    const estimateResult = validateEstimateMinutesInput(estimateMinutes);
 
     if (!trimmedTitle) {
       setSubmitError('Task title is required.');
@@ -284,21 +194,17 @@ export default function CreateTaskScreen() {
     };
 
     setSubmitError(null);
-    setIsSubmitting(true);
 
     try {
-      await createMobileTask(payload);
-      notifyTasksChanged();
+      await createTaskMutation.mutateAsync(payload);
       router.replace('/tasks');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to create task right now.';
       setSubmitError(message);
-    } finally {
-      setIsSubmitting(false);
     }
   }
 
-  if (isLoadingOptions) {
+  if (optionsQuery.isPending) {
     return (
       <MobileScreen>
         <View style={styles.centered}>
@@ -309,12 +215,17 @@ export default function CreateTaskScreen() {
     );
   }
 
-  if (loadError) {
+  if (optionsQuery.isError) {
+    const loadError =
+      optionsQuery.error instanceof Error
+        ? optionsQuery.error.message
+        : 'Unable to load task form options right now.';
+
     return (
       <MobileScreen>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{loadError}</Text>
-          <Pressable onPress={() => loadFormOptions()} style={styles.primaryButton}>
+          <Pressable onPress={() => optionsQuery.refetch()} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Retry</Text>
           </Pressable>
         </View>
@@ -564,11 +475,11 @@ export default function CreateTaskScreen() {
 
 const styles = StyleSheet.create({
   buttonDisabled: {
-    opacity: 0.6,
+    opacity: 0.55,
   },
   centerText: {
     color: mobileTheme.colors.textMuted,
-    marginTop: 10,
+    marginTop: 8,
   },
   centered: {
     alignItems: 'center',
@@ -581,22 +492,24 @@ const styles = StyleSheet.create({
     borderColor: mobileTheme.colors.border,
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    minHeight: 38,
+    paddingHorizontal: 14,
     paddingVertical: 9,
   },
   choiceChipSelected: {
-    backgroundColor: mobileTheme.colors.accent,
+    backgroundColor: mobileTheme.colors.accentSoft,
     borderColor: mobileTheme.colors.accent,
   },
   choiceChipText: {
     color: mobileTheme.colors.textMuted,
+    fontSize: 13,
     fontWeight: mobileTheme.font.bold,
   },
   choiceChipTextSelected: {
-    color: mobileTheme.colors.textOnAccent,
+    color: mobileTheme.colors.accent,
   },
   content: {
-    paddingBottom: 118,
+    paddingBottom: 28,
     paddingTop: 14,
   },
   dateField: {
@@ -604,20 +517,19 @@ const styles = StyleSheet.create({
     borderColor: mobileTheme.colors.border,
     borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
-    gap: 3,
     marginTop: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   dateFieldLabel: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
-    fontWeight: mobileTheme.font.bold,
-    textTransform: 'uppercase',
+    fontWeight: mobileTheme.font.semibold,
   },
   dateFieldMeta: {
     color: mobileTheme.colors.textSubtle,
-    fontSize: 13,
+    fontSize: 12,
+    marginTop: 5,
   },
   dateFieldPlaceholder: {
     color: mobileTheme.colors.textSubtle,
@@ -626,58 +538,48 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 16,
     fontWeight: mobileTheme.font.bold,
+    marginTop: 4,
   },
   datePickerActions: {
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'flex-end',
-    marginTop: 10,
-    paddingHorizontal: 8,
-    paddingBottom: 8,
+    marginTop: 6,
   },
   datePickerCard: {
-    backgroundColor: mobileTheme.colors.surface,
-    borderRadius: mobileTheme.radius.lg,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.control,
     marginTop: 10,
-    overflow: 'hidden',
+    padding: 8,
   },
   datePickerPrimaryButton: {
-    alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
     borderRadius: mobileTheme.radius.pill,
-    justifyContent: 'center',
-    minHeight: 40,
-    minWidth: 88,
     paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   datePickerPrimaryButtonText: {
     color: mobileTheme.colors.textOnAccent,
-    fontSize: 14,
     fontWeight: mobileTheme.font.extrabold,
   },
   datePickerSecondaryButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
+    backgroundColor: mobileTheme.colors.surface,
     borderRadius: mobileTheme.radius.pill,
-    justifyContent: 'center',
-    minHeight: 40,
-    minWidth: 88,
     paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   datePickerSecondaryButtonText: {
     color: mobileTheme.colors.text,
-    fontSize: 14,
     fontWeight: mobileTheme.font.bold,
   },
   errorText: {
     color: mobileTheme.colors.danger,
+    marginTop: 12,
     minHeight: 20,
-    paddingHorizontal: 2,
-    paddingTop: 12,
   },
   helperText: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 13,
+    fontSize: 12,
     marginTop: 8,
   },
   input: {
@@ -686,13 +588,13 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     color: mobileTheme.colors.text,
+    fontSize: 15,
     marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   multilineInput: {
-    minHeight: 96,
-    paddingTop: 12,
+    minHeight: 92,
   },
   optionGroup: {
     flexDirection: 'row',
@@ -714,7 +616,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: {
     color: mobileTheme.colors.textOnAccent,
-    fontSize: 15,
     fontWeight: mobileTheme.font.extrabold,
   },
   screen: {
@@ -731,7 +632,6 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: mobileTheme.colors.text,
-    fontSize: 15,
     fontWeight: mobileTheme.font.bold,
   },
   sectionLabel: {
@@ -749,13 +649,13 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   stickyBar: {
-    backgroundColor: mobileTheme.colors.stickyBar,
+    backgroundColor: mobileTheme.colors.surface,
     borderTopColor: mobileTheme.colors.border,
     borderTopWidth: 1,
     flexDirection: 'row',
-    gap: 12,
-    paddingBottom: 14,
-    paddingHorizontal: 14,
-    paddingTop: 12,
+    gap: 10,
+    paddingBottom: Platform.OS === 'ios' ? 26 : 14,
+    paddingHorizontal: 16,
+    paddingTop: 10,
   },
 });

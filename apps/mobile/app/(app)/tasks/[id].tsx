@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -21,11 +21,15 @@ import {
   SurfaceCard,
 } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
-import { fetchMobileTaskById, updateMobileTask } from '@/lib/api/tasks';
-import type { MobileTaskListItem, MobileTaskPriority, MobileTaskStatus } from '@/types/tasks';
-
-const STATUS_OPTIONS: MobileTaskStatus[] = ['todo', 'in_progress', 'done', 'blocked'];
-const PRIORITY_OPTIONS: MobileTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
+import { formatTaskToken, validateEstimateMinutesInput } from '@/features/tasks/form-utils';
+import { useTaskByIdQuery, useUpdateTaskMutation } from '@/features/tasks/query';
+import {
+  MOBILE_TASK_PRIORITY_VALUES,
+  MOBILE_TASK_STATUS_VALUES,
+  type MobileTaskListItem,
+  type MobileTaskPriority,
+  type MobileTaskStatus,
+} from '@/types/tasks';
 
 type EditableTaskFields = {
   status: MobileTaskStatus;
@@ -35,13 +39,6 @@ type EditableTaskFields = {
   description: string;
   blockedReason: string;
 };
-
-function formatTaskToken(value: string) {
-  return value
-    .split('_')
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(' ');
-}
 
 function formatDueDate(value: string | null) {
   if (!value) {
@@ -87,24 +84,6 @@ function createEditableDraft(task: MobileTaskListItem): EditableTaskFields {
   };
 }
 
-function parseEstimateMinutes(value: string): number | null | 'invalid' {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (!/^\d+$/.test(trimmed)) {
-    return 'invalid';
-  }
-
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return 'invalid';
-  }
-
-  return parsed;
-}
-
 function isDraftDirty(task: MobileTaskListItem, draft: EditableTaskFields) {
   const original = createEditableDraft(task);
 
@@ -132,50 +111,42 @@ export default function TaskDetailScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
   const taskId = useMemo(() => String(id ?? '').trim(), [id]);
 
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const taskQuery = useTaskByIdQuery(taskId);
+  const updateTaskMutation = useUpdateTaskMutation();
+  const { refetch } = taskQuery;
+
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [task, setTask] = useState<MobileTaskListItem | null>(null);
   const [draft, setDraft] = useState<EditableTaskFields | null>(null);
 
-  const loadTask = useCallback(async () => {
-    if (!taskId) {
-      setLoadError('Task id is missing.');
-      setIsLoading(false);
-      return;
-    }
-
-    try {
-      const response = await fetchMobileTaskById(taskId);
-      setTask(response.task);
-      setDraft(createEditableDraft(response.task));
-      setLoadError(null);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to load task right now.';
-      setLoadError(message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [taskId]);
+  const task = taskQuery.data ?? null;
 
   useFocusEffect(
     useCallback(() => {
-      setIsLoading(true);
-      loadTask().catch(() => {
-        // handled in loadTask
+      if (!taskId) {
+        return;
+      }
+
+      refetch().catch(() => {
+        // handled by query state
       });
-    }, [loadTask]),
+    }, [taskId, refetch]),
   );
 
+  useEffect(() => {
+    if (!task) {
+      return;
+    }
+
+    setDraft(createEditableDraft(task));
+    setSubmitError(null);
+  }, [task]);
+
   const onRetry = useCallback(() => {
-    setIsLoading(true);
-    setLoadError(null);
-    loadTask().catch(() => {
-      // handled in loadTask
+    refetch().catch(() => {
+      // handled by query state
     });
-  }, [loadTask]);
+  }, [refetch]);
 
   const applyQuickDueDate = useCallback((nextDueDate: string | null) => {
     setDraft((current) => (current ? { ...current, dueDate: nextDueDate } : current));
@@ -188,9 +159,9 @@ export default function TaskDetailScreen() {
       return;
     }
 
-    const estimateMinutes = parseEstimateMinutes(draft.estimateMinutesText);
-    if (estimateMinutes === 'invalid') {
-      setSubmitError('Estimate must be a whole number of minutes.');
+    const estimateResult = validateEstimateMinutesInput(draft.estimateMinutesText);
+    if (estimateResult.error) {
+      setSubmitError(estimateResult.error);
       setSuccessMessage(null);
       return;
     }
@@ -201,32 +172,45 @@ export default function TaskDetailScreen() {
       return;
     }
 
-    setIsSaving(true);
     setSubmitError(null);
     setSuccessMessage(null);
 
     try {
-      const response = await updateMobileTask(taskId, {
-        status: draft.status,
-        priority: draft.priority,
-        dueDate: draft.dueDate,
-        estimateMinutes,
-        description: draft.description.trim() || null,
-        blockedReason: draft.blockedReason.trim() || null,
+      const response = await updateTaskMutation.mutateAsync({
+        taskId,
+        input: {
+          status: draft.status,
+          priority: draft.priority,
+          dueDate: draft.dueDate,
+          estimateMinutes: estimateResult.value,
+          description: draft.description.trim() || null,
+          blockedReason: draft.blockedReason.trim() || null,
+        },
       });
 
-      setTask(response.task);
       setDraft(createEditableDraft(response.task));
       setSuccessMessage('Task updated.');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to update task right now.';
       setSubmitError(message);
-    } finally {
-      setIsSaving(false);
     }
-  }, [draft, taskId]);
+  }, [draft, taskId, updateTaskMutation]);
 
-  if (isLoading) {
+  if (!taskId) {
+    return (
+      <MobileScreen>
+        <View style={styles.centered}>
+          <Text style={styles.title}>Task details</Text>
+          <Text style={styles.errorText}>Task id is missing.</Text>
+          <Pressable onPress={() => router.back()} style={styles.ghostButton}>
+            <Text style={styles.ghostButtonText}>Back</Text>
+          </Pressable>
+        </View>
+      </MobileScreen>
+    );
+  }
+
+  if (taskQuery.isPending || !draft || !task) {
     return (
       <MobileScreen>
         <View style={styles.centered}>
@@ -237,12 +221,15 @@ export default function TaskDetailScreen() {
     );
   }
 
-  if (loadError || !task || !draft) {
+  if (taskQuery.isError) {
+    const loadError =
+      taskQuery.error instanceof Error ? taskQuery.error.message : 'Unable to load task right now.';
+
     return (
       <MobileScreen>
         <View style={styles.centered}>
           <Text style={styles.title}>Task details</Text>
-          <Text style={styles.errorText}>{loadError ?? 'Task not found.'}</Text>
+          <Text style={styles.errorText}>{loadError}</Text>
           <Pressable onPress={onRetry} style={styles.primaryButton}>
             <Text style={styles.primaryButtonText}>Retry</Text>
           </Pressable>
@@ -255,6 +242,7 @@ export default function TaskDetailScreen() {
   }
 
   const dirty = isDraftDirty(task, draft);
+  const isSaving = updateTaskMutation.isPending;
 
   return (
     <MobileScreen padded={false}>
@@ -295,7 +283,7 @@ export default function TaskDetailScreen() {
                   setSuccessMessage(null);
                   setSubmitError(null);
                 }}
-                options={STATUS_OPTIONS.map((option) => ({
+                options={MOBILE_TASK_STATUS_VALUES.map((option) => ({
                   label: formatTaskToken(option),
                   value: option,
                 }))}
@@ -309,7 +297,7 @@ export default function TaskDetailScreen() {
                   setSuccessMessage(null);
                   setSubmitError(null);
                 }}
-                options={PRIORITY_OPTIONS.map((option) => ({
+                options={MOBILE_TASK_PRIORITY_VALUES.map((option) => ({
                   label: formatTaskToken(option),
                   value: option,
                 }))}

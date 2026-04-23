@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { getTaskDueDateState, getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { TASK_STATUS_VALUES, isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getActiveTimerSession, getTimerSummary } from "@/lib/services/timer-service";
@@ -47,6 +47,7 @@ export type TodayPlannerTask = {
   hasActiveTimer: boolean;
   isDueToday: boolean;
   isPlannedForToday: boolean;
+  dueBucket: "none" | "overdue" | "today" | "soon" | "scheduled";
 };
 
 export type TodayPlannerData = {
@@ -64,7 +65,10 @@ export type TodayPlannerData = {
     inProgressCount: number;
     blockedCount: number;
     completedCount: number;
+    selectedCount: number;
     clearableCompletedCount: number;
+    overdueCount: number;
+    dueTodayCount: number;
     totalEstimateMinutes: number;
     trackedTodaySeconds: number;
     trackedTodayLabel: string;
@@ -102,6 +106,7 @@ function mapTaskRow(row: TodayTaskRow, activeTaskId: string | null, today: strin
     hasActiveTimer: row.id === activeTaskId,
     isDueToday: row.due_date === today,
     isPlannedForToday: row.planned_for_date === today,
+    dueBucket: getTaskDueDateState(row.due_date, row.status, today),
   };
 }
 
@@ -262,7 +267,10 @@ export async function getTodayPlannerData(options?: {
     .sort(sortTodayTasks);
   const blocked = selectedTasks.filter((task) => task.status === "blocked").sort(sortTodayTasks);
   const completed = selectedTasks.filter((task) => task.status === "done").sort(sortTodayTasks);
+  const selectedCount = selectedTasks.length;
   const clearableCompletedCount = completed.filter((task) => task.isPlannedForToday).length;
+  const overdueCount = selectedTasks.filter((task) => task.dueBucket === "overdue").length;
+  const dueTodayCount = selectedTasks.filter((task) => task.dueBucket === "today").length;
 
   const toSuggestionSlice = (rows: TodayTaskRow[]) =>
     rows
@@ -299,7 +307,10 @@ export async function getTodayPlannerData(options?: {
         inProgressCount: inProgress.length,
         blockedCount: blocked.length,
         completedCount: completed.length,
+        selectedCount,
         clearableCompletedCount,
+        overdueCount,
+        dueTodayCount,
         totalEstimateMinutes,
         trackedTodaySeconds,
         trackedTodayLabel,

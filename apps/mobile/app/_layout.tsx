@@ -9,6 +9,7 @@ import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/lib/auth/auth-context';
+import { MobileQueryProvider } from '@/lib/query/provider';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -50,14 +51,16 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
 
   return (
-    <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="(public)" />
-          <Stack.Screen name="(app)" />
-        </Stack>
-      </ThemeProvider>
-    </AuthProvider>
+    <MobileQueryProvider>
+      <AuthProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <Stack screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="index" />
+            <Stack.Screen name="(public)" />
+            <Stack.Screen name="(app)" />
+          </Stack>
+        </ThemeProvider>
+      </AuthProvider>
+    </MobileQueryProvider>
   );
 }

@@ -128,6 +128,7 @@ export type MobileTodayTaskItem = {
   hasActiveTimer: boolean;
   isDueToday: boolean;
   isPlannedForToday: boolean;
+  dueBucket: "none" | "overdue" | "today" | "soon" | "scheduled";
 };
 
 export type MobileTodaySummary = {
@@ -135,7 +136,10 @@ export type MobileTodaySummary = {
   inProgressCount: number;
   blockedCount: number;
   completedCount: number;
+  selectedCount: number;
   clearableCompletedCount: number;
+  overdueCount: number;
+  dueTodayCount: number;
   totalEstimateMinutes: number;
   trackedTodaySeconds: number;
   trackedTodayLabel: string;

@@ -26,6 +26,7 @@ function mapTodayPlannerTaskToMobileTask(task: TodayPlannerTask): MobileTodayTas
     hasActiveTimer: task.hasActiveTimer,
     isDueToday: task.isDueToday,
     isPlannedForToday: task.isPlannedForToday,
+    dueBucket: task.dueBucket,
   };
 }
 

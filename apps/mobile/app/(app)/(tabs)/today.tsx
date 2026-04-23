@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -24,13 +24,13 @@ import {
 import { TodayTaskCard } from '@/components/mobile/TodayTaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
 import {
-  addMobileTaskToToday,
-  clearMobileTodayCompletedTasks,
-  fetchMobileToday,
-  removeMobileTaskFromToday,
-  updateMobileTodayTaskStatus,
-} from '@/lib/api/today';
-import { updateMobileTask } from '@/lib/api/tasks';
+  useAddTaskToTodayMutation,
+  useClearTodayCompletedMutation,
+  useRemoveTaskFromTodayMutation,
+  useTodayWorkspaceQuery,
+  useUpdateTodayTaskStatusMutation,
+} from '@/features/today/query';
+import { useUpdateTaskMutation } from '@/features/tasks/query';
 import type { MobileTodayResponse, MobileTodayTask } from '@/types/today';
 import type { MobileTaskPriority, MobileTaskStatus } from '@/types/tasks';
 
@@ -56,17 +56,25 @@ function addLocalDays(value: Date, days: number) {
   return next;
 }
 
-function formatDueDate(value: string | null) {
-  if (!value) {
+function formatDueDate(task: MobileTodayTask) {
+  if (!task.dueDate) {
     return 'No due date';
   }
 
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) {
-    return value;
+  const date = new Date(`${task.dueDate}T00:00:00`);
+  const formatted = Number.isNaN(date.getTime())
+    ? task.dueDate
+    : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  if (task.dueBucket === 'overdue') {
+    return `Overdue · ${formatted}`;
   }
 
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (task.dueBucket === 'today') {
+    return `Due today · ${formatted}`;
+  }
+
+  return formatted;
 }
 
 function formatMessage(error: unknown, fallback: string) {
@@ -114,17 +122,21 @@ function getTodayTaskCount(today: MobileTodayResponse | null) {
 
 export default function TodayScreen() {
   const router = useRouter();
-  const [today, setToday] = useState<MobileTodayResponse | null>(null);
-  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const todayQuery = useTodayWorkspaceQuery();
+  const updateTaskMutation = useUpdateTaskMutation();
+  const statusMutation = useUpdateTodayTaskStatusMutation();
+  const addTaskMutation = useAddTaskToTodayMutation();
+  const removeTaskMutation = useRemoveTaskFromTodayMutation();
+  const clearCompletedMutation = useClearTodayCompletedMutation();
+
   const [actionError, setActionError] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
-  const [isClearingCompleted, setIsClearingCompleted] = useState(false);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
-  const activeTask = useMemo(
+  const today = todayQuery.data ?? null;
+
+  const allSectionTasks = useMemo(
     () =>
       today
         ? [
@@ -132,57 +144,29 @@ export default function TodayScreen() {
             ...today.sections.inProgress,
             ...today.sections.blocked,
             ...today.sections.completed,
-          ].find((task) => task.id === activeTaskId) ?? null
-        : null,
-    [activeTaskId, today],
+          ]
+        : [],
+    [today],
+  );
+
+  const activeTask = useMemo(
+    () => allSectionTasks.find((task) => task.id === selectedTaskId) ?? null,
+    [allSectionTasks, selectedTaskId],
   );
 
   const todayIso = useMemo(() => getLocalIsoDate(new Date()), []);
   const tomorrowIso = useMemo(() => getLocalIsoDate(addLocalDays(new Date(), 1)), []);
 
-  const loadToday = useCallback(async (mode: 'initial' | 'refresh' | 'silent') => {
-    if (mode === 'initial') {
-      setIsLoading(true);
-    } else if (mode === 'refresh') {
-      setIsRefreshing(true);
-    }
-
-    try {
-      const response = await fetchMobileToday();
-      setToday(response);
-      setHasLoadedOnce(true);
-      setError(null);
-    } catch (loadError) {
-      const message = formatMessage(loadError, 'Unable to load Today right now.');
-      if (mode === 'silent') {
-        throw new Error(message);
-      }
-      setError(message);
-    } finally {
-      if (mode === 'initial') {
-        setIsLoading(false);
-      } else if (mode === 'refresh') {
-        setIsRefreshing(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    loadToday('initial').catch(() => {
-      // handled in loadToday state
-    });
-  }, [loadToday]);
-
   useFocusEffect(
     useCallback(() => {
-      if (!hasLoadedOnce) {
+      if (!todayQuery.isFetched) {
         return;
       }
 
-      loadToday('silent').catch(() => {
+      todayQuery.refetch().catch(() => {
         // Keep existing data visible if focus refresh fails.
       });
-    }, [hasLoadedOnce, loadToday]),
+    }, [todayQuery]),
   );
 
   const sections = useMemo<TodaySection[]>(() => {
@@ -218,21 +202,24 @@ export default function TodayScreen() {
     ];
   }, [today]);
 
+  const onRefresh = useCallback(async () => {
+    await todayQuery.refetch();
+  }, [todayQuery]);
+
   const runStatusAction = useCallback(
     async (task: MobileTodayTask, status: MobileTaskStatus) => {
       setActionError(null);
       setActiveTaskId(task.id);
 
       try {
-        await updateMobileTodayTaskStatus(task.id, status);
-        await loadToday('silent');
+        await statusMutation.mutateAsync({ taskId: task.id, status });
       } catch (mutationError) {
         setActionError(formatMessage(mutationError, 'Unable to update task status.'));
       } finally {
         setActiveTaskId(null);
       }
     },
-    [loadToday],
+    [statusMutation],
   );
 
   const runInlineUpdate = useCallback(
@@ -247,15 +234,14 @@ export default function TodayScreen() {
       setActiveTaskId(task.id);
 
       try {
-        await updateMobileTask(task.id, input);
-        await loadToday('silent');
+        await updateTaskMutation.mutateAsync({ taskId: task.id, input });
       } catch (mutationError) {
         setActionError(formatMessage(mutationError, 'Unable to update task.'));
       } finally {
         setActiveTaskId(null);
       }
     },
-    [loadToday],
+    [updateTaskMutation],
   );
 
   const runRemoveFromToday = useCallback(
@@ -264,15 +250,14 @@ export default function TodayScreen() {
       setActiveTaskId(task.id);
 
       try {
-        await removeMobileTaskFromToday(task.id);
-        await loadToday('silent');
+        await removeTaskMutation.mutateAsync(task.id);
       } catch (mutationError) {
         setActionError(formatMessage(mutationError, 'Unable to remove task from Today.'));
       } finally {
         setActiveTaskId(null);
       }
     },
-    [loadToday],
+    [removeTaskMutation],
   );
 
   const runAddSuggestion = useCallback(
@@ -281,30 +266,25 @@ export default function TodayScreen() {
       setActiveSuggestionId(task.id);
 
       try {
-        await addMobileTaskToToday(task.id);
-        await loadToday('silent');
+        await addTaskMutation.mutateAsync(task.id);
       } catch (mutationError) {
         setActionError(formatMessage(mutationError, 'Unable to add task to Today.'));
       } finally {
         setActiveSuggestionId(null);
       }
     },
-    [loadToday],
+    [addTaskMutation],
   );
 
   const runClearCompleted = useCallback(async () => {
     setActionError(null);
-    setIsClearingCompleted(true);
 
     try {
-      await clearMobileTodayCompletedTasks();
-      await loadToday('silent');
+      await clearCompletedMutation.mutateAsync();
     } catch (clearError) {
       setActionError(formatMessage(clearError, 'Unable to clear completed tasks from Today.'));
-    } finally {
-      setIsClearingCompleted(false);
     }
-  }, [loadToday]);
+  }, [clearCompletedMutation]);
 
   const actionSheetItems = useMemo<ActionSheetItem[]>(() => {
     if (!activeTask) {
@@ -404,6 +384,8 @@ export default function TodayScreen() {
     tomorrowIso,
   ]);
 
+  const isLoading = todayQuery.isPending && !today;
+
   if (isLoading) {
     return (
       <MobileScreen>
@@ -420,16 +402,19 @@ export default function TodayScreen() {
     );
   }
 
-  if (error && !today) {
+  if (todayQuery.isError && !today) {
+    const loadError =
+      todayQuery.error instanceof Error ? todayQuery.error.message : 'Unable to load Today right now.';
+
     return (
       <MobileScreen>
         <View style={styles.centered}>
           <Text style={styles.title}>Today</Text>
-          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorText}>{loadError}</Text>
           <Pressable
             onPress={() => {
-              loadToday('initial').catch(() => {
-                // handled in loadToday state
+              onRefresh().catch(() => {
+                // handled in query state
               });
             }}
             style={styles.button}
@@ -448,6 +433,7 @@ export default function TodayScreen() {
   const todayCount = getTodayTaskCount(today);
   const completedRatio =
     todayCount > 0 ? Math.round((today.summary.completedCount / todayCount) * 100) : 0;
+  const isRefreshing = todayQuery.isRefetching && !isLoading;
 
   return (
     <MobileScreen padded={false}>
@@ -455,135 +441,118 @@ export default function TodayScreen() {
         contentContainerStyle={styles.listContent}
         keyExtractor={(item) => item.id}
         sections={sections}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={() => {
-              loadToday('refresh').catch(() => {
-                // handled in loadToday state
-              });
-            }}
-          />
-        }
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
-          today ? (
-            <View style={styles.pagePadding}>
-              <MobileScreenHeader
-                eyebrow={new Date(`${today.date}T00:00:00`).toLocaleDateString(undefined, {
-                  weekday: 'long',
-                })}
-                title="Today"
-                description={`${today.summary.trackedTodayLabel} tracked tasks in focus`}
-              />
+          <View style={styles.pagePadding}>
+            <MobileScreenHeader
+              eyebrow={new Date(`${today.date}T00:00:00`).toLocaleDateString(undefined, {
+                weekday: 'long',
+              })}
+              title="Today"
+              description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
+            />
 
-              <SurfaceCard style={styles.summaryCard}>
-                <View style={styles.summaryAccentBubble} />
-                <Text style={styles.summaryTitle}>Daily momentum</Text>
-                <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
-                <View style={styles.summaryStatsRow}>
-                  <View style={styles.statBlock}>
-                    <Text style={styles.statValue}>{today.summary.inProgressCount}</Text>
-                    <Text style={styles.statLabel}>In progress</Text>
-                  </View>
-                  <View style={styles.statBlock}>
-                    <Text style={styles.statValue}>{today.summary.completedCount}</Text>
-                    <Text style={styles.statLabel}>Completed</Text>
-                  </View>
-                  <View style={styles.statBlock}>
-                    <Text style={styles.statValue}>{completedRatio}%</Text>
-                    <Text style={styles.statLabel}>Completion</Text>
-                  </View>
+            <SurfaceCard style={styles.summaryCard}>
+              <View style={styles.summaryAccentBubble} />
+              <Text style={styles.summaryTitle}>Daily momentum</Text>
+              <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
+              <View style={styles.summaryStatsRow}>
+                <View style={styles.statBlock}>
+                  <Text style={styles.statValue}>{today.summary.inProgressCount}</Text>
+                  <Text style={styles.statLabel}>In progress</Text>
                 </View>
-
-                <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${completedRatio}%` }]}>
-                    <View style={styles.progressFillStart} />
-                    <View style={styles.progressFillEnd} />
-                  </View>
+                <View style={styles.statBlock}>
+                  <Text style={styles.statValue}>{today.summary.completedCount}</Text>
+                  <Text style={styles.statLabel}>Completed</Text>
                 </View>
+                <View style={styles.statBlock}>
+                  <Text style={styles.statValue}>{today.summary.overdueCount}</Text>
+                  <Text style={styles.statLabel}>Overdue</Text>
+                </View>
+              </View>
 
-                {todayCount === 0 ? (
-                  <Text style={styles.emptyText}>Nothing in Today yet. Add tasks from suggestions below.</Text>
-                ) : null}
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${completedRatio}%` }]}>
+                  <View style={styles.progressFillStart} />
+                  <View style={styles.progressFillEnd} />
+                </View>
+              </View>
 
-                {today.summary.clearableCompletedCount > 0 ? (
-                  <Pressable
-                    disabled={isClearingCompleted}
-                    onPress={() => {
-                      runClearCompleted().catch(() => {
-                        // handled in runClearCompleted state
-                      });
-                    }}
-                    style={styles.clearButton}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={mobileTheme.colors.danger} />
-                    <Text style={styles.clearButtonText}>
-                      {isClearingCompleted ? 'Clearing...' : 'Clear completed'}
-                    </Text>
-                  </Pressable>
-                ) : null}
+              {todayCount === 0 ? (
+                <Text style={styles.emptyText}>Nothing in Today yet. Add tasks from suggestions below.</Text>
+              ) : null}
 
-                {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
-              </SurfaceCard>
-            </View>
-          ) : null
+              {today.summary.clearableCompletedCount > 0 ? (
+                <Pressable
+                  disabled={clearCompletedMutation.isPending}
+                  onPress={() => {
+                    runClearCompleted().catch(() => {
+                      // handled in runClearCompleted state
+                    });
+                  }}
+                  style={styles.clearButton}
+                >
+                  <Ionicons name="trash-outline" size={16} color={mobileTheme.colors.danger} />
+                  <Text style={styles.clearButtonText}>
+                    {clearCompletedMutation.isPending ? 'Clearing...' : 'Clear completed'}
+                  </Text>
+                </Pressable>
+              ) : null}
+
+              {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
+            </SurfaceCard>
+          </View>
         }
         ListFooterComponent={
-          today ? (
-            <View style={styles.pagePadding}>
-              <SurfaceCard>
-                <Text style={styles.suggestionsTitle}>Suggestions</Text>
-                {today.suggestions.pinned.length === 0 && today.suggestions.inProgress.length === 0 ? (
-                  <Text style={styles.sectionEmpty}>No suggestions right now.</Text>
-                ) : null}
-                {[
-                  { key: 'Pinned / focus', items: today.suggestions.pinned },
-                  { key: 'Recently active', items: today.suggestions.inProgress },
-                ].map((group) =>
-                  group.items.length > 0 ? (
-                    <View key={group.key} style={styles.suggestionGroup}>
-                      <Text style={styles.suggestionGroupTitle}>{group.key}</Text>
-                      {group.items.map((task) => {
-                        const isMutating = activeSuggestionId === task.id;
+          <View style={styles.pagePadding}>
+            <SurfaceCard>
+              <Text style={styles.suggestionsTitle}>Suggestions</Text>
+              {today.suggestions.pinned.length === 0 && today.suggestions.inProgress.length === 0 ? (
+                <Text style={styles.sectionEmpty}>No suggestions right now.</Text>
+              ) : null}
+              {[
+                { key: 'Pinned / focus', items: today.suggestions.pinned },
+                { key: 'Recently active', items: today.suggestions.inProgress },
+              ].map((group) =>
+                group.items.length > 0 ? (
+                  <View key={group.key} style={styles.suggestionGroup}>
+                    <Text style={styles.suggestionGroupTitle}>{group.key}</Text>
+                    {group.items.map((task) => {
+                      const isMutating = activeSuggestionId === task.id;
 
-                        return (
-                          <View key={task.id} style={styles.suggestionRow}>
-                            <View style={styles.suggestionCopy}>
-                              <Text style={styles.suggestionTaskTitle}>{task.title}</Text>
-                              <Text style={styles.suggestionTaskMeta}>
-                                {task.projectName}
-                                {task.goalTitle ? ` · ${task.goalTitle}` : ''}
-                              </Text>
-                            </View>
-                            <Pressable
-                              disabled={isMutating}
-                              onPress={() => {
-                                runAddSuggestion(task).catch(() => {
-                                  // handled in runAddSuggestion state
-                                });
-                              }}
-                              style={styles.addButton}
-                            >
-                              <Text style={styles.addButtonText}>{isMutating ? 'Adding...' : 'Add'}</Text>
-                            </Pressable>
+                      return (
+                        <View key={task.id} style={styles.suggestionRow}>
+                          <View style={styles.suggestionCopy}>
+                            <Text style={styles.suggestionTaskTitle}>{task.title}</Text>
+                            <Text style={styles.suggestionTaskMeta}>
+                              {task.projectName}
+                              {task.goalTitle ? ` · ${task.goalTitle}` : ''}
+                            </Text>
                           </View>
-                        );
-                      })}
-                    </View>
-                  ) : null,
-                )}
-              </SurfaceCard>
-            </View>
-          ) : null
+                          <Pressable
+                            disabled={isMutating}
+                            onPress={() => {
+                              runAddSuggestion(task).catch(() => {
+                                // handled in runAddSuggestion state
+                              });
+                            }}
+                            style={styles.addButton}
+                          >
+                            <Text style={styles.addButtonText}>{isMutating ? 'Adding...' : 'Add'}</Text>
+                          </Pressable>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : null,
+              )}
+            </SurfaceCard>
+          </View>
         }
         renderSectionFooter={({ section }) =>
           section.data.length === 0 ? (
             <View style={styles.pagePadding}>
-              <EmptyState
-                icon="list-outline"
-                title="No tasks"
-                description={section.emptyText}
-              />
+              <EmptyState icon="list-outline" title="No tasks" description={section.emptyText} />
             </View>
           ) : null
         }
@@ -595,7 +564,7 @@ export default function TodayScreen() {
         renderItem={({ item }) => {
           const isMutating = activeTaskId === item.id;
           const statusActions = getStatusActions(item);
-          const primaryAction = statusActions[0];
+          const primaryAction = statusActions[0] ?? { label: 'Open', status: item.status };
 
           return (
             <View style={styles.pagePadding}>
@@ -603,10 +572,10 @@ export default function TodayScreen() {
                 <TodayTaskCard
                   blockedReason={item.status === 'blocked' ? item.blockedReason : null}
                   busy={isMutating}
-                  dueLabel={formatDueDate(item.dueDate)}
+                  dueLabel={formatDueDate(item)}
                   goal={item.goalTitle}
                   muted={item.status === 'done'}
-                  onActions={() => setActiveTaskId(item.id)}
+                  onActions={() => setSelectedTaskId(item.id)}
                   onOpen={() => {
                     router.push({
                       pathname: '/(app)/tasks/[id]',
@@ -633,7 +602,7 @@ export default function TodayScreen() {
       <ActionSheet
         footer={activeTaskId ? <Text style={styles.sheetFooter}>Running update...</Text> : null}
         items={actionSheetItems}
-        onClose={() => setActiveTaskId(null)}
+        onClose={() => setSelectedTaskId(null)}
         subtitle={
           activeTask
             ? `${activeTask.projectName}${activeTask.goalTitle ? ` · ${activeTask.goalTitle}` : ''}`
@@ -682,6 +651,7 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     alignItems: 'center',
+    alignSelf: 'flex-start',
     backgroundColor: mobileTheme.colors.dangerBg,
     borderRadius: mobileTheme.radius.pill,
     flexDirection: 'row',
@@ -689,7 +659,6 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.sm,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    alignSelf: 'flex-start',
   },
   clearButtonText: {
     color: mobileTheme.colors.danger,

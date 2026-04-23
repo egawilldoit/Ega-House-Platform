@@ -146,6 +146,10 @@ test("includes due-today tasks in Today when they are not manually planned", asy
 
   assert.equal(result.errorMessage, null);
   assert.deepEqual(result.data?.planned.map((task) => task.id), ["due-today-only"]);
+  assert.equal(result.data?.planned[0]?.dueBucket, "today");
+  assert.equal(result.data?.summary.selectedCount, 1);
+  assert.equal(result.data?.summary.dueTodayCount, 1);
+  assert.equal(result.data?.summary.overdueCount, 0);
 });
 
 test("includes manually planned tasks with no due date in Today", async () => {
@@ -173,6 +177,40 @@ test("includes manually planned tasks with no due date in Today", async () => {
 
   assert.equal(result.errorMessage, null);
   assert.deepEqual(result.data?.planned.map((task) => task.id), ["planned-only"]);
+  assert.equal(result.data?.planned[0]?.dueBucket, "none");
+  assert.equal(result.data?.summary.selectedCount, 1);
+  assert.equal(result.data?.summary.dueTodayCount, 0);
+  assert.equal(result.data?.summary.overdueCount, 0);
+});
+
+test("tracks overdue count for selected Today tasks", async () => {
+  const supabase = createSupabaseMock([
+    {
+      data: [
+        createTaskRow({
+          id: "overdue-task",
+          due_date: "2026-04-19",
+          planned_for_date: "2026-04-20",
+          status: "todo",
+        }),
+      ],
+      error: null,
+    },
+    { data: [], error: null },
+    { data: [], error: null },
+  ]);
+
+  const result = await getTodayPlannerData({
+    supabase: supabase as never,
+    now: new Date("2026-04-20T12:00:00.000Z"),
+    ...createTimerOverrides(),
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.planned[0]?.dueBucket, "overdue");
+  assert.equal(result.data?.summary.selectedCount, 1);
+  assert.equal(result.data?.summary.dueTodayCount, 0);
+  assert.equal(result.data?.summary.overdueCount, 1);
 });
 
 test("deduplicates tasks that match both planned_for_date and due_date for today", async () => {

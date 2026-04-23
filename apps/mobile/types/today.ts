@@ -1,5 +1,7 @@
 import type { MobileTaskPriority, MobileTaskStatus } from '@/types/tasks';
 
+export type MobileTodayDueBucket = 'none' | 'overdue' | 'today' | 'soon' | 'scheduled';
+
 export type MobileTodayTask = {
   id: string;
   title: string;
@@ -18,6 +20,7 @@ export type MobileTodayTask = {
   hasActiveTimer: boolean;
   isDueToday: boolean;
   isPlannedForToday: boolean;
+  dueBucket: MobileTodayDueBucket;
 };
 
 export type MobileTodaySummary = {
@@ -25,7 +28,10 @@ export type MobileTodaySummary = {
   inProgressCount: number;
   blockedCount: number;
   completedCount: number;
+  selectedCount: number;
   clearableCompletedCount: number;
+  overdueCount: number;
+  dueTodayCount: number;
   totalEstimateMinutes: number;
   trackedTodaySeconds: number;
   trackedTodayLabel: string;
