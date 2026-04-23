@@ -1,7 +1,9 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { mobileTheme } from '@/components/mobile/theme';
 import { useAuth } from '@/lib/auth/auth-context';
 
 function isValidEmail(email: string) {
@@ -45,41 +47,60 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.bgCircle1} />
+      <View style={styles.bgCircle2} />
+
+      <Pressable onPress={() => router.replace('/(public)/welcome')} style={styles.backButton}>
+        <Ionicons name="chevron-back" size={22} color={mobileTheme.colors.textOnAccent} />
+      </Pressable>
+
       <View style={styles.card}>
         <Text style={styles.title}>Login</Text>
-        <TextInput
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          onChangeText={(value) => {
-            setEmail(value);
-            if (error) {
-              setError('');
-            }
-          }}
-          placeholder="Email"
-          style={styles.input}
-          value={email}
-          editable={!isSubmitting}
-        />
-        <TextInput
-          autoCapitalize="none"
-          onChangeText={(value) => {
-            setPassword(value);
-            if (error) {
-              setError('');
-            }
-          }}
-          placeholder="Password"
-          secureTextEntry
-          style={styles.input}
-          value={password}
-          editable={!isSubmitting}
-        />
+
+        <View style={styles.inputRow}>
+          <Ionicons name="mail-outline" size={18} color={mobileTheme.colors.authTextSubtle} />
+          <TextInput
+            autoCapitalize="none"
+            autoComplete="email"
+            editable={!isSubmitting}
+            keyboardType="email-address"
+            onChangeText={(value) => {
+              setEmail(value);
+              if (error) {
+                setError('');
+              }
+            }}
+            placeholder="Email"
+            placeholderTextColor={mobileTheme.colors.authTextSubtle}
+            style={styles.input}
+            value={email}
+          />
+        </View>
+
+        <View style={styles.inputRow}>
+          <Ionicons name="lock-closed-outline" size={18} color={mobileTheme.colors.authTextSubtle} />
+          <TextInput
+            autoCapitalize="none"
+            editable={!isSubmitting}
+            onChangeText={(value) => {
+              setPassword(value);
+              if (error) {
+                setError('');
+              }
+            }}
+            placeholder="Password"
+            placeholderTextColor={mobileTheme.colors.authTextSubtle}
+            secureTextEntry
+            style={styles.input}
+            value={password}
+          />
+        </View>
+
         <Text style={styles.errorText}>{error || authError || ' '}</Text>
+
         <Pressable disabled={isSubmitting} onPress={onLogin} style={styles.button}>
           {isSubmitting ? (
-            <ActivityIndicator color="#ffffff" />
+            <ActivityIndicator color={mobileTheme.colors.textOnAccent} />
           ) : (
             <Text style={styles.buttonText}>Login</Text>
           )}
@@ -90,46 +111,90 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  backButton: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.overlayLight,
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    left: mobileTheme.spacing.lg,
+    position: 'absolute',
+    top: 64,
+    width: 40,
+  },
+  bgCircle1: {
+    backgroundColor: mobileTheme.colors.authCircleBlue,
+    borderRadius: 160,
+    height: 320,
+    position: 'absolute',
+    right: -80,
+    top: -80,
+    width: 320,
+  },
+  bgCircle2: {
+    backgroundColor: mobileTheme.colors.authCirclePurple,
+    borderRadius: 100,
+    bottom: 80,
+    height: 200,
+    left: -60,
+    position: 'absolute',
+    width: 200,
+  },
   button: {
     alignItems: 'center',
-    backgroundColor: '#111827',
-    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.accent,
+    borderRadius: mobileTheme.radius.pill,
     marginTop: 4,
-    paddingVertical: 14,
+    minHeight: 52,
+    justifyContent: 'center',
+    ...mobileTheme.shadow.fab,
   },
   buttonText: {
-    color: '#ffffff',
+    color: mobileTheme.colors.textOnAccent,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.black,
   },
   card: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 20,
+    backgroundColor: mobileTheme.colors.authSurface,
+    borderColor: mobileTheme.colors.authBorderSoft,
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: mobileTheme.spacing.lg,
     width: '100%',
   },
   container: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: mobileTheme.colors.authBackground,
     flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    padding: mobileTheme.spacing.xl,
   },
   errorText: {
-    color: '#dc2626',
+    color: mobileTheme.colors.dangerMid,
     minHeight: 20,
   },
   input: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 10,
-    marginBottom: 12,
-    paddingHorizontal: 14,
+    color: mobileTheme.colors.textOnAccent,
+    flex: 1,
+    fontSize: 15,
     paddingVertical: 12,
   },
+  inputRow: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.authSurfaceMuted,
+    borderColor: mobileTheme.colors.authBorder,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: mobileTheme.spacing.sm,
+    paddingHorizontal: 14,
+  },
   title: {
-    color: '#0f172a',
+    color: mobileTheme.colors.textOnAccent,
     fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 20,
+    fontWeight: mobileTheme.font.black,
+    letterSpacing: -0.8,
+    marginBottom: mobileTheme.spacing.lg,
     textAlign: 'center',
   },
 });

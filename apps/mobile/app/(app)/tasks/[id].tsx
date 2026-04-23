@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -117,6 +118,15 @@ function isDraftDirty(task: MobileTaskListItem, draft: EditableTaskFields) {
   );
 }
 
+function SectionTitle({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  return (
+    <View style={styles.sectionTitleRow}>
+      <Ionicons color={mobileTheme.colors.textMuted} name={icon} size={16} />
+      <Text style={styles.sectionTitle}>{label}</Text>
+    </View>
+  );
+}
+
 export default function TaskDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -220,7 +230,7 @@ export default function TaskDetailScreen() {
     return (
       <MobileScreen>
         <View style={styles.centered}>
-          <ActivityIndicator />
+          <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading task...</Text>
         </View>
       </MobileScreen>
@@ -270,7 +280,7 @@ export default function TaskDetailScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionTitle}>Status</Text>
+              <SectionTitle icon="flag-outline" label="Status" />
               <SegmentedControl
                 onChange={(status) => {
                   setDraft((current) =>
@@ -292,7 +302,7 @@ export default function TaskDetailScreen() {
                 value={draft.status}
               />
 
-              <Text style={styles.sectionTitle}>Priority</Text>
+              <SectionTitle icon="trending-up-outline" label="Priority" />
               <SegmentedControl
                 onChange={(priority) => {
                   setDraft((current) => (current ? { ...current, priority } : current));
@@ -308,7 +318,7 @@ export default function TaskDetailScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionTitle}>Due date</Text>
+              <SectionTitle icon="calendar-outline" label="Due date" />
               <Text style={styles.dueValue}>{formatDueDate(draft.dueDate)}</Text>
               <View style={styles.quickRow}>
                 <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(0))} style={styles.quickButton}>
@@ -325,7 +335,7 @@ export default function TaskDetailScreen() {
                 </Pressable>
               </View>
 
-              <Text style={styles.sectionTitle}>Estimate (minutes)</Text>
+              <SectionTitle icon="time-outline" label="Estimate (minutes)" />
               <TextInput
                 value={draft.estimateMinutesText}
                 onChangeText={(value) => {
@@ -341,7 +351,7 @@ export default function TaskDetailScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionTitle}>Description</Text>
+              <SectionTitle icon="document-text-outline" label="Description" />
               <TextInput
                 multiline
                 value={draft.description}
@@ -355,7 +365,7 @@ export default function TaskDetailScreen() {
                 textAlignVertical="top"
               />
 
-              <Text style={styles.sectionTitle}>Blocked reason</Text>
+              <SectionTitle icon="ban-outline" label="Blocked reason" />
               <TextInput
                 multiline
                 value={draft.blockedReason}
@@ -377,8 +387,18 @@ export default function TaskDetailScreen() {
               ) : null}
             </SurfaceCard>
 
-            {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
-            {successMessage ? <Text style={styles.successText}>{successMessage}</Text> : null}
+            {submitError ? (
+              <View style={styles.feedbackError}>
+                <Ionicons name="alert-circle" size={16} color={mobileTheme.colors.danger} />
+                <Text style={styles.feedbackErrorText}>{submitError}</Text>
+              </View>
+            ) : null}
+            {successMessage ? (
+              <View style={styles.feedbackSuccess}>
+                <Ionicons name="checkmark-circle" size={16} color={mobileTheme.colors.success} />
+                <Text style={styles.feedbackSuccessText}>{successMessage}</Text>
+              </View>
+            ) : null}
 
             <View style={styles.footerActions}>
               <Pressable disabled={isSaving} onPress={() => router.back()} style={styles.ghostButton}>
@@ -411,13 +431,43 @@ const styles = StyleSheet.create({
   dueValue: {
     color: mobileTheme.colors.text,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
     marginTop: 6,
   },
   errorText: {
     color: mobileTheme.colors.danger,
     marginTop: 12,
     textAlign: 'center',
+  },
+  feedbackError: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.dangerBg,
+    borderRadius: mobileTheme.radius.md,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  feedbackErrorText: {
+    color: mobileTheme.colors.danger,
+    flex: 1,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  feedbackSuccess: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.successBg,
+    borderRadius: mobileTheme.radius.md,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  feedbackSuccessText: {
+    color: mobileTheme.colors.success,
+    flex: 1,
+    fontWeight: mobileTheme.font.semibold,
   },
   footerActions: {
     flexDirection: 'row',
@@ -426,16 +476,16 @@ const styles = StyleSheet.create({
   },
   ghostButton: {
     alignItems: 'center',
-    backgroundColor: '#ecf2f8',
-    borderRadius: 12,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 46,
+    minHeight: 52,
     paddingHorizontal: 16,
   },
   ghostButtonText: {
     color: mobileTheme.colors.text,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
   },
   helperText: {
     color: mobileTheme.colors.textMuted,
@@ -443,9 +493,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   input: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderColor: mobileTheme.colors.border,
-    borderRadius: 12,
+    borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     color: mobileTheme.colors.text,
     fontSize: 15,
@@ -464,30 +514,30 @@ const styles = StyleSheet.create({
     minHeight: 92,
   },
   pagePadding: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: 12,
+    borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 46,
+    minHeight: 52,
     paddingHorizontal: 16,
   },
   primaryButtonText: {
-    color: '#ffffff',
-    fontWeight: '800',
+    color: mobileTheme.colors.textOnAccent,
+    fontWeight: mobileTheme.font.extrabold,
   },
   quickButton: {
-    backgroundColor: '#eef2f7',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
   quickButtonText: {
     color: mobileTheme.colors.text,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
   },
   quickRow: {
     flexDirection: 'row',
@@ -501,7 +551,13 @@ const styles = StyleSheet.create({
   sectionTitle: {
     color: mobileTheme.colors.text,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
+    marginTop: 12,
+  },
+  sectionTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
     marginTop: 12,
   },
   subtitle: {
@@ -510,21 +566,16 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
   },
-  successText: {
-    color: mobileTheme.colors.success,
-    marginTop: 12,
-    textAlign: 'center',
-  },
   taskTitle: {
     color: mobileTheme.colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.4,
-    lineHeight: 28,
+    fontSize: 24,
+    fontWeight: mobileTheme.font.black,
+    letterSpacing: -0.5,
+    lineHeight: 30,
   },
   title: {
     color: mobileTheme.colors.text,
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
   },
 });

@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -13,9 +14,11 @@ import {
 
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
 import {
+  EmptyState,
   MobileScreen,
   MobileScreenHeader,
   MobileSectionHeader,
+  SkeletonCard,
   SurfaceCard,
 } from '@/components/mobile/primitives';
 import { TodayTaskCard } from '@/components/mobile/TodayTaskCard';
@@ -404,9 +407,14 @@ export default function TodayScreen() {
   if (isLoading) {
     return (
       <MobileScreen>
-        <View style={styles.centered}>
-          <ActivityIndicator />
+        <View style={styles.loadingWrap}>
+          <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading Today...</Text>
+        </View>
+        <View style={styles.skeletonWrap}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
         </View>
       </MobileScreen>
     );
@@ -468,7 +476,8 @@ export default function TodayScreen() {
                 description={`${today.summary.trackedTodayLabel} tracked tasks in focus`}
               />
 
-              <SurfaceCard>
+              <SurfaceCard style={styles.summaryCard}>
+                <View style={styles.summaryAccentBubble} />
                 <Text style={styles.summaryTitle}>Daily momentum</Text>
                 <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
                 <View style={styles.summaryStatsRow}>
@@ -485,9 +494,18 @@ export default function TodayScreen() {
                     <Text style={styles.statLabel}>Completion</Text>
                   </View>
                 </View>
+
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${completedRatio}%` }]}>
+                    <View style={styles.progressFillStart} />
+                    <View style={styles.progressFillEnd} />
+                  </View>
+                </View>
+
                 {todayCount === 0 ? (
                   <Text style={styles.emptyText}>Nothing in Today yet. Add tasks from suggestions below.</Text>
                 ) : null}
+
                 {today.summary.clearableCompletedCount > 0 ? (
                   <Pressable
                     disabled={isClearingCompleted}
@@ -496,13 +514,15 @@ export default function TodayScreen() {
                         // handled in runClearCompleted state
                       });
                     }}
-                    style={styles.secondaryButton}
+                    style={styles.clearButton}
                   >
-                    <Text style={styles.secondaryButtonText}>
+                    <Ionicons name="trash-outline" size={16} color={mobileTheme.colors.danger} />
+                    <Text style={styles.clearButtonText}>
                       {isClearingCompleted ? 'Clearing...' : 'Clear completed'}
                     </Text>
                   </Pressable>
                 ) : null}
+
                 {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
               </SurfaceCard>
             </View>
@@ -559,7 +579,11 @@ export default function TodayScreen() {
         renderSectionFooter={({ section }) =>
           section.data.length === 0 ? (
             <View style={styles.pagePadding}>
-              <Text style={styles.sectionEmpty}>{section.emptyText}</Text>
+              <EmptyState
+                icon="list-outline"
+                title="No tasks"
+                description={section.emptyText}
+              />
             </View>
           ) : null
         }
@@ -607,13 +631,13 @@ export default function TodayScreen() {
       />
 
       <ActionSheet
-        footer={
-          activeTaskId ? <Text style={styles.sheetFooter}>Running update...</Text> : null
-        }
+        footer={activeTaskId ? <Text style={styles.sheetFooter}>Running update...</Text> : null}
         items={actionSheetItems}
         onClose={() => setActiveTaskId(null)}
         subtitle={
-          activeTask ? `${activeTask.projectName}${activeTask.goalTitle ? ` · ${activeTask.goalTitle}` : ''}` : undefined
+          activeTask
+            ? `${activeTask.projectName}${activeTask.goalTitle ? ` · ${activeTask.goalTitle}` : ''}`
+            : undefined
         }
         title={activeTask?.title ?? 'Task actions'}
         visible={Boolean(activeTask)}
@@ -625,31 +649,30 @@ export default function TodayScreen() {
 const styles = StyleSheet.create({
   addButton: {
     alignItems: 'center',
-    backgroundColor: '#eff6ff',
-    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.accent,
+    borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
-    minHeight: 36,
-    minWidth: 58,
-    paddingHorizontal: 12,
+    minHeight: 32,
+    paddingHorizontal: 14,
   },
   addButtonText: {
-    color: mobileTheme.colors.info,
+    color: mobileTheme.colors.textOnAccent,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
   },
   button: {
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: 12,
-    marginTop: 20,
+    borderRadius: mobileTheme.radius.pill,
+    marginTop: mobileTheme.spacing.lg,
     paddingHorizontal: 18,
     paddingVertical: 12,
   },
   buttonText: {
-    color: '#ffffff',
-    fontWeight: '800',
+    color: mobileTheme.colors.textOnAccent,
+    fontWeight: mobileTheme.font.extrabold,
   },
   cardWrap: {
-    marginBottom: 10,
+    marginBottom: mobileTheme.spacing.sm,
   },
   centered: {
     alignItems: 'center',
@@ -657,32 +680,62 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
+  clearButton: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.dangerBg,
+    borderRadius: mobileTheme.radius.pill,
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: mobileTheme.spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    alignSelf: 'flex-start',
+  },
+  clearButtonText: {
+    color: mobileTheme.colors.danger,
+    fontSize: 13,
+    fontWeight: mobileTheme.font.bold,
+  },
   emptyText: {
     color: mobileTheme.colors.textMuted,
-    marginTop: 10,
+    marginTop: mobileTheme.spacing.sm,
   },
   errorText: {
     color: mobileTheme.colors.danger,
-    marginTop: 10,
+    marginTop: mobileTheme.spacing.sm,
+    textAlign: 'center',
   },
   listContent: {
-    paddingBottom: 30,
-    paddingTop: 12,
+    paddingBottom: mobileTheme.spacing.xxl,
+    paddingTop: mobileTheme.spacing.sm,
+  },
+  loadingWrap: {
+    alignItems: 'center',
+    paddingTop: mobileTheme.spacing.xxl,
   },
   pagePadding: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   },
-  secondaryButton: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#eef2f7',
-    borderRadius: 10,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  progressFill: {
+    borderRadius: 3,
+    flexDirection: 'row',
+    height: 6,
+    overflow: 'hidden',
   },
-  secondaryButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: '700',
+  progressFillEnd: {
+    backgroundColor: mobileTheme.colors.successMid,
+    flex: 1,
+  },
+  progressFillStart: {
+    backgroundColor: mobileTheme.colors.accentMid,
+    flex: 1,
+  },
+  progressTrack: {
+    backgroundColor: mobileTheme.colors.backgroundDeep,
+    borderRadius: 3,
+    height: 6,
+    marginTop: mobileTheme.spacing.sm,
+    overflow: 'hidden',
   },
   sectionEmpty: {
     color: mobileTheme.colors.textMuted,
@@ -694,25 +747,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
   },
+  skeletonWrap: {
+    marginTop: mobileTheme.spacing.lg,
+  },
   statBlock: {
+    alignItems: 'center',
     flex: 1,
-    gap: 3,
   },
   statLabel: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: mobileTheme.font.bold,
+    letterSpacing: 0.3,
+    marginTop: 2,
+    textTransform: 'uppercase',
   },
   statValue: {
     color: mobileTheme.colors.text,
-    fontSize: 22,
-    fontWeight: '800',
-    letterSpacing: -0.4,
+    fontSize: 26,
+    fontWeight: mobileTheme.font.black,
+    letterSpacing: -0.6,
   },
   subtitle: {
     color: mobileTheme.colors.textMuted,
     fontSize: 15,
-    marginTop: 8,
+    marginTop: mobileTheme.spacing.sm,
     textAlign: 'center',
   },
   suggestionCopy: {
@@ -720,25 +779,30 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   suggestionGroup: {
-    marginTop: 14,
+    marginTop: mobileTheme.spacing.md,
   },
   suggestionGroupTitle: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
     letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
   suggestionRow: {
     alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginTop: mobileTheme.spacing.sm,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   suggestionsTitle: {
     color: mobileTheme.colors.text,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: -0.2,
   },
   suggestionTaskMeta: {
     color: mobileTheme.colors.textSubtle,
@@ -747,7 +811,22 @@ const styles = StyleSheet.create({
   },
   suggestionTaskTitle: {
     color: mobileTheme.colors.text,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  summaryAccentBubble: {
+    backgroundColor: mobileTheme.colors.accentSoft,
+    borderRadius: 40,
+    height: 80,
+    opacity: 0.5,
+    position: 'absolute',
+    right: -20,
+    top: -20,
+    width: 80,
+  },
+  summaryCard: {
+    overflow: 'hidden',
+    position: 'relative',
   },
   summaryMeta: {
     color: mobileTheme.colors.textMuted,
@@ -756,18 +835,17 @@ const styles = StyleSheet.create({
   },
   summaryStatsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 12,
+    marginTop: mobileTheme.spacing.md,
   },
   summaryTitle: {
     color: mobileTheme.colors.text,
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.4,
+    fontSize: 17,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: -0.2,
   },
   title: {
     color: mobileTheme.colors.text,
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: mobileTheme.font.black,
   },
 });

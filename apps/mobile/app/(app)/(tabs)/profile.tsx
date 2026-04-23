@@ -1,6 +1,9 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { MobileScreen, MobileScreenHeader, SurfaceCard } from '@/components/mobile/primitives';
+import { mobileTheme } from '@/components/mobile/theme';
 import { useAuth } from '@/lib/auth/auth-context';
 
 export default function ProfileScreen() {
@@ -11,45 +14,124 @@ export default function ProfileScreen() {
     router.replace('/(public)/welcome');
   }
 
+  const initials = user?.email?.substring(0, 2).toUpperCase() ?? 'EG';
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Profile</Text>
-      <Text style={styles.subtitle}>
-        {user?.email ? `Signed in as ${user.email}` : 'Authenticated session active.'}
-      </Text>
-      <Pressable onPress={onLogout} style={styles.button}>
-        <Text style={styles.buttonText}>Logout</Text>
+    <MobileScreen>
+      <MobileScreenHeader eyebrow="Account" title="Profile" />
+
+      <SurfaceCard style={styles.avatarCard}>
+        <View style={styles.avatarRow}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{initials}</Text>
+          </View>
+          <View style={styles.avatarInfo}>
+            <Text style={styles.avatarName}>EGA House</Text>
+            <Text style={styles.avatarEmail}>{user?.email ?? 'Authenticated'}</Text>
+          </View>
+        </View>
+      </SurfaceCard>
+
+      <SurfaceCard style={styles.menuCard}>
+        {[
+          { icon: 'person-outline', label: 'Account Settings' },
+          { icon: 'notifications-outline', label: 'Notifications' },
+          { icon: 'color-palette-outline', label: 'Appearance' },
+          { icon: 'shield-checkmark-outline', label: 'Privacy' },
+        ].map(({ icon, label }, index, arr) => (
+          <View key={label}>
+            <Pressable style={styles.menuRow}>
+              <View style={styles.menuIconWrap}>
+                <Ionicons
+                  name={icon as keyof typeof Ionicons.glyphMap}
+                  size={18}
+                  color={mobileTheme.colors.accent}
+                />
+              </View>
+              <Text style={styles.menuLabel}>{label}</Text>
+              <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+            </Pressable>
+            {index < arr.length - 1 ? <View style={styles.menuDivider} /> : null}
+          </View>
+        ))}
+      </SurfaceCard>
+
+      <Pressable onPress={onLogout} style={styles.logoutBtn}>
+        <Ionicons name="log-out-outline" size={18} color={mobileTheme.colors.danger} />
+        <Text style={styles.logoutText}>Sign out</Text>
       </Pressable>
-    </View>
+
+      <Text style={styles.versionText}>EGA House · v1.0.0</Text>
+    </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    backgroundColor: '#111827',
-    borderRadius: 10,
-    marginTop: 24,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-  },
-  buttonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  container: {
+  avatar: {
     alignItems: 'center',
-    flex: 1,
+    backgroundColor: mobileTheme.colors.accent,
+    borderRadius: 29,
+    height: 58,
     justifyContent: 'center',
-    padding: 24,
+    width: 58,
   },
-  subtitle: {
-    fontSize: 16,
-    opacity: 0.8,
+  avatarCard: { marginBottom: 14 },
+  avatarEmail: { color: mobileTheme.colors.textMuted, fontSize: 13, marginTop: 2 },
+  avatarInfo: { flex: 1 },
+  avatarName: {
+    color: mobileTheme.colors.text,
+    fontSize: 17,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: -0.2,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 8,
+  avatarRow: { alignItems: 'center', flexDirection: 'row', gap: 16 },
+  avatarText: { color: mobileTheme.colors.textOnAccent, fontSize: 20, fontWeight: mobileTheme.font.black },
+  logoutBtn: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.dangerBg,
+    borderRadius: mobileTheme.radius.card,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    marginBottom: 20,
+    paddingVertical: 16,
+  },
+  logoutText: {
+    color: mobileTheme.colors.danger,
+    fontSize: 15,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: 0.1,
+  },
+  menuCard: { marginBottom: 14, overflow: 'hidden', padding: 0 },
+  menuDivider: {
+    backgroundColor: mobileTheme.colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 62,
+  },
+  menuIconWrap: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.accentSoft,
+    borderRadius: mobileTheme.radius.sm,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  menuLabel: {
+    color: mobileTheme.colors.text,
+    flex: 1,
+    fontSize: 15,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  menuRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+  },
+  versionText: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

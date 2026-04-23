@@ -1,3 +1,4 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -12,7 +13,14 @@ import {
 } from 'react-native';
 
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
-import { MobileScreen, MobileScreenHeader, PrimaryFab } from '@/components/mobile/primitives';
+import {
+  EmptyState,
+  MobileScreen,
+  MobileScreenHeader,
+  PrimaryFab,
+  SkeletonCard,
+  SurfaceCard,
+} from '@/components/mobile/primitives';
 import { TaskCard } from '@/components/mobile/TaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
 import { listMobileTasks, updateMobileTask } from '@/lib/api/tasks';
@@ -209,8 +217,14 @@ export default function TasksScreen() {
     return (
       <MobileScreen>
         <View style={styles.centered}>
-          <ActivityIndicator />
+          <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading tasks...</Text>
+        </View>
+        <View style={styles.skeletonWrap}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
         </View>
       </MobileScreen>
     );
@@ -224,8 +238,11 @@ export default function TasksScreen() {
           title="Tasks"
           description="Everything synced from your workspace"
         />
-        <View style={styles.centeredContent}>
+        <SurfaceCard style={styles.errorCard}>
+          <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
           <Text style={styles.errorText}>{error}</Text>
+        </SurfaceCard>
+        <View style={styles.centeredContent}>
           <Pressable
             onPress={() => {
               setIsLoading(true);
@@ -249,12 +266,17 @@ export default function TasksScreen() {
         data={tasks}
         keyExtractor={(item) => item.id}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Text style={styles.subtitle}>No tasks found for your current workspace.</Text>
-            <Pressable onPress={onRefresh} style={styles.primaryButton}>
-              <Text style={styles.primaryButtonText}>Refresh</Text>
-            </Pressable>
-          </View>
+          <EmptyState
+            icon="clipboard-outline"
+            iconSize={64}
+            title="Nothing here yet"
+            description="Create your first task to get started"
+            action={
+              <Pressable onPress={onRefresh} style={styles.primaryButton}>
+                <Text style={styles.primaryButtonText}>Refresh</Text>
+              </Pressable>
+            }
+          />
         }
         ListHeaderComponent={
           <View style={styles.headerWrap}>
@@ -307,7 +329,11 @@ export default function TasksScreen() {
         }
         items={actionSheetItems}
         onClose={() => setActiveTaskId(null)}
-        subtitle={activeTask ? `${activeTask.project.name}${activeTask.goal ? ` · ${activeTask.goal.title}` : ''}` : undefined}
+        subtitle={
+          activeTask
+            ? `${activeTask.project.name}${activeTask.goal ? ` · ${activeTask.goal.title}` : ''}`
+            : undefined
+        }
         title={activeTask ? activeTask.title : 'Task actions'}
         visible={Boolean(activeTask)}
       />
@@ -317,56 +343,61 @@ export default function TasksScreen() {
 
 const styles = StyleSheet.create({
   cardWrap: {
-    marginBottom: 10,
+    marginBottom: mobileTheme.spacing.sm,
   },
   centered: {
     alignItems: 'center',
-    flex: 1,
     justifyContent: 'center',
     padding: 24,
   },
   centeredContent: {
     alignItems: 'center',
-    flex: 1,
     justifyContent: 'center',
-    padding: 24,
+    marginTop: mobileTheme.spacing.lg,
   },
-  emptyState: {
+  errorCard: {
     alignItems: 'center',
-    marginTop: 64,
-    paddingHorizontal: 20,
+    backgroundColor: mobileTheme.colors.dangerBg,
+    flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
+    marginTop: mobileTheme.spacing.sm,
   },
   errorText: {
     color: mobileTheme.colors.danger,
-    textAlign: 'center',
+    flex: 1,
+    fontWeight: mobileTheme.font.semibold,
   },
   headerWrap: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   },
   inlineErrorText: {
     color: mobileTheme.colors.danger,
-    marginTop: 8,
+    marginTop: mobileTheme.spacing.sm,
     paddingHorizontal: 6,
   },
   listContent: {
-    paddingBottom: 96,
-    paddingTop: 14,
+    paddingBottom: 110,
+    paddingHorizontal: 16,
+    paddingTop: mobileTheme.spacing.sm,
   },
   primaryButton: {
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: 12,
-    marginTop: 18,
+    borderRadius: mobileTheme.radius.pill,
+    marginTop: mobileTheme.spacing.md,
     paddingHorizontal: 18,
     paddingVertical: 11,
   },
   primaryButtonText: {
-    color: '#ffffff',
-    fontWeight: '800',
+    color: mobileTheme.colors.textOnAccent,
+    fontWeight: mobileTheme.font.extrabold,
   },
   sheetMessage: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
     textAlign: 'center',
+  },
+  skeletonWrap: {
+    marginTop: mobileTheme.spacing.lg,
   },
   subtitle: {
     color: mobileTheme.colors.textMuted,

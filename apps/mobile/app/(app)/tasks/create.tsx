@@ -1,4 +1,5 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
@@ -117,6 +118,15 @@ type ChoiceChipProps = {
   selected: boolean;
   onPress: () => void;
 };
+
+function SectionLabel({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; label: string }) {
+  return (
+    <View style={styles.sectionLabelRow}>
+      <Ionicons name={icon} size={16} color={mobileTheme.colors.textMuted} />
+      <Text style={styles.sectionLabel}>{label}</Text>
+    </View>
+  );
+}
 
 function ChoiceChip({ label, selected, onPress }: ChoiceChipProps) {
   return (
@@ -292,7 +302,7 @@ export default function CreateTaskScreen() {
     return (
       <MobileScreen>
         <View style={styles.centered}>
-          <ActivityIndicator />
+          <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.centerText}>Loading task form...</Text>
         </View>
       </MobileScreen>
@@ -327,7 +337,7 @@ export default function CreateTaskScreen() {
             />
 
             <SurfaceCard>
-              <Text style={styles.sectionLabel}>Title</Text>
+              <SectionLabel icon="create-outline" label="Title" />
               <TextInput
                 editable={!isSubmitting}
                 onChangeText={(value) => {
@@ -343,7 +353,7 @@ export default function CreateTaskScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionLabel}>Project</Text>
+              <SectionLabel icon="briefcase-outline" label="Project" />
               <View style={styles.optionGroup}>
                 {projects.map((project) => (
                   <ChoiceChip
@@ -365,7 +375,7 @@ export default function CreateTaskScreen() {
                 </Text>
               ) : null}
 
-              <Text style={styles.sectionLabel}>Goal</Text>
+              <SectionLabel icon="flag-outline" label="Goal" />
               <View style={styles.optionGroup}>
                 <ChoiceChip
                   label="No goal"
@@ -394,7 +404,7 @@ export default function CreateTaskScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionLabel}>Status</Text>
+              <SectionLabel icon="flag-outline" label="Status" />
               <SegmentedControl
                 onChange={(next) => {
                   setStatus(next);
@@ -409,7 +419,7 @@ export default function CreateTaskScreen() {
                 value={status}
               />
 
-              <Text style={styles.sectionLabel}>Priority</Text>
+              <SectionLabel icon="trending-up-outline" label="Priority" />
               <SegmentedControl
                 onChange={(next) => {
                   setPriority(next);
@@ -426,7 +436,7 @@ export default function CreateTaskScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionLabel}>Due date</Text>
+              <SectionLabel icon="calendar-outline" label="Due date" />
               <View style={styles.optionGroup}>
                 <ChoiceChip
                   label="Today"
@@ -477,7 +487,7 @@ export default function CreateTaskScreen() {
               ) : null}
               <Text style={styles.helperText}>Picker selection still submits as YYYY-MM-DD.</Text>
 
-              <Text style={styles.sectionLabel}>Estimate minutes</Text>
+              <SectionLabel icon="time-outline" label="Estimate minutes" />
               <TextInput
                 editable={!isSubmitting}
                 keyboardType="number-pad"
@@ -494,7 +504,7 @@ export default function CreateTaskScreen() {
             </SurfaceCard>
 
             <SurfaceCard style={styles.sectionSpacing}>
-              <Text style={styles.sectionLabel}>Description</Text>
+              <SectionLabel icon="document-text-outline" label="Description" />
               <TextInput
                 editable={!isSubmitting}
                 multiline
@@ -510,7 +520,7 @@ export default function CreateTaskScreen() {
                 value={description}
               />
 
-              <Text style={styles.sectionLabel}>Blocked reason</Text>
+              <SectionLabel icon="ban-outline" label="Blocked reason" />
               <TextInput
                 editable={!isSubmitting}
                 multiline
@@ -541,7 +551,7 @@ export default function CreateTaskScreen() {
             style={[styles.primaryButton, isSubmitting || projects.length === 0 ? styles.buttonDisabled : null]}
           >
             {isSubmitting ? (
-              <ActivityIndicator color="#ffffff" />
+              <ActivityIndicator color={mobileTheme.colors.textOnAccent} />
             ) : (
               <Text style={styles.primaryButtonText}>Create Task</Text>
             )}
@@ -567,32 +577,32 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   choiceChip: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderColor: mobileTheme.colors.border,
-    borderRadius: 999,
+    borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
   choiceChipSelected: {
-    backgroundColor: '#dbeafe',
-    borderColor: '#93c5fd',
+    backgroundColor: mobileTheme.colors.accent,
+    borderColor: mobileTheme.colors.accent,
   },
   choiceChipText: {
     color: mobileTheme.colors.textMuted,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
   },
   choiceChipTextSelected: {
-    color: mobileTheme.colors.info,
+    color: mobileTheme.colors.textOnAccent,
   },
   content: {
     paddingBottom: 118,
     paddingTop: 14,
   },
   dateField: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderColor: mobileTheme.colors.border,
-    borderRadius: 12,
+    borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     gap: 3,
     marginTop: 10,
@@ -602,7 +612,7 @@ const styles = StyleSheet.create({
   dateFieldLabel: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
     textTransform: 'uppercase',
   },
   dateFieldMeta: {
@@ -615,41 +625,40 @@ const styles = StyleSheet.create({
   dateFieldValue: {
     color: mobileTheme.colors.text,
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
   },
   datePickerActions: {
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'flex-end',
     marginTop: 10,
+    paddingHorizontal: 8,
+    paddingBottom: 8,
   },
   datePickerCard: {
-    backgroundColor: '#f8fafc',
-    borderColor: mobileTheme.colors.border,
-    borderRadius: 12,
-    borderWidth: 1,
+    backgroundColor: mobileTheme.colors.surface,
+    borderRadius: mobileTheme.radius.lg,
     marginTop: 10,
     overflow: 'hidden',
-    padding: 8,
   },
   datePickerPrimaryButton: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: 10,
+    borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
     minHeight: 40,
     minWidth: 88,
     paddingHorizontal: 14,
   },
   datePickerPrimaryButtonText: {
-    color: '#ffffff',
+    color: mobileTheme.colors.textOnAccent,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
   },
   datePickerSecondaryButton: {
     alignItems: 'center',
-    backgroundColor: '#e2e8f0',
-    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
     minHeight: 40,
     minWidth: 88,
@@ -658,7 +667,7 @@ const styles = StyleSheet.create({
   datePickerSecondaryButtonText: {
     color: mobileTheme.colors.text,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
   },
   errorText: {
     color: mobileTheme.colors.danger,
@@ -672,9 +681,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   input: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderColor: mobileTheme.colors.border,
-    borderRadius: 12,
+    borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     color: mobileTheme.colors.text,
     marginTop: 8,
@@ -692,50 +701,55 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   pagePadding: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 16,
   },
   primaryButton: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: 12,
+    borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 52,
     paddingHorizontal: 16,
   },
   primaryButtonText: {
-    color: '#ffffff',
+    color: mobileTheme.colors.textOnAccent,
     fontSize: 15,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
   },
   screen: {
     flex: 1,
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: '#e2e8f0',
-    borderRadius: 12,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 52,
     paddingHorizontal: 16,
   },
   secondaryButtonText: {
     color: mobileTheme.colors.text,
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: mobileTheme.font.bold,
   },
   sectionLabel: {
     color: mobileTheme.colors.text,
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: mobileTheme.font.extrabold,
+  },
+  sectionLabelRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
     marginTop: 12,
   },
   sectionSpacing: {
     marginTop: 12,
   },
   stickyBar: {
-    backgroundColor: 'rgba(243, 245, 248, 0.98)',
+    backgroundColor: mobileTheme.colors.stickyBar,
     borderTopColor: mobileTheme.colors.border,
     borderTopWidth: 1,
     flexDirection: 'row',

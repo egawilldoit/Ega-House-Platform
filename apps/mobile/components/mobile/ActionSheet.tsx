@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -12,6 +12,51 @@ export type ActionSheetItem = {
   disabled?: boolean;
   onPress: () => void;
 };
+
+type ActionGroup = {
+  key: string;
+  label: string;
+  items: ActionSheetItem[];
+};
+
+function groupItems(items: ActionSheetItem[]): ActionGroup[] {
+  const statusItems = items.filter((item) => item.key.startsWith('status-'));
+  const priorityItems = items.filter((item) => item.key.startsWith('priority-'));
+  const dueItems = items.filter((item) => item.key.startsWith('due-'));
+  const generalItems = items.filter(
+    (item) =>
+      !item.key.startsWith('status-') &&
+      !item.key.startsWith('priority-') &&
+      !item.key.startsWith('due-'),
+  );
+
+  return [
+    { key: 'status', label: 'Status', items: statusItems },
+    { key: 'priority', label: 'Priority', items: priorityItems },
+    { key: 'due', label: 'Due date', items: dueItems },
+    { key: 'general', label: 'Actions', items: generalItems },
+  ].filter((group) => group.items.length > 0);
+}
+
+function getActionDotColor(item: ActionSheetItem) {
+  if (item.destructive) {
+    return mobileTheme.colors.danger;
+  }
+
+  if (item.key.startsWith('status-')) {
+    return mobileTheme.colors.info;
+  }
+
+  if (item.key.startsWith('priority-')) {
+    return mobileTheme.colors.warning;
+  }
+
+  if (item.key.startsWith('due-')) {
+    return mobileTheme.colors.accent;
+  }
+
+  return mobileTheme.colors.textSubtle;
+}
 
 export function ActionSheet({
   visible,
@@ -28,6 +73,8 @@ export function ActionSheet({
   footer?: ReactNode;
   onClose: () => void;
 }) {
+  const groupedItems = useMemo(() => groupItems(items), [items]);
+
   return (
     <Modal
       animationType="slide"
@@ -43,23 +90,31 @@ export function ActionSheet({
           <Text style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           <ScrollView style={styles.actions} contentContainerStyle={styles.actionsContent}>
-            {items.map((item) => (
-              <Pressable
-                key={item.key}
-                disabled={item.disabled}
-                onPress={() => {
-                  item.onPress();
-                  onClose();
-                }}
-                style={[styles.action, item.disabled ? styles.actionDisabled : null]}
-              >
-                <Text style={[styles.actionLabel, item.destructive ? styles.destructiveText : null]}>
-                  {item.label}
-                </Text>
-                {item.description ? (
-                  <Text style={styles.actionDescription}>{item.description}</Text>
-                ) : null}
-              </Pressable>
+            {groupedItems.map((group) => (
+              <View key={group.key}>
+                <Text style={styles.groupLabel}>{group.label}</Text>
+                {group.items.map((item) => (
+                  <Pressable
+                    key={item.key}
+                    disabled={item.disabled}
+                    onPress={() => {
+                      item.onPress();
+                      onClose();
+                    }}
+                    style={[styles.action, item.disabled ? styles.actionDisabled : null]}
+                  >
+                    <View style={[styles.actionDot, { backgroundColor: getActionDotColor(item) }]} />
+                    <View style={styles.actionCopy}>
+                      <Text style={[styles.actionLabel, item.destructive ? styles.destructiveText : null]}>
+                        {item.label}
+                      </Text>
+                      {item.description ? (
+                        <Text style={styles.actionDescription}>{item.description}</Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
             ))}
           </ScrollView>
           {footer ? <View style={styles.footer}>{footer}</View> : null}
@@ -71,29 +126,39 @@ export function ActionSheet({
 
 const styles = StyleSheet.create({
   action: {
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    gap: 2,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    alignItems: 'center',
+    borderBottomColor: mobileTheme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 14,
+  },
+  actionCopy: {
+    flex: 1,
   },
   actionDescription: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
+    marginTop: 1,
   },
   actionDisabled: {
-    opacity: 0.5,
+    opacity: 0.38,
+  },
+  actionDot: {
+    borderRadius: mobileTheme.radius.pill,
+    height: 8,
+    width: 8,
   },
   actionLabel: {
     color: mobileTheme.colors.text,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: mobileTheme.font.semibold,
   },
   actions: {
-    maxHeight: 360,
+    maxHeight: 420,
   },
   actionsContent: {
-    gap: 8,
     paddingBottom: 4,
   },
   destructiveText: {
@@ -102,13 +167,21 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: 10,
   },
+  groupLabel: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.bold,
+    letterSpacing: 0.8,
+    marginTop: 8,
+    textTransform: 'uppercase',
+  },
   handle: {
     alignSelf: 'center',
-    backgroundColor: '#cbd5e1',
+    backgroundColor: mobileTheme.colors.borderStrong,
     borderRadius: 999,
-    height: 5,
-    marginBottom: 10,
-    width: 48,
+    height: 4,
+    marginBottom: 14,
+    width: 40,
   },
   overlay: {
     backgroundColor: mobileTheme.colors.overlay,
@@ -119,19 +192,21 @@ const styles = StyleSheet.create({
     backgroundColor: mobileTheme.colors.surface,
     borderTopLeftRadius: mobileTheme.radius.sheet,
     borderTopRightRadius: mobileTheme.radius.sheet,
-    paddingBottom: 12,
-    paddingHorizontal: 14,
-    paddingTop: 8,
+    paddingBottom: 20,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    ...mobileTheme.shadow.sheet,
   },
   subtitle: {
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
-    marginBottom: 10,
+    marginBottom: 14,
   },
   title: {
     color: mobileTheme.colors.text,
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 17,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: -0.2,
     marginBottom: 2,
   },
 });
