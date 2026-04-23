@@ -78,7 +78,7 @@ export default function ProjectDetailLoadingPage() {
               <Skeleton className="h-8 w-28 rounded-sm" />
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 pt-1">
             <ProjectTaskRowSkeleton />
             <ProjectTaskRowSkeleton />
             <ProjectTaskRowSkeleton />
@@ -95,7 +95,7 @@ export default function ProjectDetailLoadingPage() {
               <Skeleton className="mt-2 h-4 w-2/3" />
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 pt-1">
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />
             <Skeleton className="h-12 w-full" />

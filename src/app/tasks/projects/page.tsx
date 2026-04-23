@@ -173,7 +173,7 @@ async function getProjectsWithTaskContext(view: ProjectViewFilter) {
 function EmptyState({ hasArchivedProjects }: { hasArchivedProjects: boolean }) {
   return (
     <Card className="surface-empty bg-white max-w-3xl">
-      <CardContent className="space-y-5 p-8">
+      <CardContent className="space-y-5 px-8 pb-8 pt-8">
         <Badge tone="info" className="w-fit">
           Projects
         </Badge>
@@ -228,7 +228,7 @@ function ProjectCard({
       id={`project-${project.id}`}
       className="h-full scroll-mt-24 border-[var(--border)] bg-white transition hover:border-[var(--border-strong)]"
     >
-      <CardContent className="flex h-full flex-col p-6">
+      <CardContent className="flex h-full flex-col px-6 pb-6 pt-6">
         <div className="mb-5 flex items-start justify-between gap-3">
           <Badge tone={getStatusTone(project.status)}>{formatTaskToken(project.status)}</Badge>
           <div className="flex flex-wrap items-center justify-end gap-2">

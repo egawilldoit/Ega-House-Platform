@@ -65,7 +65,7 @@ export function TodaySummaryBar({
 
   return (
     <Card className="today-summary-shell border-[var(--border)]">
-      <CardContent className="p-4">
+      <CardContent className="px-5 pb-5 pt-5">
         <div className="today-summary-head">
           <div>
             <p className="glass-label text-signal-live">Today lane</p>

@@ -112,7 +112,7 @@ export function TodaySuggestionsPanel({
           </span>
         </div>
       </CardHeader>
-      <CardContent className="space-y-5 pt-0">
+      <CardContent className="space-y-5 pt-1">
         {groups.map((group) => (
           <section key={group.key} id={`${group.key}-suggestions`} className="space-y-3">
             <div className="flex items-center justify-between gap-3">

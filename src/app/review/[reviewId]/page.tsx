@@ -88,7 +88,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
               {formatIsoDate(review.week_start)} to {formatIsoDate(review.week_end)}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="space-y-3 pt-1">
             {getReviewDetailFields(review).map((field) => (
               <DetailField key={field.label} label={field.label} value={field.value} />
             ))}
@@ -100,7 +100,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
             <CardTitle>Record metadata</CardTitle>
             <CardDescription>Lifecycle timestamps for this review record.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 text-sm leading-7 text-[color:var(--muted-foreground)]">
+          <CardContent className="space-y-2 pt-1 text-sm leading-7 text-[color:var(--muted-foreground)]">
             <p>
               <span className="text-[color:var(--foreground)]">Created:</span> {formatDateTime(review.created_at)}
             </p>

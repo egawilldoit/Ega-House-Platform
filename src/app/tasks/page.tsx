@@ -368,7 +368,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 A lightweight execution queue independent from priority.
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2 pt-0">
+            <CardContent className="space-y-2 pt-1">
               {focusQueue.length > 0 ? (
                 focusQueue.slice(0, 5).map((task) => (
                   <div
@@ -408,7 +408,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 Quick context for the current execution slice before you update or create work.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 pt-0 sm:grid-cols-3 xl:grid-cols-1">
+            <CardContent className="grid gap-3 pt-1 sm:grid-cols-3 xl:grid-cols-1">
               <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
                 <p className="glass-label text-etch">Projects</p>
                 <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
@@ -448,7 +448,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               </CardDescription>
             </CardHeader>
 
-            <CardContent className="pt-0">
+            <CardContent className="pt-1">
               {projects.length === 0 ? (
                 <div className="space-y-3">
                   <div className="surface-empty px-4 py-4 text-center">

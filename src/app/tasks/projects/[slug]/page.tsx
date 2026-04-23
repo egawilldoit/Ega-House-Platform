@@ -324,7 +324,7 @@ export default async function ProjectDetailPage({
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
         <div className="space-y-6">
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-8">
+            <CardContent className="px-8 pb-8 pt-8">
               <div className="mb-6 flex flex-wrap items-center gap-2">
                 <Badge tone={getTaskStatusTone(focusedTask?.status ?? project.status)}>
                   {formatTaskToken(focusedTask?.status ?? project.status)}
@@ -415,7 +415,7 @@ export default async function ProjectDetailPage({
           </Card>
 
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-8">
+            <CardContent className="px-8 pb-8 pt-8">
               <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
@@ -622,7 +622,7 @@ export default async function ProjectDetailPage({
 
         <div className="space-y-6">
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-6">
+            <CardContent className="px-6 pb-6 pt-6">
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
                 Focus Queue
               </h3>
@@ -663,7 +663,7 @@ export default async function ProjectDetailPage({
           </Card>
 
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-6">
+            <CardContent className="px-6 pb-6 pt-6">
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
                 Time Tracking
               </h3>
@@ -683,7 +683,7 @@ export default async function ProjectDetailPage({
           </Card>
 
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-6">
+            <CardContent className="px-6 pb-6 pt-6">
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
                 Recent Activity
               </h3>
@@ -709,7 +709,7 @@ export default async function ProjectDetailPage({
           </Card>
 
           <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="p-6">
+            <CardContent className="px-6 pb-6 pt-6">
               <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
                 Create Related Task
               </h3>

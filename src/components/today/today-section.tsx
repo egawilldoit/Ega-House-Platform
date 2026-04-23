@@ -36,7 +36,7 @@ export function TodaySection({
           {headerActions}
         </div>
       </CardHeader>
-      <CardContent className={isEmpty && compactWhenEmpty ? "pt-0" : "space-y-3 pt-0"}>
+      <CardContent className={isEmpty && compactWhenEmpty ? "pt-1" : "space-y-3 pt-1"}>
         {isEmpty ? emptyState : children}
       </CardContent>
     </Card>

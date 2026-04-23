@@ -547,7 +547,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
                   </CardAction>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-2 p-4">
+              <CardContent className="space-y-2 px-5 pb-5 pt-5">
                 {linkedTasks.length > 0 ? (
                   linkedTasks.map((task) => (
                     <Link

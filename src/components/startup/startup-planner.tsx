@@ -228,7 +228,7 @@ export function StartupPlanner({
           </Card>
 
           <Card className="border-[var(--border)] bg-white">
-            <CardContent className="space-y-3 p-4">
+            <CardContent className="space-y-3 px-5 pb-5 pt-5">
               <p className="glass-label text-etch">Today handoff</p>
               <div className="flex flex-wrap gap-2">
                 <Badge tone="muted">{data.todaySummary.plannedCount} planned</Badge>

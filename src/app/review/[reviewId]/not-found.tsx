@@ -20,7 +20,7 @@ export default function ReviewDetailNotFound() {
         <CardHeader>
           <CardTitle>Missing review</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pt-1">
           <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
             This review entry does not exist or was removed.
           </p>

@@ -38,7 +38,7 @@ export default function ReviewLoadingPage() {
       <div className="grid grid-cols-1 gap-6 md:grid-cols-12">
         <div className="md:col-span-8">
           <Card className="h-full border-[var(--border)] bg-white">
-            <CardContent className="p-8">
+            <CardContent className="px-8 pb-8 pt-8">
               <Skeleton className="h-3 w-28 rounded-sm" />
               <Skeleton className="mt-4 h-16 w-40 rounded-sm" />
               <Skeleton className="mt-4 h-4 w-3/4 rounded-sm" />
@@ -70,7 +70,7 @@ export default function ReviewLoadingPage() {
           </div>
 
           <Card className="border-[var(--border)] bg-white">
-            <CardContent className="p-6 space-y-3">
+            <CardContent className="space-y-3 px-6 pb-6 pt-6">
               <Skeleton className="h-6 w-36 rounded-sm" />
               <Skeleton className="h-4 w-4/5 rounded-sm" />
               <Skeleton className="h-10 w-full rounded-sm" />
@@ -81,7 +81,7 @@ export default function ReviewLoadingPage() {
         </div>
 
         <Card className="border-[var(--border)] bg-white">
-          <CardContent className="p-6">
+          <CardContent className="px-6 pb-6 pt-6">
             <div className="mb-4 flex items-center justify-between">
               <Skeleton className="h-6 w-36 rounded-sm" />
               <Skeleton className="h-4 w-16 rounded-sm" />

@@ -243,7 +243,7 @@ function StatPanel({
 }) {
   return (
     <Card className="border-[var(--border)] bg-white">
-      <CardContent className="flex h-full flex-col justify-between p-6">
+      <CardContent className="flex h-full flex-col justify-between px-6 pb-6 pt-6">
         <div className="glass-label text-etch">{label}</div>
         <div
           className={`text-4xl font-semibold tracking-tight ${
@@ -413,7 +413,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
       <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-12">
         <div className="md:col-span-8">
           <Card className="border-[var(--border)] bg-white">
-            <CardContent className="p-7">
+            <CardContent className="px-7 pb-7 pt-7">
               <div className="glass-label text-etch mb-4 flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-[var(--signal-live)]" />
                 Cycle Velocity
@@ -463,7 +463,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
 
       <div className="mt-6">
         <Card className="border-[var(--border)] bg-white">
-          <CardContent className="p-6">
+          <CardContent className="px-6 pb-6 pt-6">
             <div className="mb-5 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
               <div>
                 <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
@@ -498,7 +498,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
 
             <div className="space-y-4">
               <Card className="border-[var(--border)] bg-white">
-                <CardContent className="p-5">
+                <CardContent className="px-5 pb-5 pt-5">
                   <h3 className="text-sm font-semibold text-[color:var(--foreground)]">
                     Latest Reflection
                   </h3>
@@ -511,7 +511,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
               </Card>
 
               <Card className="border-[var(--border)] bg-white">
-                <CardContent className="p-5">
+                <CardContent className="px-5 pb-5 pt-5">
                   <h3 className="text-sm font-semibold text-[color:var(--foreground)]">
                     Goal Movement
                   </h3>
@@ -548,7 +548,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
             </div>
 
             <Card className="border-[rgba(239,68,68,0.16)] bg-[rgba(239,68,68,0.03)]">
-              <CardContent className="p-5">
+              <CardContent className="px-5 pb-5 pt-5">
                 <div className="flex items-center gap-3">
                   <span className="text-[var(--signal-error)]">!</span>
                   <span className="text-sm font-semibold text-[color:var(--foreground)]">
@@ -582,7 +582,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
 
         <div className="space-y-6">
           <Card className="border-[var(--border)] bg-white">
-            <CardContent className="p-6">
+            <CardContent className="px-6 pb-6 pt-6">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
@@ -611,7 +611,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
               </Link>
             </div>
             <Card className="border-[var(--border)] bg-white">
-              <CardContent className="p-6">
+              <CardContent className="px-6 pb-6 pt-6">
                 {pastReviews.length > 0 ? (
                   <div className="relative space-y-6 before:absolute before:bottom-2 before:left-4 before:top-2 before:w-px before:bg-[var(--border)]">
                     {pastReviews.slice(0, 4).map((review, index) => (

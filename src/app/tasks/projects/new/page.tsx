@@ -40,7 +40,7 @@ export default function NewProjectPage() {
               hyphenated format.
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-1">
             <CreateProjectForm />
           </CardContent>
         </Card>

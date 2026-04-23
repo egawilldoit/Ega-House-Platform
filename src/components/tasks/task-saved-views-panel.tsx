@@ -127,7 +127,7 @@ export function TaskSavedViewsPanel({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4 pt-0">
+      <CardContent className="space-y-4 pt-1">
         {feedback?.error ? (
           <div role="alert" className="feedback-block feedback-block-error">{feedback.error}</div>
         ) : null}

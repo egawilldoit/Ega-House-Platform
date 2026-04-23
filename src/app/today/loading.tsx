@@ -11,7 +11,7 @@ function SectionSkeleton() {
           <Skeleton className="h-6 w-10 rounded-sm" />
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 pt-0">
+      <CardContent className="space-y-3 pt-1">
         <Skeleton className="h-28 w-full rounded-sm" />
       </CardContent>
     </Card>
@@ -28,7 +28,7 @@ export default function TodayLoadingPage() {
     >
       <div className="space-y-6">
         <Card className="border-[var(--border)] bg-white">
-          <CardContent className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-6">
+          <CardContent className="grid gap-3 px-5 pb-5 pt-5 sm:grid-cols-2 xl:grid-cols-6">
             {Array.from({ length: 6 }).map((_, index) => (
               <Skeleton key={index} className="h-20 w-full rounded-sm" />
             ))}
@@ -47,7 +47,7 @@ export default function TodayLoadingPage() {
             <CardHeader className="pb-4">
               <Skeleton className="h-5 w-28 rounded-sm" />
             </CardHeader>
-            <CardContent className="space-y-3 pt-0">
+            <CardContent className="space-y-3 pt-1">
               <Skeleton className="h-24 w-full rounded-sm" />
               <Skeleton className="h-24 w-full rounded-sm" />
               <Skeleton className="h-24 w-full rounded-sm" />

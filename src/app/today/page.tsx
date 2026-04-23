@@ -26,7 +26,7 @@ function PlannerErrorState({ actionError }: { actionError: string | null }) {
     <div className="space-y-4">
       {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
       <Card className="border-[var(--border)] bg-white">
-        <CardContent className="p-6">
+        <CardContent className="px-6 pb-6 pt-6">
           <p className="text-sm text-[color:var(--muted-foreground)]">
             Could not load Today planner right now. Try again shortly.
           </p>
@@ -107,7 +107,7 @@ export default async function TodayPage({
           <div className="today-lane-stack">
             {allTodayCount === 0 ? (
               <Card className="border-[var(--border)] bg-white">
-                <CardContent className="space-y-3 px-5 py-5 text-center">
+                <CardContent className="space-y-3 px-5 pb-5 pt-5 text-center">
                   <EmptyState
                     icon={CalendarCheck2}
                     title="Nothing planned yet for today"
@@ -254,7 +254,7 @@ export default async function TodayPage({
             />
 
             <Card className="border-[var(--border)] bg-white">
-              <CardContent className="space-y-3 p-4">
+              <CardContent className="space-y-3 px-5 pb-5 pt-5">
                 <p className="glass-label text-etch">Today status</p>
                 <div className="flex flex-wrap gap-2">
                   <Badge tone="muted">{allTodayCount} in Today</Badge>

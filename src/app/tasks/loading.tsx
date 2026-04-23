@@ -43,7 +43,7 @@ export default function TasksLoadingPage() {
     >
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-          <CardContent className="p-6">
+          <CardContent className="px-6 pb-6 pt-6">
             <div className="mb-5 flex items-end justify-between gap-4">
               <div className="space-y-2">
                 <Skeleton className="h-3 w-36 rounded-sm" />
@@ -70,15 +70,15 @@ export default function TasksLoadingPage() {
             </div>
 
             <div className="space-y-3">
-            <TaskRowSkeleton />
-            <TaskRowSkeleton />
-            <TaskRowSkeleton />
+              <TaskRowSkeleton />
+              <TaskRowSkeleton />
+              <TaskRowSkeleton />
             </div>
           </CardContent>
         </Card>
 
         <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-          <CardContent className="p-6">
+          <CardContent className="px-6 pb-6 pt-6">
             <div className="mb-5 space-y-2">
               <Skeleton className="h-3 w-28 rounded-sm" />
               <Skeleton className="h-4 w-48 rounded-sm" />
