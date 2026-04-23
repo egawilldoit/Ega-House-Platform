@@ -25,10 +25,11 @@ export function TodaySection({
   const isEmpty = count === 0;
 
   return (
-    <Card className="border-[var(--border)] bg-white">
+    <Card className={`today-section today-section-${tone}`}>
       <CardHeader className={isEmpty && compactWhenEmpty ? "pb-3" : "pb-4"}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
+            <span className="today-section-rail" aria-hidden="true" />
             <CardTitle className="text-lg">{title}</CardTitle>
             <Badge tone={tone}>{count}</Badge>
           </div>

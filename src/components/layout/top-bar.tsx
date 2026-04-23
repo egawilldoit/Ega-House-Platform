@@ -63,7 +63,7 @@ export function TopBar({ metrics }: { metrics: WorkspaceShellMetrics }) {
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[var(--signal-error)]" />
           </button>
 
-          <div className="dashboard-topbar-avatar" aria-label="User profile">
+          <div className="dashboard-topbar-avatar" aria-label="User profile" suppressHydrationWarning>
             EG
           </div>
         </div>

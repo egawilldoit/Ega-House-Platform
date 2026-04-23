@@ -73,6 +73,7 @@ export default async function TodayPage({
       eyebrow="Execution Workspace"
       title="Today"
       description={`${formatTaskDueDate(todayData.date)} · Choose the work that matters, then execute it.`}
+      contentClassName="today-page-content"
       actions={
         <div className="flex items-center gap-2">
           <Link href="/tasks" className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center px-4">
@@ -90,7 +91,7 @@ export default async function TodayPage({
         tables={["tasks", "task_sessions"]}
       />
 
-      <div className="space-y-6">
+      <div className="today-page-stack">
         {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
 
         <TodaySummaryBar
@@ -102,8 +103,8 @@ export default async function TodayPage({
           trackedTodayLabel={todayData.summary.trackedTodayLabel}
         />
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.24fr)_minmax(22rem,0.76fr)]">
-          <div className="space-y-4">
+        <div className="today-work-grid">
+          <div className="today-lane-stack">
             {allTodayCount === 0 ? (
               <Card className="border-[var(--border)] bg-white">
                 <CardContent className="space-y-3 px-5 py-5 text-center">
@@ -126,109 +127,113 @@ export default async function TodayPage({
               </Card>
             ) : null}
 
-            <TodaySection
-              title="Planned"
-              count={todayData.planned.length}
-              tone="muted"
-              emptyState={
-                <EmptyState
-                  icon={CircleDashed}
-                  title="No planned tasks"
-                  description="Pick from suggestions to build a focused plan for today."
-                />
-              }
-            >
-              {todayData.planned.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
+            {allTodayCount > 0 ? (
+              <>
+                <TodaySection
+                  title="Planned"
+                  count={todayData.planned.length}
+                  tone="muted"
+                  emptyState={
+                    <EmptyState
+                      icon={CircleDashed}
+                      title="No planned tasks"
+                      description="Pick from suggestions to build a focused plan for today."
+                    />
+                  }
+                >
+                  {todayData.planned.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </TodaySection>
 
-            <TodaySection
-              title="In Progress"
-              count={todayData.inProgress.length}
-              tone="info"
-              emptyState={
-                <EmptyState
-                  icon={CirclePlay}
-                  title="No in-progress tasks"
-                  description="Start a timer on a planned item to move it into active execution."
-                />
-              }
-            >
-              {todayData.inProgress.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
+                <TodaySection
+                  title="In Progress"
+                  count={todayData.inProgress.length}
+                  tone="info"
+                  emptyState={
+                    <EmptyState
+                      icon={CirclePlay}
+                      title="No in-progress tasks"
+                      description="Start a timer on a planned item to move it into active execution."
+                    />
+                  }
+                >
+                  {todayData.inProgress.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </TodaySection>
 
-            <TodaySection
-              title="Blocked"
-              count={todayData.blocked.length}
-              tone="warn"
-              emptyState={
-                <EmptyState
-                  icon={CircleOff}
-                  title="No blocked tasks"
-                  description="Blocked work will surface here when status is set to blocked."
-                />
-              }
-            >
-              {todayData.blocked.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
+                <TodaySection
+                  title="Blocked"
+                  count={todayData.blocked.length}
+                  tone="warn"
+                  emptyState={
+                    <EmptyState
+                      icon={CircleOff}
+                      title="No blocked tasks"
+                      description="Blocked work will surface here when status is set to blocked."
+                    />
+                  }
+                >
+                  {todayData.blocked.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </TodaySection>
 
-            <TodaySection
-              title="Completed"
-              count={todayData.completed.length}
-              tone="success"
-              compactWhenEmpty
-              headerActions={todayData.summary.clearableCompletedCount > 0 ? (
-                <form action={clearCompletedFromTodayAction}>
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <button
-                    type="submit"
-                    className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs"
-                  >
-                    Clear completed from Today
-                  </button>
-                </form>
-              ) : null}
-              emptyState={
-                <EmptyState
-                  icon={CircleCheck}
-                  title="No completed items yet"
-                  description="Completed Today tasks will appear here for quick cleanup."
-                />
-              }
-            >
-              {todayData.completed.map((task) => (
-                <TodayTaskCard
-                  key={task.id}
-                  task={task}
-                  returnTo={returnTo}
-                  isCompleted
-                  activeTimerSessionId={activeTimerSessionId}
-                />
-              ))}
-            </TodaySection>
+                <TodaySection
+                  title="Completed"
+                  count={todayData.completed.length}
+                  tone="success"
+                  compactWhenEmpty
+                  headerActions={todayData.summary.clearableCompletedCount > 0 ? (
+                    <form action={clearCompletedFromTodayAction}>
+                      <input type="hidden" name="returnTo" value={returnTo} />
+                      <button
+                        type="submit"
+                        className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs"
+                      >
+                        Clear completed from Today
+                      </button>
+                    </form>
+                  ) : null}
+                  emptyState={
+                    <EmptyState
+                      icon={CircleCheck}
+                      title="No completed items yet"
+                      description="Completed Today tasks will appear here for quick cleanup."
+                    />
+                  }
+                >
+                  {todayData.completed.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      isCompleted
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </TodaySection>
+              </>
+            ) : null}
           </div>
 
-          <div className="space-y-4">
+          <div className="today-assist-stack">
             <TodaySuggestionsPanel
               returnTo={returnTo}
               activeTimerSessionId={activeTimerSessionId}

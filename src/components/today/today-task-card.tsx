@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskToken, TASK_STATUS_VALUES } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
+import { ChevronDown, ExternalLink } from "lucide-react";
 
 type TodayTaskCardProps = {
   task: TodayPlannerTask;
@@ -57,18 +58,19 @@ export function TodayTaskCard({
   const isActiveTimerTask = task.hasActiveTimer ? activeTimerSessionId : null;
   const cardMeta = getTodayTaskCardMeta(task);
   const statusOptions = getTodayTaskStatusOptions(task);
+  const description = task.description?.trim();
 
   return (
     <article
       id={`today-task-${task.id}`}
-      className={`rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4 ${
-        isCompleted ? "opacity-85" : ""
+      className={`today-task-card ${task.hasActiveTimer ? "today-task-card-active" : ""} ${
+        isCompleted ? "today-task-card-completed" : ""
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-start gap-2">
-            <h3 className="truncate text-base font-medium text-[color:var(--foreground)]">{task.title}</h3>
+            <h3 className="min-w-0 text-base font-semibold leading-6 text-[color:var(--foreground)]">{task.title}</h3>
             {task.hasActiveTimer ? <Badge tone="active">Active timer</Badge> : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -81,6 +83,11 @@ export function TodayTaskCard({
             {task.projectName}
             {task.goalTitle ? ` · ${task.goalTitle}` : ""}
           </p>
+          {description ? (
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted-foreground)]">
+              {description}
+            </p>
+          ) : null}
           {task.status === "blocked" && task.blockedReason?.trim() ? (
             <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
               Blocked: {task.blockedReason.trim()}
@@ -95,38 +102,41 @@ export function TodayTaskCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-4">
-        {isActiveTimerTask ? (
-          <form action={stopTimerAction}>
-            <input type="hidden" name="sessionId" value={isActiveTimerTask} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="danger">
-              Stop timer
-            </Button>
-          </form>
-        ) : (
-          <form action={startTimerAction}>
-            <input type="hidden" name="taskId" value={task.id} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="default">
-              Start timer
-            </Button>
-          </form>
-        )}
+      <div className="today-task-actions">
+        <div className="today-task-primary-actions">
+          {isActiveTimerTask ? (
+            <form action={stopTimerAction}>
+              <input type="hidden" name="sessionId" value={isActiveTimerTask} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Button type="submit" size="sm" variant="danger">
+                Stop timer
+              </Button>
+            </form>
+          ) : (
+            <form action={startTimerAction}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Button type="submit" size="sm" variant="default">
+                Start timer
+              </Button>
+            </form>
+          )}
 
-        {task.status !== "done" ? (
-          <form action={completeTodayTaskAction}>
-            <input type="hidden" name="taskId" value={task.id} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="muted">
-              Mark done
-            </Button>
-          </form>
-        ) : null}
+          {task.status !== "done" ? (
+            <form action={completeTodayTaskAction}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <Button type="submit" size="sm" variant="muted">
+                Mark done
+              </Button>
+            </form>
+          ) : null}
+        </div>
 
-        <details className="action-overflow ml-auto">
-          <summary className="btn-instrument btn-instrument-muted flex h-8 cursor-pointer items-center px-3 text-xs">
+        <details className="action-overflow today-action-overflow">
+          <summary className="today-more-button">
             More
+            <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </summary>
           <div className="action-overflow-menu">
             <div className="space-y-2">
@@ -170,6 +180,7 @@ export function TodayTaskCard({
                 href={getTaskHref(task)}
                 className="btn-instrument btn-instrument-muted flex h-8 w-full items-center justify-center px-3 text-xs"
               >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                 Open task
               </Link>
             </div>

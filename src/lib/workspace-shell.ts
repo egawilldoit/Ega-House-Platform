@@ -31,8 +31,25 @@ export type WorkspaceShellMetrics = {
   highestPrioritySignal: WorkspaceShellPrioritySignal;
 };
 
+const FALLBACK_WORKSPACE_SHELL_SNAPSHOT: WorkspaceShellMetricsSnapshot = {
+  hasActiveTimer: false,
+  blockedTaskCount: 0,
+  overdueTaskCount: 0,
+  dueTodayTaskCount: 0,
+  hasCurrentWeekReview: true,
+};
+
 function toSafeCount(value: number | null | undefined) {
   return Math.max(0, value ?? 0);
+}
+
+function isNextDynamicServerError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    error.digest === "DYNAMIC_SERVER_USAGE"
+  );
 }
 
 export function buildWorkspaceShellMetrics(
@@ -85,72 +102,81 @@ async function getCountOrThrow(
 }
 
 export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics> {
-  const supabase = await createClient();
-  const today = getTodayLocalIsoDate();
-  const reviewWeek = getWeekBounds(getTodayIsoDate());
+  try {
+    const supabase = await createClient();
+    const today = getTodayLocalIsoDate();
+    const reviewWeek = getWeekBounds(getTodayIsoDate());
 
-  if (!reviewWeek) {
-    throw new Error("Failed to resolve current review week.");
-  }
+    if (!reviewWeek) {
+      throw new Error("Failed to resolve current review week.");
+    }
 
-  const [
-    activeTimerResult,
-    blockedTaskCount,
-    overdueTaskCount,
-    dueTodayTaskCount,
-    currentWeekReviewResult,
-  ] = await Promise.all([
-    supabase
-      .from("task_sessions")
-      .select("id")
-      .is("ended_at", null)
-      .limit(1),
-    getCountOrThrow(
+    const [
+      activeTimerResult,
+      blockedTaskCount,
+      overdueTaskCount,
+      dueTodayTaskCount,
+      currentWeekReviewResult,
+    ] = await Promise.all([
       supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .eq("status", "blocked"),
-      "Failed to load blocked task count.",
-    ),
-    getCountOrThrow(
+        .from("task_sessions")
+        .select("id")
+        .is("ended_at", null)
+        .limit(1),
+      getCountOrThrow(
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "blocked"),
+        "Failed to load blocked task count.",
+      ),
+      getCountOrThrow(
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .neq("status", "done")
+          .lt("due_date", today),
+        "Failed to load overdue task count.",
+      ),
+      getCountOrThrow(
+        supabase
+          .from("tasks")
+          .select("id", { count: "exact", head: true })
+          .neq("status", "done")
+          .eq("due_date", today),
+        "Failed to load due-today task count.",
+      ),
       supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .neq("status", "done")
-        .lt("due_date", today),
-      "Failed to load overdue task count.",
-    ),
-    getCountOrThrow(
-      supabase
-        .from("tasks")
-        .select("id", { count: "exact", head: true })
-        .neq("status", "done")
-        .eq("due_date", today),
-      "Failed to load due-today task count.",
-    ),
-    supabase
-      .from("week_reviews")
-      .select("id")
-      .eq("week_start", reviewWeek.weekStart)
-      .eq("week_end", reviewWeek.weekEnd)
-      .limit(1),
-  ]);
+        .from("week_reviews")
+        .select("id")
+        .eq("week_start", reviewWeek.weekStart)
+        .eq("week_end", reviewWeek.weekEnd)
+        .limit(1),
+    ]);
 
-  if (activeTimerResult.error) {
-    throw new Error(`Failed to load active timer state: ${activeTimerResult.error.message}`);
+    if (activeTimerResult.error) {
+      throw new Error(`Failed to load active timer state: ${activeTimerResult.error.message}`);
+    }
+
+    if (currentWeekReviewResult.error) {
+      throw new Error(
+        `Failed to load current review state: ${currentWeekReviewResult.error.message}`,
+      );
+    }
+
+    return buildWorkspaceShellMetrics({
+      hasActiveTimer: Boolean(activeTimerResult.data?.length),
+      blockedTaskCount,
+      overdueTaskCount,
+      dueTodayTaskCount,
+      hasCurrentWeekReview: Boolean(currentWeekReviewResult.data?.length),
+    });
+  } catch (error) {
+    if (isNextDynamicServerError(error)) {
+      throw error;
+    }
+
+    console.warn("Workspace shell metrics unavailable; using neutral fallback.", error);
+    return buildWorkspaceShellMetrics(FALLBACK_WORKSPACE_SHELL_SNAPSHOT);
   }
-
-  if (currentWeekReviewResult.error) {
-    throw new Error(
-      `Failed to load current review state: ${currentWeekReviewResult.error.message}`,
-    );
-  }
-
-  return buildWorkspaceShellMetrics({
-    hasActiveTimer: Boolean(activeTimerResult.data?.length),
-    blockedTaskCount,
-    overdueTaskCount,
-    dueTodayTaskCount,
-    hasCurrentWeekReview: Boolean(currentWeekReviewResult.data?.length),
-  });
 }

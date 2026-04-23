@@ -182,6 +182,7 @@ select {
   flex-direction: column;
   min-height: 100dvh;
   background: transparent;
+  overflow-x: hidden;
 }
 
 .ega-topbar {
@@ -211,6 +212,7 @@ select {
   width: 100%;
   max-width: 1380px;
   margin: 0 auto;
+  min-width: 0;
 }
 
 .ega-shell-page-head {
@@ -746,6 +748,7 @@ select {
 
 .action-overflow {
   position: relative;
+  flex: 0 0 auto;
 }
 
 .action-overflow > summary {
@@ -759,7 +762,7 @@ select {
 .action-overflow-menu {
   position: absolute;
   right: 0;
-  z-index: 10;
+  z-index: 25;
   margin-top: 0.375rem;
   min-width: 13rem;
   border-radius: 0.9rem;
@@ -768,6 +771,265 @@ select {
   padding: 0.5rem;
   box-shadow: 0 14px 28px rgba(20, 32, 19, 0.12);
   backdrop-filter: blur(12px);
+}
+
+/* ─── Today Planner ─── */
+
+.today-page-content {
+  padding-top: 0;
+  overflow: visible;
+}
+
+.today-page-stack {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.today-work-grid {
+  display: grid;
+  align-items: start;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 1.35fr) minmax(20rem, 0.65fr);
+}
+
+.today-lane-stack,
+.today-assist-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.today-assist-stack {
+  position: sticky;
+  top: 6.25rem;
+}
+
+.today-summary-shell {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 249, 244, 0.94)),
+    radial-gradient(circle at top left, rgba(23, 123, 82, 0.08), transparent 34%);
+}
+
+.today-summary-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.today-summary-progress {
+  min-width: 16rem;
+}
+
+.today-summary-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.75rem, 1fr));
+}
+
+.today-summary-metric {
+  min-height: 5.8rem;
+  border-radius: 0.7rem;
+  border: 1px solid rgba(20, 32, 19, 0.1);
+  background: rgba(255, 255, 255, 0.84);
+  padding: 0.78rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+.today-summary-metric-active {
+  border-color: rgba(23, 123, 82, 0.16);
+  background: linear-gradient(180deg, rgba(232, 245, 233, 0.82), rgba(255, 255, 255, 0.78));
+}
+
+.today-summary-metric-warn {
+  border-color: rgba(230, 81, 0, 0.18);
+  background: linear-gradient(180deg, rgba(255, 243, 224, 0.78), rgba(255, 255, 255, 0.78));
+}
+
+.today-summary-metric-info {
+  border-color: rgba(21, 101, 192, 0.16);
+  background: linear-gradient(180deg, rgba(227, 242, 253, 0.76), rgba(255, 255, 255, 0.78));
+}
+
+.today-summary-icon,
+.today-suggestions-icon {
+  display: inline-flex;
+  height: 1.8rem;
+  width: 1.8rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted-foreground);
+}
+
+.today-section {
+  overflow: visible;
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 28px rgba(20, 32, 19, 0.05);
+}
+
+.today-section-rail {
+  height: 1.45rem;
+  width: 0.25rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--etch);
+}
+
+.today-section-info .today-section-rail,
+.today-section-success .today-section-rail {
+  background: var(--signal-live);
+}
+
+.today-section-warn .today-section-rail {
+  background: var(--signal-warn);
+}
+
+.today-task-card {
+  position: relative;
+  overflow: visible;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(20, 32, 19, 0.12);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 249, 244, 0.9));
+  padding: 1rem 1rem 0.95rem;
+  transition:
+    border-color var(--transition-precise),
+    box-shadow var(--transition-precise),
+    transform var(--transition-precise);
+}
+
+.today-task-card::before {
+  content: "";
+  position: absolute;
+  inset: 0.75rem auto 0.75rem 0;
+  width: 3px;
+  border-radius: 999px;
+  background: rgba(23, 123, 82, 0.28);
+}
+
+.today-task-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 10px 24px rgba(20, 32, 19, 0.08);
+  transform: translateY(-1px);
+}
+
+.today-task-card-active {
+  border-color: rgba(23, 123, 82, 0.24);
+  background: linear-gradient(180deg, rgba(232, 245, 233, 0.92), rgba(247, 249, 244, 0.94));
+}
+
+.today-task-card-active::before {
+  background: var(--signal-live);
+}
+
+.today-task-card-completed {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 249, 244, 0.86));
+}
+
+.today-task-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid rgba(20, 32, 19, 0.08);
+}
+
+.today-task-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.today-more-button {
+  display: inline-flex;
+  min-height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(20, 32, 19, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  padding: 0.45rem 0.8rem;
+  color: var(--foreground);
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 1px 2px rgba(20, 32, 19, 0.04);
+  transition:
+    border-color var(--transition-precise),
+    background var(--transition-precise),
+    box-shadow var(--transition-precise);
+}
+
+.today-more-button:hover {
+  border-color: rgba(20, 32, 19, 0.2);
+  background: #ffffff;
+  box-shadow: 0 4px 10px rgba(20, 32, 19, 0.08);
+}
+
+.today-action-overflow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: auto;
+}
+
+.today-action-overflow[open] {
+  min-width: min(13.5rem, 100%);
+}
+
+.today-action-overflow[open] .today-more-button {
+  border-color: rgba(23, 123, 82, 0.28);
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(20, 32, 19, 0.08);
+}
+
+.today-action-overflow[open] .today-more-button svg {
+  transform: rotate(180deg);
+}
+
+.today-action-overflow .action-overflow-menu {
+  position: static;
+  right: auto;
+  z-index: auto;
+  width: min(13.5rem, 100%);
+  min-width: 0;
+  margin-top: 0.5rem;
+  border-color: rgba(20, 32, 19, 0.12);
+  background: #ffffff;
+  box-shadow: 0 10px 22px rgba(20, 32, 19, 0.1);
+  backdrop-filter: none;
+}
+
+.today-suggestions-panel {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 28px rgba(20, 32, 19, 0.05);
+}
+
+.today-suggestion-card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(247, 249, 244, 0.86));
+  padding: 0.85rem;
+  transition:
+    border-color var(--transition-precise),
+    background var(--transition-precise);
+}
+
+.today-suggestion-card:hover {
+  border-color: var(--border-strong);
+  background: #ffffff;
 }
 
 /* ─── Dashboard Bento Grid ─── */
@@ -1160,5 +1422,32 @@ select {
     margin-top: 0.625rem;
     font-size: 0.875rem;
     line-height: 1.65;
+  }
+
+  .today-work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .today-assist-stack {
+    position: static;
+  }
+
+  .today-summary-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .today-summary-progress {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 1180px) {
+  .today-work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .today-assist-stack {
+    position: static;
   }
 }

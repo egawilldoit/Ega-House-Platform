@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { formatTaskToken } from "@/lib/task-domain";
-import { Lightbulb } from "lucide-react";
+import { ExternalLink, Lightbulb, PlusCircle, Sparkles } from "lucide-react";
 
 type SuggestionGroup = {
   key: string;
@@ -44,7 +44,7 @@ function SuggestionCard({
   const isActiveTimerTask = task.hasActiveTimer ? activeTimerSessionId : null;
 
   return (
-    <article className="rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-3">
+    <article className="today-suggestion-card">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-[color:var(--foreground)]">{task.title}</p>
         <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
@@ -62,6 +62,7 @@ function SuggestionCard({
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
           <Button type="submit" size="sm" variant="default" aria-label={`Add ${task.title} to Today`}>
+            <PlusCircle className="h-3.5 w-3.5" aria-hidden="true" />
             Add to Today
           </Button>
         </form>
@@ -85,6 +86,7 @@ function SuggestionCard({
         )}
 
         <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           Open
         </Link>
       </div>
@@ -98,9 +100,17 @@ export function TodaySuggestionsPanel({
   activeTimerSessionId,
 }: TodaySuggestionsPanelProps) {
   return (
-    <Card className="border-[var(--border)] bg-white">
+    <Card className="today-suggestions-panel">
       <CardHeader className="pb-4">
-        <CardTitle className="text-xl">Suggestions</CardTitle>
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="glass-label text-etch">Queue assist</p>
+            <CardTitle className="mt-1 text-xl">Suggestions</CardTitle>
+          </div>
+          <span className="today-suggestions-icon" aria-hidden="true">
+            <Sparkles className="h-4 w-4" />
+          </span>
+        </div>
       </CardHeader>
       <CardContent className="space-y-5 pt-0">
         {groups.map((group) => (
@@ -133,6 +143,7 @@ export function TodaySuggestionsPanel({
                 icon={Lightbulb}
                 title={`No ${group.title.toLowerCase()} suggestions`}
                 description={group.emptyText}
+                className="py-5"
               />
             )}
           </section>
