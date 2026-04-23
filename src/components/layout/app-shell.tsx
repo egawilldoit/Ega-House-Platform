@@ -76,7 +76,7 @@ export async function AppShell({
             <div className="ega-shell-max ega-shell-page-head">
               <div>
                 {eyebrow && (
-                  <div className="sidebar-section-label ega-shell-eyebrow">{eyebrow}</div>
+                  <div className="ega-shell-eyebrow">{eyebrow}</div>
                 )}
                 <h1 tabIndex={-1} data-shell-page-title className="ega-shell-title focus:outline-none">{title}</h1>
                 {description && (
