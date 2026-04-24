@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
+import { startTimerAction } from "@/app/timer/actions";
 import {
   completeTodayTaskAction,
   markTodayTaskBlockedAction,
@@ -8,6 +8,7 @@ import {
   updateTodayTaskStatusAction,
 } from "@/app/today/actions";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -106,13 +107,7 @@ export function TodayTaskCard({
       <div className="today-task-actions">
         <div className="today-task-primary-actions">
           {isActiveTimerTask ? (
-            <form action={stopTimerAction}>
-              <input type="hidden" name="sessionId" value={isActiveTimerTask} />
-              <input type="hidden" name="returnTo" value={returnTo} />
-              <Button type="submit" size="sm" variant="danger">
-                Stop timer
-              </Button>
-            </form>
+            <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm" />
           ) : (
             <form action={startTimerAction}>
               <input type="hidden" name="taskId" value={task.id} />

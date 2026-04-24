@@ -5,6 +5,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
+import { TimerStopForm } from "@/components/timer/timer-stop-form";
+import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,11 +27,8 @@ import { getTimerWorkspaceData } from "@/lib/services/timer-service";
 import { Clock3 } from "lucide-react";
 
 import {
-  completeStoppedTaskAction,
-  dismissStoppedTaskPromptAction,
   resolveSessionConflictAction,
   startTimerAction,
-  stopTimerAction,
   updateSessionTimingAction,
 } from "./actions";
 import {
@@ -329,26 +328,12 @@ export default async function TimerPage({
             </CardHeader>
             <CardContent className="pt-0">
               {showStoppedTaskPrompt ? (
-                <div className="mb-4 rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
-                  <p className="glass-label text-etch">Timer stopped</p>
-                  <p className="mt-2 text-sm text-[color:var(--foreground)]">
-                    Mark <span className="font-medium">{stoppedTaskTitle}</span> done?
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <form action={completeStoppedTaskAction}>
-                      <input type="hidden" name="taskId" value={stoppedTaskId ?? ""} />
-                      <input type="hidden" name="returnTo" value="/timer" />
-                      <Button type="submit" size="sm">
-                        Done
-                      </Button>
-                    </form>
-                    <form action={dismissStoppedTaskPromptAction}>
-                      <input type="hidden" name="returnTo" value="/timer" />
-                      <Button type="submit" size="sm" variant="muted">
-                        Skip
-                      </Button>
-                    </form>
-                  </div>
+                <div className="mb-4">
+                  <TimerStopOutcomePrompt
+                    taskId={stoppedTaskId ?? ""}
+                    taskTitle={stoppedTaskTitle}
+                    returnTo="/timer"
+                  />
                 </div>
               ) : null}
               {activeSession ? (
@@ -405,13 +390,13 @@ export default async function TimerPage({
                     </Link>
                   ) : null}
                 </div>
-                <form action={stopTimerAction}>
-                  <input type="hidden" name="sessionId" value={activeSession.id} />
-                  <input type="hidden" name="returnTo" value="/timer" />
-                  <Button type="submit" variant="danger" disabled={hasSessionConflict}>
-                    Stop Timer
-                  </Button>
-                </form>
+                <TimerStopForm
+                  sessionId={activeSession.id}
+                  returnTo="/timer"
+                  disabled={hasSessionConflict}
+                >
+                  Stop Timer
+                </TimerStopForm>
               </CardFooter>
             ) : null}
           </Card>

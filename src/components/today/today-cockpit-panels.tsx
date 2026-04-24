@@ -1,8 +1,9 @@
 import Link from "next/link";
 
-import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
+import { startTimerAction } from "@/app/timer/actions";
 import { completeTodayTaskAction } from "@/app/today/actions";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,14 +31,15 @@ function TodayCockpitActions({
   return (
     <div className="today-cockpit-actions">
       {isActiveTimerTask ? (
-        <form action={stopTimerAction}>
-          <input type="hidden" name="sessionId" value={isActiveTimerTask} />
-          <input type="hidden" name="returnTo" value={returnTo} />
-          <Button type="submit" size="sm" variant="danger" className="today-cockpit-action-button">
-            <Square className="h-3.5 w-3.5" aria-hidden="true" />
-            Stop timer
-          </Button>
-        </form>
+        <TimerStopForm
+          sessionId={isActiveTimerTask}
+          returnTo={returnTo}
+          size="sm"
+          className="today-cockpit-action-button"
+        >
+          <Square className="h-3.5 w-3.5" aria-hidden="true" />
+          Stop timer
+        </TimerStopForm>
       ) : (
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={task.id} />
@@ -256,14 +258,15 @@ export function ActiveTimerPanel({
           <Badge tone="muted">{formatTaskToken(activeTimer.taskPriority)}</Badge>
         </div>
         <div className="today-cockpit-actions">
-          <form action={stopTimerAction}>
-            <input type="hidden" name="sessionId" value={activeTimer.sessionId} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="danger" className="today-cockpit-action-button">
-              <Square className="h-3.5 w-3.5" aria-hidden="true" />
-              Stop timer
-            </Button>
-          </form>
+          <TimerStopForm
+            sessionId={activeTimer.sessionId}
+            returnTo={returnTo}
+            size="sm"
+            className="today-cockpit-action-button"
+          >
+            <Square className="h-3.5 w-3.5" aria-hidden="true" />
+            Stop timer
+          </TimerStopForm>
           <Link href={taskHref} className="btn-instrument btn-instrument-muted today-cockpit-action-button flex h-8 items-center px-3 text-xs">
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             Open task

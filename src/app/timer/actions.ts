@@ -128,6 +128,11 @@ export async function handleStoppedTimerOutcomeByTaskId(
     return { errorMessage: "Task update request is invalid." };
   }
 
+  const nextStatus = getStoppedTimerOutcomeStatus(outcome);
+  if (!nextStatus) {
+    return { errorMessage: null };
+  }
+
   const taskResult = await dependencies.getTaskById(normalizedTaskId);
   if (taskResult.errorMessage) {
     return { errorMessage: taskResult.errorMessage };
@@ -135,11 +140,6 @@ export async function handleStoppedTimerOutcomeByTaskId(
 
   if (!taskResult.data) {
     return { errorMessage: "Task was not found or is no longer available." };
-  }
-
-  const nextStatus = getStoppedTimerOutcomeStatus(outcome);
-  if (!nextStatus) {
-    return { errorMessage: null };
   }
 
   const normalizedBlockedReason = String(blockedReason ?? "").trim();
@@ -208,11 +208,6 @@ export async function submitStoppedTimerOutcomeAction(formData: FormData) {
         ? "Timer stopped. Task status unchanged."
         : "Timer stopped. Task updated.",
   });
-}
-
-export async function dismissStoppedTaskPromptAction(formData: FormData) {
-  const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
-  redirectToTimer(returnPath);
 }
 
 export async function resolveSessionConflictAction(formData: FormData) {

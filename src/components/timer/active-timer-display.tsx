@@ -1,9 +1,8 @@
 import Link from "next/link";
 
-import { stopTimerAction } from "@/app/timer/actions";
 import { LiveDuration } from "@/components/timer/live-duration";
+import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import { formatDurationLabel } from "@/lib/task-session";
 import type { Tables } from "@/lib/supabase/database.types";
@@ -90,13 +89,11 @@ export function ActiveTimerDisplay({
         <LiveDuration startedAt={session.started_at} />
       </div>
 
-      <form action={stopTimerAction}>
-        <input type="hidden" name="sessionId" value={session.id} />
-        <input type="hidden" name="returnTo" value="/timer" />
-        <Button type="submit" variant="danger" disabled={hasSessionConflict}>
-          Stop timer
-        </Button>
-      </form>
+      <TimerStopForm
+        sessionId={session.id}
+        returnTo="/timer"
+        disabled={hasSessionConflict}
+      />
     </div>
   );
 }

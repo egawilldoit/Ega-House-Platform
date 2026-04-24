@@ -13,6 +13,8 @@ import { TodaySection } from "@/components/today/today-section";
 import { TodaySuggestionsPanel } from "@/components/today/today-suggestions-panel";
 import { TodaySummaryBar } from "@/components/today/today-summary-bar";
 import { TodayTaskCard } from "@/components/today/today-task-card";
+import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
+import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -44,10 +46,16 @@ function PlannerErrorState({ actionError }: { actionError: string | null }) {
 export default async function TodayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ actionError?: string }>;
+  searchParams: Promise<{
+    actionError?: string;
+    actionSuccess?: string;
+    stoppedTaskId?: string;
+  }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const actionError = resolvedSearchParams.actionError?.slice(0, 180) ?? null;
+  const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
+  const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
 
   const [todayResult, user] = await Promise.all([getTodayPlannerData(), getCurrentUser()]);
 
@@ -69,6 +77,17 @@ export default async function TodayPage({
   const plannedTodayActionable = todayData.plannedToday.filter(
     (task) => task.status !== "blocked" && task.status !== "done",
   );
+  const stoppedTaskTitle = [
+    ...todayData.plannedToday,
+    ...todayData.planned,
+    ...todayData.inProgress,
+    ...todayData.blocked,
+    ...todayData.completed,
+    ...todayData.focusQueue,
+    ...todayData.suggestions.pinned,
+    ...todayData.suggestions.inProgress,
+  ].find((task) => task.id === stoppedTaskId)?.title ?? "this task";
+  const showStoppedTaskPrompt = Boolean(!todayData.activeTimer && stoppedTaskId);
 
   const allTodayCount =
     todayData.summary.plannedCount +
@@ -100,7 +119,18 @@ export default async function TodayPage({
       />
 
       <div className="today-page-stack">
-        {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
+        {showStoppedTaskPrompt ? (
+          <TimerStopOutcomePrompt
+            taskId={stoppedTaskId ?? ""}
+            taskTitle={stoppedTaskTitle}
+            returnTo={returnTo}
+          />
+        ) : null}
+
+        <TimerActionFeedback
+          actionError={actionError}
+          actionSuccess={actionSuccess}
+        />
 
         <TodaySummaryBar
           plannedCount={todayData.summary.plannedCount}
