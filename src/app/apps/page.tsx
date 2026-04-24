@@ -6,7 +6,7 @@ import { AppsLauncherGrid } from "./apps-launcher-grid";
 import { APPS_LAUNCHER_ITEMS } from "./launcher-items";
 
 export const metadata: Metadata = {
-  title: "Apps | EGA House",
+  title: "Apps",
   description: "Launcher for workspace modules and execution surfaces.",
 };
 

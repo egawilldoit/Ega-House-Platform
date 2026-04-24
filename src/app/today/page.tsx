@@ -17,7 +17,7 @@ import { getTodayPlannerData } from "@/lib/services/today-planner-service";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Today | EGA House",
+  title: "Today",
   description: "Plan intentional work for today with direct execution controls.",
 };
 

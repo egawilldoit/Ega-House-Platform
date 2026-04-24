@@ -276,16 +276,13 @@ select {
   border-bottom: 1px solid rgba(20, 32, 19, 0.06);
 }
 
-.sidebar-brand-mark {
-  display: flex;
-  width: 2rem;
-  height: 2rem;
+.sidebar-brand-logo {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
   flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
   border-radius: 0.7rem;
-  background: linear-gradient(145deg, #177b52, #116241);
-  color: white;
+  object-fit: contain;
   box-shadow: 0 10px 24px rgba(23, 123, 82, 0.16);
 }
 

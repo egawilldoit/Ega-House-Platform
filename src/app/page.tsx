@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 
 import { getCurrentUser } from "@/lib/services/auth-service";
@@ -15,6 +16,14 @@ export default async function HomePage() {
       <div className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col justify-center px-6 py-16 sm:px-10 lg:px-12">
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-end">
           <section className="max-w-3xl">
+            <Image
+              src="/logo.svg"
+              alt="EGA House"
+              width={72}
+              height={72}
+              priority
+              className="mb-6 h-16 w-16 rounded-2xl object-contain"
+            />
             <p className="glass-label text-signal-live">EGA House · Operational Platform</p>
             <h1
               className="mt-5 max-w-3xl text-5xl font-semibold tracking-tight sm:text-6xl"

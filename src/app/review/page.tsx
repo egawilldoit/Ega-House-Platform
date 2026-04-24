@@ -29,7 +29,7 @@ import {
 import { WeekSelector } from "./week-selector";
 
 export const metadata: Metadata = {
-  title: "Review | EGA House",
+  title: "Review",
   description: "Weekly review reflection workflow.",
 };
 

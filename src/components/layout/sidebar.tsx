@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
@@ -10,7 +11,6 @@ import {
   CircleHelp,
   FileText,
   Flag,
-  Home,
   LayoutDashboard,
   Plus,
   Power,
@@ -136,9 +136,14 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
   return (
     <aside className="ega-sidebar">
       <div className="sidebar-brand">
-        <div className="sidebar-brand-mark">
-          <Home className="h-4 w-4" />
-        </div>
+        <Image
+          src="/logo.svg"
+          alt="EGA House"
+          width={36}
+          height={36}
+          priority
+          className="sidebar-brand-logo"
+        />
         <div className="min-w-0">
           <div className="sidebar-brand-title">EGA House</div>
           <div className="sidebar-brand-subtitle">Execution workspace</div>
