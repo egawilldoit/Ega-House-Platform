@@ -22,7 +22,7 @@ type ReviewDetailPageProps = {
 };
 
 export const metadata = {
-  title: "Past Review | EGA House",
+  title: "Past Review",
   description: "Inspect a saved weekly review entry.",
 };
 

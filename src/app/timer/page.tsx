@@ -38,7 +38,7 @@ import {
 } from "./task-selection";
 
 export const metadata: Metadata = {
-  title: "Timer | EGA House",
+  title: "Timer",
   description: "Start and stop focused task sessions.",
 };
 

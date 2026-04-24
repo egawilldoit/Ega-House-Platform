@@ -52,7 +52,7 @@ import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { ListChecks } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "Tasks | EGA House",
+  title: "Tasks",
   description: "Task list with status and goal filters plus creation flow.",
 };
 

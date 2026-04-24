@@ -47,7 +47,7 @@ type ProjectSummary = {
 };
 
 export const metadata: Metadata = {
-  title: "Projects | Tasks | EGA House",
+  title: "Projects | Tasks",
   description: "Projects list with task context for the tasks workspace.",
 };
 

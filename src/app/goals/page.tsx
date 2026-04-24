@@ -42,7 +42,7 @@ import {
 import { CreateGoalForm } from "./create-goal-form";
 
 export const metadata: Metadata = {
-  title: "Goals | EGA House",
+  title: "Goals",
   description: "Goals list and creation flow.",
 };
 

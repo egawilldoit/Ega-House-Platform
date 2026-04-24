@@ -15,7 +15,7 @@ import { getShutdownData } from "@/lib/services/shutdown-service";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 
 export const metadata: Metadata = {
-  title: "Shutdown | EGA House",
+  title: "Shutdown",
   description: "Close your day, carry work forward safely, and prepare tomorrow.",
 };
 

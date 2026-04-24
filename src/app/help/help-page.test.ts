@@ -8,7 +8,7 @@ const helpPageFile = path.join(process.cwd(), "src", "app", "help", "page.tsx");
 test("help page defines metadata and required operational sections", () => {
   const source = readFileSync(helpPageFile, "utf8");
 
-  assert.match(source, /title:\s*"Help \| EGA House"/);
+  assert.match(source, /title:\s*"Help"/);
   assert.match(source, /title="Help Center"/);
   assert.match(source, /Getting Started/);
   assert.match(source, /Shortcuts/);

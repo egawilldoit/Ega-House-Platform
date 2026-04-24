@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const metadata: Metadata = {
-  title: "Help | EGA House",
+  title: "Help",
   description: "Practical guidance for running the Project -> Goal -> Task -> Timer -> Review loop.",
 };
 

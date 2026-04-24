@@ -8,7 +8,7 @@ import { formatIsoDate } from "@/lib/review-week";
 import { getStartupPlannerData } from "@/lib/services/startup-planner-service";
 
 export const metadata: Metadata = {
-  title: "Startup | EGA House",
+  title: "Startup",
   description: "Weekly startup planning flow tied directly to review, goals, tasks, and Today.",
 };
 

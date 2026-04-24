@@ -197,12 +197,12 @@ export async function generateMetadata({ params }: ProjectDetailPageProps): Prom
 
   if (!projectDetail) {
     return {
-      title: "Project Not Found | Tasks | EGA House",
+      title: "Project Not Found | Tasks",
     };
   }
 
   return {
-    title: `${projectDetail.project.name} | Projects | Tasks | EGA House`,
+    title: `${projectDetail.project.name} | Projects | Tasks`,
     description:
       projectDetail.project.description?.trim() ||
       `Task workspace for ${projectDetail.project.name}.`,

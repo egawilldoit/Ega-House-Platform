@@ -13,7 +13,7 @@ import {
 import { CreateProjectForm } from "./create-project-form";
 
 export const metadata: Metadata = {
-  title: "Create Project | Tasks | EGA House",
+  title: "Create Project | Tasks",
   description: "Create a project in the tasks workspace.",
 };
 

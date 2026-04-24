@@ -6,7 +6,7 @@ import { DashboardOptimizedView } from "./_components/DashboardOptimizedView";
 import { getDashboardData } from "./_lib/dashboard-data";
 
 export const metadata: Metadata = {
-  title: "Dashboard | EGA House",
+  title: "Dashboard",
   description: "Read-only operational snapshot across health, tasks, and timer.",
 };
 

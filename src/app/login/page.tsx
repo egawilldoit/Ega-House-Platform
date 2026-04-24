@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
@@ -7,7 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Login | EGA House",
+  title: "Login",
   description: "Sign in to access your EGA House workspace.",
 };
 
@@ -42,6 +43,14 @@ export default async function LoginPage() {
 
       <div className="relative mx-auto flex w-full max-w-6xl flex-col justify-between gap-10 px-6 py-8 sm:px-10 lg:flex-row lg:items-center lg:px-12">
         <section className="max-w-2xl pt-6 lg:pt-0">
+          <Image
+            src="/logo.svg"
+            alt="EGA House"
+            width={72}
+            height={72}
+            priority
+            className="mb-8 h-16 w-16 rounded-2xl object-contain shadow-[0_18px_45px_rgba(15,23,42,0.14)]"
+          />
           <p className="inline-flex items-center rounded-full border border-black/10 bg-white/50 px-4 py-2 font-mono text-[0.68rem] uppercase tracking-[0.32em] text-slate-600 backdrop-blur">
             Root Domain Access
           </p>
