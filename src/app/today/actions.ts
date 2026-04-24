@@ -92,6 +92,23 @@ export async function completeTodayTaskAction(formData: FormData) {
   redirect(returnPath);
 }
 
+export async function markTodayTaskBlockedAction(formData: FormData) {
+  const returnPath = getTodayReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const blockedReason = String(formData.get("blockedReason") ?? "").trim();
+
+  const result = await updateTodayTaskStatus(taskId, "blocked", {
+    blockedReason,
+  });
+
+  if (result.errorMessage) {
+    redirectWithActionError(returnPath, result.errorMessage);
+  }
+
+  revalidateTodaySurfaces(returnPath);
+  redirect(returnPath);
+}
+
 export async function clearCompletedFromTodayAction(formData: FormData) {
   const returnPath = getTodayReturnPath(formData.get("returnTo"));
   const result = await clearCompletedFromToday();
