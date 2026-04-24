@@ -226,8 +226,12 @@ export async function getTodayPlannerData(options?: {
       queryTodayTaskRowsWithBlockedReasonFallback(supabase, "selected", today),
       queryTodayTaskRowsWithBlockedReasonFallback(supabase, "pinned", today),
       queryTodayTaskRowsWithBlockedReasonFallback(supabase, "inProgress", today),
-      options?.activeTimerResult ? Promise.resolve(options.activeTimerResult) : getActiveTimerSession(),
-      options?.timerSummaryResult ? Promise.resolve(options.timerSummaryResult) : getTimerSummary({ limit: 120 }),
+      options?.activeTimerResult
+        ? Promise.resolve(options.activeTimerResult)
+        : getActiveTimerSession({ supabase }),
+      options?.timerSummaryResult
+        ? Promise.resolve(options.timerSummaryResult)
+        : getTimerSummary({ supabase, limit: 120 }),
     ]);
 
   if (selectedResult.errorMessage) {

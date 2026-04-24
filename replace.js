@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 let C = fs.readFileSync('src/app/dashboard/_components/DashboardOptimizedView.tsx', 'utf8');
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 let C = fs.readFileSync('src/app/tasks/page.tsx', 'utf8');
 

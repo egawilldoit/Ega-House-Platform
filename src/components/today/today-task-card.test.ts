@@ -24,6 +24,7 @@ function createTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask
     hasActiveTimer: false,
     isDueToday: false,
     isPlannedForToday: true,
+    dueBucket: "none",
     ...overrides,
   };
 }

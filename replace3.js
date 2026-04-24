@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('fs');
 
 // 1. Update CreateTaskForm
@@ -14,4 +15,3 @@ fs.writeFileSync('src/components/tasks/inline-task-update-form.tsx', inlineTask)
 let filters = fs.readFileSync('src/components/tasks/task-filter-controls.tsx', 'utf8');
 filters = filters.replace(/className="grid gap-4 lg:grid-cols-2"/g, 'className="flex flex-wrap gap-x-8 gap-y-4"');
 fs.writeFileSync('src/components/tasks/task-filter-controls.tsx', filters);
-

@@ -152,6 +152,89 @@ test("includes due-today tasks in Today when they are not manually planned", asy
   assert.equal(result.data?.summary.overdueCount, 0);
 });
 
+test("uses the provided scoped client for active timer and summary reads", async () => {
+  const taskRows = [
+    {
+      data: [
+        createTaskRow({
+          id: "active-task",
+          planned_for_date: "2026-04-20",
+        }),
+      ],
+      error: null,
+    },
+    { data: [], error: null },
+    { data: [], error: null },
+  ];
+  let taskQueryIndex = 0;
+  let taskSessionQueryCount = 0;
+
+  const supabase = {
+    from(table: string) {
+      if (table === "tasks") {
+        return {
+          select() {
+            const chain = {
+              eq() {
+                return chain;
+              },
+              neq() {
+                return chain;
+              },
+              not() {
+                return chain;
+              },
+              or() {
+                return chain;
+              },
+              order() {
+                return chain;
+              },
+              limit() {
+                const result = taskRows[taskQueryIndex];
+                taskQueryIndex += 1;
+                assert.ok(result, "Unexpected task query invocation.");
+                return Promise.resolve(result);
+              },
+            };
+
+            return chain;
+          },
+        };
+      }
+
+      assert.equal(table, "task_sessions");
+      return {
+        select() {
+          const chain = {
+            is() {
+              return chain;
+            },
+            order() {
+              return chain;
+            },
+            limit() {
+              taskSessionQueryCount += 1;
+              return Promise.resolve({ data: [], error: null });
+            },
+          };
+
+          return chain;
+        },
+      };
+    },
+  };
+
+  const result = await getTodayPlannerData({
+    supabase: supabase as never,
+    now: new Date("2026-04-20T12:00:00.000Z"),
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(taskSessionQueryCount, 2);
+  assert.equal(result.data?.activeTimer, null);
+});
+
 test("includes manually planned tasks with no due date in Today", async () => {
   const supabase = createSupabaseMock([
     {
@@ -584,7 +667,19 @@ function createTodayStatusSupabaseMock(options?: {
                     assert.equal(isColumn, "ended_at");
                     assert.equal(isValue, null);
                     sessionUpdateCalls.push({ sessionId: value, payload });
-                    return Promise.resolve({ error: null });
+                    return {
+                      select(columns: string) {
+                        assert.equal(columns, "id");
+                        return {
+                          maybeSingle() {
+                            return Promise.resolve({
+                              data: { id: value },
+                              error: null,
+                            });
+                          },
+                        };
+                      },
+                    };
                   },
                 };
               },
