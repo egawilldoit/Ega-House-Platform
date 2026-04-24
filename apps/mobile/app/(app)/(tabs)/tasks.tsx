@@ -3,7 +3,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -113,9 +112,17 @@ export default function TasksScreen() {
   const [updatingTaskIds, setUpdatingTaskIds] = useState<Record<string, boolean>>({});
   const [taskErrors, setTaskErrors] = useState<Record<string, string | undefined>>({});
 
-  const tasks = tasksQuery.data?.tasks ?? EMPTY_TASKS;
+  const tasks: MobileTaskListItem[] = tasksQuery.data?.tasks ?? EMPTY_TASKS;
   const totalTaskCount = tasksQuery.data?.counters.total ?? 0;
   const hasFilters = statusFilter !== 'all' || dueFilter !== 'all';
+  const taskSummary = useMemo(() => {
+    const visible = tasks.length;
+    const inProgress = tasks.filter((task) => task.status === 'in_progress').length;
+    const blocked = tasks.filter((task) => task.status === 'blocked').length;
+    const urgent = tasks.filter((task) => task.priority === 'urgent').length;
+
+    return { visible, inProgress, blocked, urgent };
+  }, [tasks]);
   const dueDateOptions = useMemo(() => buildDueDateOptions(), []);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,
@@ -163,7 +170,15 @@ export default function TasksScreen() {
 
     const statusItems = getStatusOptions(activeTask).map((status) => ({
       key: `status-${status}`,
-      label: `Status: ${formatToken(status)}${status === activeTask.status ? ' (Current)' : ''}`,
+      label:
+        status === 'todo'
+          ? 'Move to To do'
+          : status === 'in_progress'
+            ? 'Move to In progress'
+            : status === 'done'
+              ? 'Mark done'
+              : 'Mark blocked',
+      description: status === activeTask.status ? 'Current status' : undefined,
       disabled: status === activeTask.status,
       onPress: () => {
         mutateTask(activeTask.id, { status }).catch(() => {
@@ -174,7 +189,8 @@ export default function TasksScreen() {
 
     const priorityItems = PRIORITY_OPTIONS.map((priority) => ({
       key: `priority-${priority}`,
-      label: `Priority: ${priority}${priority === activeTask.priority ? ' (Current)' : ''}`,
+      label: `Set priority: ${formatToken(priority)}`,
+      description: priority === activeTask.priority ? 'Current priority' : undefined,
       disabled: priority === activeTask.priority,
       onPress: () => {
         mutateTask(activeTask.id, { priority }).catch(() => {
@@ -185,7 +201,7 @@ export default function TasksScreen() {
 
     const dueItems = dueDateOptions.map((option) => ({
       key: `due-${option.label}`,
-      label: option.label,
+      label: option.label === 'Today' ? 'Due: Today' : `Due: ${option.label}`,
       description: option.value ? `Set due to ${formatDueDate(option.value)}` : 'Remove due date',
       disabled: option.value === activeTask.dueDate,
       onPress: () => {
@@ -198,7 +214,7 @@ export default function TasksScreen() {
     return [
       {
         key: 'open',
-        label: 'Open task details',
+        label: 'Open details',
         onPress: () => {
           router.push({ pathname: '/(app)/tasks/[id]', params: { id: activeTask.id } });
         },
@@ -217,14 +233,15 @@ export default function TasksScreen() {
             eyebrow="Execution"
             title="Tasks"
             description="Everything synced from your workspace"
+            rightAction={
+              <View style={styles.headerPill}>
+                <Ionicons color={mobileTheme.colors.accentDark} name="list-outline" size={14} />
+                <Text style={styles.headerPillText}>0 / {totalTaskCount}</Text>
+              </View>
+            }
           />
         </View>
-        <View style={styles.centered}>
-          <ActivityIndicator color={mobileTheme.colors.accent} />
-          <Text style={styles.subtitle}>Loading tasks...</Text>
-        </View>
         <View style={styles.skeletonWrap}>
-          <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -264,25 +281,36 @@ export default function TasksScreen() {
           <EmptyState
             icon="clipboard-outline"
             iconSize={64}
-            title={hasFilters ? 'No tasks match these filters' : 'Nothing here yet'}
+            title={hasFilters ? 'No tasks match this view' : 'Create your first task'}
             description={
               hasFilters
                 ? 'Try a different status or due-date filter.'
-                : 'Create your first task to get started.'
+                : 'Capture the next execution step and keep momentum visible.'
             }
             action={
               hasFilters ? (
+                <View style={styles.emptyActions}>
+                  <Pressable
+                    onPress={() => {
+                      setStatusFilter('all');
+                      setDueFilter('all');
+                    }}
+                    style={styles.secondaryButton}
+                  >
+                    <Text style={styles.secondaryButtonText}>Clear filters</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push('/(app)/tasks/create')}
+                    style={styles.primaryButton}
+                  >
+                    <Text style={styles.primaryButtonText}>Create task</Text>
+                  </Pressable>
+                </View>
+              ) : (
                 <Pressable
-                  onPress={() => {
-                    setStatusFilter('all');
-                    setDueFilter('all');
-                  }}
+                  onPress={() => router.push('/(app)/tasks/create')}
                   style={styles.primaryButton}
                 >
-                  <Text style={styles.primaryButtonText}>Clear filters</Text>
-                </Pressable>
-              ) : (
-                <Pressable onPress={() => router.push('/(app)/tasks/create')} style={styles.primaryButton}>
                   <Text style={styles.primaryButtonText}>Create task</Text>
                 </Pressable>
               )
@@ -301,10 +329,54 @@ export default function TasksScreen() {
                     ? 'No tasks match the current filters'
                     : 'Track and capture your next execution step'
               }
+              rightAction={
+                <View style={styles.headerPill}>
+                  <Ionicons color={mobileTheme.colors.accentDark} name="list-outline" size={14} />
+                  <Text style={styles.headerPillText}>
+                    {tasks.length} / {totalTaskCount}
+                  </Text>
+                </View>
+              }
             />
+            <View style={styles.summaryGrid}>
+              <SurfaceCard style={styles.summaryCard}>
+                <Ionicons name="list-outline" size={16} color={mobileTheme.colors.accent} />
+                <Text style={styles.summaryValue}>{taskSummary.visible}</Text>
+                <Text style={styles.summaryLabel}>Visible</Text>
+              </SurfaceCard>
+
+              <SurfaceCard style={styles.summaryCard}>
+                <Ionicons name="flash-outline" size={16} color={mobileTheme.colors.info} />
+                <Text style={styles.summaryValue}>{taskSummary.inProgress}</Text>
+                <Text style={styles.summaryLabel}>Active</Text>
+              </SurfaceCard>
+
+              <SurfaceCard style={styles.summaryCard}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={mobileTheme.colors.blocked}
+                />
+                <Text style={styles.summaryValue}>{taskSummary.blocked}</Text>
+                <Text style={styles.summaryLabel}>Blocked</Text>
+              </SurfaceCard>
+
+              <SurfaceCard style={styles.summaryCard}>
+                <Ionicons name="flame-outline" size={16} color={mobileTheme.colors.danger} />
+                <Text style={styles.summaryValue}>{taskSummary.urgent}</Text>
+                <Text style={styles.summaryLabel}>Urgent</Text>
+              </SurfaceCard>
+            </View>
             <View style={styles.filterSection}>
-              <View style={styles.filterHeaderRow}>
-                <Text style={styles.filterLabel}>Status</Text>
+              <View style={styles.filterTitleRow}>
+                <View style={styles.filterTitleLeft}>
+                  <Ionicons
+                    color={mobileTheme.colors.textMuted}
+                    name="filter-outline"
+                    size={16}
+                  />
+                  <Text style={styles.filterTitle}>Task filters</Text>
+                </View>
                 {hasFilters ? (
                   <Pressable
                     onPress={() => {
@@ -313,10 +385,11 @@ export default function TasksScreen() {
                     }}
                     style={styles.clearFiltersButton}
                   >
-                    <Text style={styles.clearFiltersText}>Clear</Text>
+                    <Text style={styles.clearFiltersText}>Reset</Text>
                   </Pressable>
                 ) : null}
               </View>
+              <Text style={styles.filterLabel}>Status</Text>
               <SegmentedControl
                 onChange={setStatusFilter}
                 options={STATUS_FILTER_OPTIONS}
@@ -393,11 +466,6 @@ const styles = StyleSheet.create({
   cardWrap: {
     marginBottom: mobileTheme.spacing.sm,
   },
-  centered: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
   centeredContent: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -420,7 +488,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: mobileTheme.spacing.sm,
   },
-  filterHeaderRow: {
+  filterTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 14,
+    fontWeight: mobileTheme.font.extrabold,
+  },
+  filterTitleLeft: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  filterTitleRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -443,6 +521,20 @@ const styles = StyleSheet.create({
   },
   headerWrap: {
     paddingHorizontal: 16,
+  },
+  headerPill: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.accentSoft,
+    borderRadius: mobileTheme.radius.pill,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  headerPillText: {
+    color: mobileTheme.colors.accentDark,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.black,
   },
   inlineErrorText: {
     color: mobileTheme.colors.danger,
@@ -475,19 +567,50 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.textOnAccent,
     fontWeight: mobileTheme.font.extrabold,
   },
+  secondaryButton: {
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
+    marginTop: mobileTheme.spacing.md,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  secondaryButtonText: {
+    color: mobileTheme.colors.text,
+    fontWeight: mobileTheme.font.extrabold,
+  },
   sheetMessage: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
     textAlign: 'center',
   },
   skeletonWrap: {
-    marginTop: mobileTheme.spacing.lg,
+    marginTop: mobileTheme.spacing.sm,
   },
-  subtitle: {
+  emptyActions: {
+    flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
+  },
+  summaryCard: {
+    alignItems: 'flex-start',
+    flex: 1,
+    gap: 4,
+    padding: mobileTheme.spacing.sm,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
+    marginBottom: mobileTheme.spacing.sm,
+  },
+  summaryLabel: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 15,
-    lineHeight: 21,
-    marginTop: 10,
-    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: mobileTheme.font.bold,
+    textTransform: 'uppercase',
+  },
+  summaryValue: {
+    color: mobileTheme.colors.text,
+    fontSize: 20,
+    fontWeight: mobileTheme.font.black,
+    letterSpacing: -0.5,
   },
 });

@@ -63,15 +63,39 @@ export function TaskCard({
               label={priority}
               textColor={priorityColors.color}
             />
-            <View style={styles.rowSpacer} />
-            <Text style={[styles.metaStrong, !hasDueDate ? styles.metaQuiet : null]}>
-              {`📅 ${dueLabel}`}
-            </Text>
-            {estimateLabel ? <Text style={styles.metaQuiet}>{estimateLabel}</Text> : null}
+          </View>
+
+          <View style={styles.metaPillRow}>
+            <View style={styles.metaPill}>
+              <Ionicons
+                color={hasDueDate ? mobileTheme.colors.text : mobileTheme.colors.textSubtle}
+                name="calendar-outline"
+                size={13}
+              />
+              <Text
+                numberOfLines={1}
+                style={[styles.metaStrong, !hasDueDate ? styles.metaQuiet : null]}
+              >
+                {dueLabel}
+              </Text>
+            </View>
+            {estimateLabel ? (
+              <View style={styles.metaPill}>
+                <Ionicons color={mobileTheme.colors.textSubtle} name="timer-outline" size={13} />
+                <Text numberOfLines={1} style={styles.metaQuiet}>
+                  {estimateLabel}
+                </Text>
+              </View>
+            ) : null}
           </View>
 
           {blockedReason ? (
             <View style={styles.blockedBox}>
+              <Ionicons
+                color={mobileTheme.colors.blocked}
+                name="alert-circle-outline"
+                size={14}
+              />
               <Text numberOfLines={2} style={styles.blockedText}>
                 {blockedReason}
               </Text>
@@ -111,16 +135,20 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.md,
   },
   blockedBox: {
+    alignItems: 'flex-start',
     backgroundColor: mobileTheme.colors.dangerBg,
     borderLeftColor: mobileTheme.colors.blocked,
     borderLeftWidth: 3,
     borderRadius: mobileTheme.radius.sm,
+    flexDirection: 'row',
+    gap: 7,
     marginTop: mobileTheme.spacing.sm,
     paddingHorizontal: 10,
     paddingVertical: 8,
   },
   blockedText: {
     color: mobileTheme.colors.blocked,
+    flex: 1,
     fontSize: 12,
     fontWeight: mobileTheme.font.semibold,
     lineHeight: 17,
@@ -172,6 +200,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: mobileTheme.font.semibold,
   },
+  metaPill: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
+    flexDirection: 'row',
+    gap: 4,
+    maxWidth: '100%',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+  },
+  metaPillRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: mobileTheme.spacing.sm,
+  },
   metaStrong: {
     color: mobileTheme.colors.text,
     fontSize: 12,
@@ -185,16 +230,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 6,
     justifyContent: 'center',
-    minHeight: 40,
+    minHeight: 44,
   },
   secondaryActionText: {
     color: mobileTheme.colors.accentDark,
     fontSize: 13,
     fontWeight: mobileTheme.font.bold,
     letterSpacing: 0.2,
-  },
-  rowSpacer: {
-    flex: 1,
   },
   title: {
     color: mobileTheme.colors.text,
