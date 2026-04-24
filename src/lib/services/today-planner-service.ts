@@ -2,12 +2,23 @@ import { createClient } from "@/lib/supabase/server";
 import { getTaskDueDateState, getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { TASK_STATUS_VALUES, isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
-import { getActiveTimerSession, getTimerSummary } from "@/lib/services/timer-service";
+import {
+  getActiveTimerSession,
+  getTimerSummary,
+  type ActiveTimerSession,
+} from "@/lib/services/timer-service";
 import { updateTaskInline, validateTaskInlineUpdateInput } from "@/lib/services/task-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 const SUGGESTION_LIMIT = 6;
+const FOCUS_QUEUE_LIMIT = 7;
+const PRIORITY_RANK: Record<string, number> = {
+  urgent: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
 const TODAY_TASK_SELECT_WITH_BLOCKED_REASON =
   "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)";
 const TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON =
@@ -52,6 +63,9 @@ export type TodayPlannerTask = {
 
 export type TodayPlannerData = {
   date: string;
+  startHere: TodayPlannerTask | null;
+  focusQueue: TodayPlannerTask[];
+  plannedToday: TodayPlannerTask[];
   planned: TodayPlannerTask[];
   inProgress: TodayPlannerTask[];
   blocked: TodayPlannerTask[];
@@ -73,10 +87,7 @@ export type TodayPlannerData = {
     trackedTodaySeconds: number;
     trackedTodayLabel: string;
   };
-  activeTimer: {
-    sessionId: string;
-    taskId: string;
-  } | null;
+  activeTimer: ActiveTimerSession | null;
 };
 
 function isKnownTaskStatus(value: string): value is TaskStatus {
@@ -144,6 +155,52 @@ function sortSuggestionTasks(left: TodayPlannerTask, right: TodayPlannerTask) {
   }
 
   return right.updatedAt.localeCompare(left.updatedAt);
+}
+
+function sortRecommendedTasks(left: TodayPlannerTask, right: TodayPlannerTask) {
+  if (left.hasActiveTimer !== right.hasActiveTimer) {
+    return left.hasActiveTimer ? -1 : 1;
+  }
+
+  if (left.isPlannedForToday !== right.isPlannedForToday) {
+    return left.isPlannedForToday ? -1 : 1;
+  }
+
+  const leftPriority = PRIORITY_RANK[left.priority] ?? PRIORITY_RANK.medium;
+  const rightPriority = PRIORITY_RANK[right.priority] ?? PRIORITY_RANK.medium;
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+
+  if (left.focusRank !== null && right.focusRank !== null && left.focusRank !== right.focusRank) {
+    return left.focusRank - right.focusRank;
+  }
+
+  if ((left.focusRank !== null) !== (right.focusRank !== null)) {
+    return left.focusRank !== null ? -1 : 1;
+  }
+
+  if (left.dueDate && right.dueDate && left.dueDate !== right.dueDate) {
+    return left.dueDate.localeCompare(right.dueDate);
+  }
+
+  if ((left.dueDate !== null) !== (right.dueDate !== null)) {
+    return left.dueDate !== null ? -1 : 1;
+  }
+
+  return right.updatedAt.localeCompare(left.updatedAt);
+}
+
+function getUniqueTasksByRank(tasks: TodayPlannerTask[]) {
+  const tasksById = new Map<string, TodayPlannerTask>();
+
+  for (const task of tasks.sort(sortRecommendedTasks)) {
+    if (!tasksById.has(task.id)) {
+      tasksById.set(task.id, task);
+    }
+  }
+
+  return [...tasksById.values()];
 }
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
@@ -289,6 +346,17 @@ export async function getTodayPlannerData(options?: {
     inProgress: toSuggestionSlice(inProgressResult.data),
   };
 
+  const actionableCandidates = getUniqueTasksByRank([
+    ...selectedTasks,
+    ...suggestions.pinned,
+    ...suggestions.inProgress,
+  ]).filter((task) => task.status !== "done" && task.status !== "blocked");
+  const focusQueue = actionableCandidates.slice(0, FOCUS_QUEUE_LIMIT);
+  const startHere = focusQueue[0] ?? null;
+  const plannedToday = selectedTasks
+    .filter((task) => task.isPlannedForToday)
+    .sort(sortRecommendedTasks);
+
   const totalEstimateMinutes = selectedTasks.reduce(
     (sum, task) => sum + (task.estimateMinutes ?? 0),
     0,
@@ -301,6 +369,9 @@ export async function getTodayPlannerData(options?: {
     errorMessage: null,
     data: {
       date: today,
+      startHere,
+      focusQueue,
+      plannedToday,
       planned,
       inProgress,
       blocked,
@@ -319,12 +390,7 @@ export async function getTodayPlannerData(options?: {
         trackedTodaySeconds,
         trackedTodayLabel,
       },
-      activeTimer: activeTaskId && activeTimerResult.data
-        ? {
-            sessionId: activeTimerResult.data.sessionId,
-            taskId: activeTaskId,
-          }
-        : null,
+      activeTimer: activeTaskId && activeTimerResult.data ? activeTimerResult.data : null,
     } satisfies TodayPlannerData,
   };
 }
@@ -420,7 +486,7 @@ export async function removeTaskFromToday(taskId: string, options?: {
 export async function updateTodayTaskStatus(
   taskId: string,
   status: string,
-  options?: { supabase?: SupabaseServerClient },
+  options?: { supabase?: SupabaseServerClient; blockedReason?: string | null },
 ) {
   if (!TASK_STATUS_VALUES.includes(status as TaskStatus)) {
     return { errorMessage: `Status must be one of: ${TASK_STATUS_VALUES.join(", ")}.` };
@@ -467,7 +533,7 @@ export async function updateTodayTaskStatus(
     priority: taskData.priority,
     dueDate: taskData.due_date,
     estimateMinutes: taskData.estimate_minutes,
-    blockedReason: status === "blocked" ? taskData.blocked_reason : null,
+    blockedReason: status === "blocked" ? options?.blockedReason ?? taskData.blocked_reason : null,
   });
 
   if (validationResult.errorMessage || !validationResult.data) {

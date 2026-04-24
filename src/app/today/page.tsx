@@ -4,6 +4,11 @@ import Link from "next/link";
 import { clearCompletedFromTodayAction } from "@/app/today/actions";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
+import {
+  ActiveTimerPanel,
+  FocusQueuePanel,
+  StartHerePanel,
+} from "@/components/today/today-cockpit-panels";
 import { TodaySection } from "@/components/today/today-section";
 import { TodaySuggestionsPanel } from "@/components/today/today-suggestions-panel";
 import { TodaySummaryBar } from "@/components/today/today-summary-bar";
@@ -61,6 +66,9 @@ export default async function TodayPage({
   const todayData = todayResult.data;
   const returnTo = "/today";
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
+  const plannedTodayActionable = todayData.plannedToday.filter(
+    (task) => task.status !== "blocked" && task.status !== "done",
+  );
 
   const allTodayCount =
     todayData.summary.plannedCount +
@@ -103,6 +111,22 @@ export default async function TodayPage({
           trackedTodayLabel={todayData.summary.trackedTodayLabel}
         />
 
+        <div className="today-cockpit-grid">
+          <StartHerePanel
+            task={todayData.startHere}
+            returnTo={returnTo}
+            activeTimerSessionId={activeTimerSessionId}
+          />
+          <div className="today-cockpit-side">
+            <ActiveTimerPanel activeTimer={todayData.activeTimer} returnTo={returnTo} />
+            <FocusQueuePanel
+              tasks={todayData.focusQueue}
+              returnTo={returnTo}
+              activeTimerSessionId={activeTimerSessionId}
+            />
+          </div>
+        </div>
+
         <div className="today-work-grid">
           <div className="today-lane-stack">
             {allTodayCount === 0 ? (
@@ -130,18 +154,18 @@ export default async function TodayPage({
             {allTodayCount > 0 ? (
               <>
                 <TodaySection
-                  title="Planned"
-                  count={todayData.planned.length}
+                  title="Planned today"
+                  count={plannedTodayActionable.length}
                   tone="muted"
                   emptyState={
                     <EmptyState
                       icon={CircleDashed}
-                      title="No planned tasks"
-                      description="Pick from suggestions to build a focused plan for today."
+                      title="No manually planned tasks"
+                      description="Add tasks from suggestions or the full queue to build today&apos;s execution lane."
                     />
                   }
                 >
-                  {todayData.planned.map((task) => (
+                  {plannedTodayActionable.map((task) => (
                     <TodayTaskCard
                       key={task.id}
                       task={task}
@@ -152,18 +176,21 @@ export default async function TodayPage({
                 </TodaySection>
 
                 <TodaySection
-                  title="In Progress"
-                  count={todayData.inProgress.length}
+                  title="Due today / active"
+                  count={todayData.planned.filter((task) => !task.isPlannedForToday).length + todayData.inProgress.filter((task) => !task.isPlannedForToday).length}
                   tone="info"
                   emptyState={
                     <EmptyState
                       icon={CirclePlay}
-                      title="No in-progress tasks"
-                      description="Start a timer on a planned item to move it into active execution."
+                      title="No due-today carryover"
+                      description="Tasks due today but not manually planned will appear here."
                     />
                   }
                 >
-                  {todayData.inProgress.map((task) => (
+                  {[
+                    ...todayData.inProgress.filter((task) => !task.isPlannedForToday),
+                    ...todayData.planned.filter((task) => !task.isPlannedForToday),
+                  ].map((task) => (
                     <TodayTaskCard
                       key={task.id}
                       task={task}

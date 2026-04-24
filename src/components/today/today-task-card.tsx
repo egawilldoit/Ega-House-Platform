@@ -3,6 +3,7 @@ import Link from "next/link";
 import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
 import {
   completeTodayTaskAction,
+  markTodayTaskBlockedAction,
   removeTaskFromTodayAction,
   updateTodayTaskStatusAction,
 } from "@/app/today/actions";
@@ -22,7 +23,7 @@ type TodayTaskCardProps = {
   activeTimerSessionId: string | null;
 };
 
-function getTaskHref(task: TodayPlannerTask) {
+export function getTodayTaskHref(task: TodayPlannerTask) {
   if (task.projectSlug) {
     return `/tasks/projects/${task.projectSlug}#task-${task.id}`;
   }
@@ -176,8 +177,30 @@ export function TodayTaskCard({
                 </form>
               ) : null}
 
+              {task.status !== "blocked" && task.status !== "done" ? (
+                <form action={markTodayTaskBlockedAction} className="space-y-2">
+                  <input type="hidden" name="taskId" value={task.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <label className="glass-label text-etch" htmlFor={`blocked-reason-${task.id}`}>
+                    Blocked reason
+                  </label>
+                  <textarea
+                    id={`blocked-reason-${task.id}`}
+                    name="blockedReason"
+                    required
+                    rows={3}
+                    minLength={2}
+                    className="input-instrument min-h-20 w-full resize-y px-2 py-2 text-xs normal-case tracking-normal"
+                    placeholder="What is blocking this?"
+                  />
+                  <Button type="submit" size="sm" variant="ghost" className="w-full justify-center">
+                    Mark blocked
+                  </Button>
+                </form>
+              ) : null}
+
               <Link
-                href={getTaskHref(task)}
+                href={getTodayTaskHref(task)}
                 className="btn-instrument btn-instrument-muted flex h-8 w-full items-center justify-center px-3 text-xs"
               >
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
