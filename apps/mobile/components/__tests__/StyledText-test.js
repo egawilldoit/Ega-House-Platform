@@ -1,10 +1,25 @@
 import * as React from 'react';
-import renderer from 'react-test-renderer';
+import renderer, { act } from 'react-test-renderer';
 
 import { MonoText } from '../StyledText';
 
-it(`renders correctly`, () => {
-  const tree = renderer.create(<MonoText>Snapshot test!</MonoText>).toJSON();
+jest.mock('../useColorScheme', () => ({
+  useColorScheme: () => 'light',
+}));
 
-  expect(tree).toMatchSnapshot();
+it('renders mono text with the SpaceMono font', () => {
+  let component;
+
+  act(() => {
+    component = renderer.create(<MonoText>Test text</MonoText>);
+  });
+
+  const tree = component.toJSON();
+
+  expect(tree.children).toEqual(['Test text']);
+  expect(tree.props.style).toEqual(
+    expect.arrayContaining([
+      expect.arrayContaining([{ fontFamily: 'SpaceMono' }]),
+    ])
+  );
 });

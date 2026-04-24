@@ -1,12 +1,8 @@
-import {
-  TASK_PRIORITY_VALUES,
-  TASK_STATUS_VALUES,
-  type TaskPriority,
-  type TaskStatus,
-} from '../../../src/lib/task-domain';
+const TASK_STATUS_VALUES = ['todo', 'in_progress', 'done', 'blocked'] as const;
+const TASK_PRIORITY_VALUES = ['low', 'medium', 'high', 'urgent'] as const;
 
-export type MobileTaskStatus = TaskStatus;
-export type MobileTaskPriority = TaskPriority;
+export type MobileTaskStatus = (typeof TASK_STATUS_VALUES)[number];
+export type MobileTaskPriority = (typeof TASK_PRIORITY_VALUES)[number];
 export type MobileTaskDueFilter =
   | 'all'
   | 'overdue'

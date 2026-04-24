@@ -1,0 +1,131 @@
+name: Build Mobile APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Android APK build type"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
+
+concurrency:
+  group: mobile-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Validate mobile app
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        run: npm ci
+
+      - name: Expo doctor
+        run: npm run doctor
+
+      - name: TypeScript check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Android bundle validation
+        run: npm run validate:bundle
+
+  build-apk:
+    name: Build Android APK locally
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: checks
+
+    defaults:
+      run:
+        working-directory: apps/mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install mobile dependencies
+        run: npm ci
+
+      - name: Generate native Android project
+        run: npm run prebuild:android
+
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        if: ${{ inputs.build_type == 'debug' }}
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Build release APK
+        if: ${{ inputs.build_type == 'release' }}
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Collect APK artifact
+        run: |
+          mkdir -p artifacts
+
+          APK_PATH="$(find android/app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK file found."
+            find android/app/build/outputs -type f || true
+            exit 1
+          fi
+
+          cp "$APK_PATH" "artifacts/ega-house-${{ inputs.build_type }}-${{ github.run_number }}.apk"
+
+          test -s "artifacts/ega-house-${{ inputs.build_type }}-${{ github.run_number }}.apk"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ega-house-${{ inputs.build_type }}-apk-${{ github.run_number }}
+          path: apps/mobile/artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 7
