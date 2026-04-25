@@ -80,6 +80,8 @@ export const tasks = pgTable(
     focusRank: integer("focus_rank"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    archivedBy: uuid("archived_by"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -91,6 +93,12 @@ export const tasks = pgTable(
     index("tasks_owner_user_id_idx").on(table.ownerUserId),
     index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
     index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
+    index("tasks_owner_active_updated_idx")
+      .on(table.ownerUserId, table.updatedAt.desc())
+      .where(sql`${table.archivedAt} is null`),
+    index("tasks_owner_archived_updated_idx")
+      .on(table.ownerUserId, table.archivedAt.desc())
+      .where(sql`${table.archivedAt} is not null`),
   ],
 );
 

@@ -61,12 +61,24 @@ export async function pinTaskInFocusQueue(
     };
   }
 
-  const { data: highestRankRows, error: highestRankError } = await supabase
-    .from("tasks")
-    .select("focus_rank")
-    .not("focus_rank", "is", null)
-    .order("focus_rank", { ascending: false })
-    .limit(1);
+  const buildHighestRankQuery = (includeArchiveFilter: boolean) => {
+    const query = supabase
+      .from("tasks")
+      .select("focus_rank")
+      .not("focus_rank", "is", null)
+      .order("focus_rank", { ascending: false })
+      .limit(1);
+
+    return includeArchiveFilter ? query.is("archived_at", null) : query;
+  };
+
+  let { data: highestRankRows, error: highestRankError } = await buildHighestRankQuery(true);
+
+  if (highestRankError) {
+    const fallbackResult = await buildHighestRankQuery(false);
+    highestRankRows = fallbackResult.data;
+    highestRankError = fallbackResult.error;
+  }
 
   if (highestRankError) {
     return { errorMessage: "Unable to update focus queue right now." };
@@ -135,13 +147,25 @@ export async function getFocusQueueTasks(
   options?: { supabase?: SupabaseServerClient; limit?: number },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const { data, error } = await supabase
-    .from("tasks")
-    .select("id, title, status, priority, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)")
-    .not("focus_rank", "is", null)
-    .order("focus_rank", { ascending: true })
-    .order("updated_at", { ascending: false })
-    .limit(options?.limit ?? 8);
+  const buildFocusQueueQuery = (includeArchiveFilter: boolean) => {
+    const query = supabase
+      .from("tasks")
+      .select("id, title, status, priority, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)")
+      .not("focus_rank", "is", null)
+      .order("focus_rank", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(options?.limit ?? 8);
+
+    return includeArchiveFilter ? query.is("archived_at", null) : query;
+  };
+
+  let { data, error } = await buildFocusQueueQuery(true);
+
+  if (error) {
+    const fallbackResult = await buildFocusQueueQuery(false);
+    data = fallbackResult.data;
+    error = fallbackResult.error;
+  }
 
   if (error) {
     return { data: null, errorMessage: "Could not load focus queue right now." };

@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
+  archiveTaskAction,
   deleteTaskAction,
   pinTaskAction,
+  unarchiveTaskAction,
   unpinTaskAction,
   updateTaskInlineAction,
 } from "@/app/tasks/actions";
@@ -46,6 +48,11 @@ import {
   isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
+import {
+  isTaskArchived,
+  normalizeTaskViewFilter,
+  type TaskViewFilter,
+} from "@/lib/task-archive";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
@@ -63,7 +70,10 @@ type TasksPageProps = {
     goal?: string;
     due?: string;
     sort?: string;
+    archive?: string;
+    view?: string;
     taskUpdateError?: string;
+    taskUpdateSuccess?: string;
     taskUpdateTaskId?: string;
     statusUpdateError?: string;
     viewError?: string;
@@ -99,10 +109,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const activeSort: TaskSortValue = isTaskSortValue(sortParam)
     ? sortParam
     : DEFAULT_TASK_SORT;
+  const activeView: TaskViewFilter = normalizeTaskViewFilter(
+    resolvedSearchParams.archive ?? resolvedSearchParams.view,
+  );
   const taskUpdateError =
     resolvedSearchParams.taskUpdateError?.slice(0, 180) ??
     resolvedSearchParams.statusUpdateError?.slice(0, 180) ??
     null;
+  const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
   const savedViewFeedback = {
     error: resolvedSearchParams.viewError?.slice(0, 180) ?? null,
@@ -113,6 +127,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     goals,
     tasks,
     taskTotalDurations,
+    summary,
     savedViews,
     savedViewsUnavailable,
     activeProjectId,
@@ -123,6 +138,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     requestedGoalId: goalParam,
     activeDueFilter,
     activeSort,
+    activeView,
   });
   const resolvedSavedViewFeedback = {
     error:
@@ -138,12 +154,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     goal: activeGoalId,
     due: activeDueFilter,
     sort: activeSort,
+    view: activeView,
   });
   const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
   const blockedCount = tasks.filter((task) => task.status === "blocked").length;
   const overdueCount = tasks.filter((task) => isTaskOverdue(task.due_date, task.status)).length;
   const dueSoonCount = tasks.filter((task) => isTaskDueSoon(task.due_date, task.status)).length;
   const focusQueue = sortFocusQueueTasks(tasks);
+  const archivedTaskCount = summary.archived;
 
   return (
     <TasksWorkspaceShell
@@ -162,6 +180,42 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.32fr)_minmax(22rem,0.78fr)]">
         <Card className="self-start border-[var(--border)] bg-white">
           <CardHeader className="gap-4 border-b border-[var(--border)] pb-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/tasks"
+                className={`glass-label rounded-full px-3 py-1 ${
+                  activeView === "active"
+                    ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+                    : "text-[color:var(--muted-foreground)]"
+                }`}
+              >
+                Active
+              </Link>
+              <Link
+                href="/tasks?archive=archived"
+                className={`glass-label rounded-full px-3 py-1 ${
+                  activeView === "archived"
+                    ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+                    : "text-[color:var(--muted-foreground)]"
+                }`}
+              >
+                Archived
+              </Link>
+              <Link
+                href="/tasks?archive=all"
+                className={`glass-label rounded-full px-3 py-1 ${
+                  activeView === "all"
+                    ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
+                    : "text-[color:var(--muted-foreground)]"
+                }`}
+              >
+                All
+              </Link>
+              <Badge tone="muted">{summary.total} total</Badge>
+              <Badge tone={archivedTaskCount > 0 ? "warn" : "muted"}>
+                {archivedTaskCount} archived
+              </Badge>
+            </div>
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="glass-label text-etch">Active Execution Queue</p>
@@ -196,10 +250,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 activeGoalId={activeGoalId}
                 activeDueFilter={activeDueFilter}
                 activeSort={activeSort}
+                activeView={activeView}
                 projectOptions={projects}
                 goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
               />
             </div>
+            {taskUpdateSuccess ? (
+              <p className="feedback-block feedback-block-success">{taskUpdateSuccess}</p>
+            ) : null}
           </CardHeader>
 
           <CardContent className="space-y-3 pt-5">
@@ -214,6 +272,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             ) : (
               tasks.map((task) => {
                 const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
+                const taskArchived = isTaskArchived(task.archived_at);
 
                 return (
                   <article
@@ -245,6 +304,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               <div className="flex flex-wrap gap-2 xl:hidden">
                                 <StatusBadge status={task.status} />
                                 <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+                                {taskArchived ? <Badge tone="warn">Archived</Badge> : null}
                                 {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                               </div>
                             </div>
@@ -274,7 +334,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       <div className="hidden flex-wrap gap-2 xl:flex">
                         <StatusBadge status={task.status} />
                         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
-                                {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
+                        {taskArchived ? <Badge tone="warn">Archived</Badge> : null}
+                        {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
                       </div>
                     </div>
 
@@ -299,6 +360,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       <InlineTaskUpdateForm
                         action={updateTaskInlineAction}
                         deleteAction={deleteTaskAction}
+                        archiveAction={archiveTaskAction}
+                        unarchiveAction={unarchiveTaskAction}
                         taskId={task.id}
                         taskTitle={task.title}
                         returnTo={returnPath}
@@ -307,9 +370,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         defaultDueDate={task.due_date}
                         defaultEstimateMinutes={task.estimate_minutes}
                         defaultBlockedReason={task.blocked_reason}
+                        archivedAt={task.archived_at}
                         error={inlineError}
                         overflowActions={
-                          <>
+                          !taskArchived ? (
+                            <>
                             <form action={startTimerAction}>
                               <input type="hidden" name="taskId" value={task.id} />
                               <input type="hidden" name="returnTo" value={returnPath} />
@@ -325,7 +390,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               className="w-full"
                               fullWidth
                             />
-                          </>
+                            </>
+                          ) : null
                         }
                       />
                     </div>

@@ -659,6 +659,7 @@ export async function getTimerWorkspaceData(options?: {
         .from("tasks")
         .select("id, title, status, projects(name, slug)")
         .neq("status", "done")
+        .is("archived_at", null)
         .order("updated_at", { ascending: false })
         .limit(100),
       supabase

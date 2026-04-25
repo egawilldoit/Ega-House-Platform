@@ -101,6 +101,22 @@ async function getCountOrThrow(
   return count ?? 0;
 }
 
+async function getActiveTaskCountOrThrow(
+  buildQuery: (includeArchiveFilter: boolean) => PromiseLike<{
+    count: number | null;
+    error: { message: string } | null;
+  }>,
+  message: string,
+) {
+  const result = await buildQuery(true);
+
+  if (!result.error) {
+    return result.count ?? 0;
+  }
+
+  return getCountOrThrow(buildQuery(false), message);
+}
+
 export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics> {
   try {
     const supabase = await createClient();
@@ -127,23 +143,32 @@ export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics>
         supabase
           .from("tasks")
           .select("id", { count: "exact", head: true })
-          .eq("status", "blocked"),
+          .eq("status", "blocked")
+          .is("archived_at", null),
         "Failed to load blocked task count.",
       ),
-      getCountOrThrow(
-        supabase
-          .from("tasks")
-          .select("id", { count: "exact", head: true })
-          .neq("status", "done")
-          .lt("due_date", today),
+      getActiveTaskCountOrThrow(
+        (includeArchiveFilter) => {
+          const query = supabase
+            .from("tasks")
+            .select("id", { count: "exact", head: true })
+            .neq("status", "done")
+            .lt("due_date", today);
+
+          return includeArchiveFilter ? query.is("archived_at", null) : query;
+        },
         "Failed to load overdue task count.",
       ),
-      getCountOrThrow(
-        supabase
-          .from("tasks")
-          .select("id", { count: "exact", head: true })
-          .neq("status", "done")
-          .eq("due_date", today),
+      getActiveTaskCountOrThrow(
+        (includeArchiveFilter) => {
+          const query = supabase
+            .from("tasks")
+            .select("id", { count: "exact", head: true })
+            .neq("status", "done")
+            .eq("due_date", today);
+
+          return includeArchiveFilter ? query.is("archived_at", null) : query;
+        },
         "Failed to load due-today task count.",
       ),
       supabase

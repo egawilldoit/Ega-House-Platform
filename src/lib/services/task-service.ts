@@ -15,9 +15,11 @@ import {
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
+import type { TaskViewFilter } from "@/lib/task-archive";
 import { getTaskTotalDurationMap } from "@/lib/task-session";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
 import {
+  isMissingTasksArchivedAtColumn,
   isMissingSupabaseTable,
   isMissingTasksBlockedReasonColumn,
 } from "@/lib/supabase-error";
@@ -35,6 +37,7 @@ export type TasksWorkspaceFilters = {
   requestedGoalId: string | null;
   activeDueFilter: TaskDueFilter;
   activeSort: TaskSortValue;
+  activeView: TaskViewFilter;
 };
 
 export type TasksWorkspaceData = {
@@ -53,9 +56,16 @@ export type TasksWorkspaceData = {
     project_id: string;
     goal_id: string | null;
     focus_rank: number | null;
+    archived_at: string | null;
+    archived_by: string | null;
     projects: { name: string } | null;
     goals: { title: string } | null;
   }>;
+  summary: {
+    total: number;
+    active: number;
+    archived: number;
+  };
   taskTotalDurations: Record<string, number>;
   savedViews: Array<{
     id: string;
@@ -131,6 +141,12 @@ function isTasksBlockedReasonMissing(
   return isMissingTasksBlockedReasonColumn(error);
 }
 
+function isTasksArchivedAtMissing(
+  error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null,
+) {
+  return isMissingTasksArchivedAtColumn(error);
+}
+
 async function getVisibleTaskScope(
   supabase: SupabaseServerClient,
 ): Promise<CreateTaskScopeErrorResult | CreateTaskScopeSuccessResult> {
@@ -201,7 +217,7 @@ export async function getTasksWorkspaceData(
   options?: { supabase?: SupabaseServerClient },
 ): Promise<TasksWorkspaceData> {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const [projectsResult, goalsResult, savedViewsResult] = await Promise.all([
+  const [projectsResult, goalsResult, savedViewsResult, taskSummaryResult] = await Promise.all([
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
     supabase
       .from("goals")
@@ -211,6 +227,7 @@ export async function getTasksWorkspaceData(
       .from("task_saved_views")
       .select("id, name, status, project_id, goal_id, due_filter, sort_value, updated_at")
       .order("updated_at", { ascending: false }),
+    supabase.from("tasks").select("archived_at"),
   ]);
 
   if (projectsResult.error) {
@@ -230,6 +247,11 @@ export async function getTasksWorkspaceData(
     throw new Error(`Failed to load saved views: ${savedViewsResult.error.message}`);
   }
 
+  const taskSummaryUnavailable = isTasksArchivedAtMissing(taskSummaryResult.error);
+  if (taskSummaryResult.error && !taskSummaryUnavailable) {
+    throw new Error(`Failed to load task summary: ${taskSummaryResult.error.message}`);
+  }
+
   const activeProjectId =
     filters.requestedProjectId &&
     projectsResult.data.some((project) => project.id === filters.requestedProjectId)
@@ -246,9 +268,15 @@ export async function getTasksWorkspaceData(
   const tasksQuery = supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .order("updated_at", { ascending: false });
+
+  if (filters.activeView === "active") {
+    tasksQuery.is("archived_at", null);
+  } else if (filters.activeView === "archived") {
+    tasksQuery.not("archived_at", "is", null);
+  }
 
   if (filters.activeStatus) {
     tasksQuery.eq("status", filters.activeStatus);
@@ -266,7 +294,10 @@ export async function getTasksWorkspaceData(
   let rawTasks = tasksResult.data ?? [];
 
   if (tasksResult.error) {
-    if (!isTasksBlockedReasonMissing(tasksResult.error)) {
+    if (
+      !isTasksBlockedReasonMissing(tasksResult.error) &&
+      !isTasksArchivedAtMissing(tasksResult.error)
+    ) {
       throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
     }
 
@@ -276,6 +307,10 @@ export async function getTasksWorkspaceData(
         "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
       )
       .order("updated_at", { ascending: false });
+
+    if (filters.activeView === "archived") {
+      rawTasks = [];
+    }
 
     if (filters.activeStatus) {
       fallbackQuery.eq("status", filters.activeStatus);
@@ -289,7 +324,7 @@ export async function getTasksWorkspaceData(
       fallbackQuery.eq("goal_id", activeGoalId);
     }
 
-    const fallbackResult = await fallbackQuery;
+    const fallbackResult = filters.activeView === "archived" ? { data: [], error: null } : await fallbackQuery;
     if (fallbackResult.error) {
       throw new Error(`Failed to load tasks: ${fallbackResult.error.message}`);
     }
@@ -297,6 +332,8 @@ export async function getTasksWorkspaceData(
     rawTasks = (fallbackResult.data ?? []).map((task) => ({
       ...task,
       blocked_reason: null,
+      archived_at: null,
+      archived_by: null,
     }));
   }
 
@@ -315,6 +352,15 @@ export async function getTasksWorkspaceData(
     goals: visibleGoals,
     tasks,
     taskTotalDurations,
+    summary: {
+      total: taskSummaryUnavailable ? tasks.length : (taskSummaryResult.data ?? []).length,
+      active: taskSummaryUnavailable
+        ? tasks.length
+        : (taskSummaryResult.data ?? []).filter((task) => !task.archived_at).length,
+      archived: taskSummaryUnavailable
+        ? 0
+        : (taskSummaryResult.data ?? []).filter((task) => task.archived_at).length,
+    },
     savedViews: savedViewsUnavailable
       ? []
       : (savedViewsResult.data ?? []).map((view) => ({
@@ -498,6 +544,88 @@ export async function updateTaskInline(
   return { errorMessage: null };
 }
 
+export async function updateTaskArchiveState(
+  taskId: string,
+  archived: boolean,
+  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const normalizedTaskId = taskId.trim();
+  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+
+  if (!normalizedTaskId) {
+    return { errorMessage: "Task archive request is invalid." };
+  }
+
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("id, archived_at")
+    .eq("id", normalizedTaskId)
+    .maybeSingle();
+
+  if (taskError && isTasksArchivedAtMissing(taskError)) {
+    return { errorMessage: "Unable to archive task right now." };
+  }
+
+  if (taskError) {
+    return { errorMessage: "Unable to load task right now." };
+  }
+
+  if (!task) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  if (archived) {
+    const activeSessionResult = await supabase
+      .from("task_sessions")
+      .select("id")
+      .eq("task_id", normalizedTaskId)
+      .is("ended_at", null)
+      .limit(1);
+
+    if (activeSessionResult.error) {
+      return { errorMessage: "Unable to validate timer sessions for this task right now." };
+    }
+
+    if ((activeSessionResult.data ?? []).length > 0) {
+      return { errorMessage: "Stop the active timer before archiving this task." };
+    }
+  }
+
+  const userResult = archived ? await supabase.auth.getUser() : null;
+  const archivedBy = archived && !userResult?.error ? userResult?.data.user?.id ?? null : null;
+
+  const { error } = await supabase
+    .from("tasks")
+    .update({
+      archived_at: archived ? updatedAtIso : null,
+      archived_by: archivedBy,
+      focus_rank: archived ? null : undefined,
+      updated_at: updatedAtIso,
+    })
+    .eq("id", normalizedTaskId);
+
+  if (error) {
+    return { errorMessage: "Unable to update task archive right now." };
+  }
+
+  return { errorMessage: null };
+}
+
+export async function archiveTask(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+) {
+  return updateTaskArchiveState(taskId, true, options);
+}
+
+export async function unarchiveTask(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+) {
+  return updateTaskArchiveState(taskId, false, options);
+}
+
 export async function getTaskById(
   taskId: string,
   options?: { supabase?: SupabaseServerClient },
@@ -515,7 +643,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -524,7 +652,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();

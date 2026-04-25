@@ -23,6 +23,7 @@ type TaskFilterControlsProps = {
   activeGoalId?: string | null;
   activeDueFilter?: TaskDueFilter;
   activeSort?: TaskSortValue;
+  activeView?: string | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   includePriority?: boolean;
@@ -42,6 +43,7 @@ function buildFilterHref(
     goal?: string | null;
     due?: TaskDueFilter;
     sort?: TaskSortValue;
+    view?: string | null;
   },
 ) {
   const searchParams = new URLSearchParams();
@@ -68,6 +70,10 @@ function buildFilterHref(
 
   if (filters.sort && filters.sort !== DEFAULT_TASK_SORT) {
     searchParams.set("sort", filters.sort);
+  }
+
+  if (filters.view && filters.view !== "active") {
+    searchParams.set("archive", filters.view);
   }
 
   const query = searchParams.toString();
@@ -115,6 +121,7 @@ export function TaskFilterControls({
   activeGoalId = null,
   activeDueFilter = DEFAULT_TASK_DUE_FILTER,
   activeSort = DEFAULT_TASK_SORT,
+  activeView = null,
   projectOptions = [],
   goalOptions = [],
   includePriority = false,
@@ -185,6 +192,7 @@ export function TaskFilterControls({
             goal: activeGoalId,
             due: activeDueFilter,
             sort: activeSort,
+            view: activeView,
           })
         }
       />
@@ -202,6 +210,7 @@ export function TaskFilterControls({
               goal: activeGoalId,
               due: activeDueFilter,
               sort: activeSort,
+              view: activeView,
             })
           }
         />
@@ -221,6 +230,7 @@ export function TaskFilterControls({
                 goal,
                 due: activeDueFilter,
                 sort: activeSort,
+                view: activeView,
               })
             }
           />
@@ -240,6 +250,7 @@ export function TaskFilterControls({
               goal: activeGoalId,
               due: activeDueFilter,
               sort: activeSort,
+              view: activeView,
             })
           }
         />
@@ -257,6 +268,7 @@ export function TaskFilterControls({
             goal: activeGoalId,
             due: (due as TaskDueFilter | null) ?? DEFAULT_TASK_DUE_FILTER,
             sort: activeSort,
+            view: activeView,
           })
         }
       />
@@ -273,6 +285,7 @@ export function TaskFilterControls({
             goal: activeGoalId,
             due: activeDueFilter,
             sort: (sort as TaskSortValue | null) ?? DEFAULT_TASK_SORT,
+            view: activeView,
           })
         }
       />
@@ -289,6 +302,7 @@ export function buildTaskFilterReturnPath(
     goal?: string | null;
     due?: TaskDueFilter;
     sort?: TaskSortValue;
+    view?: string | null;
   },
 ) {
   return buildFilterHref(basePath, filters);

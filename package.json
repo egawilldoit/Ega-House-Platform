@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
     "test:session": "tsx --test src/lib/supabase/cookie-options.test.ts",
     "test:timer-recovery": "tsx --test src/app/timer/session-recovery.test.ts",
     "test:auth-session:e2e": "playwright test tests/auth-session.e2e.spec.ts",

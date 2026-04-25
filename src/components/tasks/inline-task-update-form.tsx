@@ -14,6 +14,8 @@ import {
 type InlineTaskUpdateFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   deleteAction: (formData: FormData) => void | Promise<void>;
+  archiveAction?: (formData: FormData) => void | Promise<void>;
+  unarchiveAction?: (formData: FormData) => void | Promise<void>;
   taskId: string;
   taskTitle: string;
   returnTo: string;
@@ -22,6 +24,7 @@ type InlineTaskUpdateFormProps = {
   defaultDueDate: string | null;
   defaultEstimateMinutes: number | null;
   defaultBlockedReason: string | null;
+  archivedAt?: string | null;
   error?: string | null;
   overflowActions?: ReactNode;
 };
@@ -29,6 +32,8 @@ type InlineTaskUpdateFormProps = {
 export function InlineTaskUpdateForm({
   action,
   deleteAction,
+  archiveAction,
+  unarchiveAction,
   taskId,
   taskTitle,
   returnTo,
@@ -37,11 +42,13 @@ export function InlineTaskUpdateForm({
   defaultDueDate,
   defaultEstimateMinutes,
   defaultBlockedReason,
+  archivedAt,
   error,
   overflowActions,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
   const updateFormId = `task-update-${taskId}`;
+  const isArchived = Boolean(archivedAt);
 
   useEffect(() => {
     setSelectedStatus(defaultStatus);
@@ -153,9 +160,31 @@ export function InlineTaskUpdateForm({
           </form>
         ) : null}
 
-        <Button size="sm" type="submit" form={updateFormId}>
-          Save
-        </Button>
+        {archiveAction && !isArchived ? (
+          <form action={archiveAction}>
+            <input type="hidden" name="taskId" value={taskId} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <Button size="sm" type="submit" variant="danger">
+              Archive
+            </Button>
+          </form>
+        ) : null}
+
+        {isArchived && unarchiveAction ? (
+          <form action={unarchiveAction}>
+            <input type="hidden" name="taskId" value={taskId} />
+            <input type="hidden" name="returnTo" value={returnTo} />
+            <Button size="sm" type="submit" variant="muted">
+              Restore
+            </Button>
+          </form>
+        ) : null}
+
+        {!isArchived ? (
+          <Button size="sm" type="submit" form={updateFormId}>
+            Save
+          </Button>
+        ) : null}
 
         <details className="action-overflow">
           <summary className="btn-instrument btn-instrument-muted flex h-8 cursor-pointer items-center px-3 text-xs">

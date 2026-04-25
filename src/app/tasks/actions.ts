@@ -18,6 +18,8 @@ import {
   getTaskInsertScopeError,
   getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
+  archiveTask,
+  unarchiveTask,
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "@/lib/services/task-service";
@@ -486,6 +488,39 @@ export async function unpinTaskAction(formData: FormData) {
   revalidateTaskSurfaces(returnPath);
   const anchor = returnPath.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
   redirect(`${returnPath}${anchor}`);
+}
+
+async function updateTaskArchiveAction(formData: FormData, archived: boolean) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+
+  const { errorMessage } = archived
+    ? await archiveTask(taskId)
+    : await unarchiveTask(taskId);
+
+  if (errorMessage) {
+    redirectWithTasksError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateTaskSurfaces(returnPath);
+
+  if (archived) {
+    const target = new URL(returnPath, "https://egawilldoit.online");
+    target.searchParams.set("taskUpdateSuccess", "Task archived.");
+    redirect(`${target.pathname}${target.search}`);
+  }
+
+  const target = new URL(returnPath, "https://egawilldoit.online");
+  target.searchParams.set("taskUpdateSuccess", "Task restored.");
+  redirect(`${target.pathname}${target.search}#task-${taskId}`);
+}
+
+export async function archiveTaskAction(formData: FormData) {
+  await updateTaskArchiveAction(formData, true);
+}
+
+export async function unarchiveTaskAction(formData: FormData) {
+  await updateTaskArchiveAction(formData, false);
 }
 
 export async function deleteTaskAction(formData: FormData) {

@@ -216,32 +216,61 @@ async function queryTodayTaskRowsWithBlockedReasonFallback(
   mode: "selected" | "pinned" | "inProgress",
   today: string,
 ): Promise<{ data: TodayTaskRow[]; errorMessage: string | null }> {
-  const applyFilters = (query: ReturnType<SupabaseServerClient["from"]>) => {
+  const applyArchiveFilter = (
+    query: ReturnType<SupabaseServerClient["from"]>,
+    includeArchiveFilter: boolean,
+  ) => {
+    if (!includeArchiveFilter) {
+      return query;
+    }
+
+    return typeof query.is === "function" ? query.is("archived_at", null) : query;
+  };
+
+  const applyFilters = (
+    query: ReturnType<SupabaseServerClient["from"]>,
+    includeArchiveFilter: boolean,
+  ) => {
     if (mode === "selected") {
-      return query
-        .or(`planned_for_date.eq.${today},due_date.eq.${today}`)
+      return applyArchiveFilter(
+        query.or(`planned_for_date.eq.${today},due_date.eq.${today}`),
+        includeArchiveFilter,
+      )
         .order("updated_at", { ascending: false })
         .limit(240);
     }
 
     if (mode === "pinned") {
-      return query
-        .not("focus_rank", "is", null)
-        .neq("status", "done")
+      return applyArchiveFilter(
+        query
+          .not("focus_rank", "is", null)
+          .neq("status", "done"),
+        includeArchiveFilter,
+      )
         .order("focus_rank", { ascending: true })
         .order("updated_at", { ascending: false })
         .limit(80);
     }
 
-    return query
-      .eq("status", "in_progress")
+    return applyArchiveFilter(
+      query.eq("status", "in_progress"),
+      includeArchiveFilter,
+    )
       .order("updated_at", { ascending: false })
       .limit(80);
   };
 
-  const primaryResult = await applyFilters(
+  let primaryResult = await applyFilters(
     supabase.from("tasks").select(TODAY_TASK_SELECT_WITH_BLOCKED_REASON),
+    true,
   );
+
+  if (primaryResult.error) {
+    primaryResult = await applyFilters(
+      supabase.from("tasks").select(TODAY_TASK_SELECT_WITH_BLOCKED_REASON),
+      false,
+    );
+  }
 
   if (!primaryResult.error) {
     return { data: (primaryResult.data ?? []) as TodayTaskRow[], errorMessage: null };
@@ -251,9 +280,17 @@ async function queryTodayTaskRowsWithBlockedReasonFallback(
     return { data: [], errorMessage: primaryResult.error.message };
   }
 
-  const fallbackResult = await applyFilters(
+  let fallbackResult = await applyFilters(
     supabase.from("tasks").select(TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON),
+    true,
   );
+
+  if (fallbackResult.error) {
+    fallbackResult = await applyFilters(
+      supabase.from("tasks").select(TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON),
+      false,
+    );
+  }
 
   if (fallbackResult.error) {
     return { data: [], errorMessage: fallbackResult.error.message };

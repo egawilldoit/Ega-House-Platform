@@ -40,6 +40,7 @@ export async function GET(request: Request) {
         requestedGoalId: queryResult.data.goalId,
         activeDueFilter: queryResult.data.due,
         activeSort: queryResult.data.sort,
+        activeView: "active",
       },
       { supabase: authResult.supabase },
     );

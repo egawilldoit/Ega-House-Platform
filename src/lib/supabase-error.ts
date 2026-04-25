@@ -74,3 +74,9 @@ export function isMissingTasksBlockedReasonColumn(
 ) {
   return isMissingSupabaseColumn(error, "public.tasks", "blocked_reason");
 }
+
+export function isMissingTasksArchivedAtColumn(
+  error: SupabaseErrorLike | null | undefined,
+) {
+  return isMissingSupabaseColumn(error, "public.tasks", "archived_at");
+}
