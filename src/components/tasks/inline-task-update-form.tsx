@@ -60,7 +60,7 @@ export function InlineTaskUpdateForm({
         <input type="hidden" name="taskId" value={taskId} />
         <input type="hidden" name="returnTo" value={returnTo} />
 
-        <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--border)] bg-white/80 p-2.5">
+        <div className="ega-glass-soft grid gap-3 rounded-[1rem] p-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="space-y-2">
             <span className="glass-label text-etch">
               Status
@@ -69,7 +69,7 @@ export function InlineTaskUpdateForm({
               name="status"
               defaultValue={defaultStatus}
               onChange={(event) => setSelectedStatus(event.target.value)}
-              className="flex items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] min-h-9 min-w-28 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
+              className="ega-glass-input min-h-10 w-full rounded-xl border px-3 text-sm text-[color:var(--foreground)] ring-offset-background focus:outline-none focus:ring-2 focus:ring-[rgba(23,123,82,0.22)]"
             >
               {TASK_STATUS_VALUES.map((statusValue) => (
                 <option key={statusValue} value={statusValue}>
@@ -87,7 +87,7 @@ export function InlineTaskUpdateForm({
               name="dueDate"
               type="date"
               defaultValue={defaultDueDate ?? ""}
-              className="min-h-9 min-w-36 px-3 py-0 text-sm"
+              className="ega-glass-input min-h-10 w-full rounded-xl px-3 py-0 text-sm"
             />
           </label>
 
@@ -98,7 +98,7 @@ export function InlineTaskUpdateForm({
             <select
               name="priority"
               defaultValue={defaultPriority}
-              className="flex items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] min-h-9 min-w-24 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
+              className="ega-glass-input min-h-10 w-full rounded-xl border px-3 text-sm text-[color:var(--foreground)] ring-offset-background focus:outline-none focus:ring-2 focus:ring-[rgba(23,123,82,0.22)]"
             >
               {TASK_PRIORITY_VALUES.map((priorityValue) => (
                 <option key={priorityValue} value={priorityValue}>
@@ -119,12 +119,12 @@ export function InlineTaskUpdateForm({
               step="15"
               inputMode="numeric"
               defaultValue={defaultEstimateMinutes ?? ""}
-              className="min-h-9 min-w-28 px-3 py-0 text-sm"
+              className="ega-glass-input min-h-10 w-full rounded-xl px-3 py-0 text-sm"
             />
           </label>
 
           {selectedStatus === "blocked" ? (
-            <label className="w-full space-y-2">
+            <label className="space-y-2 sm:col-span-2 xl:col-span-4">
               <span className="glass-label text-etch">
                 Blocked reason
               </span>
@@ -132,7 +132,7 @@ export function InlineTaskUpdateForm({
                 name="blockedReason"
                 defaultValue={defaultBlockedReason ?? ""}
                 placeholder="What is currently blocking this task?"
-                className="min-h-20 w-full"
+                className="ega-glass-input min-h-20 w-full rounded-xl"
               />
             </label>
           ) : null}

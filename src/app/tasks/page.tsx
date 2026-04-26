@@ -56,11 +56,17 @@ import {
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
-import { ListChecks } from "lucide-react";
+import {
+  Clock3,
+  Folder,
+  FolderKanban,
+  ListChecks,
+  Pin,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Tasks",
-  description: "Task list with status and goal filters plus creation flow.",
+  description: "Organize, prioritize, and move work forward from one clear execution queue.",
 };
 
 type TasksPageProps = {
@@ -167,66 +173,61 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     <TasksWorkspaceShell
       eyebrow="Execution Workspace"
       title="Tasks"
-      description="Active execution queue with inline state control and task initialization."
+      description="Organize, prioritize, and move work forward from one clear execution queue."
+      className="ega-glass-workspace"
       actions={
         <Link
           href="/tasks/projects"
-          className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center gap-2 px-4"
+          className="btn-instrument btn-instrument-muted ega-glass-pill flex h-10 items-center gap-2 rounded-xl px-4 text-sm"
         >
+          <FolderKanban className="h-4 w-4" aria-hidden="true" />
           Projects
         </Link>
       }
     >
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.32fr)_minmax(22rem,0.78fr)]">
-        <Card className="self-start border-[var(--border)] bg-white">
-          <CardHeader className="gap-4 border-b border-[var(--border)] pb-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <Link
-                href="/tasks"
-                className={`glass-label rounded-full px-3 py-1 ${
-                  activeView === "active"
-                    ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
-                    : "text-[color:var(--muted-foreground)]"
-                }`}
-              >
-                Active
-              </Link>
-              <Link
-                href="/tasks?archive=archived"
-                className={`glass-label rounded-full px-3 py-1 ${
-                  activeView === "archived"
-                    ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
-                    : "text-[color:var(--muted-foreground)]"
-                }`}
-              >
-                Archived
-              </Link>
-              <Link
-                href="/tasks?archive=all"
-                className={`glass-label rounded-full px-3 py-1 ${
-                  activeView === "all"
-                    ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
-                    : "text-[color:var(--muted-foreground)]"
-                }`}
-              >
-                All
-              </Link>
-              <Badge tone="muted">{summary.total} total</Badge>
-              <Badge tone={archivedTaskCount > 0 ? "warn" : "muted"}>
-                {archivedTaskCount} archived
-              </Badge>
-            </div>
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="glass-label text-etch">Active Execution Queue</p>
-                <CardTitle className="mt-2">Operational task slice</CardTitle>
-                <CardDescription>
-                  {tasks.length} item{tasks.length !== 1 ? "s" : ""} in the current queue with
-                  inline state control.
-                </CardDescription>
-              </div>
-              <CardAction className="flex-wrap">
-                <Badge tone="muted">{tasks.length} visible</Badge>
+      <div className="tasks-dashboard-grid">
+        <div className="space-y-5">
+          <Card className="ega-glass-strong overflow-hidden rounded-[1.5rem]">
+            <CardHeader className="gap-5 border-b border-[rgba(15,23,42,0.07)] p-6 pb-5">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Link
+                  href="/tasks"
+                  className={`tasks-view-tab ${
+                    activeView === "active"
+                      ? "tasks-view-tab-active"
+                      : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                  }`}
+                >
+                  Active
+                </Link>
+                <Link
+                  href="/tasks?archive=archived"
+                  className={`tasks-view-tab ${
+                    activeView === "archived"
+                      ? "tasks-view-tab-active"
+                      : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                  }`}
+                >
+                  Archived
+                </Link>
+                <Link
+                  href="/tasks?archive=all"
+                  className={`tasks-view-tab ${
+                    activeView === "all"
+                      ? "tasks-view-tab-active"
+                      : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                  }`}
+                >
+                  All
+                </Link>
+                <span className="mx-1 hidden h-5 w-px bg-[var(--border)] sm:inline-flex" />
+                <Badge tone="muted" className="ega-glass-pill">
+                  {summary.total} total
+                </Badge>
+                <Badge tone={archivedTaskCount > 0 ? "warn" : "muted"}>
+                  {archivedTaskCount} archived
+                </Badge>
+                <Badge tone="active">{tasks.length} visible</Badge>
                 <Badge tone={blockedCount > 0 ? "warn" : "muted"}>
                   {blockedCount} blocked
                 </Badge>
@@ -239,52 +240,68 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 <Badge tone={dueSoonCount > 0 ? "warn" : "muted"}>
                   {dueSoonCount} due soon
                 </Badge>
-              </CardAction>
-            </div>
+              </div>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <CardTitle className="text-[1.35rem]">Active execution queue</CardTitle>
+                  <p className="mt-4 text-sm font-semibold text-[color:var(--foreground)]">
+                    Operational task slice
+                  </p>
+                  <CardDescription>
+                    {tasks.length} item{tasks.length !== 1 ? "s" : ""} in the current queue with
+                    inline state control.
+                  </CardDescription>
+                </div>
+                <CardAction className="hidden sm:flex">
+                  <Badge tone="muted" className="ega-glass-pill">
+                    URL filters
+                  </Badge>
+                </CardAction>
+              </div>
 
-            <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
-              <TaskFilterControls
-                basePath="/tasks"
-                activeStatus={activeStatus}
-                activeProjectId={activeProjectId}
-                activeGoalId={activeGoalId}
-                activeDueFilter={activeDueFilter}
-                activeSort={activeSort}
-                activeView={activeView}
-                projectOptions={projects}
-                goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
-              />
-            </div>
-            {taskUpdateSuccess ? (
-              <p className="feedback-block feedback-block-success">{taskUpdateSuccess}</p>
-            ) : null}
-          </CardHeader>
+              <div className="ega-glass-soft rounded-[1.25rem] p-4">
+                <TaskFilterControls
+                  basePath="/tasks"
+                  activeStatus={activeStatus}
+                  activeProjectId={activeProjectId}
+                  activeGoalId={activeGoalId}
+                  activeDueFilter={activeDueFilter}
+                  activeSort={activeSort}
+                  activeView={activeView}
+                  projectOptions={projects}
+                  goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+                />
+              </div>
+              {taskUpdateSuccess ? (
+                <p className="feedback-block feedback-block-success">{taskUpdateSuccess}</p>
+              ) : null}
+            </CardHeader>
 
-          <CardContent className="space-y-3 pt-5">
-            {tasks.length === 0 ? (
-              <EmptyState
-                icon={ListChecks}
-                title="No tasks match current filters"
-                description="Reset one or more filters to bring the execution queue back into view."
-                actionLabel="Reset filters"
-                actionHref="/tasks"
-              />
-            ) : (
-              tasks.map((task) => {
-                const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
-                const taskArchived = isTaskArchived(task.archived_at);
+            <CardContent className="space-y-4 p-5">
+              {tasks.length === 0 ? (
+                <EmptyState
+                  icon={ListChecks}
+                  title="No tasks match current filters"
+                  description="Reset one or more filters to bring the execution queue back into view."
+                  actionLabel="Reset filters"
+                  actionHref="/tasks"
+                />
+              ) : (
+                tasks.map((task) => {
+                  const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
+                  const taskArchived = isTaskArchived(task.archived_at);
 
-                return (
-                  <article
-                    key={task.id}
-                    id={`task-${task.id}`}
-                    className="scroll-mt-24 border-b border-[var(--border)] py-5 last:border-b-0"
-                  >
+                  return (
+                    <article
+                      key={task.id}
+                      id={`task-${task.id}`}
+                      className="tasks-task-card scroll-mt-24"
+                    >
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
                       <div className="min-w-0">
                         <div className="flex items-start gap-3">
                           <span
-                            className={`mt-2 h-2 w-2 shrink-0 rounded-full ${getTaskSignalTone(
+                            className={`mt-2.5 h-3 w-3 shrink-0 rounded-full ring-4 ring-white ${getTaskSignalTone(
                               task.status,
                               task.priority,
                             )}`}
@@ -292,13 +309,21 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <h2 className="truncate text-base font-medium text-[color:var(--foreground)]">
+                                <h2 className="truncate text-lg font-semibold leading-tight text-[color:var(--foreground)]">
                                   {task.title}
                                 </h2>
-                                <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
-                                  {task.projects?.name ?? "No project"}
-                                  {task.goals?.title ? ` · ${task.goals.title}` : ""}
-                                </p>
+                                <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-[color:var(--muted-foreground)]">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <Folder className="h-3.5 w-3.5" aria-hidden="true" />
+                                    {task.projects?.name ?? "No project"}
+                                  </span>
+                                  {task.goals?.title ? (
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <ListChecks className="h-3.5 w-3.5" aria-hidden="true" />
+                                      {task.goals.title}
+                                    </span>
+                                  ) : null}
+                                </div>
                               </div>
 
                               <div className="flex flex-wrap gap-2 xl:hidden">
@@ -323,6 +348,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
+                              <Badge tone="muted" className="ega-glass-pill gap-1.5">
+                                <Clock3 className="h-3 w-3" aria-hidden="true" />
+                                Tracked {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
+                              </Badge>
                               {task.estimate_minutes ? (
                                 <Badge tone="muted">Est. {formatTaskEstimate(task.estimate_minutes)}</Badge>
                               ) : null}
@@ -339,16 +368,16 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       </div>
                     </div>
 
-                    <div className="mt-4 grid gap-4 border-t border-[var(--border)] pt-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
+                    <div className="mt-5 grid gap-4 border-t border-[rgba(15,23,42,0.08)] pt-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
                       <div className="flex flex-wrap gap-3">
-                        <div className="grid min-w-32 gap-1 rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-3">
+                        <div className="ega-glass-soft grid min-w-32 gap-1 rounded-[0.9rem] px-3 py-3">
                           <p className="glass-label text-etch">Tracked</p>
                           <p className="text-sm font-medium text-[color:var(--foreground)]">
                             {formatDurationLabel(taskTotalDurations[task.id] ?? 0)}
                           </p>
                         </div>
                         {task.estimate_minutes ? (
-                          <div className="grid min-w-32 gap-1 rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-3">
+                          <div className="ega-glass-soft grid min-w-32 gap-1 rounded-[0.9rem] px-3 py-3">
                             <p className="glass-label text-etch">Estimate</p>
                             <p className="text-sm font-medium text-[color:var(--foreground)]">
                               {formatTaskEstimate(task.estimate_minutes)}
@@ -375,137 +404,48 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         overflowActions={
                           !taskArchived ? (
                             <>
-                            <form action={startTimerAction}>
-                              <input type="hidden" name="taskId" value={task.id} />
-                              <input type="hidden" name="returnTo" value={returnPath} />
-                              <Button type="submit" size="sm" variant="ghost" className="w-full justify-center">
-                                Start timer
-                              </Button>
-                            </form>
-                            <FocusPinToggleForm
-                              action={task.focus_rank ? unpinTaskAction : pinTaskAction}
-                              taskId={task.id}
-                              returnTo={returnPath}
-                              isPinned={task.focus_rank !== null}
-                              className="w-full"
-                              fullWidth
-                            />
+                              <form action={startTimerAction}>
+                                <input type="hidden" name="taskId" value={task.id} />
+                                <input type="hidden" name="returnTo" value={returnPath} />
+                                <Button
+                                  type="submit"
+                                  size="sm"
+                                  variant="ghost"
+                                  className="w-full justify-center"
+                                >
+                                  Start timer
+                                </Button>
+                              </form>
+                              <FocusPinToggleForm
+                                action={task.focus_rank ? unpinTaskAction : pinTaskAction}
+                                taskId={task.id}
+                                returnTo={returnPath}
+                                isPinned={task.focus_rank !== null}
+                                className="w-full"
+                                fullWidth
+                              />
                             </>
                           ) : null
                         }
                       />
                     </div>
-                  </article>
-                );
-              })
-            )}
-          </CardContent>
-
-          <CardFooter className="justify-between">
-            <p className="text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-              Filters stay encoded in the URL for direct return to this queue slice.
-            </p>
-            <Link href="/tasks/projects" className="glass-label text-signal-live">
-              Manage projects
-            </Link>
-          </CardFooter>
-        </Card>
-
-        <div className="space-y-6">
-          <TaskSavedViewsPanel
-            currentFilters={{
-              status: activeStatus,
-              projectId: activeProjectId,
-              goalId: activeGoalId,
-              dueFilter: activeDueFilter,
-              sortValue: activeSort,
-            }}
-            savedViews={savedViews}
-            projectOptions={projects}
-            goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
-              feedback={resolvedSavedViewFeedback}
-            />
-
-          <Card className="border-[var(--border)] bg-white">
-            <CardHeader className="pb-4">
-              <p className="glass-label text-signal-live">Focus Queue</p>
-              <CardTitle className="text-xl">Pinned tasks</CardTitle>
-              <CardDescription>
-                A lightweight execution queue independent from priority.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 pt-1">
-              {focusQueue.length > 0 ? (
-                focusQueue.slice(0, 5).map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-2"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
-                        {task.title}
-                      </p>
-                      <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-                        #{task.focus_rank} · {task.projects?.name ?? "No project"}
-                      </p>
-                    </div>
-                    <FocusPinToggleForm
-                      action={unpinTaskAction}
-                      taskId={task.id}
-                      returnTo={returnPath}
-                      isPinned
-                      compact
-                    />
-                  </div>
-                ))
-              ) : (
-                <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  Pin tasks from the queue to build a deliberate focus order.
-                </div>
+                    </article>
+                  );
+                })
               )}
             </CardContent>
+
+            <CardFooter className="justify-between border-t border-[rgba(15,23,42,0.07)] bg-[rgba(255,255,255,0.42)]">
+              <p className="text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+                Filters stay encoded in the URL for direct return to this queue slice.
+              </p>
+              <Link href="/tasks/projects" className="glass-label text-signal-live">
+                Manage projects
+              </Link>
+            </CardFooter>
           </Card>
 
-          <Card className="border-[var(--border)] bg-white">
-            <CardHeader className="pb-4">
-              <p className="glass-label text-signal-live">Queue Summary</p>
-              <CardTitle className="text-xl">Workspace pressure</CardTitle>
-              <CardDescription>
-                Quick context for the current execution slice before you update or create work.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 pt-1 sm:grid-cols-3 xl:grid-cols-1">
-              <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
-                <p className="glass-label text-etch">Projects</p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
-                  {projects.length}
-                </p>
-                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                  selectable execution streams
-                </p>
-              </div>
-              <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
-                <p className="glass-label text-etch">Goals</p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
-                  {goals.length}
-                </p>
-                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                  available planning anchors
-                </p>
-              </div>
-              <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3">
-                <p className="glass-label text-etch">Visible</p>
-                <p className="mt-2 text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
-                  {tasks.length}
-                </p>
-                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                  task{tasks.length === 1 ? "" : "s"} in current slice
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="self-start border-[var(--border)] bg-white">
+          <Card className="ega-glass rounded-[1.35rem]">
             <CardHeader>
               <p className="glass-label text-signal-live">Initialize Task</p>
               <CardTitle className="text-xl">Create directly into the queue</CardTitle>
@@ -517,7 +457,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             <CardContent className="pt-1">
               {projects.length === 0 ? (
                 <div className="space-y-3">
-                  <div className="surface-empty px-4 py-4 text-center">
+                  <div className="ega-glass-empty rounded-[1rem] px-4 py-4 text-center">
                     <p className="glass-label text-etch">No projects yet. Create one first.</p>
                   </div>
                   <Link
@@ -538,6 +478,71 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             </CardContent>
           </Card>
         </div>
+
+        <aside className="tasks-side-rail space-y-5">
+          <TaskSavedViewsPanel
+            currentFilters={{
+              status: activeStatus,
+              projectId: activeProjectId,
+              goalId: activeGoalId,
+              dueFilter: activeDueFilter,
+              sortValue: activeSort,
+            }}
+            savedViews={savedViews}
+            projectOptions={projects}
+            goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
+            feedback={resolvedSavedViewFeedback}
+          />
+
+          <Card className="ega-glass rounded-[1.35rem]">
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="text-xl">Pinned tasks</CardTitle>
+                  <CardDescription>
+                    Pin important tasks from the queue to stay focused on what matters.
+                  </CardDescription>
+                </div>
+                <span className="ega-glass-pill flex h-10 w-10 items-center justify-center rounded-full text-[var(--signal-live)]">
+                  <Pin className="h-4 w-4" aria-hidden="true" />
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2 pt-1">
+              {focusQueue.length > 0 ? (
+                focusQueue.slice(0, 5).map((task) => (
+                  <div
+                    key={task.id}
+                    className="ega-glass-soft flex items-center justify-between gap-3 rounded-[1rem] px-3 py-3 transition-precise hover:border-[rgba(23,123,82,0.16)] hover:bg-[rgba(255,255,255,0.7)]"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
+                        {task.title}
+                      </p>
+                      <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+                        #{task.focus_rank} · {task.projects?.name ?? "No project"}
+                      </p>
+                    </div>
+                    <FocusPinToggleForm
+                      action={unpinTaskAction}
+                      taskId={task.id}
+                      returnTo={returnPath}
+                      isPinned
+                      compact
+                    />
+                  </div>
+                ))
+              ) : (
+                <EmptyState
+                  icon={Pin}
+                  title="No pinned tasks yet"
+                  description="Pin tasks from the queue to build a deliberate focus order."
+                  className="min-h-40 justify-center"
+                />
+              )}
+            </CardContent>
+          </Card>
+        </aside>
       </div>
     </TasksWorkspaceShell>
   );

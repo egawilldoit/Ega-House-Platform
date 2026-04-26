@@ -113,17 +113,21 @@ export function TaskSavedViewsPanel({
   const currentReturnPath = buildCurrentReturnPath(currentFilters);
 
   return (
-    <Card id="saved-views" className="border-[var(--border)] bg-white">
+    <Card
+      id="saved-views"
+      className="ega-glass rounded-[1.35rem]"
+    >
       <CardHeader className="gap-3 pb-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="glass-label text-signal-live">Saved views</p>
-            <CardTitle className="mt-2 text-xl">Reusable filter slices</CardTitle>
+            <CardTitle className="text-xl">Saved views</CardTitle>
             <CardDescription>
-              Save the current queue filters, jump between views, and refresh a view without losing the URL-driven flow.
+              Save custom filters to instantly return to the views that matter most.
             </CardDescription>
           </div>
-          <Badge tone="muted">{savedViews.length} saved</Badge>
+          <span className="ega-glass-pill flex h-10 w-10 items-center justify-center rounded-full text-[var(--signal-live)]">
+            <Bookmark className="h-4 w-4" aria-hidden="true" />
+          </span>
         </div>
       </CardHeader>
 
@@ -135,7 +139,9 @@ export function TaskSavedViewsPanel({
           <div className="feedback-block feedback-block-success">{feedback.success}</div>
         ) : null}
 
-        <form action={createTaskSavedViewAction} className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
+        <Badge tone="muted" className="ega-glass-pill">{savedViews.length} saved</Badge>
+
+        <form action={createTaskSavedViewAction} className="ega-glass-soft rounded-[1rem] p-3">
           <input type="hidden" name="returnTo" value={currentReturnPath} />
           <input type="hidden" name="status" value={currentFilters.status ?? ""} />
           <input type="hidden" name="project" value={currentFilters.projectId ?? ""} />
@@ -144,11 +150,17 @@ export function TaskSavedViewsPanel({
           <input type="hidden" name="sort" value={currentFilters.sortValue} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="flex-1 space-y-2">
-              <label htmlFor="saved-view-name" className="glass-label text-etch">Save current filters as</label>
-              <Input id="saved-view-name" name="name" maxLength={80} placeholder="e.g. Due today · Content" className="h-10" />
+            <div className="flex-1">
+              <label htmlFor="saved-view-name" className="sr-only">Save current filters as</label>
+              <Input
+                id="saved-view-name"
+                name="name"
+                maxLength={80}
+                placeholder="e.g. Due today · Content"
+                className="ega-glass-input h-11 rounded-xl"
+              />
             </div>
-            <Button type="submit" className="sm:shrink-0">Save view</Button>
+            <Button type="submit" className="h-11 rounded-xl sm:shrink-0">Save view</Button>
           </div>
         </form>
 
@@ -181,12 +193,12 @@ export function TaskSavedViewsPanel({
 
             <div className="space-y-3">
               {savedViews.map((view) => (
-                <div key={view.id} className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] p-4">
+                <div key={view.id} className="ega-glass-soft rounded-[1rem] p-4 transition-precise hover:border-[rgba(23,123,82,0.16)] hover:bg-[rgba(255,255,255,0.7)]">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-sm font-medium text-[color:var(--foreground)]">{view.name}</p>
-                        <Badge tone="muted">Updated {new Date(view.updated_at).toLocaleDateString("en-GB")}</Badge>
+                        <Badge tone="muted" className="ega-glass-pill">Updated {new Date(view.updated_at).toLocaleDateString("en-GB")}</Badge>
                       </div>
                       <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
                         {describeSavedView(view, projectOptions, goalOptions)}
@@ -207,7 +219,7 @@ export function TaskSavedViewsPanel({
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                         <div className="flex-1 space-y-2">
                           <label htmlFor={`view-name-${view.id}`} className="glass-label text-etch">Name</label>
-                          <Input id={`view-name-${view.id}`} name="name" defaultValue={view.name} maxLength={80} className="h-10" />
+                          <Input id={`view-name-${view.id}`} name="name" defaultValue={view.name} maxLength={80} className="ega-glass-input h-10 rounded-xl" />
                         </div>
                         <Button type="submit" variant="muted" className="sm:shrink-0">Update to current filters</Button>
                       </div>
@@ -227,7 +239,8 @@ export function TaskSavedViewsPanel({
           <EmptyState
             icon={Bookmark}
             title="No saved views yet"
-            description="Save the current filters to create reusable task slices."
+            description="Create a saved view to quickly reapply filters."
+            className="min-h-40 justify-center"
           />
         )}
       </CardContent>

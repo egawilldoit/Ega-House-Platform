@@ -99,7 +99,7 @@ export async function AppShell({
   ]);
 
   return (
-    <div className={cn("min-h-dvh bg-background text-foreground flex selection:bg-secondary selection:text-foreground", className)}>
+    <div className={cn("ega-app-shell text-foreground selection:bg-secondary selection:text-foreground", className)}>
       <Sidebar projects={projects} goals={goals} metrics={metrics} />
 
       <main className="ega-main">

@@ -59,7 +59,7 @@ export function CreateTaskForm({
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="returnTo" value={state.values.returnTo} />
-      <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
+      <div className="ega-glass-soft rounded-[1.1rem] p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="glass-label text-etch">Task Definition</p>
@@ -83,7 +83,7 @@ export function CreateTaskForm({
               required
               placeholder="Ship timer session recovery"
               defaultValue={state.values.title}
-              className="h-10"
+              className="ega-glass-input h-10 rounded-xl"
             />
           </div>
 
@@ -98,7 +98,7 @@ export function CreateTaskForm({
               {isProjectScoped ? (
                 <>
                   <input type="hidden" name="projectId" value={state.values.projectId} />
-                  <div className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] flex h-10 items-center px-3.5 text-sm text-[color:var(--muted-foreground)]">
+                  <div className="ega-glass-input flex h-10 w-full items-center justify-between rounded-xl border px-3.5 py-2 text-sm text-[color:var(--muted-foreground)] ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
                     {projects.find((project) => project.id === state.values.projectId)?.name ??
                       "Selected project"}
                   </div>
@@ -109,7 +109,7 @@ export function CreateTaskForm({
                   name="projectId"
                   defaultValue={state.values.projectId}
                   required
-                  className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
+                  className="ega-glass-input flex h-10 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
                 >
                   {projects.map((project) => (
                     <option key={project.id} value={project.id}>
@@ -128,7 +128,7 @@ export function CreateTaskForm({
                 id="goalId"
                 name="goalId"
                 defaultValue={state.values.goalId}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
+                className="ega-glass-input flex h-10 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 <option value="">No goal</option>
                 {goals.map((goal) => (
@@ -142,7 +142,7 @@ export function CreateTaskForm({
         </div>
       </div>
 
-      <div className="rounded-[1.1rem] border border-[var(--border)] bg-white p-4">
+      <div className="ega-glass-soft rounded-[1.1rem] p-4">
         <div className="mb-4">
           <p className="glass-label text-etch">Execution Defaults</p>
           <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
@@ -161,7 +161,7 @@ export function CreateTaskForm({
                 name="status"
                 defaultValue={state.values.status}
                 onChange={(event) => setSelectedStatus(event.target.value)}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
+                className="ega-glass-input flex h-10 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 {TASK_STATUS_VALUES.map((status) => (
                   <option key={status} value={status}>
@@ -181,7 +181,7 @@ export function CreateTaskForm({
                   name="blockedReason"
                   placeholder="What is currently blocking this task?"
                   defaultValue={state.values.blockedReason}
-                  className="min-h-20"
+                  className="ega-glass-input min-h-20 rounded-xl"
                 />
               </div>
             ) : null}
@@ -195,7 +195,7 @@ export function CreateTaskForm({
                 name="dueDate"
                 type="date"
                 defaultValue={state.values.dueDate}
-                className="h-10"
+                className="ega-glass-input h-10 rounded-xl"
               />
             </div>
 
@@ -210,7 +210,7 @@ export function CreateTaskForm({
                 id="priority"
                 name="priority"
                 defaultValue={state.values.priority}
-                className="flex h-10 w-full items-center justify-between rounded-md border border-[var(--border)] bg-white px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)] h-10 text-sm"
+                className="ega-glass-input flex h-10 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               >
                 {TASK_PRIORITY_VALUES.map((priority) => (
                   <option key={priority} value={priority}>
@@ -233,7 +233,7 @@ export function CreateTaskForm({
                 inputMode="numeric"
                 placeholder="90"
                 defaultValue={state.values.estimateMinutes}
-                className="h-10"
+                className="ega-glass-input h-10 rounded-xl"
               />
             </div>
           </div>
@@ -250,7 +250,7 @@ export function CreateTaskForm({
               name="description"
               placeholder="Capture scope, constraints, and delivery notes."
               defaultValue={state.values.description}
-              className="min-h-24"
+              className="ega-glass-input min-h-24 rounded-xl"
             />
           </div>
         </div>

@@ -10,9 +10,9 @@ import { workspaceShortcutEvents } from "./workspace-keyboard-shortcuts";
 
 export function TopBar({ metrics }: { metrics: WorkspaceShellMetrics }) {
   return (
-    <header className="ega-topbar px-8 py-5">
-      <div className="ega-shell-max flex items-center justify-between gap-6">
-        <div className="shell-search flex-1 max-w-md">
+    <header className="ega-topbar">
+      <div className="ega-shell-max ega-topbar-row">
+        <div className="shell-search">
           <Search className="size-4 text-etch flex-shrink-0" strokeWidth={1.5} />
           <input
             type="search"
@@ -25,7 +25,7 @@ export function TopBar({ metrics }: { metrics: WorkspaceShellMetrics }) {
           </kbd>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="topbar-actions">
           <TopBarSignalCluster metrics={metrics} />
 
           <Link

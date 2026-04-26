@@ -19,7 +19,7 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-card)] border border-[var(--border)] bg-white text-[color:var(--foreground)] shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)]",
+        "ega-glass rounded-[var(--radius-card)] text-[color:var(--foreground)] transition-shadow hover:shadow-[var(--shadow-card-hover)]",
         className,
       )}
       {...props}

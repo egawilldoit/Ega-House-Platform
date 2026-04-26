@@ -652,7 +652,7 @@ export function DashboardOptimizedView({
       </section>
 
       <section className="mt-6 grid items-start gap-6 xl:grid-cols-2">
-        <Card className="border-transparent bg-white">
+        <Card className="ega-glass">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -709,7 +709,7 @@ export function DashboardOptimizedView({
           </CardContent>
         </Card>
 
-        <Card className="border-transparent bg-white">
+        <Card className="ega-glass">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -736,7 +736,7 @@ export function DashboardOptimizedView({
           </CardContent>
         </Card>
 
-        <Card className="border-transparent bg-white">
+        <Card className="ega-glass">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -772,7 +772,7 @@ export function DashboardOptimizedView({
       </section>
 
       <section className="mt-6 grid items-start gap-6 xl:grid-cols-[0.96fr_1.04fr]">
-        <Card className="border-transparent bg-white">
+        <Card className="ega-glass">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">
               <div>
@@ -806,7 +806,7 @@ export function DashboardOptimizedView({
           </CardContent>
         </Card>
 
-        <Card className="border-transparent bg-white">
+        <Card className="ega-glass">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">
               <div>

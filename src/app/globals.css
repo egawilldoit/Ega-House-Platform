@@ -29,11 +29,21 @@
   --font-body: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --sidebar-width: 272px;
+  --sidebar-width: 280px;
   --transition-precise: 180ms cubic-bezier(0.4, 0, 0.2, 1);
   --radius-card: 0.75rem;
   --shadow-card: 0 10px 30px rgba(23, 32, 19, 0.06), 0 2px 8px rgba(23, 32, 19, 0.04);
   --shadow-card-hover: 0 18px 42px rgba(23, 32, 19, 0.09), 0 4px 14px rgba(23, 32, 19, 0.06);
+
+  --ega-app-bg: #f5f8f3;
+  --ega-bg: var(--ega-app-bg);
+  --ega-green: #0f8f5f;
+  --ega-green-strong: #08784e;
+  --ega-text: #102017;
+  --ega-muted: #637064;
+  --ega-border-glass: rgba(255, 255, 255, 0.72);
+  --ega-border-subtle: rgba(15, 23, 42, 0.08);
+  --ega-shadow-glass: 0 18px 50px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 @theme inline {
@@ -152,34 +162,118 @@ select {
     var(--background);
 }
 
+.ega-glass {
+  border: 1px solid var(--ega-border-glass);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.68));
+  box-shadow: var(--ega-shadow-glass);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+}
+
+.ega-glass-strong {
+  border: 1px solid rgba(255, 255, 255, 0.76);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.72));
+  box-shadow:
+    0 24px 70px rgba(15, 23, 42, 0.1),
+    0 3px 12px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
+}
+
+.ega-glass-soft {
+  border: 1px solid var(--ega-border-subtle);
+  background: rgba(255, 255, 255, 0.56);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+}
+
+.ega-glass-pill {
+  border: 1px solid var(--ega-border-subtle);
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px) saturate(130%);
+  -webkit-backdrop-filter: blur(8px) saturate(130%);
+}
+
+.ega-glass-input {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px) saturate(125%);
+  -webkit-backdrop-filter: blur(8px) saturate(125%);
+}
+
+.ega-glass-empty {
+  border: 1px dashed rgba(15, 23, 42, 0.16);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ega-glass,
+  .ega-glass-strong,
+  .ega-glass-soft,
+  .ega-glass-pill,
+  .ega-glass-input,
+  .ega-glass-empty,
+  .ega-sidebar,
+  .ega-topbar,
+  .shell-search,
+  .instrument-card {
+    background: rgba(255, 255, 255, 0.94);
+  }
+}
+
 /* ─── App Shell ─── */
 
+.ega-app-shell,
 .ega-shell {
-  display: flex;
   min-height: 100dvh;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 22%),
+    radial-gradient(circle at 18% 6%, rgba(16, 185, 129, 0.16), transparent 30%),
+    radial-gradient(circle at 82% 14%, rgba(45, 212, 191, 0.1), transparent 34%),
+    radial-gradient(circle at 50% 100%, rgba(245, 158, 11, 0.06), transparent 28%),
+    var(--ega-app-bg);
+}
+
+.ega-app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  color: var(--foreground);
 }
 
 .ega-sidebar {
   width: var(--sidebar-width);
-  flex-shrink: 0;
-  position: fixed;
-  inset: 0 auto 0 0;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 249, 244, 0.92)),
-    var(--background);
-  border-right: 1px solid rgba(20, 32, 19, 0.07);
-  backdrop-filter: blur(22px);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.64)),
+    rgba(255, 255, 255, 0.52);
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow:
+    12px 0 36px rgba(15, 23, 42, 0.04),
+    inset -1px 0 0 rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(16px) saturate(145%);
+  -webkit-backdrop-filter: blur(16px) saturate(145%);
   display: flex;
   flex-direction: column;
   z-index: 40;
-  overflow-y: hidden;
+  overflow-y: auto;
   overflow-x: hidden;
 }
 
 .ega-main {
-  flex: 1;
   min-width: 0;
-  margin-left: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
@@ -188,37 +282,48 @@ select {
 }
 
 .ega-topbar {
-  height: auto;
+  min-height: 76px;
   flex-shrink: 0;
-  border-bottom: 1px solid rgba(20, 32, 19, 0.06);
-  background: rgba(246, 247, 242, 0.72);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  width: 100%;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(245, 248, 243, 0.7);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.04);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
   position: sticky;
   top: 0;
-  z-index: 30;
+  z-index: 35;
+}
+
+.ega-topbar-row {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem 3rem;
 }
 
 .ega-page-header {
-  padding: 2.25rem 2rem 1.25rem;
+  padding: 2.625rem 3rem 1.5rem;
   background: transparent;
 }
 
 .ega-content {
   flex: 1;
-  padding: 0 2rem 2.5rem;
+  padding: 0 3rem 3.5rem;
   background: transparent;
 }
 
 .ega-shell-max {
   width: 100%;
-  max-width: 1380px;
+  max-width: 1480px;
   margin: 0 auto;
   min-width: 0;
 }
 
 .ega-content.ega-shell-max {
-  max-width: calc(1380px + 4rem);
+  max-width: calc(1480px + 6rem);
 }
 
 .ega-shell-page-head {
@@ -259,10 +364,12 @@ select {
 }
 
 .ega-shell-section {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ega-border-glass);
   border-radius: calc(var(--radius-card) + 0.25rem);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88) 0%, rgba(247, 249, 244, 0.92) 100%);
-  box-shadow: var(--shadow-card);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.66));
+  box-shadow: var(--ega-shadow-glass);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
 }
 
 /* ─── Sidebar Navigation ─── */
@@ -271,9 +378,9 @@ select {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  min-height: 3.75rem;
-  padding: 0.75rem 1rem 0.7rem;
-  border-bottom: 1px solid rgba(20, 32, 19, 0.06);
+  min-height: 4.25rem;
+  padding: 0.95rem 1rem 0.85rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.07);
 }
 
 .sidebar-brand-logo {
@@ -308,13 +415,13 @@ select {
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.875rem 0.625rem 0.875rem;
+  gap: 0.875rem;
+  padding: 1rem 0.75rem 1rem;
 }
 
 .sidebar-section {
-  padding: 0.25rem 0 0.5rem;
-  border-bottom: 1px solid rgba(20, 32, 19, 0.055);
+  padding: 0.25rem 0 0.65rem;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
 }
 
 .sidebar-section:last-child {
@@ -360,9 +467,9 @@ select {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  min-height: 2.35rem;
-  padding: 0.5rem 0.625rem;
-  border-radius: 0.7rem;
+  min-height: 2.45rem;
+  padding: 0.52rem 0.7rem;
+  border-radius: 0.78rem;
   margin: 0.075rem 0;
   font-family: var(--font-display);
   font-size: 0.8125rem;
@@ -377,8 +484,10 @@ select {
 }
 
 .sidebar-link:hover {
-  background: rgba(20, 32, 19, 0.045);
+  background: rgba(255, 255, 255, 0.52);
+  border-color: rgba(15, 23, 42, 0.08);
   color: var(--foreground);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .sidebar-link-icon {
@@ -399,10 +508,13 @@ select {
 }
 
 .sidebar-link.active {
-  background: linear-gradient(90deg, rgba(23, 123, 82, 0.14), rgba(23, 123, 82, 0.055));
-  border-color: rgba(23, 123, 82, 0.1);
-  color: var(--accent);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  background:
+    linear-gradient(90deg, rgba(16, 185, 129, 0.14), rgba(255, 255, 255, 0.54));
+  border-color: rgba(16, 185, 129, 0.24);
+  color: var(--ega-green-strong);
+  box-shadow:
+    0 8px 22px rgba(16, 185, 129, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
 }
 
 .sidebar-link.active::before {
@@ -414,7 +526,7 @@ select {
   width: 3px;
   height: 55%;
   border-radius: 999px;
-  background: var(--accent);
+  background: var(--ega-green);
 }
 
 .sidebar-link .sidebar-badge {
@@ -477,9 +589,10 @@ select {
 }
 
 .sidebar-project-link.selected {
-  background: rgba(23, 123, 82, 0.1);
-  border-color: rgba(23, 123, 82, 0.12);
-  color: var(--foreground);
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.2);
+  color: var(--ega-green-strong);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .sidebar-project-link.selected .project-dot {
@@ -558,9 +671,10 @@ select {
 /* ─── Cards ─── */
 
 .instrument-card {
-  border: 1px solid var(--border);
-  background: var(--instrument);
-  backdrop-filter: blur(12px);
+  border: 1px solid var(--ega-border-glass);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(255, 255, 255, 0.68));
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   transition: box-shadow var(--transition-precise);
@@ -724,11 +838,18 @@ select {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.5rem 0.875rem;
-  border: 1px solid rgba(20, 32, 19, 0.08);
-  border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.68);
-  backdrop-filter: blur(12px);
+  width: min(100%, 560px);
+  flex: 1 1 26rem;
+  min-width: 18rem;
+  padding: 0.62rem 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow:
+    0 8px 24px rgba(15, 23, 42, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
   transition:
     border-color var(--transition-precise),
     background var(--transition-precise),
@@ -736,9 +857,20 @@ select {
 }
 
 .shell-search:focus-within {
-  border-color: rgba(16, 185, 129, 0.35);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.08);
+  border-color: rgba(23, 123, 82, 0.32);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 0 0 3px rgba(23, 123, 82, 0.08),
+    0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+.topbar-actions {
+  display: flex;
+  min-width: 0;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
 }
 
 /* ─── Tables ─── */
@@ -962,6 +1094,234 @@ select {
   padding: 0.5rem;
   box-shadow: 0 14px 28px rgba(20, 32, 19, 0.12);
   backdrop-filter: blur(12px);
+}
+
+/* Tasks workspace */
+
+.tasks-dashboard-grid {
+  display: grid;
+  align-items: start;
+  gap: 1.75rem;
+  grid-template-columns: minmax(0, 1fr) minmax(22.5rem, 25rem);
+}
+
+.ega-glass-workspace,
+.tasks-glass-page {
+  position: relative;
+  min-height: 100dvh;
+  background: transparent;
+}
+
+.ega-glass-workspace::before,
+.tasks-glass-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.3), transparent 18%),
+    radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.48), transparent 24%);
+  z-index: 0;
+}
+
+.ega-glass-workspace .ega-main,
+.tasks-glass-page .ega-main {
+  position: relative;
+  z-index: 1;
+}
+
+.ega-glass-workspace .btn-instrument,
+.tasks-glass-page .btn-instrument {
+  box-shadow:
+    0 10px 24px rgba(23, 123, 82, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.ega-glass-workspace .btn-instrument-muted,
+.tasks-glass-page .btn-instrument-muted {
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow:
+    0 6px 16px rgba(15, 23, 42, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+.ega-glass-workspace .surface-empty,
+.tasks-glass-page .surface-empty {
+  border-color: rgba(15, 23, 42, 0.16);
+  background: rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px) saturate(125%);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+}
+
+.ega-glass-workspace .ega-glass-input,
+.tasks-glass-page .ega-glass-input {
+  border-color: rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--foreground);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(8px) saturate(125%);
+  -webkit-backdrop-filter: blur(8px) saturate(125%);
+}
+
+.ega-glass-workspace .ega-glass-input:hover,
+.tasks-glass-page .ega-glass-input:hover {
+  border-color: rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.ega-glass-workspace .ega-glass-input:focus,
+.tasks-glass-page .ega-glass-input:focus {
+  border-color: rgba(23, 123, 82, 0.42);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow:
+    0 0 0 3px rgba(23, 123, 82, 0.1),
+    0 6px 18px rgba(15, 23, 42, 0.055);
+}
+
+.ega-glass-workspace .filter-pill,
+.tasks-glass-page .filter-pill {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.045),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(8px) saturate(130%);
+  -webkit-backdrop-filter: blur(8px) saturate(130%);
+  transition:
+    transform var(--transition-precise),
+    border-color var(--transition-precise),
+    color var(--transition-precise),
+    background var(--transition-precise),
+    box-shadow var(--transition-precise);
+}
+
+.ega-glass-workspace .filter-pill:hover,
+.tasks-glass-page .filter-pill:hover {
+  border-color: rgba(23, 123, 82, 0.18);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 8px 20px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  transform: translateY(-1px);
+}
+
+.ega-glass-workspace .filter-pill-active,
+.tasks-glass-page .filter-pill-active {
+  border-color: rgba(8, 120, 78, 0.34);
+  background: linear-gradient(135deg, #169463, #0f7a52);
+  color: #ffffff;
+  box-shadow: 0 9px 22px rgba(23, 123, 82, 0.22);
+}
+
+.ega-glass-workspace .status-badge-muted,
+.tasks-glass-page .status-badge-muted {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.ega-glass-workspace .status-badge-warn,
+.tasks-glass-page .status-badge-warn {
+  border-color: rgba(230, 81, 0, 0.18);
+  background: rgba(255, 243, 224, 0.68);
+}
+
+.ega-glass-workspace .status-badge-error,
+.tasks-glass-page .status-badge-error {
+  border-color: rgba(198, 40, 40, 0.18);
+  background: rgba(255, 235, 238, 0.72);
+}
+
+.ega-glass-workspace .status-badge-info,
+.tasks-glass-page .status-badge-info {
+  border-color: rgba(21, 101, 192, 0.16);
+  background: rgba(227, 242, 253, 0.68);
+}
+
+.ega-glass-workspace .status-badge-active,
+.tasks-glass-page .status-badge-active {
+  border-color: rgba(23, 123, 82, 0.22);
+  background: rgba(232, 245, 233, 0.78);
+}
+
+.ega-glass-workspace .action-overflow-menu,
+.tasks-glass-page .action-overflow-menu {
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 18px 38px rgba(15, 23, 42, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ega-glass-workspace .surface-empty,
+  .ega-glass-workspace .filter-pill,
+  .ega-glass-workspace .ega-glass-input,
+  .ega-glass-workspace .action-overflow-menu,
+  .tasks-glass-page .surface-empty,
+  .tasks-glass-page .filter-pill,
+  .tasks-glass-page .ega-glass-input,
+  .tasks-glass-page .action-overflow-menu,
+  .tasks-task-card {
+    background: rgba(255, 255, 255, 0.94);
+  }
+}
+
+.tasks-side-rail {
+  position: sticky;
+  top: 6.75rem;
+}
+
+.tasks-view-tab {
+  display: inline-flex;
+  min-height: 2.15rem;
+  align-items: center;
+  border-bottom: 2px solid transparent;
+  padding: 0.2rem 0.1rem;
+  font-family: var(--font-display);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  transition:
+    border-color var(--transition-precise),
+    color var(--transition-precise);
+}
+
+.tasks-view-tab-active {
+  border-color: var(--signal-live);
+  color: var(--signal-live);
+}
+
+.tasks-task-card {
+  position: relative;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.6));
+  padding: 1.25rem;
+  box-shadow:
+    0 12px 34px rgba(15, 23, 42, 0.055),
+    inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+  transition:
+    border-color var(--transition-precise),
+    box-shadow var(--transition-precise),
+    transform var(--transition-precise);
+}
+
+.tasks-task-card:hover {
+  border-color: rgba(23, 123, 82, 0.18);
+  box-shadow:
+    0 18px 44px rgba(15, 23, 42, 0.08),
+    0 0 0 1px rgba(255, 255, 255, 0.54),
+    inset 0 1px 0 rgba(255, 255, 255, 0.84);
+  transform: translateY(-1px);
 }
 
 /* ─── Today Planner ─── */
@@ -1686,6 +2046,10 @@ select {
     --sidebar-width: 0px;
   }
 
+  .ega-app-shell {
+    display: block;
+  }
+
   .ega-sidebar {
     display: none;
   }
@@ -1696,6 +2060,27 @@ select {
 
   .ega-page-header {
     padding: 1.5rem 1rem 1.25rem;
+  }
+
+  .ega-topbar-row {
+    min-height: auto;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+  }
+
+  .shell-search {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+
+  .topbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 0.5rem;
+    overflow-x: auto;
+    padding-bottom: 0.1rem;
   }
 
   .ega-content {
@@ -1744,6 +2129,14 @@ select {
 }
 
 @media (max-width: 1180px) {
+  .tasks-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .tasks-side-rail {
+    position: static;
+  }
+
   .today-work-grid {
     grid-template-columns: 1fr;
   }
