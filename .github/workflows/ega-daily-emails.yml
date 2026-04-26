@@ -1,0 +1,77 @@
+name: EGA Daily Emails
+
+on:
+  schedule:
+    - cron: "30 8 * * *"
+    - cron: "30 11 * * *"
+    - cron: "30 14 * * *"
+    - cron: "30 20 * * *"
+    - cron: "0 20 * * 0"
+  workflow_dispatch:
+    inputs:
+      email_type:
+        description: "Email type to send"
+        required: true
+        default: "morning"
+        type: choice
+        options:
+          - morning
+          - midday
+          - afternoon
+          - night-review
+          - weekly-review
+
+permissions:
+  contents: read
+
+jobs:
+  send-email:
+    name: Send scheduled email
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Resolve email type
+        id: email
+        shell: bash
+        run: |
+          case "${{ github.event.schedule }}" in
+            "30 8 * * *")
+              EMAIL_TYPE="morning"
+              ;;
+            "30 11 * * *")
+              EMAIL_TYPE="midday"
+              ;;
+            "30 14 * * *")
+              EMAIL_TYPE="afternoon"
+              ;;
+            "30 20 * * *")
+              EMAIL_TYPE="night-review"
+              ;;
+            "0 20 * * 0")
+              EMAIL_TYPE="weekly-review"
+              ;;
+            *)
+              EMAIL_TYPE="${{ inputs.email_type || 'morning' }}"
+              ;;
+          esac
+
+          echo "email_type=$EMAIL_TYPE" >> "$GITHUB_OUTPUT"
+
+      - name: Send email
+        shell: bash
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          EMAIL_TYPE: ${{ steps.email.outputs.email_type }}
+        run: |
+          ENDPOINT_PATH="/api/cron/daily-email?type=${EMAIL_TYPE}"
+          ENDPOINT="${APP_URL}${ENDPOINT_PATH}"
+
+          echo "Email type: ${EMAIL_TYPE}"
+          echo "Endpoint path: ${ENDPOINT_PATH}"
+
+          RESPONSE_BODY="$(curl -f -s -S -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer ${CRON_SECRET}")"
+
+          echo "Response body: ${RESPONSE_BODY}"
