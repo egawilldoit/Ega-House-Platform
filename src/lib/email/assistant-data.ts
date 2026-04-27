@@ -1,6 +1,7 @@
 import "server-only";
 
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 export type AssistantEmailType =
   | "morning"
@@ -102,6 +103,7 @@ type TaskRow = {
   status: string;
   due_date: string | null;
   updated_at: string;
+  completed_at: string | null;
   project_id: string;
   goal_id: string | null;
   projects: { name: string } | null;
@@ -143,7 +145,6 @@ type WeekReviewRow = {
 };
 
 const GMT_PLUS_ONE_OFFSET_MINUTES = 60;
-const DONE_STATUSES = new Set(["done", "complete", "completed"]);
 const OPEN_STATUSES = new Set(["todo", "in_progress", "blocked"]);
 
 function requireOwnerUserId() {
@@ -222,7 +223,7 @@ function toMs(value: string) {
 }
 
 function isDoneStatus(status: string) {
-  return DONE_STATUSES.has(status.toLowerCase());
+  return isTaskCompletedStatus(status);
 }
 
 function isOpenStatus(status: string) {
@@ -231,6 +232,10 @@ function isOpenStatus(status: string) {
 
 function isWithinIsoWindow(value: string, startIso: string, endIso: string) {
   return value >= startIso && value < endIso;
+}
+
+function getTaskCompletedAt(task: TaskRow) {
+  return task.completed_at ?? task.updated_at;
 }
 
 function getCompletedSessionDurationSeconds(session: SessionRow) {
@@ -366,7 +371,7 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
   const [tasksResult, sessionsResult, goalsResult, weeklyReviewResult] = await Promise.all([
     supabase
       .from("tasks")
-      .select("id, title, status, due_date, updated_at, project_id, goal_id, projects(name), goals(title)")
+      .select("id, title, status, due_date, updated_at, completed_at, project_id, goal_id, projects(name), goals(title)")
       .eq("owner_user_id", ownerUserId)
       .is("archived_at", null)
       .order("updated_at", { ascending: false })
@@ -425,7 +430,7 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
     .filter(
       (task) =>
         isDoneStatus(task.status) &&
-        isWithinIsoWindow(task.updated_at, windows.todayStartIso, windows.todayEndIso),
+        isWithinIsoWindow(getTaskCompletedAt(task), windows.todayStartIso, windows.todayEndIso),
     )
     .map(mapTask)
     .slice(0, 10);
@@ -433,7 +438,7 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
     .filter(
       (task) =>
         isDoneStatus(task.status) &&
-        isWithinIsoWindow(task.updated_at, windows.weekStartIso, windows.weekEndIso),
+        isWithinIsoWindow(getTaskCompletedAt(task), windows.weekStartIso, windows.weekEndIso),
     )
     .map(mapTask)
     .slice(0, 20);

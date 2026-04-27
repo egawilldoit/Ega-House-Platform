@@ -77,7 +77,7 @@ test("builds derived today planner buckets from focus, due date, status, and tim
       status: "todo",
       priority: "low",
       focus_rank: null,
-      due_date: "2026-04-27",
+      due_date: null,
       estimate_minutes: null,
       updated_at: "2026-04-17T10:00:00.000Z",
       projectName: "Alpha",

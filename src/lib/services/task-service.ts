@@ -1,10 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
-import type { TablesInsert } from "@/lib/supabase/database.types";
+import type { TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
+  isTaskCompletedStatus,
   isTaskPriority,
   isTaskStatus,
   type TaskPriority,
@@ -22,6 +23,7 @@ import {
   isMissingTasksArchivedAtColumn,
   isMissingSupabaseTable,
   isMissingTasksBlockedReasonColumn,
+  isMissingTasksCompletedAtColumn,
 } from "@/lib/supabase-error";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -53,6 +55,7 @@ export type TasksWorkspaceData = {
     due_date: string | null;
     estimate_minutes: number | null;
     updated_at: string;
+    completed_at: string | null;
     project_id: string;
     goal_id: string | null;
     focus_rank: number | null;
@@ -100,6 +103,7 @@ export type ValidatedTaskInlineUpdateInput = {
   dueDate: string | null;
   estimateMinutes: number | null;
   blockedReason: string | null;
+  description?: string | null;
 };
 
 export function normalizeTaskBlockedReasonInput(value: unknown) {
@@ -268,7 +272,7 @@ export async function getTasksWorkspaceData(
   const tasksQuery = supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .order("updated_at", { ascending: false });
 
@@ -304,7 +308,7 @@ export async function getTasksWorkspaceData(
     const fallbackQuery = supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
       )
       .order("updated_at", { ascending: false });
 
@@ -332,6 +336,7 @@ export async function getTasksWorkspaceData(
     rawTasks = (fallbackResult.data ?? []).map((task) => ({
       ...task,
       blocked_reason: null,
+      completed_at: task.completed_at ?? null,
       archived_at: null,
       archived_by: null,
     }));
@@ -404,6 +409,9 @@ export async function createTasks(
     }
 
     row.blocked_reason = statusValue === "blocked" ? blockedReason : null;
+    if (statusValue === "done" && !row.completed_at) {
+      row.completed_at = new Date().toISOString();
+    }
     const scopeError = getTaskInsertScopeError(row, taskScope.scope);
     if (scopeError) {
       return { errorMessage: scopeError };
@@ -500,7 +508,36 @@ export async function updateTaskInline(
   const supabase = await resolveSupabaseClient(options?.supabase);
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
 
-  if (input.status === "done") {
+  let { data: currentTask, error: currentTaskError } = await supabase
+    .from("tasks")
+    .select("id, status, completed_at, archived_at")
+    .eq("id", input.taskId)
+    .maybeSingle();
+  let completedAtUnavailable = false;
+
+  if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
+    const fallbackResult = await supabase
+      .from("tasks")
+      .select("id, status, archived_at")
+      .eq("id", input.taskId)
+      .maybeSingle();
+
+    currentTask = fallbackResult.data
+      ? { ...fallbackResult.data, completed_at: null }
+      : null;
+    currentTaskError = fallbackResult.error;
+    completedAtUnavailable = true;
+  }
+
+  if (currentTaskError) {
+    return { errorMessage: "Unable to load task right now." };
+  }
+
+  if (!currentTask) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  if (input.status === "done" && !isTaskCompletedStatus(currentTask.status)) {
     const stopResult = await stopActiveTimerSessionsForTask(input.taskId, {
       supabase,
       nowIso: updatedAtIso,
@@ -511,34 +548,67 @@ export async function updateTaskInline(
     }
   }
 
-  let { error } = await supabase
+  const updatePayload: TablesUpdate<"tasks"> = {
+    status: input.status,
+    priority: input.priority,
+    due_date: input.dueDate,
+    estimate_minutes: input.estimateMinutes,
+    blocked_reason: input.blockedReason,
+    updated_at: updatedAtIso,
+  };
+
+  if (input.description !== undefined) {
+    updatePayload.description = input.description;
+  }
+
+  if (!completedAtUnavailable) {
+    updatePayload.completed_at =
+      input.status === "done"
+        ? isTaskCompletedStatus(currentTask.status) && currentTask.completed_at
+          ? currentTask.completed_at
+          : updatedAtIso
+        : null;
+  }
+
+  let { data: updatedTask, error } = await supabase
     .from("tasks")
-    .update({
-      status: input.status,
-      priority: input.priority,
-      due_date: input.dueDate,
-      estimate_minutes: input.estimateMinutes,
-      blocked_reason: input.blockedReason,
-      updated_at: updatedAtIso,
-    })
-    .eq("id", input.taskId);
+    .update(updatePayload)
+    .eq("id", input.taskId)
+    .select("id")
+    .maybeSingle();
 
   if (error && isTasksBlockedReasonMissing(error)) {
+    const fallbackPayload = { ...updatePayload };
+    delete fallbackPayload.blocked_reason;
     const fallbackResult = await supabase
       .from("tasks")
-      .update({
-        status: input.status,
-        priority: input.priority,
-        due_date: input.dueDate,
-        estimate_minutes: input.estimateMinutes,
-        updated_at: updatedAtIso,
-      })
-      .eq("id", input.taskId);
+      .update(fallbackPayload)
+      .eq("id", input.taskId)
+      .select("id")
+      .maybeSingle();
+    updatedTask = fallbackResult.data;
+    error = fallbackResult.error;
+  }
+
+  if (error && isMissingTasksCompletedAtColumn(error)) {
+    const fallbackPayload = { ...updatePayload };
+    delete fallbackPayload.completed_at;
+    const fallbackResult = await supabase
+      .from("tasks")
+      .update(fallbackPayload)
+      .eq("id", input.taskId)
+      .select("id")
+      .maybeSingle();
+    updatedTask = fallbackResult.data;
     error = fallbackResult.error;
   }
 
   if (error) {
     return { errorMessage: "Unable to update task right now." };
+  }
+
+  if (!updatedTask) {
+    return { errorMessage: "Task was not found or is no longer available." };
   }
 
   return { errorMessage: null };
@@ -643,7 +713,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -652,7 +722,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();
@@ -662,6 +732,7 @@ export async function getTaskById(
         ? {
             ...fallbackResult.data,
             blocked_reason: null,
+            completed_at: fallbackResult.data.completed_at ?? null,
           }
         : null;
       error = null;

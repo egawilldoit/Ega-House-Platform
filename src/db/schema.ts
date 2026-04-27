@@ -80,6 +80,7 @@ export const tasks = pgTable(
     focusRank: integer("focus_rank"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
     createdAt: timestamp("created_at", { withTimezone: true })

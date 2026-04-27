@@ -2,6 +2,7 @@ import { getWeekBounds, shiftIsoDateByDays } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
 import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 import { addTaskToToday } from "./today-planner-service";
 
@@ -318,7 +319,7 @@ export async function getStartupPlannerData(options?: {
 
   const todaySummary = (todayTasksResult.data ?? []).reduce(
     (summary, task) => {
-      if (task.status === "done") {
+      if (isTaskCompletedStatus(task.status)) {
         return summary;
       }
       if (task.status === "in_progress") {

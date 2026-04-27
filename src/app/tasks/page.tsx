@@ -45,6 +45,7 @@ import {
 import { formatDurationLabel } from "@/lib/task-session";
 import {
   formatTaskToken,
+  isTaskCompletedStatus,
   isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
@@ -290,6 +291,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                 tasks.map((task) => {
                   const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
                   const taskArchived = isTaskArchived(task.archived_at);
+                  const taskCompleted = isTaskCompletedStatus(task.status);
 
                   return (
                     <article
@@ -404,18 +406,20 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         overflowActions={
                           !taskArchived ? (
                             <>
-                              <form action={startTimerAction}>
-                                <input type="hidden" name="taskId" value={task.id} />
-                                <input type="hidden" name="returnTo" value={returnPath} />
-                                <Button
-                                  type="submit"
-                                  size="sm"
-                                  variant="ghost"
-                                  className="w-full justify-center"
-                                >
-                                  Start timer
-                                </Button>
-                              </form>
+                              {!taskCompleted ? (
+                                <form action={startTimerAction}>
+                                  <input type="hidden" name="taskId" value={task.id} />
+                                  <input type="hidden" name="returnTo" value={returnPath} />
+                                  <Button
+                                    type="submit"
+                                    size="sm"
+                                    variant="ghost"
+                                    className="w-full justify-center"
+                                  >
+                                    Start timer
+                                  </Button>
+                                </form>
+                              ) : null}
                               <FocusPinToggleForm
                                 action={task.focus_rank ? unpinTaskAction : pinTaskAction}
                                 taskId={task.id}

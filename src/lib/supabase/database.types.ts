@@ -192,6 +192,7 @@ export type Database = {
           archived_at: string | null
           archived_by: string | null
           blocked_reason: string | null
+          completed_at: string | null
           created_at: string
           due_date: string | null
           description: string | null
@@ -211,6 +212,7 @@ export type Database = {
           archived_at?: string | null
           archived_by?: string | null
           blocked_reason?: string | null
+          completed_at?: string | null
           created_at?: string
           due_date?: string | null
           description?: string | null
@@ -230,6 +232,7 @@ export type Database = {
           archived_at?: string | null
           archived_by?: string | null
           blocked_reason?: string | null
+          completed_at?: string | null
           created_at?: string
           due_date?: string | null
           description?: string | null

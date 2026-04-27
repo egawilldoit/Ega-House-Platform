@@ -1,5 +1,6 @@
 import { isTaskPinned } from "@/lib/focus-queue";
 import { isTaskDueToday, isTaskOverdue } from "@/lib/task-due-date";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 export type TodayPlannerTask = {
   id: string;
@@ -11,6 +12,7 @@ export type TodayPlannerTask = {
   due_date: string | null;
   estimate_minutes: number | null;
   updated_at: string;
+  completed_at?: string | null;
   projectName: string;
   goalTitle: string | null;
   hasActiveSession?: boolean;
@@ -59,7 +61,7 @@ function compareTodayTaskPriority(left: TodayPlannerTask, right: TodayPlannerTas
 export function buildTodayPlanner<T extends TodayPlannerTask>(tasks: T[]): TodayPlannerData<T> {
   const buckets = tasks.reduce<TodayPlannerData<T>>(
     (result, task) => {
-      if (task.status === "done") {
+      if (isTaskCompletedStatus(task.status)) {
         if (task.completedToday) {
           result.completed.push(task);
           result.all.push(task);
@@ -103,7 +105,9 @@ export function buildTodayPlanner<T extends TodayPlannerTask>(tasks: T[]): Today
   buckets.planned.sort(compareTodayTaskPriority);
   buckets.inProgress.sort(compareTodayTaskPriority);
   buckets.blocked.sort(compareTodayTaskPriority);
-  buckets.completed.sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+  buckets.completed.sort((left, right) =>
+    (right.completed_at ?? right.updated_at).localeCompare(left.completed_at ?? left.updated_at),
+  );
   buckets.all.sort(compareTodayTaskPriority);
 
   return buckets;

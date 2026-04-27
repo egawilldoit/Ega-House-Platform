@@ -8,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
+import { formatTaskToken, getTaskStatusTone, isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 
 import type {
@@ -220,7 +220,7 @@ function getDeploymentProgressPercent(project: DashboardLinearProject | null) {
   }
 
   const doneIssues = project.issueStatusCounts.reduce((total, entry) => {
-    return ["done", "complete", "completed"].includes(entry.state.toLowerCase())
+    return isTaskCompletedStatus(entry.state)
       ? total + entry.count
       : total;
   }, 0);

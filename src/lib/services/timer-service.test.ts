@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   calculateTimerAggregates,
   getActiveTimerSession,
+  startTimerForTask,
   stopTimerSession,
   validateTimerSessionTimestampUpdateInput,
 } from "./timer-service";
@@ -567,4 +568,132 @@ test("later stop-style requests cannot extend an already stopped session", async
   assert.equal(secondStop.errorMessage, "No active timer session is available to stop.");
   assert.equal(mock.sessions[0]?.ended_at, "2026-04-21T10:00:00.000Z");
   assert.equal(mock.sessions[0]?.duration_seconds, 1800);
+});
+
+function createTimerStartSupabaseMock(options: {
+  task?: { id: string; status: string; archived_at: string | null } | null;
+  openSessions?: MockTimerSession[];
+}) {
+  const insertedSessions: Array<Record<string, unknown>> = [];
+  const openSessions = options.openSessions ?? [];
+
+  return {
+    supabase: {
+      from(table: string) {
+        if (table === "task_sessions") {
+          return {
+            select(columns: string) {
+              assert.equal(columns, "id, task_id, started_at");
+              return {
+                is(column: string, value: null) {
+                  assert.equal(column, "ended_at");
+                  assert.equal(value, null);
+                  return this;
+                },
+                order(column: string) {
+                  assert.equal(column, "started_at");
+                  return this;
+                },
+                limit() {
+                  return Promise.resolve({
+                    data: openSessions.map((session) => ({
+                      id: session.id,
+                      task_id: session.task_id,
+                      started_at: session.started_at,
+                    })),
+                    error: null,
+                  });
+                },
+              };
+            },
+            insert(payload: Record<string, unknown>) {
+              insertedSessions.push(payload);
+              return Promise.resolve({ error: null });
+            },
+          };
+        }
+
+        if (table === "tasks") {
+          return {
+            select(columns: string) {
+              assert.equal(columns, "id, status, archived_at");
+              const state = { taskId: "" };
+              return {
+                eq(column: string, value: string) {
+                  assert.equal(column, "id");
+                  state.taskId = value;
+                  return this;
+                },
+                maybeSingle: async () => ({
+                  data:
+                    options.task && options.task.id === state.taskId
+                      ? options.task
+                      : null,
+                  error: null,
+                }),
+              };
+            },
+          };
+        }
+
+        throw new Error(`Unexpected table: ${table}`);
+      },
+    } as never,
+    insertedSessions,
+  };
+}
+
+test("startTimerForTask rejects done and compatibility completed statuses", async () => {
+  for (const status of ["done", "complete", "completed"]) {
+    const mock = createTimerStartSupabaseMock({
+      task: { id: "task-1", status, archived_at: null },
+    });
+
+    const result = await startTimerForTask("task-1", {
+      supabase: mock.supabase,
+      nowIso: "2026-04-21T10:00:00.000Z",
+    });
+
+    assert.equal(result.errorMessage, "Completed tasks cannot start timers.");
+    assert.equal(mock.insertedSessions.length, 0);
+  }
+});
+
+test("startTimerForTask rejects archived tasks", async () => {
+  const mock = createTimerStartSupabaseMock({
+    task: {
+      id: "task-1",
+      status: "todo",
+      archived_at: "2026-04-21T09:00:00.000Z",
+    },
+  });
+
+  const result = await startTimerForTask("task-1", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, "Archived tasks cannot start timers.");
+  assert.equal(mock.insertedSessions.length, 0);
+});
+
+test("startTimerForTask still starts for todo and in-progress tasks", async () => {
+  for (const status of ["todo", "in_progress"]) {
+    const mock = createTimerStartSupabaseMock({
+      task: { id: "task-1", status, archived_at: null },
+    });
+
+    const result = await startTimerForTask("task-1", {
+      supabase: mock.supabase,
+      nowIso: "2026-04-21T10:00:00.000Z",
+    });
+
+    assert.equal(result.errorMessage, null);
+    assert.deepEqual(mock.insertedSessions, [
+      {
+        task_id: "task-1",
+        started_at: "2026-04-21T10:00:00.000Z",
+      },
+    ]);
+  }
 });

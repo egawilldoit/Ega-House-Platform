@@ -86,25 +86,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
-  const updateResult = await updateTaskInline(inlineValidation.data, {
-    supabase: authResult.supabase,
-  });
+  const updateResult = await updateTaskInline(
+    {
+      ...inlineValidation.data,
+      description: validationResult.data.description,
+    },
+    {
+      supabase: authResult.supabase,
+    },
+  );
   if (updateResult.errorMessage) {
     return mobileErrorResponse("INTERNAL_ERROR", updateResult.errorMessage, 500);
-  }
-
-  if (validationResult.data.description !== undefined) {
-    const { error } = await authResult.supabase
-      .from("tasks")
-      .update({
-        description: validationResult.data.description,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", existingResult.data.id);
-
-    if (error) {
-      return mobileErrorResponse("INTERNAL_ERROR", "Unable to update task description right now.", 500);
-    }
   }
 
   const updatedResult = await getTaskById(existingResult.data.id, {

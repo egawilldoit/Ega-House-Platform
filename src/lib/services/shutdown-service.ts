@@ -2,6 +2,7 @@ import { getWeekBounds, shiftIsoDateByDays } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
 import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import {
   getTodayPlannerData,
   type TodayPlannerData,
@@ -96,7 +97,7 @@ function buildShortlist(
   const suggestionSources = [...todayData.suggestions.pinned, ...todayData.suggestions.inProgress];
 
   for (const task of suggestionSources) {
-    if (task.status === "done" || carryForwardIds.has(task.id)) {
+    if (isTaskCompletedStatus(task.status) || carryForwardIds.has(task.id)) {
       continue;
     }
 
@@ -105,7 +106,7 @@ function buildShortlist(
 
   for (const task of dueSoonTasks) {
     if (
-      task.status === "done" ||
+      isTaskCompletedStatus(task.status) ||
       carryForwardIds.has(task.id) ||
       task.plannedForDate === tomorrowDate
     ) {

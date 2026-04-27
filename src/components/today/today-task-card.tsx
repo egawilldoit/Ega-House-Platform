@@ -11,8 +11,9 @@ import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatTaskToken, TASK_STATUS_VALUES } from "@/lib/task-domain";
+import { formatTaskToken, isTaskCompletedStatus, TASK_STATUS_VALUES } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { ChevronDown, ExternalLink } from "lucide-react";
@@ -51,6 +52,10 @@ export function getTodayTaskStatusOptions(task: TodayPlannerTask) {
   );
 }
 
+export function canShowTodayTaskStartTimer(task: Pick<TodayPlannerTask, "status">) {
+  return !isTaskCompletedStatus(task.status);
+}
+
 export function TodayTaskCard({
   task,
   returnTo,
@@ -61,6 +66,7 @@ export function TodayTaskCard({
   const cardMeta = getTodayTaskCardMeta(task);
   const statusOptions = getTodayTaskStatusOptions(task);
   const description = task.description?.trim();
+  const taskIsCompleted = !canShowTodayTaskStartTimer(task);
 
   return (
     <article
@@ -108,7 +114,7 @@ export function TodayTaskCard({
         <div className="today-task-primary-actions">
           {isActiveTimerTask ? (
             <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm" />
-          ) : (
+          ) : !taskIsCompleted ? (
             <form action={startTimerAction}>
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="returnTo" value={returnTo} />
@@ -116,15 +122,15 @@ export function TodayTaskCard({
                 Start timer
               </Button>
             </form>
-          )}
+          ) : null}
 
-          {task.status !== "done" ? (
+          {!taskIsCompleted ? (
             <form action={completeTodayTaskAction}>
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="returnTo" value={returnTo} />
-              <Button type="submit" size="sm" variant="muted">
+              <PendingSubmitButton type="submit" size="sm" variant="muted" pendingLabel="Marking done...">
                 Mark done
-              </Button>
+              </PendingSubmitButton>
             </form>
           ) : null}
         </div>
@@ -151,28 +157,35 @@ export function TodayTaskCard({
                     </option>
                   ))}
                 </select>
-                <Button type="submit" size="sm" variant="ghost" className="w-full justify-center">
+                <PendingSubmitButton
+                  type="submit"
+                  size="sm"
+                  variant="ghost"
+                  className="w-full justify-center"
+                  pendingLabel="Saving..."
+                >
                   Set status
-                </Button>
+                </PendingSubmitButton>
               </form>
 
               {cardMeta.canRemoveFromToday ? (
                 <form action={removeTaskFromTodayAction}>
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <Button
+                  <PendingSubmitButton
                     type="submit"
                     size="sm"
                     variant="ghost"
                     className="w-full justify-center"
                     aria-label={`${cardMeta.removeLabel} for ${task.title}`}
+                    pendingLabel="Clearing..."
                   >
                     {cardMeta.removeLabel}
-                  </Button>
+                  </PendingSubmitButton>
                 </form>
               ) : null}
 
-              {task.status !== "blocked" && task.status !== "done" ? (
+              {task.status !== "blocked" && !taskIsCompleted ? (
                 <form action={markTodayTaskBlockedAction} className="space-y-2">
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />

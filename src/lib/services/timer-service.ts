@@ -6,6 +6,7 @@ import {
   getTaskSessionDurationSeconds,
   getTaskTotalDurationMap,
 } from "@/lib/task-session";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -447,6 +448,28 @@ export async function startTimerForTask(
     return { errorMessage: "A timer is already running. Stop it first." };
   }
 
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select("id, status, archived_at")
+    .eq("id", normalizedTaskId)
+    .maybeSingle();
+
+  if (taskError) {
+    return { errorMessage: "Unable to load task before starting the timer." };
+  }
+
+  if (!task) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  if (task.archived_at) {
+    return { errorMessage: "Archived tasks cannot start timers." };
+  }
+
+  if (isTaskCompletedStatus(task.status)) {
+    return { errorMessage: "Completed tasks cannot start timers." };
+  }
+
   const { error: insertError } = await supabase.from("task_sessions").insert({
     task_id: normalizedTaskId,
     started_at: options?.nowIso ?? new Date().toISOString(),
@@ -658,7 +681,6 @@ export async function getTimerWorkspaceData(options?: {
       supabase
         .from("tasks")
         .select("id, title, status, projects(name, slug)")
-        .neq("status", "done")
         .is("archived_at", null)
         .order("updated_at", { ascending: false })
         .limit(100),
@@ -730,7 +752,7 @@ export async function getTimerWorkspaceData(options?: {
     );
 
   return {
-    tasks: tasksResult.data,
+    tasks: tasksResult.data.filter((task) => !isTaskCompletedStatus(task.status)),
     openSessions: openSessionsResult.data,
     todayTaskBreakdown,
     todayTotalDurationSeconds,

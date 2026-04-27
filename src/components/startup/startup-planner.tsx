@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/review-week";
 import type { StartupPlannerData, StartupPlannerTask } from "@/lib/services/startup-planner-service";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 
 import { getStartupPlannerSectionState } from "./startup-planner-sections";
@@ -72,7 +73,7 @@ export function StartupPlanner({
   const sectionState = getStartupPlannerSectionState(data);
   const reviewSource = data.review.currentWeek ?? data.review.latest;
   const shortlistIds = data.planThisWeekTasks
-    .filter((task) => !task.isPlannedForToday && task.status !== "done")
+    .filter((task) => !task.isPlannedForToday && !isTaskCompletedStatus(task.status))
     .slice(0, 4)
     .map((task) => task.id)
     .join(",");

@@ -80,3 +80,9 @@ export function isMissingTasksArchivedAtColumn(
 ) {
   return isMissingSupabaseColumn(error, "public.tasks", "archived_at");
 }
+
+export function isMissingTasksCompletedAtColumn(
+  error: SupabaseErrorLike | null | undefined,
+) {
+  return isMissingSupabaseColumn(error, "public.tasks", "completed_at");
+}

@@ -4,11 +4,13 @@ import { type ReactNode, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Textarea } from "@/components/ui/textarea";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
   formatTaskToken,
+  isTaskCompletedStatus,
 } from "@/lib/task-domain";
 
 type InlineTaskUpdateFormProps = {
@@ -49,6 +51,7 @@ export function InlineTaskUpdateForm({
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
   const updateFormId = `task-update-${taskId}`;
   const isArchived = Boolean(archivedAt);
+  const isCompleted = isTaskCompletedStatus(defaultStatus);
 
   useEffect(() => {
     setSelectedStatus(defaultStatus);
@@ -141,7 +144,7 @@ export function InlineTaskUpdateForm({
       </form>
 
       <div className="flex w-full flex-wrap items-center justify-end gap-2">
-        {defaultStatus !== "done" ? (
+        {!isCompleted ? (
           <form action={action}>
             <input type="hidden" name="taskId" value={taskId} />
             <input type="hidden" name="returnTo" value={returnTo} />
@@ -154,9 +157,9 @@ export function InlineTaskUpdateForm({
               value={defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : ""}
             />
             <input type="hidden" name="blockedReason" value="" />
-            <Button size="sm" type="submit" variant="muted">
+            <PendingSubmitButton size="sm" type="submit" variant="muted" pendingLabel="Marking done...">
               Mark done
-            </Button>
+            </PendingSubmitButton>
           </form>
         ) : null}
 
@@ -181,9 +184,9 @@ export function InlineTaskUpdateForm({
         ) : null}
 
         {!isArchived ? (
-          <Button size="sm" type="submit" form={updateFormId}>
+          <PendingSubmitButton size="sm" type="submit" form={updateFormId} pendingLabel="Saving...">
             Save
-          </Button>
+          </PendingSubmitButton>
         ) : null}
 
         <details className="action-overflow">

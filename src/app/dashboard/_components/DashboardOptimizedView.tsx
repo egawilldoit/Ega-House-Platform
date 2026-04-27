@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -47,6 +48,7 @@ type DashboardOptimizedViewProps = {
   urgentCount: number;
   activeProjectCount: number;
   totalProjectCount: number;
+  stoppedTaskId: string | null;
 };
 
 function getGreeting() {
@@ -411,6 +413,7 @@ export function DashboardOptimizedView({
   urgentCount,
   activeProjectCount,
   totalProjectCount,
+  stoppedTaskId,
 }: DashboardOptimizedViewProps) {
   const {
     health,
@@ -425,6 +428,10 @@ export function DashboardOptimizedView({
   } = data;
 
   const tasks = todayPlanner.data?.all ?? [];
+  const stoppedTaskTitle =
+    tasks.find((task) => task.id === stoppedTaskId)?.title ??
+    (activeTimer.data?.taskId === stoppedTaskId ? activeTimer.data.taskTitle : "this task");
+  const showStoppedTaskPrompt = Boolean(!activeTimer.data && stoppedTaskId);
   const planner = todayPlanner.data;
   const goalItems = goals.data ?? [];
   const projectItems = projectStatuses.data ?? [];
@@ -466,6 +473,14 @@ export function DashboardOptimizedView({
         channelPrefix="dashboard"
         tables={["task_sessions", "tasks"]}
       />
+
+      {showStoppedTaskPrompt ? (
+        <TimerStopOutcomePrompt
+          taskId={stoppedTaskId ?? ""}
+          taskTitle={stoppedTaskTitle}
+          returnTo="/dashboard"
+        />
+      ) : null}
 
       <section className="ega-dashboard-hero ega-dashboard-hero-compact">
         <div className="ega-dashboard-hero-copy relative overflow-hidden">

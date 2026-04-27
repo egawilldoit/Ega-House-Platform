@@ -1,4 +1,5 @@
 import { getTaskDueDateState, getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 type FocusPriority = "low" | "medium" | "high" | "urgent";
 
@@ -34,7 +35,6 @@ export type FocusPanelCandidateState =
     }
   | { state: "empty" };
 
-const COMPLETED_STATUSES = new Set(["done", "complete", "completed"]);
 const BLOCKED_STATUSES = new Set(["blocked"]);
 
 function normalizeToken(value: string | null | undefined) {
@@ -44,7 +44,7 @@ function normalizeToken(value: string | null | undefined) {
 }
 
 function isCompletedStatus(status: string | null | undefined) {
-  return COMPLETED_STATUSES.has(normalizeToken(status));
+  return isTaskCompletedStatus(status);
 }
 
 function isBlockedStatus(status: string | null | undefined) {

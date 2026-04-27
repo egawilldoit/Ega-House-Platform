@@ -1,6 +1,11 @@
 import { createClient } from "@/lib/supabase/server";
 import { getTaskDueDateState, getTodayLocalIsoDate } from "@/lib/task-due-date";
-import { TASK_STATUS_VALUES, isTaskStatus, type TaskStatus } from "@/lib/task-domain";
+import {
+  TASK_STATUS_VALUES,
+  isTaskCompletedStatus,
+  isTaskStatus,
+  type TaskStatus,
+} from "@/lib/task-domain";
 import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import {
   getActiveTimerSession,
@@ -20,9 +25,9 @@ const PRIORITY_RANK: Record<string, number> = {
   low: 3,
 };
 const TODAY_TASK_SELECT_WITH_BLOCKED_REASON =
-  "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)";
+  "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, completed_at, projects(name, slug), goals(title)";
 const TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON =
-  "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, projects(name, slug), goals(title)";
+  "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, completed_at, projects(name, slug), goals(title)";
 
 type TodayTaskRow = {
   id: string;
@@ -36,6 +41,7 @@ type TodayTaskRow = {
   focus_rank: number | null;
   planned_for_date: string | null;
   updated_at: string;
+  completed_at: string | null;
   projects: { name: string; slug: string } | null;
   goals: { title: string } | null;
 };
@@ -52,6 +58,7 @@ export type TodayPlannerTask = {
   focusRank: number | null;
   plannedForDate: string | null;
   updatedAt: string;
+  completedAt: string | null;
   projectName: string;
   projectSlug: string | null;
   goalTitle: string | null;
@@ -111,6 +118,7 @@ function mapTaskRow(row: TodayTaskRow, activeTaskId: string | null, today: strin
     focusRank: row.focus_rank,
     plannedForDate: row.planned_for_date,
     updatedAt: row.updated_at,
+    completedAt: row.completed_at,
     projectName: row.projects?.name ?? "Unknown project",
     projectSlug: row.projects?.slug ?? null,
     goalTitle: row.goals?.title ?? null,
@@ -300,6 +308,7 @@ async function queryTodayTaskRowsWithBlockedReasonFallback(
     data: (fallbackResult.data ?? []).map((task: Omit<TodayTaskRow, "blocked_reason">) => ({
       ...task,
       blocked_reason: null,
+      completed_at: task.completed_at ?? null,
     })),
     errorMessage: null,
   };
@@ -364,7 +373,7 @@ export async function getTodayPlannerData(options?: {
     .filter((task) => task.status === "in_progress")
     .sort(sortTodayTasks);
   const blocked = selectedTasks.filter((task) => task.status === "blocked").sort(sortTodayTasks);
-  const completed = selectedTasks.filter((task) => task.status === "done").sort(sortTodayTasks);
+  const completed = selectedTasks.filter((task) => isTaskCompletedStatus(task.status)).sort(sortTodayTasks);
   const selectedCount = selectedTasks.length;
   const clearableCompletedCount = completed.filter((task) => task.isPlannedForToday).length;
   const overdueCount = selectedTasks.filter((task) => task.dueBucket === "overdue").length;
@@ -374,7 +383,7 @@ export async function getTodayPlannerData(options?: {
     rows
       .map((row) => mapTaskRow(row, activeTaskId, today))
       .filter((task): task is TodayPlannerTask => task !== null)
-      .filter((task) => !selectedTaskIds.has(task.id) && task.status !== "done")
+      .filter((task) => !selectedTaskIds.has(task.id) && !isTaskCompletedStatus(task.status))
       .sort(sortSuggestionTasks)
       .slice(0, SUGGESTION_LIMIT);
 
@@ -387,7 +396,7 @@ export async function getTodayPlannerData(options?: {
     ...selectedTasks,
     ...suggestions.pinned,
     ...suggestions.inProgress,
-  ]).filter((task) => task.status !== "done" && task.status !== "blocked");
+  ]).filter((task) => !isTaskCompletedStatus(task.status) && task.status !== "blocked");
   const focusQueue = actionableCandidates.slice(0, FOCUS_QUEUE_LIMIT);
   const startHere = focusQueue[0] ?? null;
   const plannedToday = selectedTasks
@@ -604,7 +613,7 @@ export async function clearCompletedFromToday(options?: {
       planned_for_date: null,
       updated_at: new Date().toISOString(),
     })
-    .eq("status", "done")
+    .in("status", ["done", "complete", "completed"])
     .eq("planned_for_date", today);
 
   if (error) {

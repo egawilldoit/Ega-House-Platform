@@ -8,9 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import type { ActiveTimerSession } from "@/lib/services/timer-service";
-import { formatTaskToken } from "@/lib/task-domain";
+import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { getTodayTaskHref } from "@/components/today/today-task-card";
 import { Clock3, ExternalLink, ListChecks, Play, Radio, Square } from "lucide-react";
@@ -27,6 +28,7 @@ function TodayCockpitActions({
   activeTimerSessionId,
 }: TodayCockpitActionProps) {
   const isActiveTimerTask = task.hasActiveTimer ? activeTimerSessionId : null;
+  const taskIsCompleted = isTaskCompletedStatus(task.status);
 
   return (
     <div className="today-cockpit-actions">
@@ -40,7 +42,7 @@ function TodayCockpitActions({
           <Square className="h-3.5 w-3.5" aria-hidden="true" />
           Stop timer
         </TimerStopForm>
-      ) : (
+      ) : !taskIsCompleted ? (
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
@@ -49,15 +51,21 @@ function TodayCockpitActions({
             Start timer
           </Button>
         </form>
-      )}
+      ) : null}
 
-      {task.status !== "done" ? (
+      {!taskIsCompleted ? (
         <form action={completeTodayTaskAction}>
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
-          <Button type="submit" size="sm" variant="muted" className="today-cockpit-action-button">
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="muted"
+            className="today-cockpit-action-button"
+            pendingLabel="Saving..."
+          >
             Done
-          </Button>
+          </PendingSubmitButton>
         </form>
       ) : null}
 

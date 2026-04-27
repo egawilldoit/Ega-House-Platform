@@ -63,12 +63,31 @@ type MockSession = {
   updated_at?: string | null;
 };
 
+type MockTask = {
+  id: string;
+  status: string;
+  completed_at: string | null;
+  archived_at: string | null;
+};
+
 function createTaskInlineSupabaseMock(options?: {
+  tasks?: MockTask[];
   sessions?: MockSession[];
   failSessionLookup?: boolean;
   failSessionUpdateId?: string;
   failTaskUpdate?: boolean;
+  taskUpdateReturnsNoRow?: boolean;
 }) {
+  const tasks = [
+    ...(options?.tasks ?? [
+      {
+        id: "task-1",
+        status: "todo",
+        completed_at: null,
+        archived_at: null,
+      },
+    ]),
+  ];
   const sessions = [...(options?.sessions ?? [])];
   const taskUpdateCalls: Array<{ payload: Record<string, unknown>; taskId: string }> = [];
   const sessionUpdateCalls: Array<{ payload: Record<string, unknown>; sessionId: string }> = [];
@@ -193,17 +212,61 @@ function createTaskInlineSupabaseMock(options?: {
 
       if (table === "tasks") {
         return {
-          update(payload: Record<string, unknown>) {
+          select(columns: string) {
+            assert.equal(columns, "id, status, completed_at, archived_at");
+            const state = { taskId: "" };
+
             return {
               eq(column: string, value: string) {
                 assert.equal(column, "id");
-                taskUpdateCalls.push({ payload, taskId: value });
+                state.taskId = value;
+                return this;
+              },
+              maybeSingle: async () => ({
+                data: tasks.find((task) => task.id === state.taskId) ?? null,
+                error: null,
+              }),
+            };
+          },
+          update(payload: Record<string, unknown>) {
+            const state = { taskId: "" };
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "id");
+                state.taskId = value;
+                return this;
+              },
+              select(columns: string) {
+                assert.equal(columns, "id");
+                return {
+                  maybeSingle: async () => {
+                    taskUpdateCalls.push({ payload, taskId: state.taskId });
 
-                if (options?.failTaskUpdate) {
-                  return Promise.resolve({ error: { message: "task update failed" } });
-                }
+                    if (options?.failTaskUpdate) {
+                      return { data: null, error: { message: "task update failed" } };
+                    }
 
-                return Promise.resolve({ error: null });
+                    if (options?.taskUpdateReturnsNoRow) {
+                      return { data: null, error: null };
+                    }
+
+                    const taskIndex = tasks.findIndex((task) => task.id === state.taskId);
+                    if (taskIndex < 0) {
+                      return { data: null, error: null };
+                    }
+
+                    tasks[taskIndex] = {
+                      ...tasks[taskIndex],
+                      status: String(payload.status ?? tasks[taskIndex].status),
+                      completed_at:
+                        payload.completed_at === undefined
+                          ? tasks[taskIndex].completed_at
+                          : (payload.completed_at as string | null),
+                    };
+
+                    return { data: { id: state.taskId }, error: null };
+                  },
+                };
               },
             };
           },
@@ -216,6 +279,7 @@ function createTaskInlineSupabaseMock(options?: {
 
   return {
     supabase: supabase as never,
+    tasks,
     sessions,
     taskUpdateCalls,
     sessionUpdateCalls,
@@ -257,6 +321,121 @@ test("marking done without an active session updates task status normally", asyn
   assert.equal(mock.sessionUpdateCalls.length, 0);
   assert.equal(mock.taskUpdateCalls.length, 1);
   assert.equal(mock.taskUpdateCalls[0]?.payload.status, "done");
+  assert.equal(mock.taskUpdateCalls[0]?.payload.completed_at, "2026-04-21T10:00:00.000Z");
+});
+
+test("marking an already done task done preserves completed_at", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "done",
+        completed_at: "2026-04-20T12:00:00.000Z",
+        archived_at: null,
+      },
+    ],
+    sessions: [
+      {
+        id: "session-open",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:30:00.000Z",
+        ended_at: null,
+      },
+    ],
+  });
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.getSessionLookupCount(), 0);
+  assert.equal(mock.sessionUpdateCalls.length, 0);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.completed_at, "2026-04-20T12:00:00.000Z");
+});
+
+test("editing a done task while it stays done preserves completed_at", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "completed",
+        completed_at: "2026-04-19T08:00:00.000Z",
+        archived_at: null,
+      },
+    ],
+    sessions: [
+      {
+        id: "session-open",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:30:00.000Z",
+        ended_at: null,
+      },
+    ],
+  });
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "high",
+      dueDate: "2026-04-30",
+      estimateMinutes: 45,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.getSessionLookupCount(), 0);
+  assert.equal(mock.sessionUpdateCalls.length, 0);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.completed_at, "2026-04-19T08:00:00.000Z");
+  assert.equal(mock.taskUpdateCalls[0]?.payload.priority, "high");
+});
+
+test("reopening a done task clears completed_at", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "done",
+        completed_at: "2026-04-20T12:00:00.000Z",
+        archived_at: null,
+      },
+    ],
+  });
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.completed_at, null);
 });
 
 test("marking done with an active session stops it before updating the task", async () => {
@@ -287,6 +466,7 @@ test("marking done with an active session stops it before updating the task", as
   );
 
   assert.equal(result.errorMessage, null);
+  assert.equal(mock.getSessionLookupCount(), 1);
   assert.equal(mock.sessionUpdateCalls.length, 1);
   assert.equal(mock.sessionUpdateCalls[0]?.sessionId, "session-open");
   assert.deepEqual(mock.sessionUpdateCalls[0]?.payload, {
@@ -405,4 +585,27 @@ test("non-done inline status updates do not attempt to stop timer sessions", asy
   assert.equal(mock.getSessionLookupCount(), 0);
   assert.equal(mock.sessionUpdateCalls.length, 0);
   assert.equal(mock.taskUpdateCalls.length, 1);
+});
+
+test("no-row task update failure returns a clear error", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    taskUpdateReturnsNoRow: true,
+  });
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "in_progress",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, "Task was not found or is no longer available.");
 });

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
-import { formatTaskToken } from "@/lib/task-domain";
+import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
 import { ExternalLink, Lightbulb, PlusCircle, Sparkles } from "lucide-react";
 
 type SuggestionGroup = {
@@ -43,6 +43,7 @@ function SuggestionCard({
   activeTimerSessionId: string | null;
 }) {
   const isActiveTimerTask = task.hasActiveTimer ? activeTimerSessionId : null;
+  const taskIsCompleted = isTaskCompletedStatus(task.status);
 
   return (
     <article className="today-suggestion-card">
@@ -70,7 +71,7 @@ function SuggestionCard({
 
         {isActiveTimerTask ? (
           <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm" />
-        ) : (
+        ) : !taskIsCompleted ? (
           <form action={startTimerAction}>
             <input type="hidden" name="taskId" value={task.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
@@ -78,7 +79,7 @@ function SuggestionCard({
               Start timer
             </Button>
           </form>
-        )}
+        ) : null}
 
         <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />

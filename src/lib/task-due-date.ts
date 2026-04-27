@@ -1,9 +1,11 @@
+import { isTaskCompletedStatus } from "@/lib/task-domain";
+
 function padDatePart(value: number) {
   return String(value).padStart(2, "0");
 }
 
 function isTaskComplete(status: string | null | undefined) {
-  return status === "done";
+  return isTaskCompletedStatus(status);
 }
 
 export function getTodayLocalIsoDate(now = new Date()) {

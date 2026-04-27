@@ -18,7 +18,9 @@ import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-pr
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { formatTaskDueDate } from "@/lib/task-due-date";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getTodayPlannerData } from "@/lib/services/today-planner-service";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
@@ -75,7 +77,7 @@ export default async function TodayPage({
   const returnTo = "/today";
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const plannedTodayActionable = todayData.plannedToday.filter(
-    (task) => task.status !== "blocked" && task.status !== "done",
+    (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
   );
   const stoppedTaskTitle = [
     ...todayData.plannedToday,
@@ -260,12 +262,15 @@ export default async function TodayPage({
                   headerActions={todayData.summary.clearableCompletedCount > 0 ? (
                     <form action={clearCompletedFromTodayAction}>
                       <input type="hidden" name="returnTo" value={returnTo} />
-                      <button
+                      <PendingSubmitButton
                         type="submit"
+                        variant="muted"
+                        size="sm"
                         className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs"
+                        pendingLabel="Clearing..."
                       >
                         Clear completed from Today
-                      </button>
+                      </PendingSubmitButton>
                     </form>
                   ) : null}
                   emptyState={

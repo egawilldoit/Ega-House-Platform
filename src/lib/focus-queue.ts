@@ -1,11 +1,11 @@
+import { isTaskCompletedStatus } from "@/lib/task-domain";
+
 type FocusQueueTask = {
   id: string;
   focus_rank: number | null;
   status: string;
   updated_at: string;
 };
-
-const COMPLETED_TASK_STATUSES = new Set(["done", "complete", "completed"]);
 
 export function isTaskPinned(focusRank: number | null | undefined) {
   return typeof focusRank === "number" && Number.isFinite(focusRank);
@@ -30,6 +30,6 @@ export function sortFocusQueueTasks<T extends { focus_rank: number | null; updat
 export function getNextFocusQueueTaskId(tasks: FocusQueueTask[]) {
   const queue = sortFocusQueueTasks(tasks);
 
-  const nextOpenTask = queue.find((task) => !COMPLETED_TASK_STATUSES.has(task.status));
+  const nextOpenTask = queue.find((task) => !isTaskCompletedStatus(task.status));
   return nextOpenTask?.id ?? queue[0]?.id ?? null;
 }

@@ -1,18 +1,13 @@
+import { isTaskCompletedStatus } from "@/lib/task-domain";
+
 type TimerTaskOption = {
   id: string;
   title: string;
   status: string;
 };
 
-function normalizeStatus(status: string | null | undefined) {
-  return String(status ?? "")
-    .trim()
-    .toLowerCase();
-}
-
 export function isTaskCompletedForTimerStart(status: string | null | undefined) {
-  const normalized = normalizeStatus(status);
-  return normalized === "done" || normalized === "complete" || normalized === "completed";
+  return isTaskCompletedStatus(status);
 }
 
 export function getTimerStartTaskOptions<T extends TimerTaskOption>(tasks: readonly T[]) {

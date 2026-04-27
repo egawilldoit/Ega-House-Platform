@@ -1,4 +1,5 @@
 import type { StartupPlannerData, StartupPlannerTask } from "@/lib/services/startup-planner-service";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 export type StartupPlannerSectionState = {
   blockersCount: number;
@@ -10,7 +11,7 @@ export type StartupPlannerSectionState = {
 };
 
 function isActionableTask(task: StartupPlannerTask) {
-  return task.status !== "done";
+  return !isTaskCompletedStatus(task.status);
 }
 
 export function getStartupPlannerSectionState(data: StartupPlannerData): StartupPlannerSectionState {

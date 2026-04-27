@@ -3,7 +3,11 @@ import test from "node:test";
 
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 
-import { getTodayTaskCardMeta, getTodayTaskStatusOptions } from "./today-task-card";
+import {
+  canShowTodayTaskStartTimer,
+  getTodayTaskCardMeta,
+  getTodayTaskStatusOptions,
+} from "./today-task-card";
 
 function createTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask {
   return {
@@ -18,6 +22,7 @@ function createTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask
     focusRank: null,
     plannedForDate: "2026-04-20",
     updatedAt: "2026-04-20T10:00:00.000Z",
+    completedAt: null,
     projectName: "Project",
     projectSlug: "project",
     goalTitle: null,
@@ -78,4 +83,13 @@ test("today status options include blocked for blocked tasks", () => {
   );
 
   assert.equal(options.includes("blocked"), true);
+});
+
+test("completed Today cards do not expose start timer eligibility", () => {
+  assert.equal(canShowTodayTaskStartTimer(createTask({ status: "done" })), false);
+  assert.equal(
+    canShowTodayTaskStartTimer(createTask({ status: "completed" as never })),
+    false,
+  );
+  assert.equal(canShowTodayTaskStartTimer(createTask({ status: "todo" })), true);
 });

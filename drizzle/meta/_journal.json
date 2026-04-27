@@ -134,6 +134,13 @@
       "when": 1777118008712,
       "tag": "0018_petite_vulcan",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1777248000000,
+      "tag": "0019_add_tasks_completed_at",
+      "breakpoints": true
     }
   ]
 }

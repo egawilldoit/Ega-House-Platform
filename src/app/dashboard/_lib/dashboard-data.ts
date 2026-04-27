@@ -2,6 +2,7 @@ import { type GoalHealth, toGoalHealthOrNull } from "@/lib/goal-health";
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { buildTodayPlanner } from "@/lib/today-planner";
 import {
   getCurrentDayWindow,
@@ -63,6 +64,7 @@ export type DashboardTodayTask = {
   dueDate: string | null;
   estimateMinutes: number | null;
   updatedAt: string;
+  completedAt: string | null;
   projectName: string;
   goalTitle: string | null;
 };
@@ -216,7 +218,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
     const { data, error } = await supabase
       .from("tasks")
       .select(
-        "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
+        "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, focus_rank, projects(name), goals(title)",
       )
       .gte("updated_at", startIso)
       .lt("updated_at", endIso)
@@ -238,7 +240,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
             await supabase
               .from("tasks")
               .select(
-                "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
+                "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, focus_rank, projects(name), goals(title)",
               )
               .order("updated_at", { ascending: false })
               .limit(TODAY_TASK_LIMIT)
@@ -255,6 +257,7 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
         dueDate: task.due_date,
         estimateMinutes: task.estimate_minutes,
         updatedAt: task.updated_at,
+        completedAt: task.completed_at ?? null,
         projectName: task.projects?.name ?? "Unknown project",
         goalTitle: task.goals?.title ?? null,
       })),
@@ -284,7 +287,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
       supabase
         .from("tasks")
         .select(
-          "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)",
+          "id, title, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, focus_rank, projects(name), goals(title)",
         )
         .order("updated_at", { ascending: false })
         .limit(120),
@@ -331,11 +334,14 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
         due_date: task.due_date,
         estimate_minutes: task.estimate_minutes,
         updated_at: task.updated_at,
+        completed_at: task.completed_at ?? null,
         projectName: task.projects?.name ?? "Unknown project",
         goalTitle: task.goals?.title ?? null,
         hasActiveSession: task.id === activeTaskId,
         trackedTodaySeconds: trackedTodaySecondsByTask[task.id] ?? 0,
-        completedToday: task.status === "done" && task.updated_at.slice(0, 10) === todayDate,
+        completedToday:
+          isTaskCompletedStatus(task.status) &&
+          (task.completed_at ?? task.updated_at).slice(0, 10) === todayDate,
       })),
     );
 
@@ -344,6 +350,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
       due_date,
       estimate_minutes,
       updated_at,
+      completed_at,
       ...task
     }: (typeof planner.all)[number]): DashboardTodayTask => ({
       ...task,
@@ -352,6 +359,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
       dueDate: due_date,
       estimateMinutes: estimate_minutes,
       updatedAt: updated_at,
+      completedAt: completed_at ?? null,
     });
 
     return {
@@ -399,7 +407,7 @@ async function getFocusPanel(): Promise<PanelResult<FocusPanelCandidateState>> {
           priority: task.priority,
           dueDate: task.due_date,
           focusRank: task.focus_rank,
-          updatedAt: task.updated_at,
+        updatedAt: task.updated_at,
           estimateMinutes: task.estimate_minutes,
           projectName: task.projects?.name ?? "Unknown project",
           projectSlug: task.projects?.slug ?? null,
@@ -532,7 +540,7 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
 
       const bucket = allCounts[goalId] ?? { total: 0, completed: 0 };
       bucket.total += 1;
-      if (task.status === "done") {
+      if (isTaskCompletedStatus(task.status)) {
         bucket.completed += 1;
       }
       allCounts[goalId] = bucket;
