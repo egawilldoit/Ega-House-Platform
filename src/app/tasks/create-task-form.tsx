@@ -20,30 +20,44 @@ type CreateTaskFormProps = {
   returnTo?: string;
 };
 
+export function buildCreateTaskFormInitialState({
+  projects,
+  projectId,
+  returnTo = "/tasks",
+}: Pick<CreateTaskFormProps, "projects" | "projectId" | "returnTo">) {
+  const selectedProjectId = projectId ?? projects[0]?.id ?? "";
+
+  return {
+    isProjectScoped: Boolean(projectId),
+    initialState: {
+      error: null,
+      values: {
+        title: "",
+        projectId: selectedProjectId,
+        goalId: "",
+        description: "",
+        blockedReason: "",
+        status: "todo",
+        priority: "medium",
+        dueDate: "",
+        estimateMinutes: "",
+        returnTo,
+      },
+    } satisfies CreateTaskFormState,
+  };
+}
+
 export function CreateTaskForm({
   projects,
   goals,
   projectId,
   returnTo = "/tasks",
 }: CreateTaskFormProps) {
-  const selectedProjectId = projectId ?? projects[0]?.id ?? "";
-  const isProjectScoped = Boolean(projectId);
-
-  const initialState: CreateTaskFormState = {
-    error: null,
-    values: {
-      title: "",
-      projectId: selectedProjectId,
-      goalId: "",
-      description: "",
-      blockedReason: "",
-      status: "todo",
-      priority: "medium",
-      dueDate: "",
-      estimateMinutes: "",
-      returnTo,
-    },
-  };
+  const { initialState, isProjectScoped } = buildCreateTaskFormInitialState({
+    projects,
+    projectId,
+    returnTo,
+  });
 
   const [state, formAction, isPending] = useActionState(
     createTaskAction,

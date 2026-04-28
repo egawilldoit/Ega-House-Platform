@@ -19,6 +19,7 @@ import {
   type TaskSavedViewFilters,
 } from "@/lib/task-saved-views";
 import { formatTaskToken } from "@/lib/task-domain";
+import type { TaskLayoutMode } from "@/lib/task-list";
 import { Bookmark } from "lucide-react";
 
 type TaskSavedViewRow = Pick<
@@ -36,18 +37,23 @@ type TaskSavedViewRow = Pick<
 type TaskSavedViewsPanelProps = {
   currentFilters: TaskSavedViewFilters;
   savedViews: TaskSavedViewRow[];
+  activeLayout?: TaskLayoutMode;
   projectOptions: Array<{ id: string; name: string }>;
   goalOptions: Array<{ id: string; title: string }>;
   feedback?: { error?: string | null; success?: string | null };
 };
 
-function buildCurrentReturnPath(filters: TaskSavedViewFilters) {
+export function buildTaskSavedViewCurrentReturnPath(
+  filters: TaskSavedViewFilters,
+  activeLayout?: TaskLayoutMode,
+) {
   return buildTaskFilterReturnPath("/tasks", {
     status: filters.status,
     project: filters.projectId,
     goal: filters.goalId,
     due: filters.dueFilter,
     sort: filters.sortValue,
+    layout: activeLayout,
   });
 }
 
@@ -61,7 +67,7 @@ function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
   });
 }
 
-function getSavedViewHref(view: TaskSavedViewRow) {
+export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: TaskLayoutMode) {
   const filters = getSavedViewFilters(view);
 
   return buildTaskFilterReturnPath("/tasks", {
@@ -70,7 +76,12 @@ function getSavedViewHref(view: TaskSavedViewRow) {
     goal: filters.goalId,
     due: filters.dueFilter,
     sort: filters.sortValue,
+    layout: activeLayout,
   });
+}
+
+export function getTaskSavedViewsAllTasksHref(activeLayout?: TaskLayoutMode) {
+  return activeLayout === "kanban" ? "/tasks?layout=kanban" : "/tasks";
 }
 
 function describeSavedView(
@@ -106,11 +117,13 @@ function describeSavedView(
 export function TaskSavedViewsPanel({
   currentFilters,
   savedViews,
+  activeLayout,
   projectOptions,
   goalOptions,
   feedback,
 }: TaskSavedViewsPanelProps) {
-  const currentReturnPath = buildCurrentReturnPath(currentFilters);
+  const currentReturnPath = buildTaskSavedViewCurrentReturnPath(currentFilters, activeLayout);
+  const allTasksHref = getTaskSavedViewsAllTasksHref(activeLayout);
 
   return (
     <Card
@@ -168,10 +181,10 @@ export function TaskSavedViewsPanel({
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2">
               <FilterPill
-                href="/tasks"
+                href={allTasksHref}
                 label="All tasks"
-                active={currentReturnPath === "/tasks"}
-                ariaCurrent={currentReturnPath === "/tasks" ? "page" : undefined}
+                active={currentReturnPath === allTasksHref}
+                ariaCurrent={currentReturnPath === allTasksHref ? "page" : undefined}
               />
               {savedViews.map((view) => {
                 const isActive = areTaskSavedViewFiltersEqual(
@@ -182,7 +195,7 @@ export function TaskSavedViewsPanel({
                 return (
                   <FilterPill
                     key={view.id}
-                    href={getSavedViewHref(view)}
+                    href={getTaskSavedViewHref(view, activeLayout)}
                     label={view.name}
                     active={isActive}
                     ariaCurrent={isActive ? "page" : undefined}
@@ -204,7 +217,7 @@ export function TaskSavedViewsPanel({
                         {describeSavedView(view, projectOptions, goalOptions)}
                       </p>
                     </div>
-                    <Link href={getSavedViewHref(view)} className="glass-label text-signal-live">Open</Link>
+                    <Link href={getTaskSavedViewHref(view, activeLayout)} className="glass-label text-signal-live">Open</Link>
                   </div>
 
                   <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 xl:flex-row xl:items-end">

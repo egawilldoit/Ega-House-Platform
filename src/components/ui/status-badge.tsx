@@ -1,3 +1,4 @@
+import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
@@ -43,4 +44,3 @@ export function StatusBadge({ status, label, className }: StatusBadgeProps) {
     </Badge>
   );
 }
-

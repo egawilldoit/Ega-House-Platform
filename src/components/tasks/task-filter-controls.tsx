@@ -3,6 +3,8 @@ import {
   DEFAULT_TASK_SORT,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
+  buildTaskListUrl,
+  type TaskLayoutMode,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
@@ -24,6 +26,7 @@ type TaskFilterControlsProps = {
   activeDueFilter?: TaskDueFilter;
   activeSort?: TaskSortValue;
   activeView?: string | null;
+  activeLayout?: TaskLayoutMode;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   includePriority?: boolean;
@@ -33,52 +36,6 @@ type FilterOption = {
   value: string | null;
   label: string;
 };
-
-function buildFilterHref(
-  basePath: string,
-  filters: {
-    status?: string | null;
-    priority?: string | null;
-    project?: string | null;
-    goal?: string | null;
-    due?: TaskDueFilter;
-    sort?: TaskSortValue;
-    view?: string | null;
-  },
-) {
-  const searchParams = new URLSearchParams();
-
-  if (filters.status) {
-    searchParams.set("status", filters.status);
-  }
-
-  if (filters.priority) {
-    searchParams.set("priority", filters.priority);
-  }
-
-  if (filters.project) {
-    searchParams.set("project", filters.project);
-  }
-
-  if (filters.goal) {
-    searchParams.set("goal", filters.goal);
-  }
-
-  if (filters.due && filters.due !== DEFAULT_TASK_DUE_FILTER) {
-    searchParams.set("due", filters.due);
-  }
-
-  if (filters.sort && filters.sort !== DEFAULT_TASK_SORT) {
-    searchParams.set("sort", filters.sort);
-  }
-
-  if (filters.view && filters.view !== "active") {
-    searchParams.set("archive", filters.view);
-  }
-
-  const query = searchParams.toString();
-  return query ? `${basePath}?${query}` : basePath;
-}
 
 function FilterPills({
   label,
@@ -122,6 +79,7 @@ export function TaskFilterControls({
   activeDueFilter = DEFAULT_TASK_DUE_FILTER,
   activeSort = DEFAULT_TASK_SORT,
   activeView = null,
+  activeLayout = "list",
   projectOptions = [],
   goalOptions = [],
   includePriority = false,
@@ -185,7 +143,7 @@ export function TaskFilterControls({
         options={statusOptions}
         activeValue={activeStatus}
         hrefForValue={(status) =>
-          buildFilterHref(basePath, {
+          buildTaskListUrl(basePath, {
             status,
             priority: activePriority,
             project: activeProjectId,
@@ -193,6 +151,7 @@ export function TaskFilterControls({
             due: activeDueFilter,
             sort: activeSort,
             view: activeView,
+            layout: activeLayout,
           })
         }
       />
@@ -203,7 +162,7 @@ export function TaskFilterControls({
           options={projectFilterOptions}
           activeValue={activeProjectId}
           hrefForValue={(project) =>
-            buildFilterHref(basePath, {
+            buildTaskListUrl(basePath, {
               status: activeStatus,
               priority: activePriority,
               project,
@@ -211,6 +170,7 @@ export function TaskFilterControls({
               due: activeDueFilter,
               sort: activeSort,
               view: activeView,
+              layout: activeLayout,
             })
           }
         />
@@ -223,7 +183,7 @@ export function TaskFilterControls({
             options={goalFilterOptions}
             activeValue={activeGoalId}
             hrefForValue={(goal) =>
-              buildFilterHref(basePath, {
+              buildTaskListUrl(basePath, {
                 status: activeStatus,
                 priority: activePriority,
                 project: activeProjectId,
@@ -231,6 +191,7 @@ export function TaskFilterControls({
                 due: activeDueFilter,
                 sort: activeSort,
                 view: activeView,
+                layout: activeLayout,
               })
             }
           />
@@ -243,7 +204,7 @@ export function TaskFilterControls({
           options={priorityOptions}
           activeValue={activePriority}
           hrefForValue={(priority) =>
-            buildFilterHref(basePath, {
+            buildTaskListUrl(basePath, {
               status: activeStatus,
               priority,
               project: activeProjectId,
@@ -251,6 +212,7 @@ export function TaskFilterControls({
               due: activeDueFilter,
               sort: activeSort,
               view: activeView,
+              layout: activeLayout,
             })
           }
         />
@@ -261,7 +223,7 @@ export function TaskFilterControls({
         options={dueFilterOptions}
         activeValue={activeDueFilter}
         hrefForValue={(due) =>
-          buildFilterHref(basePath, {
+          buildTaskListUrl(basePath, {
             status: activeStatus,
             priority: activePriority,
             project: activeProjectId,
@@ -269,6 +231,7 @@ export function TaskFilterControls({
             due: (due as TaskDueFilter | null) ?? DEFAULT_TASK_DUE_FILTER,
             sort: activeSort,
             view: activeView,
+            layout: activeLayout,
           })
         }
       />
@@ -278,7 +241,7 @@ export function TaskFilterControls({
         options={sortOptions}
         activeValue={activeSort}
         hrefForValue={(sort) =>
-          buildFilterHref(basePath, {
+          buildTaskListUrl(basePath, {
             status: activeStatus,
             priority: activePriority,
             project: activeProjectId,
@@ -286,6 +249,7 @@ export function TaskFilterControls({
             due: activeDueFilter,
             sort: (sort as TaskSortValue | null) ?? DEFAULT_TASK_SORT,
             view: activeView,
+            layout: activeLayout,
           })
         }
       />
@@ -303,7 +267,8 @@ export function buildTaskFilterReturnPath(
     due?: TaskDueFilter;
     sort?: TaskSortValue;
     view?: string | null;
+    layout?: TaskLayoutMode;
   },
 ) {
-  return buildFilterHref(basePath, filters);
+  return buildTaskListUrl(basePath, filters);
 }

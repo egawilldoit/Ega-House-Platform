@@ -103,6 +103,17 @@ function createSupabaseUpdateMock(onUpdateCall?: (payload: Record<string, unknow
       return {
         update(payload: Record<string, unknown>) {
           return {
+            in(column: string, value: unknown[]) {
+              filters[column] = value;
+
+              return {
+                eq(secondColumn: string, secondValue: unknown) {
+                  filters[secondColumn] = secondValue;
+                  onUpdateCall?.(payload, filters);
+                  return Promise.resolve({ error: null });
+                },
+              };
+            },
             eq(column: string, value: unknown) {
               filters[column] = value;
 
@@ -546,7 +557,7 @@ test("clearCompletedFromToday only clears completed tasks manually planned for t
   });
   assert.equal(typeof capturedPayload["updated_at"], "string");
   assert.deepEqual(capturedFilters, {
-    status: "done",
+    status: ["done", "complete", "completed"],
     planned_for_date: "2026-04-20",
   });
 });
@@ -598,6 +609,28 @@ function createTodayStatusSupabaseMock(options?: {
               };
             }
 
+            if (columns === "id, status, completed_at, archived_at") {
+              return {
+                eq(column: string, value: string) {
+                  assert.equal(column, "id");
+                  assert.equal(value, task.id);
+                  return {
+                    maybeSingle() {
+                      return Promise.resolve({
+                        data: {
+                          id: task.id,
+                          status: task.status,
+                          completed_at: null,
+                          archived_at: null,
+                        },
+                        error: null,
+                      });
+                    },
+                  };
+                },
+              };
+            }
+
             assert.equal(columns, "status, priority, due_date, estimate_minutes, blocked_reason");
             return {
               eq(column: string, value: string) {
@@ -625,7 +658,19 @@ function createTodayStatusSupabaseMock(options?: {
               eq(column: string, value: string) {
                 assert.equal(column, "id");
                 taskUpdateCalls.push({ taskId: value, payload });
-                return Promise.resolve({ error: null });
+                return {
+                  select(columns: string) {
+                    assert.equal(columns, "id");
+                    return {
+                      maybeSingle() {
+                        return Promise.resolve({
+                          data: { id: value },
+                          error: null,
+                        });
+                      },
+                    };
+                  },
+                };
               },
             };
           },

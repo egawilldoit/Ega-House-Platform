@@ -13,6 +13,7 @@ import { startTimerAction } from "@/app/timer/actions";
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TaskSavedViewsPanel } from "@/components/tasks/task-saved-views-panel";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import {
@@ -37,9 +38,13 @@ import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
+  buildTaskKanbanBoard,
+  buildTaskListUrl,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskLayout,
   type TaskDueFilter,
+  type TaskLayoutMode,
   type TaskSortValue,
 } from "@/lib/task-list";
 import { formatDurationLabel } from "@/lib/task-session";
@@ -78,6 +83,7 @@ type TasksPageProps = {
     due?: string;
     sort?: string;
     archive?: string;
+    layout?: string;
     view?: string;
     taskUpdateError?: string;
     taskUpdateSuccess?: string;
@@ -116,6 +122,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const activeSort: TaskSortValue = isTaskSortValue(sortParam)
     ? sortParam
     : DEFAULT_TASK_SORT;
+  const activeLayout: TaskLayoutMode = normalizeTaskLayout(resolvedSearchParams.layout);
   const activeView: TaskViewFilter = normalizeTaskViewFilter(
     resolvedSearchParams.archive ?? resolvedSearchParams.view,
   );
@@ -162,6 +169,24 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     due: activeDueFilter,
     sort: activeSort,
     view: activeView,
+    layout: activeLayout,
+  });
+  const taskUrlFilters = {
+    status: activeStatus,
+    project: activeProjectId,
+    goal: activeGoalId,
+    due: activeDueFilter,
+    sort: activeSort,
+  };
+  const listHref = buildTaskListUrl("/tasks", {
+    ...taskUrlFilters,
+    view: activeView,
+    layout: "list",
+  });
+  const kanbanHref = buildTaskListUrl("/tasks", {
+    ...taskUrlFilters,
+    view: activeView,
+    layout: "kanban",
   });
   const inProgressCount = tasks.filter((task) => task.status === "in_progress").length;
   const blockedCount = tasks.filter((task) => task.status === "blocked").length;
@@ -169,6 +194,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const dueSoonCount = tasks.filter((task) => isTaskDueSoon(task.due_date, task.status)).length;
   const focusQueue = sortFocusQueueTasks(tasks);
   const archivedTaskCount = summary.archived;
+  const kanbanBoard = buildTaskKanbanBoard(tasks, activeStatus);
 
   return (
     <TasksWorkspaceShell
@@ -192,7 +218,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             <CardHeader className="gap-5 border-b border-[rgba(15,23,42,0.07)] p-6 pb-5">
               <div className="flex flex-wrap items-center gap-2.5">
                 <Link
-                  href="/tasks"
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: "active",
+                    layout: activeLayout,
+                  })}
                   className={`tasks-view-tab ${
                     activeView === "active"
                       ? "tasks-view-tab-active"
@@ -202,7 +232,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   Active
                 </Link>
                 <Link
-                  href="/tasks?archive=archived"
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: "archived",
+                    layout: activeLayout,
+                  })}
                   className={`tasks-view-tab ${
                     activeView === "archived"
                       ? "tasks-view-tab-active"
@@ -212,7 +246,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   Archived
                 </Link>
                 <Link
-                  href="/tasks?archive=all"
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: "all",
+                    layout: activeLayout,
+                  })}
                   className={`tasks-view-tab ${
                     activeView === "all"
                       ? "tasks-view-tab-active"
@@ -220,6 +258,29 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   }`}
                 >
                   All
+                </Link>
+                <span className="mx-1 hidden h-5 w-px bg-[var(--border)] sm:inline-flex" />
+                <Link
+                  href={listHref}
+                  className={`tasks-view-tab ${
+                    activeLayout === "list"
+                      ? "tasks-view-tab-active"
+                      : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                  }`}
+                  aria-current={activeLayout === "list" ? "page" : undefined}
+                >
+                  List
+                </Link>
+                <Link
+                  href={kanbanHref}
+                  className={`tasks-view-tab ${
+                    activeLayout === "kanban"
+                      ? "tasks-view-tab-active"
+                      : "text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+                  }`}
+                  aria-current={activeLayout === "kanban" ? "page" : undefined}
+                >
+                  Kanban
                 </Link>
                 <span className="mx-1 hidden h-5 w-px bg-[var(--border)] sm:inline-flex" />
                 <Badge tone="muted" className="ega-glass-pill">
@@ -249,8 +310,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                     Operational task slice
                   </p>
                   <CardDescription>
-                    {tasks.length} item{tasks.length !== 1 ? "s" : ""} in the current queue with
-                    inline state control.
+                    {tasks.length} item{tasks.length !== 1 ? "s" : ""} in the current queue
+                    {activeLayout === "kanban"
+                      ? " ready for board planning."
+                      : " with inline state control."}
                   </CardDescription>
                 </div>
                 <CardAction className="hidden sm:flex">
@@ -269,6 +332,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   activeDueFilter={activeDueFilter}
                   activeSort={activeSort}
                   activeView={activeView}
+                  activeLayout={activeLayout}
                   projectOptions={projects}
                   goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
                 />
@@ -279,7 +343,65 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             </CardHeader>
 
             <CardContent className="space-y-4 p-5">
-              {tasks.length === 0 ? (
+              {activeLayout === "kanban" ? (
+                <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">
+                  {kanbanBoard.columns.map((column) => {
+                    const columnTasks = kanbanBoard.tasksByStatus[column.status];
+
+                    return (
+                    <section
+                      key={column.status}
+                      className="ega-glass-soft min-h-56 rounded-[1rem] border border-[rgba(15,23,42,0.08)] p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <h2 className="text-sm font-semibold text-[color:var(--foreground)]">
+                          {column.label}
+                        </h2>
+                        <Badge tone="muted">
+                          {columnTasks.length} task{columnTasks.length === 1 ? "" : "s"}
+                        </Badge>
+                      </div>
+
+                      {columnTasks.length === 0 ? (
+                        <div className="mt-4 rounded-[0.9rem] border border-dashed border-[rgba(15,23,42,0.14)] px-3 py-8 text-center">
+                          <p className="text-sm font-medium text-[color:var(--foreground)]">
+                            No {column.label.toLowerCase()} tasks
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
+                            Current filters have no tasks in this status.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-4 space-y-3">
+                          {columnTasks.map((task) => {
+                            const inlineError =
+                              taskUpdateTaskId === task.id ? taskUpdateError : null;
+
+                            return (
+                              <TaskKanbanCard
+                                key={task.id}
+                                task={task}
+                                signalTone={getTaskSignalTone(task.status, task.priority)}
+                                updateAction={updateTaskInlineAction}
+                                startTimerAction={startTimerAction}
+                                pinAction={pinTaskAction}
+                                unpinAction={unpinTaskAction}
+                                archiveAction={archiveTaskAction}
+                                unarchiveAction={unarchiveTaskAction}
+                                deleteAction={deleteTaskAction}
+                                returnTo={returnPath}
+                                trackedSeconds={taskTotalDurations[task.id]}
+                                error={inlineError}
+                              />
+                            );
+                          })}
+                        </div>
+                      )}
+                    </section>
+                    );
+                  })}
+                </div>
+              ) : tasks.length === 0 ? (
                 <EmptyState
                   icon={ListChecks}
                   title="No tasks match current filters"
@@ -493,6 +615,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               sortValue: activeSort,
             }}
             savedViews={savedViews}
+            activeLayout={activeLayout}
             projectOptions={projects}
             goalOptions={goals.map((goal) => ({ id: goal.id, title: goal.title }))}
             feedback={resolvedSavedViewFeedback}
