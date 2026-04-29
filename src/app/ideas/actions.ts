@@ -54,7 +54,7 @@ export async function createIdeaNoteAction(
   const values = { title, body, type, projectId, priority, tagsInput };
 
   if (!title) {
-    return createErrorState("Idea title is required.", values);
+    return createErrorState("Title is required.", values);
   }
 
   const result = await createIdeaNote({ title, body, type, projectId, priority, tagsInput });
@@ -93,7 +93,7 @@ export async function updateIdeaNoteAction(
   const status = String(formData.get("status") ?? "").trim();
 
   if (!title) {
-    return createUpdateErrorState("Idea title is required.");
+    return createUpdateErrorState("Title is required.");
   }
 
   const result = await updateIdeaNote({

@@ -333,7 +333,7 @@ test("creating idea note rejects empty title without insert", async () => {
     { supabase: mock.supabase as never },
   );
 
-  assert.equal(result.errorMessage, "Idea title is required.");
+  assert.equal(result.errorMessage, "Title is required.");
   assert.equal(mock.insertCalls.length, 0);
 });
 
@@ -397,11 +397,11 @@ test("creating idea note rejects invalid type priority project and tags without 
   const invalidCases = [
     {
       input: { title: "Idea", type: "task" },
-      error: "Type must be one of: idea, feature, bug, improvement, research.",
+      error: "Choose a valid idea type.",
     },
     {
       input: { title: "Idea", priority: "now" },
-      error: "Priority must be one of: low, medium, high, urgent.",
+      error: "Choose a valid priority.",
     },
     {
       input: { title: "Idea", projectId: "not-a-uuid" },
@@ -522,7 +522,7 @@ test("updating idea note rejects converted status", async () => {
     { supabase: mock.supabase as never },
   );
 
-  assert.equal(result.errorMessage, "Converted is reserved for future conversion workflows.");
+  assert.equal(result.errorMessage, "Converted ideas are reserved for future conversion workflows.");
   assert.equal(mock.updateCalls.length, 0);
 });
 
@@ -534,7 +534,7 @@ test("updating idea note rejects invalid status", async () => {
     { supabase: mock.supabase as never },
   );
 
-  assert.equal(result.errorMessage, "Status must be one of: inbox, reviewing, planned, archived.");
+  assert.equal(result.errorMessage, "Choose a valid status.");
   assert.equal(mock.updateCalls.length, 0);
 });
 
@@ -546,7 +546,7 @@ test("updating idea note rejects empty title without update", async () => {
     { supabase: mock.supabase as never },
   );
 
-  assert.equal(result.errorMessage, "Idea title is required.");
+  assert.equal(result.errorMessage, "Title is required.");
   assert.equal(mock.updateCalls.length, 0);
 });
 

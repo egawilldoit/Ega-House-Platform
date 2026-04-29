@@ -39,14 +39,14 @@ export function validateManualIdeaNoteStatus(value: unknown):
   if (RESERVED_IDEA_NOTE_STATUSES.includes(normalized as (typeof RESERVED_IDEA_NOTE_STATUSES)[number])) {
     return {
       status: null,
-      errorMessage: "Converted is reserved for future conversion workflows.",
+      errorMessage: "Converted ideas are reserved for future conversion workflows.",
     };
   }
 
   if (!isManualIdeaNoteStatus(normalized)) {
     return {
       status: null,
-      errorMessage: `Status must be one of: ${MANUAL_IDEA_NOTE_STATUSES.join(", ")}.`,
+      errorMessage: "Choose a valid status.",
     };
   }
 

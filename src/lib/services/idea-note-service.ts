@@ -128,11 +128,11 @@ export function normalizeIdeaNoteInput(input: CreateIdeaNoteInput) {
     tags,
     errorMessage:
       type === null
-        ? `Type must be one of: ${IDEA_NOTE_TYPES.join(", ")}.`
+        ? "Choose a valid idea type."
         : projectId === ""
           ? "Project is invalid."
           : rawPriority && priority === null
-            ? `Priority must be one of: ${IDEA_NOTE_PRIORITIES.join(", ")}.`
+            ? "Choose a valid priority."
             : null,
   };
 }
@@ -215,7 +215,7 @@ export async function createIdeaNote(
 
   if (!normalized.title) {
     return {
-      errorMessage: "Idea title is required.",
+      errorMessage: "Title is required.",
       data: null,
     };
   }
@@ -284,7 +284,7 @@ export async function updateIdeaNote(
 
   if (!normalized.title) {
     return {
-      errorMessage: "Idea title is required.",
+      errorMessage: "Title is required.",
       data: null,
     };
   }
