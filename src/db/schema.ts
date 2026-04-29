@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   date,
   index,
   integer,
@@ -145,6 +146,10 @@ export const ideaNotes = pgTable(
       table.createdAt.desc(),
     ),
     index("idea_notes_tags_gin_idx").using("gin", table.tags),
+    check(
+      "idea_notes_status_check",
+      sql`${table.status} in ('inbox', 'reviewing', 'planned', 'archived', 'converted')`,
+    ),
   ],
 );
 

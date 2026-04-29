@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   IDEA_NOTE_TYPES,
+  MANUAL_IDEA_NOTE_STATUSES,
   createIdeaNote,
   getIdeaInboxNotes,
   getIdeaNoteProjectOptions,
   normalizeIdeaNoteInput,
+  updateIdeaNote,
 } from "./idea-note-service";
 import { parseIdeaNoteTags } from "@/lib/idea-note-domain";
 
@@ -15,8 +17,15 @@ type InsertCall = {
   payload: Record<string, unknown>;
 };
 
+type UpdateCall = {
+  table: string;
+  payload: Record<string, unknown>;
+};
+
 function createIdeaNotesSupabaseMock(options?: {
   insertError?: boolean;
+  updateError?: boolean;
+  updateMissing?: boolean;
   projectLookupError?: boolean;
   projectLookupMissing?: boolean;
   rows?: Array<{
@@ -35,6 +44,7 @@ function createIdeaNotesSupabaseMock(options?: {
   projects?: Array<{ id: string; name: string }>;
 }) {
   const insertCalls: InsertCall[] = [];
+  const updateCalls: UpdateCall[] = [];
   const orderCalls: Array<{ column: string; ascending: boolean | undefined }> = [];
   const eqCalls: Array<{ column: string; value: string }> = [];
   const projectLookupCalls: string[] = [];
@@ -135,6 +145,51 @@ function createIdeaNotesSupabaseMock(options?: {
             },
           };
         },
+        update(payload: Record<string, unknown>) {
+          updateCalls.push({ table, payload });
+
+          const chain = {
+            eq(column: string, value: string) {
+              eqCalls.push({ column, value });
+              return chain;
+            },
+            select(columns: string) {
+              assert.equal(
+                columns,
+                "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+              );
+              return chain;
+            },
+            async maybeSingle() {
+              if (options?.updateError) {
+                return { data: null, error: { message: "update failed" } };
+              }
+
+              if (options?.updateMissing) {
+                return { data: null, error: null };
+              }
+
+              return {
+                data: {
+                  id: eqCalls.find((call) => call.column === "id")?.value ?? "idea-1",
+                  title: String(payload.title),
+                  body: payload.body as string | null,
+                  status: String(payload.status),
+                  type: String(payload.type),
+                  project_id: payload.project_id as string | null,
+                  priority: payload.priority as string | null,
+                  tags: payload.tags as string[],
+                  created_at: "2026-04-29T12:00:00.000Z",
+                  updated_at: String(payload.updated_at),
+                  projects: null,
+                },
+                error: null,
+              };
+            },
+          };
+
+          return chain;
+        },
         select(columns: string) {
           assert.equal(
             columns,
@@ -158,7 +213,7 @@ function createIdeaNotesSupabaseMock(options?: {
     },
   };
 
-  return { supabase, insertCalls, eqCalls, orderCalls, projectLookupCalls };
+  return { supabase, insertCalls, updateCalls, eqCalls, orderCalls, projectLookupCalls };
 }
 
 test("normalizes idea note input", () => {
@@ -205,6 +260,14 @@ test("creating idea note inserts inbox note with default metadata", async () => 
     tags: [],
   });
   assert.equal("owner_user_id" in mock.insertCalls[0].payload, false);
+});
+
+test("new idea note still defaults to inbox", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  await createIdeaNote({ title: "Idea" }, { supabase: mock.supabase as never });
+
+  assert.equal(mock.insertCalls[0].payload.status, "inbox");
 });
 
 test("creating idea note rejects empty title without insert", async () => {
@@ -318,17 +381,143 @@ test("creating idea note rejects unavailable project without insert", async () =
   assert.equal(mock.insertCalls.length, 0);
 });
 
+test("updating idea note edits title and body", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  const result = await updateIdeaNote(
+    {
+      id: "idea-1",
+      title: "  Better capture  ",
+      body: "  add enough context  ",
+      status: "inbox",
+    },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.title, "Better capture");
+  assert.equal(result.data?.body, "add enough context");
+  assert.equal(mock.updateCalls[0].payload.title, "Better capture");
+  assert.equal(mock.updateCalls[0].payload.body, "add enough context");
+  assert.equal("owner_user_id" in mock.updateCalls[0].payload, false);
+});
+
+test("updating idea note edits metadata", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+  const projectId = "11111111-1111-4111-8111-111111111111";
+
+  const result = await updateIdeaNote(
+    {
+      id: "idea-1",
+      title: "Idea",
+      type: "research",
+      projectId,
+      priority: "urgent",
+      tagsInput: "Ops, Research, ops",
+      status: "planned",
+    },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.projectLookupCalls, [projectId]);
+  assert.equal(mock.updateCalls[0].payload.type, "research");
+  assert.equal(mock.updateCalls[0].payload.project_id, projectId);
+  assert.equal(mock.updateCalls[0].payload.priority, "urgent");
+  assert.deepEqual(mock.updateCalls[0].payload.tags, ["ops", "research"]);
+});
+
+test("projectless update remains valid", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  const result = await updateIdeaNote(
+    {
+      id: "idea-1",
+      title: "Idea",
+      projectId: "",
+      status: "reviewing",
+    },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.updateCalls[0].payload.project_id, null);
+  assert.deepEqual(mock.projectLookupCalls, []);
+});
+
+test("updating idea note accepts manual statuses", async () => {
+  for (const status of MANUAL_IDEA_NOTE_STATUSES) {
+    const mock = createIdeaNotesSupabaseMock();
+
+    const result = await updateIdeaNote(
+      { id: "idea-1", title: "Idea", status },
+      { supabase: mock.supabase as never },
+    );
+
+    assert.equal(result.errorMessage, null);
+    assert.equal(mock.updateCalls[0].payload.status, status);
+  }
+});
+
+test("updating idea note rejects converted status", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  const result = await updateIdeaNote(
+    { id: "idea-1", title: "Idea", status: "converted" },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, "Converted is reserved for future conversion workflows.");
+  assert.equal(mock.updateCalls.length, 0);
+});
+
+test("updating idea note rejects invalid status", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  const result = await updateIdeaNote(
+    { id: "idea-1", title: "Idea", status: "blocked" },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, "Status must be one of: inbox, reviewing, planned, archived.");
+  assert.equal(mock.updateCalls.length, 0);
+});
+
+test("updating idea note rejects empty title without update", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  const result = await updateIdeaNote(
+    { id: "idea-1", title: "   ", body: "body", status: "inbox" },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.equal(result.errorMessage, "Idea title is required.");
+  assert.equal(mock.updateCalls.length, 0);
+});
+
+test("updating idea note uses RLS-safe id-scoped update", async () => {
+  const mock = createIdeaNotesSupabaseMock();
+
+  await updateIdeaNote(
+    { id: "idea-1", title: "Idea", status: "archived" },
+    { supabase: mock.supabase as never },
+  );
+
+  assert.deepEqual(mock.eqCalls, [{ column: "id", value: "idea-1" }]);
+  assert.equal("owner_user_id" in mock.updateCalls[0].payload, false);
+});
+
 test("tag parser normalizes empty duplicate and blank tags", () => {
   assert.deepEqual(parseIdeaNoteTags(""), []);
   assert.deepEqual(parseIdeaNoteTags("Ops, ops, , Product Team"), ["ops", "product team"]);
 });
 
-test("listing idea inbox notes filters inbox and orders newest first", async () => {
+test("listing ideas orders newest first", async () => {
   const mock = createIdeaNotesSupabaseMock();
 
   const notes = await getIdeaInboxNotes({ supabase: mock.supabase as never });
 
-  assert.deepEqual(mock.eqCalls, [{ column: "status", value: "inbox" }]);
+  assert.deepEqual(mock.eqCalls, []);
   assert.deepEqual(mock.orderCalls, [{ column: "created_at", ascending: false }]);
   assert.deepEqual(notes[0], {
     id: "idea-1",

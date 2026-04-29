@@ -1,12 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
-import type { Tables, TablesInsert } from "@/lib/supabase/database.types";
+import type { Tables, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   DEFAULT_IDEA_NOTE_TYPE,
   IDEA_NOTE_PRIORITIES,
+  MANUAL_IDEA_NOTE_STATUSES,
   IDEA_NOTE_TYPES,
   normalizeIdeaNotePriority,
   normalizeOptionalProjectId,
   parseIdeaNoteTags,
+  validateManualIdeaNoteStatus,
   validateIdeaNoteType,
 } from "@/lib/idea-note-domain";
 
@@ -29,6 +31,7 @@ export type IdeaNote = Pick<
 };
 
 export { DEFAULT_IDEA_NOTE_TYPE, IDEA_NOTE_PRIORITIES, IDEA_NOTE_TYPES };
+export { MANUAL_IDEA_NOTE_STATUSES };
 
 export type IdeaNoteProjectOption = Pick<Tables<"projects">, "id" | "name">;
 
@@ -42,7 +45,12 @@ export type CreateIdeaNoteInput = {
   tags?: unknown;
 };
 
-export type CreateIdeaNoteResult =
+export type UpdateIdeaNoteInput = CreateIdeaNoteInput & {
+  id: unknown;
+  status: unknown;
+};
+
+export type IdeaNoteMutationResult =
   | {
       errorMessage: null;
       data: IdeaNote | null;
@@ -51,6 +59,9 @@ export type CreateIdeaNoteResult =
       errorMessage: string;
       data: null;
     };
+
+export type CreateIdeaNoteResult = IdeaNoteMutationResult;
+export type UpdateIdeaNoteResult = IdeaNoteMutationResult;
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
@@ -101,6 +112,33 @@ export function normalizeIdeaNoteInput(input: CreateIdeaNoteInput) {
   };
 }
 
+function normalizeIdeaNoteId(value: unknown) {
+  const id = String(value ?? "").trim();
+  return {
+    id,
+    errorMessage: id ? null : "Idea is required.",
+  };
+}
+
+async function ensureProjectVisible(
+  supabase: SupabaseServerClient,
+  projectId: string | null,
+): Promise<string | null> {
+  if (!projectId) return null;
+
+  const { data: project, error: projectError } = await supabase
+    .from("projects")
+    .select("id")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (projectError || !project) {
+    return "Selected project is unavailable.";
+  }
+
+  return null;
+}
+
 export async function createIdeaNote(
   input: CreateIdeaNoteInput,
   options?: { supabase?: SupabaseServerClient },
@@ -122,19 +160,12 @@ export async function createIdeaNote(
     };
   }
 
-  if (normalized.projectId) {
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .select("id")
-      .eq("id", normalized.projectId)
-      .maybeSingle();
-
-    if (projectError || !project) {
-      return {
-        errorMessage: "Selected project is unavailable.",
-        data: null,
-      };
-    }
+  const projectError = await ensureProjectVisible(supabase, normalized.projectId || null);
+  if (projectError) {
+    return {
+      errorMessage: projectError,
+      data: null,
+    };
   }
 
   const row = {
@@ -168,6 +199,91 @@ export async function createIdeaNote(
   };
 }
 
+export async function updateIdeaNote(
+  input: UpdateIdeaNoteInput,
+  options?: { supabase?: SupabaseServerClient },
+): Promise<UpdateIdeaNoteResult> {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const normalizedId = normalizeIdeaNoteId(input.id);
+  const normalized = normalizeIdeaNoteInput(input);
+  const statusResult = validateManualIdeaNoteStatus(input.status);
+
+  if (normalizedId.errorMessage) {
+    return {
+      errorMessage: normalizedId.errorMessage,
+      data: null,
+    };
+  }
+
+  if (!normalized.title) {
+    return {
+      errorMessage: "Idea title is required.",
+      data: null,
+    };
+  }
+
+  if (normalized.errorMessage) {
+    return {
+      errorMessage: normalized.errorMessage,
+      data: null,
+    };
+  }
+
+  if (statusResult.status === null) {
+    return {
+      errorMessage: statusResult.errorMessage,
+      data: null,
+    };
+  }
+
+  const projectError = await ensureProjectVisible(supabase, normalized.projectId || null);
+  if (projectError) {
+    return {
+      errorMessage: projectError,
+      data: null,
+    };
+  }
+
+  const row = {
+    title: normalized.title,
+    body: normalized.body,
+    status: statusResult.status,
+    type: normalized.type ?? DEFAULT_IDEA_NOTE_TYPE,
+    project_id: normalized.projectId || null,
+    priority: normalized.priority,
+    tags: normalized.tags,
+    updated_at: new Date().toISOString(),
+  } satisfies TablesUpdate<"idea_notes">;
+
+  const { data, error } = await supabase
+    .from("idea_notes")
+    .update(row)
+    .eq("id", normalizedId.id)
+    .select(
+      "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+    )
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to update idea right now.",
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Idea is unavailable.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: data as IdeaNote,
+  };
+}
+
 export async function getIdeaInboxNotes(options?: {
   supabase?: SupabaseServerClient;
 }): Promise<IdeaNote[]> {
@@ -177,7 +293,6 @@ export async function getIdeaInboxNotes(options?: {
     .select(
       "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
     )
-    .eq("status", "inbox")
     .order("created_at", { ascending: false });
 
   if (error) {

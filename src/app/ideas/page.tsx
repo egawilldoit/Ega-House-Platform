@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inbox } from "lucide-react";
 
 import { CreateIdeaNoteForm } from "@/app/ideas/create-idea-note-form";
+import { EditIdeaNoteForm } from "@/app/ideas/edit-idea-note-form";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -58,12 +59,12 @@ export default async function IdeasPage() {
         <Card className="border-[var(--border)] bg-white">
           <CardHeader className="flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle>Inbox</CardTitle>
+              <CardTitle>Ideas</CardTitle>
               <CardDescription>
-                Newest loose ideas waiting for later processing.
+                Newest loose ideas and their current processing status.
               </CardDescription>
             </div>
-            <Badge tone="info">{notes.length} inbox</Badge>
+            <Badge tone="info">{notes.length} ideas</Badge>
           </CardHeader>
           <CardContent>
             {notes.length === 0 ? (
@@ -90,7 +91,7 @@ export default async function IdeasPage() {
                       </div>
                       <div className="flex flex-wrap justify-end gap-2">
                         <Badge tone="info">{formatTaskToken(note.type)}</Badge>
-                        <Badge tone="muted">Inbox</Badge>
+                        <Badge tone="muted">{formatTaskToken(note.status)}</Badge>
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -111,6 +112,7 @@ export default async function IdeasPage() {
                         {note.body}
                       </p>
                     ) : null}
+                    <EditIdeaNoteForm note={note} projectOptions={projectOptions} />
                   </article>
                 ))}
               </div>

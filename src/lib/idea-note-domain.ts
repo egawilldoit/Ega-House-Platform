@@ -3,6 +3,9 @@ import { TASK_PRIORITY_VALUES, isTaskPriority, type TaskPriority } from "@/lib/t
 export const IDEA_NOTE_TYPES = ["idea", "feature", "bug", "improvement", "research"] as const;
 export const DEFAULT_IDEA_NOTE_TYPE = "idea";
 export const IDEA_NOTE_PRIORITIES = TASK_PRIORITY_VALUES;
+export const IDEA_NOTE_STATUSES = ["inbox", "reviewing", "planned", "archived", "converted"] as const;
+export const MANUAL_IDEA_NOTE_STATUSES = ["inbox", "reviewing", "planned", "archived"] as const;
+export const RESERVED_IDEA_NOTE_STATUSES = ["converted"] as const;
 export const MAX_IDEA_NOTE_TAGS = 10;
 export const MAX_IDEA_NOTE_TAG_LENGTH = 32;
 
@@ -12,6 +15,8 @@ const TAG_PATTERN = /^[a-z0-9](?:[a-z0-9 _-]*[a-z0-9])?$/;
 
 export type IdeaNoteType = (typeof IDEA_NOTE_TYPES)[number];
 export type IdeaNotePriority = TaskPriority;
+export type IdeaNoteStatus = (typeof IDEA_NOTE_STATUSES)[number];
+export type ManualIdeaNoteStatus = (typeof MANUAL_IDEA_NOTE_STATUSES)[number];
 
 export function isIdeaNoteType(value: string): value is IdeaNoteType {
   return IDEA_NOTE_TYPES.includes(value as IdeaNoteType);
@@ -20,6 +25,32 @@ export function isIdeaNoteType(value: string): value is IdeaNoteType {
 export function validateIdeaNoteType(value: unknown): IdeaNoteType | null {
   const normalized = String(value ?? DEFAULT_IDEA_NOTE_TYPE).trim().toLowerCase();
   return isIdeaNoteType(normalized) ? normalized : null;
+}
+
+export function isManualIdeaNoteStatus(value: string): value is ManualIdeaNoteStatus {
+  return MANUAL_IDEA_NOTE_STATUSES.includes(value as ManualIdeaNoteStatus);
+}
+
+export function validateManualIdeaNoteStatus(value: unknown):
+  | { status: ManualIdeaNoteStatus; errorMessage: null }
+  | { status: null; errorMessage: string } {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (RESERVED_IDEA_NOTE_STATUSES.includes(normalized as (typeof RESERVED_IDEA_NOTE_STATUSES)[number])) {
+    return {
+      status: null,
+      errorMessage: "Converted is reserved for future conversion workflows.",
+    };
+  }
+
+  if (!isManualIdeaNoteStatus(normalized)) {
+    return {
+      status: null,
+      errorMessage: `Status must be one of: ${MANUAL_IDEA_NOTE_STATUSES.join(", ")}.`,
+    };
+  }
+
+  return { status: normalized, errorMessage: null };
 }
 
 export function normalizeIdeaNotePriority(value: unknown): IdeaNotePriority | null {

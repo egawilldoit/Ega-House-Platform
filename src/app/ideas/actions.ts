@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createIdeaNote } from "@/lib/services/idea-note-service";
+import { createIdeaNote, updateIdeaNote } from "@/lib/services/idea-note-service";
 import { DEFAULT_IDEA_NOTE_TYPE } from "@/lib/idea-note-domain";
 
 export type CreateIdeaNoteFormState = {
@@ -18,11 +18,20 @@ export type CreateIdeaNoteFormState = {
   };
 };
 
+export type UpdateIdeaNoteFormState = {
+  error: string | null;
+  success: string | null;
+};
+
 function createErrorState(
   error: string,
   values: CreateIdeaNoteFormState["values"],
 ): CreateIdeaNoteFormState {
   return { error, success: null, values };
+}
+
+function createUpdateErrorState(error: string): UpdateIdeaNoteFormState {
+  return { error, success: null };
 }
 
 export async function createIdeaNoteAction(
@@ -60,5 +69,45 @@ export async function createIdeaNoteAction(
       priority: "",
       tagsInput: "",
     },
+  };
+}
+
+export async function updateIdeaNoteAction(
+  _previous: UpdateIdeaNoteFormState,
+  formData: FormData,
+): Promise<UpdateIdeaNoteFormState> {
+  const id = String(formData.get("id") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const body = String(formData.get("body") ?? "").trim();
+  const type = String(formData.get("type") ?? DEFAULT_IDEA_NOTE_TYPE).trim();
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "").trim();
+  const tagsInput = String(formData.get("tagsInput") ?? "").trim();
+  const status = String(formData.get("status") ?? "").trim();
+
+  if (!title) {
+    return createUpdateErrorState("Idea title is required.");
+  }
+
+  const result = await updateIdeaNote({
+    id,
+    title,
+    body,
+    type,
+    projectId,
+    priority,
+    tagsInput,
+    status,
+  });
+
+  if (result.errorMessage) {
+    return createUpdateErrorState(result.errorMessage);
+  }
+
+  revalidatePath("/ideas");
+
+  return {
+    error: null,
+    success: "Idea updated.",
   };
 }
