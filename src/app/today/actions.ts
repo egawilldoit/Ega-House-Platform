@@ -1,14 +1,15 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
 import {
   addTaskToToday,
   clearCompletedFromToday,
   removeTaskFromToday,
   updateTodayTaskStatus,
 } from "@/lib/services/today-planner-service";
+import {
+  redirectWithWorkspaceFeedback,
+  revalidateWorkspaceFor,
+} from "@/lib/workspace/workspace-navigation";
 
 function getTodayReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
@@ -20,21 +21,6 @@ function getTodayReturnPath(rawReturnTo: unknown) {
   return "/today";
 }
 
-function revalidateTodaySurfaces(returnPath: string) {
-  revalidatePath("/today");
-  revalidatePath(returnPath);
-  revalidatePath("/dashboard");
-  revalidatePath("/tasks");
-  revalidatePath("/timer");
-  revalidatePath("/review");
-}
-
-function redirectWithActionError(returnPath: string, errorMessage: string): never {
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  target.searchParams.set("actionError", errorMessage);
-  redirect(`${target.pathname}${target.search}`);
-}
-
 export async function addTaskToTodayAction(formData: FormData) {
   const returnPath = getTodayReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
@@ -42,11 +28,11 @@ export async function addTaskToTodayAction(formData: FormData) {
   const result = await addTaskToToday(taskId);
 
   if (result.errorMessage) {
-    redirectWithActionError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTodaySurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("today", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }
 
 export async function removeTaskFromTodayAction(formData: FormData) {
@@ -56,11 +42,11 @@ export async function removeTaskFromTodayAction(formData: FormData) {
   const result = await removeTaskFromToday(taskId);
 
   if (result.errorMessage) {
-    redirectWithActionError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTodaySurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("today", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }
 
 export async function updateTodayTaskStatusAction(formData: FormData) {
@@ -71,11 +57,11 @@ export async function updateTodayTaskStatusAction(formData: FormData) {
   const result = await updateTodayTaskStatus(taskId, status);
 
   if (result.errorMessage) {
-    redirectWithActionError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTodaySurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("today", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }
 
 export async function completeTodayTaskAction(formData: FormData) {
@@ -85,11 +71,11 @@ export async function completeTodayTaskAction(formData: FormData) {
   const result = await updateTodayTaskStatus(taskId, "done");
 
   if (result.errorMessage) {
-    redirectWithActionError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTodaySurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("today", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }
 
 export async function markTodayTaskBlockedAction(formData: FormData) {
@@ -102,11 +88,11 @@ export async function markTodayTaskBlockedAction(formData: FormData) {
   });
 
   if (result.errorMessage) {
-    redirectWithActionError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTodaySurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("today", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }
 
 export async function clearCompletedFromTodayAction(formData: FormData) {
@@ -114,9 +100,9 @@ export async function clearCompletedFromTodayAction(formData: FormData) {
   const result = await clearCompletedFromToday();
 
   if (result.errorMessage) {
-    redirectWithActionError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTodaySurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("today", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }

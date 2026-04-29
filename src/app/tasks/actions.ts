@@ -1,8 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
 import type { TablesInsert } from "@/lib/supabase/database.types";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
@@ -27,6 +24,10 @@ import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
+import {
+  redirectWithWorkspaceFeedback,
+  revalidateWorkspaceFor,
+} from "@/lib/workspace/workspace-navigation";
 
 export type CreateTaskFormState = {
   error: string | null;
@@ -103,10 +104,6 @@ function getTasksReturnPath(rawReturnTo: unknown) {
   return returnTo.startsWith("/tasks") ? returnTo : "/tasks";
 }
 
-function getTasksPathname(returnPath: string) {
-  return new URL(returnPath, "https://egawilldoit.online").pathname;
-}
-
 function getTaskSurfaceReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
   if (returnTo.startsWith("/tasks") || returnTo.startsWith("/dashboard")) {
@@ -116,29 +113,16 @@ function getTaskSurfaceReturnPath(rawReturnTo: unknown) {
   return "/tasks";
 }
 
-function revalidateTaskSurfaces(returnTo: string) {
-  revalidatePath("/tasks");
-  revalidatePath("/tasks/projects");
-  revalidatePath(getTasksPathname(returnTo));
-  revalidatePath("/dashboard");
-  revalidatePath("/today");
-  revalidatePath("/timer");
-  revalidatePath("/review");
-}
-
 function redirectWithTasksError(
   returnPath: string,
   errorMessage: string,
   taskId?: string,
 ): never {
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  target.searchParams.set("taskUpdateError", errorMessage);
-
-  if (taskId) {
-    target.searchParams.set("taskUpdateTaskId", taskId);
-  }
-
-  redirect(`${target.pathname}${target.search}${taskId ? `#task-${taskId}` : ""}`);
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: taskId ? `task-${taskId}` : undefined,
+    taskErrorMessage: errorMessage,
+    taskId,
+  });
 }
 
 function redirectWithTaskSurfaceError(
@@ -146,15 +130,11 @@ function redirectWithTaskSurfaceError(
   errorMessage: string,
   taskId?: string,
 ): never {
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  target.searchParams.set("taskUpdateError", errorMessage);
-
-  if (taskId) {
-    target.searchParams.set("taskUpdateTaskId", taskId);
-  }
-
-  const anchor = target.pathname.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
-  redirect(`${target.pathname}${target.search}${anchor}`);
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+    taskErrorMessage: errorMessage,
+    taskId,
+  });
 }
 
 function parseBulkRowsPayload(rawRows: string): BulkTaskComposerRowInput[] {
@@ -269,7 +249,7 @@ export async function createTaskAction(
     return createErrorState(errorMessage, values);
   }
 
-  revalidateTaskSurfaces(returnTo);
+  revalidateWorkspaceFor("task", { returnTo });
 
   return {
     error: null,
@@ -408,7 +388,7 @@ export async function createTasksBulkAction(
     return createBulkErrorState(errorMessage, values, skippedLines);
   }
 
-  revalidateTaskSurfaces(returnTo);
+  revalidateWorkspaceFor("task", { returnTo });
 
   return {
     error: null,
@@ -456,8 +436,10 @@ export async function updateTaskInlineAction(formData: FormData) {
     redirectWithTasksError(returnPath, errorMessage, validatedInput.taskId);
   }
 
-  revalidateTaskSurfaces(returnPath);
-  redirect(`${returnPath}#task-${validatedInput.taskId}`);
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: `task-${validatedInput.taskId}`,
+  });
 }
 
 export async function pinTaskAction(formData: FormData) {
@@ -470,9 +452,10 @@ export async function pinTaskAction(formData: FormData) {
     redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
   }
 
-  revalidateTaskSurfaces(returnPath);
-  const anchor = returnPath.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
-  redirect(`${returnPath}${anchor}`);
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+  });
 }
 
 export async function unpinTaskAction(formData: FormData) {
@@ -485,9 +468,10 @@ export async function unpinTaskAction(formData: FormData) {
     redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
   }
 
-  revalidateTaskSurfaces(returnPath);
-  const anchor = returnPath.startsWith("/tasks") && taskId ? `#task-${taskId}` : "";
-  redirect(`${returnPath}${anchor}`);
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+  });
 }
 
 async function updateTaskArchiveAction(formData: FormData, archived: boolean) {
@@ -502,17 +486,18 @@ async function updateTaskArchiveAction(formData: FormData, archived: boolean) {
     redirectWithTasksError(returnPath, errorMessage, taskId || undefined);
   }
 
-  revalidateTaskSurfaces(returnPath);
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
 
   if (archived) {
-    const target = new URL(returnPath, "https://egawilldoit.online");
-    target.searchParams.set("taskUpdateSuccess", "Task archived.");
-    redirect(`${target.pathname}${target.search}`);
+    redirectWithWorkspaceFeedback(returnPath, {
+      taskSuccessMessage: "Task archived.",
+    });
   }
 
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  target.searchParams.set("taskUpdateSuccess", "Task restored.");
-  redirect(`${target.pathname}${target.search}#task-${taskId}`);
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: `task-${taskId}`,
+    taskSuccessMessage: "Task restored.",
+  });
 }
 
 export async function archiveTaskAction(formData: FormData) {
@@ -542,6 +527,6 @@ export async function deleteTaskAction(formData: FormData) {
     redirectWithTasksError(returnPath, errorMessage, taskId);
   }
 
-  revalidateTaskSurfaces(returnPath);
-  redirect(returnPath);
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath);
 }

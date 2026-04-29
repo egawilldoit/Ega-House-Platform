@@ -1,9 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
-import { buildTimerRedirectHref } from "@/app/timer/flash-query";
 import { getTimerActionReturnPath } from "@/app/timer/return-path";
 import {
   blockTask,
@@ -16,19 +12,10 @@ import {
   stopTimerSession,
   updateTimerSessionTimestamps,
 } from "@/lib/services/timer-service";
-
-function getTimerPathname(returnPath: string) {
-  return new URL(returnPath, "https://egawilldoit.online").pathname;
-}
-
-function revalidateTimerSurfaces(returnPath: string) {
-  revalidatePath("/timer");
-  revalidatePath(getTimerPathname(returnPath));
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  revalidatePath("/today");
-  revalidatePath("/review");
-}
+import {
+  redirectWithWorkspaceFeedback,
+  revalidateWorkspaceFor,
+} from "@/lib/workspace/workspace-navigation";
 
 function redirectToTimer(
   returnPath: string,
@@ -39,16 +26,13 @@ function redirectToTimer(
     stoppedTaskId?: string;
   },
 ): never {
-  const target = new URL(
-    buildTimerRedirectHref(returnPath, options),
-    "https://egawilldoit.online",
-  );
-  if (options?.stoppedTaskId) {
-    target.searchParams.set("stoppedTaskId", options.stoppedTaskId);
-  } else {
-    target.searchParams.delete("stoppedTaskId");
-  }
-  redirect(`${target.pathname}${target.search}${target.hash}`);
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: options?.anchor ? options.anchor.replace(/^#/, "") : undefined,
+    clearStoppedTaskId: true,
+    errorMessage: options?.errorMessage,
+    stoppedTaskId: options?.stoppedTaskId,
+    successMessage: options?.successMessage,
+  });
 }
 
 export async function startTimerAction(formData: FormData) {
@@ -59,7 +43,7 @@ export async function startTimerAction(formData: FormData) {
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath);
 }
 
@@ -71,7 +55,7 @@ export async function stopTimerAction(formData: FormData) {
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
     successMessage: result.stoppedTaskId
       ? "Timer stopped. Choose the task outcome."
@@ -178,7 +162,7 @@ export async function submitStoppedTimerOutcomeAction(formData: FormData) {
     });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
     successMessage:
       outcome === "no_change"
@@ -194,7 +178,7 @@ export async function resolveSessionConflictAction(formData: FormData) {
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath);
 }
 
@@ -218,7 +202,7 @@ export async function updateSessionTimingAction(formData: FormData) {
     });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
     successMessage: "Session timing updated.",
     anchor: timerAnchor,
