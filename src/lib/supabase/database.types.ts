@@ -59,6 +59,36 @@ export type Database = {
           },
         ]
       }
+      idea_notes: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          owner_user_id: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           created_at: string
