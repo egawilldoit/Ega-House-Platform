@@ -12,7 +12,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getIdeaInboxNotes } from "@/lib/services/idea-note-service";
+import {
+  getIdeaInboxNotes,
+  getIdeaNoteProjectOptions,
+} from "@/lib/services/idea-note-service";
+import { formatTaskToken } from "@/lib/task-domain";
 
 export const metadata: Metadata = {
   title: "Ideas",
@@ -27,7 +31,10 @@ function formatIdeaCreatedAt(value: string) {
 }
 
 export default async function IdeasPage() {
-  const notes = await getIdeaInboxNotes();
+  const [notes, projectOptions] = await Promise.all([
+    getIdeaInboxNotes(),
+    getIdeaNoteProjectOptions(),
+  ]);
 
   return (
     <AppShell
@@ -44,7 +51,7 @@ export default async function IdeasPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <CreateIdeaNoteForm />
+            <CreateIdeaNoteForm projectOptions={projectOptions} />
           </CardContent>
         </Card>
 
@@ -81,7 +88,23 @@ export default async function IdeasPage() {
                           {formatIdeaCreatedAt(note.created_at)}
                         </p>
                       </div>
-                      <Badge tone="muted">Inbox</Badge>
+                      <div className="flex flex-wrap justify-end gap-2">
+                        <Badge tone="info">{formatTaskToken(note.type)}</Badge>
+                        <Badge tone="muted">Inbox</Badge>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                      <Badge tone="muted">
+                        {note.projects?.name ?? "No project"}
+                      </Badge>
+                      {note.priority ? (
+                        <Badge tone="warn">{formatTaskToken(note.priority)}</Badge>
+                      ) : null}
+                      {note.tags.map((tag) => (
+                        <Badge key={tag} tone="muted">
+                          {tag}
+                        </Badge>
+                      ))}
                     </div>
                     {note.body ? (
                       <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-[color:var(--muted-foreground)]">

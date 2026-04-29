@@ -65,8 +65,12 @@ export type Database = {
           created_at: string
           id: string
           owner_user_id: string
+          priority: string | null
+          project_id: string | null
           status: string
+          tags: string[]
           title: string
+          type: string
           updated_at: string
         }
         Insert: {
@@ -74,8 +78,12 @@ export type Database = {
           created_at?: string
           id?: string
           owner_user_id?: string
+          priority?: string | null
+          project_id?: string | null
           status?: string
+          tags?: string[]
           title: string
+          type?: string
           updated_at?: string
         }
         Update: {
@@ -83,11 +91,23 @@ export type Database = {
           created_at?: string
           id?: string
           owner_user_id?: string
+          priority?: string | null
+          project_id?: string | null
           status?: string
+          tags?: string[]
           title?: string
+          type?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "idea_notes_project_id_projects_id_fk"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       projects: {
         Row: {

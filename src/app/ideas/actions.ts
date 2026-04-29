@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createIdeaNote } from "@/lib/services/idea-note-service";
+import { DEFAULT_IDEA_NOTE_TYPE } from "@/lib/idea-note-domain";
 
 export type CreateIdeaNoteFormState = {
   error: string | null;
@@ -10,6 +11,10 @@ export type CreateIdeaNoteFormState = {
   values: {
     title: string;
     body: string;
+    type: string;
+    projectId: string;
+    priority: string;
+    tagsInput: string;
   };
 };
 
@@ -26,13 +31,17 @@ export async function createIdeaNoteAction(
 ): Promise<CreateIdeaNoteFormState> {
   const title = String(formData.get("title") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
-  const values = { title, body };
+  const type = String(formData.get("type") ?? DEFAULT_IDEA_NOTE_TYPE).trim();
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const priority = String(formData.get("priority") ?? "").trim();
+  const tagsInput = String(formData.get("tagsInput") ?? "").trim();
+  const values = { title, body, type, projectId, priority, tagsInput };
 
   if (!title) {
     return createErrorState("Idea title is required.", values);
   }
 
-  const result = await createIdeaNote({ title, body });
+  const result = await createIdeaNote({ title, body, type, projectId, priority, tagsInput });
 
   if (result.errorMessage) {
     return createErrorState(result.errorMessage, values);
@@ -46,6 +55,10 @@ export async function createIdeaNoteAction(
     values: {
       title: "",
       body: "",
+      type: DEFAULT_IDEA_NOTE_TYPE,
+      projectId: "",
+      priority: "",
+      tagsInput: "",
     },
   };
 }

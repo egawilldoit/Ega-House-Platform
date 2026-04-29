@@ -111,6 +111,12 @@ export const ideaNotes = pgTable(
     title: text("title").notNull(),
     body: text("body"),
     status: text("status").notNull().default("inbox"),
+    type: text("type").notNull().default("idea"),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    priority: text("priority"),
+    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -128,6 +134,17 @@ export const ideaNotes = pgTable(
       table.ownerUserId,
       table.updatedAt.desc(),
     ),
+    index("idea_notes_owner_type_created_idx").on(
+      table.ownerUserId,
+      table.type,
+      table.createdAt.desc(),
+    ),
+    index("idea_notes_owner_priority_created_idx").on(
+      table.ownerUserId,
+      table.priority,
+      table.createdAt.desc(),
+    ),
+    index("idea_notes_tags_gin_idx").using("gin", table.tags),
   ],
 );
 
