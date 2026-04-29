@@ -2,7 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 
-import { createIdeaNote, updateIdeaNote } from "@/lib/services/idea-note-service";
+import {
+  archiveIdeaNote,
+  createIdeaNote,
+  restoreIdeaNote,
+  updateIdeaNote,
+} from "@/lib/services/idea-note-service";
 import { DEFAULT_IDEA_NOTE_TYPE } from "@/lib/idea-note-domain";
 
 export type CreateIdeaNoteFormState = {
@@ -22,6 +27,8 @@ export type UpdateIdeaNoteFormState = {
   error: string | null;
   success: string | null;
 };
+
+export type IdeaNoteArchiveFormState = UpdateIdeaNoteFormState;
 
 function createErrorState(
   error: string,
@@ -109,5 +116,43 @@ export async function updateIdeaNoteAction(
   return {
     error: null,
     success: "Idea updated.",
+  };
+}
+
+export async function archiveIdeaNoteAction(
+  _previous: IdeaNoteArchiveFormState,
+  formData: FormData,
+): Promise<IdeaNoteArchiveFormState> {
+  const id = String(formData.get("id") ?? "").trim();
+  const result = await archiveIdeaNote(id);
+
+  if (result.errorMessage) {
+    return createUpdateErrorState(result.errorMessage);
+  }
+
+  revalidatePath("/ideas");
+
+  return {
+    error: null,
+    success: "Idea archived.",
+  };
+}
+
+export async function restoreIdeaNoteAction(
+  _previous: IdeaNoteArchiveFormState,
+  formData: FormData,
+): Promise<IdeaNoteArchiveFormState> {
+  const id = String(formData.get("id") ?? "").trim();
+  const result = await restoreIdeaNote(id);
+
+  if (result.errorMessage) {
+    return createUpdateErrorState(result.errorMessage);
+  }
+
+  revalidatePath("/ideas");
+
+  return {
+    error: null,
+    success: "Idea restored.",
   };
 }

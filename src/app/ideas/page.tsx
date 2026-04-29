@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Inbox } from "lucide-react";
 
 import { CreateIdeaNoteForm } from "@/app/ideas/create-idea-note-form";
 import { EditIdeaNoteForm } from "@/app/ideas/edit-idea-note-form";
+import { IdeaNoteArchiveControls } from "@/app/ideas/idea-note-archive-controls";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -16,8 +19,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import {
   getIdeaInboxNotes,
   getIdeaNoteProjectOptions,
+  type IdeaNoteListView,
 } from "@/lib/services/idea-note-service";
 import { formatTaskToken } from "@/lib/task-domain";
+import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Ideas",
@@ -31,9 +36,56 @@ function formatIdeaCreatedAt(value: string) {
   }).format(new Date(value));
 }
 
-export default async function IdeasPage() {
+type IdeasPageProps = {
+  searchParams: Promise<{
+    view?: string;
+  }>;
+};
+
+const IDEA_NOTE_VIEWS = ["active", "archived", "all"] as const satisfies readonly IdeaNoteListView[];
+
+function normalizeIdeaNoteView(value: string | undefined): IdeaNoteListView {
+  return IDEA_NOTE_VIEWS.includes(value as IdeaNoteListView)
+    ? (value as IdeaNoteListView)
+    : "active";
+}
+
+function getIdeaViewCopy(view: IdeaNoteListView) {
+  if (view === "archived") {
+    return {
+      title: "Archived ideas",
+      description: "Ideas removed from active processing but kept recoverable.",
+      emptyTitle: "No archived ideas yet",
+      emptyDescription: "Archived ideas will appear here after you remove them from the active inbox.",
+      countLabel: "archived",
+    };
+  }
+
+  if (view === "all") {
+    return {
+      title: "All ideas",
+      description: "Active and archived ideas, excluding converted notes.",
+      emptyTitle: "No ideas captured yet",
+      emptyDescription: "Capture a thought, improvement, or opportunity and keep it separate from tasks until you are ready to process it.",
+      countLabel: "ideas",
+    };
+  }
+
+  return {
+    title: "Ideas",
+    description: "Newest active ideas and their current processing status.",
+    emptyTitle: "No active ideas",
+    emptyDescription: "Capture a thought, improvement, or opportunity and keep it separate from tasks until you are ready to process it.",
+    countLabel: "active",
+  };
+}
+
+export default async function IdeasPage({ searchParams }: IdeasPageProps) {
+  const resolvedSearchParams = await searchParams;
+  const activeView = normalizeIdeaNoteView(resolvedSearchParams.view);
+  const copy = getIdeaViewCopy(activeView);
   const [notes, projectOptions] = await Promise.all([
-    getIdeaInboxNotes(),
+    getIdeaInboxNotes({ view: activeView }),
     getIdeaNoteProjectOptions(),
   ]);
 
@@ -59,19 +111,50 @@ export default async function IdeasPage() {
         <Card className="border-[var(--border)] bg-white">
           <CardHeader className="flex-row items-start justify-between gap-4">
             <div>
-              <CardTitle>Ideas</CardTitle>
+              <CardTitle>{copy.title}</CardTitle>
               <CardDescription>
-                Newest loose ideas and their current processing status.
+                {copy.description}
               </CardDescription>
             </div>
-            <Badge tone="info">{notes.length} ideas</Badge>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Link
+                href="/ideas"
+                className={cn(
+                  buttonVariants({ variant: activeView === "active" ? "default" : "muted", size: "sm" }),
+                  "rounded-xl",
+                )}
+              >
+                Active
+              </Link>
+              <Link
+                href="/ideas?view=archived"
+                className={cn(
+                  buttonVariants({ variant: activeView === "archived" ? "default" : "muted", size: "sm" }),
+                  "rounded-xl",
+                )}
+              >
+                Archived
+              </Link>
+              <Link
+                href="/ideas?view=all"
+                className={cn(
+                  buttonVariants({ variant: activeView === "all" ? "default" : "muted", size: "sm" }),
+                  "rounded-xl",
+                )}
+              >
+                All
+              </Link>
+              <Badge tone="info">
+                {notes.length} {copy.countLabel}
+              </Badge>
+            </div>
           </CardHeader>
           <CardContent>
             {notes.length === 0 ? (
               <EmptyState
                 icon={Inbox}
-                title="No ideas captured yet"
-                description="Capture a thought, improvement, or opportunity and keep it separate from tasks until you are ready to process it."
+                title={copy.emptyTitle}
+                description={copy.emptyDescription}
               />
             ) : (
               <div className="space-y-3">
@@ -112,7 +195,14 @@ export default async function IdeasPage() {
                         {note.body}
                       </p>
                     ) : null}
-                    <EditIdeaNoteForm note={note} projectOptions={projectOptions} />
+                    {note.status === "archived" ? (
+                      <IdeaNoteArchiveControls noteId={note.id} mode="restore" />
+                    ) : (
+                      <>
+                        <IdeaNoteArchiveControls noteId={note.id} mode="archive" />
+                        <EditIdeaNoteForm note={note} projectOptions={projectOptions} />
+                      </>
+                    )}
                   </article>
                 ))}
               </div>

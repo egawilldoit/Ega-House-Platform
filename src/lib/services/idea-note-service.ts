@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Tables, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   DEFAULT_IDEA_NOTE_TYPE,
+  type IdeaNoteStatus,
   IDEA_NOTE_PRIORITIES,
   MANUAL_IDEA_NOTE_STATUSES,
   IDEA_NOTE_TYPES,
@@ -34,6 +35,13 @@ export { DEFAULT_IDEA_NOTE_TYPE, IDEA_NOTE_PRIORITIES, IDEA_NOTE_TYPES };
 export { MANUAL_IDEA_NOTE_STATUSES };
 
 export type IdeaNoteProjectOption = Pick<Tables<"projects">, "id" | "name">;
+export type IdeaNoteListView = "active" | "archived" | "all";
+
+const ACTIVE_IDEA_NOTE_STATUSES = ["inbox", "reviewing", "planned"] as const satisfies readonly IdeaNoteStatus[];
+const ALL_VISIBLE_IDEA_NOTE_STATUSES = [
+  ...ACTIVE_IDEA_NOTE_STATUSES,
+  "archived",
+] as const satisfies readonly IdeaNoteStatus[];
 
 export type CreateIdeaNoteInput = {
   title: unknown;
@@ -62,6 +70,8 @@ export type IdeaNoteMutationResult =
 
 export type CreateIdeaNoteResult = IdeaNoteMutationResult;
 export type UpdateIdeaNoteResult = IdeaNoteMutationResult;
+export type ArchiveIdeaNoteResult = IdeaNoteMutationResult;
+export type RestoreIdeaNoteResult = IdeaNoteMutationResult;
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
@@ -284,16 +294,91 @@ export async function updateIdeaNote(
   };
 }
 
-export async function getIdeaInboxNotes(options?: {
-  supabase?: SupabaseServerClient;
-}): Promise<IdeaNote[]> {
+async function updateIdeaNoteStatus(
+  idInput: unknown,
+  status: "archived" | "inbox",
+  errorMessage: string,
+  options?: { supabase?: SupabaseServerClient },
+): Promise<IdeaNoteMutationResult> {
   const supabase = await resolveSupabaseClient(options?.supabase);
+  const normalizedId = normalizeIdeaNoteId(idInput);
+
+  if (normalizedId.errorMessage) {
+    return {
+      errorMessage: normalizedId.errorMessage,
+      data: null,
+    };
+  }
+
+  const row = {
+    status,
+    updated_at: new Date().toISOString(),
+  } satisfies TablesUpdate<"idea_notes">;
+
   const { data, error } = await supabase
     .from("idea_notes")
+    .update(row)
+    .eq("id", normalizedId.id)
     .select(
       "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
     )
-    .order("created_at", { ascending: false });
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage,
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Idea is unavailable.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: data as IdeaNote,
+  };
+}
+
+export async function archiveIdeaNote(
+  id: unknown,
+  options?: { supabase?: SupabaseServerClient },
+): Promise<ArchiveIdeaNoteResult> {
+  return updateIdeaNoteStatus(id, "archived", "Unable to archive idea right now.", options);
+}
+
+export async function restoreIdeaNote(
+  id: unknown,
+  options?: { supabase?: SupabaseServerClient },
+): Promise<RestoreIdeaNoteResult> {
+  return updateIdeaNoteStatus(id, "inbox", "Unable to restore idea right now.", options);
+}
+
+export async function getIdeaInboxNotes(options?: {
+  supabase?: SupabaseServerClient;
+  view?: IdeaNoteListView;
+}): Promise<IdeaNote[]> {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const view = options?.view ?? "active";
+  let query = supabase
+    .from("idea_notes")
+    .select(
+      "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+    );
+
+  if (view === "archived") {
+    query = query.eq("status", "archived");
+  } else if (view === "all") {
+    query = query.in("status", [...ALL_VISIBLE_IDEA_NOTE_STATUSES]);
+  } else {
+    query = query.in("status", [...ACTIVE_IDEA_NOTE_STATUSES]);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
     throw new Error(`Failed to load ideas: ${error.message}`);
