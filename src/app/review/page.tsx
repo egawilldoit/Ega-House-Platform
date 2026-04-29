@@ -19,7 +19,7 @@ import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
 import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review-most-tracked";
 import { getTaskSessionDurationSeconds } from "@/lib/task-session";
-import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
+import { getTasksForReview } from "@/lib/services/task-read-service";
 
 import { ReviewForm } from "./review-form";
 import {
@@ -50,54 +50,6 @@ type WeeklyStats = {
     updatedAt: string;
   }>;
 };
-
-type ReviewBlockedTaskRow = {
-  id: string;
-  title: string;
-  blocked_reason: string | null;
-  updated_at: string;
-};
-
-async function getReviewBlockedTasks(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<{ data: ReviewBlockedTaskRow[]; error: string | null }> {
-  const primaryResult = await supabase
-    .from("tasks")
-    .select("id, title, blocked_reason, updated_at")
-    .eq("status", "blocked")
-    .order("updated_at", { ascending: false })
-    .limit(6);
-
-  if (!primaryResult.error) {
-    return {
-      data: (primaryResult.data ?? []) as ReviewBlockedTaskRow[],
-      error: null,
-    };
-  }
-
-  if (!isMissingTasksBlockedReasonColumn(primaryResult.error)) {
-    return { data: [], error: primaryResult.error.message };
-  }
-
-  const fallbackResult = await supabase
-    .from("tasks")
-    .select("id, title, updated_at")
-    .eq("status", "blocked")
-    .order("updated_at", { ascending: false })
-    .limit(6);
-
-  if (fallbackResult.error) {
-    return { data: [], error: fallbackResult.error.message };
-  }
-
-  return {
-    data: (fallbackResult.data ?? []).map((task) => ({
-      ...task,
-      blocked_reason: null,
-    })),
-    error: null,
-  };
-}
 
 async function getMostTrackedInsights(
   weekStart: string,
@@ -183,7 +135,7 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
       .select("id, status")
       .gte("updated_at", startIso)
       .lt("updated_at", endExclusiveIso),
-    getReviewBlockedTasks(supabase),
+    getTasksForReview({ supabase, limit: 6 }),
   ]);
   if (tasksResult.error) {
     throw new Error(`Failed to load weekly task stats: ${tasksResult.error.message}`);
@@ -194,8 +146,8 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
   if (goalsResult.error) {
     throw new Error(`Failed to load weekly goal stats: ${goalsResult.error.message}`);
   }
-  if (blockedTasksResult.error) {
-    throw new Error(`Failed to load blocked tasks: ${blockedTasksResult.error}`);
+  if (blockedTasksResult.errorMessage) {
+    throw new Error(`Failed to load blocked tasks: ${blockedTasksResult.errorMessage}`);
   }
   const trackedSeconds = (sessionsResult.data ?? []).reduce(
     (total, session) => total + getTaskSessionDurationSeconds(session, sessionNowIso),

@@ -57,6 +57,9 @@ function createShutdownDataSupabaseMock(options?: {
               lte() {
                 return chain;
               },
+              is() {
+                return chain;
+              },
               order() {
                 return chain;
               },

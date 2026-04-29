@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getTaskDueDateState, getTodayLocalIsoDate } from "@/lib/task-due-date";
 import {
   TASK_STATUS_VALUES,
@@ -6,12 +7,16 @@ import {
   isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
-import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import {
   getActiveTimerSession,
   getTimerSummary,
   type ActiveTimerSession,
 } from "@/lib/services/timer-service";
+import {
+  getTasksForTodayPlanning,
+  type NormalizedTaskRow,
+  type TaskPlanningReadMode,
+} from "@/lib/services/task-read-service";
 import {
   blockTask,
   markTaskDone,
@@ -31,27 +36,7 @@ const PRIORITY_RANK: Record<string, number> = {
   medium: 2,
   low: 3,
 };
-const TODAY_TASK_SELECT_WITH_BLOCKED_REASON =
-  "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, completed_at, projects(name, slug), goals(title)";
-const TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON =
-  "id, title, description, status, priority, due_date, estimate_minutes, focus_rank, planned_for_date, updated_at, completed_at, projects(name, slug), goals(title)";
-
-type TodayTaskRow = {
-  id: string;
-  title: string;
-  description: string | null;
-  blocked_reason: string | null;
-  status: string;
-  priority: string;
-  due_date: string | null;
-  estimate_minutes: number | null;
-  focus_rank: number | null;
-  planned_for_date: string | null;
-  updated_at: string;
-  completed_at: string | null;
-  projects: { name: string; slug: string } | null;
-  goals: { title: string } | null;
-};
+type TodayTaskRow = NormalizedTaskRow;
 
 export type TodayPlannerTask = {
   id: string;
@@ -228,97 +213,10 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
 
 async function queryTodayTaskRowsWithBlockedReasonFallback(
   supabase: SupabaseServerClient,
-  mode: "selected" | "pinned" | "inProgress",
+  mode: TaskPlanningReadMode,
   today: string,
 ): Promise<{ data: TodayTaskRow[]; errorMessage: string | null }> {
-  const applyArchiveFilter = (
-    query: ReturnType<SupabaseServerClient["from"]>,
-    includeArchiveFilter: boolean,
-  ) => {
-    if (!includeArchiveFilter) {
-      return query;
-    }
-
-    return typeof query.is === "function" ? query.is("archived_at", null) : query;
-  };
-
-  const applyFilters = (
-    query: ReturnType<SupabaseServerClient["from"]>,
-    includeArchiveFilter: boolean,
-  ) => {
-    if (mode === "selected") {
-      return applyArchiveFilter(
-        query.or(`planned_for_date.eq.${today},due_date.eq.${today}`),
-        includeArchiveFilter,
-      )
-        .order("updated_at", { ascending: false })
-        .limit(240);
-    }
-
-    if (mode === "pinned") {
-      return applyArchiveFilter(
-        query
-          .not("focus_rank", "is", null)
-          .neq("status", "done"),
-        includeArchiveFilter,
-      )
-        .order("focus_rank", { ascending: true })
-        .order("updated_at", { ascending: false })
-        .limit(80);
-    }
-
-    return applyArchiveFilter(
-      query.eq("status", "in_progress"),
-      includeArchiveFilter,
-    )
-      .order("updated_at", { ascending: false })
-      .limit(80);
-  };
-
-  let primaryResult = await applyFilters(
-    supabase.from("tasks").select(TODAY_TASK_SELECT_WITH_BLOCKED_REASON),
-    true,
-  );
-
-  if (primaryResult.error) {
-    primaryResult = await applyFilters(
-      supabase.from("tasks").select(TODAY_TASK_SELECT_WITH_BLOCKED_REASON),
-      false,
-    );
-  }
-
-  if (!primaryResult.error) {
-    return { data: (primaryResult.data ?? []) as TodayTaskRow[], errorMessage: null };
-  }
-
-  if (!isMissingTasksBlockedReasonColumn(primaryResult.error)) {
-    return { data: [], errorMessage: primaryResult.error.message };
-  }
-
-  let fallbackResult = await applyFilters(
-    supabase.from("tasks").select(TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON),
-    true,
-  );
-
-  if (fallbackResult.error) {
-    fallbackResult = await applyFilters(
-      supabase.from("tasks").select(TODAY_TASK_SELECT_WITHOUT_BLOCKED_REASON),
-      false,
-    );
-  }
-
-  if (fallbackResult.error) {
-    return { data: [], errorMessage: fallbackResult.error.message };
-  }
-
-  return {
-    data: (fallbackResult.data ?? []).map((task: Omit<TodayTaskRow, "blocked_reason">) => ({
-      ...task,
-      blocked_reason: null,
-      completed_at: task.completed_at ?? null,
-    })),
-    errorMessage: null,
-  };
+  return getTasksForTodayPlanning({ supabase, mode, today });
 }
 
 export async function getTodayPlannerData(options?: {

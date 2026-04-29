@@ -49,6 +49,9 @@ function createSupabaseMock(queryResults: QueryResult[], onOrClause?: (value: st
             not() {
               return chain;
             },
+            is() {
+              return chain;
+            },
             or(value: string) {
               onOrClause?.(value);
               return chain;
@@ -193,6 +196,9 @@ test("uses the provided scoped client for active timer and summary reads", async
                 return chain;
               },
               not() {
+                return chain;
+              },
+              is() {
                 return chain;
               },
               or() {
