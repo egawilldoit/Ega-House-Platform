@@ -103,6 +103,34 @@ export const tasks = pgTable(
   ],
 );
 
+export const ideaNotes = pgTable(
+  "idea_notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    status: text("status").notNull().default("inbox"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("idea_notes_owner_status_created_idx").on(
+      table.ownerUserId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+    index("idea_notes_owner_updated_idx").on(
+      table.ownerUserId,
+      table.updatedAt.desc(),
+    ),
+  ],
+);
+
 export const taskSessions = pgTable(
   "task_sessions",
   {
