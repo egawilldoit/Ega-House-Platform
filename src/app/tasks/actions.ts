@@ -18,11 +18,11 @@ import {
   getTaskInsertScopeError,
   getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
-  archiveTask,
   unarchiveTask,
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "@/lib/services/task-service";
+import { archiveTaskSafely } from "@/lib/services/task-transition-service";
 import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
@@ -495,7 +495,7 @@ async function updateTaskArchiveAction(formData: FormData, archived: boolean) {
   const taskId = String(formData.get("taskId") ?? "").trim();
 
   const { errorMessage } = archived
-    ? await archiveTask(taskId)
+    ? await archiveTaskSafely(taskId)
     : await unarchiveTask(taskId);
 
   if (errorMessage) {

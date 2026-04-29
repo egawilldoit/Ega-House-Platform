@@ -12,7 +12,14 @@ import {
   getTimerSummary,
   type ActiveTimerSession,
 } from "@/lib/services/timer-service";
-import { updateTaskInline, validateTaskInlineUpdateInput } from "@/lib/services/task-service";
+import {
+  blockTask,
+  markTaskDone,
+  markTaskTodo,
+  planTaskForToday,
+  removeTaskFromToday as transitionRemoveTaskFromToday,
+  resumeTask,
+} from "@/lib/services/task-transition-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -488,20 +495,10 @@ export async function addTaskToToday(taskId: string, options?: {
     return { errorMessage: scope.errorMessage ?? "Task is unavailable." };
   }
 
-  const today = getTodayLocalIsoDate(options?.now ?? new Date());
-  const { error } = await supabase
-    .from("tasks")
-    .update({
-      planned_for_date: today,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", scope.taskId);
-
-  if (error) {
-    return { errorMessage: "Unable to add task to Today right now." };
-  }
-
-  return { errorMessage: null };
+  return planTaskForToday(scope.taskId, {
+    supabase,
+    now: options?.now,
+  });
 }
 
 export async function removeTaskFromToday(taskId: string, options?: {
@@ -514,19 +511,7 @@ export async function removeTaskFromToday(taskId: string, options?: {
     return { errorMessage: scope.errorMessage ?? "Task is unavailable." };
   }
 
-  const { error } = await supabase
-    .from("tasks")
-    .update({
-      planned_for_date: null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", scope.taskId);
-
-  if (error) {
-    return { errorMessage: "Unable to remove task from Today right now." };
-  }
-
-  return { errorMessage: null };
+  return transitionRemoveTaskFromToday(scope.taskId, { supabase });
 }
 
 export async function updateTodayTaskStatus(
@@ -545,59 +530,51 @@ export async function updateTodayTaskStatus(
     return { errorMessage: scope.errorMessage ?? "Task is unavailable." };
   }
 
-  let { data: taskData, error: taskLoadError } = await supabase
-    .from("tasks")
-    .select("status, priority, due_date, estimate_minutes, blocked_reason")
-    .eq("id", scope.taskId)
-    .maybeSingle();
+  if (status === "done") {
+    return markTaskDone(scope.taskId, { supabase });
+  }
 
-  if (taskLoadError && isMissingTasksBlockedReasonColumn(taskLoadError)) {
-    const fallbackResult = await supabase
+  if (status === "todo") {
+    return markTaskTodo(scope.taskId, { supabase });
+  }
+
+  if (status === "in_progress") {
+    return resumeTask(scope.taskId, { supabase });
+  }
+
+  let blockedReason = options?.blockedReason?.trim() ?? null;
+  if (!blockedReason) {
+    let { data: taskData, error: taskLoadError } = await supabase
       .from("tasks")
-      .select("status, priority, due_date, estimate_minutes")
+      .select("blocked_reason")
       .eq("id", scope.taskId)
       .maybeSingle();
 
-    if (!fallbackResult.error) {
-      taskData = fallbackResult.data
-        ? {
-            ...fallbackResult.data,
-            blocked_reason: null,
-          }
-        : null;
-      taskLoadError = null;
+    if (taskLoadError && isMissingTasksBlockedReasonColumn(taskLoadError)) {
+      const fallbackResult = await supabase
+        .from("tasks")
+        .select("id")
+        .eq("id", scope.taskId)
+        .maybeSingle();
+
+      if (!fallbackResult.error) {
+        taskData = fallbackResult.data ? { blocked_reason: null } : null;
+        taskLoadError = null;
+      }
     }
+
+    if (taskLoadError || !taskData) {
+      return { errorMessage: "Unable to load task details right now." };
+    }
+
+    blockedReason = taskData.blocked_reason?.trim() ?? null;
   }
 
-  if (taskLoadError || !taskData) {
-    return { errorMessage: "Unable to load task details right now." };
+  if (!blockedReason) {
+    return { errorMessage: "Blocked reason is required when status is Blocked." };
   }
 
-  const validationResult = validateTaskInlineUpdateInput({
-    taskId: scope.taskId,
-    status,
-    priority: taskData.priority,
-    dueDate: taskData.due_date,
-    estimateMinutes: taskData.estimate_minutes,
-    blockedReason: status === "blocked" ? options?.blockedReason ?? taskData.blocked_reason : null,
-  });
-
-  if (validationResult.errorMessage || !validationResult.data) {
-    return {
-      errorMessage:
-        validationResult.errorMessage ?? "Task status update request is invalid.",
-    };
-  }
-
-  const updateResult = await updateTaskInline(validationResult.data, {
-    supabase,
-  });
-
-  if (updateResult.errorMessage) {
-    return { errorMessage: updateResult.errorMessage };
-  }
-
-  return { errorMessage: null };
+  return blockTask(scope.taskId, blockedReason, { supabase });
 }
 
 export async function clearCompletedFromToday(options?: {

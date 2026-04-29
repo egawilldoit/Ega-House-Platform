@@ -5,8 +5,11 @@ import { redirect } from "next/navigation";
 
 import { buildTimerRedirectHref } from "@/app/timer/flash-query";
 import { getTimerActionReturnPath } from "@/app/timer/return-path";
-import { getTaskById, updateTaskInline } from "@/lib/services/task-service";
-import { isTaskPriority, type TaskStatus } from "@/lib/task-domain";
+import {
+  blockTask,
+  markTaskDone,
+  resumeTask,
+} from "@/lib/services/task-transition-service";
 import {
   resolveOpenTimerSessionConflict,
   startTimerForTask,
@@ -80,25 +83,10 @@ export async function stopTimerAction(formData: FormData) {
 type StoppedTimerOutcome = "done" | "in_progress" | "blocked" | "no_change";
 
 type HandleStoppedTimerOutcomeDependencies = {
-  getTaskById: typeof getTaskById;
-  updateTaskInline: typeof updateTaskInline;
+  markTaskDone: typeof markTaskDone;
+  resumeTask: typeof resumeTask;
+  blockTask: typeof blockTask;
 };
-
-function getStoppedTimerOutcomeStatus(outcome: StoppedTimerOutcome): TaskStatus | null {
-  if (outcome === "done") {
-    return "done";
-  }
-
-  if (outcome === "blocked") {
-    return "blocked";
-  }
-
-  if (outcome === "in_progress") {
-    return "in_progress";
-  }
-
-  return null;
-}
 
 function parseStoppedTimerOutcome(value: unknown): StoppedTimerOutcome | null {
   const normalizedValue = String(value ?? "").trim();
@@ -119,8 +107,9 @@ export async function handleStoppedTimerOutcomeByTaskId(
   outcome: StoppedTimerOutcome,
   blockedReason: unknown = null,
   dependencies: HandleStoppedTimerOutcomeDependencies = {
-    getTaskById,
-    updateTaskInline,
+    markTaskDone,
+    resumeTask,
+    blockTask,
   },
 ) {
   const normalizedTaskId = taskId.trim();
@@ -128,44 +117,32 @@ export async function handleStoppedTimerOutcomeByTaskId(
     return { errorMessage: "Task update request is invalid." };
   }
 
-  const nextStatus = getStoppedTimerOutcomeStatus(outcome);
-  if (!nextStatus) {
+  if (outcome === "no_change") {
     return { errorMessage: null };
   }
 
-  const taskResult = await dependencies.getTaskById(normalizedTaskId);
-  if (taskResult.errorMessage) {
-    return { errorMessage: taskResult.errorMessage };
+  if (outcome === "done") {
+    return dependencies.markTaskDone(normalizedTaskId);
   }
 
-  if (!taskResult.data) {
-    return { errorMessage: "Task was not found or is no longer available." };
+  if (outcome === "in_progress") {
+    return dependencies.resumeTask(normalizedTaskId);
   }
 
   const normalizedBlockedReason = String(blockedReason ?? "").trim();
-  if (nextStatus === "blocked" && !normalizedBlockedReason) {
+  if (!normalizedBlockedReason) {
     return { errorMessage: "Blocked reason is required when status is Blocked." };
   }
 
-  const updateResult = await dependencies.updateTaskInline({
-    taskId: taskResult.data.id,
-    status: nextStatus,
-    priority: isTaskPriority(taskResult.data.priority)
-      ? taskResult.data.priority
-      : "medium",
-    dueDate: taskResult.data.due_date,
-    estimateMinutes: taskResult.data.estimate_minutes,
-    blockedReason: nextStatus === "blocked" ? normalizedBlockedReason : null,
-  });
-
-  return updateResult;
+  return dependencies.blockTask(normalizedTaskId, normalizedBlockedReason);
 }
 
 export async function completeStoppedTaskById(
   taskId: string,
   dependencies: HandleStoppedTimerOutcomeDependencies = {
-    getTaskById,
-    updateTaskInline,
+    markTaskDone,
+    resumeTask,
+    blockTask,
   },
 ) {
   return handleStoppedTimerOutcomeByTaskId(
