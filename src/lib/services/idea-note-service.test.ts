@@ -24,25 +24,44 @@ type UpdateCall = {
   payload: Record<string, unknown>;
 };
 
+type IdeaNoteRow = {
+  id: string;
+  title: string;
+  body: string | null;
+  status: string;
+  type: string;
+  project_id: string | null;
+  priority: string | null;
+  tags: string[];
+  created_at: string;
+  updated_at: string;
+  projects?: { name: string } | null;
+};
+
+function ideaNoteRow(overrides: Partial<IdeaNoteRow> = {}): IdeaNoteRow {
+  return {
+    id: "idea-1",
+    title: "Inbox thought",
+    body: null,
+    status: "inbox",
+    type: "idea",
+    project_id: null,
+    priority: null,
+    tags: [],
+    created_at: "2026-04-29T12:00:00.000Z",
+    updated_at: "2026-04-29T12:00:00.000Z",
+    projects: null,
+    ...overrides,
+  };
+}
+
 function createIdeaNotesSupabaseMock(options?: {
   insertError?: boolean;
   updateError?: boolean;
   updateMissing?: boolean;
   projectLookupError?: boolean;
   projectLookupMissing?: boolean;
-  rows?: Array<{
-    id: string;
-    title: string;
-    body: string | null;
-    status: string;
-    type: string;
-    project_id: string | null;
-    priority: string | null;
-    tags: string[];
-    created_at: string;
-    updated_at: string;
-    projects?: { name: string } | null;
-  }>;
+  rows?: IdeaNoteRow[];
   projects?: Array<{ id: string; name: string }>;
 }) {
   const insertCalls: InsertCall[] = [];
@@ -50,21 +69,12 @@ function createIdeaNotesSupabaseMock(options?: {
   const orderCalls: Array<{ column: string; ascending: boolean | undefined }> = [];
   const eqCalls: Array<{ column: string; value: string }> = [];
   const inCalls: Array<{ column: string; values: string[] }> = [];
+  const isCalls: Array<{ column: string; value: null }> = [];
+  const orCalls: string[] = [];
+  const containsCalls: Array<{ column: string; value: string[] }> = [];
   const projectLookupCalls: string[] = [];
   const rows = options?.rows ?? [
-    {
-      id: "idea-1",
-      title: "Inbox thought",
-      body: null,
-      status: "inbox",
-      type: "idea",
-      project_id: null,
-      priority: null,
-      tags: [],
-      created_at: "2026-04-29T12:00:00.000Z",
-      updated_at: "2026-04-29T12:00:00.000Z",
-      projects: null,
-    },
+    ideaNoteRow(),
   ];
   const projects = options?.projects ?? [{ id: "11111111-1111-4111-8111-111111111111", name: "Ops" }];
 
@@ -203,16 +213,36 @@ function createIdeaNotesSupabaseMock(options?: {
           const chain = {
             eq(column: string, value: string) {
               eqCalls.push({ column, value });
-              if (column === "status") {
-                filteredRows = rows.filter((row) => row.status === value);
-              }
+              filteredRows = filteredRows.filter((row) => String(row[column as keyof IdeaNoteRow] ?? "") === value);
               return chain;
             },
             in(column: string, values: string[]) {
               inCalls.push({ column, values });
               if (column === "status") {
-                filteredRows = rows.filter((row) => values.includes(row.status));
+                filteredRows = filteredRows.filter((row) => values.includes(row.status));
               }
+              return chain;
+            },
+            is(column: string, value: null) {
+              isCalls.push({ column, value });
+              filteredRows = filteredRows.filter((row) => row[column as keyof IdeaNoteRow] === value);
+              return chain;
+            },
+            or(filter: string) {
+              orCalls.push(filter);
+              const match = filter.match(/^title\.ilike\.%(.*)%,body\.ilike\.%\1%$/);
+              const term = (match?.[1] ?? "").replace(/\\([\\%_])/g, "$1").toLowerCase();
+              filteredRows = filteredRows.filter((row) =>
+                row.title.toLowerCase().includes(term) || (row.body ?? "").toLowerCase().includes(term),
+              );
+              return chain;
+            },
+            contains(column: string, value: string[]) {
+              containsCalls.push({ column, value });
+              filteredRows = filteredRows.filter((row) => {
+                const rowValue = row[column as keyof IdeaNoteRow];
+                return Array.isArray(rowValue) && value.every((item) => rowValue.includes(item));
+              });
               return chain;
             },
             async order(column: string, options: { ascending?: boolean }) {
@@ -227,7 +257,18 @@ function createIdeaNotesSupabaseMock(options?: {
     },
   };
 
-  return { supabase, insertCalls, updateCalls, eqCalls, inCalls, orderCalls, projectLookupCalls };
+  return {
+    supabase,
+    insertCalls,
+    updateCalls,
+    eqCalls,
+    inCalls,
+    isCalls,
+    orCalls,
+    containsCalls,
+    orderCalls,
+    projectLookupCalls,
+  };
 }
 
 test("normalizes idea note input", () => {
@@ -615,6 +656,204 @@ test("default idea list excludes archived and converted notes", async () => {
 
   assert.deepEqual(mock.inCalls, [{ column: "status", values: ["inbox", "reviewing", "planned"] }]);
   assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("idea list searches title", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", title: "Timer handoff" }),
+      ideaNoteRow({ id: "idea-2", title: "Review prompt" }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { search: "  timer  " },
+  });
+
+  assert.deepEqual(mock.orCalls, ["title.ilike.%timer%,body.ilike.%timer%"]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("idea list searches body", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", title: "Follow-up", body: "Improve weekly review autofill" }),
+      ideaNoteRow({ id: "idea-2", title: "Timer", body: "Focus handoff" }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { search: "review autofill" },
+  });
+
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("idea list filters by type", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", type: "feature" }),
+      ideaNoteRow({ id: "idea-2", type: "bug" }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { type: "bug" },
+  });
+
+  assert.deepEqual(mock.eqCalls, [{ column: "type", value: "bug" }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-2"]);
+});
+
+test("idea list filters by status", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", status: "inbox" }),
+      ideaNoteRow({ id: "idea-2", status: "planned" }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { status: "planned" },
+  });
+
+  assert.deepEqual(mock.eqCalls, [{ column: "status", value: "planned" }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-2"]);
+});
+
+test("idea list filters by project id", async () => {
+  const projectId = "11111111-1111-4111-8111-111111111111";
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", project_id: projectId }),
+      ideaNoteRow({ id: "idea-2", project_id: null }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { project: projectId },
+  });
+
+  assert.deepEqual(mock.eqCalls, [{ column: "project_id", value: projectId }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("idea list filters for no project", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", project_id: "11111111-1111-4111-8111-111111111111" }),
+      ideaNoteRow({ id: "idea-2", project_id: null }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { project: "none" },
+  });
+
+  assert.deepEqual(mock.isCalls, [{ column: "project_id", value: null }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-2"]);
+});
+
+test("idea list filters by priority", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", priority: "high" }),
+      ideaNoteRow({ id: "idea-2", priority: "low" }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { priority: "high" },
+  });
+
+  assert.deepEqual(mock.eqCalls, [{ column: "priority", value: "high" }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("idea list filters for no priority", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", priority: "urgent" }),
+      ideaNoteRow({ id: "idea-2", priority: null }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { priority: "none" },
+  });
+
+  assert.deepEqual(mock.isCalls, [{ column: "priority", value: null }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-2"]);
+});
+
+test("idea list filters by normalized tag", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", tags: ["product team", "review"] }),
+      ideaNoteRow({ id: "idea-2", tags: ["ops"] }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { tag: " Product   Team " },
+  });
+
+  assert.deepEqual(mock.containsCalls, [{ column: "tags", value: ["product team"] }]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("archived idea list combines view and filters", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", status: "archived", type: "feature" }),
+      ideaNoteRow({ id: "idea-2", status: "archived", type: "bug" }),
+      ideaNoteRow({ id: "idea-3", status: "inbox", type: "feature" }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: { view: "archived", type: "feature" },
+  });
+
+  assert.deepEqual(mock.eqCalls, [
+    { column: "status", value: "archived" },
+    { column: "type", value: "feature" },
+  ]);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1"]);
+});
+
+test("invalid idea list filters are ignored", async () => {
+  const mock = createIdeaNotesSupabaseMock({
+    rows: [
+      ideaNoteRow({ id: "idea-1", type: "idea", priority: null, tags: ["ops"] }),
+      ideaNoteRow({ id: "idea-2", type: "bug", priority: "high", tags: ["product"] }),
+    ],
+  });
+
+  const notes = await getIdeaInboxNotes({
+    supabase: mock.supabase as never,
+    filters: {
+      type: "task",
+      status: "converted",
+      project: "not-a-project",
+      priority: "now",
+      tag: "#bad",
+    },
+  });
+
+  assert.deepEqual(mock.eqCalls, []);
+  assert.deepEqual(mock.containsCalls, []);
+  assert.deepEqual(notes.map((note) => note.id), ["idea-1", "idea-2"]);
 });
 
 test("archived idea list returns archived notes only", async () => {

@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Inbox } from "lucide-react";
+import { Filter, Inbox, Search } from "lucide-react";
 
 import { CreateIdeaNoteForm } from "@/app/ideas/create-idea-note-form";
 import { EditIdeaNoteForm } from "@/app/ideas/edit-idea-note-form";
 import { IdeaNoteArchiveControls } from "@/app/ideas/idea-note-archive-controls";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -16,9 +16,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
 import {
+  IDEA_NOTE_PRIORITIES,
+  IDEA_NOTE_TYPES,
+  MANUAL_IDEA_NOTE_STATUSES,
   getIdeaInboxNotes,
   getIdeaNoteProjectOptions,
+  normalizeIdeaNoteListFilters,
   type IdeaNoteListView,
 } from "@/lib/services/idea-note-service";
 import { formatTaskToken } from "@/lib/task-domain";
@@ -39,6 +44,13 @@ function formatIdeaCreatedAt(value: string) {
 type IdeasPageProps = {
   searchParams: Promise<{
     view?: string;
+    q?: string;
+    search?: string;
+    type?: string;
+    status?: string;
+    project?: string;
+    priority?: string;
+    tag?: string;
   }>;
 };
 
@@ -48,6 +60,27 @@ function normalizeIdeaNoteView(value: string | undefined): IdeaNoteListView {
   return IDEA_NOTE_VIEWS.includes(value as IdeaNoteListView)
     ? (value as IdeaNoteListView)
     : "active";
+}
+
+function getIdeaViewHref(
+  view: IdeaNoteListView,
+  params: Awaited<IdeasPageProps["searchParams"]>,
+) {
+  const nextParams = new URLSearchParams();
+
+  if (view !== "active") {
+    nextParams.set("view", view);
+  }
+
+  for (const key of ["q", "type", "status", "project", "priority", "tag"] as const) {
+    const value = params[key]?.trim();
+    if (value) {
+      nextParams.set(key, value);
+    }
+  }
+
+  const query = nextParams.toString();
+  return query ? `/ideas?${query}` : "/ideas";
 }
 
 function getIdeaViewCopy(view: IdeaNoteListView) {
@@ -83,9 +116,25 @@ function getIdeaViewCopy(view: IdeaNoteListView) {
 export default async function IdeasPage({ searchParams }: IdeasPageProps) {
   const resolvedSearchParams = await searchParams;
   const activeView = normalizeIdeaNoteView(resolvedSearchParams.view);
+  const filters = normalizeIdeaNoteListFilters({
+    view: activeView,
+    search: resolvedSearchParams.q ?? resolvedSearchParams.search,
+    type: resolvedSearchParams.type,
+    status: resolvedSearchParams.status,
+    project: resolvedSearchParams.project,
+    priority: resolvedSearchParams.priority,
+    tag: resolvedSearchParams.tag,
+  });
+  const hasActiveFilters =
+    Boolean(filters.search) ||
+    filters.type !== "all" ||
+    filters.status !== "all" ||
+    filters.project !== "all" ||
+    filters.priority !== "all" ||
+    Boolean(filters.tag);
   const copy = getIdeaViewCopy(activeView);
   const [notes, projectOptions] = await Promise.all([
-    getIdeaInboxNotes({ view: activeView }),
+    getIdeaInboxNotes({ filters }),
     getIdeaNoteProjectOptions(),
   ]);
 
@@ -118,7 +167,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               <Link
-                href="/ideas"
+                href={getIdeaViewHref("active", resolvedSearchParams)}
                 className={cn(
                   buttonVariants({ variant: activeView === "active" ? "default" : "muted", size: "sm" }),
                   "rounded-xl",
@@ -127,7 +176,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
                 Active
               </Link>
               <Link
-                href="/ideas?view=archived"
+                href={getIdeaViewHref("archived", resolvedSearchParams)}
                 className={cn(
                   buttonVariants({ variant: activeView === "archived" ? "default" : "muted", size: "sm" }),
                   "rounded-xl",
@@ -136,7 +185,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
                 Archived
               </Link>
               <Link
-                href="/ideas?view=all"
+                href={getIdeaViewHref("all", resolvedSearchParams)}
                 className={cn(
                   buttonVariants({ variant: activeView === "all" ? "default" : "muted", size: "sm" }),
                   "rounded-xl",
@@ -149,12 +198,141 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
               </Badge>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            <form
+              action="/ideas"
+              method="get"
+              className="rounded-[1rem] border border-[rgba(15,23,42,0.08)] bg-white/70 p-3"
+            >
+              <input type="hidden" name="view" value={activeView} />
+              <div className="grid gap-3 md:grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(120px,1fr))]">
+                <div className="space-y-2">
+                  <label htmlFor="idea-filter-q" className="glass-label text-etch">
+                    Search
+                  </label>
+                  <Input
+                    id="idea-filter-q"
+                    name="q"
+                    defaultValue={filters.search}
+                    placeholder="Title or body"
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="idea-filter-type" className="glass-label text-etch">
+                    Type
+                  </label>
+                  <select
+                    id="idea-filter-type"
+                    name="type"
+                    defaultValue={filters.type}
+                    className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+                  >
+                    <option value="all">All types</option>
+                    {IDEA_NOTE_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {formatTaskToken(type)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="idea-filter-status" className="glass-label text-etch">
+                    Status
+                  </label>
+                  <select
+                    id="idea-filter-status"
+                    name="status"
+                    defaultValue={filters.status}
+                    className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+                  >
+                    <option value="all">All statuses</option>
+                    {MANUAL_IDEA_NOTE_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {formatTaskToken(status)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="idea-filter-project" className="glass-label text-etch">
+                    Project
+                  </label>
+                  <select
+                    id="idea-filter-project"
+                    name="project"
+                    defaultValue={filters.project}
+                    className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+                  >
+                    <option value="all">All projects</option>
+                    <option value="none">No project</option>
+                    {projectOptions.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="idea-filter-priority" className="glass-label text-etch">
+                    Priority
+                  </label>
+                  <select
+                    id="idea-filter-priority"
+                    name="priority"
+                    defaultValue={filters.priority}
+                    className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+                  >
+                    <option value="all">All priorities</option>
+                    <option value="none">No priority</option>
+                    {IDEA_NOTE_PRIORITIES.map((priority) => (
+                      <option key={priority} value={priority}>
+                        {formatTaskToken(priority)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="idea-filter-tag" className="glass-label text-etch">
+                    Tag
+                  </label>
+                  <Input
+                    id="idea-filter-tag"
+                    name="tag"
+                    defaultValue={filters.tag}
+                    placeholder="ops"
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <Button type="submit" size="sm" className="gap-2 rounded-xl">
+                  <Search className="h-4 w-4" aria-hidden="true" />
+                  Apply filters
+                </Button>
+                <Link href="/ideas" className={cn(buttonVariants({ variant: "muted", size: "sm" }), "rounded-xl")}>
+                  Clear filters
+                </Link>
+                {hasActiveFilters ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-[color:var(--muted-foreground)]">
+                    <Filter className="h-3.5 w-3.5" aria-hidden="true" />
+                    {notes.length} matching {notes.length === 1 ? "idea" : "ideas"}
+                  </span>
+                ) : null}
+              </div>
+            </form>
+
             {notes.length === 0 ? (
               <EmptyState
                 icon={Inbox}
-                title={copy.emptyTitle}
-                description={copy.emptyDescription}
+                title={hasActiveFilters ? "No ideas match these filters" : copy.emptyTitle}
+                description={hasActiveFilters ? "Clear or adjust the filters to widen the inbox." : copy.emptyDescription}
               />
             ) : (
               <div className="space-y-3">

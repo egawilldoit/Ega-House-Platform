@@ -2,10 +2,15 @@ import { createClient } from "@/lib/supabase/server";
 import type { Tables, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   DEFAULT_IDEA_NOTE_TYPE,
+  type IdeaNotePriority,
   type IdeaNoteStatus,
+  type IdeaNoteType,
+  type ManualIdeaNoteStatus,
   IDEA_NOTE_PRIORITIES,
   MANUAL_IDEA_NOTE_STATUSES,
   IDEA_NOTE_TYPES,
+  isManualIdeaNoteStatus,
+  isIdeaNoteType,
   normalizeIdeaNotePriority,
   normalizeOptionalProjectId,
   parseIdeaNoteTags,
@@ -36,12 +41,22 @@ export { MANUAL_IDEA_NOTE_STATUSES };
 
 export type IdeaNoteProjectOption = Pick<Tables<"projects">, "id" | "name">;
 export type IdeaNoteListView = "active" | "archived" | "all";
+export type IdeaNoteListFilters = {
+  view?: IdeaNoteListView;
+  search?: string;
+  type?: IdeaNoteType | "all" | string;
+  status?: ManualIdeaNoteStatus | "all" | string;
+  project?: string | "none" | "all";
+  priority?: IdeaNotePriority | "none" | "all" | string;
+  tag?: string;
+};
 
 const ACTIVE_IDEA_NOTE_STATUSES = ["inbox", "reviewing", "planned"] as const satisfies readonly IdeaNoteStatus[];
 const ALL_VISIBLE_IDEA_NOTE_STATUSES = [
   ...ACTIVE_IDEA_NOTE_STATUSES,
   "archived",
 ] as const satisfies readonly IdeaNoteStatus[];
+const IDEA_NOTE_LIST_VIEWS = ["active", "archived", "all"] as const satisfies readonly IdeaNoteListView[];
 
 export type CreateIdeaNoteInput = {
   title: unknown;
@@ -127,6 +142,48 @@ function normalizeIdeaNoteId(value: unknown) {
   return {
     id,
     errorMessage: id ? null : "Idea is required.",
+  };
+}
+
+function normalizeIdeaNoteListView(value: unknown): IdeaNoteListView {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return IDEA_NOTE_LIST_VIEWS.includes(normalized as IdeaNoteListView)
+    ? (normalized as IdeaNoteListView)
+    : "active";
+}
+
+function escapePostgrestPattern(value: string) {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
+export function normalizeIdeaNoteListFilters(filters?: IdeaNoteListFilters): Required<IdeaNoteListFilters> {
+  const search = String(filters?.search ?? "").trim();
+  const type = String(filters?.type ?? "").trim().toLowerCase();
+  const status = String(filters?.status ?? "").trim().toLowerCase();
+  const project = String(filters?.project ?? "").trim();
+  const projectId = normalizeOptionalProjectId(project);
+  const priority = String(filters?.priority ?? "").trim().toLowerCase();
+  let parsedTags: string[] = [];
+
+  try {
+    parsedTags = parseIdeaNoteTags(filters?.tag ?? "");
+  } catch {
+    parsedTags = [];
+  }
+
+  return {
+    view: normalizeIdeaNoteListView(filters?.view),
+    search,
+    type: type && type !== "all" && isIdeaNoteType(type) ? type : "all",
+    status: status && status !== "all" && isManualIdeaNoteStatus(status) ? status : "all",
+    project: project === "none" ? "none" : projectId || "all",
+    priority:
+      priority && priority !== "all" && priority !== "none"
+        ? normalizeIdeaNotePriority(priority) ?? "all"
+        : priority === "none"
+          ? "none"
+          : "all",
+    tag: parsedTags[0] ?? "",
   };
 }
 
@@ -361,9 +418,11 @@ export async function restoreIdeaNote(
 export async function getIdeaInboxNotes(options?: {
   supabase?: SupabaseServerClient;
   view?: IdeaNoteListView;
+  filters?: IdeaNoteListFilters;
 }): Promise<IdeaNote[]> {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const view = options?.view ?? "active";
+  const filters = normalizeIdeaNoteListFilters({ ...options?.filters, view: options?.filters?.view ?? options?.view });
+  const view = filters.view;
   let query = supabase
     .from("idea_notes")
     .select(
@@ -376,6 +435,35 @@ export async function getIdeaInboxNotes(options?: {
     query = query.in("status", [...ALL_VISIBLE_IDEA_NOTE_STATUSES]);
   } else {
     query = query.in("status", [...ACTIVE_IDEA_NOTE_STATUSES]);
+  }
+
+  if (filters.search) {
+    const pattern = `%${escapePostgrestPattern(filters.search)}%`;
+    query = query.or(`title.ilike.${pattern},body.ilike.${pattern}`);
+  }
+
+  if (filters.type !== "all") {
+    query = query.eq("type", filters.type);
+  }
+
+  if (filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+
+  if (filters.project === "none") {
+    query = query.is("project_id", null);
+  } else if (filters.project !== "all") {
+    query = query.eq("project_id", filters.project);
+  }
+
+  if (filters.priority === "none") {
+    query = query.is("priority", null);
+  } else if (filters.priority !== "all") {
+    query = query.eq("priority", filters.priority);
+  }
+
+  if (filters.tag) {
+    query = query.contains("tags", [filters.tag]);
   }
 
   const { data, error } = await query.order("created_at", { ascending: false });
