@@ -41,7 +41,7 @@ export default function TasksLoadingPage() {
       description="Active execution queue with inline state control and task initialization."
       actions={<Skeleton className="h-8 w-24 rounded-sm" />}
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="workspace-main-rail-grid">
         <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
           <CardContent className="px-6 pb-6 pt-6">
             <div className="mb-5 flex items-end justify-between gap-4">

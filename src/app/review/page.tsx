@@ -484,7 +484,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
         </Card>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(22rem,0.95fr)]">
+      <div className="workspace-main-rail-grid mt-6">
         <div className="space-y-6">
           <div>
             <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">

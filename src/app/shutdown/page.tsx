@@ -89,7 +89,7 @@ export default async function ShutdownPage({
           </CardContent>
         </Card>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(21rem,0.85fr)]">
+        <div className="workspace-main-rail-grid">
           <div className="space-y-4">
             <ShutdownTaskList
               title="Completed work"

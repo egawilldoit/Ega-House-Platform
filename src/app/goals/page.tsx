@@ -591,7 +591,7 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
           </div>
         </div>
       ) : (
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(22rem,0.92fr)]">
+        <div className="workspace-main-rail-grid">
           <Card className="self-start border-[var(--border)] bg-white">
             <CardHeader className="pb-4">
               <Badge tone="info" className="w-fit">
