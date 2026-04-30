@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createTaskWithOptionalWorkedTime,
   normalizeTaskBlockedReasonInput,
   updateTaskInline,
   validateTaskInlineUpdateInput,
@@ -608,4 +609,162 @@ test("no-row task update failure returns a clear error", async () => {
   );
 
   assert.equal(result.errorMessage, "Task was not found or is no longer available.");
+});
+
+function createTaskCreateSupabaseMock(options?: {
+  failTaskInsert?: boolean;
+  failSessionInsert?: boolean;
+}) {
+  const taskInsertCalls: Array<Record<string, unknown>[]> = [];
+  const sessionInsertCalls: Array<Record<string, unknown>> = [];
+  const tasks = [{ id: "task-1" }];
+
+  const supabase = {
+    from(table: string) {
+      if (table === "projects") {
+        return {
+          select: async (columns: string) => {
+            assert.equal(columns, "id");
+            return { data: [{ id: "project-1" }], error: null };
+          },
+        };
+      }
+
+      if (table === "goals") {
+        return {
+          select: async (columns: string) => {
+            assert.equal(columns, "id, project_id");
+            return { data: [{ id: "goal-1", project_id: "project-1" }], error: null };
+          },
+        };
+      }
+
+      if (table === "tasks") {
+        return {
+          insert(rows: Record<string, unknown>[]) {
+            taskInsertCalls.push(rows);
+            return {
+              select: async (columns: string) => {
+                assert.equal(columns, "id");
+                if (options?.failTaskInsert) {
+                  return { data: null, error: { message: "insert failed" } };
+                }
+                return { data: tasks, error: null };
+              },
+            };
+          },
+        };
+      }
+
+      if (table === "task_sessions") {
+        return {
+          insert: async (row: Record<string, unknown>) => {
+            sessionInsertCalls.push(row);
+            return {
+              data: null,
+              error: options?.failSessionInsert ? { message: "session failed" } : null,
+            };
+          },
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    },
+  };
+
+  return {
+    supabase: supabase as never,
+    taskInsertCalls,
+    sessionInsertCalls,
+  };
+}
+
+test("createTaskWithOptionalWorkedTime creates a task without worked time as before", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Plan review",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: null,
+    createdTaskId: "task-1",
+    workedTimeLogged: false,
+  });
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.equal(mock.sessionInsertCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime logs exactly one completed session", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Draft spec",
+        project_id: "project-1",
+        goal_id: null,
+        status: "blocked",
+        blocked_reason: "Waiting on API",
+        priority: "high",
+      },
+      workedTime: {
+        started_at: "2026-04-30T09:00:00.000Z",
+        ended_at: "2026-04-30T10:30:00.000Z",
+        duration_seconds: 5400,
+      },
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: null,
+    createdTaskId: "task-1",
+    workedTimeLogged: true,
+  });
+  assert.equal(mock.sessionInsertCalls.length, 1);
+  assert.deepEqual(mock.sessionInsertCalls[0], {
+    task_id: "task-1",
+    started_at: "2026-04-30T09:00:00.000Z",
+    ended_at: "2026-04-30T10:30:00.000Z",
+    duration_seconds: 5400,
+  });
+  assert.equal(mock.taskInsertCalls[0]?.[0]?.status, "blocked");
+});
+
+test("createTaskWithOptionalWorkedTime reports session failure without claiming logged time", async () => {
+  const mock = createTaskCreateSupabaseMock({ failSessionInsert: true });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Draft spec",
+        project_id: "project-1",
+        goal_id: null,
+        status: "done",
+        priority: "medium",
+      },
+      workedTime: {
+        started_at: "2026-04-30T09:00:00.000Z",
+        ended_at: "2026-04-30T10:00:00.000Z",
+        duration_seconds: 3600,
+      },
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, "Task created, but worked time could not be logged.");
+  assert.equal(result.createdTaskId, "task-1");
+  assert.equal(result.workedTimeLogged, false);
+  assert.equal(mock.sessionInsertCalls.length, 1);
 });

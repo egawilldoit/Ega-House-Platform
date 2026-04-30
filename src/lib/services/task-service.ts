@@ -11,6 +11,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "@/lib/task-domain";
+import type { ManualWorkedTimePayload } from "@/lib/manual-worked-time";
 import {
   applyTaskListQuery,
   type TaskDueFilter,
@@ -438,6 +439,63 @@ export async function createTasks(
   return {
     errorMessage: null,
     createdTaskIds: (data ?? []).map((row) => row.id),
+  };
+}
+
+export async function createTaskWithOptionalWorkedTime(
+  input: {
+    task: TablesInsert<"tasks">;
+    workedTime?: ManualWorkedTimePayload | null;
+  },
+  options?: { supabase?: SupabaseServerClient },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const createResult = await createTasks([input.task], { supabase });
+
+  if (createResult.errorMessage) {
+    return {
+      errorMessage: createResult.errorMessage,
+      createdTaskId: null,
+      workedTimeLogged: false,
+    };
+  }
+
+  const createdTaskId = createResult.createdTaskIds?.[0] ?? null;
+  if (!input.workedTime) {
+    return {
+      errorMessage: null,
+      createdTaskId,
+      workedTimeLogged: false,
+    };
+  }
+
+  if (!createdTaskId) {
+    return {
+      errorMessage: "Task created, but worked time could not be logged.",
+      createdTaskId: null,
+      workedTimeLogged: false,
+    };
+  }
+
+  const { error } = await supabase.from("task_sessions").insert({
+    task_id: createdTaskId,
+    started_at: input.workedTime.started_at,
+    ended_at: input.workedTime.ended_at,
+    duration_seconds: input.workedTime.duration_seconds,
+  });
+
+  if (error) {
+    return {
+      errorMessage: "Task created, but worked time could not be logged.",
+      createdTaskId,
+      workedTimeLogged: false,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    createdTaskId,
+    workedTimeLogged: true,
   };
 }
 
