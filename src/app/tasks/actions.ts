@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import type { TablesInsert } from "@/lib/supabase/database.types";
+import { normalizeManualWorkedTimeInput } from "@/lib/manual-worked-time";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
@@ -13,6 +14,7 @@ import {
   isTaskStatus,
 } from "@/lib/task-domain";
 import {
+  createTaskWithOptionalWorkedTime,
   createTasks,
   deleteTaskSafely,
   getTaskInsertScopeError,
@@ -41,6 +43,8 @@ export type CreateTaskFormState = {
     priority: string;
     dueDate: string;
     estimateMinutes: string;
+    workedTimeStartedAt: string;
+    workedTimeEndedAt: string;
     returnTo: string;
   };
 };
@@ -200,9 +204,15 @@ export async function createTaskAction(
   const priority = String(formData.get("priority") ?? "medium").trim();
   const rawDueDate = String(formData.get("dueDate") ?? "").trim();
   const rawEstimateMinutes = String(formData.get("estimateMinutes") ?? "").trim();
+  const workedTimeStartedAt = String(formData.get("workedTimeStartedAt") ?? "").trim();
+  const workedTimeEndedAt = String(formData.get("workedTimeEndedAt") ?? "").trim();
   const returnTo = getTasksReturnPath(formData.get("returnTo"));
   const dueDateResult = normalizeTaskDueDateInput(rawDueDate);
   const estimateResult = normalizeTaskEstimateInput(rawEstimateMinutes);
+  const workedTimeResult = normalizeManualWorkedTimeInput({
+    startedAt: workedTimeStartedAt,
+    endedAt: workedTimeEndedAt,
+  });
 
   const values = {
     title,
@@ -214,6 +224,8 @@ export async function createTaskAction(
     priority,
     dueDate: rawDueDate,
     estimateMinutes: rawEstimateMinutes,
+    workedTimeStartedAt,
+    workedTimeEndedAt,
     returnTo,
   };
 
@@ -251,8 +263,12 @@ export async function createTaskAction(
     return createErrorState(estimateResult.error, values);
   }
 
-  const { errorMessage } = await createTasks([
-    {
+  if (workedTimeResult.error) {
+    return createErrorState(workedTimeResult.error, values);
+  }
+
+  const { errorMessage, workedTimeLogged } = await createTaskWithOptionalWorkedTime({
+    task: {
       title,
       project_id: projectId,
       goal_id: goalId || null,
@@ -263,7 +279,8 @@ export async function createTaskAction(
       due_date: dueDateResult.value,
       estimate_minutes: estimateResult.value,
     },
-  ]);
+    workedTime: workedTimeResult.payload,
+  });
 
   if (errorMessage) {
     return createErrorState(errorMessage, values);
@@ -273,7 +290,9 @@ export async function createTaskAction(
 
   return {
     error: null,
-    success: "Task created.",
+    success: workedTimeLogged
+      ? "Task created and worked time logged."
+      : "Task created.",
     values: {
       title: "",
       projectId,
@@ -284,6 +303,8 @@ export async function createTaskAction(
       priority: "medium",
       dueDate: "",
       estimateMinutes: "",
+      workedTimeStartedAt: "",
+      workedTimeEndedAt: "",
       returnTo,
     },
   };

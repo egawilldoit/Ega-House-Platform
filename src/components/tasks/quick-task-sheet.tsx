@@ -165,6 +165,8 @@ function QuickTaskSheetPanel({
       priority: "medium",
       dueDate: "",
       estimateMinutes: "",
+      workedTimeStartedAt: "",
+      workedTimeEndedAt: "",
       returnTo: DEFAULT_RETURN_TO,
     },
   };

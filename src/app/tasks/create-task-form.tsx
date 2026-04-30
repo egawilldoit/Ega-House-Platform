@@ -41,6 +41,8 @@ export function buildCreateTaskFormInitialState({
         priority: "medium",
         dueDate: "",
         estimateMinutes: "",
+        workedTimeStartedAt: "",
+        workedTimeEndedAt: "",
         returnTo,
       },
     } satisfies CreateTaskFormState,
@@ -250,6 +252,39 @@ export function CreateTaskForm({
                 className="ega-glass-input h-10 rounded-xl"
               />
             </div>
+
+            <div className="space-y-3 sm:col-span-2">
+              <div>
+                <p className="glass-label text-etch">Already worked on this?</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="workedTimeStartedAt" className="glass-label text-etch">
+                    From
+                  </label>
+                  <Input
+                    id="workedTimeStartedAt"
+                    name="workedTimeStartedAt"
+                    type="datetime-local"
+                    defaultValue={state.values.workedTimeStartedAt}
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="workedTimeEndedAt" className="glass-label text-etch">
+                    To
+                  </label>
+                  <Input
+                    id="workedTimeEndedAt"
+                    name="workedTimeEndedAt"
+                    type="datetime-local"
+                    defaultValue={state.values.workedTimeEndedAt}
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -273,6 +308,12 @@ export function CreateTaskForm({
       {state.error ? (
         <div role="alert" className="feedback-block feedback-block-error">
           {state.error}
+        </div>
+      ) : null}
+
+      {state.success ? (
+        <div className="feedback-block feedback-block-success">
+          {state.success}
         </div>
       ) : null}
 
