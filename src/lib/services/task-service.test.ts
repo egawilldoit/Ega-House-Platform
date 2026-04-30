@@ -614,6 +614,7 @@ test("no-row task update failure returns a clear error", async () => {
 function createTaskCreateSupabaseMock(options?: {
   failTaskInsert?: boolean;
   failSessionInsert?: boolean;
+  taskInsertReturnsNoId?: boolean;
 }) {
   const taskInsertCalls: Array<Record<string, unknown>[]> = [];
   const sessionInsertCalls: Array<Record<string, unknown>> = [];
@@ -648,6 +649,9 @@ function createTaskCreateSupabaseMock(options?: {
                 assert.equal(columns, "id");
                 if (options?.failTaskInsert) {
                   return { data: null, error: { message: "insert failed" } };
+                }
+                if (options?.taskInsertReturnsNoId) {
+                  return { data: [], error: null };
                 }
                 return { data: tasks, error: null };
               },
@@ -740,6 +744,66 @@ test("createTaskWithOptionalWorkedTime logs exactly one completed session", asyn
     duration_seconds: 5400,
   });
   assert.equal(mock.taskInsertCalls[0]?.[0]?.status, "blocked");
+});
+
+test("createTaskWithOptionalWorkedTime does not log worked time when task creation fails", async () => {
+  const mock = createTaskCreateSupabaseMock({ failTaskInsert: true });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Draft spec",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: {
+        started_at: "2026-04-30T09:00:00.000Z",
+        ended_at: "2026-04-30T10:00:00.000Z",
+        duration_seconds: 3600,
+      },
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Unable to create task right now.",
+    createdTaskId: null,
+    workedTimeLogged: false,
+  });
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.equal(mock.sessionInsertCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime requires the created task id before logging worked time", async () => {
+  const mock = createTaskCreateSupabaseMock({ taskInsertReturnsNoId: true });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Draft spec",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: {
+        started_at: "2026-04-30T09:00:00.000Z",
+        ended_at: "2026-04-30T10:00:00.000Z",
+        duration_seconds: 3600,
+      },
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Task created, but worked time could not be logged.",
+    createdTaskId: null,
+    workedTimeLogged: false,
+  });
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.equal(mock.sessionInsertCalls.length, 0);
 });
 
 test("createTaskWithOptionalWorkedTime reports session failure without claiming logged time", async () => {

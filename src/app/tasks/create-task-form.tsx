@@ -66,15 +66,25 @@ export function CreateTaskForm({
     initialState,
   );
   const [selectedStatus, setSelectedStatus] = useState(state.values.status);
+  const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
   const availableGoalCount = goals.length;
 
   useEffect(() => {
     setSelectedStatus(state.values.status);
   }, [state.values.status]);
 
+  useEffect(() => {
+    setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
+  }, []);
+
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="returnTo" value={state.values.returnTo} />
+      <input
+        type="hidden"
+        name="workedTimeTimezoneOffsetMinutes"
+        value={timeZoneOffsetMinutes}
+      />
       <div className="ega-glass-soft rounded-[1.1rem] p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>

@@ -206,12 +206,16 @@ export async function createTaskAction(
   const rawEstimateMinutes = String(formData.get("estimateMinutes") ?? "").trim();
   const workedTimeStartedAt = String(formData.get("workedTimeStartedAt") ?? "").trim();
   const workedTimeEndedAt = String(formData.get("workedTimeEndedAt") ?? "").trim();
+  const workedTimeTimezoneOffsetMinutes = formData.get(
+    "workedTimeTimezoneOffsetMinutes",
+  );
   const returnTo = getTasksReturnPath(formData.get("returnTo"));
   const dueDateResult = normalizeTaskDueDateInput(rawDueDate);
   const estimateResult = normalizeTaskEstimateInput(rawEstimateMinutes);
   const workedTimeResult = normalizeManualWorkedTimeInput({
     startedAt: workedTimeStartedAt,
     endedAt: workedTimeEndedAt,
+    timeZoneOffsetMinutes: workedTimeTimezoneOffsetMinutes,
   });
 
   const values = {
@@ -267,7 +271,7 @@ export async function createTaskAction(
     return createErrorState(workedTimeResult.error, values);
   }
 
-  const { errorMessage, workedTimeLogged } = await createTaskWithOptionalWorkedTime({
+  const { errorMessage, createdTaskId, workedTimeLogged } = await createTaskWithOptionalWorkedTime({
     task: {
       title,
       project_id: projectId,
@@ -283,6 +287,10 @@ export async function createTaskAction(
   });
 
   if (errorMessage) {
+    if (createdTaskId) {
+      revalidateTaskSurfaces(returnTo);
+    }
+
     return createErrorState(errorMessage, values);
   }
 
