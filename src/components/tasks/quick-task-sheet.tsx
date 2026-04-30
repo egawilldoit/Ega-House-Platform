@@ -148,6 +148,7 @@ function QuickTaskSheetPanel({
   const [singleProjectId, setSingleProjectId] = useState(defaultProjectId);
   const [singleGoalId, setSingleGoalId] = useState("");
   const [singleStatus, setSingleStatus] = useState("todo");
+  const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
   ]);
@@ -215,6 +216,10 @@ function QuickTaskSheetPanel({
   useEffect(() => {
     setSingleStatus(singleState.values.status);
   }, [singleState.values.status]);
+
+  useEffect(() => {
+    setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
+  }, []);
 
   useEffect(() => {
     if (bulkState.success) {
@@ -358,6 +363,11 @@ function QuickTaskSheetPanel({
             <TabsContent value="single" className="space-y-4">
               <form action={singleAction} className="space-y-4">
                 <input type="hidden" name="returnTo" value={DEFAULT_RETURN_TO} />
+                <input
+                  type="hidden"
+                  name="workedTimeTimezoneOffsetMinutes"
+                  value={timeZoneOffsetMinutes}
+                />
 
                 <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
                   <div className="mb-4 flex items-start justify-between gap-3">
@@ -512,6 +522,43 @@ function QuickTaskSheetPanel({
                           defaultValue={singleState.values.estimateMinutes}
                           className="h-10"
                         />
+                      </div>
+
+                      <div className="space-y-3 sm:col-span-2">
+                        <p className="glass-label text-etch">Already worked on this?</p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <label
+                              htmlFor="quick-task-worked-from"
+                              className="glass-label text-etch"
+                            >
+                              From
+                            </label>
+                            <Input
+                              id="quick-task-worked-from"
+                              name="workedTimeStartedAt"
+                              type="datetime-local"
+                              defaultValue={singleState.values.workedTimeStartedAt}
+                              className="h-10"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label
+                              htmlFor="quick-task-worked-to"
+                              className="glass-label text-etch"
+                            >
+                              To
+                            </label>
+                            <Input
+                              id="quick-task-worked-to"
+                              name="workedTimeEndedAt"
+                              type="datetime-local"
+                              defaultValue={singleState.values.workedTimeEndedAt}
+                              className="h-10"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
 
