@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
 import { planStartupTasksForToday } from "@/lib/services/startup-planner-service";
+import {
+  redirectWithWorkspaceFeedback,
+  revalidateWorkspaceFor,
+} from "@/lib/workspace/workspace-navigation";
 
 function getStartupReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
@@ -11,30 +12,6 @@ function getStartupReturnPath(rawReturnTo: unknown) {
     return returnTo;
   }
   return "/startup";
-}
-
-function revalidateStartupSurfaces(returnPath: string) {
-  revalidatePath("/startup");
-  revalidatePath(returnPath);
-  revalidatePath("/today");
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  revalidatePath("/timer");
-  revalidatePath("/review");
-}
-
-function redirectWithStartupFeedback(
-  returnPath: string,
-  options: { actionError?: string; actionSuccess?: string },
-): never {
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  if (options.actionError) {
-    target.searchParams.set("actionError", options.actionError);
-  }
-  if (options.actionSuccess) {
-    target.searchParams.set("actionSuccess", options.actionSuccess);
-  }
-  redirect(`${target.pathname}${target.search}`);
 }
 
 function parseTaskIds(rawTaskIds: unknown) {
@@ -50,11 +27,11 @@ export async function addStartupTaskToTodayAction(formData: FormData) {
   const result = await planStartupTasksForToday([taskId]);
 
   if (result.errorMessage) {
-    redirectWithStartupFeedback(returnPath, { actionError: result.errorMessage });
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateStartupSurfaces(returnPath);
-  redirectWithStartupFeedback(returnPath, { actionSuccess: "Task added to Today." });
+  revalidateWorkspaceFor("startup", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, { successMessage: "Task added to Today." });
 }
 
 export async function addStartupShortlistToTodayAction(formData: FormData) {
@@ -63,7 +40,7 @@ export async function addStartupShortlistToTodayAction(formData: FormData) {
   const result = await planStartupTasksForToday(taskIds);
 
   if (result.errorMessage) {
-    redirectWithStartupFeedback(returnPath, { actionError: result.errorMessage });
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
   const successMessage =
@@ -71,6 +48,6 @@ export async function addStartupShortlistToTodayAction(formData: FormData) {
       ? "1 startup task added to Today."
       : `${result.addedCount} startup tasks added to Today.`;
 
-  revalidateStartupSurfaces(returnPath);
-  redirectWithStartupFeedback(returnPath, { actionSuccess: successMessage });
+  revalidateWorkspaceFor("startup", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, { successMessage });
 }

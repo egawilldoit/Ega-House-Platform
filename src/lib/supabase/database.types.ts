@@ -59,6 +59,56 @@ export type Database = {
           },
         ]
       }
+      idea_notes: {
+        Row: {
+          body: string | null
+          created_at: string
+          id: string
+          owner_user_id: string
+          priority: string | null
+          project_id: string | null
+          status: string
+          tags: string[]
+          title: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          priority?: string | null
+          project_id?: string | null
+          status?: string
+          tags?: string[]
+          title: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          body?: string | null
+          created_at?: string
+          id?: string
+          owner_user_id?: string
+          priority?: string | null
+          project_id?: string | null
+          status?: string
+          tags?: string[]
+          title?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "idea_notes_project_id_projects_id_fk"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string

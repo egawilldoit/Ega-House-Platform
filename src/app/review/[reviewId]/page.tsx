@@ -80,7 +80,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
         </>
       }
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="workspace-main-rail-grid">
         <Card>
           <CardHeader>
             <CardTitle>Weekly review</CardTitle>

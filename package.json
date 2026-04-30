@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx' 'app/**/*.test.ts' 'app/**/*.test.tsx'",
     "typecheck": "tsc --noEmit",
     "test:session": "tsx --test src/lib/supabase/cookie-options.test.ts",
     "test:timer-recovery": "tsx --test src/app/timer/session-recovery.test.ts",

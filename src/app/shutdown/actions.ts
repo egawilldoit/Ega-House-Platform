@@ -1,12 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
 import {
   queueTaskForTomorrow,
   saveShutdownReflectionNote,
 } from "@/lib/services/shutdown-service";
+import {
+  redirectWithWorkspaceFeedback,
+  revalidateWorkspaceFor,
+} from "@/lib/workspace/workspace-navigation";
 
 export async function getShutdownReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
@@ -18,28 +19,6 @@ export async function getShutdownReturnPath(rawReturnTo: unknown) {
   return "/shutdown";
 }
 
-function revalidateShutdownSurfaces(returnPath: string) {
-  revalidatePath("/shutdown");
-  revalidatePath(returnPath);
-  revalidatePath("/today");
-  revalidatePath("/dashboard");
-  revalidatePath("/tasks");
-  revalidatePath("/timer");
-  revalidatePath("/review");
-}
-
-function redirectWithShutdownError(returnPath: string, errorMessage: string): never {
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  target.searchParams.set("actionError", errorMessage);
-  redirect(`${target.pathname}${target.search}`);
-}
-
-function redirectWithShutdownSuccess(returnPath: string, successMessage: string): never {
-  const target = new URL(returnPath, "https://egawilldoit.online");
-  target.searchParams.set("actionSuccess", successMessage);
-  redirect(`${target.pathname}${target.search}`);
-}
-
 export async function carryForwardTaskToTomorrowAction(formData: FormData) {
   const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
@@ -47,11 +26,13 @@ export async function carryForwardTaskToTomorrowAction(formData: FormData) {
   const result = await queueTaskForTomorrow(taskId);
 
   if (result.errorMessage) {
-    redirectWithShutdownError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateShutdownSurfaces(returnPath);
-  redirectWithShutdownSuccess(returnPath, "Task queued for tomorrow.");
+  revalidateWorkspaceFor("shutdown", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    successMessage: "Task queued for tomorrow.",
+  });
 }
 
 export async function saveShutdownReflectionNoteAction(formData: FormData) {
@@ -60,9 +41,11 @@ export async function saveShutdownReflectionNoteAction(formData: FormData) {
   const result = await saveShutdownReflectionNote(note);
 
   if (result.errorMessage) {
-    redirectWithShutdownError(returnPath, result.errorMessage);
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateShutdownSurfaces(returnPath);
-  redirectWithShutdownSuccess(returnPath, "Reflection note saved to this week.");
+  revalidateWorkspaceFor("shutdown", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    successMessage: "Reflection note saved to this week.",
+  });
 }

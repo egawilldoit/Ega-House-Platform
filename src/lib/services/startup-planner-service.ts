@@ -1,31 +1,17 @@
 import { getWeekBounds, shiftIsoDateByDays } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
-import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
+import {
+  getActiveTasksForOwner,
+  type NormalizedTaskRow,
+} from "@/lib/services/task-read-service";
 
 import { addTaskToToday } from "./today-planner-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
-const STARTUP_TASK_SELECT_WITH_BLOCKED_REASON =
-  "id, title, blocked_reason, status, priority, due_date, planned_for_date, focus_rank, updated_at, projects(name, slug), goals(title)";
-const STARTUP_TASK_SELECT_WITHOUT_BLOCKED_REASON =
-  "id, title, status, priority, due_date, planned_for_date, focus_rank, updated_at, projects(name, slug), goals(title)";
-
-type StartupTaskRow = {
-  id: string;
-  title: string;
-  blocked_reason: string | null;
-  status: string;
-  priority: string;
-  due_date: string | null;
-  planned_for_date: string | null;
-  focus_rank: number | null;
-  updated_at: string;
-  projects: { name: string; slug: string } | null;
-  goals: { title: string } | null;
-};
+type StartupTaskRow = NormalizedTaskRow;
 
 type StartupReviewRow = {
   id: string;
@@ -139,44 +125,6 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
-async function queryTasksWithBlockedReasonFallback(
-  supabase: SupabaseServerClient,
-  buildQuery: (
-    selectColumns: string,
-  ) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>,
-): Promise<{ data: StartupTaskRow[]; errorMessage: string | null }> {
-  const primary = await buildQuery(STARTUP_TASK_SELECT_WITH_BLOCKED_REASON);
-  if (!primary.error) {
-    return {
-      data: (primary.data ?? []) as StartupTaskRow[],
-      errorMessage: null,
-    };
-  }
-
-  if (!isMissingTasksBlockedReasonColumn(primary.error)) {
-    return {
-      data: [],
-      errorMessage: primary.error.message,
-    };
-  }
-
-  const fallback = await buildQuery(STARTUP_TASK_SELECT_WITHOUT_BLOCKED_REASON);
-  if (fallback.error) {
-    return {
-      data: [],
-      errorMessage: fallback.error.message,
-    };
-  }
-
-  return {
-    data: (fallback.data as Omit<StartupTaskRow, "blocked_reason">[] | null ?? []).map((task) => ({
-      ...task,
-      blocked_reason: null,
-    })),
-    errorMessage: null,
-  };
-}
-
 export async function getStartupPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
@@ -203,35 +151,35 @@ export async function getStartupPlannerData(options?: {
 
   const [blockedResult, focusResult, dueSoonResult, goalsResult, goalTaskCountsResult, todayTasksResult, currentWeekReviewResult, latestReviewResult] =
     await Promise.all([
-      queryTasksWithBlockedReasonFallback(supabase, (selectColumns) =>
-        supabase
-          .from("tasks")
-          .select(selectColumns)
+      getActiveTasksForOwner({
+        supabase,
+        orderByUpdatedAt: false,
+        applyQuery: (query) => query
           .eq("status", "blocked")
           .order("updated_at", { ascending: false })
           .limit(8),
-      ),
-      queryTasksWithBlockedReasonFallback(supabase, (selectColumns) =>
-        supabase
-          .from("tasks")
-          .select(selectColumns)
+      }),
+      getActiveTasksForOwner({
+        supabase,
+        orderByUpdatedAt: false,
+        applyQuery: (query) => query
           .not("focus_rank", "is", null)
           .neq("status", "done")
           .order("focus_rank", { ascending: true })
           .order("updated_at", { ascending: false })
           .limit(8),
-      ),
-      queryTasksWithBlockedReasonFallback(supabase, (selectColumns) =>
-        supabase
-          .from("tasks")
-          .select(selectColumns)
+      }),
+      getActiveTasksForOwner({
+        supabase,
+        orderByUpdatedAt: false,
+        applyQuery: (query) => query
           .neq("status", "done")
           .gte("due_date", today)
           .lte("due_date", weekBounds.weekEnd)
           .order("due_date", { ascending: true })
           .order("updated_at", { ascending: false })
           .limit(8),
-      ),
+      }),
       supabase
         .from("goals")
         .select("id, title, status, health, next_step, updated_at, projects(name, slug)")

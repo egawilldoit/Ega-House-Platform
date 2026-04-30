@@ -1,8 +1,11 @@
 import { getWeekBounds, shiftIsoDateByDays } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
-import { isMissingTasksBlockedReasonColumn } from "@/lib/supabase-error";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
+import {
+  getActiveTasksForOwner,
+  type NormalizedTaskRow,
+} from "@/lib/services/task-read-service";
 import {
   getTodayPlannerData,
   type TodayPlannerData,
@@ -23,16 +26,7 @@ type ShutdownTask = {
   goalTitle: string | null;
 };
 
-type DueSoonTaskRow = {
-  id: string;
-  title: string;
-  status: string;
-  due_date: string | null;
-  planned_for_date: string | null;
-  blocked_reason: string | null;
-  projects: { name: string; slug: string } | null;
-  goals: { title: string } | null;
-};
+type DueSoonTaskRow = NormalizedTaskRow;
 
 type CurrentWeekReview = {
   id: string;
@@ -134,56 +128,17 @@ async function queryDueSoonTaskRows(
   today: string,
   dueSoonEndDate: string,
 ) {
-  const primaryResult = await supabase
-    .from("tasks")
-    .select(
-      "id, title, status, due_date, planned_for_date, blocked_reason, projects(name, slug), goals(title)",
-    )
-    .neq("status", "done")
-    .gte("due_date", today)
-    .lte("due_date", dueSoonEndDate)
-    .order("due_date", { ascending: true })
-    .order("updated_at", { ascending: false })
-    .limit(12);
-
-  if (!primaryResult.error) {
-    return {
-      data: (primaryResult.data ?? []) as DueSoonTaskRow[],
-      errorMessage: null,
-    };
-  }
-
-  if (!isMissingTasksBlockedReasonColumn(primaryResult.error)) {
-    return {
-      data: [] as DueSoonTaskRow[],
-      errorMessage: primaryResult.error.message,
-    };
-  }
-
-  const fallbackResult = await supabase
-    .from("tasks")
-    .select("id, title, status, due_date, planned_for_date, projects(name, slug), goals(title)")
-    .neq("status", "done")
-    .gte("due_date", today)
-    .lte("due_date", dueSoonEndDate)
-    .order("due_date", { ascending: true })
-    .order("updated_at", { ascending: false })
-    .limit(12);
-
-  if (fallbackResult.error) {
-    return {
-      data: [] as DueSoonTaskRow[],
-      errorMessage: fallbackResult.error.message,
-    };
-  }
-
-  return {
-    data: (fallbackResult.data ?? []).map((task) => ({
-      ...task,
-      blocked_reason: null,
-    })) as DueSoonTaskRow[],
-    errorMessage: null,
-  };
+  return getActiveTasksForOwner({
+    supabase,
+    orderByUpdatedAt: false,
+    applyQuery: (query) => query
+      .neq("status", "done")
+      .gte("due_date", today)
+      .lte("due_date", dueSoonEndDate)
+      .order("due_date", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(12),
+  });
 }
 
 async function getCurrentWeekReview(

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   date,
   index,
   integer,
@@ -100,6 +101,55 @@ export const tasks = pgTable(
     index("tasks_owner_archived_updated_idx")
       .on(table.ownerUserId, table.archivedAt.desc())
       .where(sql`${table.archivedAt} is not null`),
+  ],
+);
+
+export const ideaNotes = pgTable(
+  "idea_notes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    status: text("status").notNull().default("inbox"),
+    type: text("type").notNull().default("idea"),
+    projectId: uuid("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    priority: text("priority"),
+    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("idea_notes_owner_status_created_idx").on(
+      table.ownerUserId,
+      table.status,
+      table.createdAt.desc(),
+    ),
+    index("idea_notes_owner_updated_idx").on(
+      table.ownerUserId,
+      table.updatedAt.desc(),
+    ),
+    index("idea_notes_owner_type_created_idx").on(
+      table.ownerUserId,
+      table.type,
+      table.createdAt.desc(),
+    ),
+    index("idea_notes_owner_priority_created_idx").on(
+      table.ownerUserId,
+      table.priority,
+      table.createdAt.desc(),
+    ),
+    index("idea_notes_tags_gin_idx").using("gin", table.tags),
+    check(
+      "idea_notes_status_check",
+      sql`${table.status} in ('inbox', 'reviewing', 'planned', 'archived', 'converted')`,
+    ),
   ],
 );
 

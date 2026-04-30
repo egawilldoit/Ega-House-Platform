@@ -12,6 +12,7 @@ import {
   FileText,
   Flag,
   LayoutDashboard,
+  Lightbulb,
   Plus,
   Power,
   Rocket,
@@ -43,6 +44,11 @@ const CORE_ITEMS: NavItem[] = [
     href: "/tasks",
     label: "Tasks",
     icon: <CheckSquare />,
+  },
+  {
+    href: "/ideas",
+    label: "Ideas",
+    icon: <Lightbulb />,
   },
   {
     href: "/today",

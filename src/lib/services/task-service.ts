@@ -20,6 +20,7 @@ import {
 import type { TaskViewFilter } from "@/lib/task-archive";
 import { getTaskTotalDurationMap } from "@/lib/task-session";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
+import { getActiveTasksForOwner } from "@/lib/services/task-read-service";
 import {
   isMissingTasksArchivedAtColumn,
   isMissingSupabaseTable,
@@ -270,78 +271,31 @@ export async function getTasksWorkspaceData(
       ? filters.requestedGoalId
       : null;
 
-  const tasksQuery = supabase
-    .from("tasks")
-    .select(
-      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
-    )
-    .order("updated_at", { ascending: false });
+  const tasksResult = await getActiveTasksForOwner({
+    supabase,
+    archiveFilter: filters.activeView === "all" ? "all" : filters.activeView,
+    applyQuery(query) {
+      if (filters.activeStatus) {
+        query = query.eq("status", filters.activeStatus);
+      }
 
-  if (filters.activeView === "active") {
-    tasksQuery.is("archived_at", null);
-  } else if (filters.activeView === "archived") {
-    tasksQuery.not("archived_at", "is", null);
+      if (activeProjectId) {
+        query = query.eq("project_id", activeProjectId);
+      }
+
+      if (activeGoalId) {
+        query = query.eq("goal_id", activeGoalId);
+      }
+
+      return query;
+    },
+  });
+
+  if (tasksResult.errorMessage) {
+    throw new Error(`Failed to load tasks: ${tasksResult.errorMessage}`);
   }
 
-  if (filters.activeStatus) {
-    tasksQuery.eq("status", filters.activeStatus);
-  }
-
-  if (activeProjectId) {
-    tasksQuery.eq("project_id", activeProjectId);
-  }
-
-  if (activeGoalId) {
-    tasksQuery.eq("goal_id", activeGoalId);
-  }
-
-  const tasksResult = await tasksQuery;
-  let rawTasks = tasksResult.data ?? [];
-
-  if (tasksResult.error) {
-    if (
-      !isTasksBlockedReasonMissing(tasksResult.error) &&
-      !isTasksArchivedAtMissing(tasksResult.error)
-    ) {
-      throw new Error(`Failed to load tasks: ${tasksResult.error.message}`);
-    }
-
-    const fallbackQuery = supabase
-      .from("tasks")
-      .select(
-        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, projects(name), goals(title)",
-      )
-      .order("updated_at", { ascending: false });
-
-    if (filters.activeView === "archived") {
-      rawTasks = [];
-    }
-
-    if (filters.activeStatus) {
-      fallbackQuery.eq("status", filters.activeStatus);
-    }
-
-    if (activeProjectId) {
-      fallbackQuery.eq("project_id", activeProjectId);
-    }
-
-    if (activeGoalId) {
-      fallbackQuery.eq("goal_id", activeGoalId);
-    }
-
-    const fallbackResult = filters.activeView === "archived" ? { data: [], error: null } : await fallbackQuery;
-    if (fallbackResult.error) {
-      throw new Error(`Failed to load tasks: ${fallbackResult.error.message}`);
-    }
-
-    rawTasks = (fallbackResult.data ?? []).map((task) => ({
-      ...task,
-      blocked_reason: null,
-      completed_at: task.completed_at ?? null,
-      archived_at: null,
-      archived_by: null,
-    }));
-  }
+  const rawTasks = tasksResult.data;
 
   const tasks = applyTaskListQuery(rawTasks, {
     dueFilter: filters.activeDueFilter,

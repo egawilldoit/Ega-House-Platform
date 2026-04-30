@@ -1,31 +1,21 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-
-import { buildTimerRedirectHref } from "@/app/timer/flash-query";
 import { getTimerActionReturnPath } from "@/app/timer/return-path";
-import { getTaskById, updateTaskInline } from "@/lib/services/task-service";
-import { isTaskPriority, type TaskStatus } from "@/lib/task-domain";
+import {
+  blockTask,
+  markTaskDone,
+  resumeTask,
+} from "@/lib/services/task-transition-service";
 import {
   resolveOpenTimerSessionConflict,
   startTimerForTask,
   stopTimerSession,
   updateTimerSessionTimestamps,
 } from "@/lib/services/timer-service";
-
-function getTimerPathname(returnPath: string) {
-  return new URL(returnPath, "https://egawilldoit.online").pathname;
-}
-
-function revalidateTimerSurfaces(returnPath: string) {
-  revalidatePath("/timer");
-  revalidatePath(getTimerPathname(returnPath));
-  revalidatePath("/tasks");
-  revalidatePath("/dashboard");
-  revalidatePath("/today");
-  revalidatePath("/review");
-}
+import {
+  redirectWithWorkspaceFeedback,
+  revalidateWorkspaceFor,
+} from "@/lib/workspace/workspace-navigation";
 
 function redirectToTimer(
   returnPath: string,
@@ -36,16 +26,13 @@ function redirectToTimer(
     stoppedTaskId?: string;
   },
 ): never {
-  const target = new URL(
-    buildTimerRedirectHref(returnPath, options),
-    "https://egawilldoit.online",
-  );
-  if (options?.stoppedTaskId) {
-    target.searchParams.set("stoppedTaskId", options.stoppedTaskId);
-  } else {
-    target.searchParams.delete("stoppedTaskId");
-  }
-  redirect(`${target.pathname}${target.search}${target.hash}`);
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: options?.anchor ? options.anchor.replace(/^#/, "") : undefined,
+    clearStoppedTaskId: true,
+    errorMessage: options?.errorMessage,
+    stoppedTaskId: options?.stoppedTaskId,
+    successMessage: options?.successMessage,
+  });
 }
 
 export async function startTimerAction(formData: FormData) {
@@ -56,7 +43,7 @@ export async function startTimerAction(formData: FormData) {
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath);
 }
 
@@ -68,7 +55,7 @@ export async function stopTimerAction(formData: FormData) {
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
     successMessage: result.stoppedTaskId
       ? "Timer stopped. Choose the task outcome."
@@ -80,25 +67,10 @@ export async function stopTimerAction(formData: FormData) {
 type StoppedTimerOutcome = "done" | "in_progress" | "blocked" | "no_change";
 
 type HandleStoppedTimerOutcomeDependencies = {
-  getTaskById: typeof getTaskById;
-  updateTaskInline: typeof updateTaskInline;
+  markTaskDone: typeof markTaskDone;
+  resumeTask: typeof resumeTask;
+  blockTask: typeof blockTask;
 };
-
-function getStoppedTimerOutcomeStatus(outcome: StoppedTimerOutcome): TaskStatus | null {
-  if (outcome === "done") {
-    return "done";
-  }
-
-  if (outcome === "blocked") {
-    return "blocked";
-  }
-
-  if (outcome === "in_progress") {
-    return "in_progress";
-  }
-
-  return null;
-}
 
 function parseStoppedTimerOutcome(value: unknown): StoppedTimerOutcome | null {
   const normalizedValue = String(value ?? "").trim();
@@ -119,8 +91,9 @@ export async function handleStoppedTimerOutcomeByTaskId(
   outcome: StoppedTimerOutcome,
   blockedReason: unknown = null,
   dependencies: HandleStoppedTimerOutcomeDependencies = {
-    getTaskById,
-    updateTaskInline,
+    markTaskDone,
+    resumeTask,
+    blockTask,
   },
 ) {
   const normalizedTaskId = taskId.trim();
@@ -128,44 +101,32 @@ export async function handleStoppedTimerOutcomeByTaskId(
     return { errorMessage: "Task update request is invalid." };
   }
 
-  const nextStatus = getStoppedTimerOutcomeStatus(outcome);
-  if (!nextStatus) {
+  if (outcome === "no_change") {
     return { errorMessage: null };
   }
 
-  const taskResult = await dependencies.getTaskById(normalizedTaskId);
-  if (taskResult.errorMessage) {
-    return { errorMessage: taskResult.errorMessage };
+  if (outcome === "done") {
+    return dependencies.markTaskDone(normalizedTaskId);
   }
 
-  if (!taskResult.data) {
-    return { errorMessage: "Task was not found or is no longer available." };
+  if (outcome === "in_progress") {
+    return dependencies.resumeTask(normalizedTaskId);
   }
 
   const normalizedBlockedReason = String(blockedReason ?? "").trim();
-  if (nextStatus === "blocked" && !normalizedBlockedReason) {
+  if (!normalizedBlockedReason) {
     return { errorMessage: "Blocked reason is required when status is Blocked." };
   }
 
-  const updateResult = await dependencies.updateTaskInline({
-    taskId: taskResult.data.id,
-    status: nextStatus,
-    priority: isTaskPriority(taskResult.data.priority)
-      ? taskResult.data.priority
-      : "medium",
-    dueDate: taskResult.data.due_date,
-    estimateMinutes: taskResult.data.estimate_minutes,
-    blockedReason: nextStatus === "blocked" ? normalizedBlockedReason : null,
-  });
-
-  return updateResult;
+  return dependencies.blockTask(normalizedTaskId, normalizedBlockedReason);
 }
 
 export async function completeStoppedTaskById(
   taskId: string,
   dependencies: HandleStoppedTimerOutcomeDependencies = {
-    getTaskById,
-    updateTaskInline,
+    markTaskDone,
+    resumeTask,
+    blockTask,
   },
 ) {
   return handleStoppedTimerOutcomeByTaskId(
@@ -201,7 +162,7 @@ export async function submitStoppedTimerOutcomeAction(formData: FormData) {
     });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
     successMessage:
       outcome === "no_change"
@@ -217,7 +178,7 @@ export async function resolveSessionConflictAction(formData: FormData) {
     redirectToTimer(returnPath, { errorMessage: result.errorMessage });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath);
 }
 
@@ -241,7 +202,7 @@ export async function updateSessionTimingAction(formData: FormData) {
     });
   }
 
-  revalidateTimerSurfaces(returnPath);
+  revalidateWorkspaceFor("timer", { returnTo: returnPath });
   redirectToTimer(returnPath, {
     successMessage: "Session timing updated.",
     anchor: timerAnchor,

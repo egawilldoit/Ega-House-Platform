@@ -52,7 +52,7 @@ function createStartupSupabaseMock(input?: {
   const reviews = [...(input?.reviews ?? [])];
 
   type Filter = {
-    op: "eq" | "neq" | "not" | "gte" | "lte";
+    op: "eq" | "neq" | "not" | "gte" | "lte" | "is";
     column: string;
     value: unknown;
     comparator?: string;
@@ -80,6 +80,11 @@ function createStartupSupabaseMock(input?: {
 
     not(column: string, comparator: string, value: unknown) {
       this.filters.push({ op: "not", column, comparator, value });
+      return this;
+    }
+
+    is(column: string, value: null) {
+      this.filters.push({ op: "is", column, value });
       return this;
     }
 
@@ -135,6 +140,9 @@ function createStartupSupabaseMock(input?: {
           }
           if (filter.op === "not" && filter.comparator === "is") {
             return field !== filter.value;
+          }
+          if (filter.op === "is") {
+            return (field ?? null) === filter.value;
           }
           if (filter.op === "gte") {
             return String(field ?? "") >= String(filter.value ?? "");
@@ -358,8 +366,17 @@ function createScopedPlanningSupabaseMock() {
             return {
               eq(column: string, value: string) {
                 assert.equal(column, "id");
-                updates.push({ taskId: value, planned_for_date: payload.planned_for_date });
-                return Promise.resolve({ error: null });
+                return {
+                  select(selectColumns: string) {
+                    assert.equal(selectColumns, "id");
+                    return {
+                      maybeSingle() {
+                        updates.push({ taskId: value, planned_for_date: payload.planned_for_date });
+                        return Promise.resolve({ data: { id: value }, error: null });
+                      },
+                    };
+                  },
+                };
               },
             };
           },

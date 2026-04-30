@@ -31,7 +31,7 @@ export default function GoalsLoadingPage() {
       title="Goals"
       description="Track strategic goals attached to projects."
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <div className="workspace-main-rail-grid">
         <Card className="border-[var(--border)] bg-white">
           <CardContent className="p-6">
             <div className="mb-5 space-y-2">

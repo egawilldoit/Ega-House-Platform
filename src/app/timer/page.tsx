@@ -210,7 +210,7 @@ export default async function TimerPage({
         />
       </div>
 
-      <div className="mt-6 grid items-start gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(21rem,0.82fr)]">
+      <div className="workspace-main-rail-grid mt-6">
         <Card className="border-[var(--border)] bg-white">
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between gap-4">

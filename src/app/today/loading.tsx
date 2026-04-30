@@ -35,7 +35,7 @@ export default function TodayLoadingPage() {
           </CardContent>
         </Card>
 
-        <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.24fr)_minmax(22rem,0.76fr)]">
+        <div className="workspace-main-rail-grid">
           <div className="space-y-4">
             <SectionSkeleton />
             <SectionSkeleton />

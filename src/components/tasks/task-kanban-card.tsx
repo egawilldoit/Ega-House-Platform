@@ -99,7 +99,7 @@ export function TaskKanbanCard({
   return (
     <article
       id={`task-${task.id}`}
-      className="scroll-mt-24 rounded-[0.9rem] border border-[rgba(15,23,42,0.08)] bg-[rgba(255,255,255,0.62)] p-3 shadow-[0_10px_24px_rgba(15,23,42,0.05)]"
+      className="scroll-mt-24 rounded-[0.9rem] border border-[rgba(15,23,42,0.08)] bg-[rgba(255,255,255,0.62)] p-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:p-3"
     >
       <div className="flex items-start gap-2.5">
         <span
@@ -162,7 +162,7 @@ export function TaskKanbanCard({
           {showStatusControls ? (
             <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
               <p className="glass-label text-etch">Move</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
                 {nextStatuses.map((status) =>
                   status === "blocked" ? (
                     <details key={status} className="w-full rounded-[0.75rem] border border-[rgba(198,40,40,0.16)] bg-[rgba(198,40,40,0.04)] p-2">
@@ -221,7 +221,7 @@ export function TaskKanbanCard({
           {showActiveActions ? (
             <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
               <p className="glass-label text-etch">Actions</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
                 {startTimerAction && !isCompleted ? (
                   <form action={startTimerAction}>
                     <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
@@ -266,7 +266,7 @@ export function TaskKanbanCard({
           {showArchivedActions ? (
             <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
               <p className="glass-label text-etch">Archived actions</p>
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
                 {unarchiveAction ? (
                   <form action={unarchiveAction}>
                     <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />

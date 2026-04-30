@@ -212,7 +212,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Link>
       }
     >
-      <div className="tasks-dashboard-grid">
+      <div className="workspace-main-rail-grid tasks-dashboard-grid">
         <div className="space-y-5">
           <Card className="ega-glass-strong overflow-hidden rounded-[1.5rem]">
             <CardHeader className="gap-5 border-b border-[rgba(15,23,42,0.07)] p-6 pb-5">
@@ -344,14 +344,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
             <CardContent className="space-y-4 p-5">
               {activeLayout === "kanban" ? (
-                <div className="grid gap-4 lg:auto-cols-fr lg:grid-flow-col">
+                <div className="tasks-kanban-board">
                   {kanbanBoard.columns.map((column) => {
                     const columnTasks = kanbanBoard.tasksByStatus[column.status];
 
                     return (
                     <section
                       key={column.status}
-                      className="ega-glass-soft min-h-56 rounded-[1rem] border border-[rgba(15,23,42,0.08)] p-4"
+                      className="tasks-kanban-column ega-glass-soft min-h-56 rounded-[1rem] border border-[rgba(15,23,42,0.08)] p-3 sm:p-4"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <h2 className="text-sm font-semibold text-[color:var(--foreground)]">
@@ -605,7 +605,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           </Card>
         </div>
 
-        <aside className="tasks-side-rail space-y-5">
+        <aside className="workspace-secondary-rail tasks-side-rail space-y-5">
           <TaskSavedViewsPanel
             currentFilters={{
               status: activeStatus,

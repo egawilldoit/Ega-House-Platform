@@ -540,7 +540,7 @@ export function DashboardOptimizedView({
         </div>
       </section>
 
-      <section className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.28fr)_minmax(22rem,0.72fr)]">
+      <section className="workspace-main-rail-grid">
         <Card className="ega-dashboard-spotlight border-transparent">
           <CardContent className="p-0">
             <div className="ega-dashboard-spotlight-shell">
