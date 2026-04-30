@@ -394,18 +394,20 @@ test("archiveTaskSafely archives safely and clears focus_rank", async () => {
 
 test("planTaskForToday sets planned_for_date to local today", async () => {
   const mock = createTaskTransitionSupabaseMock();
+  const localToday = new Date(2026, 3, 21, 12, 0, 0, 0);
+  const localTodayIso = localToday.toISOString();
 
   const result = await planTaskForToday("task-1", {
     supabase: mock.supabase,
-    now: new Date("2026-04-21T23:30:00.000Z"),
-    nowIso: "2026-04-21T23:30:00.000Z",
+    now: localToday,
+    nowIso: localTodayIso,
   });
 
   assert.equal(result.errorMessage, null);
   assert.equal(mock.tasks[0]?.planned_for_date, "2026-04-21");
   assert.deepEqual(mock.taskUpdateCalls[0]?.payload, {
     planned_for_date: "2026-04-21",
-    updated_at: "2026-04-21T23:30:00.000Z",
+    updated_at: localTodayIso,
   });
 });
 
