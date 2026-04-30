@@ -268,7 +268,7 @@ export async function createTaskAction(
 
   if (errorMessage) {
     if (createdTaskId) {
-      revalidateTaskSurfaces(returnTo);
+      revalidateWorkspaceFor("task", { returnTo });
     }
 
     return createErrorState(errorMessage, values);
