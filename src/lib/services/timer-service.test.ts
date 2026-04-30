@@ -203,6 +203,39 @@ test("aggregate helper uses corrected timestamps over stale duration field", () 
   assert.equal(aggregates.todayTotalDurationSeconds, 5280);
 });
 
+test("manual completed sessions contribute to timer totals and today distribution", () => {
+  const aggregates = calculateTimerAggregates(
+    [
+      {
+        task_id: "task-manual",
+        started_at: "2026-04-21T08:15:00.000Z",
+        ended_at: "2026-04-21T09:45:00.000Z",
+        duration_seconds: 5400,
+        tasks: { title: "Backfilled task" },
+      },
+    ],
+    {
+      nowIso: "2026-04-21T12:00:00.000Z",
+      todayWindow: {
+        startIso: "2026-04-21T00:00:00.000Z",
+        endIso: "2026-04-21T12:00:00.000Z",
+      },
+    },
+  );
+
+  assert.equal(aggregates.trackedTotalSeconds, 5400);
+  assert.equal(aggregates.trackedTodaySeconds, 5400);
+  assert.equal(aggregates.todayTotalDurationSeconds, 5400);
+  assert.deepEqual(aggregates.todayTaskBreakdown, [
+    {
+      taskId: "task-manual",
+      taskTitle: "Backfilled task",
+      durationSeconds: 5400,
+    },
+  ]);
+  assert.equal(aggregates.sessionsTodayCount, 1);
+});
+
 test("aggregates keep corrected completed sessions fixed across later now values", () => {
   const completedSession = {
     task_id: "task-corrected",
