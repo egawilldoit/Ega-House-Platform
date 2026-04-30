@@ -64,7 +64,7 @@ test("kanban card renders compact task title and priority", () => {
   assert.match(markup, /High/);
 });
 
-test("kanban card renders optional project, goal, due, estimate, and tracked metadata when present", () => {
+test("kanban card default renders compact priority title project and due date", () => {
   const markup = renderCard(
     buildTask({
       projects: { name: "EGA House" },
@@ -76,10 +76,12 @@ test("kanban card renders optional project, goal, due, estimate, and tracked met
   );
 
   assert.match(markup, /EGA House/);
-  assert.match(markup, /Tighten weekly review/);
   assert.match(markup, /Due May 1, 2026/);
-  assert.match(markup, /Est\. 1h 15m/);
-  assert.match(markup, /Tracked 1h 1m 1s/);
+  assert.match(markup, /High/);
+  assert.match(markup, /Draft weekly execution review/);
+  assert.doesNotMatch(markup, /Tighten weekly review/);
+  assert.doesNotMatch(markup, /Est\. 1h 15m/);
+  assert.doesNotMatch(markup, /Tracked 1h 1m 1s/);
 });
 
 test("kanban card hides optional metadata when missing", () => {
@@ -94,7 +96,7 @@ test("kanban card hides optional metadata when missing", () => {
   assert.doesNotMatch(markup, /Archived/);
 });
 
-test("kanban card renders blocked reason for blocked tasks", () => {
+test("kanban card hides long blocked metadata by default", () => {
   const markup = renderCard(
     buildTask({
       status: "blocked",
@@ -102,7 +104,7 @@ test("kanban card renders blocked reason for blocked tasks", () => {
     }),
   );
 
-  assert.match(markup, /Blocked: Waiting on stakeholder signoff/);
+  assert.doesNotMatch(markup, /Blocked: Waiting on stakeholder signoff/);
 });
 
 test("kanban card renders pinned and archived badges", () => {
@@ -174,11 +176,16 @@ test("kanban card hides status controls for archived tasks", () => {
   assert.doesNotMatch(markup, /Save Blocked/);
 });
 
-test("active kanban card renders timer pin archive and delete actions", () => {
+test("active kanban card keeps timer handoff visible and lifecycle actions available", () => {
   const markup = renderActionableCard(buildTask({ status: "todo" }));
 
-  assert.match(markup, /Actions/);
   assert.match(markup, /Start timer/);
+  assert.match(markup, /name="taskId" value="task-1"/);
+  assert.match(
+    markup,
+    /name="returnTo" value="\/tasks\?status=todo&amp;project=project-1&amp;goal=goal-1&amp;due=overdue&amp;sort=due_date_desc&amp;archive=all&amp;layout=kanban"/,
+  );
+  assert.match(markup, /Actions/);
   assert.match(markup, />Pin</);
   assert.match(markup, />Archive</);
   assert.match(markup, />Delete</);

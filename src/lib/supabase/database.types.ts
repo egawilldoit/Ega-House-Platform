@@ -186,6 +186,7 @@ export type Database = {
       task_saved_views: {
         Row: {
           created_at: string
+          definition_json: Json | null
           due_filter: string
           goal_id: string | null
           id: string
@@ -198,6 +199,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          definition_json?: Json | null
           due_filter?: string
           goal_id?: string | null
           id?: string
@@ -210,6 +212,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          definition_json?: Json | null
           due_filter?: string
           goal_id?: string | null
           id?: string

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Copy, Plus, Trash2, X } from "lucide-react";
 
@@ -23,6 +23,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { workspaceShortcutEvents } from "@/components/layout/workspace-keyboard-shortcuts";
+import { parseQuickTaskCommand } from "@/lib/quick-task-command-parser";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -145,9 +146,13 @@ function QuickTaskSheetPanel({
   onSuccess,
 }: QuickTaskSheetPanelProps) {
   const defaultProjectId = projects[0]?.id ?? "";
+  const [singleCommand, setSingleCommand] = useState("");
   const [singleProjectId, setSingleProjectId] = useState(defaultProjectId);
   const [singleGoalId, setSingleGoalId] = useState("");
   const [singleStatus, setSingleStatus] = useState("todo");
+  const [singleDueDate, setSingleDueDate] = useState("");
+  const [singlePriority, setSinglePriority] = useState("medium");
+  const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");
   const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
@@ -200,6 +205,12 @@ function QuickTaskSheetPanel({
   );
 
   const singleGoals = getGoalsForProject(goals, singleProjectId);
+  const parsedSingleCommand = useMemo(
+    () => parseQuickTaskCommand(singleCommand, projects),
+    [singleCommand, projects],
+  );
+  const selectedProjectName =
+    projects.find((project) => project.id === singleProjectId)?.name ?? "No project";
   const draftValidation = drafts.map((draft) => ({
     id: draft.id,
     errors: getDraftErrors(draft, goals),
@@ -215,7 +226,39 @@ function QuickTaskSheetPanel({
 
   useEffect(() => {
     setSingleStatus(singleState.values.status);
-  }, [singleState.values.status]);
+    setSingleDueDate(singleState.values.dueDate);
+    setSinglePriority(singleState.values.priority);
+    setSingleEstimateMinutes(singleState.values.estimateMinutes);
+  }, [
+    singleState.values.dueDate,
+    singleState.values.estimateMinutes,
+    singleState.values.priority,
+    singleState.values.status,
+  ]);
+
+  useEffect(() => {
+    if (parsedSingleCommand.projectId) {
+      setSingleProjectId(parsedSingleCommand.projectId);
+      setSingleGoalId("");
+    }
+
+    if (parsedSingleCommand.dueDate) {
+      setSingleDueDate(parsedSingleCommand.dueDate);
+    }
+
+    if (parsedSingleCommand.priority) {
+      setSinglePriority(parsedSingleCommand.priority);
+    }
+
+    if (parsedSingleCommand.estimateMinutes !== null) {
+      setSingleEstimateMinutes(String(parsedSingleCommand.estimateMinutes));
+    }
+  }, [
+    parsedSingleCommand.dueDate,
+    parsedSingleCommand.estimateMinutes,
+    parsedSingleCommand.priority,
+    parsedSingleCommand.projectId,
+  ]);
 
   useEffect(() => {
     setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
@@ -229,7 +272,7 @@ function QuickTaskSheetPanel({
 
   useEffect(() => {
     const focusId = window.requestAnimationFrame(() => {
-      document.getElementById("quick-task-title")?.focus();
+      document.getElementById("quick-task-command")?.focus();
     });
 
     return () => window.cancelAnimationFrame(focusId);
@@ -361,8 +404,17 @@ function QuickTaskSheetPanel({
             </TabsList>
 
             <TabsContent value="single" className="space-y-4">
-              <form action={singleAction} className="space-y-4">
+              <form
+                action={singleAction}
+                className="space-y-4"
+                onSubmit={(event) => {
+                  if (parsedSingleCommand.projectError) {
+                    event.preventDefault();
+                  }
+                }}
+              >
                 <input type="hidden" name="returnTo" value={DEFAULT_RETURN_TO} />
+                <input type="hidden" name="title" value={parsedSingleCommand.title} />
                 <input
                   type="hidden"
                   name="workedTimeTimezoneOffsetMinutes"
@@ -385,18 +437,54 @@ function QuickTaskSheetPanel({
 
                   <div className="space-y-3.5">
                     <div className="space-y-2">
-                      <label htmlFor="quick-task-title" className="glass-label text-etch">
-                        Title
+                      <label htmlFor="quick-task-command" className="glass-label text-etch">
+                        Command
                       </label>
                       <Input
-                        id="quick-task-title"
-                        name="title"
+                        id="quick-task-command"
                         required
-                        placeholder="Ship sidebar quick capture"
-                        defaultValue={singleState.values.title}
+                        placeholder="Ship sidebar quick capture #ExecutionOS today p2 45m"
+                        value={singleCommand}
+                        onChange={(event) => setSingleCommand(event.target.value)}
                         className="h-10"
                       />
                     </div>
+
+                    {singleCommand.trim() ? (
+                      <div className="rounded-[0.95rem] border border-[var(--border)] bg-white/70 p-3">
+                        <p className="glass-label text-etch">Parsed preview</p>
+                        <div className="mt-2 grid gap-2 text-sm text-[color:var(--muted-foreground)] sm:grid-cols-2">
+                          <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Title:</span>{" "}
+                            {parsedSingleCommand.title || "No title yet"}
+                          </p>
+                          <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Project:</span>{" "}
+                            {parsedSingleCommand.projectError
+                              ? parsedSingleCommand.projectToken
+                              : parsedSingleCommand.projectName ?? selectedProjectName}
+                          </p>
+                          <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Due:</span>{" "}
+                            {singleDueDate || "None"}
+                          </p>
+                          <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Priority:</span>{" "}
+                            {formatTaskToken(singlePriority)}
+                          </p>
+                          <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Estimate:</span>{" "}
+                            {singleEstimateMinutes ? `${singleEstimateMinutes}m` : "None"}
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {parsedSingleCommand.projectError ? (
+                      <div role="alert" className="feedback-block feedback-block-error">
+                        {parsedSingleCommand.projectError}
+                      </div>
+                    ) : null}
 
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-2">
@@ -470,7 +558,8 @@ function QuickTaskSheetPanel({
                           id="quick-task-due-date"
                           name="dueDate"
                           type="date"
-                          defaultValue={singleState.values.dueDate}
+                          value={singleDueDate}
+                          onChange={(event) => setSingleDueDate(event.target.value)}
                           className="h-10"
                         />
                       </div>
@@ -497,7 +586,8 @@ function QuickTaskSheetPanel({
                         <select
                           id="quick-task-priority"
                           name="priority"
-                          defaultValue={singleState.values.priority}
+                          value={singlePriority}
+                          onChange={(event) => setSinglePriority(event.target.value)}
                           className="input-instrument h-10 text-sm"
                         >
                           {TASK_PRIORITY_VALUES.map((priority) => (
@@ -519,7 +609,8 @@ function QuickTaskSheetPanel({
                           min="0"
                           step="15"
                           inputMode="numeric"
-                          defaultValue={singleState.values.estimateMinutes}
+                          value={singleEstimateMinutes}
+                          onChange={(event) => setSingleEstimateMinutes(event.target.value)}
                           className="h-10"
                         />
                       </div>
@@ -584,7 +675,7 @@ function QuickTaskSheetPanel({
                 ) : null}
 
                 <div className="flex items-center justify-end border-t border-[var(--border)] pt-4">
-                  <Button type="submit" disabled={isSinglePending}>
+                  <Button type="submit" disabled={isSinglePending || Boolean(parsedSingleCommand.projectError)}>
                     {isSinglePending ? "Creating..." : "Create task"}
                   </Button>
                 </div>

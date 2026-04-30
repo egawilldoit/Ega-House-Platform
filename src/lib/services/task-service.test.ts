@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  createTasks,
   createTaskWithOptionalWorkedTime,
+  getTasksWorkspaceData,
   normalizeTaskBlockedReasonInput,
   updateTaskInline,
   validateTaskInlineUpdateInput,
@@ -615,6 +617,7 @@ function createTaskCreateSupabaseMock(options?: {
   failTaskInsert?: boolean;
   failSessionInsert?: boolean;
   taskInsertReturnsNoId?: boolean;
+  projectRows?: Array<{ id: string }>;
 }) {
   const taskInsertCalls: Array<Record<string, unknown>[]> = [];
   const sessionInsertCalls: Array<Record<string, unknown>> = [];
@@ -626,7 +629,7 @@ function createTaskCreateSupabaseMock(options?: {
         return {
           select: async (columns: string) => {
             assert.equal(columns, "id");
-            return { data: [{ id: "project-1" }], error: null };
+            return { data: options?.projectRows ?? [{ id: "project-1" }], error: null };
           },
         };
       }
@@ -682,6 +685,48 @@ function createTaskCreateSupabaseMock(options?: {
     sessionInsertCalls,
   };
 }
+
+test("createTasks rejects invalid project scope before insert", async () => {
+  const mock = createTaskCreateSupabaseMock({ projectRows: [{ id: "project-1" }] });
+
+  const result = await createTasks(
+    [
+      {
+        title: "Out of scope",
+        project_id: "project-missing",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+    ],
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, { errorMessage: "Selected project is unavailable." });
+  assert.equal(mock.taskInsertCalls.length, 0);
+});
+
+test("createTasks still inserts valid project-scoped rows through shared path", async () => {
+  const mock = createTaskCreateSupabaseMock({ projectRows: [{ id: "project-1" }] });
+
+  const result = await createTasks(
+    [
+      {
+        title: "In scope",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+    ],
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(result.createdTaskIds, ["task-1"]);
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.equal(mock.taskInsertCalls[0]?.[0]?.title, "In scope");
+});
 
 test("createTaskWithOptionalWorkedTime creates a task without worked time as before", async () => {
   const mock = createTaskCreateSupabaseMock();
@@ -831,4 +876,211 @@ test("createTaskWithOptionalWorkedTime reports session failure without claiming 
   assert.equal(result.createdTaskId, "task-1");
   assert.equal(result.workedTimeLogged, false);
   assert.equal(mock.sessionInsertCalls.length, 1);
+});
+
+function createWorkspaceSupabaseMock() {
+  const taskQueryCalls: Array<{ method: string; column: string; value: unknown }> = [];
+  const tasks = [
+    {
+      id: "deep-work-task",
+      title: "Write architecture note",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "urgent",
+      due_date: null,
+      estimate_minutes: 45,
+      updated_at: "2026-04-30T10:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "done-task",
+      title: "Done",
+      description: null,
+      blocked_reason: null,
+      status: "done",
+      priority: "urgent",
+      due_date: null,
+      estimate_minutes: 60,
+      updated_at: "2026-04-30T09:00:00.000Z",
+      completed_at: "2026-04-30T09:30:00.000Z",
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+  ];
+
+  function createTasksQuery(columns: string) {
+    const state = {
+      activeOnly: false,
+      excludeDone: false,
+      priorities: null as string[] | null,
+      estimateMin: null as number | null,
+    };
+
+    const execute = async () => {
+      if (columns === "archived_at") {
+        return {
+          data: tasks.map((task) => ({ archived_at: task.archived_at })),
+          error: null,
+        };
+      }
+
+      return {
+        data: tasks
+          .filter((task) => (state.activeOnly ? task.archived_at === null : true))
+          .filter((task) => (state.excludeDone ? task.status !== "done" : true))
+          .filter((task) => (state.priorities ? state.priorities.includes(task.priority) : true))
+          .filter((task) =>
+            state.estimateMin === null
+              ? true
+              : (task.estimate_minutes ?? 0) >= state.estimateMin,
+          ),
+        error: null,
+      };
+    };
+
+    const query = {
+      is(column: string, value: null) {
+        taskQueryCalls.push({ method: "is", column, value });
+        if (column === "archived_at") {
+          state.activeOnly = true;
+        }
+        return query;
+      },
+      neq(column: string, value: string) {
+        taskQueryCalls.push({ method: "neq", column, value });
+        if (column === "status" && value === "done") {
+          state.excludeDone = true;
+        }
+        return query;
+      },
+      in(column: string, value: string[]) {
+        taskQueryCalls.push({ method: "in", column, value });
+        if (column === "priority") {
+          state.priorities = value;
+        }
+        return query;
+      },
+      gte(column: string, value: number) {
+        taskQueryCalls.push({ method: "gte", column, value });
+        if (column === "estimate_minutes") {
+          state.estimateMin = value;
+        }
+        return query;
+      },
+      eq(column: string, value: string) {
+        taskQueryCalls.push({ method: "eq", column, value });
+        return query;
+      },
+      not(column: string, operator: string, value: unknown) {
+        taskQueryCalls.push({ method: `not.${operator}`, column, value });
+        return query;
+      },
+      order() {
+        return query;
+      },
+      then(
+        resolve: (value: { data: typeof tasks | Array<{ archived_at: string | null }>; error: null }) => void,
+        reject?: (reason: unknown) => void,
+      ) {
+        return execute().then(resolve, reject);
+      },
+    };
+
+    return query;
+  }
+
+  const supabase = {
+    from(table: string) {
+      if (table === "projects") {
+        return {
+          select: () => ({
+            order: async () => ({ data: [{ id: "project-1", name: "EGA House" }], error: null }),
+          }),
+        };
+      }
+
+      if (table === "goals") {
+        return {
+          select: () => ({
+            order: async () => ({ data: [], error: null }),
+          }),
+        };
+      }
+
+      if (table === "task_saved_views") {
+        return {
+          select: () => ({
+            order: async () => ({ data: [], error: null }),
+          }),
+        };
+      }
+
+      if (table === "tasks") {
+        return {
+          select(columns: string) {
+            return createTasksQuery(columns);
+          },
+        };
+      }
+
+      if (table === "task_sessions") {
+        return {
+          select: () => ({
+            in: async () => ({ data: [], error: null }),
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    },
+  };
+
+  return { supabase: supabase as never, taskQueryCalls };
+}
+
+test("Deep Work default view applies active priority and estimate constraints", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+      activePriorityValues: ["urgent", "high"],
+      activeEstimateMinMinutes: 30,
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.savedViews[0]?.name, "Deep Work");
+  assert.equal(result.savedViews[0]?.is_default, true);
+  assert.deepEqual(result.tasks.map((task) => task.id), ["deep-work-task"]);
+  assert.deepEqual(
+    mock.taskQueryCalls.filter((call) => ["is", "neq", "in", "gte"].includes(call.method)),
+    [
+      { method: "is", column: "archived_at", value: null },
+      { method: "neq", column: "status", value: "done" },
+      { method: "in", column: "priority", value: ["urgent", "high"] },
+      { method: "gte", column: "estimate_minutes", value: 30 },
+    ],
+  );
 });

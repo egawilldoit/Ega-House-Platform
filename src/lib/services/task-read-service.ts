@@ -53,6 +53,7 @@ type TaskReadQueryResult = {
 type TaskReadQuery = PromiseLike<TaskReadQueryResult> & {
   eq(column: string, value: unknown): TaskReadQuery;
   neq(column: string, value: unknown): TaskReadQuery;
+  in(column: string, values: unknown[]): TaskReadQuery;
   gte(column: string, value: unknown): TaskReadQuery;
   lte(column: string, value: unknown): TaskReadQuery;
   is(column: string, value: null): TaskReadQuery;

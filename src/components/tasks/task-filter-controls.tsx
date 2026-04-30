@@ -262,6 +262,8 @@ export function buildTaskFilterReturnPath(
   filters: {
     status?: string | null;
     priority?: string | null;
+    estimateMin?: number | string | null;
+    activeTasks?: boolean | null;
     project?: string | null;
     goal?: string | null;
     due?: TaskDueFilter;

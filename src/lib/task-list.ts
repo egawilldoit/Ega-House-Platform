@@ -95,6 +95,8 @@ export function buildTaskListUrl(
   filters: {
     status?: string | null;
     priority?: string | null;
+    estimateMin?: number | string | null;
+    activeTasks?: boolean | null;
     project?: string | null;
     goal?: string | null;
     due?: TaskDueFilter;
@@ -111,6 +113,14 @@ export function buildTaskListUrl(
 
   if (filters.priority) {
     searchParams.set("priority", filters.priority);
+  }
+
+  if (filters.estimateMin) {
+    searchParams.set("estimateMin", String(filters.estimateMin));
+  }
+
+  if (filters.activeTasks) {
+    searchParams.set("tasks", "active");
   }
 
   if (filters.project) {

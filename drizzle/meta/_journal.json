@@ -169,6 +169,13 @@
       "when": 1777420800003,
       "tag": "0023_idea_note_status_pipeline",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1777507200000,
+      "tag": "0024_task_saved_view_definition_json",
+      "breakpoints": true
     }
   ]
 }

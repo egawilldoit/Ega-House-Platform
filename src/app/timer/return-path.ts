@@ -1,5 +1,6 @@
 const TIMER_PATH = "/timer";
 const DASHBOARD_PATH = "/dashboard";
+const TASKS_PATH = "/tasks";
 const TODAY_PATH = "/today";
 
 export function getTimerActionReturnPath(rawReturnTo: unknown) {
@@ -8,6 +9,7 @@ export function getTimerActionReturnPath(rawReturnTo: unknown) {
   if (
     returnTo.startsWith(TIMER_PATH) ||
     returnTo.startsWith(DASHBOARD_PATH) ||
+    returnTo.startsWith(TASKS_PATH) ||
     returnTo.startsWith(TODAY_PATH)
   ) {
     return returnTo;

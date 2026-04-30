@@ -15,6 +15,8 @@ import { Input } from "@/components/ui/input";
 import type { Tables } from "@/lib/supabase/database.types";
 import {
   areTaskSavedViewFiltersEqual,
+  getTaskSavedViewFiltersFromDefinition,
+  normalizeTaskSavedViewDefinition,
   normalizeTaskSavedViewFilters,
   type TaskSavedViewFilters,
 } from "@/lib/task-saved-views";
@@ -31,8 +33,9 @@ type TaskSavedViewRow = Pick<
   | "goal_id"
   | "due_filter"
   | "sort_value"
+  | "definition_json"
   | "updated_at"
->;
+> & { is_default?: boolean };
 
 type TaskSavedViewsPanelProps = {
   currentFilters: TaskSavedViewFilters;
@@ -53,17 +56,26 @@ export function buildTaskSavedViewCurrentReturnPath(
     goal: filters.goalId,
     due: filters.dueFilter,
     sort: filters.sortValue,
+    priority: filters.priorityValues.join(","),
+    estimateMin: filters.estimateMinMinutes,
+    activeTasks: filters.activeTasks,
     layout: activeLayout,
   });
 }
 
 function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
+  const definition = normalizeTaskSavedViewDefinition(view.definition_json);
+  const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
+
   return normalizeTaskSavedViewFilters({
     status: view.status,
     projectId: view.project_id,
     goalId: view.goal_id,
     dueFilter: view.due_filter,
     sortValue: view.sort_value,
+    activeTasks: definitionFilters.activeTasks,
+    priority: definitionFilters.priorityValues,
+    estimateMinMinutes: definitionFilters.estimateMinMinutes,
   });
 }
 
@@ -76,6 +88,9 @@ export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: Task
     goal: filters.goalId,
     due: filters.dueFilter,
     sort: filters.sortValue,
+    priority: filters.priorityValues.join(","),
+    estimateMin: filters.estimateMinMinutes,
+    activeTasks: filters.activeTasks,
     layout: activeLayout,
   });
 }
@@ -89,6 +104,15 @@ function describeSavedView(
   projectOptions: TaskSavedViewsPanelProps["projectOptions"],
   goalOptions: TaskSavedViewsPanelProps["goalOptions"],
 ) {
+  const filters = getSavedViewFilters(view);
+  if (filters.activeTasks && filters.priorityValues.length > 0 && filters.estimateMinMinutes) {
+    return [
+      "Active tasks",
+      `Priority ${filters.priorityValues.map(formatTaskToken).join(" or ")}`,
+      `Estimate at least ${filters.estimateMinMinutes}m`,
+    ].join(" · ");
+  }
+
   const parts = [
     view.status ? formatTaskToken(view.status) : "All statuses",
     projectOptions.find((project) => project.id === view.project_id)?.name ??
@@ -161,6 +185,9 @@ export function TaskSavedViewsPanel({
           <input type="hidden" name="goal" value={currentFilters.goalId ?? ""} />
           <input type="hidden" name="due" value={currentFilters.dueFilter} />
           <input type="hidden" name="sort" value={currentFilters.sortValue} />
+          <input type="hidden" name="priority" value={currentFilters.priorityValues.join(",")} />
+          <input type="hidden" name="estimateMin" value={currentFilters.estimateMinMinutes ?? ""} />
+          <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
@@ -220,30 +247,35 @@ export function TaskSavedViewsPanel({
                     <Link href={getTaskSavedViewHref(view, activeLayout)} className="glass-label text-signal-live">Open</Link>
                   </div>
 
-                  <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 xl:flex-row xl:items-end">
-                    <form action={updateTaskSavedViewAction} className="flex-1">
-                      <input type="hidden" name="viewId" value={view.id} />
-                      <input type="hidden" name="returnTo" value={currentReturnPath} />
-                      <input type="hidden" name="status" value={currentFilters.status ?? ""} />
-                      <input type="hidden" name="project" value={currentFilters.projectId ?? ""} />
-                      <input type="hidden" name="goal" value={currentFilters.goalId ?? ""} />
-                      <input type="hidden" name="due" value={currentFilters.dueFilter} />
-                      <input type="hidden" name="sort" value={currentFilters.sortValue} />
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                        <div className="flex-1 space-y-2">
-                          <label htmlFor={`view-name-${view.id}`} className="glass-label text-etch">Name</label>
-                          <Input id={`view-name-${view.id}`} name="name" defaultValue={view.name} maxLength={80} className="ega-glass-input h-10 rounded-xl" />
+                  {view.is_default ? null : (
+                    <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 xl:flex-row xl:items-end">
+                      <form action={updateTaskSavedViewAction} className="flex-1">
+                        <input type="hidden" name="viewId" value={view.id} />
+                        <input type="hidden" name="returnTo" value={currentReturnPath} />
+                        <input type="hidden" name="status" value={currentFilters.status ?? ""} />
+                        <input type="hidden" name="project" value={currentFilters.projectId ?? ""} />
+                        <input type="hidden" name="goal" value={currentFilters.goalId ?? ""} />
+                        <input type="hidden" name="due" value={currentFilters.dueFilter} />
+                        <input type="hidden" name="sort" value={currentFilters.sortValue} />
+                        <input type="hidden" name="priority" value={currentFilters.priorityValues.join(",")} />
+                        <input type="hidden" name="estimateMin" value={currentFilters.estimateMinMinutes ?? ""} />
+                        <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                          <div className="flex-1 space-y-2">
+                            <label htmlFor={`view-name-${view.id}`} className="glass-label text-etch">Name</label>
+                            <Input id={`view-name-${view.id}`} name="name" defaultValue={view.name} maxLength={80} className="ega-glass-input h-10 rounded-xl" />
+                          </div>
+                          <Button type="submit" variant="muted" className="sm:shrink-0">Update to current filters</Button>
                         </div>
-                        <Button type="submit" variant="muted" className="sm:shrink-0">Update to current filters</Button>
-                      </div>
-                    </form>
+                      </form>
 
-                    <form action={deleteTaskSavedViewAction}>
-                      <input type="hidden" name="viewId" value={view.id} />
-                      <input type="hidden" name="returnTo" value={currentReturnPath} />
-                      <Button type="submit" variant="danger">Delete</Button>
-                    </form>
-                  </div>
+                      <form action={deleteTaskSavedViewAction}>
+                        <input type="hidden" name="viewId" value={view.id} />
+                        <input type="hidden" name="returnTo" value={currentReturnPath} />
+                        <Button type="submit" variant="danger">Delete</Button>
+                      </form>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

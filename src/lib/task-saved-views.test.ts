@@ -3,7 +3,11 @@ import test from "node:test";
 
 import {
   areTaskSavedViewFiltersEqual,
+  DEEP_WORK_SAVED_VIEW_DEFINITION,
   getTaskSavedViewNameError,
+  getTaskSavedViewDefinitionFromFilters,
+  getTaskSavedViewFiltersFromDefinition,
+  normalizeTaskSavedViewDefinition,
   normalizeTaskSavedViewFilters,
   validateTaskSavedViewScope,
 } from "./task-saved-views";
@@ -23,6 +27,9 @@ test("normalizes invalid saved-view values to safe defaults", () => {
     goalId: null,
     dueFilter: "all",
     sortValue: "updated_desc",
+    activeTasks: false,
+    priorityValues: [],
+    estimateMinMinutes: null,
   });
 });
 
@@ -41,7 +48,75 @@ test("normalizes valid saved-view filters", () => {
     goalId: "goal-1",
     dueFilter: "due_today",
     sortValue: "due_date_asc",
+    activeTasks: false,
+    priorityValues: [],
+    estimateMinMinutes: null,
   });
+});
+
+test("normalizes Deep Work saved-view definition", () => {
+  const definition = normalizeTaskSavedViewDefinition({
+    version: 1,
+    filters: {
+      activeTasks: true,
+      priority: ["urgent", "high"],
+      estimateMinMinutes: 30,
+      ownerUserId: "attacker",
+    },
+  });
+
+  assert.deepEqual(definition, DEEP_WORK_SAVED_VIEW_DEFINITION);
+  assert.deepEqual(getTaskSavedViewFiltersFromDefinition(definition), {
+    activeTasks: true,
+    priorityValues: ["urgent", "high"],
+    estimateMinMinutes: 30,
+  });
+});
+
+test("rejects unsupported saved-view definition filters", () => {
+  assert.equal(
+    normalizeTaskSavedViewDefinition({
+      version: 1,
+      filters: {
+        activeTasks: true,
+        priority: ["medium"],
+        estimateMinMinutes: 30,
+      },
+    }),
+    null,
+  );
+  assert.equal(
+    normalizeTaskSavedViewDefinition({
+      filters: {
+        activeTasks: true,
+        priority: ["urgent", "high"],
+        estimateMinMinutes: 25,
+      },
+    }),
+    null,
+  );
+  assert.equal(normalizeTaskSavedViewDefinition(null), null);
+});
+
+test("builds definition only for Deep Work filters", () => {
+  const deepWorkFilters = normalizeTaskSavedViewFilters({
+    activeTasks: true,
+    priority: "urgent,high,invalid",
+    estimateMinMinutes: "30",
+  });
+
+  assert.deepEqual(
+    getTaskSavedViewDefinitionFromFilters(deepWorkFilters),
+    DEEP_WORK_SAVED_VIEW_DEFINITION,
+  );
+
+  assert.equal(
+    getTaskSavedViewDefinitionFromFilters({
+      ...deepWorkFilters,
+      estimateMinMinutes: 45,
+    }),
+    null,
+  );
 });
 
 test("compares filter equality across all filter fields", () => {
@@ -51,6 +126,9 @@ test("compares filter equality across all filter fields", () => {
     goalId: "goal-1",
     dueFilter: "overdue",
     sortValue: "due_date_desc",
+    activeTasks: true,
+    priorityValues: ["urgent", "high"],
+    estimateMinMinutes: 30,
   } as const;
 
   assert.equal(areTaskSavedViewFiltersEqual(base, { ...base }), true);
@@ -80,6 +158,9 @@ test("validates goal-to-project compatibility in scope", () => {
         goalId: "goal-2",
         dueFilter: "all",
         sortValue: "updated_desc",
+        activeTasks: false,
+        priorityValues: [],
+        estimateMinMinutes: null,
       },
       scope,
     ),
@@ -94,6 +175,9 @@ test("validates goal-to-project compatibility in scope", () => {
         goalId: "goal-1",
         dueFilter: "all",
         sortValue: "updated_desc",
+        activeTasks: false,
+        priorityValues: [],
+        estimateMinMinutes: null,
       },
       scope,
     ),

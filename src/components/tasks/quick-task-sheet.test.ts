@@ -62,6 +62,19 @@ test("quick task worked-time values are preserved after server validation errors
   assert.match(taskActionsSource, /return createErrorState\("Task title is required\.", values\)/);
 });
 
+test("quick task single mode uses command input with parsed preview and hidden title submit", () => {
+  assert.match(singleModeSection, /id="quick-task-command"/);
+  assert.match(quickTaskSheetSource, /parseQuickTaskCommand/);
+  assert.match(singleModeSection, /Parsed preview/);
+  assert.match(singleModeSection, /name="title"\s+value=\{parsedSingleCommand\.title\}/);
+  assert.match(singleModeSection, /parsedSingleCommand\.projectError/);
+});
+
+test("quick task panel focuses command input when opened", () => {
+  assert.match(quickTaskSheetSource, /getElementById\("quick-task-command"\)\?\.focus\(\)/);
+  assert.match(quickTaskSheetSource, /workspaceShortcutEvents\.openQuickTask/);
+});
+
 test("quick task multi mode does not render worked-time UI", () => {
   assert.doesNotMatch(multiModeSection, /Already worked on this\?/);
   assert.doesNotMatch(multiModeSection, /quick-task-worked-from/);

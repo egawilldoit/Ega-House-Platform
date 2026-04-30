@@ -24,7 +24,15 @@ test("allows /today return paths for timer actions", () => {
   );
 });
 
+test("allows /tasks return paths for timer handoff from task surfaces", () => {
+  assert.equal(getTimerActionReturnPath("/tasks"), "/tasks");
+  assert.equal(
+    getTimerActionReturnPath("/tasks?status=todo&layout=kanban#task-1"),
+    "/tasks?status=todo&layout=kanban#task-1",
+  );
+});
+
 test("falls back to /timer for unsupported return paths", () => {
-  assert.equal(getTimerActionReturnPath("/tasks"), "/timer");
+  assert.equal(getTimerActionReturnPath("/review"), "/timer");
   assert.equal(getTimerActionReturnPath(""), "/timer");
 });

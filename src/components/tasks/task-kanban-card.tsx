@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock3, Folder, ListChecks, Pin } from "lucide-react";
+import { Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
@@ -13,8 +13,6 @@ import {
   isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
-import { formatTaskEstimate } from "@/lib/task-estimate";
-import { formatDurationLabel } from "@/lib/task-session";
 import type { TaskRecord } from "@/lib/services/task-service";
 
 type TaskKanbanCardProps = {
@@ -74,26 +72,17 @@ export function TaskKanbanCard({
   unarchiveAction,
   deleteAction,
   returnTo = "/tasks?layout=kanban",
-  trackedSeconds,
   error,
 }: TaskKanbanCardProps) {
   const projectName = task.projects?.name?.trim();
-  const goalTitle = task.goals?.title?.trim();
-  const blockedReason = task.blocked_reason?.trim();
-  const estimateLabel = formatTaskEstimate(task.estimate_minutes);
-  const hasTrackedTime = typeof trackedSeconds === "number";
   const isArchived = task.archived_at !== null;
   const isPinned = task.focus_rank !== null;
   const isCompleted = isTaskCompletedStatus(task.status);
   const nextStatuses = getTaskKanbanNextStatuses(task.status);
   const showStatusControls = Boolean(updateAction) && canShowTaskKanbanStatusControls(task);
   const pinToggleAction = isPinned ? unpinAction : pinAction;
-  const showActiveActions = !isArchived && Boolean(
-    (startTimerAction && !isCompleted) ||
-      pinToggleAction ||
-      archiveAction ||
-      deleteAction,
-  );
+  const showTimerAction = !isArchived && !isCompleted && Boolean(startTimerAction);
+  const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
 
   return (
@@ -108,56 +97,42 @@ export function TaskKanbanCard({
         />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--foreground)]">
-              {task.title}
-            </h3>
-            {isPinned ? (
-              <Badge tone="info" className="shrink-0 gap-1">
-                <Pin className="h-3 w-3" aria-hidden="true" />
-                Pinned
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="flex flex-wrap gap-1.5">
-            <StatusBadge status={task.status} />
-            <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
-            {isArchived ? <Badge tone="warn">Archived</Badge> : null}
-          </div>
-
-          {projectName || goalTitle ? (
-            <div className="space-y-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
+            <div className="min-w-0 space-y-1">
+              <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--foreground)]">
+                {task.title}
+              </h3>
               {projectName ? (
-                <p className="flex min-w-0 items-center gap-1.5">
+                <p className="flex min-w-0 items-center gap-1.5 text-xs leading-5 text-[color:var(--muted-foreground)]">
                   <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span className="truncate">{projectName}</span>
                 </p>
               ) : null}
-              {goalTitle ? (
-                <p className="flex min-w-0 items-center gap-1.5">
-                  <ListChecks className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{goalTitle}</span>
-                </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {isPinned ? (
+                <Badge tone="info" className="gap-1">
+                  <Pin className="h-3 w-3" aria-hidden="true" />
+                  Pinned
+                </Badge>
+              ) : null}
+              {showTimerAction ? (
+                <form action={startTimerAction}>
+                  <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
+                  <Button type="submit" size="sm" variant="default" className="gap-1.5 px-2.5">
+                    <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                    Start timer
+                  </Button>
+                </form>
               ) : null}
             </div>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-1.5">
-            <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
-            {estimateLabel ? <Badge tone="muted">Est. {estimateLabel}</Badge> : null}
-            {hasTrackedTime ? (
-              <Badge tone="muted" className="gap-1.5">
-                <Clock3 className="h-3 w-3" aria-hidden="true" />
-                Tracked {formatDurationLabel(trackedSeconds)}
-              </Badge>
-            ) : null}
           </div>
 
-          {task.status === "blocked" && blockedReason ? (
-            <p className="rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-2.5 py-2 text-xs leading-5 text-[var(--signal-error)]">
-              Blocked: {blockedReason}
-            </p>
-          ) : null}
+          <div className="flex flex-wrap gap-1.5">
+            <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+            <StatusBadge status={task.status} />
+            {isArchived ? <Badge tone="warn">Archived</Badge> : null}
+            <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
+          </div>
 
           {showStatusControls ? (
             <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
@@ -222,15 +197,6 @@ export function TaskKanbanCard({
             <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
               <p className="glass-label text-etch">Actions</p>
               <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
-                {startTimerAction && !isCompleted ? (
-                  <form action={startTimerAction}>
-                    <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                    <Button type="submit" size="sm" variant="ghost">
-                      Start timer
-                    </Button>
-                  </form>
-                ) : null}
-
                 {pinToggleAction ? (
                   <FocusPinToggleForm
                     action={pinToggleAction}

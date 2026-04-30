@@ -4,6 +4,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   timestamp,
@@ -188,6 +189,7 @@ export const taskSavedViews = pgTable(
     sortValue: varchar("sort_value", { length: 32 })
       .notNull()
       .default("updated_desc"),
+    definitionJson: jsonb("definition_json"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

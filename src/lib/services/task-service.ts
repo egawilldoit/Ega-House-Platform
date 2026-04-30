@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import type { TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
+import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
@@ -23,12 +23,33 @@ import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
 import { getActiveTasksForOwner } from "@/lib/services/task-read-service";
 import {
   isMissingTasksArchivedAtColumn,
+  isMissingSupabaseColumn,
   isMissingSupabaseTable,
   isMissingTasksBlockedReasonColumn,
   isMissingTasksCompletedAtColumn,
 } from "@/lib/supabase-error";
+import {
+  DEEP_WORK_SAVED_VIEW_DEFINITION,
+  DEEP_WORK_SAVED_VIEW_ID,
+  getTaskSavedViewDefinitionFromFilters,
+  getTaskSavedViewFiltersFromDefinition,
+  normalizeTaskSavedViewFilters,
+  normalizeTaskSavedViewDefinition,
+} from "@/lib/task-saved-views";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type TaskSavedViewSelectRow = {
+  id: string;
+  name: string;
+  status: string | null;
+  project_id: string | null;
+  goal_id: string | null;
+  due_filter: string | null;
+  sort_value: string | null;
+  definition_json?: Json | null;
+  updated_at: string;
+};
 
 export type TaskScopeSnapshot = {
   projectIds: Set<string>;
@@ -42,6 +63,9 @@ export type TasksWorkspaceFilters = {
   activeDueFilter: TaskDueFilter;
   activeSort: TaskSortValue;
   activeView: TaskViewFilter;
+  activeTasksOnly?: boolean;
+  activePriorityValues?: ReadonlyArray<TaskPriority>;
+  activeEstimateMinMinutes?: number | null;
 };
 
 export type TasksWorkspaceData = {
@@ -80,7 +104,9 @@ export type TasksWorkspaceData = {
     goal_id: string | null;
     due_filter: string;
     sort_value: string;
+    definition_json: Json | null;
     updated_at: string;
+    is_default?: boolean;
   }>;
   savedViewsUnavailable: boolean;
   activeProjectId: string | null;
@@ -153,6 +179,12 @@ function isTasksArchivedAtMissing(
   return isMissingTasksArchivedAtColumn(error);
 }
 
+function isTaskSavedViewDefinitionJsonMissing(
+  error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null,
+) {
+  return isMissingSupabaseColumn(error, "public.task_saved_views", "definition_json");
+}
+
 async function getVisibleTaskScope(
   supabase: SupabaseServerClient,
 ): Promise<CreateTaskScopeErrorResult | CreateTaskScopeSuccessResult> {
@@ -223,7 +255,11 @@ export async function getTasksWorkspaceData(
   options?: { supabase?: SupabaseServerClient },
 ): Promise<TasksWorkspaceData> {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const [projectsResult, goalsResult, savedViewsResult, taskSummaryResult] = await Promise.all([
+  const savedViewSelectWithDefinition =
+    "id, name, status, project_id, goal_id, due_filter, sort_value, definition_json, updated_at";
+  const savedViewSelectLegacy =
+    "id, name, status, project_id, goal_id, due_filter, sort_value, updated_at";
+  const [projectsResult, goalsResult, initialSavedViewsResult, taskSummaryResult] = await Promise.all([
     supabase.from("projects").select("id, name").order("name", { ascending: true }),
     supabase
       .from("goals")
@@ -231,10 +267,21 @@ export async function getTasksWorkspaceData(
       .order("created_at", { ascending: false }),
     supabase
       .from("task_saved_views")
-      .select("id, name, status, project_id, goal_id, due_filter, sort_value, updated_at")
+      .select(savedViewSelectWithDefinition)
       .order("updated_at", { ascending: false }),
     supabase.from("tasks").select("archived_at"),
   ]);
+  let savedViewsResult: {
+    data: TaskSavedViewSelectRow[] | null;
+    error: typeof initialSavedViewsResult.error;
+  } = initialSavedViewsResult;
+
+  if (isTaskSavedViewDefinitionJsonMissing(initialSavedViewsResult.error)) {
+    savedViewsResult = await supabase
+      .from("task_saved_views")
+      .select(savedViewSelectLegacy)
+      .order("updated_at", { ascending: false });
+  }
 
   if (projectsResult.error) {
     throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
@@ -275,6 +322,18 @@ export async function getTasksWorkspaceData(
     supabase,
     archiveFilter: filters.activeView === "all" ? "all" : filters.activeView,
     applyQuery(query) {
+      if (filters.activeTasksOnly) {
+        query = query.neq("status", "done");
+      }
+
+      if (filters.activePriorityValues?.length) {
+        query = query.in("priority", [...filters.activePriorityValues]);
+      }
+
+      if (filters.activeEstimateMinMinutes) {
+        query = query.gte("estimate_minutes", filters.activeEstimateMinMinutes);
+      }
+
       if (filters.activeStatus) {
         query = query.eq("status", filters.activeStatus);
       }
@@ -323,16 +382,49 @@ export async function getTasksWorkspaceData(
     },
     savedViews: savedViewsUnavailable
       ? []
-      : (savedViewsResult.data ?? []).map((view) => ({
-          id: view.id,
-          name: view.name,
-          status: view.status,
-          project_id: view.project_id,
-          goal_id: view.goal_id,
-          due_filter: view.due_filter ?? "all",
-          sort_value: view.sort_value ?? "updated_desc",
-          updated_at: view.updated_at,
-        })),
+      : [
+          {
+            id: DEEP_WORK_SAVED_VIEW_ID,
+            name: "Deep Work",
+            status: null,
+            project_id: null,
+            goal_id: null,
+            due_filter: "all",
+            sort_value: "updated_desc",
+            definition_json: DEEP_WORK_SAVED_VIEW_DEFINITION,
+            updated_at: "2026-04-30T00:00:00.000Z",
+            is_default: true,
+          },
+          ...(savedViewsResult.data ?? []).map((view) => {
+            const definition = normalizeTaskSavedViewDefinition(
+              "definition_json" in view ? view.definition_json : null,
+            );
+            const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
+            const legacyFilters = normalizeTaskSavedViewFilters({
+              status: view.status,
+              projectId: view.project_id,
+              goalId: view.goal_id,
+              dueFilter: view.due_filter ?? "all",
+              sortValue: view.sort_value ?? "updated_desc",
+              activeTasks: definitionFilters.activeTasks,
+              priority: definitionFilters.priorityValues,
+              estimateMinMinutes: definitionFilters.estimateMinMinutes,
+            });
+
+            return {
+              id: view.id,
+              name: view.name,
+              status: legacyFilters.status,
+              project_id: legacyFilters.projectId,
+              goal_id: legacyFilters.goalId,
+              due_filter: legacyFilters.dueFilter,
+              sort_value: legacyFilters.sortValue,
+              definition_json:
+                definition ?? getTaskSavedViewDefinitionFromFilters(legacyFilters),
+              updated_at: view.updated_at,
+            };
+          }),
+        ],
     savedViewsUnavailable,
     activeProjectId,
     activeGoalId,

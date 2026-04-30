@@ -7,6 +7,7 @@ import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
 import { createClient } from "@/lib/supabase/server";
 import {
   getTaskSavedViewNameError,
+  getTaskSavedViewDefinitionFromFilters,
   normalizeTaskSavedViewFilters,
   validateTaskSavedViewScope,
 } from "@/lib/task-saved-views";
@@ -75,6 +76,9 @@ function getSavedViewFilters(formData: FormData) {
     goalId: String(formData.get("goal") ?? ""),
     dueFilter: String(formData.get("due") ?? ""),
     sortValue: String(formData.get("sort") ?? ""),
+    activeTasks: String(formData.get("tasks") ?? "") === "active",
+    priority: String(formData.get("priority") ?? ""),
+    estimateMinMinutes: String(formData.get("estimateMin") ?? ""),
   });
 }
 
@@ -127,6 +131,7 @@ export async function createTaskSavedViewAction(formData: FormData) {
     goal_id: validation.filters.goalId,
     due_filter: validation.filters.dueFilter,
     sort_value: validation.filters.sortValue,
+    definition_json: getTaskSavedViewDefinitionFromFilters(validation.filters),
   });
 
   if (error) {
@@ -170,6 +175,7 @@ export async function updateTaskSavedViewAction(formData: FormData) {
       goal_id: validation.filters.goalId,
       due_filter: validation.filters.dueFilter,
       sort_value: validation.filters.sortValue,
+      definition_json: getTaskSavedViewDefinitionFromFilters(validation.filters),
       updated_at: new Date().toISOString(),
     })
     .eq("id", viewId);

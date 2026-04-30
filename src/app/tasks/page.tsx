@@ -62,6 +62,7 @@ import {
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
+import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import {
   Clock3,
   Folder,
@@ -82,6 +83,9 @@ type TasksPageProps = {
     goal?: string;
     due?: string;
     sort?: string;
+    priority?: string;
+    estimateMin?: string;
+    tasks?: string;
     archive?: string;
     layout?: string;
     view?: string;
@@ -122,6 +126,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const activeSort: TaskSortValue = isTaskSortValue(sortParam)
     ? sortParam
     : DEFAULT_TASK_SORT;
+  const savedViewDefinitionFilters = normalizeTaskSavedViewFilters({
+    activeTasks: resolvedSearchParams.tasks === "active",
+    priority: resolvedSearchParams.priority,
+    estimateMinMinutes: resolvedSearchParams.estimateMin,
+  });
   const activeLayout: TaskLayoutMode = normalizeTaskLayout(resolvedSearchParams.layout);
   const activeView: TaskViewFilter = normalizeTaskViewFilter(
     resolvedSearchParams.archive ?? resolvedSearchParams.view,
@@ -153,6 +162,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     activeDueFilter,
     activeSort,
     activeView,
+    activeTasksOnly: savedViewDefinitionFilters.activeTasks,
+    activePriorityValues: savedViewDefinitionFilters.priorityValues,
+    activeEstimateMinMinutes: savedViewDefinitionFilters.estimateMinMinutes,
   });
   const resolvedSavedViewFeedback = {
     error:
@@ -164,6 +176,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   };
   const returnPath = buildTaskFilterReturnPath("/tasks", {
     status: activeStatus,
+    priority: savedViewDefinitionFilters.priorityValues.join(","),
+    estimateMin: savedViewDefinitionFilters.estimateMinMinutes,
+    activeTasks: savedViewDefinitionFilters.activeTasks,
     project: activeProjectId,
     goal: activeGoalId,
     due: activeDueFilter,
@@ -173,6 +188,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   });
   const taskUrlFilters = {
     status: activeStatus,
+    priority: savedViewDefinitionFilters.priorityValues.join(","),
+    estimateMin: savedViewDefinitionFilters.estimateMinMinutes,
+    activeTasks: savedViewDefinitionFilters.activeTasks,
     project: activeProjectId,
     goal: activeGoalId,
     due: activeDueFilter,
@@ -613,6 +631,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               goalId: activeGoalId,
               dueFilter: activeDueFilter,
               sortValue: activeSort,
+              activeTasks: savedViewDefinitionFilters.activeTasks,
+              priorityValues: savedViewDefinitionFilters.priorityValues,
+              estimateMinMinutes: savedViewDefinitionFilters.estimateMinMinutes,
             }}
             savedViews={savedViews}
             activeLayout={activeLayout}
