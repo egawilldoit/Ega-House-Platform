@@ -954,6 +954,166 @@ function createWorkspaceSupabaseMock() {
       goals: null,
     },
     {
+      id: "quick-win-task",
+      title: "Send update",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: null,
+      estimate_minutes: 15,
+      updated_at: "2026-04-30T11:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "too-large-task",
+      title: "Refactor module",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: null,
+      estimate_minutes: 16,
+      updated_at: "2026-04-30T11:30:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "blocked-task",
+      title: "Waiting on credentials",
+      description: null,
+      blocked_reason: "Vendor access",
+      status: "blocked",
+      priority: "high",
+      due_date: null,
+      estimate_minutes: 25,
+      updated_at: "2026-04-30T12:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "due-today-task",
+      title: "Due today",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: "2026-05-01",
+      estimate_minutes: 20,
+      updated_at: "2026-04-30T13:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "due-end-task",
+      title: "Due end",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: "2026-05-08",
+      estimate_minutes: 20,
+      updated_at: "2026-04-30T14:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "due-null-task",
+      title: "No due date",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: null,
+      estimate_minutes: 20,
+      updated_at: "2026-04-30T15:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "due-out-of-range-task",
+      title: "Due later",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: "2026-05-09",
+      estimate_minutes: 20,
+      updated_at: "2026-04-30T16:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: null,
+      archived_by: null,
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
+      id: "archived-quick-win-task",
+      title: "Archived quick win",
+      description: null,
+      blocked_reason: null,
+      status: "todo",
+      priority: "medium",
+      due_date: null,
+      estimate_minutes: 10,
+      updated_at: "2026-04-30T17:00:00.000Z",
+      completed_at: null,
+      project_id: "project-1",
+      goal_id: null,
+      focus_rank: null,
+      planned_for_date: null,
+      archived_at: "2026-04-30T18:00:00.000Z",
+      archived_by: "user-1",
+      projects: { name: "EGA House" },
+      goals: null,
+    },
+    {
       id: "done-task",
       title: "Done",
       description: null,
@@ -974,6 +1134,19 @@ function createWorkspaceSupabaseMock() {
       goals: null,
     },
   ];
+  const savedViews = [
+    {
+      id: "custom-view",
+      name: "Custom",
+      status: "todo",
+      project_id: null,
+      goal_id: null,
+      due_filter: "all",
+      sort_value: "updated_desc",
+      definition_json: null,
+      updated_at: "2026-04-29T00:00:00.000Z",
+    },
+  ];
 
   function createTasksQuery(columns: string) {
     const state = {
@@ -981,6 +1154,10 @@ function createWorkspaceSupabaseMock() {
       excludeDone: false,
       priorities: null as string[] | null,
       estimateMin: null as number | null,
+      estimateMax: null as number | null,
+      status: null as string | null,
+      dueStart: null as string | null,
+      dueEnd: null as string | null,
     };
 
     const execute = async () => {
@@ -1000,6 +1177,22 @@ function createWorkspaceSupabaseMock() {
             state.estimateMin === null
               ? true
               : (task.estimate_minutes ?? 0) >= state.estimateMin,
+          )
+          .filter((task) =>
+            state.estimateMax === null
+              ? true
+              : task.estimate_minutes !== null && task.estimate_minutes <= state.estimateMax,
+          )
+          .filter((task) => (state.status ? task.status === state.status : true))
+          .filter((task) =>
+            state.dueStart === null
+              ? true
+              : task.due_date !== null && task.due_date >= state.dueStart,
+          )
+          .filter((task) =>
+            state.dueEnd === null
+              ? true
+              : task.due_date !== null && task.due_date <= state.dueEnd,
           ),
         error: null,
       };
@@ -1027,15 +1220,31 @@ function createWorkspaceSupabaseMock() {
         }
         return query;
       },
-      gte(column: string, value: number) {
+      gte(column: string, value: number | string) {
         taskQueryCalls.push({ method: "gte", column, value });
         if (column === "estimate_minutes") {
-          state.estimateMin = value;
+          state.estimateMin = Number(value);
+        }
+        if (column === "due_date") {
+          state.dueStart = String(value);
+        }
+        return query;
+      },
+      lte(column: string, value: number | string) {
+        taskQueryCalls.push({ method: "lte", column, value });
+        if (column === "estimate_minutes") {
+          state.estimateMax = Number(value);
+        }
+        if (column === "due_date") {
+          state.dueEnd = String(value);
         }
         return query;
       },
       eq(column: string, value: string) {
         taskQueryCalls.push({ method: "eq", column, value });
+        if (column === "status") {
+          state.status = value;
+        }
         return query;
       },
       not(column: string, operator: string, value: unknown) {
@@ -1077,7 +1286,7 @@ function createWorkspaceSupabaseMock() {
       if (table === "task_saved_views") {
         return {
           select: () => ({
-            order: async () => ({ data: [], error: null }),
+            order: async () => ({ data: savedViews, error: null }),
           }),
         };
       }
@@ -1133,6 +1342,107 @@ test("Deep Work default view applies active priority and estimate constraints", 
       { method: "neq", column: "status", value: "done" },
       { method: "in", column: "priority", value: ["urgent", "high"] },
       { method: "gte", column: "estimate_minutes", value: 30 },
+    ],
+  );
+});
+
+test("workspace data returns all system defaults before custom views", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "updated_desc",
+      activeView: "active",
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(
+    result.savedViews.map((view) => ({ name: view.name, isDefault: view.is_default === true })),
+    [
+      { name: "Deep Work", isDefault: true },
+      { name: "Quick Wins", isDefault: true },
+      { name: "Blocked", isDefault: true },
+      { name: "Due This Week", isDefault: true },
+      { name: "Custom", isDefault: false },
+    ],
+  );
+});
+
+test("Quick Wins default view filters active tasks by estimate max", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+      activeEstimateMaxMinutes: 15,
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result.tasks.map((task) => task.id), ["quick-win-task"]);
+  assert.deepEqual(
+    mock.taskQueryCalls.filter((call) => call.method === "lte"),
+    [{ method: "lte", column: "estimate_minutes", value: 15 }],
+  );
+});
+
+test("Blocked default view filters active blocked tasks", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: "blocked",
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result.tasks.map((task) => task.id), ["blocked-task"]);
+  assert.deepEqual(
+    mock.taskQueryCalls.filter((call) => call.method === "eq"),
+    [{ method: "eq", column: "status", value: "blocked" }],
+  );
+});
+
+test("Due This Week default view includes today through today plus seven days", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "due_date_asc",
+      activeView: "active",
+      activeTasksOnly: true,
+      activeDueWithinDays: 7,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+
+  assert.deepEqual(result.tasks.map((task) => task.id), ["due-today-task", "due-end-task"]);
+  assert.deepEqual(
+    mock.taskQueryCalls.filter((call) => call.method === "gte" || call.method === "lte"),
+    [
+      { method: "gte", column: "due_date", value: "2026-05-01" },
+      { method: "lte", column: "due_date", value: "2026-05-08" },
     ],
   );
 });

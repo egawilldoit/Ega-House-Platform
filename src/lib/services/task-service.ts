@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
-import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
+import {
+  getTodayLocalIsoDate,
+  normalizeTaskDueDateInput,
+  shiftDateOnlyValue,
+} from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
   TASK_PRIORITY_VALUES,
@@ -29,8 +33,14 @@ import {
   isMissingTasksCompletedAtColumn,
 } from "@/lib/supabase-error";
 import {
+  BLOCKED_SAVED_VIEW_DEFINITION,
+  BLOCKED_SAVED_VIEW_ID,
   DEEP_WORK_SAVED_VIEW_DEFINITION,
   DEEP_WORK_SAVED_VIEW_ID,
+  DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
+  DUE_THIS_WEEK_SAVED_VIEW_ID,
+  QUICK_WINS_SAVED_VIEW_DEFINITION,
+  QUICK_WINS_SAVED_VIEW_ID,
   getTaskSavedViewDefinitionFromFilters,
   getTaskSavedViewFiltersFromDefinition,
   normalizeTaskSavedViewFilters,
@@ -66,6 +76,8 @@ export type TasksWorkspaceFilters = {
   activeTasksOnly?: boolean;
   activePriorityValues?: ReadonlyArray<TaskPriority>;
   activeEstimateMinMinutes?: number | null;
+  activeEstimateMaxMinutes?: number | null;
+  activeDueWithinDays?: number | null;
 };
 
 export type TasksWorkspaceData = {
@@ -134,6 +146,29 @@ export type ValidatedTaskInlineUpdateInput = {
   blockedReason: string | null;
   description?: string | null;
 };
+
+const SYSTEM_TASK_SAVED_VIEWS = [
+  {
+    id: DEEP_WORK_SAVED_VIEW_ID,
+    name: "Deep Work",
+    definition_json: DEEP_WORK_SAVED_VIEW_DEFINITION,
+  },
+  {
+    id: QUICK_WINS_SAVED_VIEW_ID,
+    name: "Quick Wins",
+    definition_json: QUICK_WINS_SAVED_VIEW_DEFINITION,
+  },
+  {
+    id: BLOCKED_SAVED_VIEW_ID,
+    name: "Blocked",
+    definition_json: BLOCKED_SAVED_VIEW_DEFINITION,
+  },
+  {
+    id: DUE_THIS_WEEK_SAVED_VIEW_ID,
+    name: "Due This Week",
+    definition_json: DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
+  },
+] as const;
 
 export function normalizeTaskBlockedReasonInput(value: unknown) {
   const normalized = String(value ?? "").trim();
@@ -253,9 +288,13 @@ export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServer
 
 export async function getTasksWorkspaceData(
   filters: TasksWorkspaceFilters,
-  options?: { supabase?: SupabaseServerClient },
+  options?: { supabase?: SupabaseServerClient; todayIsoDate?: string },
 ): Promise<TasksWorkspaceData> {
   const supabase = await resolveSupabaseClient(options?.supabase);
+  const todayIsoDate = options?.todayIsoDate ?? getTodayLocalIsoDate();
+  const dueWithinEndIsoDate = filters.activeDueWithinDays
+    ? shiftDateOnlyValue(todayIsoDate, filters.activeDueWithinDays)
+    : null;
   const savedViewSelectWithDefinition =
     "id, name, status, project_id, goal_id, due_filter, sort_value, definition_json, updated_at";
   const savedViewSelectLegacy =
@@ -335,6 +374,14 @@ export async function getTasksWorkspaceData(
         query = query.gte("estimate_minutes", filters.activeEstimateMinMinutes);
       }
 
+      if (filters.activeEstimateMaxMinutes) {
+        query = query.lte("estimate_minutes", filters.activeEstimateMaxMinutes);
+      }
+
+      if (dueWithinEndIsoDate) {
+        query = query.gte("due_date", todayIsoDate).lte("due_date", dueWithinEndIsoDate);
+      }
+
       if (filters.activeStatus) {
         query = query.eq("status", filters.activeStatus);
       }
@@ -384,25 +431,25 @@ export async function getTasksWorkspaceData(
     savedViews: savedViewsUnavailable
       ? []
       : [
-          {
-            id: DEEP_WORK_SAVED_VIEW_ID,
-            name: "Deep Work",
+          ...SYSTEM_TASK_SAVED_VIEWS.map((view, index) => ({
+            id: view.id,
+            name: view.name,
             status: null,
             project_id: null,
             goal_id: null,
             due_filter: "all",
             sort_value: "updated_desc",
-            definition_json: DEEP_WORK_SAVED_VIEW_DEFINITION,
-            updated_at: "2026-04-30T00:00:00.000Z",
+            definition_json: view.definition_json,
+            updated_at: `2026-04-30T00:00:0${index}.000Z`,
             is_default: true,
-          },
+          })),
           ...(savedViewsResult.data ?? []).map((view) => {
             const definition = normalizeTaskSavedViewDefinition(
               "definition_json" in view ? view.definition_json : null,
             );
             const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
             const legacyFilters = normalizeTaskSavedViewFilters({
-              status: view.status,
+              status: definitionFilters.status ?? view.status,
               projectId: view.project_id,
               goalId: view.goal_id,
               dueFilter: view.due_filter ?? "all",
@@ -410,6 +457,8 @@ export async function getTasksWorkspaceData(
               activeTasks: definitionFilters.activeTasks,
               priority: definitionFilters.priorityValues,
               estimateMinMinutes: definitionFilters.estimateMinMinutes,
+              estimateMaxMinutes: definitionFilters.estimateMaxMinutes,
+              dueWithinDays: definitionFilters.dueWithinDays,
             });
 
             return {

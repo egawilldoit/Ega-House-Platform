@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { DEEP_WORK_SAVED_VIEW_DEFINITION } from "@/lib/task-saved-views";
+import {
+  BLOCKED_SAVED_VIEW_DEFINITION,
+  DEEP_WORK_SAVED_VIEW_DEFINITION,
+  DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
+  QUICK_WINS_SAVED_VIEW_DEFINITION,
+} from "@/lib/task-saved-views";
 import {
   buildTaskSavedViewCurrentReturnPath,
+  canEditTaskSavedView,
   getTaskSavedViewHref,
   getTaskSavedViewsAllTasksHref,
 } from "./task-saved-views-panel";
@@ -32,6 +38,42 @@ const savedViews = [
     updated_at: "2026-04-30T00:00:00.000Z",
     is_default: true,
   },
+  {
+    id: "default:quick-wins",
+    name: "Quick Wins",
+    status: null,
+    project_id: null,
+    goal_id: null,
+    due_filter: "all",
+    sort_value: "updated_desc",
+    definition_json: QUICK_WINS_SAVED_VIEW_DEFINITION,
+    updated_at: "2026-04-30T00:00:01.000Z",
+    is_default: true,
+  },
+  {
+    id: "default:blocked",
+    name: "Blocked",
+    status: null,
+    project_id: null,
+    goal_id: null,
+    due_filter: "all",
+    sort_value: "updated_desc",
+    definition_json: BLOCKED_SAVED_VIEW_DEFINITION,
+    updated_at: "2026-04-30T00:00:02.000Z",
+    is_default: true,
+  },
+  {
+    id: "default:due-this-week",
+    name: "Due This Week",
+    status: null,
+    project_id: null,
+    goal_id: null,
+    due_filter: "all",
+    sort_value: "updated_desc",
+    definition_json: DUE_THIS_WEEK_SAVED_VIEW_DEFINITION,
+    updated_at: "2026-04-30T00:00:03.000Z",
+    is_default: true,
+  },
 ] as const;
 
 const currentFilters = {
@@ -43,6 +85,8 @@ const currentFilters = {
   activeTasks: false,
   priorityValues: [],
   estimateMinMinutes: null,
+  estimateMaxMinutes: null,
+  dueWithinDays: null,
 } as const;
 
 test("saved view current filters stay filter-only and omit layout persistence", () => {
@@ -54,6 +98,8 @@ test("saved view current filters stay filter-only and omit layout persistence", 
     sort: currentFilters.sortValue,
     priority: currentFilters.priorityValues.join(","),
     estimateMin: currentFilters.estimateMinMinutes,
+    estimateMax: currentFilters.estimateMaxMinutes,
+    dueWithin: currentFilters.dueWithinDays,
     activeTasks: currentFilters.activeTasks,
   };
 
@@ -65,6 +111,8 @@ test("saved view current filters stay filter-only and omit layout persistence", 
     "sort",
     "priority",
     "estimateMin",
+    "estimateMax",
+    "dueWithin",
     "activeTasks",
   ]);
   assert.equal("layout" in persistedFields, false);
@@ -85,7 +133,22 @@ test("saved view return paths preserve current kanban layout without storing it"
 test("Deep Work saved view link applies definition filters", () => {
   assert.equal(
     getTaskSavedViewHref(savedViews[1], "list"),
-    "/tasks?priority=urgent%2Chigh&estimateMin=30&tasks=active",
+    "/tasks?tasks=active&priority=urgent%2Chigh&estimateMin=30",
+  );
+});
+
+test("new default saved view links apply definition filters and preserve layout", () => {
+  assert.equal(
+    getTaskSavedViewHref(savedViews[2], "kanban"),
+    "/tasks?tasks=active&estimateMax=15&layout=kanban",
+  );
+  assert.equal(
+    getTaskSavedViewHref(savedViews[3], "kanban"),
+    "/tasks?tasks=active&status=blocked&layout=kanban",
+  );
+  assert.equal(
+    getTaskSavedViewHref(savedViews[4], "kanban"),
+    "/tasks?tasks=active&dueWithin=7&layout=kanban",
   );
 });
 
@@ -96,4 +159,12 @@ test("saved view links do not force layout in list mode", () => {
   );
   assert.equal(getTaskSavedViewHref(savedViews[0], "list").includes("layout=list"), false);
   assert.equal(getTaskSavedViewsAllTasksHref("list"), "/tasks");
+});
+
+test("default saved views hide update and delete controls while custom views keep them", () => {
+  assert.equal(canEditTaskSavedView(savedViews[0]), true);
+  assert.equal(canEditTaskSavedView(savedViews[1]), false);
+  assert.equal(canEditTaskSavedView(savedViews[2]), false);
+  assert.equal(canEditTaskSavedView(savedViews[3]), false);
+  assert.equal(canEditTaskSavedView(savedViews[4]), false);
 });

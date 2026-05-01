@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 
 import {
@@ -58,6 +59,8 @@ export function buildTaskSavedViewCurrentReturnPath(
     sort: filters.sortValue,
     priority: filters.priorityValues.join(","),
     estimateMin: filters.estimateMinMinutes,
+    estimateMax: filters.estimateMaxMinutes,
+    dueWithin: filters.dueWithinDays,
     activeTasks: filters.activeTasks,
     layout: activeLayout,
   });
@@ -68,7 +71,7 @@ function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
   const definitionFilters = getTaskSavedViewFiltersFromDefinition(definition);
 
   return normalizeTaskSavedViewFilters({
-    status: view.status,
+    status: definitionFilters.status ?? view.status,
     projectId: view.project_id,
     goalId: view.goal_id,
     dueFilter: view.due_filter,
@@ -76,6 +79,8 @@ function getSavedViewFilters(view: TaskSavedViewRow): TaskSavedViewFilters {
     activeTasks: definitionFilters.activeTasks,
     priority: definitionFilters.priorityValues,
     estimateMinMinutes: definitionFilters.estimateMinMinutes,
+    estimateMaxMinutes: definitionFilters.estimateMaxMinutes,
+    dueWithinDays: definitionFilters.dueWithinDays,
   });
 }
 
@@ -90,6 +95,8 @@ export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: Task
     sort: filters.sortValue,
     priority: filters.priorityValues.join(","),
     estimateMin: filters.estimateMinMinutes,
+    estimateMax: filters.estimateMaxMinutes,
+    dueWithin: filters.dueWithinDays,
     activeTasks: filters.activeTasks,
     layout: activeLayout,
   });
@@ -97,6 +104,10 @@ export function getTaskSavedViewHref(view: TaskSavedViewRow, activeLayout?: Task
 
 export function getTaskSavedViewsAllTasksHref(activeLayout?: TaskLayoutMode) {
   return activeLayout === "kanban" ? "/tasks?layout=kanban" : "/tasks";
+}
+
+export function canEditTaskSavedView(view: Pick<TaskSavedViewRow, "id" | "is_default">) {
+  return view.is_default !== true;
 }
 
 function describeSavedView(
@@ -111,6 +122,15 @@ function describeSavedView(
       `Priority ${filters.priorityValues.map(formatTaskToken).join(" or ")}`,
       `Estimate at least ${filters.estimateMinMinutes}m`,
     ].join(" · ");
+  }
+  if (filters.activeTasks && filters.estimateMaxMinutes) {
+    return ["Active tasks", `Estimate ${filters.estimateMaxMinutes}m or less`].join(" · ");
+  }
+  if (filters.activeTasks && filters.status === "blocked") {
+    return ["Active tasks", "Blocked"].join(" · ");
+  }
+  if (filters.activeTasks && filters.dueWithinDays === 7) {
+    return ["Active tasks", "Due today through next 7 days"].join(" · ");
   }
 
   const parts = [
@@ -187,6 +207,8 @@ export function TaskSavedViewsPanel({
           <input type="hidden" name="sort" value={currentFilters.sortValue} />
           <input type="hidden" name="priority" value={currentFilters.priorityValues.join(",")} />
           <input type="hidden" name="estimateMin" value={currentFilters.estimateMinMinutes ?? ""} />
+          <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
+          <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
           <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -247,7 +269,7 @@ export function TaskSavedViewsPanel({
                     <Link href={getTaskSavedViewHref(view, activeLayout)} className="glass-label text-signal-live">Open</Link>
                   </div>
 
-                  {view.is_default ? null : (
+                  {canEditTaskSavedView(view) ? (
                     <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 xl:flex-row xl:items-end">
                       <form action={updateTaskSavedViewAction} className="flex-1">
                         <input type="hidden" name="viewId" value={view.id} />
@@ -259,6 +281,8 @@ export function TaskSavedViewsPanel({
                         <input type="hidden" name="sort" value={currentFilters.sortValue} />
                         <input type="hidden" name="priority" value={currentFilters.priorityValues.join(",")} />
                         <input type="hidden" name="estimateMin" value={currentFilters.estimateMinMinutes ?? ""} />
+                        <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
+                        <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
                         <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                           <div className="flex-1 space-y-2">
@@ -275,7 +299,7 @@ export function TaskSavedViewsPanel({
                         <Button type="submit" variant="danger">Delete</Button>
                       </form>
                     </div>
-                  )}
+                  ) : null}
                 </div>
               ))}
             </div>

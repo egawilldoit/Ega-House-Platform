@@ -85,6 +85,8 @@ type TasksPageProps = {
     sort?: string;
     priority?: string;
     estimateMin?: string;
+    estimateMax?: string;
+    dueWithin?: string;
     tasks?: string;
     archive?: string;
     layout?: string;
@@ -130,6 +132,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     activeTasks: resolvedSearchParams.tasks === "active",
     priority: resolvedSearchParams.priority,
     estimateMinMinutes: resolvedSearchParams.estimateMin,
+    estimateMaxMinutes: resolvedSearchParams.estimateMax,
+    dueWithinDays: resolvedSearchParams.dueWithin,
   });
   const activeLayout: TaskLayoutMode = normalizeTaskLayout(resolvedSearchParams.layout);
   const activeView: TaskViewFilter = normalizeTaskViewFilter(
@@ -165,6 +169,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     activeTasksOnly: savedViewDefinitionFilters.activeTasks,
     activePriorityValues: savedViewDefinitionFilters.priorityValues,
     activeEstimateMinMinutes: savedViewDefinitionFilters.estimateMinMinutes,
+    activeEstimateMaxMinutes: savedViewDefinitionFilters.estimateMaxMinutes,
+    activeDueWithinDays: savedViewDefinitionFilters.dueWithinDays,
   });
   const resolvedSavedViewFeedback = {
     error:
@@ -178,6 +184,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     status: activeStatus,
     priority: savedViewDefinitionFilters.priorityValues.join(","),
     estimateMin: savedViewDefinitionFilters.estimateMinMinutes,
+    estimateMax: savedViewDefinitionFilters.estimateMaxMinutes,
+    dueWithin: savedViewDefinitionFilters.dueWithinDays,
     activeTasks: savedViewDefinitionFilters.activeTasks,
     project: activeProjectId,
     goal: activeGoalId,
@@ -190,6 +198,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     status: activeStatus,
     priority: savedViewDefinitionFilters.priorityValues.join(","),
     estimateMin: savedViewDefinitionFilters.estimateMinMinutes,
+    estimateMax: savedViewDefinitionFilters.estimateMaxMinutes,
+    dueWithin: savedViewDefinitionFilters.dueWithinDays,
     activeTasks: savedViewDefinitionFilters.activeTasks,
     project: activeProjectId,
     goal: activeGoalId,
@@ -634,6 +644,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               activeTasks: savedViewDefinitionFilters.activeTasks,
               priorityValues: savedViewDefinitionFilters.priorityValues,
               estimateMinMinutes: savedViewDefinitionFilters.estimateMinMinutes,
+              estimateMaxMinutes: savedViewDefinitionFilters.estimateMaxMinutes,
+              dueWithinDays: savedViewDefinitionFilters.dueWithinDays,
             }}
             savedViews={savedViews}
             activeLayout={activeLayout}

@@ -79,6 +79,8 @@ function getSavedViewFilters(formData: FormData) {
     activeTasks: String(formData.get("tasks") ?? "") === "active",
     priority: String(formData.get("priority") ?? ""),
     estimateMinMinutes: String(formData.get("estimateMin") ?? ""),
+    estimateMaxMinutes: String(formData.get("estimateMax") ?? ""),
+    dueWithinDays: String(formData.get("dueWithin") ?? ""),
   });
 }
 

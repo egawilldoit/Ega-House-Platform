@@ -263,6 +263,8 @@ export function buildTaskFilterReturnPath(
     status?: string | null;
     priority?: string | null;
     estimateMin?: number | string | null;
+    estimateMax?: number | string | null;
+    dueWithin?: number | string | null;
     activeTasks?: boolean | null;
     project?: string | null;
     goal?: string | null;

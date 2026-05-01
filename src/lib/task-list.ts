@@ -96,6 +96,8 @@ export function buildTaskListUrl(
     status?: string | null;
     priority?: string | null;
     estimateMin?: number | string | null;
+    estimateMax?: number | string | null;
+    dueWithin?: number | string | null;
     activeTasks?: boolean | null;
     project?: string | null;
     goal?: string | null;
@@ -106,6 +108,10 @@ export function buildTaskListUrl(
   },
 ) {
   const searchParams = new URLSearchParams();
+
+  if (filters.activeTasks) {
+    searchParams.set("tasks", "active");
+  }
 
   if (filters.status) {
     searchParams.set("status", filters.status);
@@ -119,8 +125,12 @@ export function buildTaskListUrl(
     searchParams.set("estimateMin", String(filters.estimateMin));
   }
 
-  if (filters.activeTasks) {
-    searchParams.set("tasks", "active");
+  if (filters.estimateMax) {
+    searchParams.set("estimateMax", String(filters.estimateMax));
+  }
+
+  if (filters.dueWithin) {
+    searchParams.set("dueWithin", String(filters.dueWithin));
   }
 
   if (filters.project) {

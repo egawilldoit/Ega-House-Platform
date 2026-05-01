@@ -127,6 +127,18 @@ test("builds kanban task URLs and preserves existing filters", () => {
   );
 });
 
+test("builds task URLs with saved-view definition filters", () => {
+  assert.equal(
+    buildTaskListUrl("/tasks", {
+      estimateMax: 15,
+      dueWithin: 7,
+      activeTasks: true,
+      layout: "kanban",
+    }),
+    "/tasks?tasks=active&estimateMax=15&dueWithin=7&layout=kanban",
+  );
+});
+
 test("kanban board without active status returns all columns", () => {
   const board = buildTaskKanbanBoard([]);
 
