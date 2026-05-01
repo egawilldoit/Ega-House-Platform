@@ -81,9 +81,13 @@ test("kanban card default renders compact priority title project and due date", 
   assert.match(markup, /bg-test/);
   assert.match(markup, /High/);
   assert.match(markup, /Draft weekly execution review/);
-  assert.doesNotMatch(markup, /Tighten weekly review/);
-  assert.doesNotMatch(markup, /Est\. 1h 15m/);
-  assert.doesNotMatch(markup, /Tracked 1h 1m 1s/);
+  assert.match(markup, /Details/);
+  assert.match(markup, /Goal/);
+  assert.match(markup, /Tighten weekly review/);
+  assert.match(markup, /Estimate/);
+  assert.match(markup, /1h 15m/);
+  assert.match(markup, /Tracked/);
+  assert.match(markup, /1h 1m 1s/);
 });
 
 test("kanban card default renders planned date when due date is missing", () => {
@@ -105,22 +109,34 @@ test("kanban card hides optional metadata when missing", () => {
 
   assert.doesNotMatch(markup, /No project/);
   assert.doesNotMatch(markup, /Due /);
-  assert.doesNotMatch(markup, /Est\./);
+  assert.doesNotMatch(markup, /Estimate/);
   assert.doesNotMatch(markup, /Tracked/);
   assert.doesNotMatch(markup, /Blocked:/);
   assert.doesNotMatch(markup, /Pinned/);
   assert.doesNotMatch(markup, /Archived/);
+  assert.doesNotMatch(markup, /Details/);
 });
 
-test("kanban card hides long blocked metadata by default", () => {
+test("kanban card renders blocked state with truncated preview and full details reason", () => {
   const markup = renderCard(
     buildTask({
       status: "blocked",
-      blocked_reason: "Waiting on stakeholder signoff",
+      blocked_reason: "Waiting on stakeholder signoff before release can continue safely",
     }),
   );
 
-  assert.doesNotMatch(markup, /Blocked: Waiting on stakeholder signoff/);
+  assert.match(markup, /Blocked/);
+  assert.match(markup, /line-clamp-2/);
+  assert.match(markup, /Blocked: Waiting on stakeholder signoff before release can continue safely/);
+  assert.match(markup, /Blocked reason/);
+  assert.match(markup, /Waiting on stakeholder signoff before release can continue safely/);
+});
+
+test("kanban card does not render blocked state for non-blocked tasks", () => {
+  const markup = renderCard(buildTask({ status: "todo", blocked_reason: null }));
+
+  assert.doesNotMatch(markup, /Blocked reason/);
+  assert.doesNotMatch(markup, /Blocked:/);
 });
 
 test("kanban card renders pinned and archived badges", () => {
@@ -196,7 +212,7 @@ test("active kanban card keeps timer handoff visible and lifecycle actions avail
   const markup = renderActionableCard(buildTask({ status: "todo" }));
 
   assert.match(markup, /Start timer/);
-  assert.ok(markup.indexOf("Start timer") < markup.indexOf("More"));
+  assert.ok(markup.indexOf("Start timer") < markup.indexOf("Details"));
   assert.match(markup, /name="taskId" value="task-1"/);
   assert.match(
     markup,
@@ -207,6 +223,25 @@ test("active kanban card keeps timer handoff visible and lifecycle actions avail
   assert.match(markup, />Archive</);
   assert.match(markup, />Delete</);
   assert.doesNotMatch(markup, /Restore/);
+});
+
+test("kanban details expose secondary metadata", () => {
+  const markup = renderActionableCard(
+    buildTask({
+      goals: { title: "Tighten weekly review" },
+      estimate_minutes: 90,
+      blocked_reason: "Blocked by missing review input",
+      status: "blocked",
+    }),
+  );
+
+  assert.match(markup, /Details/);
+  assert.match(markup, /Goal/);
+  assert.match(markup, /Tighten weekly review/);
+  assert.match(markup, /Estimate/);
+  assert.match(markup, /1h 30m/);
+  assert.match(markup, /Blocked reason/);
+  assert.match(markup, /Blocked by missing review input/);
 });
 
 test("active kanban card renders unpin action for pinned tasks", () => {
