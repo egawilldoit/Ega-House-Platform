@@ -79,6 +79,7 @@ export type TasksWorkspaceData = {
     status: string;
     priority: string;
     due_date: string | null;
+    planned_for_date: string | null;
     estimate_minutes: number | null;
     updated_at: string;
     completed_at: string | null;
@@ -817,7 +818,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -826,7 +827,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, planned_for_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();

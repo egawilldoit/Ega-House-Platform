@@ -618,6 +618,7 @@ function createTaskCreateSupabaseMock(options?: {
   failSessionInsert?: boolean;
   taskInsertReturnsNoId?: boolean;
   projectRows?: Array<{ id: string }>;
+  goalRows?: Array<{ id: string; project_id: string }>;
 }) {
   const taskInsertCalls: Array<Record<string, unknown>[]> = [];
   const sessionInsertCalls: Array<Record<string, unknown>> = [];
@@ -638,7 +639,10 @@ function createTaskCreateSupabaseMock(options?: {
         return {
           select: async (columns: string) => {
             assert.equal(columns, "id, project_id");
-            return { data: [{ id: "goal-1", project_id: "project-1" }], error: null };
+            return {
+              data: options?.goalRows ?? [{ id: "goal-1", project_id: "project-1" }],
+              error: null,
+            };
           },
         };
       }
@@ -703,6 +707,54 @@ test("createTasks rejects invalid project scope before insert", async () => {
   );
 
   assert.deepEqual(result, { errorMessage: "Selected project is unavailable." });
+  assert.equal(mock.taskInsertCalls.length, 0);
+});
+
+test("createTasks rejects goal outside project scope before insert", async () => {
+  const mock = createTaskCreateSupabaseMock({
+    projectRows: [{ id: "project-1" }, { id: "project-2" }],
+    goalRows: [{ id: "goal-2", project_id: "project-2" }],
+  });
+
+  const result = await createTasks(
+    [
+      {
+        title: "Cross-project goal",
+        project_id: "project-1",
+        goal_id: "goal-2",
+        status: "todo",
+        priority: "medium",
+      },
+    ],
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Selected goal does not belong to the chosen project.",
+  });
+  assert.equal(mock.taskInsertCalls.length, 0);
+});
+
+test("createTasks rejects blocked task without reason before insert", async () => {
+  const mock = createTaskCreateSupabaseMock({ projectRows: [{ id: "project-1" }] });
+
+  const result = await createTasks(
+    [
+      {
+        title: "Blocked without reason",
+        project_id: "project-1",
+        goal_id: null,
+        status: "blocked",
+        blocked_reason: "",
+        priority: "medium",
+      },
+    ],
+    { supabase: mock.supabase },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Blocked reason is required when status is Blocked.",
+  });
   assert.equal(mock.taskInsertCalls.length, 0);
 });
 

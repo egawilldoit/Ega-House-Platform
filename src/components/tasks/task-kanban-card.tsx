@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock3, Folder, Pin } from "lucide-react";
+import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
@@ -13,6 +13,7 @@ import {
   isTaskStatus,
   type TaskStatus,
 } from "@/lib/task-domain";
+import { formatTaskDueDate } from "@/lib/task-due-date";
 import type { TaskRecord } from "@/lib/services/task-service";
 
 type TaskKanbanCardProps = {
@@ -84,6 +85,7 @@ export function TaskKanbanCard({
   const showTimerAction = !isArchived && !isCompleted && Boolean(startTimerAction);
   const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
+  const showOverflowActions = showStatusControls || showActiveActions || showArchivedActions;
 
   return (
     <article
@@ -101,12 +103,18 @@ export function TaskKanbanCard({
               <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--foreground)]">
                 {task.title}
               </h3>
-              {projectName ? (
-                <p className="flex min-w-0 items-center gap-1.5 text-xs leading-5 text-[color:var(--muted-foreground)]">
-                  <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  <span className="truncate">{projectName}</span>
-                </p>
-              ) : null}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
+                {projectName ? (
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{projectName}</span>
+                  </span>
+                ) : null}
+                <TaskKanbanCompactDateLabel
+                  dueDate={task.due_date}
+                  plannedForDate={task.planned_for_date}
+                />
+              </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
               {isPinned ? (
@@ -131,128 +139,140 @@ export function TaskKanbanCard({
             <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
             <StatusBadge status={task.status} />
             {isArchived ? <Badge tone="warn">Archived</Badge> : null}
-            <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
           </div>
 
-          {showStatusControls ? (
-            <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
-              <p className="glass-label text-etch">Move</p>
-              <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
-                {nextStatuses.map((status) =>
-                  status === "blocked" ? (
-                    <details key={status} className="w-full rounded-[0.75rem] border border-[rgba(198,40,40,0.16)] bg-[rgba(198,40,40,0.04)] p-2">
-                      <summary className="cursor-pointer text-xs font-semibold text-[var(--signal-error)]">
-                        Block
-                      </summary>
-                      <form action={updateAction} className="mt-2 space-y-2">
-                        <TaskKanbanStatusHiddenFields
-                          task={task}
+          {showOverflowActions ? (
+            <details className="group border-t border-[rgba(15,23,42,0.08)] pt-2">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-[color:var(--muted-foreground)] transition-precise hover:text-[color:var(--foreground)]">
+                More
+                <ChevronDown
+                  className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="mt-2 space-y-3">
+                {showStatusControls ? (
+                  <div>
+                    <p className="glass-label text-etch">Move</p>
+                    <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
+                      {nextStatuses.map((status) =>
+                        status === "blocked" ? (
+                          <details key={status} className="w-full rounded-[0.75rem] border border-[rgba(198,40,40,0.16)] bg-[rgba(198,40,40,0.04)] p-2">
+                            <summary className="cursor-pointer text-xs font-semibold text-[var(--signal-error)]">
+                              Block
+                            </summary>
+                            <form action={updateAction} className="mt-2 space-y-2">
+                              <TaskKanbanStatusHiddenFields
+                                task={task}
+                                returnTo={returnTo}
+                                nextStatus={status}
+                              />
+                              <label className="space-y-1" htmlFor={`kanban-blocked-reason-${task.id}`}>
+                                <span className="glass-label text-etch">Blocked reason</span>
+                                <textarea
+                                  id={`kanban-blocked-reason-${task.id}`}
+                                  name="blockedReason"
+                                  required
+                                  minLength={2}
+                                  rows={3}
+                                  className="input-instrument min-h-16 w-full resize-y px-2 py-2 text-xs normal-case tracking-normal"
+                                  placeholder="What is blocking this?"
+                                />
+                              </label>
+                              <button
+                                type="submit"
+                                className={`${buttonVariants({ size: "sm", variant: "danger" })} w-full justify-center`}
+                              >
+                                Save Blocked
+                              </button>
+                            </form>
+                          </details>
+                        ) : (
+                          <form key={status} action={updateAction}>
+                            <TaskKanbanStatusHiddenFields
+                              task={task}
+                              returnTo={returnTo}
+                              nextStatus={status}
+                              blockedReasonValue=""
+                            />
+                            <button
+                              type="submit"
+                              className={buttonVariants({ size: "sm", variant: "muted" })}
+                            >
+                              {task.status === "done" && status === "todo"
+                                ? "Reopen"
+                                : getTaskKanbanStatusActionLabel(status)}
+                            </button>
+                          </form>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+
+                {showActiveActions ? (
+                  <div>
+                    <p className="glass-label text-etch">Actions</p>
+                    <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
+                      {pinToggleAction ? (
+                        <FocusPinToggleForm
+                          action={pinToggleAction}
+                          taskId={task.id}
                           returnTo={returnTo}
-                          nextStatus={status}
+                          isPinned={isPinned}
+                          compact
                         />
-                        <label className="space-y-1" htmlFor={`kanban-blocked-reason-${task.id}`}>
-                          <span className="glass-label text-etch">Blocked reason</span>
-                          <textarea
-                            id={`kanban-blocked-reason-${task.id}`}
-                            name="blockedReason"
-                            required
-                            minLength={2}
-                            rows={3}
-                            className="input-instrument min-h-16 w-full resize-y px-2 py-2 text-xs normal-case tracking-normal"
-                            placeholder="What is blocking this?"
-                          />
-                        </label>
-                        <button
-                          type="submit"
-                          className={`${buttonVariants({ size: "sm", variant: "danger" })} w-full justify-center`}
-                        >
-                          Save Blocked
-                        </button>
-                      </form>
-                    </details>
-                  ) : (
-                    <form key={status} action={updateAction}>
-                      <TaskKanbanStatusHiddenFields
-                        task={task}
-                        returnTo={returnTo}
-                        nextStatus={status}
-                        blockedReasonValue=""
-                      />
-                      <button
-                        type="submit"
-                        className={buttonVariants({ size: "sm", variant: "muted" })}
-                      >
-                        {task.status === "done" && status === "todo"
-                          ? "Reopen"
-                          : getTaskKanbanStatusActionLabel(status)}
-                      </button>
-                    </form>
-                  ),
-                )}
-              </div>
-            </div>
-          ) : null}
+                      ) : null}
 
-          {showActiveActions ? (
-            <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
-              <p className="glass-label text-etch">Actions</p>
-              <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
-                {pinToggleAction ? (
-                  <FocusPinToggleForm
-                    action={pinToggleAction}
-                    taskId={task.id}
-                    returnTo={returnTo}
-                    isPinned={isPinned}
-                    compact
-                  />
+                      {archiveAction ? (
+                        <form action={archiveAction}>
+                          <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
+                          <Button type="submit" size="sm" variant="danger">
+                            Archive
+                          </Button>
+                        </form>
+                      ) : null}
+
+                      {deleteAction ? (
+                        <form action={deleteAction}>
+                          <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
+                          <input type="hidden" name="confirmDelete" value="true" />
+                          <Button type="submit" size="sm" variant="danger">
+                            Delete
+                          </Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </div>
                 ) : null}
 
-                {archiveAction ? (
-                  <form action={archiveAction}>
-                    <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                    <Button type="submit" size="sm" variant="danger">
-                      Archive
-                    </Button>
-                  </form>
-                ) : null}
+                {showArchivedActions ? (
+                  <div>
+                    <p className="glass-label text-etch">Archived actions</p>
+                    <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
+                      {unarchiveAction ? (
+                        <form action={unarchiveAction}>
+                          <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
+                          <Button type="submit" size="sm" variant="muted">
+                            Restore
+                          </Button>
+                        </form>
+                      ) : null}
 
-                {deleteAction ? (
-                  <form action={deleteAction}>
-                    <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                    <input type="hidden" name="confirmDelete" value="true" />
-                    <Button type="submit" size="sm" variant="danger">
-                      Delete
-                    </Button>
-                  </form>
+                      {deleteAction ? (
+                        <form action={deleteAction}>
+                          <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
+                          <input type="hidden" name="confirmDelete" value="true" />
+                          <Button type="submit" size="sm" variant="danger">
+                            Delete
+                          </Button>
+                        </form>
+                      ) : null}
+                    </div>
+                  </div>
                 ) : null}
               </div>
-            </div>
-          ) : null}
-
-          {showArchivedActions ? (
-            <div className="border-t border-[rgba(15,23,42,0.08)] pt-2">
-              <p className="glass-label text-etch">Archived actions</p>
-              <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
-                {unarchiveAction ? (
-                  <form action={unarchiveAction}>
-                    <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                    <Button type="submit" size="sm" variant="muted">
-                      Restore
-                    </Button>
-                  </form>
-                ) : null}
-
-                {deleteAction ? (
-                  <form action={deleteAction}>
-                    <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                    <input type="hidden" name="confirmDelete" value="true" />
-                    <Button type="submit" size="sm" variant="danger">
-                      Delete
-                    </Button>
-                  </form>
-                ) : null}
-              </div>
-            </div>
+            </details>
           ) : null}
 
           {error ? (
@@ -264,6 +284,24 @@ export function TaskKanbanCard({
       </div>
     </article>
   );
+}
+
+function TaskKanbanCompactDateLabel({
+  dueDate,
+  plannedForDate,
+}: {
+  dueDate: string | null;
+  plannedForDate: string | null;
+}) {
+  if (dueDate) {
+    return <TaskDueDateLabel dueDate={dueDate} textClassName="text-xs leading-5" />;
+  }
+
+  if (!plannedForDate) {
+    return null;
+  }
+
+  return <span>Planned {formatTaskDueDate(plannedForDate)}</span>;
 }
 
 function TaskKanbanActionHiddenFields({

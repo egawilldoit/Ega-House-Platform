@@ -153,6 +153,7 @@ function QuickTaskSheetPanel({
   const [singleDueDate, setSingleDueDate] = useState("");
   const [singlePriority, setSinglePriority] = useState("medium");
   const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");
+  const [singleBlockedReason, setSingleBlockedReason] = useState("");
   const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
@@ -206,11 +207,19 @@ function QuickTaskSheetPanel({
 
   const singleGoals = getGoalsForProject(goals, singleProjectId);
   const parsedSingleCommand = useMemo(
-    () => parseQuickTaskCommand(singleCommand, projects),
-    [singleCommand, projects],
+    () => parseQuickTaskCommand(singleCommand, projects, goals, {
+      selectedProjectId: singleProjectId,
+    }),
+    [singleCommand, projects, goals, singleProjectId],
   );
+  const hasCommandError =
+    Boolean(parsedSingleCommand.projectError)
+    || Boolean(parsedSingleCommand.goalError)
+    || Boolean(parsedSingleCommand.blockedError);
   const selectedProjectName =
     projects.find((project) => project.id === singleProjectId)?.name ?? "No project";
+  const selectedGoalName =
+    singleGoals.find((goal) => goal.id === singleGoalId)?.title ?? "No goal";
   const draftValidation = drafts.map((draft) => ({
     id: draft.id,
     errors: getDraftErrors(draft, goals),
@@ -229,7 +238,9 @@ function QuickTaskSheetPanel({
     setSingleDueDate(singleState.values.dueDate);
     setSinglePriority(singleState.values.priority);
     setSingleEstimateMinutes(singleState.values.estimateMinutes);
+    setSingleBlockedReason(singleState.values.blockedReason);
   }, [
+    singleState.values.blockedReason,
     singleState.values.dueDate,
     singleState.values.estimateMinutes,
     singleState.values.priority,
@@ -239,7 +250,20 @@ function QuickTaskSheetPanel({
   useEffect(() => {
     if (parsedSingleCommand.projectId) {
       setSingleProjectId(parsedSingleCommand.projectId);
-      setSingleGoalId("");
+      setSingleGoalId(parsedSingleCommand.goalId ?? "");
+    } else if (parsedSingleCommand.goalId) {
+      setSingleGoalId(parsedSingleCommand.goalId);
+    }
+
+    if (parsedSingleCommand.status === "blocked") {
+      setSingleStatus("blocked");
+      if (parsedSingleCommand.blockedError) {
+        setSingleBlockedReason("");
+      }
+    }
+
+    if (parsedSingleCommand.blockedReason !== null) {
+      setSingleBlockedReason(parsedSingleCommand.blockedReason);
     }
 
     if (parsedSingleCommand.dueDate) {
@@ -256,8 +280,12 @@ function QuickTaskSheetPanel({
   }, [
     parsedSingleCommand.dueDate,
     parsedSingleCommand.estimateMinutes,
+    parsedSingleCommand.goalId,
     parsedSingleCommand.priority,
     parsedSingleCommand.projectId,
+    parsedSingleCommand.status,
+    parsedSingleCommand.blockedReason,
+    parsedSingleCommand.blockedError,
   ]);
 
   useEffect(() => {
@@ -408,7 +436,7 @@ function QuickTaskSheetPanel({
                 action={singleAction}
                 className="space-y-4"
                 onSubmit={(event) => {
-                  if (parsedSingleCommand.projectError) {
+                  if (hasCommandError) {
                     event.preventDefault();
                   }
                 }}
@@ -443,11 +471,15 @@ function QuickTaskSheetPanel({
                       <Input
                         id="quick-task-command"
                         required
-                        placeholder="Ship sidebar quick capture #ExecutionOS today p2 45m"
+                        placeholder="Ship auth fix #ExecutionOS /Launch today high 45m @blocked:Waiting-on-API"
                         value={singleCommand}
                         onChange={(event) => setSingleCommand(event.target.value)}
                         className="h-10"
                       />
+                      <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
+                        Use #Project, /Goal or goal:Goal Name, today/tomorrow, high/urgent, 45m,
+                        and @blocked:reason.
+                      </p>
                     </div>
 
                     {singleCommand.trim() ? (
@@ -465,6 +497,12 @@ function QuickTaskSheetPanel({
                               : parsedSingleCommand.projectName ?? selectedProjectName}
                           </p>
                           <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Goal:</span>{" "}
+                            {parsedSingleCommand.goalError
+                              ? parsedSingleCommand.goalToken
+                              : parsedSingleCommand.goalName ?? selectedGoalName}
+                          </p>
+                          <p>
                             <span className="font-medium text-[color:var(--foreground)]">Due:</span>{" "}
                             {singleDueDate || "None"}
                           </p>
@@ -476,15 +514,33 @@ function QuickTaskSheetPanel({
                             <span className="font-medium text-[color:var(--foreground)]">Estimate:</span>{" "}
                             {singleEstimateMinutes ? `${singleEstimateMinutes}m` : "None"}
                           </p>
+                          <p>
+                            <span className="font-medium text-[color:var(--foreground)]">Status:</span>{" "}
+                            {formatTaskToken(singleStatus)}
+                          </p>
+                          {singleStatus === "blocked" ? (
+                            <p className="sm:col-span-2">
+                              <span className="font-medium text-[color:var(--foreground)]">
+                                Blocked reason:
+                              </span>{" "}
+                              {singleBlockedReason || "Required"}
+                            </p>
+                          ) : null}
                         </div>
                       </div>
                     ) : null}
 
-                    {parsedSingleCommand.projectError ? (
-                      <div role="alert" className="feedback-block feedback-block-error">
-                        {parsedSingleCommand.projectError}
-                      </div>
-                    ) : null}
+                    {[
+                      parsedSingleCommand.projectError,
+                      parsedSingleCommand.goalError,
+                      parsedSingleCommand.blockedError,
+                    ]
+                      .filter(Boolean)
+                      .map((error) => (
+                        <div key={error} role="alert" className="feedback-block feedback-block-error">
+                          {error}
+                        </div>
+                      ))}
 
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-2">
@@ -538,7 +594,7 @@ function QuickTaskSheetPanel({
                         <select
                           id="quick-task-status"
                           name="status"
-                          defaultValue={singleState.values.status}
+                          value={singleStatus}
                           onChange={(event) => setSingleStatus(event.target.value)}
                           className="input-instrument h-10 text-sm"
                         >
@@ -573,7 +629,8 @@ function QuickTaskSheetPanel({
                             id="quick-task-blocked-reason"
                             name="blockedReason"
                             placeholder="What is currently blocking this task?"
-                            defaultValue={singleState.values.blockedReason}
+                            value={singleBlockedReason}
+                            onChange={(event) => setSingleBlockedReason(event.target.value)}
                             className="min-h-20 resize-none"
                           />
                         </div>
@@ -675,7 +732,7 @@ function QuickTaskSheetPanel({
                 ) : null}
 
                 <div className="flex items-center justify-end border-t border-[var(--border)] pt-4">
-                  <Button type="submit" disabled={isSinglePending || Boolean(parsedSingleCommand.projectError)}>
+                  <Button type="submit" disabled={isSinglePending || hasCommandError}>
                     {isSinglePending ? "Creating..." : "Create task"}
                   </Button>
                 </div>

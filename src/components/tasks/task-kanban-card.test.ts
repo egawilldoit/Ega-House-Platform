@@ -15,6 +15,7 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     status: "todo",
     priority: "high",
     due_date: null,
+    planned_for_date: null,
     estimate_minutes: null,
     updated_at: "2026-04-28T10:00:00.000Z",
     completed_at: null,
@@ -77,11 +78,26 @@ test("kanban card default renders compact priority title project and due date", 
 
   assert.match(markup, /EGA House/);
   assert.match(markup, /Due May 1, 2026/);
+  assert.match(markup, /bg-test/);
   assert.match(markup, /High/);
   assert.match(markup, /Draft weekly execution review/);
   assert.doesNotMatch(markup, /Tighten weekly review/);
   assert.doesNotMatch(markup, /Est\. 1h 15m/);
   assert.doesNotMatch(markup, /Tracked 1h 1m 1s/);
+});
+
+test("kanban card default renders planned date when due date is missing", () => {
+  const markup = renderCard(
+    buildTask({
+      projects: { name: "EGA House" },
+      due_date: null,
+      planned_for_date: "2026-05-02",
+    }),
+  );
+
+  assert.match(markup, /EGA House/);
+  assert.match(markup, /Planned May 2, 2026/);
+  assert.doesNotMatch(markup, /Due May 2, 2026/);
 });
 
 test("kanban card hides optional metadata when missing", () => {
@@ -180,6 +196,7 @@ test("active kanban card keeps timer handoff visible and lifecycle actions avail
   const markup = renderActionableCard(buildTask({ status: "todo" }));
 
   assert.match(markup, /Start timer/);
+  assert.ok(markup.indexOf("Start timer") < markup.indexOf("More"));
   assert.match(markup, /name="taskId" value="task-1"/);
   assert.match(
     markup,

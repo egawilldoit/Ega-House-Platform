@@ -70,6 +70,43 @@ test("quick task single mode uses command input with parsed preview and hidden t
   assert.match(singleModeSection, /parsedSingleCommand\.projectError/);
 });
 
+test("quick task single mode passes goals and selected project context into command parser", () => {
+  assert.match(
+    quickTaskSheetSource,
+    /parseQuickTaskCommand\(singleCommand,\s*projects,\s*goals,\s*\{\s*selectedProjectId: singleProjectId,\s*\}\)/,
+  );
+});
+
+test("quick task parsed preview includes goal status and blocked reason", () => {
+  assert.match(singleModeSection, />Goal:<\/span>/);
+  assert.match(singleModeSection, /parsedSingleCommand\.goalName \?\? selectedGoalName/);
+  assert.match(singleModeSection, />Status:<\/span>/);
+  assert.match(singleModeSection, /formatTaskToken\(singleStatus\)/);
+  assert.match(singleModeSection, />\s*Blocked reason:\s*<\/span>/);
+  assert.match(singleModeSection, /singleBlockedReason \|\| "Required"/);
+});
+
+test("quick task command errors include goal and blocked errors", () => {
+  assert.match(
+    quickTaskSheetSource,
+    /Boolean\(parsedSingleCommand\.projectError\)[\s\S]+Boolean\(parsedSingleCommand\.goalError\)[\s\S]+Boolean\(parsedSingleCommand\.blockedError\)/,
+  );
+  assert.match(singleModeSection, /parsedSingleCommand\.goalError/);
+  assert.match(singleModeSection, /parsedSingleCommand\.blockedError/);
+  assert.match(singleModeSection, /disabled=\{isSinglePending \|\| hasCommandError\}/);
+  assert.match(singleModeSection, /if \(hasCommandError\)/);
+});
+
+test("quick task blocked reason field is controlled and submits", () => {
+  assert.match(quickTaskSheetSource, /const \[singleBlockedReason, setSingleBlockedReason\]/);
+  assert.match(singleModeSection, /name="blockedReason"/);
+  assert.match(singleModeSection, /value=\{singleBlockedReason\}/);
+  assert.match(
+    singleModeSection,
+    /onChange=\{\(event\) => setSingleBlockedReason\(event\.target\.value\)\}/,
+  );
+});
+
 test("quick task panel focuses command input when opened", () => {
   assert.match(quickTaskSheetSource, /getElementById\("quick-task-command"\)\?\.focus\(\)/);
   assert.match(quickTaskSheetSource, /workspaceShortcutEvents\.openQuickTask/);
