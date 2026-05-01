@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 import {
   formatTaskToken,
   isTaskCompletedStatus,
@@ -15,6 +16,8 @@ import {
 } from "@/lib/task-domain";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import type { TaskRecord } from "@/lib/services/task-service";
+import { formatDurationLabel } from "@/lib/task-session";
+import { cn } from "@/lib/utils";
 
 type TaskKanbanCardProps = {
   task: TaskRecord;
@@ -73,12 +76,17 @@ export function TaskKanbanCard({
   unarchiveAction,
   deleteAction,
   returnTo = "/tasks?layout=kanban",
+  trackedSeconds,
   error,
 }: TaskKanbanCardProps) {
   const projectName = task.projects?.name?.trim();
+  const goalName = task.goals?.title?.trim();
   const isArchived = task.archived_at !== null;
   const isPinned = task.focus_rank !== null;
   const isCompleted = isTaskCompletedStatus(task.status);
+  const isBlocked = task.status === "blocked";
+  const estimateLabel = formatTaskEstimate(task.estimate_minutes);
+  const trackedLabel = typeof trackedSeconds === "number" ? formatDurationLabel(trackedSeconds) : null;
   const nextStatuses = getTaskKanbanNextStatuses(task.status);
   const showStatusControls = Boolean(updateAction) && canShowTaskKanbanStatusControls(task);
   const pinToggleAction = isPinned ? unpinAction : pinAction;
@@ -86,11 +94,19 @@ export function TaskKanbanCard({
   const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
   const showOverflowActions = showStatusControls || showActiveActions || showArchivedActions;
+  const showDetails = Boolean(
+    goalName || estimateLabel || trackedLabel || task.blocked_reason || showOverflowActions,
+  );
 
   return (
     <article
       id={`task-${task.id}`}
-      className="scroll-mt-24 rounded-[0.9rem] border border-[rgba(15,23,42,0.08)] bg-[rgba(255,255,255,0.62)] p-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:p-3"
+      className={cn(
+        "scroll-mt-24 rounded-[0.9rem] border bg-[rgba(255,255,255,0.62)] p-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:p-3",
+        isBlocked
+          ? "border-[rgba(198,40,40,0.28)] bg-[rgba(198,40,40,0.05)]"
+          : "border-[rgba(15,23,42,0.08)]",
+      )}
     >
       <div className="flex items-start gap-2.5">
         <span
@@ -138,19 +154,45 @@ export function TaskKanbanCard({
           <div className="flex flex-wrap gap-1.5">
             <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
             <StatusBadge status={task.status} />
+            {isBlocked ? <Badge tone="warn">Blocked</Badge> : null}
             {isArchived ? <Badge tone="warn">Archived</Badge> : null}
           </div>
 
-          {showOverflowActions ? (
+          {isBlocked && task.blocked_reason ? (
+            <p className="line-clamp-2 rounded-[0.75rem] border border-[rgba(198,40,40,0.16)] bg-[rgba(198,40,40,0.05)] px-2 py-1.5 text-xs leading-5 text-[var(--signal-error)]">
+              Blocked: {task.blocked_reason}
+            </p>
+          ) : null}
+
+          {showDetails ? (
             <details className="group border-t border-[rgba(15,23,42,0.08)] pt-2">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-[color:var(--muted-foreground)] transition-precise hover:text-[color:var(--foreground)]">
-                More
+                Details
                 <ChevronDown
                   className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
                   aria-hidden="true"
                 />
               </summary>
               <div className="mt-2 space-y-3">
+                {goalName || estimateLabel || trackedLabel || task.blocked_reason ? (
+                  <dl className="grid gap-2 rounded-[0.75rem] border border-[rgba(15,23,42,0.08)] bg-[rgba(255,255,255,0.46)] p-2 text-xs leading-5">
+                    {goalName ? (
+                      <TaskKanbanDetailItem label="Goal">{goalName}</TaskKanbanDetailItem>
+                    ) : null}
+                    {estimateLabel ? (
+                      <TaskKanbanDetailItem label="Estimate">{estimateLabel}</TaskKanbanDetailItem>
+                    ) : null}
+                    {trackedLabel ? (
+                      <TaskKanbanDetailItem label="Tracked">{trackedLabel}</TaskKanbanDetailItem>
+                    ) : null}
+                    {task.blocked_reason ? (
+                      <TaskKanbanDetailItem label="Blocked reason">
+                        {task.blocked_reason}
+                      </TaskKanbanDetailItem>
+                    ) : null}
+                  </dl>
+                ) : null}
+
                 {showStatusControls ? (
                   <div>
                     <p className="glass-label text-etch">Move</p>
@@ -302,6 +344,21 @@ function TaskKanbanCompactDateLabel({
   }
 
   return <span>Planned {formatTaskDueDate(plannedForDate)}</span>;
+}
+
+function TaskKanbanDetailItem({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid gap-0.5">
+      <dt className="glass-label text-etch">{label}</dt>
+      <dd className="text-[color:var(--foreground)]">{children}</dd>
+    </div>
+  );
 }
 
 function TaskKanbanActionHiddenFields({
