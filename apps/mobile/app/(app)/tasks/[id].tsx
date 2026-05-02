@@ -6,20 +6,23 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import {
   MobileScreen,
   MobileScreenHeader,
-  SegmentedControl,
-  SurfaceCard,
 } from '@/components/mobile/primitives';
+import {
+  GlassButton,
+  GlassCard,
+  GlassInput,
+  GlassPill,
+  GlassSegmentedControl,
+} from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
 import { formatTaskToken, validateEstimateMinutesInput } from '@/features/tasks/form-utils';
 import { useTaskByIdQuery, useUpdateTaskMutation } from '@/features/tasks/query';
@@ -202,9 +205,7 @@ export default function TaskDetailScreen() {
         <View style={styles.centered}>
           <Text style={styles.title}>Task details</Text>
           <Text style={styles.errorText}>Task id is missing.</Text>
-          <Pressable onPress={() => router.back()} style={styles.ghostButton}>
-            <Text style={styles.ghostButtonText}>Back</Text>
-          </Pressable>
+          <GlassButton onPress={() => router.back()} title="Back" variant="secondary" />
         </View>
       </MobileScreen>
     );
@@ -230,12 +231,8 @@ export default function TaskDetailScreen() {
         <View style={styles.centered}>
           <Text style={styles.title}>Task details</Text>
           <Text style={styles.errorText}>{loadError}</Text>
-          <Pressable onPress={onRetry} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Retry</Text>
-          </Pressable>
-          <Pressable onPress={() => router.back()} style={styles.ghostButton}>
-            <Text style={styles.ghostButtonText}>Back</Text>
-          </Pressable>
+          <GlassButton onPress={onRetry} title="Retry" />
+          <GlassButton onPress={() => router.back()} title="Back" variant="secondary" />
         </View>
       </MobileScreen>
     );
@@ -258,18 +255,18 @@ export default function TaskDetailScreen() {
               description={dirty ? 'Unsaved changes' : 'All changes saved'}
             />
 
-            <SurfaceCard>
+            <GlassCard variant="fake">
               <Text style={styles.taskTitle}>{task.title}</Text>
               <Text style={styles.meta}>
                 {task.project.name}
                 {task.goal ? ` · ${task.goal.title}` : ''}
               </Text>
               <Text style={styles.meta}>Updated {formatTimestamp(task.updatedAt)}</Text>
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionTitle icon="flag-outline" label="Status" />
-              <SegmentedControl
+              <GlassSegmentedControl
                 onChange={(status) => {
                   setDraft((current) =>
                     current
@@ -291,7 +288,7 @@ export default function TaskDetailScreen() {
               />
 
               <SectionTitle icon="trending-up-outline" label="Priority" />
-              <SegmentedControl
+              <GlassSegmentedControl
                 onChange={(priority) => {
                   setDraft((current) => (current ? { ...current, priority } : current));
                   setSuccessMessage(null);
@@ -303,28 +300,36 @@ export default function TaskDetailScreen() {
                 }))}
                 value={draft.priority}
               />
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionTitle icon="calendar-outline" label="Due date" />
               <Text style={styles.dueValue}>{formatDueDate(draft.dueDate)}</Text>
               <View style={styles.quickRow}>
-                <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(0))} style={styles.quickButton}>
-                  <Text style={styles.quickButtonText}>Today</Text>
-                </Pressable>
-                <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(1))} style={styles.quickButton}>
-                  <Text style={styles.quickButtonText}>Tomorrow</Text>
-                </Pressable>
-                <Pressable onPress={() => applyQuickDueDate(isoDateAtOffset(7))} style={styles.quickButton}>
-                  <Text style={styles.quickButtonText}>+7 days</Text>
-                </Pressable>
-                <Pressable onPress={() => applyQuickDueDate(null)} style={styles.quickButton}>
-                  <Text style={styles.quickButtonText}>Clear</Text>
-                </Pressable>
+                <GlassPill
+                  label="Today"
+                  onPress={() => applyQuickDueDate(isoDateAtOffset(0))}
+                  selected={draft.dueDate === isoDateAtOffset(0)}
+                />
+                <GlassPill
+                  label="Tomorrow"
+                  onPress={() => applyQuickDueDate(isoDateAtOffset(1))}
+                  selected={draft.dueDate === isoDateAtOffset(1)}
+                />
+                <GlassPill
+                  label="+7 days"
+                  onPress={() => applyQuickDueDate(isoDateAtOffset(7))}
+                  selected={draft.dueDate === isoDateAtOffset(7)}
+                />
+                <GlassPill
+                  label="Clear"
+                  onPress={() => applyQuickDueDate(null)}
+                  selected={draft.dueDate === null}
+                />
               </View>
 
               <SectionTitle icon="time-outline" label="Estimate (minutes)" />
-              <TextInput
+              <GlassInput
                 value={draft.estimateMinutesText}
                 onChangeText={(value) => {
                   setDraft((current) => (current ? { ...current, estimateMinutesText: value } : current));
@@ -334,13 +339,12 @@ export default function TaskDetailScreen() {
                 keyboardType="number-pad"
                 inputMode="numeric"
                 placeholder="Optional"
-                style={styles.input}
               />
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionTitle icon="document-text-outline" label="Description" />
-              <TextInput
+              <GlassInput
                 multiline
                 value={draft.description}
                 onChangeText={(value) => {
@@ -349,12 +353,11 @@ export default function TaskDetailScreen() {
                   setSubmitError(null);
                 }}
                 placeholder="Optional details"
-                style={[styles.input, styles.multilineInput]}
                 textAlignVertical="top"
               />
 
               <SectionTitle icon="ban-outline" label="Blocked reason" />
-              <TextInput
+              <GlassInput
                 multiline
                 value={draft.blockedReason}
                 onChangeText={(value) => {
@@ -367,13 +370,12 @@ export default function TaskDetailScreen() {
                     ? 'Required for blocked tasks'
                     : 'Only used when status is Blocked'
                 }
-                style={[styles.input, styles.multilineInput]}
                 textAlignVertical="top"
               />
               {draft.status !== 'blocked' ? (
                 <Text style={styles.helperText}>This field is ignored unless status is Blocked.</Text>
               ) : null}
-            </SurfaceCard>
+            </GlassCard>
 
             {submitError ? (
               <View style={styles.feedbackError}>
@@ -388,16 +390,28 @@ export default function TaskDetailScreen() {
               </View>
             ) : null}
 
-            <View style={styles.footerActions}>
-              <Pressable disabled={isSaving} onPress={() => router.back()} style={styles.ghostButton}>
-                <Text style={styles.ghostButtonText}>Back</Text>
-              </Pressable>
-              <Pressable disabled={isSaving} onPress={onSave} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>
-                  {isSaving ? 'Saving...' : dirty ? 'Save changes' : 'Saved'}
-                </Text>
-              </Pressable>
-            </View>
+            <GlassCard
+              variant="fake"
+              style={styles.footerActions}
+              contentStyle={styles.footerActionsContent}
+            >
+              <GlassButton
+                disabled={isSaving}
+                fullWidth
+                onPress={() => router.back()}
+                style={styles.footerButton}
+                title="Back"
+                variant="secondary"
+              />
+              <GlassButton
+                disabled={isSaving}
+                fullWidth
+                loading={isSaving}
+                onPress={onSave}
+                style={styles.footerButton}
+                title={dirty ? 'Save changes' : 'Saved'}
+              />
+            </GlassCard>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -458,38 +472,20 @@ const styles = StyleSheet.create({
     fontWeight: mobileTheme.font.semibold,
   },
   footerActions: {
-    flexDirection: 'row',
-    gap: 10,
     marginTop: 18,
   },
-  ghostButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.pill,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 16,
+  footerActionsContent: {
+    flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
+    padding: mobileTheme.spacing.sm,
   },
-  ghostButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: mobileTheme.font.bold,
+  footerButton: {
+    flex: 1,
   },
   helperText: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
     marginTop: 8,
-  },
-  input: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.control,
-    borderWidth: 1,
-    color: mobileTheme.colors.text,
-    fontSize: 15,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
   },
   keyboard: {
     flex: 1,
@@ -498,34 +494,8 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.textMuted,
     marginTop: 6,
   },
-  multilineInput: {
-    minHeight: 92,
-  },
   pagePadding: {
     paddingHorizontal: 16,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 16,
-  },
-  primaryButtonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontWeight: mobileTheme.font.extrabold,
-  },
-  quickButton: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  quickButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: mobileTheme.font.bold,
   },
   quickRow: {
     flexDirection: 'row',

@@ -10,16 +10,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import {
   MobileScreen,
   MobileScreenHeader,
-  SegmentedControl,
-  SurfaceCard,
 } from '@/components/mobile/primitives';
+import {
+  GlassButton,
+  GlassCard,
+  GlassInput,
+  GlassPill,
+  GlassSegmentedControl,
+} from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
 import {
   formatDateOnlyValue,
@@ -58,17 +62,7 @@ function SectionLabel({ icon, label }: { icon: keyof typeof Ionicons.glyphMap; l
 }
 
 function ChoiceChip({ label, selected, onPress }: ChoiceChipProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      onPress={onPress}
-      style={[styles.choiceChip, selected ? styles.choiceChipSelected : null]}
-    >
-      <Text style={[styles.choiceChipText, selected ? styles.choiceChipTextSelected : null]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
+  return <GlassPill label={label} onPress={onPress} selected={selected} />;
 }
 
 export default function CreateTaskScreen() {
@@ -225,9 +219,7 @@ export default function CreateTaskScreen() {
       <MobileScreen>
         <View style={styles.centered}>
           <Text style={styles.errorText}>{loadError}</Text>
-          <Pressable onPress={() => optionsQuery.refetch()} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Retry</Text>
-          </Pressable>
+          <GlassButton onPress={() => optionsQuery.refetch()} title="Retry" />
         </View>
       </MobileScreen>
     );
@@ -247,9 +239,9 @@ export default function CreateTaskScreen() {
               description="Capture the next execution step with required project context."
             />
 
-            <SurfaceCard>
+            <GlassCard variant="fake">
               <SectionLabel icon="create-outline" label="Title" />
-              <TextInput
+              <GlassInput
                 editable={!isSubmitting}
                 onChangeText={(value) => {
                   setTitle(value);
@@ -258,12 +250,11 @@ export default function CreateTaskScreen() {
                   }
                 }}
                 placeholder="Ship the next execution step"
-                style={styles.input}
                 value={title}
               />
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionLabel icon="briefcase-outline" label="Project" />
               <View style={styles.optionGroup}>
                 {projects.map((project) => (
@@ -312,11 +303,11 @@ export default function CreateTaskScreen() {
                   />
                 ))}
               </View>
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionLabel icon="flag-outline" label="Status" />
-              <SegmentedControl
+              <GlassSegmentedControl
                 onChange={(next) => {
                   setStatus(next);
                   if (submitError) {
@@ -331,7 +322,7 @@ export default function CreateTaskScreen() {
               />
 
               <SectionLabel icon="trending-up-outline" label="Priority" />
-              <SegmentedControl
+              <GlassSegmentedControl
                 onChange={(next) => {
                   setPriority(next);
                   if (submitError) {
@@ -344,9 +335,9 @@ export default function CreateTaskScreen() {
                 }))}
                 value={priority}
               />
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionLabel icon="calendar-outline" label="Due date" />
               <View style={styles.optionGroup}>
                 <ChoiceChip
@@ -374,7 +365,11 @@ export default function CreateTaskScreen() {
                 <Text style={styles.dateFieldMeta}>Optional</Text>
               </Pressable>
               {isDueDatePickerVisible ? (
-                <View style={styles.datePickerCard}>
+                <GlassCard
+                  variant="fake"
+                  style={styles.datePickerCard}
+                  contentStyle={styles.datePickerContent}
+                >
                   <DateTimePicker
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     mode="date"
@@ -383,23 +378,25 @@ export default function CreateTaskScreen() {
                   />
                   {Platform.OS === 'ios' ? (
                     <View style={styles.datePickerActions}>
-                      <Pressable onPress={clearDueDate} style={styles.datePickerSecondaryButton}>
-                        <Text style={styles.datePickerSecondaryButtonText}>Clear</Text>
-                      </Pressable>
-                      <Pressable
+                      <GlassButton
+                        onPress={clearDueDate}
+                        size="sm"
+                        title="Clear"
+                        variant="secondary"
+                      />
+                      <GlassButton
                         onPress={() => setIsDueDatePickerVisible(false)}
-                        style={styles.datePickerPrimaryButton}
-                      >
-                        <Text style={styles.datePickerPrimaryButtonText}>Done</Text>
-                      </Pressable>
+                        size="sm"
+                        title="Done"
+                      />
                     </View>
                   ) : null}
-                </View>
+                </GlassCard>
               ) : null}
               <Text style={styles.helperText}>Picker selection still submits as YYYY-MM-DD.</Text>
 
               <SectionLabel icon="time-outline" label="Estimate minutes" />
-              <TextInput
+              <GlassInput
                 editable={!isSubmitting}
                 keyboardType="number-pad"
                 onChangeText={(value) => {
@@ -409,14 +406,13 @@ export default function CreateTaskScreen() {
                   }
                 }}
                 placeholder="30"
-                style={styles.input}
                 value={estimateMinutes}
               />
-            </SurfaceCard>
+            </GlassCard>
 
-            <SurfaceCard style={styles.sectionSpacing}>
+            <GlassCard variant="fake" style={styles.sectionSpacing}>
               <SectionLabel icon="document-text-outline" label="Description" />
-              <TextInput
+              <GlassInput
                 editable={!isSubmitting}
                 multiline
                 onChangeText={(value) => {
@@ -426,13 +422,12 @@ export default function CreateTaskScreen() {
                   }
                 }}
                 placeholder="Optional task context"
-                style={[styles.input, styles.multilineInput]}
                 textAlignVertical="top"
                 value={description}
               />
 
               <SectionLabel icon="ban-outline" label="Blocked reason" />
-              <TextInput
+              <GlassInput
                 editable={!isSubmitting}
                 multiline
                 onChangeText={(value) => {
@@ -442,40 +437,41 @@ export default function CreateTaskScreen() {
                   }
                 }}
                 placeholder="Required if status is Blocked"
-                style={[styles.input, styles.multilineInput]}
                 textAlignVertical="top"
                 value={blockedReason}
               />
-            </SurfaceCard>
+            </GlassCard>
 
             <Text style={styles.errorText}>{submitError || ' '}</Text>
           </View>
         </ScrollView>
 
-        <View style={styles.stickyBar}>
-          <Pressable disabled={isSubmitting} onPress={() => router.back()} style={styles.secondaryButton}>
-            <Text style={styles.secondaryButtonText}>Cancel</Text>
-          </Pressable>
-          <Pressable
+        <GlassCard variant="fake" style={styles.stickyBar} contentStyle={styles.stickyBarContent}>
+          <GlassButton
+            disabled={isSubmitting}
+            fullWidth
+            onPress={() => router.back()}
+            style={styles.actionButton}
+            title="Cancel"
+            variant="secondary"
+          />
+          <GlassButton
             disabled={isSubmitting || projects.length === 0}
+            fullWidth
+            loading={isSubmitting}
             onPress={onSubmit}
-            style={[styles.primaryButton, isSubmitting || projects.length === 0 ? styles.buttonDisabled : null]}
-          >
-            {isSubmitting ? (
-              <ActivityIndicator color={mobileTheme.colors.textOnAccent} />
-            ) : (
-              <Text style={styles.primaryButtonText}>Create Task</Text>
-            )}
-          </Pressable>
-        </View>
+            style={styles.actionButton}
+            title="Create Task"
+          />
+        </GlassCard>
       </KeyboardAvoidingView>
     </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  buttonDisabled: {
-    opacity: 0.55,
+  actionButton: {
+    flex: 1,
   },
   centerText: {
     color: mobileTheme.colors.textMuted,
@@ -487,29 +483,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 24,
   },
-  choiceChip: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.pill,
-    borderWidth: 1,
-    minHeight: 38,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  choiceChipSelected: {
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderColor: mobileTheme.colors.accent,
-  },
-  choiceChipText: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 13,
-    fontWeight: mobileTheme.font.bold,
-  },
-  choiceChipTextSelected: {
-    color: mobileTheme.colors.accent,
-  },
   content: {
-    paddingBottom: 28,
+    paddingBottom: 104,
     paddingTop: 14,
   },
   dateField: {
@@ -547,30 +522,10 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   datePickerCard: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.control,
     marginTop: 10,
+  },
+  datePickerContent: {
     padding: 8,
-  },
-  datePickerPrimaryButton: {
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  datePickerPrimaryButtonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontWeight: mobileTheme.font.extrabold,
-  },
-  datePickerSecondaryButton: {
-    backgroundColor: mobileTheme.colors.surface,
-    borderRadius: mobileTheme.radius.pill,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  datePickerSecondaryButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: mobileTheme.font.bold,
   },
   errorText: {
     color: mobileTheme.colors.danger,
@@ -582,20 +537,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 8,
   },
-  input: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.control,
-    borderWidth: 1,
-    color: mobileTheme.colors.text,
-    fontSize: 15,
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  multilineInput: {
-    minHeight: 92,
-  },
   optionGroup: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -605,34 +546,8 @@ const styles = StyleSheet.create({
   pagePadding: {
     paddingHorizontal: 16,
   },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 16,
-  },
-  primaryButtonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontWeight: mobileTheme.font.extrabold,
-  },
   screen: {
     flex: 1,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.pill,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-    paddingHorizontal: 16,
-  },
-  secondaryButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: mobileTheme.font.bold,
   },
   sectionLabel: {
     color: mobileTheme.colors.text,
@@ -649,11 +564,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   stickyBar: {
-    backgroundColor: mobileTheme.colors.surface,
-    borderTopColor: mobileTheme.colors.border,
-    borderTopWidth: 1,
+    borderRadius: 0,
+  },
+  stickyBarContent: {
     flexDirection: 'row',
-    gap: 10,
+    gap: mobileTheme.spacing.sm,
     paddingBottom: Platform.OS === 'ios' ? 26 : 14,
     paddingHorizontal: 16,
     paddingTop: 10,
