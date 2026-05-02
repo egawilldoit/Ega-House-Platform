@@ -427,7 +427,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   content: {
-    paddingBottom: 28,
+    paddingBottom: mobileTheme.layout.stickyActionClearance,
     paddingTop: 14,
   },
   dueValue: {

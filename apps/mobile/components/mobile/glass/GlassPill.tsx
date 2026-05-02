@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
     justifyContent: 'center',
-    minHeight: 42,
+    minHeight: mobileTheme.layout.minTouchTarget,
     overflow: 'hidden',
     paddingHorizontal: mobileTheme.spacing.md,
   },

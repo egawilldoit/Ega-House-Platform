@@ -645,7 +645,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   listContent: {
-    paddingBottom: mobileTheme.spacing.xxl,
+    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingTop: mobileTheme.spacing.sm,
   },
   loadingWrap: {

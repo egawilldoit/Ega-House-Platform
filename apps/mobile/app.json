@@ -25,6 +25,16 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.ega_house.mobile"
     },
+    "androidStatusBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#f0f2f7",
+      "translucent": true
+    },
+    "androidNavigationBar": {
+      "barStyle": "dark-content",
+      "backgroundColor": "#f0f2f7",
+      "enforceContrast": false
+    },
     "web": {
       "bundler": "metro",
       "output": "static",

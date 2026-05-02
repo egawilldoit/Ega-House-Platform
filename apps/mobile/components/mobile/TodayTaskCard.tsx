@@ -196,10 +196,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   icon: {
-    height: 40,
-    minHeight: 40,
+    height: mobileTheme.layout.minTouchTarget,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 0,
-    width: 40,
+    width: mobileTheme.layout.minTouchTarget,
   },
   leftAccent: {
     borderBottomLeftRadius: mobileTheme.radius.card,
@@ -228,13 +228,13 @@ const styles = StyleSheet.create({
   },
   primary: {
     flex: 1,
-    minHeight: 40,
+    minHeight: mobileTheme.layout.minTouchTarget,
   },
   rowSpacer: {
     flex: 1,
   },
   secondary: {
-    minHeight: 40,
+    minHeight: mobileTheme.layout.minTouchTarget,
     minWidth: 66,
   },
   pill: {

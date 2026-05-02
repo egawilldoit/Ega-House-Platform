@@ -3,11 +3,13 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { mobileTheme } from '@/components/mobile/theme';
 import { AuthProvider } from '@/lib/auth/auth-context';
 import { MobileQueryProvider } from '@/lib/query/provider';
 
@@ -54,6 +56,7 @@ function RootLayoutNav() {
     <MobileQueryProvider>
       <AuthProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <StatusBar backgroundColor={mobileTheme.colors.background} style="dark" />
           <Stack screenOptions={{ headerShown: false }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(public)" />

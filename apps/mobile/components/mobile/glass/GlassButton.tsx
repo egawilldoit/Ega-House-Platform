@@ -131,7 +131,7 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   sm: {
-    minHeight: 38,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: mobileTheme.spacing.md,
   },
   smText: {

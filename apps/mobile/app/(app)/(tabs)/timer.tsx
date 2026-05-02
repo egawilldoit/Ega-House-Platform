@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
   },
   content: {
     gap: mobileTheme.spacing.md,
-    paddingBottom: 110,
+    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },

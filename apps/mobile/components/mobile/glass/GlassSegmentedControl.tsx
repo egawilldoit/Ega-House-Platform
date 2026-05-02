@@ -77,7 +77,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 44,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: mobileTheme.spacing.sm,
   },
   segmentActive: {

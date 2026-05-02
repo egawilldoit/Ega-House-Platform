@@ -554,12 +554,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   listContent: {
-    paddingBottom: 110,
+    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: 16,
     paddingTop: mobileTheme.spacing.sm,
   },
   fab: {
-    bottom: 20,
+    bottom: mobileTheme.layout.floatingTabClearance - 90,
     position: 'absolute',
     right: 18,
     ...mobileTheme.shadow.fab,

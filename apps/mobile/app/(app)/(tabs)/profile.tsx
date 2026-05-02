@@ -54,7 +54,7 @@ export default function ProfileScreen() {
             { icon: 'shield-checkmark-outline', label: 'Privacy' },
           ].map(({ icon, label }, index, arr) => (
             <View key={label}>
-              <Pressable style={styles.menuRow}>
+              <Pressable style={({ pressed }) => [styles.menuRow, pressed ? styles.menuRowPressed : null]}>
                 <View style={styles.menuIconWrap}>
                   <Ionicons
                     name={icon as keyof typeof Ionicons.glyphMap}
@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
   avatarRow: { alignItems: 'center', flexDirection: 'row', gap: 16 },
   avatarText: { color: mobileTheme.colors.textOnAccent, fontSize: 20, fontWeight: mobileTheme.font.black },
   content: {
-    paddingBottom: 110,
+    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
@@ -145,6 +145,9 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 18,
     paddingVertical: 16,
+  },
+  menuRowPressed: {
+    backgroundColor: mobileTheme.glass.fakeBackground,
   },
   versionText: {
     color: mobileTheme.colors.textSubtle,

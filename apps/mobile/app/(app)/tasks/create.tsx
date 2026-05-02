@@ -484,7 +484,7 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   content: {
-    paddingBottom: 104,
+    paddingBottom: mobileTheme.layout.stickyActionClearance,
     paddingTop: 14,
   },
   dateField: {

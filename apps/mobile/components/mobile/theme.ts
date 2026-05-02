@@ -98,6 +98,12 @@ export const mobileTheme = {
     xxl: 36,
   },
 
+  layout: {
+    floatingTabClearance: 110,
+    stickyActionClearance: 120,
+    minTouchTarget: 44,
+  },
+
   shadow: {
     card: {
       shadowColor: '#1a2540',

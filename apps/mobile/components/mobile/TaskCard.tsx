@@ -42,7 +42,11 @@ export function TaskCard({
     <View style={[styles.cardShell, completed ? styles.cardShellComplete : null]}>
       <GlassCard variant="fake" style={styles.card} contentStyle={styles.cardContent}>
         <View style={[styles.leftAccent, { backgroundColor: statusColors.color }]} />
-        <Pressable disabled={saving} onPress={onOpen} style={styles.mainTapArea}>
+        <Pressable
+          disabled={saving}
+          onPress={onOpen}
+          style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
+        >
           <View style={styles.titleRow}>
             <View
               style={[
@@ -135,7 +139,11 @@ export function TaskCard({
             accessibilityLabel="Open task actions"
             disabled={saving}
             onPress={onActions}
-            style={styles.iconAction}
+            style={({ pressed }) => [
+              styles.iconAction,
+              pressed && !saving ? styles.pressed : null,
+              saving ? styles.disabled : null,
+            ]}
           >
             <Ionicons color={mobileTheme.colors.textMuted} name="ellipsis-horizontal" size={18} />
           </Pressable>
@@ -190,9 +198,9 @@ const styles = StyleSheet.create({
     borderColor: mobileTheme.glass.border,
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
-    height: 40,
+    height: mobileTheme.layout.minTouchTarget,
     justifyContent: 'center',
-    width: 40,
+    width: mobileTheme.layout.minTouchTarget,
   },
   indicatorsRow: {
     alignItems: 'center',
@@ -201,8 +209,14 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: mobileTheme.spacing.sm,
   },
+  disabled: {
+    opacity: 0.48,
+  },
   mainTapArea: {
     borderRadius: mobileTheme.radius.sm,
+  },
+  pressed: {
+    opacity: 0.78,
   },
   leftAccent: {
     borderRadius: mobileTheme.radius.pill,
