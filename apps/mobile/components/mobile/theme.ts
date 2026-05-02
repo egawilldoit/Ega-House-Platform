@@ -1,10 +1,10 @@
 export const mobileTheme = {
   colors: {
     // Backgrounds
-    background: '#f0f2f7',
-    backgroundDeep: '#e8eaf2',
+    background: '#f6f7f9',
+    backgroundDeep: '#e9edf3',
     surface: '#ffffff',
-    surfaceMuted: '#f4f6fb',
+    surfaceMuted: '#f2f4f7',
     surfaceElevated: '#ffffff',
 
     // Text
@@ -15,10 +15,11 @@ export const mobileTheme = {
     textOnAccent: '#ffffff',
 
     // Borders
-    border: '#e5e9f2',
-    borderStrong: '#d1d7e8',
+    border: '#e4e7ec',
+    borderStrong: '#cfd5df',
 
     // Brand accent
+    primary: '#2563eb',
     accent: '#2563eb',
     accentDark: '#1d4ed8',
     accentSoft: '#dbeafe',
@@ -71,8 +72,8 @@ export const mobileTheme = {
     authTextSubtle: 'rgba(255,255,255,0.35)',
     authCircleBlue: 'rgba(37,99,235,0.18)',
     authCirclePurple: 'rgba(124,58,237,0.12)',
-    tabBarBgIos: 'rgba(255,255,255,0.92)',
-    tabBarBgAndroid: 'rgba(255,255,255,0.96)',
+    tabBarBgIos: '#050505',
+    tabBarBgAndroid: '#050505',
     stickyBar: 'rgba(243,245,248,0.97)',
     skeleton: '#e8edf4',
   },
@@ -99,39 +100,39 @@ export const mobileTheme = {
   },
 
   layout: {
-    floatingTabClearance: 110,
+    floatingTabClearance: 160,
     stickyActionClearance: 120,
     minTouchTarget: 44,
   },
 
   shadow: {
     card: {
-      shadowColor: '#1a2540',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.07,
-      shadowRadius: 12,
-      elevation: 3,
+      shadowColor: '#101828',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.04,
+      shadowRadius: 7,
+      elevation: 1,
     },
     cardHover: {
       shadowColor: '#1a2540',
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.12,
-      shadowRadius: 18,
-      elevation: 6,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.08,
+      shadowRadius: 10,
+      elevation: 3,
     },
     control: {
-      shadowColor: '#1a2540',
+      shadowColor: '#101828',
       shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 2,
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
     },
     fab: {
       shadowColor: '#2563eb',
-      shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.35,
-      shadowRadius: 16,
-      elevation: 10,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.22,
+      shadowRadius: 10,
+      elevation: 5,
     },
     sheet: {
       shadowColor: '#0d1117',
@@ -143,11 +144,11 @@ export const mobileTheme = {
   },
 
   glass: {
-    surface: 'rgba(255,255,255,0.58)',
-    surfaceStrong: 'rgba(255,255,255,0.78)',
-    border: 'rgba(255,255,255,0.72)',
-    highlight: 'rgba(255,255,255,0.92)',
-    fakeBackground: 'rgba(255,255,255,0.46)',
+    surface: '#ffffff',
+    surfaceStrong: '#ffffff',
+    border: 'rgba(208,213,221,0.9)',
+    highlight: 'rgba(255,255,255,0.65)',
+    fakeBackground: '#ffffff',
     blurIntensity: {
       soft: 24,
       medium: 35,
@@ -155,11 +156,21 @@ export const mobileTheme = {
     },
     shadow: {
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.08,
-      shadowRadius: 18,
-      elevation: 8,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.045,
+      shadowRadius: 7,
+      elevation: 1,
     },
+  },
+
+  nav: {
+    shellBackground: 'rgba(20,20,20,0.85)',
+    shellBorder: 'rgba(255,255,255,0.10)',
+    active: '#2563eb',
+    activeBackground: 'transparent',
+    activeText: '#ffffff',
+    inactiveText: 'rgba(255,255,255,0.60)',
+    dot: '#2563eb',
   },
 
   font: {

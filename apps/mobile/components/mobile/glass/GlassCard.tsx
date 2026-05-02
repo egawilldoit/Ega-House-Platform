@@ -46,7 +46,7 @@ export function GlassCard({
   const content = (
     <>
       <LinearGradient
-        colors={['rgba(255,255,255,0.74)', 'rgba(255,255,255,0.36)']}
+        colors={['rgba(255,255,255,0.98)', 'rgba(248,250,252,0.94)']}
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, styles.gradient, radiusStyle]}
       />
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     ...mobileTheme.glass.shadow,
   },
   content: {
-    padding: mobileTheme.spacing.lg,
+    padding: mobileTheme.spacing.md,
     position: 'relative',
     zIndex: 2,
   },
@@ -83,15 +83,15 @@ const styles = StyleSheet.create({
     backgroundColor: mobileTheme.glass.fakeBackground,
   },
   gradient: {
-    opacity: 0.82,
+    opacity: 0.42,
   },
   highlight: {
     borderColor: mobileTheme.glass.highlight,
     borderTopWidth: 1,
-    left: 1,
-    opacity: 0.8,
+    left: 0,
+    opacity: 0.45,
     position: 'absolute',
-    right: 1,
-    top: 1,
+    right: 0,
+    top: 0,
   },
 });

@@ -31,9 +31,9 @@ export type GlassButtonProps = {
 
 const gradientColors: Record<GlassButtonVariant, [string, string]> = {
   primary: [mobileTheme.colors.accent, mobileTheme.colors.accentDark],
-  secondary: [mobileTheme.glass.surfaceStrong, mobileTheme.glass.fakeBackground],
+  secondary: ['#ffffff', '#f8fafc'],
   danger: [mobileTheme.colors.danger, '#b91c1c'],
-  ghost: ['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.08)'],
+  ghost: ['rgba(255,255,255,0)', 'rgba(255,255,255,0)'],
 };
 
 export function GlassButton({
@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   bordered: {
-    borderColor: 'rgba(255,255,255,0.6)',
+    borderColor: mobileTheme.glass.border,
     borderWidth: 1,
   },
   disabled: {
@@ -110,18 +110,18 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   ghost: {
-    borderColor: 'rgba(255,255,255,0.24)',
+    borderColor: 'transparent',
     borderWidth: 1,
   },
   lg: {
-    minHeight: 54,
+    minHeight: 50,
     paddingHorizontal: mobileTheme.spacing.lg,
   },
   lgText: {
     fontSize: 15,
   },
   md: {
-    minHeight: 46,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: mobileTheme.spacing.md,
   },
   mdText: {
@@ -131,8 +131,8 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   sm: {
-    minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: mobileTheme.spacing.md,
+    minHeight: 36,
+    paddingHorizontal: 12,
   },
   smText: {
     fontSize: 13,

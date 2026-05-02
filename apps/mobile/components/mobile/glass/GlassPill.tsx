@@ -47,7 +47,7 @@ export function GlassPill({
   const isPrimarySelected = selected || tone === 'primary';
   const colors: [string, string] = selected
     ? [mobileTheme.colors.accent, mobileTheme.colors.accentDark]
-    : [mobileTheme.glass.surfaceStrong, mobileTheme.glass.fakeBackground];
+    : ['#ffffff', '#f8fafc'];
 
   return (
     <Pressable
@@ -86,11 +86,11 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
+    gap: 6,
     justifyContent: 'center',
-    minHeight: mobileTheme.layout.minTouchTarget,
+    minHeight: 30,
     overflow: 'hidden',
-    paddingHorizontal: mobileTheme.spacing.md,
+    paddingHorizontal: 9,
   },
   default: {
     borderColor: mobileTheme.glass.border,
@@ -102,11 +102,10 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   selected: {
-    borderColor: 'rgba(255,255,255,0.62)',
-    ...mobileTheme.shadow.control,
+    borderColor: mobileTheme.colors.accentMid,
   },
   text: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: mobileTheme.font.bold,
   },
   textSelected: {

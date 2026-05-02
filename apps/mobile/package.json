@@ -7,11 +7,11 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "doctor": "EXPO_NO_TELEMETRY=1 npx expo-doctor .",
+    "doctor": "node -e \"process.env.EXPO_NO_TELEMETRY='1'; const r=require('child_process').spawnSync('npx',['expo-doctor','.'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1)\"",
     "typecheck": "tsc --noEmit",
     "test": "jest --ci --runInBand",
-    "validate:bundle": "EXPO_NO_TELEMETRY=1 npx expo export --platform android --output-dir .expo/ci-export --no-bytecode",
-    "prebuild:android": "EXPO_NO_TELEMETRY=1 npx expo prebuild --platform android --clean --no-install"
+    "validate:bundle": "node -e \"process.env.EXPO_NO_TELEMETRY='1'; const r=require('child_process').spawnSync('npx',['expo','export','--platform','android','--output-dir','.expo/ci-export','--no-bytecode'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1)\"",
+    "prebuild:android": "node -e \"process.env.EXPO_NO_TELEMETRY='1'; const r=require('child_process').spawnSync('npx',['expo','prebuild','--platform','android','--clean','--no-install'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1)\""
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

@@ -60,14 +60,14 @@ export function GlassSegmentedControl<T extends string = string>({
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    backgroundColor: 'rgba(229,233,242,0.74)',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderColor: mobileTheme.glass.border,
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 4,
-    minHeight: 54,
-    padding: 4,
+    gap: 2,
+    minHeight: 42,
+    padding: 3,
   },
   disabled: {
     opacity: 0.5,
@@ -77,19 +77,18 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: mobileTheme.spacing.sm,
+    minHeight: 36,
+    paddingHorizontal: 4,
   },
   segmentActive: {
-    backgroundColor: mobileTheme.glass.surfaceStrong,
-    ...mobileTheme.shadow.control,
+    backgroundColor: mobileTheme.colors.surface,
   },
   segmentPressed: {
     opacity: 0.72,
   },
   text: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: mobileTheme.font.bold,
   },
   textActive: {

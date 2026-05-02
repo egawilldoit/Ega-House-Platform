@@ -66,11 +66,11 @@ function formatDueDate(task: MobileTodayTask) {
     : date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
   if (task.dueBucket === 'overdue') {
-    return `Overdue · ${formatted}`;
+    return `Overdue ${formatted}`;
   }
 
   if (task.dueBucket === 'today') {
-    return `Due today · ${formatted}`;
+    return 'Due today';
   }
 
   return formatted;
@@ -133,7 +133,8 @@ export default function TodayScreen() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
 
-  const today = todayQuery.data ?? null;
+  const { data, error, isError, isFetched, isPending, isRefetching, refetch } = todayQuery;
+  const today = data ?? null;
 
   const allSectionTasks = useMemo(
     () =>
@@ -158,14 +159,14 @@ export default function TodayScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!todayQuery.isFetched) {
+      if (!isFetched) {
         return;
       }
 
-      todayQuery.refetch().catch(() => {
+      refetch().catch(() => {
         // Keep existing data visible if focus refresh fails.
       });
-    }, [todayQuery]),
+    }, [isFetched, refetch]),
   );
 
   const sections = useMemo<TodaySection[]>(() => {
@@ -202,8 +203,8 @@ export default function TodayScreen() {
   }, [today]);
 
   const onRefresh = useCallback(async () => {
-    await todayQuery.refetch();
-  }, [todayQuery]);
+    await refetch();
+  }, [refetch]);
 
   const runStatusAction = useCallback(
     async (task: MobileTodayTask, status: MobileTaskStatus) => {
@@ -383,7 +384,7 @@ export default function TodayScreen() {
     tomorrowIso,
   ]);
 
-  const isLoading = todayQuery.isPending && !today;
+  const isLoading = isPending && !today;
 
   if (isLoading) {
     return (
@@ -401,9 +402,9 @@ export default function TodayScreen() {
     );
   }
 
-  if (todayQuery.isError && !today) {
+  if (isError && !today) {
     const loadError =
-      todayQuery.error instanceof Error ? todayQuery.error.message : 'Unable to load Today right now.';
+      error instanceof Error ? error.message : 'Unable to load Today right now.';
 
     return (
       <MobileScreen>
@@ -431,7 +432,7 @@ export default function TodayScreen() {
   const todayCount = getTodayTaskCount(today);
   const completedRatio =
     todayCount > 0 ? Math.round((today.summary.completedCount / todayCount) * 100) : 0;
-  const isRefreshing = todayQuery.isRefetching && !isLoading;
+  const isRefreshing = isRefetching && !isLoading;
 
   return (
     <MobileScreen padded={false}>
@@ -450,8 +451,7 @@ export default function TodayScreen() {
               description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
             />
 
-            <GlassCard variant="fake" style={styles.summaryCard}>
-              <View style={styles.summaryAccentBubble} />
+            <GlassCard variant="fake" style={styles.summaryCard} contentStyle={styles.summaryContent}>
               <Text style={styles.summaryTitle}>Daily momentum</Text>
               <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
               <View style={styles.summaryStatsRow}>
@@ -706,9 +706,9 @@ const styles = StyleSheet.create({
   },
   statValue: {
     color: mobileTheme.colors.text,
-    fontSize: 26,
+    fontSize: 24,
     fontWeight: mobileTheme.font.black,
-    letterSpacing: -0.6,
+    letterSpacing: 0,
   },
   subtitle: {
     color: mobileTheme.colors.textMuted,
@@ -744,7 +744,7 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 17,
     fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: -0.2,
+    letterSpacing: 0,
   },
   suggestionTaskMeta: {
     color: mobileTheme.colors.textSubtle,
@@ -756,19 +756,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: mobileTheme.font.semibold,
   },
-  summaryAccentBubble: {
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderRadius: 40,
-    height: 80,
-    opacity: 0.5,
-    position: 'absolute',
-    right: -20,
-    top: -20,
-    width: 80,
-  },
   summaryCard: {
     overflow: 'hidden',
     position: 'relative',
+  },
+  summaryContent: {
+    padding: 14,
   },
   summaryMeta: {
     color: mobileTheme.colors.textMuted,
@@ -783,7 +776,7 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 17,
     fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: -0.2,
+    letterSpacing: 0,
   },
   title: {
     color: mobileTheme.colors.text,

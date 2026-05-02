@@ -97,7 +97,7 @@ export function TodayTaskCard({
           {title}
         </Text>
         <Text numberOfLines={1} style={styles.meta}>
-          {project}
+          {project.toUpperCase()}
           {goal ? ` · ${goal}` : ''}
         </Text>
 
@@ -140,14 +140,23 @@ export function TodayTaskCard({
             disabled={busy}
             loading={busy}
             onPress={onPrimaryAction}
+            size="sm"
             style={styles.primary}
             title={primaryActionLabel}
             variant={primaryTone}
           />
-          <GlassButton disabled={busy} onPress={onOpen} style={styles.secondary} title="Open" />
+          <GlassButton
+            disabled={busy}
+            onPress={onOpen}
+            size="sm"
+            style={styles.secondary}
+            title="Open"
+            variant="secondary"
+          />
           <GlassButton
             disabled={busy}
             onPress={onActions}
+            size="sm"
             style={styles.icon}
             title=""
             variant="ghost"
@@ -163,7 +172,7 @@ const styles = StyleSheet.create({
   actions: {
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.md,
+    marginTop: 10,
   },
   blockedBox: {
     backgroundColor: mobileTheme.colors.dangerBg,
@@ -171,8 +180,8 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderRadius: mobileTheme.radius.sm,
     marginTop: mobileTheme.spacing.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
   },
   blockedText: {
     color: mobileTheme.colors.blocked,
@@ -185,19 +194,20 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   cardContent: {
-    paddingLeft: mobileTheme.spacing.xl,
+    padding: 12,
+    paddingLeft: 22,
   },
   cardShell: {
     borderRadius: mobileTheme.radius.card,
     ...mobileTheme.shadow.card,
   },
   duePill: {
-    minHeight: 30,
-    paddingHorizontal: 10,
+    minHeight: 26,
+    paddingHorizontal: 7,
   },
   icon: {
-    height: mobileTheme.layout.minTouchTarget,
-    minHeight: mobileTheme.layout.minTouchTarget,
+    height: 38,
+    minHeight: 38,
     paddingHorizontal: 0,
     width: mobileTheme.layout.minTouchTarget,
   },
@@ -208,45 +218,46 @@ const styles = StyleSheet.create({
     left: 0,
     position: 'absolute',
     top: 0,
-    width: 4,
+    width: 3,
   },
   meta: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: mobileTheme.font.semibold,
-    marginTop: 6,
+    letterSpacing: 0.4,
+    marginTop: 5,
   },
   metaRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: mobileTheme.spacing.sm,
+    marginTop: 8,
   },
   mutedCard: {
-    opacity: 0.65,
+    opacity: 0.72,
   },
   primary: {
     flex: 1,
-    minHeight: mobileTheme.layout.minTouchTarget,
+    minHeight: 38,
   },
   rowSpacer: {
     flex: 1,
   },
   secondary: {
-    minHeight: mobileTheme.layout.minTouchTarget,
+    minHeight: 38,
     minWidth: 66,
   },
   pill: {
-    minHeight: 30,
-    paddingHorizontal: 10,
+    minHeight: 26,
+    paddingHorizontal: 7,
   },
   title: {
     color: mobileTheme.colors.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: -0.2,
-    lineHeight: 22,
+    letterSpacing: 0,
+    lineHeight: 19,
   },
   titleMuted: {
     color: mobileTheme.colors.neutralStrong,
@@ -254,7 +265,7 @@ const styles = StyleSheet.create({
   watermark: {
     bottom: 6,
     color: mobileTheme.colors.successBg,
-    fontSize: 64,
+    fontSize: 52,
     fontWeight: mobileTheme.font.black,
     position: 'absolute',
     right: 12,

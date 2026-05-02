@@ -64,7 +64,7 @@ export function TaskCard({
             </Text>
           </View>
           <Text numberOfLines={1} style={styles.meta}>
-            {project}
+            {project.toUpperCase()}
             {goal ? ` · ${goal}` : ''}
           </Text>
 
@@ -129,7 +129,7 @@ export function TaskCard({
             }
             loading={saving}
             onPress={onOpen}
-            size="md"
+            size="sm"
             style={styles.secondaryAction}
             textStyle={styles.secondaryActionText}
             title="Edit"
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.md,
+    marginTop: 10,
   },
   blockedBox: {
     alignItems: 'flex-start',
@@ -168,8 +168,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 7,
     marginTop: mobileTheme.spacing.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
   },
   blockedText: {
     color: mobileTheme.colors.blocked,
@@ -183,11 +183,12 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   cardContent: {
-    paddingLeft: mobileTheme.spacing.xl,
+    padding: 12,
+    paddingLeft: 22,
   },
   cardShell: {
     borderRadius: mobileTheme.radius.card,
-    ...mobileTheme.shadow.cardHover,
+    ...mobileTheme.shadow.card,
   },
   cardShellComplete: {
     opacity: 0.72,
@@ -207,7 +208,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: mobileTheme.spacing.sm,
+    marginTop: 8,
   },
   disabled: {
     opacity: 0.48,
@@ -220,18 +221,19 @@ const styles = StyleSheet.create({
   },
   leftAccent: {
     borderRadius: mobileTheme.radius.pill,
-    bottom: 0,
-    left: mobileTheme.spacing.sm,
-    opacity: 0.7,
+    bottom: 12,
+    left: 9,
+    opacity: 0.82,
     position: 'absolute',
-    top: mobileTheme.spacing.lg,
-    width: 5,
+    top: 12,
+    width: 3,
   },
   meta: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: mobileTheme.font.semibold,
-    marginTop: 6,
+    letterSpacing: 0.4,
+    marginTop: 5,
   },
   metaQuiet: {
     color: mobileTheme.colors.textSubtle,
@@ -240,22 +242,22 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.glass.fakeBackground,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderColor: mobileTheme.glass.border,
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
     flexDirection: 'row',
     gap: 4,
     maxWidth: '100%',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
   },
   metaPillRow: {
     alignItems: 'center',
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 6,
-    marginTop: mobileTheme.spacing.sm,
+    marginTop: 8,
   },
   metaStrong: {
     color: mobileTheme.colors.text,
@@ -280,18 +282,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 2,
-    height: 22,
+    height: 20,
     justifyContent: 'center',
     marginTop: 1,
-    width: 22,
+    width: 20,
   },
   title: {
     color: mobileTheme.colors.text,
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: -0.2,
-    lineHeight: 22,
+    letterSpacing: 0,
+    lineHeight: 19,
   },
   titleComplete: {
     color: mobileTheme.colors.textMuted,

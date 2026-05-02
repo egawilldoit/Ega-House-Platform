@@ -39,17 +39,17 @@ const PRIORITY_OPTIONS: MobileTaskPriority[] = ['low', 'medium', 'high', 'urgent
 const EMPTY_TASKS: MobileTaskListItem[] = [];
 const STATUS_FILTER_OPTIONS: Array<{ label: string; value: MobileTaskStatus | 'all' }> = [
   { label: 'All', value: 'all' },
-  { label: 'To do', value: 'todo' },
-  { label: 'In progress', value: 'in_progress' },
+  { label: 'Todo', value: 'todo' },
+  { label: 'Doing', value: 'in_progress' },
   { label: 'Blocked', value: 'blocked' },
   { label: 'Done', value: 'done' },
 ];
 const DUE_FILTER_OPTIONS: Array<{ label: string; value: MobileTaskDueFilter }> = [
-  { label: 'All dates', value: 'all' },
+  { label: 'All', value: 'all' },
   { label: 'Overdue', value: 'overdue' },
-  { label: 'Due today', value: 'due_today' },
-  { label: 'Due soon', value: 'due_soon' },
-  { label: 'No due date', value: 'no_due_date' },
+  { label: 'Today', value: 'due_today' },
+  { label: 'Soon', value: 'due_soon' },
+  { label: 'None', value: 'no_due_date' },
 ];
 
 function formatToken(value: string) {
@@ -66,7 +66,7 @@ function formatDueDate(value: string | null) {
     return value;
   }
 
-  return date.toLocaleDateString();
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function toIsoDate(value: Date) {
@@ -328,17 +328,26 @@ export default function TasksScreen() {
                     : 'Track and capture your next execution step'
               }
               rightAction={
-                <GlassPill
-                  label={`${tasks.length} / ${totalTaskCount}`}
-                  leftIcon={
-                    <Ionicons
-                      color={mobileTheme.colors.accentDark}
-                      name="list-outline"
-                      size={14}
-                    />
-                  }
-                  tone="primary"
-                />
+                <View style={styles.headerActions}>
+                  <GlassPill
+                    label={`${tasks.length} / ${totalTaskCount}`}
+                    leftIcon={
+                      <Ionicons
+                        color={mobileTheme.colors.accentDark}
+                        name="list-outline"
+                        size={14}
+                      />
+                    }
+                    tone="primary"
+                  />
+                  <GlassButton
+                    leftIcon={<Ionicons color={mobileTheme.colors.textOnAccent} name="add" size={15} />}
+                    onPress={() => router.push('/(app)/tasks/create')}
+                    size="sm"
+                    style={styles.headerCreateButton}
+                    title="New"
+                  />
+                </View>
               }
             />
             <View style={styles.summaryGrid}>
@@ -462,13 +471,6 @@ export default function TasksScreen() {
         }}
       />
 
-      <GlassButton
-        leftIcon={<Ionicons color={mobileTheme.colors.textOnAccent} name="add" size={16} />}
-        onPress={() => router.push('/(app)/tasks/create')}
-        style={styles.fab}
-        title="Create Task"
-      />
-
       <ActionSheet
         footer={
           activeTask && updatingTaskIds[activeTask.id] ? (
@@ -543,7 +545,14 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.sm,
   },
   filterContent: {
-    padding: mobileTheme.spacing.md,
+    padding: 12,
+  },
+  headerActions: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  headerCreateButton: {
+    paddingHorizontal: 12,
   },
   headerWrap: {
     paddingHorizontal: 16,
@@ -557,12 +566,6 @@ const styles = StyleSheet.create({
     paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: 16,
     paddingTop: mobileTheme.spacing.sm,
-  },
-  fab: {
-    bottom: mobileTheme.layout.floatingTabClearance - 90,
-    position: 'absolute',
-    right: 18,
-    ...mobileTheme.shadow.fab,
   },
   sheetMessage: {
     color: mobileTheme.colors.textMuted,
@@ -581,8 +584,9 @@ const styles = StyleSheet.create({
   },
   summaryCardContent: {
     alignItems: 'flex-start',
-    gap: 4,
-    padding: mobileTheme.spacing.sm,
+    gap: 2,
+    minHeight: 76,
+    padding: 10,
   },
   summaryGrid: {
     flexDirection: 'row',
@@ -597,8 +601,8 @@ const styles = StyleSheet.create({
   },
   summaryValue: {
     color: mobileTheme.colors.text,
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: mobileTheme.font.black,
-    letterSpacing: -0.5,
+    letterSpacing: 0,
   },
 });

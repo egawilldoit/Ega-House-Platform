@@ -10,8 +10,8 @@ type IconName = ComponentProps<typeof Ionicons>['name'];
 
 function TabIcon({ name, color, focused }: { name: IconName; color: string; focused: boolean }) {
   return (
-    <View style={[tabStyles.iconWrap, focused ? tabStyles.iconWrapActive : null]}>
-      <Ionicons name={name} size={22} color={color} />
+    <View style={tabStyles.iconWrap}>
+      <Ionicons name={name} size={focused ? 23 : 21} color={color} />
     </View>
   );
 }
@@ -31,7 +31,7 @@ export default function AppTabsLayout() {
         options={{
           title: 'Today',
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon name={focused ? 'sunny' : 'sunny-outline'} color={color} focused={focused} />
+            <TabIcon name="sunny-outline" color={color} focused={focused} />
           ),
         }}
       />
@@ -77,13 +77,9 @@ export default function AppTabsLayout() {
 const tabStyles = StyleSheet.create({
   iconWrap: {
     alignItems: 'center',
-    borderRadius: 14,
     height: 28,
     justifyContent: 'center',
     marginBottom: 2,
     width: 40,
-  },
-  iconWrapActive: {
-    backgroundColor: mobileTheme.colors.accentSoft,
   },
 });

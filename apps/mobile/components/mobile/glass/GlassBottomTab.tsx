@@ -7,14 +7,16 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { glassConfig, mobileTheme } from '../theme';
 
-const TAB_HEIGHT = 76;
-const TAB_MARGIN = 16;
+const TAB_HEIGHT = 72;
+const TAB_MARGIN = 24;
+const PILL_BOTTOM_GAP = 20;
 
 function getLabel(routeName: string, options: BottomTabBarProps['descriptors'][string]['options']) {
   const label = options.tabBarLabel ?? options.title ?? routeName;
@@ -24,13 +26,15 @@ function getLabel(routeName: string, options: BottomTabBarProps['descriptors'][s
 
 export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const useRealBlur = Platform.OS !== 'android' || glassConfig.useRealBlurOnAndroid;
-  const bottomOffset = Math.max(insets.bottom, mobileTheme.spacing.sm);
+  const bottomOffset = Math.max(insets.bottom, 12) + PILL_BOTTOM_GAP;
+  const pillWidth = Math.max(Math.min(width - TAB_MARGIN * 2, 560), 280);
 
   const content = (
     <>
       <LinearGradient
-        colors={['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.46)']}
+        colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.01)']}
         pointerEvents="none"
         style={StyleSheet.absoluteFill}
       />
@@ -40,7 +44,7 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
           const descriptor = descriptors[route.key];
           const options = descriptor.options;
           const focused = state.index === index;
-          const color = focused ? mobileTheme.colors.accent : mobileTheme.colors.textMuted;
+          const color = focused ? mobileTheme.nav.active : 'rgba(255,255,255,0.62)';
           const label = getLabel(route.name, options);
 
           const onPress = () => {
@@ -70,14 +74,14 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
               key={route.key}
               onLongPress={onLongPress}
               onPress={onPress}
+              testID={options.tabBarButtonTestID}
               style={({ pressed }) => [
                 styles.item,
-                focused ? styles.itemActive : null,
                 pressed ? styles.itemPressed : null,
               ]}
             >
               {options.tabBarIcon
-                ? options.tabBarIcon({ focused, color, size: focused ? 22 : 21 })
+                ? options.tabBarIcon({ focused, color, size: focused ? 23 : 21 })
                 : null}
               <Text numberOfLines={1} style={[styles.label, focused ? styles.labelActive : null]}>
                 {label}
@@ -90,18 +94,21 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
     </>
   );
 
-  const wrapperStyle = {
-    height: TAB_HEIGHT + bottomOffset + mobileTheme.spacing.sm,
-  };
-  const tabStyle = [
-    styles.container,
-    { bottom: bottomOffset, height: TAB_HEIGHT, left: TAB_MARGIN, right: TAB_MARGIN },
-  ];
+  const wrapperStyle = [styles.wrapper, { bottom: bottomOffset }];
 
   if (useRealBlur) {
     return (
       <View pointerEvents="box-none" style={wrapperStyle}>
-        <BlurView intensity={mobileTheme.glass.blurIntensity.medium} tint="light" style={tabStyle}>
+        <LinearGradient
+          colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']}
+          pointerEvents="none"
+          style={styles.navFade}
+        />
+        <BlurView
+          intensity={mobileTheme.glass.blurIntensity.medium}
+          tint="dark"
+          style={[styles.container, { width: pillWidth }]}
+        >
           {content}
         </BlurView>
       </View>
@@ -110,34 +117,44 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
 
   return (
     <View pointerEvents="box-none" style={wrapperStyle}>
-      <View style={[tabStyle, styles.fake]}>{content}</View>
+      <LinearGradient
+        colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']}
+        pointerEvents="none"
+        style={styles.navFade}
+      />
+      <View style={[styles.container, styles.fake, { width: pillWidth }]}>{content}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   activeDot: {
-    backgroundColor: mobileTheme.colors.accent,
+    backgroundColor: mobileTheme.nav.dot,
     borderRadius: mobileTheme.radius.pill,
-    bottom: 7,
+    bottom: 6,
     height: 4,
     position: 'absolute',
-    width: 4,
+    width: 16,
   },
   container: {
-    backgroundColor: mobileTheme.glass.surface,
-    borderColor: mobileTheme.glass.border,
-    borderRadius: 38,
-    borderWidth: 1,
+    backgroundColor: mobileTheme.nav.shellBackground,
+    borderColor: mobileTheme.nav.shellBorder,
+    borderRadius: mobileTheme.radius.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    height: TAB_HEIGHT,
     overflow: 'hidden',
-    position: 'absolute',
-    ...mobileTheme.glass.shadow,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    elevation: 10,
+    zIndex: 1,
   },
   fake: {
-    backgroundColor: mobileTheme.glass.surfaceStrong,
+    backgroundColor: mobileTheme.nav.shellBackground,
   },
   highlight: {
-    borderColor: mobileTheme.glass.highlight,
+    borderColor: mobileTheme.nav.shellBorder,
     borderRadius: 37,
     borderTopWidth: 1,
     left: 1,
@@ -150,14 +167,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: mobileTheme.radius.pill,
     flex: 1,
-    gap: 2,
-    height: 60,
+    gap: 3,
+    height: 56,
     justifyContent: 'center',
     position: 'relative',
-  },
-  itemActive: {
-    backgroundColor: 'rgba(255,255,255,0.72)',
-    ...mobileTheme.shadow.control,
   },
   itemPressed: {
     opacity: 0.76,
@@ -165,20 +178,35 @@ const styles = StyleSheet.create({
   items: {
     alignItems: 'center',
     flexDirection: 'row',
-    gap: 6,
+    gap: 5,
     height: '100%',
     paddingHorizontal: 8,
     position: 'relative',
     zIndex: 2,
   },
   label: {
-    color: mobileTheme.colors.textMuted,
+    color: mobileTheme.nav.inactiveText,
     fontSize: 10,
     fontWeight: mobileTheme.font.bold,
-    letterSpacing: 0.2,
+    letterSpacing: 0,
   },
   labelActive: {
-    color: mobileTheme.colors.accent,
+    color: mobileTheme.nav.activeText,
     fontWeight: mobileTheme.font.extrabold,
+  },
+  navFade: {
+    bottom: TAB_HEIGHT - 10,
+    height: 62,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    zIndex: 0,
+  },
+  wrapper: {
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    left: 0,
+    position: 'absolute',
+    right: 0,
   },
 });
