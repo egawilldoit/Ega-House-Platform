@@ -1,9 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { AnimatedPressable } from '@/components/mobile/AnimatedPressable';
-import { MobileScreen, MobileScreenHeader, SurfaceCard } from '@/components/mobile/primitives';
+import { GlassButton, GlassCard, GlassSegmentedControl } from '@/components/mobile/glass';
+import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
 
 type TimerMode = 'focus' | 'short_break' | 'long_break';
@@ -156,44 +156,19 @@ export default function TimerScreen() {
         />
 
         <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <View style={styles.sessionRow}>
-            {(Object.keys(TIMER_MODES) as TimerMode[]).map((item) => {
-              const active = item === mode;
-
-              return (
-                <Pressable
-                  key={item}
-                  disabled={isRunning}
-                  onPress={() => changeMode(item)}
-                  style={[
-                    styles.sessionChip,
-                    active ? styles.sessionChipActive : null,
-                    isRunning && !active ? styles.sessionChipDisabled : null,
-                  ]}
-                >
-                  <Ionicons
-                    color={
-                      active ? mobileTheme.colors.textOnAccent : mobileTheme.colors.textMuted
-                    }
-                    name={TIMER_MODES[item].icon}
-                    size={14}
-                  />
-                  <Text
-                    style={[
-                      styles.sessionChipText,
-                      active ? styles.sessionChipTextActive : null,
-                    ]}
-                  >
-                    {TIMER_MODES[item].label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+          <GlassSegmentedControl
+            disabled={isRunning}
+            onChange={changeMode}
+            options={(Object.keys(TIMER_MODES) as TimerMode[]).map((item) => ({
+              label: TIMER_MODES[item].label,
+              value: item,
+            }))}
+            value={mode}
+          />
         </Animated.View>
 
         <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <SurfaceCard style={styles.timerCard}>
+          <GlassCard variant="fake" style={styles.timerCard} contentStyle={styles.timerCardContent}>
             <View style={styles.clockContainer}>
               <View style={styles.clockRing}>
                 <Animated.View
@@ -223,34 +198,39 @@ export default function TimerScreen() {
             </View>
 
             <View style={styles.timerActions}>
-              <AnimatedPressable
+              <GlassButton
+                leftIcon={
+                  <Ionicons
+                    color={mobileTheme.colors.textOnAccent}
+                    name={isRunning ? 'pause' : 'play'}
+                    size={22}
+                  />
+                }
                 onPress={toggleTimer}
                 style={styles.primaryTimerButton}
-              >
-                <Ionicons
-                  color={mobileTheme.colors.textOnAccent}
-                  name={isRunning ? 'pause' : 'play'}
-                  size={22}
-                />
-                <Text style={styles.primaryTimerButtonText}>
-                  {isRunning
+                title={
+                  isRunning
                     ? 'Pause'
                     : remainingSeconds > 0 && remainingSeconds < totalSeconds
                       ? 'Resume'
-                      : 'Start'}
-                </Text>
-              </AnimatedPressable>
+                      : 'Start'
+                }
+                variant="primary"
+              />
 
-              <Pressable onPress={resetTimer} style={styles.secondaryTimerButton}>
-                <Ionicons color={mobileTheme.colors.text} name="refresh" size={18} />
-                <Text style={styles.secondaryTimerButtonText}>Reset</Text>
-              </Pressable>
+              <GlassButton
+                leftIcon={<Ionicons color={mobileTheme.colors.text} name="refresh" size={18} />}
+                onPress={resetTimer}
+                style={styles.secondaryTimerButton}
+                title="Reset"
+                variant="secondary"
+              />
             </View>
-          </SurfaceCard>
+          </GlassCard>
         </Animated.View>
 
         <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <SurfaceCard style={styles.statsCard}>
+          <GlassCard variant="fake" style={styles.statsCard}>
             <View style={styles.cardTitleRow}>
               <Ionicons color={mobileTheme.colors.accent} name="timer-outline" size={18} />
               <Text style={styles.statsTitle}>Current app session</Text>
@@ -269,15 +249,15 @@ export default function TimerScreen() {
                 <Text style={styles.statLabel}>{TIMER_MODES[mode].label}</Text>
               </View>
             </View>
-          </SurfaceCard>
+          </GlassCard>
         </Animated.View>
 
-        <SurfaceCard style={styles.guidanceCard}>
+        <GlassCard variant="fake" style={styles.guidanceCard} contentStyle={styles.guidanceContent}>
           <Ionicons color={mobileTheme.colors.info} name="checkmark-circle-outline" size={18} />
           <Text style={styles.guidanceText}>
             Pick one task from Tasks, start a focus session, then update the task when done.
           </Text>
-        </SurfaceCard>
+        </GlassCard>
       </ScrollView>
     </MobileScreen>
   );
@@ -298,7 +278,9 @@ const styles = StyleSheet.create({
   },
   clockFace: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surface,
+    backgroundColor: mobileTheme.glass.surfaceStrong,
+    borderColor: mobileTheme.glass.border,
+    borderWidth: 1,
     borderRadius: 88,
     height: 176,
     justifyContent: 'center',
@@ -319,8 +301,10 @@ const styles = StyleSheet.create({
     paddingTop: mobileTheme.spacing.sm,
   },
   guidanceCard: {
+    borderColor: mobileTheme.colors.infoMid,
+  },
+  guidanceContent: {
     alignItems: 'flex-start',
-    backgroundColor: mobileTheme.colors.infoBg,
     flexDirection: 'row',
     gap: 9,
   },
@@ -338,20 +322,9 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   primaryTimerButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
     flex: 1,
-    flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
     minHeight: 54,
     ...mobileTheme.shadow.fab,
-  },
-  primaryTimerButtonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontSize: 16,
-    fontWeight: mobileTheme.font.black,
   },
   progressRing: {
     alignItems: 'center',
@@ -378,49 +351,8 @@ const styles = StyleSheet.create({
     width: 236,
   },
   secondaryTimerButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.pill,
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
     minHeight: 54,
     paddingHorizontal: 18,
-  },
-  secondaryTimerButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: mobileTheme.font.bold,
-  },
-  sessionChip: {
-    alignItems: 'center',
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.pill,
-    borderWidth: 1.5,
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  sessionChipActive: {
-    backgroundColor: mobileTheme.colors.accent,
-    borderColor: mobileTheme.colors.accent,
-  },
-  sessionChipDisabled: {
-    opacity: 0.5,
-  },
-  sessionChipText: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 13,
-    fontWeight: mobileTheme.font.bold,
-  },
-  sessionChipTextActive: {
-    color: mobileTheme.colors.textOnAccent,
-  },
-  sessionRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
   },
   statBlock: {
     alignItems: 'center',
@@ -472,6 +404,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   timerCard: {
+    borderColor: mobileTheme.glass.border,
+  },
+  timerCardContent: {
     alignItems: 'center',
     paddingVertical: mobileTheme.spacing.xl,
   },

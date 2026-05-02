@@ -1,8 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { InfoBadge, SurfaceCard } from '@/components/mobile/primitives';
-import { mobileTheme, priorityTone, statusTone } from '@/components/mobile/theme';
+import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
+import { mobileTheme, statusTone } from '@/components/mobile/theme';
 
 function formatStatus(value: string) {
   return value.replace(/_/g, ' ');
@@ -12,14 +12,42 @@ function getPrimaryActionTone(label: string) {
   const normalized = label.toLowerCase();
 
   if (normalized === 'start') {
-    return { backgroundColor: mobileTheme.colors.infoBg, textColor: mobileTheme.colors.info };
+    return 'primary' as const;
   }
 
   if (normalized === 'done') {
-    return { backgroundColor: mobileTheme.colors.successBg, textColor: mobileTheme.colors.success };
+    return 'secondary' as const;
   }
 
-  return { backgroundColor: mobileTheme.colors.slateBg, textColor: mobileTheme.colors.slate };
+  return 'ghost' as const;
+}
+
+function getStatusTone(status: 'todo' | 'in_progress' | 'done' | 'blocked') {
+  if (status === 'done') {
+    return 'success' as const;
+  }
+
+  if (status === 'blocked') {
+    return 'warning' as const;
+  }
+
+  if (status === 'in_progress') {
+    return 'primary' as const;
+  }
+
+  return 'default' as const;
+}
+
+function getPriorityTone(priority: 'low' | 'medium' | 'high' | 'urgent') {
+  if (priority === 'urgent') {
+    return 'danger' as const;
+  }
+
+  if (priority === 'high' || priority === 'medium') {
+    return 'warning' as const;
+  }
+
+  return 'success' as const;
 }
 
 export function TodayTaskCard({
@@ -52,13 +80,16 @@ export function TodayTaskCard({
   onActions: () => void;
 }) {
   const statusColors = statusTone(status);
-  const priorityColors = priorityTone(priority);
   const hasDueDate = dueLabel.toLowerCase() !== 'no due date';
   const primaryTone = getPrimaryActionTone(primaryActionLabel);
 
   return (
     <View style={styles.cardShell}>
-      <SurfaceCard style={[styles.card, muted ? styles.mutedCard : null]}>
+      <GlassCard
+        variant="fake"
+        style={[styles.card, muted ? styles.mutedCard : null]}
+        contentStyle={styles.cardContent}
+      >
         <View style={[styles.leftAccent, { backgroundColor: muted ? mobileTheme.colors.neutralMid : statusColors.color }]} />
         {muted ? <Text style={styles.watermark}>✓</Text> : null}
 
@@ -71,20 +102,29 @@ export function TodayTaskCard({
         </Text>
 
         <View style={styles.metaRow}>
-          <InfoBadge
-            backgroundColor={muted ? mobileTheme.colors.surfaceMuted : statusColors.background}
-            dot={muted ? mobileTheme.colors.neutralMid : statusColors.dot}
+          <GlassPill
             label={formatStatus(status)}
-            textColor={muted ? mobileTheme.colors.textSubtle : statusColors.color}
+            tone={muted ? 'default' : getStatusTone(status)}
+            style={styles.pill}
           />
-          <InfoBadge
-            backgroundColor={priorityColors.background}
-            dot={priorityColors.dot}
+          <GlassPill
             label={priority}
-            textColor={priorityColors.color}
+            tone={getPriorityTone(priority)}
+            style={styles.pill}
           />
           <View style={styles.rowSpacer} />
-          <Text style={[styles.due, !hasDueDate ? styles.dueMuted : null]}>{`📅 ${dueLabel}`}</Text>
+          <GlassPill
+            label={dueLabel}
+            leftIcon={
+              <Ionicons
+                color={hasDueDate ? mobileTheme.colors.accent : mobileTheme.colors.textSubtle}
+                name="calendar-outline"
+                size={13}
+              />
+            }
+            tone={hasDueDate ? 'primary' : 'default'}
+            style={styles.duePill}
+          />
         </View>
 
         {blockedReason ? (
@@ -96,25 +136,25 @@ export function TodayTaskCard({
         ) : null}
 
         <View style={styles.actions}>
-          <Pressable
+          <GlassButton
             disabled={busy}
+            loading={busy}
             onPress={onPrimaryAction}
-            style={[styles.primary, { backgroundColor: primaryTone.backgroundColor }]}
-          >
-            {busy ? (
-              <ActivityIndicator color={primaryTone.textColor} size="small" />
-            ) : (
-              <Text style={[styles.primaryText, { color: primaryTone.textColor }]}>{primaryActionLabel}</Text>
-            )}
-          </Pressable>
-          <Pressable disabled={busy} onPress={onOpen} style={styles.secondary}>
-            <Text style={styles.secondaryText}>Open</Text>
-          </Pressable>
-          <Pressable disabled={busy} onPress={onActions} style={styles.icon}>
-            <Ionicons color={mobileTheme.colors.textMuted} name="ellipsis-horizontal" size={18} />
-          </Pressable>
+            style={styles.primary}
+            title={primaryActionLabel}
+            variant={primaryTone}
+          />
+          <GlassButton disabled={busy} onPress={onOpen} style={styles.secondary} title="Open" />
+          <GlassButton
+            disabled={busy}
+            onPress={onActions}
+            style={styles.icon}
+            title=""
+            variant="ghost"
+            leftIcon={<Ionicons color={mobileTheme.colors.textMuted} name="ellipsis-horizontal" size={18} />}
+          />
         </View>
-      </SurfaceCard>
+      </GlassCard>
     </View>
   );
 }
@@ -142,27 +182,23 @@ const styles = StyleSheet.create({
   },
   card: {
     overflow: 'hidden',
-    paddingLeft: mobileTheme.spacing.xl,
     position: 'relative',
+  },
+  cardContent: {
+    paddingLeft: mobileTheme.spacing.xl,
   },
   cardShell: {
     borderRadius: mobileTheme.radius.card,
-    ...mobileTheme.shadow.cardHover,
+    ...mobileTheme.shadow.card,
   },
-  due: {
-    color: mobileTheme.colors.text,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.bold,
-  },
-  dueMuted: {
-    color: mobileTheme.colors.textSubtle,
+  duePill: {
+    minHeight: 30,
+    paddingHorizontal: 10,
   },
   icon: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.pill,
     height: 40,
-    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: 0,
     width: 40,
   },
   leftAccent: {
@@ -191,34 +227,19 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   primary: {
-    alignItems: 'center',
-    borderRadius: mobileTheme.radius.pill,
     flex: 1,
-    justifyContent: 'center',
     minHeight: 40,
-    paddingHorizontal: mobileTheme.spacing.md,
-  },
-  primaryText: {
-    fontSize: 13,
-    fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: 0.2,
   },
   rowSpacer: {
     flex: 1,
   },
   secondary: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    justifyContent: 'center',
     minHeight: 40,
     minWidth: 66,
-    paddingHorizontal: 12,
   },
-  secondaryText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontSize: 13,
-    fontWeight: mobileTheme.font.bold,
+  pill: {
+    minHeight: 30,
+    paddingHorizontal: 10,
   },
   title: {
     color: mobileTheme.colors.text,

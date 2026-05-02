@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { MobileScreen, MobileScreenHeader, SurfaceCard } from '@/components/mobile/primitives';
+import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
+import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useAuth } from '@/lib/auth/auth-context';
 
@@ -17,51 +18,68 @@ export default function ProfileScreen() {
   const initials = user?.email?.substring(0, 2).toUpperCase() ?? 'EG';
 
   return (
-    <MobileScreen>
-      <MobileScreenHeader eyebrow="Account" title="Profile" />
+    <MobileScreen padded={false}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <MobileScreenHeader eyebrow="Account" title="Profile" />
 
-      <SurfaceCard style={styles.avatarCard}>
-        <View style={styles.avatarRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initials}</Text>
+        <GlassCard variant="fake" style={styles.avatarCard}>
+          <View style={styles.avatarRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{initials}</Text>
+            </View>
+            <View style={styles.avatarInfo}>
+              <Text style={styles.avatarName}>EGA House</Text>
+              <Text style={styles.avatarEmail}>{user?.email ?? 'Authenticated'}</Text>
+            </View>
           </View>
-          <View style={styles.avatarInfo}>
-            <Text style={styles.avatarName}>EGA House</Text>
-            <Text style={styles.avatarEmail}>{user?.email ?? 'Authenticated'}</Text>
+          <View style={styles.identityFooter}>
+            <GlassPill
+              label="Authenticated"
+              leftIcon={<Ionicons color={mobileTheme.colors.success} name="shield-checkmark-outline" size={13} />}
+              tone="success"
+            />
+            <GlassPill
+              label="Mobile workspace"
+              leftIcon={<Ionicons color={mobileTheme.colors.accent} name="phone-portrait-outline" size={13} />}
+              tone="primary"
+            />
           </View>
-        </View>
-      </SurfaceCard>
+        </GlassCard>
 
-      <SurfaceCard style={styles.menuCard}>
-        {[
-          { icon: 'person-outline', label: 'Account Settings' },
-          { icon: 'notifications-outline', label: 'Notifications' },
-          { icon: 'color-palette-outline', label: 'Appearance' },
-          { icon: 'shield-checkmark-outline', label: 'Privacy' },
-        ].map(({ icon, label }, index, arr) => (
-          <View key={label}>
-            <Pressable style={styles.menuRow}>
-              <View style={styles.menuIconWrap}>
-                <Ionicons
-                  name={icon as keyof typeof Ionicons.glyphMap}
-                  size={18}
-                  color={mobileTheme.colors.accent}
-                />
-              </View>
-              <Text style={styles.menuLabel}>{label}</Text>
-              <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
-            </Pressable>
-            {index < arr.length - 1 ? <View style={styles.menuDivider} /> : null}
-          </View>
-        ))}
-      </SurfaceCard>
+        <GlassCard variant="fake" style={styles.menuCard} contentStyle={styles.menuCardContent}>
+          {[
+            { icon: 'person-outline', label: 'Account Settings' },
+            { icon: 'notifications-outline', label: 'Notifications' },
+            { icon: 'color-palette-outline', label: 'Appearance' },
+            { icon: 'shield-checkmark-outline', label: 'Privacy' },
+          ].map(({ icon, label }, index, arr) => (
+            <View key={label}>
+              <Pressable style={styles.menuRow}>
+                <View style={styles.menuIconWrap}>
+                  <Ionicons
+                    name={icon as keyof typeof Ionicons.glyphMap}
+                    size={18}
+                    color={mobileTheme.colors.accent}
+                  />
+                </View>
+                <Text style={styles.menuLabel}>{label}</Text>
+                <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+              </Pressable>
+              {index < arr.length - 1 ? <View style={styles.menuDivider} /> : null}
+            </View>
+          ))}
+        </GlassCard>
 
-      <Pressable onPress={onLogout} style={styles.logoutBtn}>
-        <Ionicons name="log-out-outline" size={18} color={mobileTheme.colors.danger} />
-        <Text style={styles.logoutText}>Sign out</Text>
-      </Pressable>
+        <GlassButton
+          leftIcon={<Ionicons name="log-out-outline" size={18} color={mobileTheme.colors.textOnAccent} />}
+          onPress={onLogout}
+          style={styles.logoutBtn}
+          title="Sign out"
+          variant="danger"
+        />
 
-      <Text style={styles.versionText}>EGA House · v1.0.0</Text>
+        <Text style={styles.versionText}>EGA House · v1.0.0</Text>
+      </ScrollView>
     </MobileScreen>
   );
 }
@@ -86,23 +104,22 @@ const styles = StyleSheet.create({
   },
   avatarRow: { alignItems: 'center', flexDirection: 'row', gap: 16 },
   avatarText: { color: mobileTheme.colors.textOnAccent, fontSize: 20, fontWeight: mobileTheme.font.black },
-  logoutBtn: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.dangerBg,
-    borderRadius: mobileTheme.radius.card,
+  content: {
+    paddingBottom: 110,
+    paddingHorizontal: mobileTheme.spacing.lg,
+    paddingTop: mobileTheme.spacing.sm,
+  },
+  identityFooter: {
     flexDirection: 'row',
-    gap: 8,
-    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: mobileTheme.spacing.sm,
+    marginTop: mobileTheme.spacing.md,
+  },
+  logoutBtn: {
     marginBottom: 20,
-    paddingVertical: 16,
   },
-  logoutText: {
-    color: mobileTheme.colors.danger,
-    fontSize: 15,
-    fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: 0.1,
-  },
-  menuCard: { marginBottom: 14, overflow: 'hidden', padding: 0 },
+  menuCard: { marginBottom: 14, overflow: 'hidden' },
+  menuCardContent: { padding: 0 },
   menuDivider: {
     backgroundColor: mobileTheme.colors.border,
     height: StyleSheet.hairlineWidth,

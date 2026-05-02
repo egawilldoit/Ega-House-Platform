@@ -4,7 +4,6 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -19,8 +18,8 @@ import {
   MobileScreenHeader,
   MobileSectionHeader,
   SkeletonCard,
-  SurfaceCard,
 } from '@/components/mobile/primitives';
+import { GlassButton, GlassCard } from '@/components/mobile/glass';
 import { TodayTaskCard } from '@/components/mobile/TodayTaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
 import {
@@ -411,16 +410,15 @@ export default function TodayScreen() {
         <View style={styles.centered}>
           <Text style={styles.title}>Today</Text>
           <Text style={styles.errorText}>{loadError}</Text>
-          <Pressable
+          <GlassButton
             onPress={() => {
               onRefresh().catch(() => {
                 // handled in query state
               });
             }}
-            style={styles.button}
-          >
-            <Text style={styles.buttonText}>Retry</Text>
-          </Pressable>
+            style={styles.retryButton}
+            title="Retry"
+          />
         </View>
       </MobileScreen>
     );
@@ -452,7 +450,7 @@ export default function TodayScreen() {
               description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
             />
 
-            <SurfaceCard style={styles.summaryCard}>
+            <GlassCard variant="fake" style={styles.summaryCard}>
               <View style={styles.summaryAccentBubble} />
               <Text style={styles.summaryTitle}>Daily momentum</Text>
               <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
@@ -483,29 +481,28 @@ export default function TodayScreen() {
               ) : null}
 
               {today.summary.clearableCompletedCount > 0 ? (
-                <Pressable
+                <GlassButton
                   disabled={clearCompletedMutation.isPending}
+                  leftIcon={<Ionicons name="trash-outline" size={16} color={mobileTheme.colors.textOnAccent} />}
+                  loading={clearCompletedMutation.isPending}
                   onPress={() => {
                     runClearCompleted().catch(() => {
                       // handled in runClearCompleted state
                     });
                   }}
                   style={styles.clearButton}
-                >
-                  <Ionicons name="trash-outline" size={16} color={mobileTheme.colors.danger} />
-                  <Text style={styles.clearButtonText}>
-                    {clearCompletedMutation.isPending ? 'Clearing...' : 'Clear completed'}
-                  </Text>
-                </Pressable>
+                  title={clearCompletedMutation.isPending ? 'Clearing...' : 'Clear completed'}
+                  variant="danger"
+                />
               ) : null}
 
               {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
-            </SurfaceCard>
+            </GlassCard>
           </View>
         }
         ListFooterComponent={
           <View style={styles.pagePadding}>
-            <SurfaceCard>
+            <GlassCard variant="fake">
               <Text style={styles.suggestionsTitle}>Suggestions</Text>
               {today.suggestions.pinned.length === 0 && today.suggestions.inProgress.length === 0 ? (
                 <Text style={styles.sectionEmpty}>No suggestions right now.</Text>
@@ -529,30 +526,32 @@ export default function TodayScreen() {
                               {task.goalTitle ? ` · ${task.goalTitle}` : ''}
                             </Text>
                           </View>
-                          <Pressable
+                          <GlassButton
                             disabled={isMutating}
+                            loading={isMutating}
                             onPress={() => {
                               runAddSuggestion(task).catch(() => {
                                 // handled in runAddSuggestion state
                               });
                             }}
                             style={styles.addButton}
-                          >
-                            <Text style={styles.addButtonText}>{isMutating ? 'Adding...' : 'Add'}</Text>
-                          </Pressable>
+                            title={isMutating ? 'Adding...' : 'Add'}
+                          />
                         </View>
                       );
                     })}
                   </View>
                 ) : null,
               )}
-            </SurfaceCard>
+            </GlassCard>
           </View>
         }
         renderSectionFooter={({ section }) =>
           section.data.length === 0 ? (
             <View style={styles.pagePadding}>
-              <EmptyState icon="list-outline" title="No tasks" description={section.emptyText} />
+              <GlassCard variant="fake" contentStyle={styles.emptyCardContent}>
+                <EmptyState icon="list-outline" title="No tasks" description={section.emptyText} />
+              </GlassCard>
             </View>
           ) : null
         }
@@ -617,28 +616,8 @@ export default function TodayScreen() {
 
 const styles = StyleSheet.create({
   addButton: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    justifyContent: 'center',
     minHeight: 32,
     paddingHorizontal: 14,
-  },
-  addButtonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.extrabold,
-  },
-  button: {
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    marginTop: mobileTheme.spacing.lg,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-  },
-  buttonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontWeight: mobileTheme.font.extrabold,
   },
   cardWrap: {
     marginBottom: mobileTheme.spacing.sm,
@@ -650,24 +629,15 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   clearButton: {
-    alignItems: 'center',
     alignSelf: 'flex-start',
-    backgroundColor: mobileTheme.colors.dangerBg,
-    borderRadius: mobileTheme.radius.pill,
-    flexDirection: 'row',
-    gap: 8,
     marginTop: mobileTheme.spacing.sm,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  clearButtonText: {
-    color: mobileTheme.colors.danger,
-    fontSize: 13,
-    fontWeight: mobileTheme.font.bold,
   },
   emptyText: {
     color: mobileTheme.colors.textMuted,
     marginTop: mobileTheme.spacing.sm,
+  },
+  emptyCardContent: {
+    padding: 0,
   },
   errorText: {
     color: mobileTheme.colors.danger,
@@ -705,6 +675,9 @@ const styles = StyleSheet.create({
     height: 6,
     marginTop: mobileTheme.spacing.sm,
     overflow: 'hidden',
+  },
+  retryButton: {
+    marginTop: mobileTheme.spacing.lg,
   },
   sectionEmpty: {
     color: mobileTheme.colors.textMuted,
