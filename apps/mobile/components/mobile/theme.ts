@@ -136,6 +136,26 @@ export const mobileTheme = {
     },
   },
 
+  glass: {
+    surface: 'rgba(255,255,255,0.58)',
+    surfaceStrong: 'rgba(255,255,255,0.78)',
+    border: 'rgba(255,255,255,0.72)',
+    highlight: 'rgba(255,255,255,0.92)',
+    fakeBackground: 'rgba(255,255,255,0.46)',
+    blurIntensity: {
+      soft: 24,
+      medium: 35,
+      strong: 45,
+    },
+    shadow: {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 10 },
+      shadowOpacity: 0.08,
+      shadowRadius: 18,
+      elevation: 8,
+    },
+  },
+
   font: {
     regular: '400' as const,
     medium: '500' as const,
@@ -144,6 +164,11 @@ export const mobileTheme = {
     extrabold: '800' as const,
     black: '900' as const,
   },
+};
+
+export const glassConfig = {
+  useRealBlurOnAndroid: false,
+  useRealBlurForLists: false,
 };
 
 export type MobileStatusTone = 'todo' | 'in_progress' | 'done' | 'blocked';

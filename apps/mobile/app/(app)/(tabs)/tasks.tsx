@@ -4,7 +4,6 @@ import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
-  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -16,11 +15,14 @@ import {
   EmptyState,
   MobileScreen,
   MobileScreenHeader,
-  SegmentedControl,
-  PrimaryFab,
   SkeletonCard,
-  SurfaceCard,
 } from '@/components/mobile/primitives';
+import {
+  GlassButton,
+  GlassCard,
+  GlassPill,
+  GlassSegmentedControl,
+} from '@/components/mobile/glass';
 import { TaskCard } from '@/components/mobile/TaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
@@ -234,10 +236,13 @@ export default function TasksScreen() {
             title="Tasks"
             description="Everything synced from your workspace"
             rightAction={
-              <View style={styles.headerPill}>
-                <Ionicons color={mobileTheme.colors.accentDark} name="list-outline" size={14} />
-                <Text style={styles.headerPillText}>0 / {totalTaskCount}</Text>
-              </View>
+              <GlassPill
+                label={`0 / ${totalTaskCount}`}
+                leftIcon={
+                  <Ionicons color={mobileTheme.colors.accentDark} name="list-outline" size={14} />
+                }
+                tone="primary"
+              />
             }
           />
         </View>
@@ -258,14 +263,12 @@ export default function TasksScreen() {
           title="Tasks"
           description="Everything synced from your workspace"
         />
-        <SurfaceCard style={styles.errorCard}>
+        <GlassCard variant="fake" style={styles.errorCard} contentStyle={styles.errorCardContent}>
           <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
           <Text style={styles.errorText}>{loadError}</Text>
-        </SurfaceCard>
+        </GlassCard>
         <View style={styles.centeredContent}>
-          <Pressable onPress={onRefresh} style={styles.primaryButton}>
-            <Text style={styles.primaryButtonText}>Retry</Text>
-          </Pressable>
+          <GlassButton title="Retry" onPress={onRefresh} />
         </View>
       </MobileScreen>
     );
@@ -290,29 +293,24 @@ export default function TasksScreen() {
             action={
               hasFilters ? (
                 <View style={styles.emptyActions}>
-                  <Pressable
+                  <GlassButton
                     onPress={() => {
                       setStatusFilter('all');
                       setDueFilter('all');
                     }}
-                    style={styles.secondaryButton}
-                  >
-                    <Text style={styles.secondaryButtonText}>Clear filters</Text>
-                  </Pressable>
-                  <Pressable
+                    title="Clear filters"
+                    variant="secondary"
+                  />
+                  <GlassButton
                     onPress={() => router.push('/(app)/tasks/create')}
-                    style={styles.primaryButton}
-                  >
-                    <Text style={styles.primaryButtonText}>Create task</Text>
-                  </Pressable>
+                    title="Create task"
+                  />
                 </View>
               ) : (
-                <Pressable
+                <GlassButton
                   onPress={() => router.push('/(app)/tasks/create')}
-                  style={styles.primaryButton}
-                >
-                  <Text style={styles.primaryButtonText}>Create task</Text>
-                </Pressable>
+                  title="Create task"
+                />
               )
             }
           />
@@ -330,28 +328,45 @@ export default function TasksScreen() {
                     : 'Track and capture your next execution step'
               }
               rightAction={
-                <View style={styles.headerPill}>
-                  <Ionicons color={mobileTheme.colors.accentDark} name="list-outline" size={14} />
-                  <Text style={styles.headerPillText}>
-                    {tasks.length} / {totalTaskCount}
-                  </Text>
-                </View>
+                <GlassPill
+                  label={`${tasks.length} / ${totalTaskCount}`}
+                  leftIcon={
+                    <Ionicons
+                      color={mobileTheme.colors.accentDark}
+                      name="list-outline"
+                      size={14}
+                    />
+                  }
+                  tone="primary"
+                />
               }
             />
             <View style={styles.summaryGrid}>
-              <SurfaceCard style={styles.summaryCard}>
+              <GlassCard
+                variant="fake"
+                style={styles.summaryCard}
+                contentStyle={styles.summaryCardContent}
+              >
                 <Ionicons name="list-outline" size={16} color={mobileTheme.colors.accent} />
                 <Text style={styles.summaryValue}>{taskSummary.visible}</Text>
                 <Text style={styles.summaryLabel}>Visible</Text>
-              </SurfaceCard>
+              </GlassCard>
 
-              <SurfaceCard style={styles.summaryCard}>
+              <GlassCard
+                variant="fake"
+                style={styles.summaryCard}
+                contentStyle={styles.summaryCardContent}
+              >
                 <Ionicons name="flash-outline" size={16} color={mobileTheme.colors.info} />
                 <Text style={styles.summaryValue}>{taskSummary.inProgress}</Text>
                 <Text style={styles.summaryLabel}>Active</Text>
-              </SurfaceCard>
+              </GlassCard>
 
-              <SurfaceCard style={styles.summaryCard}>
+              <GlassCard
+                variant="fake"
+                style={styles.summaryCard}
+                contentStyle={styles.summaryCardContent}
+              >
                 <Ionicons
                   name="alert-circle-outline"
                   size={16}
@@ -359,15 +374,23 @@ export default function TasksScreen() {
                 />
                 <Text style={styles.summaryValue}>{taskSummary.blocked}</Text>
                 <Text style={styles.summaryLabel}>Blocked</Text>
-              </SurfaceCard>
+              </GlassCard>
 
-              <SurfaceCard style={styles.summaryCard}>
+              <GlassCard
+                variant="fake"
+                style={styles.summaryCard}
+                contentStyle={styles.summaryCardContent}
+              >
                 <Ionicons name="flame-outline" size={16} color={mobileTheme.colors.danger} />
                 <Text style={styles.summaryValue}>{taskSummary.urgent}</Text>
                 <Text style={styles.summaryLabel}>Urgent</Text>
-              </SurfaceCard>
+              </GlassCard>
             </View>
-            <View style={styles.filterSection}>
+            <GlassCard
+              variant="fake"
+              style={styles.filterSection}
+              contentStyle={styles.filterContent}
+            >
               <View style={styles.filterTitleRow}>
                 <View style={styles.filterTitleLeft}>
                   <Ionicons
@@ -378,25 +401,24 @@ export default function TasksScreen() {
                   <Text style={styles.filterTitle}>Task filters</Text>
                 </View>
                 {hasFilters ? (
-                  <Pressable
+                  <GlassPill
+                    label="Reset"
                     onPress={() => {
                       setStatusFilter('all');
                       setDueFilter('all');
                     }}
-                    style={styles.clearFiltersButton}
-                  >
-                    <Text style={styles.clearFiltersText}>Reset</Text>
-                  </Pressable>
+                    tone="primary"
+                  />
                 ) : null}
               </View>
               <Text style={styles.filterLabel}>Status</Text>
-              <SegmentedControl
+              <GlassSegmentedControl
                 onChange={setStatusFilter}
                 options={STATUS_FILTER_OPTIONS}
                 value={statusFilter}
               />
               <Text style={styles.filterLabel}>Due date</Text>
-              <SegmentedControl
+              <GlassSegmentedControl
                 onChange={setDueFilter}
                 options={DUE_FILTER_OPTIONS}
                 value={dueFilter}
@@ -404,7 +426,7 @@ export default function TasksScreen() {
               <Text style={styles.filterCountText}>
                 Showing {tasks.length} of {totalTaskCount} task{totalTaskCount === 1 ? '' : 's'}
               </Text>
-            </View>
+            </GlassCard>
           </View>
         }
         refreshControl={
@@ -440,7 +462,12 @@ export default function TasksScreen() {
         }}
       />
 
-      <PrimaryFab label="Create Task" onPress={() => router.push('/(app)/tasks/create')} />
+      <GlassButton
+        leftIcon={<Ionicons color={mobileTheme.colors.textOnAccent} name="add" size={16} />}
+        onPress={() => router.push('/(app)/tasks/create')}
+        style={styles.fab}
+        title="Create Task"
+      />
 
       <ActionSheet
         footer={
@@ -472,11 +499,12 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.lg,
   },
   errorCard: {
+    marginTop: mobileTheme.spacing.sm,
+  },
+  errorCardContent: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.dangerBg,
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.sm,
   },
   errorText: {
     color: mobileTheme.colors.danger,
@@ -512,29 +540,13 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   filterSection: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.md,
-    borderWidth: 1,
     marginTop: mobileTheme.spacing.sm,
-    padding: mobileTheme.spacing.sm,
+  },
+  filterContent: {
+    padding: mobileTheme.spacing.md,
   },
   headerWrap: {
     paddingHorizontal: 16,
-  },
-  headerPill: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderRadius: mobileTheme.radius.pill,
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  headerPillText: {
-    color: mobileTheme.colors.accentDark,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.black,
   },
   inlineErrorText: {
     color: mobileTheme.colors.danger,
@@ -546,37 +558,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: mobileTheme.spacing.sm,
   },
-  clearFiltersButton: {
-    borderRadius: mobileTheme.radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  clearFiltersText: {
-    color: mobileTheme.colors.accentDark,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.bold,
-  },
-  primaryButton: {
-    backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
-    marginTop: mobileTheme.spacing.md,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-  },
-  primaryButtonText: {
-    color: mobileTheme.colors.textOnAccent,
-    fontWeight: mobileTheme.font.extrabold,
-  },
-  secondaryButton: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.pill,
-    marginTop: mobileTheme.spacing.md,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-  },
-  secondaryButtonText: {
-    color: mobileTheme.colors.text,
-    fontWeight: mobileTheme.font.extrabold,
+  fab: {
+    bottom: 20,
+    position: 'absolute',
+    right: 18,
+    ...mobileTheme.shadow.fab,
   },
   sheetMessage: {
     color: mobileTheme.colors.textMuted,
@@ -591,8 +577,10 @@ const styles = StyleSheet.create({
     gap: mobileTheme.spacing.sm,
   },
   summaryCard: {
-    alignItems: 'flex-start',
     flex: 1,
+  },
+  summaryCardContent: {
+    alignItems: 'flex-start',
     gap: 4,
     padding: mobileTheme.spacing.sm,
   },

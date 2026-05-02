@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { InfoBadge, SurfaceCard } from '@/components/mobile/primitives';
+import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
 import { mobileTheme, priorityTone, statusTone } from '@/components/mobile/theme';
 
 function formatStatus(value: string) {
@@ -36,32 +36,44 @@ export function TaskCard({
   const statusColors = statusTone(status);
   const priorityColors = priorityTone(priority);
   const hasDueDate = dueLabel.toLowerCase() !== 'no due date';
+  const completed = status === 'done';
 
   return (
-    <View style={styles.cardShell}>
-      <SurfaceCard style={styles.card}>
+    <View style={[styles.cardShell, completed ? styles.cardShellComplete : null]}>
+      <GlassCard variant="fake" style={styles.card} contentStyle={styles.cardContent}>
         <View style={[styles.leftAccent, { backgroundColor: statusColors.color }]} />
         <Pressable disabled={saving} onPress={onOpen} style={styles.mainTapArea}>
-          <Text numberOfLines={2} style={styles.title}>
-            {title}
-          </Text>
+          <View style={styles.titleRow}>
+            <View
+              style={[
+                styles.statusCircle,
+                { borderColor: statusColors.color },
+                completed ? { backgroundColor: statusColors.color } : null,
+              ]}
+            >
+              {completed ? (
+                <Ionicons color={mobileTheme.colors.textOnAccent} name="checkmark" size={13} />
+              ) : null}
+            </View>
+            <Text numberOfLines={2} style={[styles.title, completed ? styles.titleComplete : null]}>
+              {title}
+            </Text>
+          </View>
           <Text numberOfLines={1} style={styles.meta}>
             {project}
             {goal ? ` · ${goal}` : ''}
           </Text>
 
           <View style={styles.indicatorsRow}>
-            <InfoBadge
-              backgroundColor={statusColors.background}
-              dot={statusColors.dot}
+            <GlassPill
               label={formatStatus(status)}
-              textColor={statusColors.color}
+              leftIcon={<View style={[styles.pillDot, { backgroundColor: statusColors.dot }]} />}
+              tone={status === 'done' ? 'success' : status === 'blocked' ? 'danger' : 'primary'}
             />
-            <InfoBadge
-              backgroundColor={priorityColors.background}
-              dot={priorityColors.dot}
+            <GlassPill
               label={priority}
-              textColor={priorityColors.color}
+              leftIcon={<View style={[styles.pillDot, { backgroundColor: priorityColors.dot }]} />}
+              tone={priority === 'urgent' ? 'danger' : priority === 'high' ? 'warning' : 'default'}
             />
           </View>
 
@@ -104,16 +116,21 @@ export function TaskCard({
         </Pressable>
 
         <View style={styles.actionsRow}>
-          <Pressable disabled={saving} onPress={onOpen} style={styles.secondaryAction}>
-            {saving ? (
-              <ActivityIndicator color={mobileTheme.colors.accentDark} size="small" />
-            ) : (
-              <>
+          <GlassButton
+            disabled={saving}
+            leftIcon={
+              saving ? undefined : (
                 <Ionicons color={mobileTheme.colors.accentDark} name="open-outline" size={15} />
-                <Text style={styles.secondaryActionText}>Edit</Text>
-              </>
-            )}
-          </Pressable>
+              )
+            }
+            loading={saving}
+            onPress={onOpen}
+            size="md"
+            style={styles.secondaryAction}
+            textStyle={styles.secondaryActionText}
+            title="Edit"
+            variant="secondary"
+          />
           <Pressable
             accessibilityLabel="Open task actions"
             disabled={saving}
@@ -123,7 +140,7 @@ export function TaskCard({
             <Ionicons color={mobileTheme.colors.textMuted} name="ellipsis-horizontal" size={18} />
           </Pressable>
         </View>
-      </SurfaceCard>
+      </GlassCard>
     </View>
   );
 }
@@ -136,9 +153,9 @@ const styles = StyleSheet.create({
   },
   blockedBox: {
     alignItems: 'flex-start',
-    backgroundColor: mobileTheme.colors.dangerBg,
-    borderLeftColor: mobileTheme.colors.blocked,
-    borderLeftWidth: 3,
+    backgroundColor: 'rgba(237,233,254,0.72)',
+    borderColor: 'rgba(124,58,237,0.18)',
+    borderWidth: 1,
     borderRadius: mobileTheme.radius.sm,
     flexDirection: 'row',
     gap: 7,
@@ -155,17 +172,24 @@ const styles = StyleSheet.create({
   },
   card: {
     overflow: 'hidden',
-    paddingLeft: mobileTheme.spacing.xl,
     position: 'relative',
+  },
+  cardContent: {
+    paddingLeft: mobileTheme.spacing.xl,
   },
   cardShell: {
     borderRadius: mobileTheme.radius.card,
     ...mobileTheme.shadow.cardHover,
   },
+  cardShellComplete: {
+    opacity: 0.72,
+  },
   iconAction: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
+    backgroundColor: mobileTheme.glass.surfaceStrong,
+    borderColor: mobileTheme.glass.border,
     borderRadius: mobileTheme.radius.pill,
+    borderWidth: 1,
     height: 40,
     justifyContent: 'center',
     width: 40,
@@ -181,13 +205,13 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.sm,
   },
   leftAccent: {
-    borderBottomLeftRadius: mobileTheme.radius.card,
-    borderTopLeftRadius: mobileTheme.radius.card,
+    borderRadius: mobileTheme.radius.pill,
     bottom: 0,
-    left: 0,
+    left: mobileTheme.spacing.sm,
+    opacity: 0.7,
     position: 'absolute',
-    top: 0,
-    width: 4,
+    top: mobileTheme.spacing.lg,
+    width: 5,
   },
   meta: {
     color: mobileTheme.colors.textMuted,
@@ -202,8 +226,10 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
+    backgroundColor: mobileTheme.glass.fakeBackground,
+    borderColor: mobileTheme.glass.border,
     borderRadius: mobileTheme.radius.pill,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 4,
     maxWidth: '100%',
@@ -223,14 +249,7 @@ const styles = StyleSheet.create({
     fontWeight: mobileTheme.font.bold,
   },
   secondaryAction: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderRadius: mobileTheme.radius.pill,
     flex: 1,
-    flexDirection: 'row',
-    gap: 6,
-    justifyContent: 'center',
-    minHeight: 44,
   },
   secondaryActionText: {
     color: mobileTheme.colors.accentDark,
@@ -238,11 +257,34 @@ const styles = StyleSheet.create({
     fontWeight: mobileTheme.font.bold,
     letterSpacing: 0.2,
   },
+  pillDot: {
+    borderRadius: mobileTheme.radius.pill,
+    height: 7,
+    width: 7,
+  },
+  statusCircle: {
+    alignItems: 'center',
+    borderRadius: mobileTheme.radius.pill,
+    borderWidth: 2,
+    height: 22,
+    justifyContent: 'center',
+    marginTop: 1,
+    width: 22,
+  },
   title: {
     color: mobileTheme.colors.text,
+    flex: 1,
     fontSize: 16,
     fontWeight: mobileTheme.font.extrabold,
     letterSpacing: -0.2,
     lineHeight: 22,
+  },
+  titleComplete: {
+    color: mobileTheme.colors.textMuted,
+  },
+  titleRow: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
   },
 });

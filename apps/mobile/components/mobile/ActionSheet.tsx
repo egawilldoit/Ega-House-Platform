@@ -2,6 +2,7 @@ import { ReactNode, useMemo } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { GlassBottomSheet } from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
 
 export type ActionSheetItem = {
@@ -85,8 +86,7 @@ export function ActionSheet({
     >
       <SafeAreaView edges={['bottom']} style={styles.overlay}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
-        <View style={styles.sheet}>
-          <View style={styles.handle} />
+        <GlassBottomSheet style={styles.sheet} contentStyle={styles.sheetContent}>
           <Text style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
           <ScrollView style={styles.actions} contentContainerStyle={styles.actionsContent}>
@@ -101,7 +101,11 @@ export function ActionSheet({
                       item.onPress();
                       onClose();
                     }}
-                    style={[styles.action, item.disabled ? styles.actionDisabled : null]}
+                    style={({ pressed }) => [
+                      styles.action,
+                      item.disabled ? styles.actionDisabled : null,
+                      pressed && !item.disabled ? styles.actionPressed : null,
+                    ]}
                   >
                     <View style={[styles.actionDot, { backgroundColor: getActionDotColor(item) }]} />
                     <View style={styles.actionCopy}>
@@ -118,7 +122,7 @@ export function ActionSheet({
             ))}
           </ScrollView>
           {footer ? <View style={styles.footer}>{footer}</View> : null}
-        </View>
+        </GlassBottomSheet>
       </SafeAreaView>
     </Modal>
   );
@@ -127,11 +131,14 @@ export function ActionSheet({
 const styles = StyleSheet.create({
   action: {
     alignItems: 'center',
-    borderBottomColor: mobileTheme.colors.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    backgroundColor: mobileTheme.glass.fakeBackground,
+    borderColor: mobileTheme.glass.border,
+    borderRadius: mobileTheme.radius.lg,
+    borderWidth: 1,
     flexDirection: 'row',
     gap: 12,
-    paddingHorizontal: 4,
+    marginTop: 8,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 14,
   },
   actionCopy: {
@@ -155,11 +162,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: mobileTheme.font.semibold,
   },
+  actionPressed: {
+    opacity: 0.78,
+  },
   actions: {
     maxHeight: 420,
   },
   actionsContent: {
-    paddingBottom: 4,
+    paddingBottom: mobileTheme.spacing.xs,
   },
   destructiveText: {
     color: mobileTheme.colors.danger,
@@ -172,30 +182,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: mobileTheme.font.bold,
     letterSpacing: 0.8,
-    marginTop: 8,
+    marginTop: mobileTheme.spacing.md,
     textTransform: 'uppercase',
   },
-  handle: {
-    alignSelf: 'center',
-    backgroundColor: mobileTheme.colors.borderStrong,
-    borderRadius: 999,
-    height: 4,
-    marginBottom: 14,
-    width: 40,
-  },
   overlay: {
-    backgroundColor: mobileTheme.colors.overlay,
+    backgroundColor: 'rgba(10,15,30,0.32)',
     flex: 1,
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: mobileTheme.colors.surface,
-    borderTopLeftRadius: mobileTheme.radius.sheet,
-    borderTopRightRadius: mobileTheme.radius.sheet,
-    paddingBottom: 20,
+    marginHorizontal: 0,
+  },
+  sheetContent: {
     paddingHorizontal: 16,
-    paddingTop: 10,
-    ...mobileTheme.shadow.sheet,
   },
   subtitle: {
     color: mobileTheme.colors.textMuted,
