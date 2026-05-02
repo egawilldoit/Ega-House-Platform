@@ -1,8 +1,9 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Tabs } from 'expo-router';
 import { type ComponentProps } from 'react';
-import { Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
+import { GlassBottomTab } from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -18,37 +19,11 @@ function TabIcon({ name, color, focused }: { name: IconName; color: string; focu
 export default function AppTabsLayout() {
   return (
     <Tabs
+      tabBar={(props) => <GlassBottomTab {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: mobileTheme.colors.accent,
         tabBarInactiveTintColor: mobileTheme.colors.textSubtle,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: mobileTheme.font.bold,
-          letterSpacing: 0.3,
-          marginBottom: Platform.OS === 'ios' ? 0 : 6,
-        },
-        tabBarStyle: {
-          backgroundColor: mobileTheme.colors.overlayLight,
-          borderTopWidth: 1,
-          borderTopColor: mobileTheme.colors.border,
-          height: Platform.OS === 'ios' ? 82 : 68,
-          paddingTop: 6,
-          paddingBottom: Platform.OS === 'ios' ? 22 : 10,
-        },
-        tabBarBackground: () => (
-          <View
-            style={[
-              StyleSheet.absoluteFill,
-              {
-                backgroundColor:
-                  Platform.OS === 'ios'
-                    ? mobileTheme.colors.tabBarBgIos
-                    : mobileTheme.colors.tabBarBgAndroid,
-              },
-            ]}
-          />
-        ),
       }}
     >
       <Tabs.Screen
