@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/supabase/database.types";
+import { generateNextTaskForCompletedRecurrence } from "@/lib/services/task-service";
 import { stopActiveTimerSessionsForTask } from "@/lib/services/timer-service";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import {
@@ -116,7 +117,7 @@ export async function markTaskDone(
     return { errorMessage: stopResult.errorMessage };
   }
 
-  return updateTaskWorkflowFields(
+  const updateResult = await updateTaskWorkflowFields(
     normalizedTaskId,
     {
       status: "done",
@@ -125,6 +126,15 @@ export async function markTaskDone(
     },
     { ...options, supabase },
   );
+
+  if (updateResult.errorMessage) {
+    return updateResult;
+  }
+
+  return generateNextTaskForCompletedRecurrence(normalizedTaskId, {
+    supabase,
+    completedAtIso: nowIso,
+  });
 }
 
 export async function markTaskTodo(

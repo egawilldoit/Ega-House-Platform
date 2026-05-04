@@ -59,6 +59,25 @@ function createTaskTransitionSupabaseMock(options?: {
     from(table: string) {
       if (table === "tasks") {
         return {
+          select(columns: string) {
+            assert.ok(
+              columns ===
+                "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
+            );
+            const state = { taskId: "" };
+
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "id");
+                state.taskId = value;
+                return this;
+              },
+              maybeSingle: async () => ({
+                data: tasks.find((task) => task.id === state.taskId) ?? null,
+                error: null,
+              }),
+            };
+          },
           update(payload: Record<string, unknown>) {
             const state = { taskId: "" };
             return {
@@ -89,6 +108,20 @@ function createTaskTransitionSupabaseMock(options?: {
               },
             };
           },
+        };
+      }
+
+      if (table === "task_recurrences") {
+        return {
+          select: () => ({
+            eq: (column: string, value: string) => {
+              assert.equal(column, "task_id");
+              assert.equal(value, "task-1");
+              return {
+                maybeSingle: async () => ({ data: null, error: null }),
+              };
+            },
+          }),
         };
       }
 

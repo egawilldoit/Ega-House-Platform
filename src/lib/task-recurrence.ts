@@ -216,8 +216,17 @@ function lastDayOfUtcMonth(year: number, zeroBasedMonth: number) {
 }
 
 export function getNextTaskRecurrenceDate(rule: TaskRecurrenceRule, fromDate: string) {
+  return getNextTaskRecurrenceDateFromAnchor(rule, fromDate, fromDate);
+}
+
+export function getNextTaskRecurrenceDateFromAnchor(
+  rule: TaskRecurrenceRule,
+  fromDate: string,
+  anchorDate: string,
+) {
   const date = parseDateOnly(fromDate);
-  if (!date) {
+  const anchor = parseDateOnly(anchorDate);
+  if (!date || !anchor) {
     return null;
   }
 
@@ -234,7 +243,7 @@ export function getNextTaskRecurrenceDate(rule: TaskRecurrenceRule, fromDate: st
   }
 
   if (rule === "monthly:day-of-month") {
-    const originalDay = date.getUTCDate();
+    const originalDay = anchor.getUTCDate();
     const nextMonth = date.getUTCMonth() + 1;
     const nextYear = date.getUTCFullYear() + Math.floor(nextMonth / 12);
     const normalizedNextMonth = nextMonth % 12;
@@ -250,4 +259,64 @@ export function getNextTaskRecurrenceDate(rule: TaskRecurrenceRule, fromDate: st
   const currentWeekday = date.getUTCDay();
   const daysUntilTarget = (targetWeekday - currentWeekday + 7) % 7 || 7;
   return toIsoDate(addUtcDays(date, daysUntilTarget));
+}
+
+function getLocalIsoDateForTimezone(date: Date, timezone: string) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  if (!year || !month || !day) {
+    return null;
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+export function getFirstTaskRecurrenceDateAfter(input: {
+  rule: TaskRecurrenceRule;
+  anchorDate: string;
+  nextOccurrenceDate: string;
+  completedAtIso: string;
+  timezone: string;
+}) {
+  if (
+    !isValidTaskRecurrenceAnchorDate(input.anchorDate) ||
+    !isValidTaskRecurrenceAnchorDate(input.nextOccurrenceDate) ||
+    !isValidTaskRecurrenceTimezone(input.timezone)
+  ) {
+    return null;
+  }
+
+  const completedAt = new Date(input.completedAtIso);
+  if (Number.isNaN(completedAt.getTime())) {
+    return null;
+  }
+
+  const completionLocalDate = getLocalIsoDateForTimezone(completedAt, input.timezone);
+  if (!completionLocalDate) {
+    return null;
+  }
+
+  let candidate = input.nextOccurrenceDate;
+  while (candidate <= completionLocalDate) {
+    const next = getNextTaskRecurrenceDateFromAnchor(
+      input.rule,
+      candidate,
+      input.anchorDate,
+    );
+    if (!next) {
+      return null;
+    }
+    candidate = next;
+  }
+
+  return candidate;
 }

@@ -7,6 +7,8 @@ import {
 } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
+  getFirstTaskRecurrenceDateAfter,
+  getNextTaskRecurrenceDateFromAnchor,
   isTaskRecurrenceRule,
   normalizeTaskRecurrenceScheduleInput,
   type TaskRecurrenceRule,
@@ -1216,6 +1218,212 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
   };
 }
 
+type RecurringCompletionTaskSnapshot = {
+  id: string;
+  owner_user_id: string | null;
+  project_id: string;
+  goal_id: string | null;
+  title: string;
+  description: string | null;
+  priority: string;
+  estimate_minutes: number | null;
+};
+
+async function findExistingGeneratedRecurringTask(
+  supabase: SupabaseServerClient,
+  task: RecurringCompletionTaskSnapshot,
+  dueDate: string,
+) {
+  let query = supabase
+    .from("tasks")
+    .select("id")
+    .eq("project_id", task.project_id)
+    .eq("title", task.title)
+    .eq("due_date", dueDate)
+    .neq("id", task.id)
+    .limit(1);
+
+  query = task.goal_id
+    ? query.eq("goal_id", task.goal_id)
+    : query.is("goal_id", null);
+
+  if (task.owner_user_id) {
+    query = query.eq("owner_user_id", task.owner_user_id);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to verify recurring task generation right now.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data,
+  };
+}
+
+export async function generateNextTaskForCompletedRecurrence(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient; completedAtIso?: string },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const normalizedTaskId = taskId.trim();
+  const completedAtIso = options?.completedAtIso ?? new Date().toISOString();
+
+  if (!normalizedTaskId) {
+    return { errorMessage: "Task update request is invalid." };
+  }
+
+  const { data: recurrenceRow, error: recurrenceError } = await supabase
+    .from("task_recurrences")
+    .select(
+      "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
+    )
+    .eq("task_id", normalizedTaskId)
+    .maybeSingle();
+
+  if (recurrenceError) {
+    return { errorMessage: "Unable to load recurring preset right now." };
+  }
+
+  if (!recurrenceRow) {
+    return { errorMessage: null };
+  }
+
+  const recurrence = normalizeTaskRecurrenceRow(recurrenceRow);
+  if (!recurrence) {
+    return { errorMessage: "Recurring preset is not supported." };
+  }
+
+  const generationDate = getFirstTaskRecurrenceDateAfter({
+    rule: recurrence.rule,
+    anchorDate: recurrence.anchor_date,
+    nextOccurrenceDate: recurrence.next_occurrence_date,
+    completedAtIso,
+    timezone: recurrence.timezone,
+  });
+  if (!generationDate) {
+    return { errorMessage: "Recurring next occurrence date is invalid." };
+  }
+
+  const nextOccurrenceDate = getNextTaskRecurrenceDateFromAnchor(
+    recurrence.rule,
+    generationDate,
+    recurrence.anchor_date,
+  );
+  if (!nextOccurrenceDate) {
+    return { errorMessage: "Recurring next occurrence date is invalid." };
+  }
+
+  const { data: task, error: taskError } = await supabase
+    .from("tasks")
+    .select(
+      "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
+    )
+    .eq("id", normalizedTaskId)
+    .maybeSingle();
+
+  if (taskError) {
+    return { errorMessage: "Unable to load task right now." };
+  }
+
+  if (!task) {
+    return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  const existingResult = await findExistingGeneratedRecurringTask(
+    supabase,
+    task,
+    generationDate,
+  );
+  if (existingResult.errorMessage) {
+    return { errorMessage: existingResult.errorMessage };
+  }
+
+  if (existingResult.data) {
+    const { error } = await supabase
+      .from("task_recurrences")
+      .update({
+        last_generated_at: completedAtIso,
+        next_occurrence_date: nextOccurrenceDate,
+        updated_at: completedAtIso,
+      })
+      .eq("id", recurrence.id);
+
+    return {
+      errorMessage: error ? "Unable to update recurring preset right now." : null,
+    };
+  }
+
+  const { data: claimedRecurrence, error: claimError } = await supabase
+    .from("task_recurrences")
+    .update({
+      last_generated_at: completedAtIso,
+      next_occurrence_date: nextOccurrenceDate,
+      updated_at: completedAtIso,
+    })
+    .eq("id", recurrence.id)
+    .is("last_generated_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (claimError) {
+    return { errorMessage: "Unable to update recurring preset right now." };
+  }
+
+  if (!claimedRecurrence) {
+    return { errorMessage: null };
+  }
+
+  const { data: createdTask, error: createError } = await supabase
+    .from("tasks")
+    .insert({
+      owner_user_id: task.owner_user_id,
+      project_id: task.project_id,
+      goal_id: task.goal_id,
+      title: task.title,
+      description: task.description,
+      blocked_reason: null,
+      status: "todo",
+      priority: task.priority,
+      due_date: generationDate,
+      planned_for_date: null,
+      estimate_minutes: task.estimate_minutes,
+      focus_rank: null,
+      completed_at: null,
+      archived_at: null,
+      archived_by: null,
+      updated_at: completedAtIso,
+    } satisfies TablesInsert<"tasks">)
+    .select("id")
+    .maybeSingle();
+
+  if (createError || !createdTask) {
+    return { errorMessage: "Unable to create next recurring task right now." };
+  }
+
+  const { error: createRecurrenceError } = await supabase.from("task_recurrences").insert({
+    owner_user_id: task.owner_user_id,
+    task_id: createdTask.id,
+    rule: recurrence.rule,
+    anchor_date: recurrence.anchor_date,
+    timezone: recurrence.timezone,
+    next_occurrence_date: nextOccurrenceDate,
+    last_generated_at: null,
+    updated_at: completedAtIso,
+  });
+
+  if (createRecurrenceError) {
+    return { errorMessage: "Unable to link next recurring task right now." };
+  }
+
+  return { errorMessage: null };
+}
+
 export async function updateTaskInline(
   input: ValidatedTaskInlineUpdateInput,
   options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
@@ -1343,6 +1551,20 @@ export async function updateTaskInline(
 
     if (recurrenceResult.errorMessage) {
       return { errorMessage: recurrenceResult.errorMessage };
+    }
+  }
+
+  if (input.status === "done") {
+    const recurrenceGenerationResult = await generateNextTaskForCompletedRecurrence(
+      input.taskId,
+      {
+        supabase,
+        completedAtIso: updatePayload.completed_at ?? updatedAtIso,
+      },
+    );
+
+    if (recurrenceGenerationResult.errorMessage) {
+      return { errorMessage: recurrenceGenerationResult.errorMessage };
     }
   }
 

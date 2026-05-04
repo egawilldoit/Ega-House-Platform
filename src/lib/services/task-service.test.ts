@@ -70,33 +70,83 @@ type MockSession = {
 
 type MockTask = {
   id: string;
+  owner_user_id?: string | null;
+  project_id?: string;
+  goal_id?: string | null;
+  title?: string;
+  description?: string | null;
   status: string;
+  priority?: string;
+  due_date?: string | null;
+  planned_for_date?: string | null;
+  estimate_minutes?: number | null;
+  focus_rank?: number | null;
   completed_at: string | null;
   archived_at: string | null;
+  archived_by?: string | null;
+};
+
+type MockRecurrence = {
+  id: string;
+  task_id: string;
+  rule: string;
+  anchor_date: string;
+  timezone: string;
+  next_occurrence_date: string;
+  last_generated_at: string | null;
+  created_at: string;
+  updated_at: string;
+  owner_user_id?: string | null;
 };
 
 function createTaskInlineSupabaseMock(options?: {
   tasks?: MockTask[];
   sessions?: MockSession[];
+  recurrences?: MockRecurrence[];
   failSessionLookup?: boolean;
   failSessionUpdateId?: string;
   failTaskUpdate?: boolean;
   taskUpdateReturnsNoRow?: boolean;
 }) {
-  const tasks = [
-    ...(options?.tasks ?? [
+  const tasks = (options?.tasks ?? [
       {
         id: "task-1",
+        owner_user_id: "user-1",
+        project_id: "project-1",
+        goal_id: null,
+        title: "Write plan",
+        description: null,
         status: "todo",
+        priority: "medium",
+        due_date: null,
+        planned_for_date: null,
+        estimate_minutes: null,
+        focus_rank: null,
         completed_at: null,
         archived_at: null,
+        archived_by: null,
       },
-    ]),
-  ];
+    ]).map((task) => ({
+      owner_user_id: "user-1",
+      project_id: "project-1",
+      goal_id: null,
+      title: "Write plan",
+      description: null,
+      priority: "medium",
+      due_date: null,
+      planned_for_date: null,
+      estimate_minutes: null,
+      focus_rank: null,
+      archived_by: null,
+      ...task,
+    }));
   const sessions = [...(options?.sessions ?? [])];
+  const recurrences = [...(options?.recurrences ?? [])];
   const taskUpdateCalls: Array<{ payload: Record<string, unknown>; taskId: string }> = [];
+  const taskInsertCalls: Array<Record<string, unknown>> = [];
   const sessionUpdateCalls: Array<{ payload: Record<string, unknown>; sessionId: string }> = [];
   const recurrenceUpdateCalls: Array<Record<string, unknown>> = [];
+  const recurrenceInsertCalls: Array<Record<string, unknown>> = [];
   const recurrenceDeleteTaskIds: string[] = [];
   let sessionLookupCount = 0;
 
@@ -220,20 +270,73 @@ function createTaskInlineSupabaseMock(options?: {
       if (table === "tasks") {
         return {
           select(columns: string) {
-            assert.ok(columns === "id, status, completed_at, archived_at" || columns === "id");
-            const state = { taskId: "" };
-
-            return {
-              eq(column: string, value: string) {
-                assert.equal(column, "id");
-                state.taskId = value;
-                return this;
-              },
-              maybeSingle: async () => ({
-                data: tasks.find((task) => task.id === state.taskId) ?? null,
-                error: null,
-              }),
+            assert.ok(
+              columns === "id, status, completed_at, archived_at" ||
+                columns === "id" ||
+                columns ===
+                  "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
+            );
+            const state = {
+              taskId: "",
+              projectId: null as string | null,
+              goalId: undefined as string | null | undefined,
+              title: null as string | null,
+              dueDate: null as string | null,
+              excludeId: null as string | null,
+              ownerUserId: null as string | null,
             };
+
+            const query = {
+              eq(column: string, value: string) {
+                if (column === "id") {
+                  state.taskId = value;
+                } else if (column === "project_id") {
+                  state.projectId = value;
+                } else if (column === "goal_id") {
+                  state.goalId = value;
+                } else if (column === "title") {
+                  state.title = value;
+                } else if (column === "due_date") {
+                  state.dueDate = value;
+                } else if (column === "owner_user_id") {
+                  state.ownerUserId = value;
+                } else {
+                  assert.fail(`Unexpected task eq column: ${column}`);
+                }
+                return query;
+              },
+              neq(column: string, value: string) {
+                assert.equal(column, "id");
+                state.excludeId = value;
+                return query;
+              },
+              is(column: string, value: null) {
+                assert.equal(column, "goal_id");
+                assert.equal(value, null);
+                state.goalId = null;
+                return query;
+              },
+              limit(value: number) {
+                assert.equal(value, 1);
+                return query;
+              },
+              maybeSingle: async () => {
+                const data =
+                  columns === "id" && !state.taskId
+                    ? tasks.find((task) =>
+                        task.project_id === state.projectId &&
+                        task.goal_id === state.goalId &&
+                        task.title === state.title &&
+                        task.due_date === state.dueDate &&
+                        task.id !== state.excludeId &&
+                        (!state.ownerUserId || task.owner_user_id === state.ownerUserId),
+                      ) ?? null
+                    : tasks.find((task) => task.id === state.taskId) ?? null;
+                return { data, error: null };
+              },
+            };
+
+            return query;
           },
           update(payload: Record<string, unknown>) {
             const state = { taskId: "" };
@@ -277,23 +380,112 @@ function createTaskInlineSupabaseMock(options?: {
               },
             };
           },
+          insert(row: Record<string, unknown>) {
+            taskInsertCalls.push(row);
+            const createdId = `task-generated-${taskInsertCalls.length}`;
+            tasks.push({
+              id: createdId,
+              owner_user_id: (row.owner_user_id as string | null) ?? null,
+              project_id: String(row.project_id),
+              goal_id: (row.goal_id as string | null) ?? null,
+              title: String(row.title),
+              description: (row.description as string | null) ?? null,
+              status: String(row.status ?? "todo"),
+              priority: String(row.priority ?? "medium"),
+              due_date: (row.due_date as string | null) ?? null,
+              planned_for_date: (row.planned_for_date as string | null) ?? null,
+              estimate_minutes: (row.estimate_minutes as number | null) ?? null,
+              focus_rank: (row.focus_rank as number | null) ?? null,
+              completed_at: (row.completed_at as string | null) ?? null,
+              archived_at: (row.archived_at as string | null) ?? null,
+              archived_by: (row.archived_by as string | null) ?? null,
+            });
+            return {
+              select(columns: string) {
+                assert.equal(columns, "id");
+                return {
+                  maybeSingle: async () => ({ data: { id: createdId }, error: null }),
+                };
+              },
+            };
+          },
         };
       }
 
       if (table === "task_recurrences") {
         return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: { id: "recurrence-1" },
-                error: null,
-              }),
-            }),
-          }),
+          select: (columns: string) => {
+            const state = { taskId: "" };
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "task_id");
+                state.taskId = value;
+                return this;
+              },
+              maybeSingle: async () => {
+                if (columns === "id") {
+                  return { data: { id: "recurrence-1" }, error: null };
+                }
+
+                return {
+                  data: recurrences.find((recurrence) => recurrence.task_id === state.taskId) ?? null,
+                  error: null,
+                };
+              },
+            };
+          },
           update(payload: Record<string, unknown>) {
             recurrenceUpdateCalls.push(payload);
+            const state = {
+              id: "",
+              taskId: "",
+              requireLastGeneratedNull: false,
+            };
             return {
-              eq: async () => ({ data: null, error: null }),
+              eq(column: string, value: string) {
+                if (column === "id") {
+                  state.id = value;
+                } else if (column === "task_id") {
+                  state.taskId = value;
+                }
+                return this;
+              },
+              is(column: string, value: null) {
+                assert.equal(column, "last_generated_at");
+                assert.equal(value, null);
+                state.requireLastGeneratedNull = true;
+                return this;
+              },
+              select(columns: string) {
+                assert.equal(columns, "id");
+                return {
+                  maybeSingle: async () => {
+                    const recurrence = recurrences.find((item) => item.id === state.id);
+                    if (!recurrence) {
+                      return { data: null, error: null };
+                    }
+                    if (
+                      state.requireLastGeneratedNull &&
+                      recurrence.last_generated_at !== null
+                    ) {
+                      return { data: null, error: null };
+                    }
+                    Object.assign(recurrence, payload);
+                    return { data: { id: recurrence.id }, error: null };
+                  },
+                };
+              },
+              then(resolve: (value: { data: null; error: null }) => void) {
+                const recurrence = recurrences.find(
+                  (item) =>
+                    (state.id && item.id === state.id) ||
+                    (state.taskId && item.task_id === state.taskId),
+                );
+                if (recurrence) {
+                  Object.assign(recurrence, payload);
+                }
+                return Promise.resolve({ data: null, error: null }).then(resolve);
+              },
             };
           },
           delete() {
@@ -304,7 +496,22 @@ function createTaskInlineSupabaseMock(options?: {
               },
             };
           },
-          insert: async () => ({ data: null, error: null }),
+          insert: async (row: Record<string, unknown>) => {
+            recurrenceInsertCalls.push(row);
+            recurrences.push({
+              id: `recurrence-generated-${recurrenceInsertCalls.length}`,
+              task_id: String(row.task_id),
+              rule: String(row.rule),
+              anchor_date: String(row.anchor_date),
+              timezone: String(row.timezone),
+              next_occurrence_date: String(row.next_occurrence_date),
+              last_generated_at: (row.last_generated_at as string | null) ?? null,
+              created_at: "2026-04-21T10:00:00.000Z",
+              updated_at: String(row.updated_at ?? "2026-04-21T10:00:00.000Z"),
+              owner_user_id: (row.owner_user_id as string | null) ?? null,
+            });
+            return { data: null, error: null };
+          },
         };
       }
 
@@ -316,9 +523,12 @@ function createTaskInlineSupabaseMock(options?: {
     supabase: supabase as never,
     tasks,
     sessions,
+    recurrences,
     taskUpdateCalls,
+    taskInsertCalls,
     sessionUpdateCalls,
     recurrenceUpdateCalls,
+    recurrenceInsertCalls,
     recurrenceDeleteTaskIds,
     getSessionLookupCount() {
       return sessionLookupCount;
@@ -711,6 +921,197 @@ test("inline update clears recurrence preset when empty rule provided", async ()
 
   assert.equal(result.errorMessage, null);
   assert.deepEqual(mock.recurrenceDeleteTaskIds, ["task-1"]);
+});
+
+function createDailyRecurrence(overrides?: Partial<MockRecurrence>): MockRecurrence {
+  return {
+    id: "recurrence-1",
+    task_id: "task-1",
+    rule: "daily",
+    anchor_date: "2026-05-01",
+    timezone: "UTC",
+    next_occurrence_date: "2026-05-05",
+    last_generated_at: null,
+    created_at: "2026-05-01T00:00:00.000Z",
+    updated_at: "2026-05-01T00:00:00.000Z",
+    owner_user_id: "user-1",
+    ...overrides,
+  };
+}
+
+test("completing a recurring task creates exactly one next task with carried metadata", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        owner_user_id: "user-1",
+        project_id: "project-1",
+        goal_id: "goal-1",
+        title: "Daily execution review",
+        description: "Capture evidence",
+        status: "todo",
+        priority: "high",
+        due_date: "2026-05-04",
+        estimate_minutes: 30,
+        completed_at: null,
+        archived_at: null,
+      },
+    ],
+    recurrences: [createDailyRecurrence()],
+  });
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "high",
+      dueDate: "2026-05-04",
+      estimateMinutes: 30,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-04T16:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.deepEqual(mock.taskInsertCalls[0], {
+    owner_user_id: "user-1",
+    project_id: "project-1",
+    goal_id: "goal-1",
+    title: "Daily execution review",
+    description: "Capture evidence",
+    blocked_reason: null,
+    status: "todo",
+    priority: "high",
+    due_date: "2026-05-05",
+    planned_for_date: null,
+    estimate_minutes: 30,
+    focus_rank: null,
+    completed_at: null,
+    archived_at: null,
+    archived_by: null,
+    updated_at: "2026-05-04T16:00:00.000Z",
+  });
+  assert.deepEqual(mock.recurrenceInsertCalls[0], {
+    owner_user_id: "user-1",
+    task_id: "task-generated-1",
+    rule: "daily",
+    anchor_date: "2026-05-01",
+    timezone: "UTC",
+    next_occurrence_date: "2026-05-06",
+    last_generated_at: null,
+    updated_at: "2026-05-04T16:00:00.000Z",
+  });
+  assert.equal(mock.recurrences[0]?.last_generated_at, "2026-05-04T16:00:00.000Z");
+  assert.equal(mock.recurrences[0]?.next_occurrence_date, "2026-05-06");
+  assert.equal(mock.tasks.find((task) => task.id === "task-1")?.status, "done");
+  assert.equal(
+    mock.tasks.find((task) => task.id === "task-1")?.completed_at,
+    "2026-05-04T16:00:00.000Z",
+  );
+});
+
+test("completing a non-recurring task creates no next task", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-04T16:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.taskInsertCalls.length, 0);
+  assert.equal(mock.recurrenceInsertCalls.length, 0);
+});
+
+test("recurring task completion retry does not duplicate generated future task", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "todo",
+        completed_at: null,
+        archived_at: null,
+      },
+    ],
+    recurrences: [createDailyRecurrence()],
+  });
+
+  const first = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-04T16:00:00.000Z",
+    },
+  );
+  const retry = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-04T16:00:01.000Z",
+    },
+  );
+
+  assert.equal(first.errorMessage, null);
+  assert.equal(retry.errorMessage, null);
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.equal(mock.recurrenceInsertCalls.length, 1);
+});
+
+test("recurring completion skips missed occurrences and uses first valid future date", async () => {
+  const mock = createTaskInlineSupabaseMock({
+    recurrences: [
+      createDailyRecurrence({
+        next_occurrence_date: "2026-05-02",
+      }),
+    ],
+  });
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "done",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-04T16:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.taskInsertCalls[0]?.due_date, "2026-05-05");
+  assert.equal(mock.recurrences[0]?.next_occurrence_date, "2026-05-06");
 });
 
 test("inline validation rejects invalid recurrence preset", () => {

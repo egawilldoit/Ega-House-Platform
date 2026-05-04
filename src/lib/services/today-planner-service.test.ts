@@ -637,6 +637,35 @@ function createTodayStatusSupabaseMock(options?: {
               };
             }
 
+            if (
+              columns ===
+              "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes"
+            ) {
+              return {
+                eq(column: string, value: string) {
+                  assert.equal(column, "id");
+                  assert.equal(value, task.id);
+                  return {
+                    maybeSingle() {
+                      return Promise.resolve({
+                        data: {
+                          id: task.id,
+                          owner_user_id: "user-1",
+                          project_id: "project-1",
+                          goal_id: null,
+                          title: "Today task",
+                          description: null,
+                          priority: task.priority,
+                          estimate_minutes: task.estimate_minutes,
+                        },
+                        error: null,
+                      });
+                    },
+                  };
+                },
+              };
+            }
+
             assert.equal(columns, "status, priority, due_date, estimate_minutes, blocked_reason");
             return {
               eq(column: string, value: string) {
@@ -680,6 +709,22 @@ function createTodayStatusSupabaseMock(options?: {
               },
             };
           },
+        };
+      }
+
+      if (table === "task_recurrences") {
+        return {
+          select: () => ({
+            eq(column: string, value: string) {
+              assert.equal(column, "task_id");
+              assert.equal(value, task.id);
+              return {
+                maybeSingle() {
+                  return Promise.resolve({ data: null, error: null });
+                },
+              };
+            },
+          }),
         };
       }
 
