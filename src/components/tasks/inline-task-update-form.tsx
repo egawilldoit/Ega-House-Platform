@@ -55,6 +55,7 @@ export function InlineTaskUpdateForm({
   overflowActions,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
+  const [recurrenceTimezone, setRecurrenceTimezone] = useState("UTC");
   const updateFormId = `task-update-${taskId}`;
   const isArchived = Boolean(archivedAt);
   const isCompleted = isTaskCompletedStatus(defaultStatus);
@@ -63,11 +64,16 @@ export function InlineTaskUpdateForm({
     setSelectedStatus(defaultStatus);
   }, [defaultStatus]);
 
+  useEffect(() => {
+    setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+  }, []);
+
   return (
     <div className="space-y-3">
       <form id={updateFormId} action={action} className="space-y-3">
         <input type="hidden" name="taskId" value={taskId} />
         <input type="hidden" name="returnTo" value={returnTo} />
+        <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
         <div className="ega-glass-soft grid gap-3 rounded-[1rem] p-3 sm:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-2">
@@ -180,7 +186,6 @@ export function InlineTaskUpdateForm({
               name="estimateMinutes"
               value={defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : ""}
             />
-            <input type="hidden" name="recurrenceRule" value={defaultRecurrenceRule ?? ""} />
             <input type="hidden" name="blockedReason" value="" />
             <PendingSubmitButton size="sm" type="submit" variant="muted" pendingLabel="Marking done...">
               Mark done

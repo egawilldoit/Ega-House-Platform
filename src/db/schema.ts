@@ -213,6 +213,10 @@ export const taskRecurrences = pgTable(
       .notNull()
       .references(() => tasks.id, { onDelete: "cascade" }),
     rule: varchar("rule", { length: 64 }).notNull(),
+    anchorDate: date("anchor_date").notNull(),
+    timezone: varchar("timezone", { length: 128 }).notNull(),
+    nextOccurrenceDate: date("next_occurrence_date").notNull(),
+    lastGeneratedAt: timestamp("last_generated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

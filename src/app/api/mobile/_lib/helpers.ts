@@ -94,6 +94,10 @@ export function mapTaskRecordToMobileTaskItem(
     recurrence: task.task_recurrences[0]
       ? {
           rule: task.task_recurrences[0].rule,
+          anchorDate: task.task_recurrences[0].anchor_date,
+          timezone: task.task_recurrences[0].timezone,
+          nextOccurrenceDate: task.task_recurrences[0].next_occurrence_date,
+          lastGeneratedAt: task.task_recurrences[0].last_generated_at,
         }
       : null,
   };

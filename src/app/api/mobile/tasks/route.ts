@@ -141,8 +141,13 @@ export async function POST(request: Request) {
       {
         taskId: createdTaskId,
         recurrenceRule: validationResult.data.recurrenceRule,
+        recurrenceAnchorDate: validationResult.data.recurrenceAnchorDate,
+        recurrenceTimezone: validationResult.data.recurrenceTimezone,
       },
-      { supabase: authResult.supabase },
+      {
+        supabase: authResult.supabase,
+        fallbackAnchorDate: validationResult.data.dueDate ?? undefined,
+      },
     );
 
     if (recurrenceResult.errorMessage) {

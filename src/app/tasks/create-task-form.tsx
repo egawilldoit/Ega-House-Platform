@@ -46,6 +46,7 @@ export function buildCreateTaskFormInitialState({
         dueDate: "",
         estimateMinutes: "",
         recurrenceRule: "",
+        recurrenceTimezone: "",
         workedTimeStartedAt: "",
         workedTimeEndedAt: "",
         returnTo,
@@ -72,6 +73,9 @@ export function CreateTaskForm({
   );
   const [selectedStatus, setSelectedStatus] = useState(state.values.status);
   const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
+  const [recurrenceTimezone, setRecurrenceTimezone] = useState(
+    state.values.recurrenceTimezone,
+  );
   const availableGoalCount = goals.length;
 
   useEffect(() => {
@@ -80,6 +84,7 @@ export function CreateTaskForm({
 
   useEffect(() => {
     setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
+    setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   }, []);
 
   return (
@@ -90,6 +95,7 @@ export function CreateTaskForm({
         name="workedTimeTimezoneOffsetMinutes"
         value={timeZoneOffsetMinutes}
       />
+      <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
       <div className="ega-glass-soft rounded-[1.1rem] p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>

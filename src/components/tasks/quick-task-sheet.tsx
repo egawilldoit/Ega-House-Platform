@@ -155,6 +155,7 @@ function QuickTaskSheetPanel({
   const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");
   const [singleBlockedReason, setSingleBlockedReason] = useState("");
   const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
+  const [recurrenceTimezone, setRecurrenceTimezone] = useState("UTC");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
   ]);
@@ -173,6 +174,7 @@ function QuickTaskSheetPanel({
       dueDate: "",
       estimateMinutes: "",
       recurrenceRule: "",
+      recurrenceTimezone: "",
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo: DEFAULT_RETURN_TO,
@@ -291,6 +293,7 @@ function QuickTaskSheetPanel({
 
   useEffect(() => {
     setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
+    setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   }, []);
 
   useEffect(() => {
@@ -449,6 +452,7 @@ function QuickTaskSheetPanel({
                   name="workedTimeTimezoneOffsetMinutes"
                   value={timeZoneOffsetMinutes}
                 />
+                <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
                 <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
                   <div className="mb-4 flex items-start justify-between gap-3">

@@ -287,6 +287,7 @@ export default function TaskDetailScreen() {
           dueDate: draft.dueDate,
           estimateMinutes: estimateResult.value,
           recurrenceRule: draft.recurrenceRule,
+          recurrenceTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
           description: draft.description.trim() || null,
           blockedReason: draft.blockedReason.trim() || null,
         },

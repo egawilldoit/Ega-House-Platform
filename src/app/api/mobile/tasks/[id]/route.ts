@@ -79,6 +79,14 @@ export async function PATCH(request: Request, context: RouteContext) {
       validationResult.data.recurrenceRule === undefined
         ? undefined
         : validationResult.data.recurrenceRule,
+    recurrenceAnchorDate:
+      validationResult.data.recurrenceAnchorDate === undefined
+        ? undefined
+        : validationResult.data.recurrenceAnchorDate,
+    recurrenceTimezone:
+      validationResult.data.recurrenceTimezone === undefined
+        ? undefined
+        : validationResult.data.recurrenceTimezone,
   };
 
   const inlineValidation = validateTaskInlineUpdateInput(merged);

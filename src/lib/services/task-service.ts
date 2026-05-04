@@ -8,7 +8,7 @@ import {
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
   isTaskRecurrenceRule,
-  normalizeTaskRecurrenceRuleInput,
+  normalizeTaskRecurrenceScheduleInput,
   type TaskRecurrenceRule,
 } from "@/lib/task-recurrence";
 import {
@@ -94,6 +94,10 @@ export type TaskRecurrenceRecord = {
   id: string;
   task_id: string;
   rule: TaskRecurrenceRule;
+  anchor_date: string;
+  timezone: string;
+  next_occurrence_date: string;
+  last_generated_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -175,6 +179,8 @@ export type ValidateTaskInlineUpdateInput = {
   estimateMinutes: unknown;
   blockedReason: unknown;
   recurrenceRule?: unknown;
+  recurrenceAnchorDate?: unknown;
+  recurrenceTimezone?: unknown;
 };
 
 export type ValidatedTaskInlineUpdateInput = {
@@ -186,6 +192,8 @@ export type ValidatedTaskInlineUpdateInput = {
   blockedReason: string | null;
   description?: string | null;
   recurrenceRule?: TaskRecurrenceRule | null;
+  recurrenceAnchorDate?: string | null;
+  recurrenceTimezone?: string | null;
 };
 
 const SYSTEM_TASK_SAVED_VIEWS = [
@@ -443,6 +451,10 @@ function normalizeTaskRecurrenceRow(row: {
   id: string;
   task_id: string;
   rule: string;
+  anchor_date: string;
+  timezone: string;
+  next_occurrence_date: string;
+  last_generated_at: string | null;
   created_at: string;
   updated_at: string;
 }): TaskRecurrenceRecord | null {
@@ -501,7 +513,9 @@ export async function getTaskRecurrencesForTasks(
 
   const { data, error } = await supabase
     .from("task_recurrences")
-    .select("id, task_id, rule, created_at, updated_at")
+    .select(
+      "id, task_id, rule, anchor_date, timezone, next_occurrence_date, last_generated_at, created_at, updated_at",
+    )
     .in("task_id", uniqueTaskIds);
 
   if (error) {
@@ -521,20 +535,34 @@ export async function getTaskRecurrencesForTasks(
 }
 
 export async function setTaskRecurrence(
-  input: { taskId: string; recurrenceRule: unknown },
-  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+  input: {
+    taskId: string;
+    recurrenceRule: unknown;
+    recurrenceAnchorDate?: unknown;
+    recurrenceTimezone?: unknown;
+  },
+  options?: {
+    supabase?: SupabaseServerClient;
+    updatedAtIso?: string;
+    fallbackAnchorDate?: string;
+  },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const taskId = input.taskId.trim();
-  const recurrenceResult = normalizeTaskRecurrenceRuleInput(input.recurrenceRule);
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+  const scheduleResult = normalizeTaskRecurrenceScheduleInput({
+    rule: input.recurrenceRule,
+    anchorDate: input.recurrenceAnchorDate,
+    timezone: input.recurrenceTimezone,
+    fallbackAnchorDate: options?.fallbackAnchorDate ?? getTodayLocalIsoDate(),
+  });
 
   if (!taskId) {
     return { errorMessage: "Task is required." };
   }
 
-  if (recurrenceResult.errorMessage) {
-    return { errorMessage: recurrenceResult.errorMessage };
+  if (scheduleResult.errorMessage) {
+    return { errorMessage: scheduleResult.errorMessage };
   }
 
   const taskResult = await getVisibleTaskById(supabase, taskId);
@@ -542,7 +570,7 @@ export async function setTaskRecurrence(
     return { errorMessage: taskResult.errorMessage };
   }
 
-  if (!recurrenceResult.rule) {
+  if (!scheduleResult.schedule) {
     const { error } = await supabase.from("task_recurrences").delete().eq("task_id", taskId);
     return {
       errorMessage: error ? "Unable to clear recurring preset right now." : null,
@@ -563,7 +591,11 @@ export async function setTaskRecurrence(
     const { error } = await supabase
       .from("task_recurrences")
       .update({
-        rule: recurrenceResult.rule,
+        rule: scheduleResult.schedule.rule,
+        anchor_date: scheduleResult.schedule.anchorDate,
+        timezone: scheduleResult.schedule.timezone,
+        next_occurrence_date: scheduleResult.schedule.nextOccurrenceDate,
+        last_generated_at: null,
         updated_at: updatedAtIso,
       })
       .eq("task_id", taskId);
@@ -575,7 +607,11 @@ export async function setTaskRecurrence(
 
   const { error } = await supabase.from("task_recurrences").insert({
     task_id: taskId,
-    rule: recurrenceResult.rule,
+    rule: scheduleResult.schedule.rule,
+    anchor_date: scheduleResult.schedule.anchorDate,
+    timezone: scheduleResult.schedule.timezone,
+    next_occurrence_date: scheduleResult.schedule.nextOccurrenceDate,
+    last_generated_at: null,
   });
 
   return {
@@ -880,14 +916,22 @@ export async function createTaskWithOptionalWorkedTime(
     task: TablesInsert<"tasks">;
     workedTime?: ManualWorkedTimePayload | null;
     recurrenceRule?: unknown;
+    recurrenceAnchorDate?: unknown;
+    recurrenceTimezone?: unknown;
   },
   options?: { supabase?: SupabaseServerClient },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
+  const fallbackAnchorDate = input.task.due_date ?? getTodayLocalIsoDate();
   const recurrenceResult =
     input.recurrenceRule === undefined
-      ? { errorMessage: null, rule: undefined }
-      : normalizeTaskRecurrenceRuleInput(input.recurrenceRule);
+      ? { errorMessage: null, schedule: undefined }
+      : normalizeTaskRecurrenceScheduleInput({
+          rule: input.recurrenceRule,
+          anchorDate: input.recurrenceAnchorDate,
+          timezone: input.recurrenceTimezone,
+          fallbackAnchorDate,
+        });
 
   if (recurrenceResult.errorMessage) {
     return {
@@ -908,13 +952,15 @@ export async function createTaskWithOptionalWorkedTime(
   }
 
   const createdTaskId = createResult.createdTaskIds?.[0] ?? null;
-  if (createdTaskId && recurrenceResult.rule) {
+  if (createdTaskId && recurrenceResult.schedule) {
     const setRecurrenceResult = await setTaskRecurrence(
       {
         taskId: createdTaskId,
-        recurrenceRule: recurrenceResult.rule,
+        recurrenceRule: recurrenceResult.schedule.rule,
+        recurrenceAnchorDate: recurrenceResult.schedule.anchorDate,
+        recurrenceTimezone: recurrenceResult.schedule.timezone,
       },
-      { supabase },
+      { supabase, fallbackAnchorDate },
     );
 
     if (setRecurrenceResult.errorMessage) {
@@ -1097,8 +1143,13 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
   const blockedReason = normalizeTaskBlockedReasonInput(input.blockedReason);
   const recurrenceRuleResult =
     input.recurrenceRule === undefined
-      ? { errorMessage: null, rule: undefined }
-      : normalizeTaskRecurrenceRuleInput(input.recurrenceRule);
+      ? { errorMessage: null, schedule: undefined }
+      : normalizeTaskRecurrenceScheduleInput({
+          rule: input.recurrenceRule,
+          anchorDate: input.recurrenceAnchorDate,
+          timezone: input.recurrenceTimezone,
+          fallbackAnchorDate: dueDateResult.value ?? getTodayLocalIsoDate(),
+        });
 
   if (!taskId) {
     return {
@@ -1156,7 +1207,11 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       blockedReason: normalizedBlockedReason,
       ...(input.recurrenceRule === undefined
         ? {}
-        : { recurrenceRule: recurrenceRuleResult.rule ?? null }),
+        : {
+            recurrenceRule: recurrenceRuleResult.schedule?.rule ?? null,
+            recurrenceAnchorDate: recurrenceRuleResult.schedule?.anchorDate ?? null,
+            recurrenceTimezone: recurrenceRuleResult.schedule?.timezone ?? null,
+          }),
     } satisfies ValidatedTaskInlineUpdateInput,
   };
 }
@@ -1276,8 +1331,14 @@ export async function updateTaskInline(
       {
         taskId: input.taskId,
         recurrenceRule: input.recurrenceRule,
+        recurrenceAnchorDate: input.recurrenceAnchorDate,
+        recurrenceTimezone: input.recurrenceTimezone,
       },
-      { supabase, updatedAtIso },
+      {
+        supabase,
+        updatedAtIso,
+        fallbackAnchorDate: input.dueDate ?? getTodayLocalIsoDate(),
+      },
     );
 
     if (recurrenceResult.errorMessage) {

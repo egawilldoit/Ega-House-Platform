@@ -78,6 +78,10 @@ export type MobileTaskReminder = {
 
 export type MobileTaskRecurrence = {
   rule: TaskRecurrenceRule;
+  anchorDate: string;
+  timezone: string;
+  nextOccurrenceDate: string;
+  lastGeneratedAt: string | null;
 };
 
 export type MobileTaskListItem = {
@@ -210,6 +214,8 @@ export type CreateTaskInput = {
   dueDate: string | null;
   estimateMinutes: number | null;
   recurrenceRule?: TaskRecurrenceRule | null;
+  recurrenceAnchorDate?: string | null;
+  recurrenceTimezone?: string | null;
 };
 
 export type UpdateTaskInput = {
@@ -220,6 +226,8 @@ export type UpdateTaskInput = {
   description?: string | null;
   blockedReason?: string | null;
   recurrenceRule?: TaskRecurrenceRule | null;
+  recurrenceAnchorDate?: string | null;
+  recurrenceTimezone?: string | null;
 };
 
 export type CreateTaskReminderInput = {

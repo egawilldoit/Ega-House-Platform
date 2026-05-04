@@ -190,6 +190,13 @@
       "when": 1777906615249,
       "tag": "0026_equal_war_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1777927136086,
+      "tag": "0027_left_karnak",
+      "breakpoints": true
     }
   ]
 }

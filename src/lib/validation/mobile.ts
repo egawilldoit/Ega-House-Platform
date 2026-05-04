@@ -202,6 +202,14 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
   const dueDateResult = normalizeTaskDueDateInput(record.dueDate);
   const estimateResult = normalizeTaskEstimateInput(record.estimateMinutes);
   const recurrenceResult = normalizeTaskRecurrenceRuleInput(record.recurrenceRule);
+  const recurrenceAnchorDate =
+    record.recurrenceAnchorDate === null || record.recurrenceAnchorDate === undefined
+      ? null
+      : String(record.recurrenceAnchorDate).trim() || null;
+  const recurrenceTimezone =
+    record.recurrenceTimezone === null || record.recurrenceTimezone === undefined
+      ? null
+      : String(record.recurrenceTimezone).trim() || null;
 
   if (!title) {
     return createMobileApiError("VALIDATION_ERROR", "Task title is required.");
@@ -254,6 +262,8 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
       dueDate: dueDateResult.value,
       estimateMinutes: estimateResult.value,
       recurrenceRule: recurrenceResult.rule,
+      recurrenceAnchorDate,
+      recurrenceTimezone,
     },
   };
 }
@@ -269,6 +279,14 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
   const hasDueDate = Object.prototype.hasOwnProperty.call(record, "dueDate");
   const hasEstimate = Object.prototype.hasOwnProperty.call(record, "estimateMinutes");
   const hasRecurrenceRule = Object.prototype.hasOwnProperty.call(record, "recurrenceRule");
+  const hasRecurrenceAnchorDate = Object.prototype.hasOwnProperty.call(
+    record,
+    "recurrenceAnchorDate",
+  );
+  const hasRecurrenceTimezone = Object.prototype.hasOwnProperty.call(
+    record,
+    "recurrenceTimezone",
+  );
   const hasDescription = Object.prototype.hasOwnProperty.call(record, "description");
   const hasBlockedReason = Object.prototype.hasOwnProperty.call(record, "blockedReason");
   if (
@@ -277,6 +295,8 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
     !hasDueDate &&
     !hasEstimate &&
     !hasRecurrenceRule &&
+    !hasRecurrenceAnchorDate &&
+    !hasRecurrenceTimezone &&
     !hasDescription &&
     !hasBlockedReason
   ) {
@@ -328,6 +348,20 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
       return createMobileApiError("VALIDATION_ERROR", recurrenceResult.errorMessage);
     }
     output.recurrenceRule = recurrenceResult.rule;
+  }
+
+  if (hasRecurrenceAnchorDate) {
+    output.recurrenceAnchorDate =
+      record.recurrenceAnchorDate === null || record.recurrenceAnchorDate === undefined
+        ? null
+        : String(record.recurrenceAnchorDate).trim() || null;
+  }
+
+  if (hasRecurrenceTimezone) {
+    output.recurrenceTimezone =
+      record.recurrenceTimezone === null || record.recurrenceTimezone === undefined
+        ? null
+        : String(record.recurrenceTimezone).trim() || null;
   }
 
   if (hasDescription) {

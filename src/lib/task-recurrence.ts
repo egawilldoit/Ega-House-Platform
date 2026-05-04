@@ -13,6 +13,8 @@ export const TASK_RECURRENCE_RULE_VALUES = [
 
 export type TaskRecurrenceRule = (typeof TASK_RECURRENCE_RULE_VALUES)[number];
 
+export const DEFAULT_TASK_RECURRENCE_TIMEZONE = "UTC";
+
 const WEEKDAY_INDEX_BY_RULE: Record<string, number> = {
   "weekly:sunday": 0,
   "weekly:monday": 1,
@@ -47,6 +49,108 @@ export function normalizeTaskRecurrenceRuleInput(value: unknown) {
   return {
     errorMessage: null,
     rule,
+  };
+}
+
+export function isValidTaskRecurrenceAnchorDate(value: string) {
+  return parseDateOnly(value) !== null;
+}
+
+export function normalizeTaskRecurrenceAnchorDateInput(
+  value: unknown,
+  fallbackDate: string,
+) {
+  const anchorDate = String(value ?? "").trim() || fallbackDate;
+
+  if (!anchorDate || !isValidTaskRecurrenceAnchorDate(anchorDate)) {
+    return {
+      anchorDate: null,
+      errorMessage: "Recurring anchor date is invalid.",
+    };
+  }
+
+  return {
+    anchorDate,
+    errorMessage: null,
+  };
+}
+
+export function isValidTaskRecurrenceTimezone(value: string) {
+  if (!value || value.length > 128) {
+    return false;
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeTaskRecurrenceTimezoneInput(value: unknown) {
+  const timezone = String(value ?? "").trim() || DEFAULT_TASK_RECURRENCE_TIMEZONE;
+
+  if (!isValidTaskRecurrenceTimezone(timezone)) {
+    return {
+      errorMessage: "Recurring timezone is invalid.",
+      timezone: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    timezone,
+  };
+}
+
+export function normalizeTaskRecurrenceScheduleInput(input: {
+  rule: unknown;
+  anchorDate?: unknown;
+  timezone?: unknown;
+  fallbackAnchorDate: string;
+}) {
+  const ruleResult = normalizeTaskRecurrenceRuleInput(input.rule);
+  if (ruleResult.errorMessage) {
+    return { errorMessage: ruleResult.errorMessage, schedule: null };
+  }
+
+  if (!ruleResult.rule) {
+    return { errorMessage: null, schedule: null };
+  }
+
+  const anchorDateResult = normalizeTaskRecurrenceAnchorDateInput(
+    input.anchorDate,
+    input.fallbackAnchorDate,
+  );
+  if (anchorDateResult.errorMessage || !anchorDateResult.anchorDate) {
+    return { errorMessage: anchorDateResult.errorMessage, schedule: null };
+  }
+
+  const timezoneResult = normalizeTaskRecurrenceTimezoneInput(input.timezone);
+  if (timezoneResult.errorMessage || !timezoneResult.timezone) {
+    return { errorMessage: timezoneResult.errorMessage, schedule: null };
+  }
+
+  const nextOccurrenceDate = getNextTaskRecurrenceDate(
+    ruleResult.rule,
+    anchorDateResult.anchorDate,
+  );
+  if (!nextOccurrenceDate) {
+    return {
+      errorMessage: "Recurring next occurrence date is invalid.",
+      schedule: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    schedule: {
+      rule: ruleResult.rule,
+      anchorDate: anchorDateResult.anchorDate,
+      timezone: timezoneResult.timezone,
+      nextOccurrenceDate,
+    },
   };
 }
 

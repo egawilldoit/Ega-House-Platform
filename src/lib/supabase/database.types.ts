@@ -232,27 +232,39 @@ export type Database = {
       }
       task_recurrences: {
         Row: {
+          anchor_date: string
           created_at: string
           id: string
+          last_generated_at: string | null
+          next_occurrence_date: string
           owner_user_id: string | null
           rule: string
           task_id: string
+          timezone: string
           updated_at: string
         }
         Insert: {
+          anchor_date: string
           created_at?: string
           id?: string
+          last_generated_at?: string | null
+          next_occurrence_date: string
           owner_user_id?: string | null
           rule: string
           task_id: string
+          timezone: string
           updated_at?: string
         }
         Update: {
+          anchor_date?: string
           created_at?: string
           id?: string
+          last_generated_at?: string | null
+          next_occurrence_date?: string
           owner_user_id?: string | null
           rule?: string
           task_id?: string
+          timezone?: string
           updated_at?: string
         }
         Relationships: [

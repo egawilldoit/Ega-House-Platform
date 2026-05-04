@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   getNextTaskRecurrenceDate,
+  normalizeTaskRecurrenceScheduleInput,
   normalizeTaskRecurrenceRuleInput,
 } from "./task-recurrence";
 
@@ -34,4 +35,46 @@ test("rejects invalid recurrence rules and allows empty non-recurring input", ()
     errorMessage: "Recurring preset is not supported.",
     rule: null,
   });
+});
+
+test("normalizes recurrence schedule metadata", () => {
+  assert.deepEqual(
+    normalizeTaskRecurrenceScheduleInput({
+      rule: "weekly:monday",
+      anchorDate: "2026-05-04",
+      timezone: "UTC",
+      fallbackAnchorDate: "2026-05-01",
+    }),
+    {
+      errorMessage: null,
+      schedule: {
+        rule: "weekly:monday",
+        anchorDate: "2026-05-04",
+        timezone: "UTC",
+        nextOccurrenceDate: "2026-05-11",
+      },
+    },
+  );
+});
+
+test("rejects invalid recurrence schedule metadata", () => {
+  assert.equal(
+    normalizeTaskRecurrenceScheduleInput({
+      rule: "daily",
+      anchorDate: "2026-02-30",
+      timezone: "UTC",
+      fallbackAnchorDate: "2026-05-01",
+    }).errorMessage,
+    "Recurring anchor date is invalid.",
+  );
+
+  assert.equal(
+    normalizeTaskRecurrenceScheduleInput({
+      rule: "daily",
+      anchorDate: "2026-05-04",
+      timezone: "Nope/Zone",
+      fallbackAnchorDate: "2026-05-01",
+    }).errorMessage,
+    "Recurring timezone is invalid.",
+  );
 });

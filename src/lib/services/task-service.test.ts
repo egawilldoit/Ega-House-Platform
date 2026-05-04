@@ -636,6 +636,8 @@ test("inline update persists recurrence preset when provided", async () => {
       estimateMinutes: null,
       blockedReason: null,
       recurrenceRule: "weekly:monday",
+      recurrenceAnchorDate: "2026-05-04",
+      recurrenceTimezone: "UTC",
     },
     {
       supabase: mock.supabase,
@@ -647,9 +649,45 @@ test("inline update persists recurrence preset when provided", async () => {
   assert.deepEqual(mock.recurrenceUpdateCalls, [
     {
       rule: "weekly:monday",
+      anchor_date: "2026-05-04",
+      timezone: "UTC",
+      next_occurrence_date: "2026-05-11",
+      last_generated_at: null,
       updated_at: "2026-04-21T10:00:00.000Z",
     },
   ]);
+});
+
+test("inline validation rejects invalid recurrence anchor date", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+    recurrenceRule: "daily",
+    recurrenceAnchorDate: "2026-02-30",
+    recurrenceTimezone: "UTC",
+  });
+
+  assert.equal(result.errorMessage, "Recurring anchor date is invalid.");
+});
+
+test("inline validation rejects invalid recurrence timezone", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+    recurrenceRule: "daily",
+    recurrenceAnchorDate: "2026-05-04",
+    recurrenceTimezone: "Mars/Base",
+  });
+
+  assert.equal(result.errorMessage, "Recurring timezone is invalid.");
 });
 
 test("inline update clears recurrence preset when empty rule provided", async () => {
@@ -992,6 +1030,8 @@ test("createTaskWithOptionalWorkedTime persists a valid recurrence preset", asyn
       },
       workedTime: null,
       recurrenceRule: "weekdays",
+      recurrenceAnchorDate: "2026-05-08",
+      recurrenceTimezone: "UTC",
     },
     { supabase: mock.supabase },
   );
@@ -1001,9 +1041,53 @@ test("createTaskWithOptionalWorkedTime persists a valid recurrence preset", asyn
     {
       task_id: "task-1",
       rule: "weekdays",
+      anchor_date: "2026-05-08",
+      timezone: "UTC",
+      next_occurrence_date: "2026-05-11",
+      last_generated_at: null,
     },
   ]);
 });
+
+for (const [rule, anchorDate, nextOccurrenceDate] of [
+  ["daily", "2026-05-04", "2026-05-05"],
+  ["weekdays", "2026-05-08", "2026-05-11"],
+  ["weekly:wednesday", "2026-05-04", "2026-05-06"],
+  ["monthly:day-of-month", "2026-01-31", "2026-02-28"],
+] as const) {
+  test(`createTaskWithOptionalWorkedTime persists next occurrence for ${rule}`, async () => {
+    const mock = createTaskCreateSupabaseMock();
+
+    const result = await createTaskWithOptionalWorkedTime(
+      {
+        task: {
+          title: "Recurring",
+          project_id: "project-1",
+          goal_id: null,
+          status: "todo",
+          priority: "medium",
+        },
+        workedTime: null,
+        recurrenceRule: rule,
+        recurrenceAnchorDate: anchorDate,
+        recurrenceTimezone: "UTC",
+      },
+      { supabase: mock.supabase },
+    );
+
+    assert.equal(result.errorMessage, null);
+    assert.deepEqual(mock.recurrenceInsertCalls, [
+      {
+        task_id: "task-1",
+        rule,
+        anchor_date: anchorDate,
+        timezone: "UTC",
+        next_occurrence_date: nextOccurrenceDate,
+        last_generated_at: null,
+      },
+    ]);
+  });
+}
 
 test("createTaskWithOptionalWorkedTime rejects invalid recurrence before task insert", async () => {
   const mock = createTaskCreateSupabaseMock();
@@ -1024,6 +1108,56 @@ test("createTaskWithOptionalWorkedTime rejects invalid recurrence before task in
   );
 
   assert.equal(result.errorMessage, "Recurring preset is not supported.");
+  assert.equal(mock.taskInsertCalls.length, 0);
+  assert.equal(mock.recurrenceInsertCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime rejects invalid recurrence anchor before task insert", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Invalid anchor",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "daily",
+      recurrenceAnchorDate: "not-a-date",
+      recurrenceTimezone: "UTC",
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, "Recurring anchor date is invalid.");
+  assert.equal(mock.taskInsertCalls.length, 0);
+  assert.equal(mock.recurrenceInsertCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime rejects invalid recurrence timezone before task insert", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Invalid timezone",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "daily",
+      recurrenceAnchorDate: "2026-05-04",
+      recurrenceTimezone: "UTC+25",
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, "Recurring timezone is invalid.");
   assert.equal(mock.taskInsertCalls.length, 0);
   assert.equal(mock.recurrenceInsertCalls.length, 0);
 });

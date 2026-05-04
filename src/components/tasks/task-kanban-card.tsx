@@ -429,7 +429,6 @@ function TaskKanbanStatusHiddenFields({
         name="estimateMinutes"
         value={task.estimate_minutes !== null ? String(task.estimate_minutes) : ""}
       />
-      <input type="hidden" name="recurrenceRule" value={task.task_recurrences[0]?.rule ?? ""} />
       {blockedReasonValue !== undefined ? (
         <input type="hidden" name="blockedReason" value={blockedReasonValue} />
       ) : null}

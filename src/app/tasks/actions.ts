@@ -48,6 +48,7 @@ export type CreateTaskFormState = {
     dueDate: string;
     estimateMinutes: string;
     recurrenceRule: string;
+    recurrenceTimezone: string;
     workedTimeStartedAt: string;
     workedTimeEndedAt: string;
     returnTo: string;
@@ -189,6 +190,7 @@ export async function createTaskAction(
   const rawDueDate = String(formData.get("dueDate") ?? "").trim();
   const rawEstimateMinutes = String(formData.get("estimateMinutes") ?? "").trim();
   const rawRecurrenceRule = String(formData.get("recurrenceRule") ?? "").trim();
+  const recurrenceTimezone = String(formData.get("recurrenceTimezone") ?? "").trim();
   const workedTimeStartedAt = String(formData.get("workedTimeStartedAt") ?? "").trim();
   const workedTimeEndedAt = String(formData.get("workedTimeEndedAt") ?? "").trim();
   const workedTimeTimezoneOffsetMinutes = formData.get(
@@ -215,6 +217,7 @@ export async function createTaskAction(
     dueDate: rawDueDate,
     estimateMinutes: rawEstimateMinutes,
     recurrenceRule: rawRecurrenceRule,
+    recurrenceTimezone,
     workedTimeStartedAt,
     workedTimeEndedAt,
     returnTo,
@@ -276,6 +279,7 @@ export async function createTaskAction(
     },
     workedTime: workedTimeResult.payload,
     recurrenceRule: recurrenceResult.rule,
+    recurrenceTimezone,
   });
 
   if (errorMessage) {
@@ -304,6 +308,7 @@ export async function createTaskAction(
       dueDate: "",
       estimateMinutes: "",
       recurrenceRule: rawRecurrenceRule,
+      recurrenceTimezone,
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo,
@@ -463,6 +468,9 @@ export async function updateTaskInlineAction(formData: FormData) {
     blockedReason: formData.get("blockedReason"),
     recurrenceRule: formData.has("recurrenceRule")
       ? formData.get("recurrenceRule")
+      : undefined,
+    recurrenceTimezone: formData.has("recurrenceTimezone")
+      ? formData.get("recurrenceTimezone")
       : undefined,
   });
 
