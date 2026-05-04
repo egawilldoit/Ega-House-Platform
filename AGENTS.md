@@ -1,103 +1,86 @@
 # EGA House Platform — Agent Guide
 
-## Product focus
+## Purpose
 
-EGA House is an execution workspace built around one loop:
+EGA House is an execution workspace built around:
 
 **Project → Goal → Task → Timer → Review**
 
-When making product decisions, optimize for this loop first.
-Prefer workflow depth and real usability over decorative UI.
+Optimize for real daily execution, not decorative UI or placeholder surfaces.
 
-## Route and shell rules
+## How to work
 
-- Canonical workspace routes are `/dashboard`, `/tasks`, `/goals`, `/timer`, and `/review`
-- Treat `/apps/*` as compatibility-only, not the primary product structure
-- New workspace pages should fit the existing shell instead of creating parallel layouts
-- Use the existing shell pattern for page eyebrow, title, description, and actions
-- Do not add visible UI affordances that are not wired to real behavior
+- Work only in the app/package named by the task.
+- Keep changes narrow, reviewable, and behavior-safe.
+- Prefer existing patterns before adding abstractions.
+- Do not refactor unrelated files.
+- Do not add or upgrade dependencies unless explicitly asked.
+- Do not weaken validation, auth, type safety, tests, or security to pass a task.
+- Do not leave visible UI controls that are not wired to real behavior.
+- If instructions conflict, the user prompt wins for the current task.
 
-## Data and auth rules
+## Repo map
 
-- Use the existing Supabase SSR server client pattern for server-side reads and writes
-- Respect current auth, middleware, protected routes, and protected subdomain behavior
-- Never bypass row-level security assumptions in application code
-- Prefer server-side scoped queries over client-side fetch-and-filter
-- Treat ownership and visibility as database concerns first, UI concerns second
+- Web app: `src/app`, `src/components`, `src/lib`, `src/db`
+- Mobile app: `apps/mobile`
+- Web route pages/actions/forms: `src/app/...`
+- Shared web domain UI: `src/components/<domain>/...`
+- Shared UI primitives: `src/components/ui/...`
+- Shared helpers: `src/lib/...`
+- Database schema: `src/db/schema.ts`
 
-## Mutation rules
+## Web rules
 
-- Put mutations in server actions
-- Keep actions close to their route or domain unless there is a clearly reusable shared helper
-- Validate all inputs on the server even if the client already validates them
-- After successful mutations, revalidate the smallest correct set of affected routes
-- Reuse existing action flows before inventing new mutation paths
+- Canonical workspace routes: `/dashboard`, `/tasks`, `/goals`, `/timer`, `/review`.
+- Treat `/apps/*` as compatibility-only unless explicitly requested.
+- Use the existing shell pattern for page eyebrow, title, description, and actions.
+- Use the existing Supabase SSR server client pattern for server-side reads/writes.
+- Respect auth, middleware, protected routes, protected subdomains, and RLS assumptions.
+- Prefer server-side scoped queries over client-side fetch-and-filter.
+- Put mutations in server actions, validate inputs on the server, and revalidate the smallest correct route set.
+- Drizzle schema columns stay `snake_case`; TypeScript fields stay `camelCase`.
+- Schema changes require the correct Drizzle migration flow.
 
-## Drizzle and schema rules
+## Mobile rules
 
-- Database schema lives in `src/db/schema.ts`
-- Database column naming stays snake_case
-- TypeScript field naming stays camelCase
-- Schema changes must include the correct Drizzle migration flow
-- Keep schema additions small, explicit, and compatible with existing data unless the task clearly requires a breaking migration
-- Prefer nullable new fields first when evolving live workflow models
+- The Expo React Native app lives under `apps/mobile`.
+- Preserve route names, tab order, labels, auth/session behavior, and navigation behavior unless explicitly asked.
+- Reuse existing mobile components, theme tokens, spacing, typography, and safe-area patterns.
+- Respect Android home indicator/safe-area spacing.
+- Avoid performance-heavy effects in repeated list items.
+- Do not use real blur in repeated list content.
+- Do not add full-width bottom bars behind floating navigation unless explicitly requested.
+- For scroll/list screens, verify bottom padding plus loading, empty, error, disabled, and accessibility states.
 
-## File placement rules
+## UI/product rules
 
-- Route pages and route-local actions/forms belong under `src/app/...`
-- Shared domain UI belongs under `src/components/<domain>/...`
-- Shared low-level UI primitives belong under `src/components/ui/...`
-- Shared server/client helpers belong under `src/lib/...`
-- Do not create a new top-level pattern when an existing domain folder already fits
+- Match the product language: compact, clear, operational, premium.
+- Prefer improving existing surfaces over replacement UIs.
+- Build real workflow value first: task capture, planning, timer-task handoff, review quality, dashboard clarity, shell speed.
+- Finish one narrow vertical slice before starting multiple partial ones.
 
-## UI implementation rules
+## Validation
 
-- Match the current product language: compact, clear, operational, and premium
-- Prefer additive improvements to existing surfaces over parallel replacement UIs
-- Reuse existing visual tokens and patterns before introducing new ones
-- Keep forms compact and practical
-- Build for real usage first: loading states, empty states, inline validation, and success/error feedback are required
-- If a feature is visible in the shell or top bar, it should do real work
+Run relevant commands from the package touched by the task.
 
-## Workflow priorities and delivery bias
+Web, when available:
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
 
-When choosing between multiple implementation options, prefer the one that improves:
+Mobile, from `apps/mobile`, when available:
+- `npm run typecheck`
+- `npm test`
+- `npm run doctor`
+- `npm run validate:bundle`
 
-1. daily execution
-2. focus and timer flow
-3. weekly review quality
-4. dashboard actionability
-5. shell trust and speed
+If a command is unavailable or fails, report the exact reason and whether it appears related to your change.
 
-Bias toward:
-- quicker task capture
-- better task planning
-- tighter timer-task handoff
-- stronger review autofill and persistence
-- real search and command flows
-- fewer placeholder affordances
-- finishing one real flow over starting multiple partial ones
-- replacing placeholder UI with working behavior before adding more surface area
-- thinking through the workflow handoff when changing Tasks, Timer, Review, Dashboard, or Shell
+## Report format
 
-## New feature rules
-
-Before adding a new feature:
-- check whether the capability should extend an existing route or shell surface first
-- check whether the same outcome can be achieved by improving an existing action or component
-- prefer shipping a narrow vertical slice that is actually usable
-- do not leave half-wired UI behind
-
-For feature work:
-- make the happy path fast
-- make validation clear
-- make the state transitions obvious
-- preserve current route and filter context where appropriate
-
-## Default delivery style
-
-When implementing:
-- explain the smallest correct change
-- keep files and logic easy to review
-- preserve existing route and domain structure
-- leave the codebase more coherent than you found it
+End every task with:
+1. Files changed.
+2. Summary.
+3. Validation commands and results.
+4. Assumptions.
+5. Follow-up tasks, if any.
