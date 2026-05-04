@@ -6,7 +6,12 @@ import type {
   MobileTaskListItem,
 } from "@/lib/contracts/mobile";
 import { captureServerException } from "@/lib/monitoring/capture-server-exception";
-import type { TaskRecord } from "@/lib/services/task-service";
+import {
+  getTaskById,
+  getTaskRecurrencesForTasks,
+  getTaskRemindersForTasks,
+  type TaskRecord,
+} from "@/lib/services/task-service";
 import { isTaskDueToday, isTaskOverdue } from "@/lib/task-due-date";
 import type { TaskStatus } from "@/lib/task-domain";
 
@@ -75,6 +80,22 @@ export function mapTaskRecordToMobileTaskItem(
           title: task.goals?.title ?? "Unknown goal",
         }
       : null,
+    reminders: (task.task_reminders ?? []).map((reminder) => ({
+      id: reminder.id,
+      taskId: reminder.task_id,
+      remindAt: reminder.remind_at,
+      channel: reminder.channel,
+      status: reminder.status,
+      sentAt: reminder.sent_at,
+      failureReason: reminder.failure_reason,
+      createdAt: reminder.created_at,
+      updatedAt: reminder.updated_at,
+    })),
+    recurrence: task.task_recurrences[0]
+      ? {
+          rule: task.task_recurrences[0].rule,
+        }
+      : null,
   };
 }
 
@@ -110,4 +131,48 @@ export function getMobileTaskCounters(tasks: MobileTaskListItem[]) {
       dueToday: 0,
     },
   );
+}
+
+export async function getMobileTaskItemById(
+  supabase: Parameters<typeof getTaskRemindersForTasks>[0],
+  taskId: string,
+  trackedDurationSeconds = 0,
+) {
+  const taskResult = await getTaskById(taskId, { supabase });
+  if (taskResult.errorMessage || !taskResult.data) {
+    return {
+      errorMessage: taskResult.errorMessage,
+      data: null,
+    };
+  }
+
+  try {
+    const [remindersByTaskId, recurrencesByTaskId] = await Promise.all([
+      getTaskRemindersForTasks(supabase, [taskResult.data.id]),
+      getTaskRecurrencesForTasks(supabase, [taskResult.data.id]),
+    ]);
+    return {
+      errorMessage: null,
+      data: mapTaskRecordToMobileTaskItem(
+        {
+          ...taskResult.data,
+          task_reminders: remindersByTaskId[taskResult.data.id] ?? [],
+          task_recurrences: recurrencesByTaskId[taskResult.data.id] ?? [],
+        },
+        trackedDurationSeconds,
+      ),
+    };
+  } catch (error) {
+    captureServerException(error, {
+      area: "api.mobile",
+      operation: "getMobileTaskItemById",
+      extras: {
+        taskId,
+      },
+    });
+    return {
+      errorMessage: "Unable to load task detail metadata right now.",
+      data: null,
+    };
+  }
 }

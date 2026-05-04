@@ -9,6 +9,7 @@ import {
 import { isTaskPriority, isTaskStatus, type TaskPriority, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
+import { normalizeTaskRecurrenceRuleInput } from "@/lib/task-recurrence";
 import type {
   CreateTaskInput,
   MobileApiErrorCode,
@@ -200,6 +201,7 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
   const priorityValue = String(record.priority ?? "").trim();
   const dueDateResult = normalizeTaskDueDateInput(record.dueDate);
   const estimateResult = normalizeTaskEstimateInput(record.estimateMinutes);
+  const recurrenceResult = normalizeTaskRecurrenceRuleInput(record.recurrenceRule);
 
   if (!title) {
     return createMobileApiError("VALIDATION_ERROR", "Task title is required.");
@@ -218,6 +220,9 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
   }
   if (estimateResult.error) {
     return createMobileApiError("VALIDATION_ERROR", estimateResult.error);
+  }
+  if (recurrenceResult.errorMessage) {
+    return createMobileApiError("VALIDATION_ERROR", recurrenceResult.errorMessage);
   }
 
   const description =
@@ -248,6 +253,7 @@ export function validateCreateTaskInput(body: unknown): ValidationResult<CreateT
       priority: priorityValue,
       dueDate: dueDateResult.value,
       estimateMinutes: estimateResult.value,
+      recurrenceRule: recurrenceResult.rule,
     },
   };
 }
@@ -262,9 +268,18 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
   const hasPriority = Object.prototype.hasOwnProperty.call(record, "priority");
   const hasDueDate = Object.prototype.hasOwnProperty.call(record, "dueDate");
   const hasEstimate = Object.prototype.hasOwnProperty.call(record, "estimateMinutes");
+  const hasRecurrenceRule = Object.prototype.hasOwnProperty.call(record, "recurrenceRule");
   const hasDescription = Object.prototype.hasOwnProperty.call(record, "description");
   const hasBlockedReason = Object.prototype.hasOwnProperty.call(record, "blockedReason");
-  if (!hasStatus && !hasPriority && !hasDueDate && !hasEstimate && !hasDescription && !hasBlockedReason) {
+  if (
+    !hasStatus &&
+    !hasPriority &&
+    !hasDueDate &&
+    !hasEstimate &&
+    !hasRecurrenceRule &&
+    !hasDescription &&
+    !hasBlockedReason
+  ) {
     return createMobileApiError(
       "VALIDATION_ERROR",
       "At least one mutable field must be provided.",
@@ -305,6 +320,14 @@ export function validateUpdateTaskInput(body: unknown): ValidationResult<UpdateT
       return createMobileApiError("VALIDATION_ERROR", estimateResult.error);
     }
     output.estimateMinutes = estimateResult.value;
+  }
+
+  if (hasRecurrenceRule) {
+    const recurrenceResult = normalizeTaskRecurrenceRuleInput(record.recurrenceRule);
+    if (recurrenceResult.errorMessage) {
+      return createMobileApiError("VALIDATION_ERROR", recurrenceResult.errorMessage);
+    }
+    output.recurrenceRule = recurrenceResult.rule;
   }
 
   if (hasDescription) {

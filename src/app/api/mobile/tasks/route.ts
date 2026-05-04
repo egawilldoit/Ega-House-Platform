@@ -5,7 +5,11 @@ import type {
   MobileTaskListResponse,
   MobileTaskMutationResponse,
 } from "@/lib/contracts/mobile";
-import { createTasks, getTaskById, getTasksWorkspaceData } from "@/lib/services/task-service";
+import {
+  createTasks,
+  getTasksWorkspaceData,
+  setTaskRecurrence,
+} from "@/lib/services/task-service";
 import {
   parseJsonRequestBody,
   validateCreateTaskInput,
@@ -14,6 +18,7 @@ import {
 import { resolveMobileRequestAuth } from "@/app/api/mobile/_lib/auth";
 import {
   getMobileTaskCounters,
+  getMobileTaskItemById,
   mapTaskRecordToMobileTaskItem,
   mobileErrorResponse,
 } from "@/app/api/mobile/_lib/helpers";
@@ -131,18 +136,29 @@ export async function POST(request: Request) {
     return mobileErrorResponse("INTERNAL_ERROR", "Task was created but could not be loaded.", 500);
   }
 
-  const createdTaskResult = await getTaskById(createdTaskId, {
-    supabase: authResult.supabase,
-  });
+  if (validationResult.data.recurrenceRule) {
+    const recurrenceResult = await setTaskRecurrence(
+      {
+        taskId: createdTaskId,
+        recurrenceRule: validationResult.data.recurrenceRule,
+      },
+      { supabase: authResult.supabase },
+    );
+
+    if (recurrenceResult.errorMessage) {
+      return mobileErrorResponse("VALIDATION_ERROR", recurrenceResult.errorMessage, 400);
+    }
+  }
+
+  const createdTaskResult = await getMobileTaskItemById(authResult.supabase, createdTaskId);
   if (createdTaskResult.errorMessage || !createdTaskResult.data) {
     return mobileErrorResponse("INTERNAL_ERROR", "Unable to load created task.", 500);
   }
 
-  const task = mapTaskRecordToMobileTaskItem(createdTaskResult.data, 0);
   return NextResponse.json(
     {
       ok: true,
-      task,
+      task: createdTaskResult.data,
     } satisfies MobileTaskMutationResponse,
     { status: 201 },
   );

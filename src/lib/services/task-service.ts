@@ -7,6 +7,11 @@ import {
 } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import {
+  isTaskRecurrenceRule,
+  normalizeTaskRecurrenceRuleInput,
+  type TaskRecurrenceRule,
+} from "@/lib/task-recurrence";
+import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
   isTaskCompletedStatus,
@@ -61,6 +66,38 @@ type TaskSavedViewSelectRow = {
   updated_at: string;
 };
 
+export const TASK_REMINDER_CHANNEL_VALUES = ["email"] as const;
+export const TASK_REMINDER_STATUS_VALUES = [
+  "pending",
+  "processing",
+  "sent",
+  "failed",
+  "cancelled",
+] as const;
+
+export type TaskReminderChannel = (typeof TASK_REMINDER_CHANNEL_VALUES)[number];
+export type TaskReminderStatus = (typeof TASK_REMINDER_STATUS_VALUES)[number];
+
+export type TaskReminderRecord = {
+  id: string;
+  task_id: string;
+  remind_at: string;
+  channel: TaskReminderChannel;
+  status: TaskReminderStatus;
+  sent_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskRecurrenceRecord = {
+  id: string;
+  task_id: string;
+  rule: TaskRecurrenceRule;
+  created_at: string;
+  updated_at: string;
+};
+
 export type TaskScopeSnapshot = {
   projectIds: Set<string>;
   goalsById: Map<string, { id: string; project_id: string }>;
@@ -102,6 +139,8 @@ export type TasksWorkspaceData = {
     archived_by: string | null;
     projects: { name: string } | null;
     goals: { title: string } | null;
+    task_reminders: TaskReminderRecord[];
+    task_recurrences: TaskRecurrenceRecord[];
   }>;
   summary: {
     total: number;
@@ -135,6 +174,7 @@ export type ValidateTaskInlineUpdateInput = {
   dueDate: unknown;
   estimateMinutes: unknown;
   blockedReason: unknown;
+  recurrenceRule?: unknown;
 };
 
 export type ValidatedTaskInlineUpdateInput = {
@@ -145,6 +185,7 @@ export type ValidatedTaskInlineUpdateInput = {
   estimateMinutes: number | null;
   blockedReason: string | null;
   description?: string | null;
+  recurrenceRule?: TaskRecurrenceRule | null;
 };
 
 const SYSTEM_TASK_SAVED_VIEWS = [
@@ -175,6 +216,14 @@ export function normalizeTaskBlockedReasonInput(value: unknown) {
   return normalized.length > 0 ? normalized : null;
 }
 
+export function isTaskReminderChannel(value: string): value is TaskReminderChannel {
+  return TASK_REMINDER_CHANNEL_VALUES.includes(value as TaskReminderChannel);
+}
+
+export function isTaskReminderStatus(value: string): value is TaskReminderStatus {
+  return TASK_REMINDER_STATUS_VALUES.includes(value as TaskReminderStatus);
+}
+
 function getTaskBlockedReasonValidationError(
   status: TaskStatus,
   blockedReason: string | null,
@@ -201,6 +250,20 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   }
 
   return createClient();
+}
+
+async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
+  if (!("auth" in supabase) || typeof supabase.auth?.getUser !== "function") {
+    return null;
+  }
+
+  const { data, error } = await supabase.auth.getUser();
+
+  if (error) {
+    return null;
+  }
+
+  return data.user?.id ?? null;
 }
 
 function isTasksBlockedReasonMissing(
@@ -283,6 +346,273 @@ export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServer
   return {
     errorMessage: null,
     data: scopeResult.scope,
+  };
+}
+
+function normalizeTaskReminderCreateInput(input: {
+  taskId: string;
+  remindAt: unknown;
+  channel?: unknown;
+  status?: unknown;
+  now?: Date;
+}) {
+  const taskId = input.taskId.trim();
+  const channel = String(input.channel ?? "email").trim() || "email";
+  const status = String(input.status ?? "pending").trim() || "pending";
+  const rawRemindAt = String(input.remindAt ?? "").trim();
+  const remindAtDate = new Date(rawRemindAt);
+  const now = input.now ?? new Date();
+
+  if (!taskId) {
+    return { errorMessage: "Task is required." };
+  }
+
+  if (!rawRemindAt || Number.isNaN(remindAtDate.getTime())) {
+    return { errorMessage: "Reminder time is required." };
+  }
+
+  if (!isTaskReminderChannel(channel)) {
+    return { errorMessage: "Reminder channel is not supported." };
+  }
+
+  if (!isTaskReminderStatus(status) || status !== "pending") {
+    return { errorMessage: "Reminder status is not supported." };
+  }
+
+  if (remindAtDate.getTime() <= now.getTime()) {
+    return { errorMessage: "Reminder time must be in the future." };
+  }
+
+  return {
+    errorMessage: null,
+    data: {
+      taskId,
+      remindAtIso: remindAtDate.toISOString(),
+      channel,
+      status,
+    },
+  };
+}
+
+function normalizeTaskReminderCancelInput(input: {
+  taskId: string;
+  reminderId: string;
+  status?: unknown;
+}) {
+  const taskId = input.taskId.trim();
+  const reminderId = input.reminderId.trim();
+  const status = String(input.status ?? "cancelled").trim() || "cancelled";
+
+  if (!taskId || !reminderId) {
+    return { errorMessage: "Reminder cancel request is invalid." };
+  }
+
+  if (!isTaskReminderStatus(status) || status !== "cancelled") {
+    return { errorMessage: "Reminder status is not supported." };
+  }
+
+  return {
+    errorMessage: null,
+    data: {
+      taskId,
+      reminderId,
+      status,
+    },
+  };
+}
+
+function normalizeTaskReminderRow(row: {
+  id: string;
+  task_id: string;
+  remind_at: string;
+  channel: string;
+  status: string;
+  sent_at: string | null;
+  failure_reason: string | null;
+  created_at: string;
+  updated_at: string;
+}): TaskReminderRecord {
+  return {
+    ...row,
+    channel: isTaskReminderChannel(row.channel) ? row.channel : "email",
+    status: isTaskReminderStatus(row.status) ? row.status : "failed",
+  };
+}
+
+function normalizeTaskRecurrenceRow(row: {
+  id: string;
+  task_id: string;
+  rule: string;
+  created_at: string;
+  updated_at: string;
+}): TaskRecurrenceRecord | null {
+  if (!isTaskRecurrenceRule(row.rule)) {
+    return null;
+  }
+
+  return {
+    ...row,
+    rule: row.rule,
+  };
+}
+
+export async function getTaskRemindersForTasks(
+  supabase: SupabaseServerClient,
+  taskIds: string[],
+) {
+  const uniqueTaskIds = [...new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
+  const remindersByTaskId: Record<string, TaskReminderRecord[]> = {};
+
+  if (uniqueTaskIds.length === 0) {
+    return remindersByTaskId;
+  }
+
+  const { data, error } = await supabase
+    .from("task_reminders")
+    .select(
+      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+    )
+    .in("task_id", uniqueTaskIds)
+    .order("remind_at", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to load task reminders: ${error.message}`);
+  }
+
+  for (const reminder of data ?? []) {
+    const normalizedReminder = normalizeTaskReminderRow(reminder);
+    remindersByTaskId[normalizedReminder.task_id] ??= [];
+    remindersByTaskId[normalizedReminder.task_id]?.push(normalizedReminder);
+  }
+
+  return remindersByTaskId;
+}
+
+export async function getTaskRecurrencesForTasks(
+  supabase: SupabaseServerClient,
+  taskIds: string[],
+) {
+  const uniqueTaskIds = [...new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
+  const recurrencesByTaskId: Record<string, TaskRecurrenceRecord[]> = {};
+
+  if (uniqueTaskIds.length === 0) {
+    return recurrencesByTaskId;
+  }
+
+  const { data, error } = await supabase
+    .from("task_recurrences")
+    .select("id, task_id, rule, created_at, updated_at")
+    .in("task_id", uniqueTaskIds);
+
+  if (error) {
+    throw new Error(`Failed to load task recurrences: ${error.message}`);
+  }
+
+  for (const recurrence of data ?? []) {
+    const normalizedRecurrence = normalizeTaskRecurrenceRow(recurrence);
+    if (!normalizedRecurrence) {
+      continue;
+    }
+    recurrencesByTaskId[normalizedRecurrence.task_id] ??= [];
+    recurrencesByTaskId[normalizedRecurrence.task_id]?.push(normalizedRecurrence);
+  }
+
+  return recurrencesByTaskId;
+}
+
+export async function setTaskRecurrence(
+  input: { taskId: string; recurrenceRule: unknown },
+  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const taskId = input.taskId.trim();
+  const recurrenceResult = normalizeTaskRecurrenceRuleInput(input.recurrenceRule);
+  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+
+  if (!taskId) {
+    return { errorMessage: "Task is required." };
+  }
+
+  if (recurrenceResult.errorMessage) {
+    return { errorMessage: recurrenceResult.errorMessage };
+  }
+
+  const taskResult = await getVisibleTaskById(supabase, taskId);
+  if (taskResult.errorMessage) {
+    return { errorMessage: taskResult.errorMessage };
+  }
+
+  if (!recurrenceResult.rule) {
+    const { error } = await supabase.from("task_recurrences").delete().eq("task_id", taskId);
+    return {
+      errorMessage: error ? "Unable to clear recurring preset right now." : null,
+    };
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("task_recurrences")
+    .select("id")
+    .eq("task_id", taskId)
+    .maybeSingle();
+
+  if (existingError) {
+    return { errorMessage: "Unable to load recurring preset right now." };
+  }
+
+  if (existing) {
+    const { error } = await supabase
+      .from("task_recurrences")
+      .update({
+        rule: recurrenceResult.rule,
+        updated_at: updatedAtIso,
+      })
+      .eq("task_id", taskId);
+
+    return {
+      errorMessage: error ? "Unable to update recurring preset right now." : null,
+    };
+  }
+
+  const { error } = await supabase.from("task_recurrences").insert({
+    task_id: taskId,
+    rule: recurrenceResult.rule,
+  });
+
+  return {
+    errorMessage: error ? "Unable to save recurring preset right now." : null,
+  };
+}
+
+async function getVisibleTaskById(supabase: SupabaseServerClient, taskId: string) {
+  const userId = await getAuthenticatedUserId(supabase);
+  let query = supabase
+    .from("tasks")
+    .select(userId ? "id, owner_user_id" : "id")
+    .eq("id", taskId);
+
+  if (userId) {
+    query = query.eq("owner_user_id", userId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to load task right now.",
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Task was not found or is no longer available.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data,
   };
 }
 
@@ -409,15 +739,22 @@ export async function getTasksWorkspaceData(
     sortValue: filters.activeSort,
   });
 
-  const taskTotalDurations = await getTaskTotalDurationMap(
-    supabase,
-    tasks.map((task) => task.id),
-  );
+  const taskIds = tasks.map((task) => task.id);
+  const [taskTotalDurations, taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
+    getTaskTotalDurationMap(supabase, taskIds),
+    getTaskRemindersForTasks(supabase, taskIds),
+    getTaskRecurrencesForTasks(supabase, taskIds),
+  ]);
+  const tasksWithReminders = tasks.map((task) => ({
+    ...task,
+    task_reminders: taskRemindersByTaskId[task.id] ?? [],
+    task_recurrences: taskRecurrencesByTaskId[task.id] ?? [],
+  }));
 
   return {
     projects: projectsResult.data,
     goals: visibleGoals,
-    tasks,
+    tasks: tasksWithReminders,
     taskTotalDurations,
     summary: {
       total: taskSummaryUnavailable ? tasks.length : (taskSummaryResult.data ?? []).length,
@@ -542,10 +879,24 @@ export async function createTaskWithOptionalWorkedTime(
   input: {
     task: TablesInsert<"tasks">;
     workedTime?: ManualWorkedTimePayload | null;
+    recurrenceRule?: unknown;
   },
   options?: { supabase?: SupabaseServerClient },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
+  const recurrenceResult =
+    input.recurrenceRule === undefined
+      ? { errorMessage: null, rule: undefined }
+      : normalizeTaskRecurrenceRuleInput(input.recurrenceRule);
+
+  if (recurrenceResult.errorMessage) {
+    return {
+      errorMessage: recurrenceResult.errorMessage,
+      createdTaskId: null,
+      workedTimeLogged: false,
+    };
+  }
+
   const createResult = await createTasks([input.task], { supabase });
 
   if (createResult.errorMessage) {
@@ -557,6 +908,24 @@ export async function createTaskWithOptionalWorkedTime(
   }
 
   const createdTaskId = createResult.createdTaskIds?.[0] ?? null;
+  if (createdTaskId && recurrenceResult.rule) {
+    const setRecurrenceResult = await setTaskRecurrence(
+      {
+        taskId: createdTaskId,
+        recurrenceRule: recurrenceResult.rule,
+      },
+      { supabase },
+    );
+
+    if (setRecurrenceResult.errorMessage) {
+      return {
+        errorMessage: setRecurrenceResult.errorMessage,
+        createdTaskId,
+        workedTimeLogged: false,
+      };
+    }
+  }
+
   if (!input.workedTime) {
     return {
       errorMessage: null,
@@ -595,6 +964,130 @@ export async function createTaskWithOptionalWorkedTime(
   };
 }
 
+export async function createTaskEmailReminder(
+  input: {
+    taskId: string;
+    remindAt: unknown;
+    channel?: unknown;
+    status?: unknown;
+  },
+  options?: { supabase?: SupabaseServerClient; now?: Date },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const validationResult = normalizeTaskReminderCreateInput({
+    ...input,
+    now: options?.now,
+  });
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage: validationResult.errorMessage ?? "Reminder request is invalid.",
+      data: null,
+    };
+  }
+
+  const taskResult = await getVisibleTaskById(supabase, validationResult.data.taskId);
+  if (taskResult.errorMessage) {
+    return {
+      errorMessage: taskResult.errorMessage,
+      data: null,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("task_reminders")
+    .insert({
+      task_id: validationResult.data.taskId,
+      remind_at: validationResult.data.remindAtIso,
+      channel: validationResult.data.channel,
+      status: validationResult.data.status,
+    })
+    .select(
+      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+    )
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to create reminder right now.",
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Reminder could not be created.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: normalizeTaskReminderRow(data),
+  };
+}
+
+export async function cancelTaskReminder(
+  input: {
+    taskId: string;
+    reminderId: string;
+    status?: unknown;
+  },
+  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+  const validationResult = normalizeTaskReminderCancelInput(input);
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage: validationResult.errorMessage ?? "Reminder cancel request is invalid.",
+      data: null,
+    };
+  }
+
+  const taskResult = await getVisibleTaskById(supabase, validationResult.data.taskId);
+  if (taskResult.errorMessage) {
+    return {
+      errorMessage: taskResult.errorMessage,
+      data: null,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("task_reminders")
+    .update({
+      status: validationResult.data.status,
+      updated_at: updatedAtIso,
+    })
+    .eq("id", validationResult.data.reminderId)
+    .eq("task_id", validationResult.data.taskId)
+    .eq("status", "pending")
+    .select(
+      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+    )
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to cancel reminder right now.",
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Pending reminder was not found or is no longer cancellable.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: normalizeTaskReminderRow(data),
+  };
+}
+
 export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInput) {
   const taskId = input.taskId.trim();
   const status = input.status.trim();
@@ -602,6 +1095,10 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
   const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
   const estimateResult = normalizeTaskEstimateInput(input.estimateMinutes);
   const blockedReason = normalizeTaskBlockedReasonInput(input.blockedReason);
+  const recurrenceRuleResult =
+    input.recurrenceRule === undefined
+      ? { errorMessage: null, rule: undefined }
+      : normalizeTaskRecurrenceRuleInput(input.recurrenceRule);
 
   if (!taskId) {
     return {
@@ -633,6 +1130,12 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  if (recurrenceRuleResult.errorMessage) {
+    return {
+      errorMessage: recurrenceRuleResult.errorMessage,
+    };
+  }
+
   const blockedReasonError = getTaskBlockedReasonValidationError(status, blockedReason);
   if (blockedReasonError) {
     return {
@@ -651,6 +1154,9 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       dueDate: dueDateResult.value,
       estimateMinutes: estimateResult.value,
       blockedReason: normalizedBlockedReason,
+      ...(input.recurrenceRule === undefined
+        ? {}
+        : { recurrenceRule: recurrenceRuleResult.rule ?? null }),
     } satisfies ValidatedTaskInlineUpdateInput,
   };
 }
@@ -763,6 +1269,20 @@ export async function updateTaskInline(
 
   if (!updatedTask) {
     return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  if (input.recurrenceRule !== undefined) {
+    const recurrenceResult = await setTaskRecurrence(
+      {
+        taskId: input.taskId,
+        recurrenceRule: input.recurrenceRule,
+      },
+      { supabase, updatedAtIso },
+    );
+
+    if (recurrenceResult.errorMessage) {
+      return { errorMessage: recurrenceResult.errorMessage };
+    }
   }
 
   return { errorMessage: null };
@@ -900,9 +1420,22 @@ export async function getTaskById(
     };
   }
 
+  if (!data) {
+    return {
+      errorMessage: null,
+      data: null,
+    };
+  }
+
+  const recurrencesByTaskId = await getTaskRecurrencesForTasks(supabase, [normalizedTaskId]);
+
   return {
     errorMessage: null,
-    data: data as TaskRecord | null,
+    data: {
+      ...data,
+      task_reminders: [],
+      task_recurrences: recurrencesByTaskId[normalizedTaskId] ?? [],
+    } as TaskRecord,
   };
 }
 

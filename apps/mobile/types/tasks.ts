@@ -21,6 +21,34 @@ export type MobileTaskGoal = {
   title: string;
 };
 
+export type MobileTaskReminder = {
+  id: string;
+  taskId: string;
+  remindAt: string;
+  channel: 'email';
+  status: 'pending' | 'sent' | 'failed' | 'cancelled';
+  sentAt: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MobileTaskRecurrenceRule =
+  | 'daily'
+  | 'weekdays'
+  | 'weekly:sunday'
+  | 'weekly:monday'
+  | 'weekly:tuesday'
+  | 'weekly:wednesday'
+  | 'weekly:thursday'
+  | 'weekly:friday'
+  | 'weekly:saturday'
+  | 'monthly:day-of-month';
+
+export type MobileTaskRecurrence = {
+  rule: MobileTaskRecurrenceRule;
+};
+
 export type MobileTaskListItem = {
   id: string;
   title: string;
@@ -35,6 +63,8 @@ export type MobileTaskListItem = {
   trackedDurationSeconds: number;
   project: MobileTaskProject;
   goal: MobileTaskGoal | null;
+  reminders: MobileTaskReminder[];
+  recurrence: MobileTaskRecurrence | null;
 };
 
 export type MobileTaskCounters = {
@@ -78,6 +108,7 @@ export type CreateTaskInput = {
   priority: MobileTaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
+  recurrenceRule?: MobileTaskRecurrenceRule | null;
 };
 
 export type UpdateTaskInput = {
@@ -87,9 +118,31 @@ export type UpdateTaskInput = {
   estimateMinutes?: number | null;
   description?: string | null;
   blockedReason?: string | null;
+  recurrenceRule?: MobileTaskRecurrenceRule | null;
 };
 
+export const MOBILE_TASK_RECURRENCE_RULE_VALUES = [
+  'daily',
+  'weekdays',
+  'weekly:sunday',
+  'weekly:monday',
+  'weekly:tuesday',
+  'weekly:wednesday',
+  'weekly:thursday',
+  'weekly:friday',
+  'weekly:saturday',
+  'monthly:day-of-month',
+] as const satisfies readonly MobileTaskRecurrenceRule[];
+
 export type UpdateMobileTaskInput = UpdateTaskInput;
+
+export type CreateTaskReminderInput = {
+  remindAt: string;
+};
+
+export type CancelTaskReminderInput = {
+  reminderId: string;
+};
 
 export const MOBILE_TASK_STATUS_VALUES =
   TASK_STATUS_VALUES as readonly MobileTaskStatus[];

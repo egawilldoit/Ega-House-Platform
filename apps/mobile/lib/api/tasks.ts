@@ -1,6 +1,8 @@
 import { mobileApiFetch } from '@/lib/api/client';
 import type {
+  CancelTaskReminderInput,
   CreateTaskInput,
+  CreateTaskReminderInput,
   MobileTaskDueFilter,
   MobileTaskListResponse,
   MobileTaskMutationResponse,
@@ -77,4 +79,23 @@ export async function updateMobileTask(taskId: string, input: UpdateTaskInput) {
     auth: true,
     body: JSON.stringify(input),
   });
+}
+
+export async function createMobileTaskReminder(taskId: string, input: CreateTaskReminderInput) {
+  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}/reminders`, {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(input),
+  });
+}
+
+export async function cancelMobileTaskReminder(taskId: string, input: CancelTaskReminderInput) {
+  return mobileApiFetch<MobileTaskMutationResponse>(
+    `/api/mobile/tasks/${taskId}/reminders/${input.reminderId}`,
+    {
+      method: 'PATCH',
+      auth: true,
+      body: JSON.stringify({ status: 'cancelled' }),
+    },
+  );
 }

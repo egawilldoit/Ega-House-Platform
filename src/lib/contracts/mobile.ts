@@ -2,6 +2,7 @@ import type { User } from "@supabase/supabase-js";
 
 import type { TaskPriority, TaskStatus } from "@/lib/task-domain";
 import type { TaskDueFilter, TaskSortValue } from "@/lib/task-list";
+import type { TaskRecurrenceRule } from "@/lib/task-recurrence";
 
 export type { TaskStatus, TaskPriority, TaskDueFilter };
 
@@ -63,6 +64,22 @@ export type MobileTaskGoal = {
   title: string;
 };
 
+export type MobileTaskReminder = {
+  id: string;
+  taskId: string;
+  remindAt: string;
+  channel: "email";
+  status: "pending" | "processing" | "sent" | "failed" | "cancelled";
+  sentAt: string | null;
+  failureReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MobileTaskRecurrence = {
+  rule: TaskRecurrenceRule;
+};
+
 export type MobileTaskListItem = {
   id: string;
   title: string;
@@ -77,6 +94,8 @@ export type MobileTaskListItem = {
   trackedDurationSeconds: number;
   project: MobileTaskProject;
   goal: MobileTaskGoal | null;
+  reminders: MobileTaskReminder[];
+  recurrence: MobileTaskRecurrence | null;
 };
 
 export type MobileTaskCounters = {
@@ -190,6 +209,7 @@ export type CreateTaskInput = {
   priority: TaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
+  recurrenceRule?: TaskRecurrenceRule | null;
 };
 
 export type UpdateTaskInput = {
@@ -199,6 +219,15 @@ export type UpdateTaskInput = {
   estimateMinutes?: number | null;
   description?: string | null;
   blockedReason?: string | null;
+  recurrenceRule?: TaskRecurrenceRule | null;
+};
+
+export type CreateTaskReminderInput = {
+  remindAt: string;
+};
+
+export type CancelTaskReminderInput = {
+  reminderId: string;
 };
 
 export type TimerSessionSummary = {

@@ -10,6 +10,10 @@ import {
   TASK_STATUS_VALUES,
   formatTaskToken,
 } from "@/lib/task-domain";
+import {
+  TASK_RECURRENCE_RULE_VALUES,
+  formatTaskRecurrenceRule,
+} from "@/lib/task-recurrence";
 
 import { type CreateTaskFormState, createTaskAction } from "./actions";
 
@@ -41,6 +45,7 @@ export function buildCreateTaskFormInitialState({
         priority: "medium",
         dueDate: "",
         estimateMinutes: "",
+        recurrenceRule: "",
         workedTimeStartedAt: "",
         workedTimeEndedAt: "",
         returnTo,
@@ -261,6 +266,25 @@ export function CreateTaskForm({
                 defaultValue={state.values.estimateMinutes}
                 className="ega-glass-input h-10 rounded-xl"
               />
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="recurrenceRule" className="glass-label text-etch">
+                Repeat
+              </label>
+              <select
+                id="recurrenceRule"
+                name="recurrenceRule"
+                defaultValue={state.values.recurrenceRule}
+                className="ega-glass-input flex h-10 w-full items-center justify-between rounded-xl border px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              >
+                <option value="">Does not repeat</option>
+                {TASK_RECURRENCE_RULE_VALUES.map((rule) => (
+                  <option key={rule} value={rule}>
+                    {formatTaskRecurrenceRule(rule)}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-3 sm:col-span-2">

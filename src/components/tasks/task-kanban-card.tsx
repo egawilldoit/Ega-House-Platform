@@ -3,6 +3,7 @@ import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import {
 } from "@/lib/task-domain";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import type { TaskRecord } from "@/lib/services/task-service";
+import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatDurationLabel } from "@/lib/task-session";
 import { cn } from "@/lib/utils";
 
@@ -29,6 +31,8 @@ type TaskKanbanCardProps = {
   archiveAction?: (formData: FormData) => void | Promise<void>;
   unarchiveAction?: (formData: FormData) => void | Promise<void>;
   deleteAction?: (formData: FormData) => void | Promise<void>;
+  createReminderAction?: (formData: FormData) => void | Promise<void>;
+  cancelReminderAction?: (formData: FormData) => void | Promise<void>;
   returnTo?: string;
   trackedSeconds?: number;
   error?: string | null;
@@ -75,6 +79,8 @@ export function TaskKanbanCard({
   archiveAction,
   unarchiveAction,
   deleteAction,
+  createReminderAction,
+  cancelReminderAction,
   returnTo = "/tasks?layout=kanban",
   trackedSeconds,
   error,
@@ -87,6 +93,8 @@ export function TaskKanbanCard({
   const isBlocked = task.status === "blocked";
   const estimateLabel = formatTaskEstimate(task.estimate_minutes);
   const trackedLabel = typeof trackedSeconds === "number" ? formatDurationLabel(trackedSeconds) : null;
+  const recurrenceRule = task.task_recurrences[0]?.rule ?? null;
+  const recurrenceLabel = recurrenceRule ? formatTaskRecurrenceRule(recurrenceRule) : null;
   const nextStatuses = getTaskKanbanNextStatuses(task.status);
   const showStatusControls = Boolean(updateAction) && canShowTaskKanbanStatusControls(task);
   const pinToggleAction = isPinned ? unpinAction : pinAction;
@@ -94,8 +102,15 @@ export function TaskKanbanCard({
   const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
   const showOverflowActions = showStatusControls || showActiveActions || showArchivedActions;
+  const showReminderPanel = Boolean(createReminderAction && cancelReminderAction);
   const showDetails = Boolean(
-    goalName || estimateLabel || trackedLabel || task.blocked_reason || showOverflowActions,
+    goalName ||
+      estimateLabel ||
+      trackedLabel ||
+      recurrenceLabel ||
+      task.blocked_reason ||
+      showReminderPanel ||
+      showOverflowActions,
   );
 
   return (
@@ -155,6 +170,7 @@ export function TaskKanbanCard({
             <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
             <StatusBadge status={task.status} />
             {isBlocked ? <Badge tone="warn">Blocked</Badge> : null}
+            {recurrenceLabel ? <Badge tone="info">{recurrenceLabel}</Badge> : null}
             {isArchived ? <Badge tone="warn">Archived</Badge> : null}
           </div>
 
@@ -174,7 +190,7 @@ export function TaskKanbanCard({
                 />
               </summary>
               <div className="mt-2 space-y-3">
-                {goalName || estimateLabel || trackedLabel || task.blocked_reason ? (
+                {goalName || estimateLabel || trackedLabel || recurrenceLabel || task.blocked_reason ? (
                   <dl className="grid gap-2 rounded-[0.75rem] border border-[rgba(15,23,42,0.08)] bg-[rgba(255,255,255,0.46)] p-2 text-xs leading-5">
                     {goalName ? (
                       <TaskKanbanDetailItem label="Goal">{goalName}</TaskKanbanDetailItem>
@@ -185,12 +201,26 @@ export function TaskKanbanCard({
                     {trackedLabel ? (
                       <TaskKanbanDetailItem label="Tracked">{trackedLabel}</TaskKanbanDetailItem>
                     ) : null}
+                    {recurrenceLabel ? (
+                      <TaskKanbanDetailItem label="Repeat">{recurrenceLabel}</TaskKanbanDetailItem>
+                    ) : null}
                     {task.blocked_reason ? (
                       <TaskKanbanDetailItem label="Blocked reason">
                         {task.blocked_reason}
                       </TaskKanbanDetailItem>
                     ) : null}
                   </dl>
+                ) : null}
+
+                {createReminderAction && cancelReminderAction ? (
+                  <TaskReminderPanel
+                    taskId={task.id}
+                    reminders={task.task_reminders}
+                    returnTo={returnTo}
+                    createAction={createReminderAction}
+                    cancelAction={cancelReminderAction}
+                    compact
+                  />
                 ) : null}
 
                 {showStatusControls ? (
@@ -399,6 +429,7 @@ function TaskKanbanStatusHiddenFields({
         name="estimateMinutes"
         value={task.estimate_minutes !== null ? String(task.estimate_minutes) : ""}
       />
+      <input type="hidden" name="recurrenceRule" value={task.task_recurrences[0]?.rule ?? ""} />
       {blockedReasonValue !== undefined ? (
         <input type="hidden" name="blockedReason" value={blockedReasonValue} />
       ) : null}

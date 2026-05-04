@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 
 import type { MobileTaskMutationResponse } from "@/lib/contracts/mobile";
 import { pinTaskInFocusQueue } from "@/lib/services/focus-queue-service";
-import { getTaskById } from "@/lib/services/task-service";
 import { resolveMobileRequestAuth } from "@/app/api/mobile/_lib/auth";
-import { mapTaskRecordToMobileTaskItem, mobileErrorResponse } from "@/app/api/mobile/_lib/helpers";
+import { getMobileTaskItemById, mobileErrorResponse } from "@/app/api/mobile/_lib/helpers";
 
 type RouteContext = {
   params: Promise<{
@@ -27,7 +26,7 @@ export async function POST(request: Request, context: RouteContext) {
     return mobileErrorResponse("VALIDATION_ERROR", pinResult.errorMessage, 400);
   }
 
-  const taskResult = await getTaskById(id, { supabase: authResult.supabase });
+  const taskResult = await getMobileTaskItemById(authResult.supabase, id);
   if (taskResult.errorMessage || !taskResult.data) {
     return mobileErrorResponse("INTERNAL_ERROR", "Unable to load pinned task.", 500);
   }
@@ -35,7 +34,7 @@ export async function POST(request: Request, context: RouteContext) {
   return NextResponse.json(
     {
       ok: true,
-      task: mapTaskRecordToMobileTaskItem(taskResult.data, 0),
+      task: taskResult.data,
     } satisfies MobileTaskMutationResponse,
     { status: 200 },
   );

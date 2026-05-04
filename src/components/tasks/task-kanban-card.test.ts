@@ -26,6 +26,8 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     archived_by: null,
     projects: null,
     goals: null,
+    task_reminders: [],
+    task_recurrences: [],
     ...overrides,
   };
 }

@@ -174,6 +174,62 @@ export const taskSessions = pgTable(
   },
   (table) => [index("task_sessions_owner_user_id_idx").on(table.ownerUserId)],
 );
+
+export const taskReminders = pgTable(
+  "task_reminders",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    remindAt: timestamp("remind_at", { withTimezone: true }).notNull(),
+    channel: varchar("channel", { length: 32 }).notNull().default("email"),
+    status: varchar("status", { length: 32 }).notNull().default("pending"),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("task_reminders_owner_user_id_idx").on(table.ownerUserId),
+    index("task_reminders_task_id_idx").on(table.taskId),
+    index("task_reminders_pending_delivery_idx")
+      .on(table.status, table.channel, table.remindAt)
+      .where(sql`${table.status} = 'pending'`),
+  ],
+);
+
+export const taskRecurrences = pgTable(
+  "task_recurrences",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    rule: varchar("rule", { length: 64 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("task_recurrences_owner_user_id_idx").on(table.ownerUserId),
+    index("task_recurrences_task_id_idx").on(table.taskId),
+    uniqueIndex("task_recurrences_task_id_unique").on(table.taskId),
+    check(
+      "task_recurrences_rule_check",
+      sql`${table.rule} in ('daily', 'weekdays', 'weekly:sunday', 'weekly:monday', 'weekly:tuesday', 'weekly:wednesday', 'weekly:thursday', 'weekly:friday', 'weekly:saturday', 'monthly:day-of-month')`,
+    ),
+  ],
+);
 export const taskSavedViews = pgTable(
   "task_saved_views",
   {

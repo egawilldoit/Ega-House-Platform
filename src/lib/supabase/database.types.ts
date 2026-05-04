@@ -183,6 +183,88 @@ export type Database = {
           },
         ]
       }
+      task_reminders: {
+        Row: {
+          channel: string
+          created_at: string
+          failure_reason: string | null
+          id: string
+          owner_user_id: string | null
+          remind_at: string
+          sent_at: string | null
+          status: string
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          owner_user_id?: string | null
+          remind_at: string
+          sent_at?: string | null
+          status?: string
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          owner_user_id?: string | null
+          remind_at?: string
+          sent_at?: string | null
+          status?: string
+          task_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_reminders_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_recurrences: {
+        Row: {
+          created_at: string
+          id: string
+          owner_user_id: string | null
+          rule: string
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          owner_user_id?: string | null
+          rule: string
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          owner_user_id?: string | null
+          rule?: string
+          task_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_recurrences_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: true
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_saved_views: {
         Row: {
           created_at: string

@@ -3,6 +3,8 @@ import Link from "next/link";
 
 import {
   archiveTaskAction,
+  cancelTaskReminderAction,
+  createTaskReminderAction,
   deleteTaskAction,
   pinTaskAction,
   unarchiveTaskAction,
@@ -16,6 +18,7 @@ import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TaskSavedViewsPanel } from "@/components/tasks/task-saved-views-panel";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
+import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import {
   TaskFilterControls,
   buildTaskFilterReturnPath,
@@ -61,6 +64,7 @@ import {
 } from "@/lib/task-archive";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import {
@@ -417,6 +421,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                 archiveAction={archiveTaskAction}
                                 unarchiveAction={unarchiveTaskAction}
                                 deleteAction={deleteTaskAction}
+                                createReminderAction={createTaskReminderAction}
+                                cancelReminderAction={cancelTaskReminderAction}
                                 returnTo={returnPath}
                                 trackedSeconds={taskTotalDurations[task.id]}
                                 error={inlineError}
@@ -507,6 +513,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               {task.estimate_minutes ? (
                                 <Badge tone="muted">Est. {formatTaskEstimate(task.estimate_minutes)}</Badge>
                               ) : null}
+                              {task.task_recurrences[0] ? (
+                                <Badge tone="info">
+                                  {formatTaskRecurrenceRule(task.task_recurrences[0].rule)}
+                                </Badge>
+                              ) : null}
                             </div>
                           </div>
                         </div>
@@ -517,6 +528,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
                         {taskArchived ? <Badge tone="warn">Archived</Badge> : null}
                         {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
+                        {task.task_recurrences[0] ? (
+                          <Badge tone="info">
+                            {formatTaskRecurrenceRule(task.task_recurrences[0].rule)}
+                          </Badge>
+                        ) : null}
                       </div>
                     </div>
 
@@ -538,50 +554,61 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         ) : null}
                       </div>
 
-                      <InlineTaskUpdateForm
-                        action={updateTaskInlineAction}
-                        deleteAction={deleteTaskAction}
-                        archiveAction={archiveTaskAction}
-                        unarchiveAction={unarchiveTaskAction}
-                        taskId={task.id}
-                        taskTitle={task.title}
-                        returnTo={returnPath}
-                        defaultStatus={task.status}
-                        defaultPriority={task.priority}
-                        defaultDueDate={task.due_date}
-                        defaultEstimateMinutes={task.estimate_minutes}
-                        defaultBlockedReason={task.blocked_reason}
-                        archivedAt={task.archived_at}
-                        error={inlineError}
-                        overflowActions={
-                          !taskArchived ? (
-                            <>
-                              {!taskCompleted ? (
-                                <form action={startTimerAction}>
-                                  <input type="hidden" name="taskId" value={task.id} />
-                                  <input type="hidden" name="returnTo" value={returnPath} />
-                                  <Button
-                                    type="submit"
-                                    size="sm"
-                                    variant="ghost"
-                                    className="w-full justify-center"
-                                  >
-                                    Start timer
-                                  </Button>
-                                </form>
-                              ) : null}
-                              <FocusPinToggleForm
-                                action={task.focus_rank ? unpinTaskAction : pinTaskAction}
-                                taskId={task.id}
-                                returnTo={returnPath}
-                                isPinned={task.focus_rank !== null}
-                                className="w-full"
-                                fullWidth
-                              />
-                            </>
-                          ) : null
-                        }
-                      />
+                      <div className="space-y-4">
+                        <TaskReminderPanel
+                          taskId={task.id}
+                          reminders={task.task_reminders}
+                          returnTo={returnPath}
+                          createAction={createTaskReminderAction}
+                          cancelAction={cancelTaskReminderAction}
+                        />
+
+                        <InlineTaskUpdateForm
+                          action={updateTaskInlineAction}
+                          deleteAction={deleteTaskAction}
+                          archiveAction={archiveTaskAction}
+                          unarchiveAction={unarchiveTaskAction}
+                          taskId={task.id}
+                          taskTitle={task.title}
+                          returnTo={returnPath}
+                          defaultStatus={task.status}
+                          defaultPriority={task.priority}
+                          defaultDueDate={task.due_date}
+                          defaultEstimateMinutes={task.estimate_minutes}
+                          defaultBlockedReason={task.blocked_reason}
+                          defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
+                          archivedAt={task.archived_at}
+                          error={inlineError}
+                          overflowActions={
+                            !taskArchived ? (
+                              <>
+                                {!taskCompleted ? (
+                                  <form action={startTimerAction}>
+                                    <input type="hidden" name="taskId" value={task.id} />
+                                    <input type="hidden" name="returnTo" value={returnPath} />
+                                    <Button
+                                      type="submit"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="w-full justify-center"
+                                    >
+                                      Start timer
+                                    </Button>
+                                  </form>
+                                ) : null}
+                                <FocusPinToggleForm
+                                  action={task.focus_rank ? unpinTaskAction : pinTaskAction}
+                                  taskId={task.id}
+                                  returnTo={returnPath}
+                                  isPinned={task.focus_rank !== null}
+                                  className="w-full"
+                                  fullWidth
+                                />
+                              </>
+                            ) : null
+                          }
+                        />
+                      </div>
                     </div>
                     </article>
                   );

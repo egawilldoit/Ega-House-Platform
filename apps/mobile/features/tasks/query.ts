@@ -1,7 +1,9 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  cancelMobileTaskReminder,
   createMobileTask,
+  createMobileTaskReminder,
   getMobileTaskById,
   listMobileTasks,
   type ListMobileTasksParams,
@@ -141,6 +143,36 @@ export function useUpdateTaskMutation() {
         // Best-effort background refresh.
       });
       queryClient.invalidateQueries({ queryKey: ['today'] }).catch(() => {
+        // Best-effort background refresh.
+      });
+    },
+  });
+}
+
+export function useCreateTaskReminderMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ taskId, remindAt }: { taskId: string; remindAt: string }) =>
+      createMobileTaskReminder(taskId, { remindAt }),
+    onSuccess: (response) => {
+      applyTaskToTaskCaches(queryClient, response.task);
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists() }).catch(() => {
+        // Best-effort background refresh.
+      });
+    },
+  });
+}
+
+export function useCancelTaskReminderMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ taskId, reminderId }: { taskId: string; reminderId: string }) =>
+      cancelMobileTaskReminder(taskId, { reminderId }),
+    onSuccess: (response) => {
+      applyTaskToTaskCaches(queryClient, response.task);
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists() }).catch(() => {
         // Best-effort background refresh.
       });
     },

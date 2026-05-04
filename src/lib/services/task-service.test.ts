@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  cancelTaskReminder,
+  createTaskEmailReminder,
   createTasks,
   createTaskWithOptionalWorkedTime,
   getTasksWorkspaceData,
@@ -94,6 +96,8 @@ function createTaskInlineSupabaseMock(options?: {
   const sessions = [...(options?.sessions ?? [])];
   const taskUpdateCalls: Array<{ payload: Record<string, unknown>; taskId: string }> = [];
   const sessionUpdateCalls: Array<{ payload: Record<string, unknown>; sessionId: string }> = [];
+  const recurrenceUpdateCalls: Array<Record<string, unknown>> = [];
+  const recurrenceDeleteTaskIds: string[] = [];
   let sessionLookupCount = 0;
 
   const supabase = {
@@ -216,7 +220,7 @@ function createTaskInlineSupabaseMock(options?: {
       if (table === "tasks") {
         return {
           select(columns: string) {
-            assert.equal(columns, "id, status, completed_at, archived_at");
+            assert.ok(columns === "id, status, completed_at, archived_at" || columns === "id");
             const state = { taskId: "" };
 
             return {
@@ -276,6 +280,34 @@ function createTaskInlineSupabaseMock(options?: {
         };
       }
 
+      if (table === "task_recurrences") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { id: "recurrence-1" },
+                error: null,
+              }),
+            }),
+          }),
+          update(payload: Record<string, unknown>) {
+            recurrenceUpdateCalls.push(payload);
+            return {
+              eq: async () => ({ data: null, error: null }),
+            };
+          },
+          delete() {
+            return {
+              eq: async (_column: string, value: string) => {
+                recurrenceDeleteTaskIds.push(value);
+                return { data: null, error: null };
+              },
+            };
+          },
+          insert: async () => ({ data: null, error: null }),
+        };
+      }
+
       throw new Error(`Unexpected table: ${table}`);
     },
   };
@@ -286,6 +318,8 @@ function createTaskInlineSupabaseMock(options?: {
     sessions,
     taskUpdateCalls,
     sessionUpdateCalls,
+    recurrenceUpdateCalls,
+    recurrenceDeleteTaskIds,
     getSessionLookupCount() {
       return sessionLookupCount;
     },
@@ -590,6 +624,71 @@ test("non-done inline status updates do not attempt to stop timer sessions", asy
   assert.equal(mock.taskUpdateCalls.length, 1);
 });
 
+test("inline update persists recurrence preset when provided", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+      recurrenceRule: "weekly:monday",
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceUpdateCalls, [
+    {
+      rule: "weekly:monday",
+      updated_at: "2026-04-21T10:00:00.000Z",
+    },
+  ]);
+});
+
+test("inline update clears recurrence preset when empty rule provided", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+      recurrenceRule: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceDeleteTaskIds, ["task-1"]);
+});
+
+test("inline validation rejects invalid recurrence preset", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+    recurrenceRule: "annually",
+  });
+
+  assert.equal(result.errorMessage, "Recurring preset is not supported.");
+});
+
 test("no-row task update failure returns a clear error", async () => {
   const mock = createTaskInlineSupabaseMock({
     taskUpdateReturnsNoRow: true,
@@ -622,6 +721,7 @@ function createTaskCreateSupabaseMock(options?: {
 }) {
   const taskInsertCalls: Array<Record<string, unknown>[]> = [];
   const sessionInsertCalls: Array<Record<string, unknown>> = [];
+  const recurrenceInsertCalls: Array<Record<string, unknown>> = [];
   const tasks = [{ id: "task-1" }];
 
   const supabase = {
@@ -649,6 +749,21 @@ function createTaskCreateSupabaseMock(options?: {
 
       if (table === "tasks") {
         return {
+          select(columns: string) {
+            assert.equal(columns, "id");
+            const state = { taskId: "" };
+            return {
+              eq(column: string, value: string) {
+                assert.equal(column, "id");
+                state.taskId = value;
+                return this;
+              },
+              maybeSingle: async () => ({
+                data: tasks.find((task) => task.id === state.taskId) ?? null,
+                error: null,
+              }),
+            };
+          },
           insert(rows: Record<string, unknown>[]) {
             taskInsertCalls.push(rows);
             return {
@@ -679,6 +794,25 @@ function createTaskCreateSupabaseMock(options?: {
         };
       }
 
+      if (table === "task_recurrences") {
+        return {
+          insert: async (row: Record<string, unknown>) => {
+            recurrenceInsertCalls.push(row);
+            return { data: null, error: null };
+          },
+          delete() {
+            return {
+              eq: async () => ({ data: null, error: null }),
+            };
+          },
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
+            }),
+          }),
+        };
+      }
+
       throw new Error(`Unexpected table: ${table}`);
     },
   };
@@ -687,6 +821,7 @@ function createTaskCreateSupabaseMock(options?: {
     supabase: supabase as never,
     taskInsertCalls,
     sessionInsertCalls,
+    recurrenceInsertCalls,
   };
 }
 
@@ -843,6 +978,78 @@ test("createTaskWithOptionalWorkedTime logs exactly one completed session", asyn
   assert.equal(mock.taskInsertCalls[0]?.[0]?.status, "blocked");
 });
 
+test("createTaskWithOptionalWorkedTime persists a valid recurrence preset", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Standup",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "weekdays",
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceInsertCalls, [
+    {
+      task_id: "task-1",
+      rule: "weekdays",
+    },
+  ]);
+});
+
+test("createTaskWithOptionalWorkedTime rejects invalid recurrence before task insert", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Invalid repeat",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "yearly",
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, "Recurring preset is not supported.");
+  assert.equal(mock.taskInsertCalls.length, 0);
+  assert.equal(mock.recurrenceInsertCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime skips recurrence insert for non-recurring tasks", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "One-off",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "",
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.recurrenceInsertCalls.length, 0);
+});
+
 test("createTaskWithOptionalWorkedTime does not log worked time when task creation fails", async () => {
   const mock = createTaskCreateSupabaseMock({ failTaskInsert: true });
 
@@ -928,6 +1135,387 @@ test("createTaskWithOptionalWorkedTime reports session failure without claiming 
   assert.equal(result.createdTaskId, "task-1");
   assert.equal(result.workedTimeLogged, false);
   assert.equal(mock.sessionInsertCalls.length, 1);
+});
+
+function createTaskReminderSupabaseMock(options?: {
+  tasks?: Array<{ id: string; owner_user_id?: string | null }>;
+  reminders?: Array<{
+    id: string;
+    task_id: string;
+    remind_at: string;
+    channel: string;
+    status: string;
+    sent_at: string | null;
+    failure_reason: string | null;
+    created_at: string;
+    updated_at: string;
+  }>;
+  failTaskLookup?: boolean;
+  failReminderInsert?: boolean;
+  failReminderUpdate?: boolean;
+  authUserId?: string | null;
+}) {
+  const tasks = options?.tasks ?? [{ id: "task-1", owner_user_id: "user-1" }];
+  const reminders = [
+    ...(options?.reminders ?? [
+      {
+        id: "reminder-1",
+        task_id: "task-1",
+        remind_at: "2026-05-02T14:00:00.000Z",
+        channel: "email",
+        status: "pending",
+        sent_at: null,
+        failure_reason: null,
+        created_at: "2026-05-01T10:00:00.000Z",
+        updated_at: "2026-05-01T10:00:00.000Z",
+      },
+    ]),
+  ];
+  const reminderInsertCalls: Array<Record<string, unknown>> = [];
+  const reminderUpdateCalls: Array<Record<string, unknown>> = [];
+  let deleteCallCount = 0;
+
+  const supabase = {
+    auth: {
+      getUser: async () => ({
+        data: { user: options?.authUserId === undefined ? null : { id: options.authUserId } },
+        error: null,
+      }),
+    },
+    from(table: string) {
+      if (table === "tasks") {
+        return {
+          select: (columns: string) => {
+            assert.ok(columns === "id" || columns === "id, owner_user_id");
+            const state = { taskId: "", ownerUserId: null as string | null };
+
+            return {
+              eq(column: string, value: string) {
+                if (column === "id") {
+                  state.taskId = value;
+                } else if (column === "owner_user_id") {
+                  state.ownerUserId = value;
+                } else {
+                  throw new Error(`Unexpected task filter: ${column}`);
+                }
+                return this;
+              },
+              maybeSingle: async () => {
+                if (options?.failTaskLookup) {
+                  return { data: null, error: { message: "task lookup failed" } };
+                }
+
+                return {
+                  data:
+                    tasks.find(
+                      (task) =>
+                        task.id === state.taskId &&
+                        (!state.ownerUserId || task.owner_user_id === state.ownerUserId),
+                    ) ?? null,
+                  error: null,
+                };
+              },
+            };
+          },
+        };
+      }
+
+      if (table === "task_reminders") {
+        return {
+          insert(row: Record<string, unknown>) {
+            reminderInsertCalls.push(row);
+            return {
+              select: () => ({
+                maybeSingle: async () => {
+                  if (options?.failReminderInsert) {
+                    return { data: null, error: { message: "insert failed" } };
+                  }
+
+                  const inserted = {
+                    id: "created-reminder",
+                    task_id: String(row.task_id),
+                    remind_at: String(row.remind_at),
+                    channel: String(row.channel),
+                    status: String(row.status),
+                    sent_at: null,
+                    failure_reason: null,
+                    created_at: "2026-05-01T10:00:00.000Z",
+                    updated_at: "2026-05-01T10:00:00.000Z",
+                  };
+                  reminders.push(inserted);
+                  return { data: inserted, error: null };
+                },
+              }),
+            };
+          },
+          update(payload: Record<string, unknown>) {
+            reminderUpdateCalls.push(payload);
+            const state = {
+              reminderId: "",
+              taskId: "",
+              status: "",
+            };
+
+            return {
+              eq(column: string, value: string) {
+                if (column === "id") {
+                  state.reminderId = value;
+                } else if (column === "task_id") {
+                  state.taskId = value;
+                } else if (column === "status") {
+                  state.status = value;
+                } else {
+                  throw new Error(`Unexpected reminder filter: ${column}`);
+                }
+                return this;
+              },
+              select: () => ({
+                maybeSingle: async () => {
+                  if (options?.failReminderUpdate) {
+                    return { data: null, error: { message: "update failed" } };
+                  }
+
+                  const index = reminders.findIndex(
+                    (reminder) =>
+                      reminder.id === state.reminderId &&
+                      reminder.task_id === state.taskId &&
+                      reminder.status === state.status,
+                  );
+
+                  if (index < 0) {
+                    return { data: null, error: null };
+                  }
+
+                  reminders[index] = {
+                    ...reminders[index],
+                    status: String(payload.status),
+                    updated_at: String(payload.updated_at),
+                  };
+
+                  return { data: reminders[index], error: null };
+                },
+              }),
+            };
+          },
+          delete() {
+            deleteCallCount += 1;
+            return {};
+          },
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    },
+  };
+
+  return {
+    supabase: supabase as never,
+    reminders,
+    reminderInsertCalls,
+    reminderUpdateCalls,
+    getDeleteCallCount() {
+      return deleteCallCount;
+    },
+  };
+}
+
+test("createTaskEmailReminder rejects past reminders before task lookup", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T09:00:00.000Z",
+      channel: "email",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, "Reminder time must be in the future.");
+  assert.equal(mock.reminderInsertCalls.length, 0);
+});
+
+test("createTaskEmailReminder rejects unsupported channel and status inputs", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const unsupportedChannel = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T11:00:00.000Z",
+      channel: "sms",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+  const unsupportedStatus = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T11:00:00.000Z",
+      channel: "email",
+      status: "sent",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(unsupportedChannel.errorMessage, "Reminder channel is not supported.");
+  assert.equal(unsupportedStatus.errorMessage, "Reminder status is not supported.");
+  assert.equal(mock.reminderInsertCalls.length, 0);
+});
+
+test("createTaskEmailReminder creates a pending email reminder for a visible task", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: " task-1 ",
+      remindAt: "2026-05-01T11:00:00.000Z",
+      channel: "email",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.status, "pending");
+  assert.deepEqual(mock.reminderInsertCalls, [
+    {
+      task_id: "task-1",
+      remind_at: "2026-05-01T11:00:00.000Z",
+      channel: "email",
+      status: "pending",
+    },
+  ]);
+});
+
+test("createTaskEmailReminder rejects unavailable task access before insert", async () => {
+  const mock = createTaskReminderSupabaseMock({ tasks: [] });
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: "task-missing",
+      remindAt: "2026-05-01T11:00:00.000Z",
+      channel: "email",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, "Task was not found or is no longer available.");
+  assert.equal(mock.reminderInsertCalls.length, 0);
+});
+
+test("createTaskEmailReminder rejects task owned by another user before insert", async () => {
+  const mock = createTaskReminderSupabaseMock({
+    authUserId: "user-1",
+    tasks: [{ id: "task-1", owner_user_id: "user-2" }],
+  });
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T11:00:00.000Z",
+      channel: "email",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, "Task was not found or is no longer available.");
+  assert.equal(mock.reminderInsertCalls.length, 0);
+});
+
+test("cancelTaskReminder cancels a pending reminder without deleting history", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await cancelTaskReminder(
+    {
+      taskId: "task-1",
+      reminderId: "reminder-1",
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-01T12:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.status, "cancelled");
+  assert.equal(mock.reminders[0]?.status, "cancelled");
+  assert.deepEqual(mock.reminderUpdateCalls, [
+    {
+      status: "cancelled",
+      updated_at: "2026-05-01T12:00:00.000Z",
+    },
+  ]);
+  assert.equal(mock.getDeleteCallCount(), 0);
+});
+
+test("cancelTaskReminder rejects non-pending or unavailable reminders", async () => {
+  const mock = createTaskReminderSupabaseMock({
+    reminders: [
+      {
+        id: "reminder-1",
+        task_id: "task-1",
+        remind_at: "2026-05-02T14:00:00.000Z",
+        channel: "email",
+        status: "cancelled",
+        sent_at: null,
+        failure_reason: null,
+        created_at: "2026-05-01T10:00:00.000Z",
+        updated_at: "2026-05-01T10:00:00.000Z",
+      },
+    ],
+  });
+
+  const result = await cancelTaskReminder(
+    {
+      taskId: "task-1",
+      reminderId: "reminder-1",
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-01T12:00:00.000Z",
+    },
+  );
+
+  assert.equal(
+    result.errorMessage,
+    "Pending reminder was not found or is no longer cancellable.",
+  );
+  assert.equal(mock.getDeleteCallCount(), 0);
+});
+
+test("cancelTaskReminder rejects unavailable task access before update", async () => {
+  const mock = createTaskReminderSupabaseMock({ tasks: [] });
+
+  const result = await cancelTaskReminder(
+    {
+      taskId: "task-missing",
+      reminderId: "reminder-1",
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-05-01T12:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, "Task was not found or is no longer available.");
+  assert.equal(mock.reminderUpdateCalls.length, 0);
+  assert.equal(mock.getDeleteCallCount(), 0);
 });
 
 function createWorkspaceSupabaseMock() {
@@ -1147,6 +1735,30 @@ function createWorkspaceSupabaseMock() {
       updated_at: "2026-04-29T00:00:00.000Z",
     },
   ];
+  const taskReminders = [
+    {
+      id: "reminder-pending",
+      task_id: "quick-win-task",
+      remind_at: "2026-05-02T14:00:00.000Z",
+      channel: "email",
+      status: "pending",
+      sent_at: null,
+      failure_reason: null,
+      created_at: "2026-05-01T10:00:00.000Z",
+      updated_at: "2026-05-01T10:00:00.000Z",
+    },
+    {
+      id: "reminder-cancelled",
+      task_id: "quick-win-task",
+      remind_at: "2026-05-01T14:00:00.000Z",
+      channel: "email",
+      status: "cancelled",
+      sent_at: null,
+      failure_reason: null,
+      created_at: "2026-05-01T08:00:00.000Z",
+      updated_at: "2026-05-01T09:00:00.000Z",
+    },
+  ];
 
   function createTasksQuery(columns: string) {
     const state = {
@@ -1307,6 +1919,27 @@ function createWorkspaceSupabaseMock() {
         };
       }
 
+      if (table === "task_reminders") {
+        return {
+          select: () => ({
+            in: (_column: string, values: string[]) => ({
+              order: async () => ({
+                data: taskReminders.filter((reminder) => values.includes(reminder.task_id)),
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+
+      if (table === "task_recurrences") {
+        return {
+          select: () => ({
+            in: async () => ({ data: [], error: null }),
+          }),
+        };
+      }
+
       throw new Error(`Unexpected table: ${table}`);
     },
   };
@@ -1369,6 +2002,36 @@ test("workspace data returns all system defaults before custom views", async () 
       { name: "Blocked", isDefault: true },
       { name: "Due This Week", isDefault: true },
       { name: "Custom", isDefault: false },
+    ],
+  );
+});
+
+test("workspace data loads reminders for visible tasks", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "updated_desc",
+      activeView: "active",
+    },
+    { supabase: mock.supabase },
+  );
+
+  const quickWinTask = result.tasks.find((task) => task.id === "quick-win-task");
+
+  assert.deepEqual(
+    quickWinTask?.task_reminders.map((reminder) => ({
+      id: reminder.id,
+      status: reminder.status,
+      channel: reminder.channel,
+    })),
+    [
+      { id: "reminder-pending", status: "pending", channel: "email" },
+      { id: "reminder-cancelled", status: "cancelled", channel: "email" },
     ],
   );
 });

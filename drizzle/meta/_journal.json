@@ -176,6 +176,20 @@
       "when": 1777507200000,
       "tag": "0024_task_saved_view_definition_json",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1777901123143,
+      "tag": "0025_fair_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1777906615249,
+      "tag": "0026_equal_war_machine",
+      "breakpoints": true
     }
   ]
 }

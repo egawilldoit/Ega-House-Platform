@@ -12,6 +12,10 @@ import {
   formatTaskToken,
   isTaskCompletedStatus,
 } from "@/lib/task-domain";
+import {
+  TASK_RECURRENCE_RULE_VALUES,
+  formatTaskRecurrenceRule,
+} from "@/lib/task-recurrence";
 
 type InlineTaskUpdateFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -26,6 +30,7 @@ type InlineTaskUpdateFormProps = {
   defaultDueDate: string | null;
   defaultEstimateMinutes: number | null;
   defaultBlockedReason: string | null;
+  defaultRecurrenceRule?: string | null;
   archivedAt?: string | null;
   error?: string | null;
   overflowActions?: ReactNode;
@@ -44,6 +49,7 @@ export function InlineTaskUpdateForm({
   defaultDueDate,
   defaultEstimateMinutes,
   defaultBlockedReason,
+  defaultRecurrenceRule,
   archivedAt,
   error,
   overflowActions,
@@ -63,7 +69,7 @@ export function InlineTaskUpdateForm({
         <input type="hidden" name="taskId" value={taskId} />
         <input type="hidden" name="returnTo" value={returnTo} />
 
-        <div className="ega-glass-soft grid gap-3 rounded-[1rem] p-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="ega-glass-soft grid gap-3 rounded-[1rem] p-3 sm:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-2">
             <span className="glass-label text-etch">
               Status
@@ -126,8 +132,26 @@ export function InlineTaskUpdateForm({
             />
           </label>
 
+          <label className="space-y-2">
+            <span className="glass-label text-etch">
+              Repeat
+            </span>
+            <select
+              name="recurrenceRule"
+              defaultValue={defaultRecurrenceRule ?? ""}
+              className="ega-glass-input min-h-10 w-full rounded-xl border px-3 text-sm text-[color:var(--foreground)] ring-offset-background focus:outline-none focus:ring-2 focus:ring-[rgba(23,123,82,0.22)]"
+            >
+              <option value="">Does not repeat</option>
+              {TASK_RECURRENCE_RULE_VALUES.map((rule) => (
+                <option key={rule} value={rule}>
+                  {formatTaskRecurrenceRule(rule)}
+                </option>
+              ))}
+            </select>
+          </label>
+
           {selectedStatus === "blocked" ? (
-            <label className="space-y-2 sm:col-span-2 xl:col-span-4">
+            <label className="space-y-2 sm:col-span-2 xl:col-span-5">
               <span className="glass-label text-etch">
                 Blocked reason
               </span>
@@ -156,6 +180,7 @@ export function InlineTaskUpdateForm({
               name="estimateMinutes"
               value={defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : ""}
             />
+            <input type="hidden" name="recurrenceRule" value={defaultRecurrenceRule ?? ""} />
             <input type="hidden" name="blockedReason" value="" />
             <PendingSubmitButton size="sm" type="submit" variant="muted" pendingLabel="Marking done...">
               Mark done

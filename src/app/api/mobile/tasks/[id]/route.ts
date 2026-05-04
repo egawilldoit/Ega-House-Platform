@@ -4,7 +4,7 @@ import type { MobileApiErrorResponse, MobileTaskMutationResponse } from "@/lib/c
 import { getTaskById, updateTaskInline, validateTaskInlineUpdateInput } from "@/lib/services/task-service";
 import { parseJsonRequestBody, validateUpdateTaskInput } from "@/lib/validation/mobile";
 import { resolveMobileRequestAuth } from "@/app/api/mobile/_lib/auth";
-import { mapTaskRecordToMobileTaskItem, mobileErrorResponse } from "@/app/api/mobile/_lib/helpers";
+import { getMobileTaskItemById, mobileErrorResponse } from "@/app/api/mobile/_lib/helpers";
 
 type RouteContext = {
   params: Promise<{
@@ -19,7 +19,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const taskResult = await getTaskById(id, { supabase: authResult.supabase });
+  const taskResult = await getMobileTaskItemById(authResult.supabase, id);
   if (taskResult.errorMessage) {
     return mobileErrorResponse("INTERNAL_ERROR", taskResult.errorMessage, 500);
   }
@@ -30,7 +30,7 @@ export async function GET(request: Request, context: RouteContext) {
   return NextResponse.json(
     {
       ok: true,
-      task: mapTaskRecordToMobileTaskItem(taskResult.data, 0),
+      task: taskResult.data,
     } satisfies MobileTaskMutationResponse,
     { status: 200 },
   );
@@ -75,6 +75,10 @@ export async function PATCH(request: Request, context: RouteContext) {
       validationResult.data.blockedReason === undefined
         ? existingResult.data.blocked_reason
         : validationResult.data.blockedReason,
+    recurrenceRule:
+      validationResult.data.recurrenceRule === undefined
+        ? undefined
+        : validationResult.data.recurrenceRule,
   };
 
   const inlineValidation = validateTaskInlineUpdateInput(merged);
@@ -99,9 +103,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     return mobileErrorResponse("INTERNAL_ERROR", updateResult.errorMessage, 500);
   }
 
-  const updatedResult = await getTaskById(existingResult.data.id, {
-    supabase: authResult.supabase,
-  });
+  const updatedResult = await getMobileTaskItemById(authResult.supabase, existingResult.data.id);
   if (updatedResult.errorMessage || !updatedResult.data) {
     return mobileErrorResponse("INTERNAL_ERROR", "Unable to load updated task.", 500);
   }
@@ -109,7 +111,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   return NextResponse.json(
     {
       ok: true,
-      task: mapTaskRecordToMobileTaskItem(updatedResult.data, 0),
+      task: updatedResult.data,
     } satisfies MobileTaskMutationResponse,
     { status: 200 },
   );

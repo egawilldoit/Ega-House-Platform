@@ -4,6 +4,7 @@ import type { TablesInsert } from "@/lib/supabase/database.types";
 import { normalizeManualWorkedTimeInput } from "@/lib/manual-worked-time";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
+import { normalizeTaskRecurrenceRuleInput } from "@/lib/task-recurrence";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -11,6 +12,8 @@ import {
   isTaskStatus,
 } from "@/lib/task-domain";
 import {
+  cancelTaskReminder,
+  createTaskEmailReminder,
   createTaskWithOptionalWorkedTime,
   createTasks,
   deleteTaskSafely,
@@ -44,6 +47,7 @@ export type CreateTaskFormState = {
     priority: string;
     dueDate: string;
     estimateMinutes: string;
+    recurrenceRule: string;
     workedTimeStartedAt: string;
     workedTimeEndedAt: string;
     returnTo: string;
@@ -184,6 +188,7 @@ export async function createTaskAction(
   const priority = String(formData.get("priority") ?? "medium").trim();
   const rawDueDate = String(formData.get("dueDate") ?? "").trim();
   const rawEstimateMinutes = String(formData.get("estimateMinutes") ?? "").trim();
+  const rawRecurrenceRule = String(formData.get("recurrenceRule") ?? "").trim();
   const workedTimeStartedAt = String(formData.get("workedTimeStartedAt") ?? "").trim();
   const workedTimeEndedAt = String(formData.get("workedTimeEndedAt") ?? "").trim();
   const workedTimeTimezoneOffsetMinutes = formData.get(
@@ -192,6 +197,7 @@ export async function createTaskAction(
   const returnTo = getTasksReturnPath(formData.get("returnTo"));
   const dueDateResult = normalizeTaskDueDateInput(rawDueDate);
   const estimateResult = normalizeTaskEstimateInput(rawEstimateMinutes);
+  const recurrenceResult = normalizeTaskRecurrenceRuleInput(rawRecurrenceRule);
   const workedTimeResult = normalizeManualWorkedTimeInput({
     startedAt: workedTimeStartedAt,
     endedAt: workedTimeEndedAt,
@@ -208,6 +214,7 @@ export async function createTaskAction(
     priority,
     dueDate: rawDueDate,
     estimateMinutes: rawEstimateMinutes,
+    recurrenceRule: rawRecurrenceRule,
     workedTimeStartedAt,
     workedTimeEndedAt,
     returnTo,
@@ -247,6 +254,10 @@ export async function createTaskAction(
     return createErrorState(estimateResult.error, values);
   }
 
+  if (recurrenceResult.errorMessage) {
+    return createErrorState(recurrenceResult.errorMessage, values);
+  }
+
   if (workedTimeResult.error) {
     return createErrorState(workedTimeResult.error, values);
   }
@@ -264,6 +275,7 @@ export async function createTaskAction(
       estimate_minutes: estimateResult.value,
     },
     workedTime: workedTimeResult.payload,
+    recurrenceRule: recurrenceResult.rule,
   });
 
   if (errorMessage) {
@@ -291,6 +303,7 @@ export async function createTaskAction(
       priority: "medium",
       dueDate: "",
       estimateMinutes: "",
+      recurrenceRule: rawRecurrenceRule,
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo,
@@ -448,6 +461,9 @@ export async function updateTaskInlineAction(formData: FormData) {
     dueDate: formData.get("dueDate"),
     estimateMinutes: formData.get("estimateMinutes"),
     blockedReason: formData.get("blockedReason"),
+    recurrenceRule: formData.has("recurrenceRule")
+      ? formData.get("recurrenceRule")
+      : undefined,
   });
 
   if (validationResult.errorMessage || !validationResult.data) {
@@ -468,6 +484,52 @@ export async function updateTaskInlineAction(formData: FormData) {
   revalidateWorkspaceFor("task", { returnTo: returnPath });
   redirectWithWorkspaceFeedback(returnPath, {
     anchor: `task-${validatedInput.taskId}`,
+  });
+}
+
+export async function createTaskReminderAction(formData: FormData) {
+  const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+
+  const { errorMessage } = await createTaskEmailReminder({
+    taskId,
+    remindAt: formData.get("remindAt"),
+    channel: formData.get("channel") ?? "email",
+    status: formData.get("status") ?? "pending",
+  });
+
+  if (errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: "Reminder scheduled.",
+    taskId,
+  });
+}
+
+export async function cancelTaskReminderAction(formData: FormData) {
+  const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const reminderId = String(formData.get("reminderId") ?? "").trim();
+
+  const { errorMessage } = await cancelTaskReminder({
+    taskId,
+    reminderId,
+    status: formData.get("status") ?? "cancelled",
+  });
+
+  if (errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: "Reminder cancelled.",
+    taskId,
   });
 }
 

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import {
+  cancelTaskReminderAction,
+  createTaskReminderAction,
   deleteTaskAction,
   pinTaskAction,
   unpinTaskAction,
@@ -18,6 +20,7 @@ import { InlineProjectStatusForm } from "@/components/projects/inline-project-st
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
+import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import {
   TaskFilterControls,
   buildTaskFilterReturnPath,
@@ -43,7 +46,12 @@ import {
 } from "@/lib/task-list";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatTimerDateTime } from "@/lib/timer-domain";
+import {
+  getTaskRecurrencesForTasks,
+  getTaskRemindersForTasks,
+} from "@/lib/services/task-service";
 import {
   TASK_STATUS_VALUES,
   formatTaskToken,
@@ -70,6 +78,8 @@ type TaskRow = Pick<
   | "focus_rank"
 > & {
   goals: Pick<Tables<"goals">, "title"> | null;
+  task_reminders: Awaited<ReturnType<typeof getTaskRemindersForTasks>>[string];
+  task_recurrences: Awaited<ReturnType<typeof getTaskRecurrencesForTasks>>[string];
 };
 
 type ProjectDetailPageProps = {
@@ -81,6 +91,7 @@ type ProjectDetailPageProps = {
     due?: string;
     sort?: string;
     taskUpdateError?: string;
+    taskUpdateSuccess?: string;
     taskUpdateTaskId?: string;
     projectUpdateError?: string;
     projectUpdateProjectId?: string;
@@ -128,7 +139,20 @@ async function getProjectDetail(slug: string) {
     throw new Error(`Failed to load project tasks: ${tasksResult.error.message}`);
   }
 
-  const allTasks = (tasksResult.data ?? []) as TaskRow[];
+  const taskRows = (tasksResult.data ?? []) as Omit<
+    TaskRow,
+    "task_reminders" | "task_recurrences"
+  >[];
+  const taskIds = taskRows.map((task) => task.id);
+  const [taskRemindersByTaskId, taskRecurrencesByTaskId] = await Promise.all([
+    getTaskRemindersForTasks(supabase, taskIds),
+    getTaskRecurrencesForTasks(supabase, taskIds),
+  ]);
+  const allTasks = taskRows.map((task) => ({
+    ...task,
+    task_reminders: taskRemindersByTaskId[task.id] ?? [],
+    task_recurrences: taskRecurrencesByTaskId[task.id] ?? [],
+  }));
   const statusCounts = TASK_STATUS_VALUES.map((status) => ({
     status,
     count: allTasks.filter((task) => task.status === status).length,
@@ -238,6 +262,7 @@ export default async function ProjectDetailPage({
       ? resolvedSearchParams.sort
       : DEFAULT_TASK_SORT;
   const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? null;
+  const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
   const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId ?? null;
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
   const projectUpdateProjectId = resolvedSearchParams.projectUpdateProjectId ?? null;
@@ -361,6 +386,11 @@ export default async function ProjectDetailPage({
                         {focusedTask.estimate_minutes ? (
                           <Badge tone="muted">Est. {formatTaskEstimate(focusedTask.estimate_minutes)}</Badge>
                         ) : null}
+                        {focusedTask.task_recurrences[0] ? (
+                          <Badge tone="info">
+                            {formatTaskRecurrenceRule(focusedTask.task_recurrences[0].rule)}
+                          </Badge>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -448,6 +478,9 @@ export default async function ProjectDetailPage({
                   includePriority
                 />
               </div>
+              {taskUpdateSuccess ? (
+                <p className="feedback-block feedback-block-success mb-6">{taskUpdateSuccess}</p>
+              ) : null}
 
               <div className="mb-6 border-t border-[var(--border)] pt-4">
                 {!projectIsArchived ? (
@@ -508,6 +541,11 @@ export default async function ProjectDetailPage({
                           {focusedTask.estimate_minutes ? (
                             <Badge tone="muted">Est. {formatTaskEstimate(focusedTask.estimate_minutes)}</Badge>
                           ) : null}
+                          {focusedTask.task_recurrences[0] ? (
+                            <Badge tone="info">
+                              {formatTaskRecurrenceRule(focusedTask.task_recurrences[0].rule)}
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -521,6 +559,15 @@ export default async function ProjectDetailPage({
                       </div>
                     </div>
                     <div className="mt-4 border-t border-[var(--border)] pt-4">
+                      <div className="mb-4">
+                        <TaskReminderPanel
+                          taskId={focusedTask.id}
+                          reminders={focusedTask.task_reminders}
+                          returnTo={returnTo}
+                          createAction={createTaskReminderAction}
+                          cancelAction={cancelTaskReminderAction}
+                        />
+                      </div>
                       <InlineTaskUpdateForm
                         action={updateTaskInlineAction}
                         deleteAction={deleteTaskAction}
@@ -532,6 +579,7 @@ export default async function ProjectDetailPage({
                         defaultDueDate={focusedTask.due_date}
                         defaultEstimateMinutes={focusedTask.estimate_minutes}
                         defaultBlockedReason={focusedTask.blocked_reason}
+                        defaultRecurrenceRule={focusedTask.task_recurrences[0]?.rule ?? null}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
                       />
                       <div className="mt-3">
@@ -573,6 +621,11 @@ export default async function ProjectDetailPage({
                               {task.estimate_minutes ? (
                                 <Badge tone="muted">Est. {formatTaskEstimate(task.estimate_minutes)}</Badge>
                               ) : null}
+                              {task.task_recurrences[0] ? (
+                                <Badge tone="info">
+                                  {formatTaskRecurrenceRule(task.task_recurrences[0].rule)}
+                                </Badge>
+                              ) : null}
                             </div>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -584,6 +637,15 @@ export default async function ProjectDetailPage({
                           </div>
                         </div>
                         <div className="mt-4 border-t border-[var(--border)] pt-4">
+                          <div className="mb-4">
+                            <TaskReminderPanel
+                              taskId={task.id}
+                              reminders={task.task_reminders}
+                              returnTo={returnTo}
+                              createAction={createTaskReminderAction}
+                              cancelAction={cancelTaskReminderAction}
+                            />
+                          </div>
                           <InlineTaskUpdateForm
                             action={updateTaskInlineAction}
                             deleteAction={deleteTaskAction}
@@ -595,6 +657,7 @@ export default async function ProjectDetailPage({
                             defaultDueDate={task.due_date}
                             defaultEstimateMinutes={task.estimate_minutes}
                             defaultBlockedReason={task.blocked_reason}
+                            defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
                             error={inlineError}
                           />
                           <div className="mt-3">
