@@ -6,6 +6,7 @@ import {
   createTaskEmailReminder,
   createTasks,
   createTaskWithOptionalWorkedTime,
+  getTaskRecurrencesForTasks,
   getTasksWorkspaceData,
   normalizeTaskBlockedReasonInput,
   updateTaskInline,
@@ -2053,7 +2054,10 @@ test("cancelTaskReminder rejects unavailable task access before update", async (
   assert.equal(mock.getDeleteCallCount(), 0);
 });
 
-function createWorkspaceSupabaseMock() {
+function createWorkspaceSupabaseMock(options?: {
+  recurrenceError?: { code?: string; message: string };
+  recurrences?: MockRecurrence[];
+}) {
   const taskQueryCalls: Array<{ method: string; column: string; value: unknown }> = [];
   const tasks = [
     {
@@ -2294,6 +2298,19 @@ function createWorkspaceSupabaseMock() {
       updated_at: "2026-05-01T09:00:00.000Z",
     },
   ];
+  const taskRecurrences = options?.recurrences ?? [
+    {
+      id: "recurrence-daily",
+      task_id: "quick-win-task",
+      rule: "daily",
+      anchor_date: "2026-05-01",
+      timezone: "Africa/Casablanca",
+      next_occurrence_date: "2026-05-02",
+      last_generated_at: null,
+      created_at: "2026-05-01T08:00:00.000Z",
+      updated_at: "2026-05-01T08:00:00.000Z",
+    },
+  ];
 
   function createTasksQuery(columns: string) {
     const state = {
@@ -2470,7 +2487,12 @@ function createWorkspaceSupabaseMock() {
       if (table === "task_recurrences") {
         return {
           select: () => ({
-            in: async () => ({ data: [], error: null }),
+            in: async (_column: string, values: string[]) => ({
+              data: options?.recurrenceError
+                ? null
+                : taskRecurrences.filter((recurrence) => values.includes(recurrence.task_id)),
+              error: options?.recurrenceError ?? null,
+            }),
           }),
         };
       }
@@ -2568,6 +2590,87 @@ test("workspace data loads reminders for visible tasks", async () => {
       { id: "reminder-pending", status: "pending", channel: "email" },
       { id: "reminder-cancelled", status: "cancelled", channel: "email" },
     ],
+  );
+});
+
+test("workspace data loads recurrence metadata when recurrence table exists", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const result = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "all",
+      activeSort: "updated_desc",
+      activeView: "active",
+    },
+    { supabase: mock.supabase },
+  );
+
+  const quickWinTask = result.tasks.find((task) => task.id === "quick-win-task");
+
+  assert.deepEqual(
+    quickWinTask?.task_recurrences.map((recurrence) => ({
+      id: recurrence.id,
+      rule: recurrence.rule,
+      nextOccurrenceDate: recurrence.next_occurrence_date,
+    })),
+    [
+      {
+        id: "recurrence-daily",
+        rule: "daily",
+        nextOccurrenceDate: "2026-05-02",
+      },
+    ],
+  );
+});
+
+test("workspace data tolerates missing task recurrence table schema cache", async () => {
+  const mock = createWorkspaceSupabaseMock({
+    recurrenceError: {
+      code: "PGRST205",
+      message: "Could not find the table 'public.task_recurrences' in the schema cache",
+    },
+  });
+  const warn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args);
+  };
+
+  try {
+    const result = await getTasksWorkspaceData(
+      {
+        activeStatus: null,
+        requestedProjectId: null,
+        requestedGoalId: null,
+        activeDueFilter: "all",
+        activeSort: "updated_desc",
+        activeView: "active",
+      },
+      { supabase: mock.supabase },
+    );
+
+    assert.ok(result.tasks.length > 0);
+    assert.equal(result.tasks.every((task) => task.task_recurrences.length === 0), true);
+    assert.equal(warnings.length, 1);
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("recurrence loading fails loudly for unrelated recurrence query errors", async () => {
+  const mock = createWorkspaceSupabaseMock({
+    recurrenceError: {
+      code: "42501",
+      message: "permission denied for table task_recurrences",
+    },
+  });
+
+  await assert.rejects(
+    () => getTaskRecurrencesForTasks(mock.supabase, ["quick-win-task"]),
+    /Failed to load task recurrences: permission denied for table task_recurrences/,
   );
 });
 

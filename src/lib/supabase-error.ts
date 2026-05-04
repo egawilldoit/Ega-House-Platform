@@ -22,18 +22,20 @@ export function isMissingSupabaseTable(
     return false;
   }
 
-  if (error.code === "PGRST205") {
-    return true;
-  }
-
   const diagnostic = [error.message, error.details, error.hint].filter(Boolean).join(" ");
   if (diagnostic.length === 0) {
     return false;
   }
 
   const normalized = diagnostic.toLowerCase();
+  const referencesTarget = includesTableName(normalized, table);
+
+  if (error.code === "PGRST205") {
+    return referencesTarget;
+  }
+
   return (
-    normalized.includes("could not find the table") && includesTableName(normalized, table)
+    normalized.includes("could not find the table") && referencesTarget
   );
 }
 

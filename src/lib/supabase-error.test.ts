@@ -5,7 +5,13 @@ import { isMissingSupabaseTable } from "./supabase-error";
 
 test("detects missing table errors by code", () => {
   assert.equal(
-    isMissingSupabaseTable({ code: "PGRST205", message: "any message" }, "public.task_saved_views"),
+    isMissingSupabaseTable(
+      {
+        code: "PGRST205",
+        message: "Could not find the table 'public.task_saved_views' in the schema cache",
+      },
+      "public.task_saved_views",
+    ),
     true,
   );
 });
@@ -35,3 +41,15 @@ test("ignores unrelated errors", () => {
   );
 });
 
+test("ignores schema cache errors for unrelated tables", () => {
+  assert.equal(
+    isMissingSupabaseTable(
+      {
+        code: "PGRST205",
+        message: "Could not find the table 'public.other_table' in the schema cache",
+      },
+      "public.task_saved_views",
+    ),
+    false,
+  );
+});

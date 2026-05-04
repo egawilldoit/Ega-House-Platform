@@ -470,6 +470,13 @@ function normalizeTaskRecurrenceRow(row: {
   };
 }
 
+function isTaskRecurrencesUnavailable(error: unknown) {
+  return isMissingSupabaseTable(
+    error as Parameters<typeof isMissingSupabaseTable>[0],
+    "public.task_recurrences",
+  );
+}
+
 export async function getTaskRemindersForTasks(
   supabase: SupabaseServerClient,
   taskIds: string[],
@@ -521,6 +528,15 @@ export async function getTaskRecurrencesForTasks(
     .in("task_id", uniqueTaskIds);
 
   if (error) {
+    if (isTaskRecurrencesUnavailable(error)) {
+      console.warn("task_recurrences unavailable during task recurrence load", {
+        taskCount: uniqueTaskIds.length,
+        code: error.code,
+        message: error.message,
+      });
+      return recurrencesByTaskId;
+    }
+
     throw new Error(`Failed to load task recurrences: ${error.message}`);
   }
 
