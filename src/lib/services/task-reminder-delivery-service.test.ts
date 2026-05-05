@@ -325,3 +325,27 @@ test("deliverTaskReminderEmails skips send when claim loses duplicate race", asy
   assert.equal(mock.sendCalls.length, 0);
   assert.equal(mock.reminders[0]?.status, "pending");
 });
+
+test("deliverTaskReminderEmails does not double-send on repeat invoke", async () => {
+  const mock = createDeliveryMock();
+
+  const firstResult = await deliverTaskReminderEmails({
+    supabase: mock.supabase,
+    resend: mock.resend,
+    from: "from@example.com",
+    to: "to@example.com",
+    now: new Date("2026-05-04T09:00:00.000Z"),
+  });
+  const secondResult = await deliverTaskReminderEmails({
+    supabase: mock.supabase,
+    resend: mock.resend,
+    from: "from@example.com",
+    to: "to@example.com",
+    now: new Date("2026-05-04T09:00:30.000Z"),
+  });
+
+  assert.deepEqual(firstResult.counts, { due: 1, claimed: 1, sent: 1, failed: 0, skipped: 0 });
+  assert.deepEqual(secondResult.counts, { due: 0, claimed: 0, sent: 0, failed: 0, skipped: 0 });
+  assert.equal(mock.sendCalls.length, 1);
+  assert.equal(mock.reminders[0]?.status, "sent");
+});
