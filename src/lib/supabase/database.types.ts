@@ -418,6 +418,11 @@ export type Database = {
           created_at: string
           id: string
           next_steps: string | null
+          official_email_claimed_at: string | null
+          official_email_failure_reason: string | null
+          official_email_message_id: string | null
+          official_email_sent_at: string | null
+          official_email_status: string | null
           owner_user_id: string | null
           summary: string | null
           updated_at: string
@@ -430,6 +435,11 @@ export type Database = {
           created_at?: string
           id?: string
           next_steps?: string | null
+          official_email_claimed_at?: string | null
+          official_email_failure_reason?: string | null
+          official_email_message_id?: string | null
+          official_email_sent_at?: string | null
+          official_email_status?: string | null
           owner_user_id?: string | null
           summary?: string | null
           updated_at?: string
@@ -442,6 +452,11 @@ export type Database = {
           created_at?: string
           id?: string
           next_steps?: string | null
+          official_email_claimed_at?: string | null
+          official_email_failure_reason?: string | null
+          official_email_message_id?: string | null
+          official_email_sent_at?: string | null
+          official_email_status?: string | null
           owner_user_id?: string | null
           summary?: string | null
           updated_at?: string

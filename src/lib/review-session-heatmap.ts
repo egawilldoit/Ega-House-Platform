@@ -135,18 +135,26 @@ export async function getRecentDailyTrackedTime(
     days = DEFAULT_DAILY_TRACKED_WINDOW_DAYS,
     endDate = getTodayIsoDate(),
     nowIso = new Date().toISOString(),
+    ownerUserId,
   }: {
     days?: number;
     endDate?: string;
     nowIso?: string;
+    ownerUserId?: string;
   } = {},
 ): Promise<DailyTrackedTime[]> {
   const window = getDailyTrackedWindow(days, endDate);
-  const { data, error } = await supabase
+  let query = supabase
     .from("task_sessions")
     .select("started_at, ended_at")
     .lt("started_at", window.endExclusiveIso)
     .or(`ended_at.is.null,ended_at.gte.${window.startIso}`);
+
+  if (ownerUserId) {
+    query = query.eq("owner_user_id", ownerUserId);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw new Error(`Failed to load session heatmap data: ${error.message}`);

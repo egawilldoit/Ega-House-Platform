@@ -277,6 +277,11 @@ export const weekReviews = pgTable(
     wins: text("wins"),
     blockers: text("blockers"),
     nextSteps: text("next_steps"),
+    officialEmailStatus: varchar("official_email_status", { length: 32 }),
+    officialEmailClaimedAt: timestamp("official_email_claimed_at", { withTimezone: true }),
+    officialEmailSentAt: timestamp("official_email_sent_at", { withTimezone: true }),
+    officialEmailMessageId: text("official_email_message_id"),
+    officialEmailFailureReason: text("official_email_failure_reason"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -286,6 +291,12 @@ export const weekReviews = pgTable(
   },
   (table) => [
     index("week_reviews_owner_user_id_idx").on(table.ownerUserId),
+    index("week_reviews_official_email_delivery_idx").on(
+      table.ownerUserId,
+      table.weekStart,
+      table.officialEmailStatus,
+      table.officialEmailSentAt,
+    ),
     uniqueIndex("week_reviews_owner_user_id_week_start_unique").on(
       table.ownerUserId,
       table.weekStart,

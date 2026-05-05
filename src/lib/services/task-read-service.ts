@@ -298,13 +298,19 @@ export function getTasksForTodayPlanning(options: {
 
 export function getTasksForReview(options: {
   supabase: SupabaseServerClient;
+  ownerUserId?: string;
   limit?: number;
 }) {
   return getActiveTasksForOwner({
     supabase: options.supabase,
     orderByUpdatedAt: false,
     applyQuery(query) {
-      return query
+      let scopedQuery = query;
+      if (options.ownerUserId) {
+        scopedQuery = scopedQuery.eq("owner_user_id", options.ownerUserId);
+      }
+
+      return scopedQuery
         .eq("status", "blocked")
         .order("updated_at", { ascending: false })
         .limit(options.limit ?? 6);

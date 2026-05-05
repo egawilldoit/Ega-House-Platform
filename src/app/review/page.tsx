@@ -18,14 +18,21 @@ import {
 import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
 import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review-most-tracked";
-import { getTaskSessionDurationSeconds } from "@/lib/task-session";
-import { getTasksForReview } from "@/lib/services/task-read-service";
-
-import { ReviewForm } from "./review-form";
 import {
-  getEmptyReviewFormValues,
-  getReviewFormValuesFromRecord,
-} from "./review-form-state";
+  getSessionDurationWithinWindowSeconds,
+  getTaskSessionDurationSeconds,
+} from "@/lib/task-session";
+import { getTasksForReview } from "@/lib/services/task-read-service";
+import {
+  generateWeeklyReviewDraft,
+  type WeeklyReviewDraftInput,
+  type WeeklyReviewTaskActivity,
+  type WeeklyReviewTimeBucket,
+} from "@/lib/weekly-review-generator";
+
+import { ReviewEmailPreviewForm } from "./review-email-preview-form";
+import { ReviewForm } from "./review-form";
+import { getReviewFormValuesFromRecord } from "./review-form-state";
 import { WeekSelector } from "./week-selector";
 
 export const metadata: Metadata = {
@@ -35,7 +42,7 @@ export const metadata: Metadata = {
 
 const PAST_REVIEW_LIMIT = 100;
 
-type ReviewPageProps = { searchParams: Promise<{ weekOf?: string }> };
+type ReviewPageProps = { searchParams: Promise<{ draft?: string; weekOf?: string }> };
 
 type WeeklyStats = {
   tasksCreated: number;
@@ -54,6 +61,7 @@ type WeeklyStats = {
 async function getMostTrackedInsights(
   weekStart: string,
   weekEnd: string,
+  ownerUserId: string,
 ): Promise<MostTrackedInsights> {
   const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
   const supabase = await createClient();
@@ -62,6 +70,7 @@ async function getMostTrackedInsights(
     .select(
       "task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(id, name, slug), goals(id, title))",
     )
+    .eq("owner_user_id", ownerUserId)
     .lt("started_at", endExclusiveIso)
     .or(`ended_at.is.null,ended_at.gte.${startIso}`);
 
@@ -86,11 +95,12 @@ function toSummaryPreview(summary: string | null, maxLength = 200) {
   return `${normalized.slice(0, maxLength).trimEnd()}…`;
 }
 
-async function getPastReviews() {
+async function getPastReviews(ownerUserId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("week_reviews")
     .select("id, week_start, week_end, summary, created_at, updated_at")
+    .eq("owner_user_id", ownerUserId)
     .order("week_start", { ascending: false })
     .limit(PAST_REVIEW_LIMIT);
   if (error) {
@@ -99,11 +109,12 @@ async function getPastReviews() {
   return data;
 }
 
-async function getSelectedWeekReview(weekStart: string, weekEnd: string) {
+async function getSelectedWeekReview(weekStart: string, weekEnd: string, ownerUserId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("week_reviews")
     .select("id, summary, wins, blockers, next_steps, created_at, updated_at")
+    .eq("owner_user_id", ownerUserId)
     .eq("week_start", weekStart)
     .eq("week_end", weekEnd)
     .order("updated_at", { ascending: false })
@@ -114,7 +125,11 @@ async function getSelectedWeekReview(weekStart: string, weekEnd: string) {
   return data?.[0] ?? null;
 }
 
-async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<WeeklyStats> {
+async function getWeeklyStats(
+  weekStart: string,
+  weekEnd: string,
+  ownerUserId: string,
+): Promise<WeeklyStats> {
   const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
   const nowIso = new Date().toISOString();
   const sessionNowIso = nowIso < endExclusiveIso ? nowIso : endExclusiveIso;
@@ -123,19 +138,22 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
+      .eq("owner_user_id", ownerUserId)
       .gte("created_at", startIso)
       .lt("created_at", endExclusiveIso),
     supabase
       .from("task_sessions")
       .select("id, task_id, started_at, ended_at, duration_seconds")
+      .eq("owner_user_id", ownerUserId)
       .gte("started_at", startIso)
       .lt("started_at", endExclusiveIso),
     supabase
       .from("goals")
       .select("id, status")
+      .eq("owner_user_id", ownerUserId)
       .gte("updated_at", startIso)
       .lt("updated_at", endExclusiveIso),
-    getTasksForReview({ supabase, limit: 6 }),
+    getTasksForReview({ supabase, ownerUserId, limit: 6 }),
   ]);
   if (tasksResult.error) {
     throw new Error(`Failed to load weekly task stats: ${tasksResult.error.message}`);
@@ -177,9 +195,251 @@ async function getWeeklyStats(weekStart: string, weekEnd: string): Promise<Weekl
   };
 }
 
-async function getRecentSessionHeatmap() {
+type ReviewTaskRow = {
+  id: string;
+  title: string;
+  status: string;
+  blocked_reason: string | null;
+  estimate_minutes: number | null;
+  completed_at: string | null;
+  updated_at: string;
+  projects: { name: string } | null;
+  goals: { title: string } | null;
+};
+
+type ReviewSessionRow = {
+  task_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  tasks:
+    | {
+        id: string;
+        title: string;
+        projects: { id: string; name: string } | null;
+        goals: { id: string; title: string } | null;
+      }
+    | null;
+};
+
+function mapTaskActivity(
+  task: ReviewTaskRow,
+  trackedSecondsByTask: Map<string, number>,
+): WeeklyReviewTaskActivity {
+  return {
+    id: task.id,
+    title: task.title,
+    status: task.status,
+    blockedReason: task.blocked_reason,
+    estimateMinutes: task.estimate_minutes,
+    completedAt: task.completed_at,
+    updatedAt: task.updated_at,
+    projectName: task.projects?.name ?? null,
+    goalTitle: task.goals?.title ?? null,
+    trackedSeconds: trackedSecondsByTask.get(task.id) ?? 0,
+  };
+}
+
+function addTimeBucket(
+  buckets: Map<string, Omit<WeeklyReviewTimeBucket, "trackedSeconds" | "sessionCount"> & {
+    trackedSeconds: number;
+    sessionCount: number;
+  }>,
+  id: string,
+  label: string,
+  trackedSeconds: number,
+) {
+  if (trackedSeconds <= 0) {
+    return;
+  }
+
+  const existing = buckets.get(id);
+  buckets.set(id, {
+    id,
+    label,
+    trackedSeconds: (existing?.trackedSeconds ?? 0) + trackedSeconds,
+    sessionCount: (existing?.sessionCount ?? 0) + 1,
+  });
+}
+
+async function getPreviousWeekReview(
+  weekStart: string,
+  ownerUserId: string,
+): Promise<WeeklyReviewDraftInput["previousReview"]> {
   const supabase = await createClient();
-  return getRecentDailyTrackedTime(supabase);
+  const { data, error } = await supabase
+    .from("week_reviews")
+    .select("week_start, week_end, summary, next_steps")
+    .eq("owner_user_id", ownerUserId)
+    .lt("week_start", weekStart)
+    .order("week_start", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to load previous review context: ${error.message}`);
+  }
+
+  return data
+    ? {
+        weekStart: data.week_start,
+        weekEnd: data.week_end,
+        summary: data.summary,
+        nextSteps: data.next_steps,
+      }
+    : null;
+}
+
+async function getGeneratedReviewDraft(
+  weekStart: string,
+  weekEnd: string,
+  ownerUserId: string,
+) {
+  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
+  const supabase = await createClient();
+  const [completedResult, carriedResult, blockedResult, sessionsResult, goalsResult, previousReview] =
+    await Promise.all([
+      supabase
+        .from("tasks")
+        .select(
+          "id, title, status, blocked_reason, estimate_minutes, completed_at, updated_at, projects(name), goals(title)",
+        )
+        .eq("owner_user_id", ownerUserId)
+        .eq("status", "done")
+        .lt("updated_at", endExclusiveIso)
+        .or(`completed_at.gte.${startIso},updated_at.gte.${startIso}`)
+        .order("updated_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("tasks")
+        .select(
+          "id, title, status, blocked_reason, estimate_minutes, completed_at, updated_at, projects(name), goals(title)",
+        )
+        .eq("owner_user_id", ownerUserId)
+        .is("archived_at", null)
+        .neq("status", "done")
+        .lt("created_at", endExclusiveIso)
+        .order("updated_at", { ascending: false })
+        .limit(120),
+      supabase
+        .from("tasks")
+        .select(
+          "id, title, status, blocked_reason, estimate_minutes, completed_at, updated_at, projects(name), goals(title)",
+        )
+        .eq("owner_user_id", ownerUserId)
+        .is("archived_at", null)
+        .eq("status", "blocked")
+        .order("updated_at", { ascending: false })
+        .limit(80),
+      supabase
+        .from("task_sessions")
+        .select(
+          "task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(id, name), goals(id, title))",
+        )
+        .eq("owner_user_id", ownerUserId)
+        .lt("started_at", endExclusiveIso)
+        .or(`ended_at.is.null,ended_at.gte.${startIso}`)
+        .order("started_at", { ascending: false })
+        .limit(500),
+      supabase
+        .from("goals")
+        .select("title")
+        .eq("owner_user_id", ownerUserId)
+        .gte("updated_at", startIso)
+        .lt("updated_at", endExclusiveIso)
+        .limit(80),
+      getPreviousWeekReview(weekStart, ownerUserId),
+    ]);
+
+  if (completedResult.error) {
+    throw new Error(`Failed to load completed review tasks: ${completedResult.error.message}`);
+  }
+  if (carriedResult.error) {
+    throw new Error(`Failed to load carried review tasks: ${carriedResult.error.message}`);
+  }
+  if (blockedResult.error) {
+    throw new Error(`Failed to load blocked review tasks: ${blockedResult.error.message}`);
+  }
+  if (sessionsResult.error) {
+    throw new Error(`Failed to load review session activity: ${sessionsResult.error.message}`);
+  }
+  if (goalsResult.error) {
+    throw new Error(`Failed to load touched review goals: ${goalsResult.error.message}`);
+  }
+
+  const window = { startIso, endIso: endExclusiveIso };
+  const nowIso = new Date().toISOString();
+  const trackedSecondsByTask = new Map<string, number>();
+  const taskTimeBuckets = new Map<string, WeeklyReviewTimeBucket>();
+  const projectTimeBuckets = new Map<string, WeeklyReviewTimeBucket>();
+  const touchedProjects = new Set<string>();
+  const touchedGoals = new Set<string>();
+
+  for (const session of (sessionsResult.data ?? []) as ReviewSessionRow[]) {
+    const trackedSeconds = getSessionDurationWithinWindowSeconds(session, window, nowIso);
+    const task = session.tasks;
+    if (!task) {
+      continue;
+    }
+
+    trackedSecondsByTask.set(
+      session.task_id,
+      (trackedSecondsByTask.get(session.task_id) ?? 0) + trackedSeconds,
+    );
+    addTimeBucket(taskTimeBuckets, task.id, task.title, trackedSeconds);
+
+    if (task.projects) {
+      touchedProjects.add(task.projects.name);
+      addTimeBucket(projectTimeBuckets, task.projects.id, task.projects.name, trackedSeconds);
+    }
+    if (task.goals) {
+      touchedGoals.add(task.goals.title);
+    }
+  }
+
+  const completedTasks = ((completedResult.data ?? []) as ReviewTaskRow[]).filter((task) =>
+    task.completed_at
+      ? task.completed_at >= startIso && task.completed_at < endExclusiveIso
+      : task.updated_at >= startIso && task.updated_at < endExclusiveIso,
+  );
+  const carriedTasks = (carriedResult.data ?? []) as ReviewTaskRow[];
+  const blockedTasks = (blockedResult.data ?? []) as ReviewTaskRow[];
+  const allTaskRows = [
+    ...completedTasks,
+    ...carriedTasks,
+    ...blockedTasks,
+  ];
+  for (const task of allTaskRows) {
+    if (task.projects?.name) {
+      touchedProjects.add(task.projects.name);
+    }
+    if (task.goals?.title) {
+      touchedGoals.add(task.goals.title);
+    }
+  }
+  for (const goal of goalsResult.data ?? []) {
+    if (goal.title) {
+      touchedGoals.add(goal.title);
+    }
+  }
+
+  return generateWeeklyReviewDraft({
+    weekStart,
+    weekEnd,
+    completedTasks: completedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
+    carriedTasks: carriedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
+    blockedTasks: blockedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
+    projectTime: Array.from(projectTimeBuckets.values()),
+    taskTime: Array.from(taskTimeBuckets.values()),
+    touchedProjects: Array.from(touchedProjects),
+    touchedGoals: Array.from(touchedGoals),
+    previousReview,
+  });
+}
+
+async function getRecentSessionHeatmap(ownerUserId: string) {
+  const supabase = await createClient();
+  return getRecentDailyTrackedTime(supabase, { ownerUserId });
 }
 
 function StatPanel({
@@ -308,26 +568,39 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   if (!bounds) {
     throw new Error("Failed to resolve selected week.");
   }
-  const [pastReviews, selectedReview, weeklyStats, sessionHeatmap, mostTrackedInsights] =
+  const supabase = await createClient();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) {
+    throw new Error("You must be signed in to review weekly activity.");
+  }
+  const ownerUserId = authData.user.id;
+  const shouldUseGeneratedDraft = resolvedSearchParams.draft === "generated";
+  const [pastReviews, selectedReview, weeklyStats, sessionHeatmap, mostTrackedInsights, generatedDraft] =
     await Promise.all([
-      getPastReviews(),
-      getSelectedWeekReview(bounds.weekStart, bounds.weekEnd),
-      getWeeklyStats(bounds.weekStart, bounds.weekEnd),
-      getRecentSessionHeatmap(),
-      getMostTrackedInsights(bounds.weekStart, bounds.weekEnd),
+      getPastReviews(ownerUserId),
+      getSelectedWeekReview(bounds.weekStart, bounds.weekEnd, ownerUserId),
+      getWeeklyStats(bounds.weekStart, bounds.weekEnd, ownerUserId),
+      getRecentSessionHeatmap(ownerUserId),
+      getMostTrackedInsights(bounds.weekStart, bounds.weekEnd, ownerUserId),
+      getGeneratedReviewDraft(bounds.weekStart, bounds.weekEnd, ownerUserId),
     ]);
 
   const cycleVelocity = Math.min(
     100,
     Math.round((weeklyStats.trackedSeconds / (40 * 60 * 60)) * 100),
   );
-  const reviewFormDefaults = selectedReview
-    ? getReviewFormValuesFromRecord(selectedReview, selectedWeekOf)
-    : getEmptyReviewFormValues(selectedWeekOf);
+  const reviewFormDefaults =
+    shouldUseGeneratedDraft || !selectedReview
+      ? {
+          ...generatedDraft,
+          weekOf: selectedWeekOf,
+        }
+      : getReviewFormValuesFromRecord(selectedReview, selectedWeekOf);
   const blockerCount = weeklyStats.blockedTasks.length;
   const velocityBand = getVelocityBand(cycleVelocity);
   const sparseHeatmap = sessionHeatmap.filter((entry) => entry.trackedSeconds > 0).length < 5;
   const weekBarData = sessionHeatmap.slice(-7);
+  const generatedDraftHref = `/review?weekOf=${selectedWeekOf}&draft=generated`;
 
   return (
     <AppShell
@@ -538,18 +811,47 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
-                    Save Reflection
+                    {shouldUseGeneratedDraft || !selectedReview ? "Generated Review Draft" : "Saved Reflection"}
                   </h2>
                   <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                    Write or update the weekly review fields for the selected cycle.
+                    {selectedReview && !shouldUseGeneratedDraft
+                      ? "Saved content is loaded for editing. Regenerate only when you want to replace these fields with activity-derived draft text."
+                      : "Activity-derived draft is editable before save and stored in the canonical weekly review record."}
                   </p>
                 </div>
-                <Badge tone="muted">{formatIsoDate(bounds.weekStart)}</Badge>
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <Badge tone="muted">{formatIsoDate(bounds.weekStart)}</Badge>
+                  {selectedReview ? (
+                    <Link
+                      href={generatedDraftHref}
+                      className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center px-3"
+                    >
+                      Regenerate
+                    </Link>
+                  ) : null}
+                </div>
               </div>
               <ReviewForm
-                key={`${selectedWeekOf}:${selectedReview?.id ?? "new"}`}
+                key={`${selectedWeekOf}:${selectedReview?.id ?? "new"}:${shouldUseGeneratedDraft ? "generated" : "saved"}`}
                 defaultValues={reviewFormDefaults}
               />
+            </CardContent>
+          </Card>
+
+          <Card className="border-[var(--border)] bg-white">
+            <CardContent className="px-6 pb-6 pt-6">
+              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
+                    Email Preview
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                    Send current saved weekly review through Resend without changing official send state.
+                  </p>
+                </div>
+                <Badge tone="muted">Manual test</Badge>
+              </div>
+              <ReviewEmailPreviewForm reviewId={selectedReview?.id ?? null} />
             </CardContent>
           </Card>
 

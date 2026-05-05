@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 
+import { sendWeeklyReviewPreviewEmail } from "@/lib/email/weekly-review-preview";
+import { getResendClient, getResendEmailEnvConfig } from "@/lib/email/resend";
 import { getWeekBounds } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,6 +21,12 @@ export type SaveReviewFormState = {
   values: ReviewFormValues;
 };
 
+export type SendReviewPreviewState = {
+  error: string | null;
+  sent: boolean;
+  messageId: string | null;
+};
+
 function errorState(
   error: string,
   values: SaveReviewFormState["values"],
@@ -28,6 +36,14 @@ function errorState(
     saved: false,
     saveMode: null,
     values,
+  };
+}
+
+function previewErrorState(error: string): SendReviewPreviewState {
+  return {
+    error,
+    sent: false,
+    messageId: null,
   };
 }
 
@@ -109,5 +125,71 @@ export async function saveReviewAction(
     saved: true,
     saveMode,
     values,
+  };
+}
+
+export async function sendReviewPreviewAction(
+  _previous: SendReviewPreviewState,
+  formData: FormData,
+): Promise<SendReviewPreviewState> {
+  const reviewId = formData.get("reviewId");
+
+  if (typeof reviewId !== "string" || !reviewId.trim()) {
+    return previewErrorState("Save this weekly review before sending a preview.");
+  }
+
+  const envResult = getResendEmailEnvConfig();
+  if (!envResult.ok) {
+    return previewErrorState(
+      `Email preview is not configured. Missing: ${envResult.missing.join(", ")}.`,
+    );
+  }
+
+  const supabase = await createClient();
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError || !authData.user) {
+    return previewErrorState("You must be signed in to send a review preview.");
+  }
+
+  const { data: review, error: reviewError } = await supabase
+    .from("week_reviews")
+    .select("id, week_start, week_end, summary, wins, blockers, next_steps")
+    .eq("owner_user_id", authData.user.id)
+    .eq("id", reviewId.trim())
+    .maybeSingle();
+
+  if (reviewError) {
+    return previewErrorState("Unable to load weekly review for email preview.");
+  }
+
+  if (!review) {
+    return previewErrorState("Save this weekly review before sending a preview.");
+  }
+
+  const resend = getResendClient(envResult.config.resendApiKey);
+  const result = await sendWeeklyReviewPreviewEmail({
+    review: {
+      id: review.id,
+      weekStart: review.week_start,
+      weekEnd: review.week_end,
+      summary: review.summary,
+      wins: review.wins,
+      blockers: review.blockers,
+      nextSteps: review.next_steps,
+    },
+    appUrl: process.env.APP_URL ?? "https://www.egawilldoit.online",
+    from: envResult.config.emailFrom,
+    to: envResult.config.dailyAssistantEmail,
+    send: (message) => resend.emails.send(message),
+  });
+
+  if (!result.ok) {
+    return previewErrorState(result.error);
+  }
+
+  return {
+    error: null,
+    sent: true,
+    messageId: result.id,
   };
 }
