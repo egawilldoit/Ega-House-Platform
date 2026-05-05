@@ -1,0 +1,32 @@
+name: EGA Task Reminders
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send-task-reminders:
+    name: Send due task reminders
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Send due task reminders
+        shell: bash
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          ENDPOINT_PATH="/api/cron/task-reminders"
+          ENDPOINT="${APP_URL}${ENDPOINT_PATH}"
+
+          echo "Endpoint path: ${ENDPOINT_PATH}"
+
+          RESPONSE_BODY="$(curl -f -s -S -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer ${CRON_SECRET}")"
+
+          echo "Response body: ${RESPONSE_BODY}"
