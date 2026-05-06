@@ -40,11 +40,12 @@ test("weekly review email renders canonical saved review sections", () => {
   assert.match(email.html, /Completed canonical fields/);
   assert.match(email.html, /Time Breakdown/);
   assert.match(email.html, /EGA House: 4h 20m across 3 sessions/);
+  assert.match(email.html, /Completed Tasks/);
   assert.match(email.html, /Blockers/);
   assert.match(email.html, /Resend config missing locally/);
   assert.match(email.html, /Carried-Over Tasks/);
   assert.match(email.html, /Finish email template/);
-  assert.match(email.html, /Suggested Next Week Plan/);
+  assert.match(email.html, /Suggested Next Steps/);
   assert.match(email.html, /Test manual preview send/);
 });
 
@@ -53,11 +54,11 @@ test("weekly review email links to correct review page and week", () => {
 
   assert.equal(
     email.reviewUrl,
-    "https://app.example.com/review/review-123?weekOf=2026-04-13",
+    "https://app.example.com/review?weekOf=2026-04-13",
   );
   assert.match(
     email.html,
-    /https:\/\/app\.example\.com\/review\/review-123\?weekOf=2026-04-13/,
+    /https:\/\/app\.example\.com\/review\?weekOf=2026-04-13/,
   );
   assert.match(email.html, /Open full review/);
 });
@@ -78,7 +79,7 @@ test("manual weekly review preview send succeeds through injected sender", async
   assert.deepEqual(result, {
     ok: true,
     id: "email-123",
-    reviewUrl: "https://app.example.com/review/review-123?weekOf=2026-04-13",
+    reviewUrl: "https://app.example.com/review?weekOf=2026-04-13",
   });
   assert.equal(sentMessages.length, 1);
   assert.equal(sentMessages[0].subject, WEEKLY_REVIEW_EMAIL_SUBJECT);

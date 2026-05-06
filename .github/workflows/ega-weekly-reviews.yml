@@ -1,0 +1,43 @@
+name: EGA Weekly Reviews
+
+on:
+  schedule:
+    - cron: "0 0-4,22-23 * * 0,1"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force send outside Sunday evening guard"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  send-weekly-reviews:
+    name: Send weekly reviews
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Send weekly reviews
+        shell: bash
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          FORCE: ${{ inputs.force || false }}
+        run: |
+          ENDPOINT_PATH="/api/cron/sendWeeklyReviews"
+          if [ "${FORCE}" = "true" ]; then
+            ENDPOINT_PATH="${ENDPOINT_PATH}?force=true"
+          fi
+
+          ENDPOINT="${APP_URL}${ENDPOINT_PATH}"
+
+          echo "Endpoint path: ${ENDPOINT_PATH}"
+
+          RESPONSE_BODY="$(curl -f -s -S -X POST "$ENDPOINT" \
+            -H "Authorization: Bearer ${CRON_SECRET}")"
+
+          echo "Response body: ${RESPONSE_BODY}"

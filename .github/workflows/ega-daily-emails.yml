@@ -6,7 +6,6 @@ on:
     - cron: "30 11 * * *"
     - cron: "30 14 * * *"
     - cron: "30 20 * * *"
-    - cron: "0 20 * * 0"
   workflow_dispatch:
     inputs:
       email_type:
@@ -47,9 +46,6 @@ jobs:
               ;;
             "30 20 * * *")
               EMAIL_TYPE="night-review"
-              ;;
-            "0 20 * * 0")
-              EMAIL_TYPE="weekly-review"
               ;;
             *)
               EMAIL_TYPE="${{ inputs.email_type || 'morning' }}"

@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   deliverWeeklyReviewEmails,
   getWeeklyReviewEmailTargetWeek,
+  getWeeklyReviewEmailTargetWeekForTimeZone,
+  shouldSendWeeklyReviewEmailNow,
   type WeeklyReviewOfficialEmailRecord,
 } from "./weekly-review-email-service";
 
@@ -114,6 +116,43 @@ test("weekly review email target is most recent Sunday-ending review week", () =
     weekStart: "2026-04-27",
     weekEnd: "2026-05-03",
   });
+});
+
+test("weekly review email target uses configured timezone local date", () => {
+  assert.deepEqual(
+    getWeeklyReviewEmailTargetWeekForTimeZone(
+      new Date("2026-05-04T02:30:00.000Z"),
+      "America/New_York",
+    ),
+    {
+      weekStart: "2026-04-27",
+      weekEnd: "2026-05-03",
+    },
+  );
+});
+
+test("weekly review schedule allows Sunday evening in configured timezone only", () => {
+  assert.equal(
+    shouldSendWeeklyReviewEmailNow({
+      now: new Date("2026-05-03T22:30:00.000Z"),
+      timeZone: "America/New_York",
+    }),
+    true,
+  );
+  assert.equal(
+    shouldSendWeeklyReviewEmailNow({
+      now: new Date("2026-05-03T16:30:00.000Z"),
+      timeZone: "America/New_York",
+    }),
+    false,
+  );
+  assert.equal(
+    shouldSendWeeklyReviewEmailNow({
+      now: new Date("2026-05-04T04:30:00.000Z"),
+      timeZone: "America/New_York",
+    }),
+    false,
+  );
 });
 
 test("sends latest existing saved review once", async () => {
