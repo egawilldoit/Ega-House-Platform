@@ -1,7 +1,8 @@
 import { getWeekWindow } from "@/lib/review-week";
 import {
-  getSessionDurationWithinWindowSeconds,
-} from "@/lib/task-session";
+  calculateExecutionEvidenceForWindow,
+  type ExecutionEvidenceTimeBucket,
+} from "@/lib/services/execution-evidence-service";
 import {
   generateWeeklyReviewDraft,
   type WeeklyReviewDraftInput,
@@ -75,23 +76,15 @@ function mapTaskActivity(
   };
 }
 
-function addTimeBucket(
-  buckets: Map<string, WeeklyReviewTimeBucket>,
-  id: string,
-  label: string,
-  trackedSeconds: number,
-) {
-  if (trackedSeconds <= 0) {
-    return;
-  }
-
-  const existing = buckets.get(id);
-  buckets.set(id, {
-    id,
-    label,
-    trackedSeconds: (existing?.trackedSeconds ?? 0) + trackedSeconds,
-    sessionCount: (existing?.sessionCount ?? 0) + 1,
-  });
+function mapTimeBuckets(
+  buckets: ExecutionEvidenceTimeBucket[],
+): WeeklyReviewTimeBucket[] {
+  return buckets.map((bucket) => ({
+    id: bucket.id,
+    label: bucket.label,
+    trackedSeconds: bucket.trackedSeconds,
+    sessionCount: bucket.sessionCount,
+  }));
 }
 
 async function getPreviousWeekReview(
@@ -201,33 +194,13 @@ export async function generateWeeklyReviewDraftForUser({
 
   const window = { startIso, endIso: endExclusiveIso };
   const nowIso = now.toISOString();
-  const trackedSecondsByTask = new Map<string, number>();
-  const taskTimeBuckets = new Map<string, WeeklyReviewTimeBucket>();
-  const projectTimeBuckets = new Map<string, WeeklyReviewTimeBucket>();
-  const touchedProjects = new Set<string>();
-  const touchedGoals = new Set<string>();
-
-  for (const session of (sessionsResult.data ?? []) as ReviewSessionRow[]) {
-    const trackedSeconds = getSessionDurationWithinWindowSeconds(session, window, nowIso);
-    const task = session.tasks;
-    if (!task) {
-      continue;
-    }
-
-    trackedSecondsByTask.set(
-      session.task_id,
-      (trackedSecondsByTask.get(session.task_id) ?? 0) + trackedSeconds,
-    );
-    addTimeBucket(taskTimeBuckets, task.id, task.title, trackedSeconds);
-
-    if (task.projects) {
-      touchedProjects.add(task.projects.name);
-      addTimeBucket(projectTimeBuckets, task.projects.id, task.projects.name, trackedSeconds);
-    }
-    if (task.goals) {
-      touchedGoals.add(task.goals.title);
-    }
-  }
+  const evidence = calculateExecutionEvidenceForWindow(
+    (sessionsResult.data ?? []) as ReviewSessionRow[],
+    window,
+    { nowIso },
+  );
+  const touchedProjects = new Set(evidence.touchedProjectNames);
+  const touchedGoals = new Set(evidence.touchedGoalTitles);
 
   const completedTasks = ((completedResult.data ?? []) as ReviewTaskRow[]).filter((task) =>
     task.completed_at
@@ -254,11 +227,17 @@ export async function generateWeeklyReviewDraftForUser({
   return generateWeeklyReviewDraft({
     weekStart,
     weekEnd,
-    completedTasks: completedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
-    carriedTasks: carriedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
-    blockedTasks: blockedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
-    projectTime: Array.from(projectTimeBuckets.values()),
-    taskTime: Array.from(taskTimeBuckets.values()),
+    completedTasks: completedTasks.map((task) =>
+      mapTaskActivity(task, evidence.trackedSecondsByTask),
+    ),
+    carriedTasks: carriedTasks.map((task) =>
+      mapTaskActivity(task, evidence.trackedSecondsByTask),
+    ),
+    blockedTasks: blockedTasks.map((task) =>
+      mapTaskActivity(task, evidence.trackedSecondsByTask),
+    ),
+    projectTime: mapTimeBuckets(evidence.projectTimeBuckets),
+    taskTime: mapTimeBuckets(evidence.taskTimeBuckets),
     touchedProjects: Array.from(touchedProjects),
     touchedGoals: Array.from(touchedGoals),
     previousReview,

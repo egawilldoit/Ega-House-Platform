@@ -1,5 +1,6 @@
 import "server-only";
 
+import { getExecutionEvidenceSessionOverlapSeconds } from "@/lib/services/execution-evidence-service";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 
@@ -253,37 +254,16 @@ function getCompletedSessionDurationSeconds(session: SessionRow) {
   return Math.max(0, session.duration_seconds ?? 0);
 }
 
-function getSessionDurationWithinWindowSeconds(
+function getCompletedSessionDurationWithinWindowSeconds(
   session: SessionRow,
   startIso: string,
   endIso: string,
 ) {
-  if (!session.ended_at) {
-    return 0;
-  }
-
-  const startedMs = toMs(session.started_at);
-  const endedMs = toMs(session.ended_at);
-  const windowStartMs = toMs(startIso);
-  const windowEndMs = toMs(endIso);
-
-  if (
-    startedMs === null ||
-    endedMs === null ||
-    windowStartMs === null ||
-    windowEndMs === null
-  ) {
-    return 0;
-  }
-
-  const overlapStart = Math.max(startedMs, windowStartMs);
-  const overlapEnd = Math.min(endedMs, windowEndMs);
-
-  if (overlapEnd <= overlapStart) {
-    return 0;
-  }
-
-  return Math.floor((overlapEnd - overlapStart) / 1000);
+  return getExecutionEvidenceSessionOverlapSeconds(
+    session,
+    { startIso, endIso },
+    { includeOpenSessions: false },
+  );
 }
 
 function mapTask(task: TaskRow): AssistantTask {
@@ -454,7 +434,7 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
 
   const sessionsToday = sessions
     .filter((session) =>
-      getSessionDurationWithinWindowSeconds(
+      getCompletedSessionDurationWithinWindowSeconds(
         session,
         windows.todayStartIso,
         windows.todayEndIso,
@@ -464,7 +444,11 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
     .slice(0, 10);
   const sessionsThisWeek = sessions
     .filter((session) =>
-      getSessionDurationWithinWindowSeconds(session, windows.weekStartIso, windows.weekEndIso),
+      getCompletedSessionDurationWithinWindowSeconds(
+        session,
+        windows.weekStartIso,
+        windows.weekEndIso,
+      ),
     )
     .map(mapSession)
     .slice(0, 20);
@@ -472,7 +456,7 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
   const todayTotalSeconds = sessions.reduce(
     (total, session) =>
       total +
-      getSessionDurationWithinWindowSeconds(
+      getCompletedSessionDurationWithinWindowSeconds(
         session,
         windows.todayStartIso,
         windows.todayEndIso,
@@ -482,7 +466,11 @@ export async function getAssistantEmailData(type: AssistantEmailType): Promise<A
   const weekTotalSeconds = sessions.reduce(
     (total, session) =>
       total +
-      getSessionDurationWithinWindowSeconds(session, windows.weekStartIso, windows.weekEndIso),
+      getCompletedSessionDurationWithinWindowSeconds(
+        session,
+        windows.weekStartIso,
+        windows.weekEndIso,
+      ),
     0,
   );
 
