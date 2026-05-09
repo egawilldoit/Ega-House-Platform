@@ -426,6 +426,17 @@ function TaskKanbanStatusHiddenFields({
       <input type="hidden" name="dueDate" value={task.due_date ?? ""} />
       <input
         type="hidden"
+        name="scheduledStartAt"
+        value={task.scheduled_start_at ? task.scheduled_start_at.slice(0, 16) : ""}
+      />
+      <input
+        type="hidden"
+        name="scheduledEndAt"
+        value={task.scheduled_end_at ? task.scheduled_end_at.slice(0, 16) : ""}
+      />
+      <input type="hidden" name="scheduleTimezoneOffsetMinutes" value="0" />
+      <input
+        type="hidden"
         name="estimateMinutes"
         value={task.estimate_minutes !== null ? String(task.estimate_minutes) : ""}
       />

@@ -5,6 +5,7 @@ import { normalizeManualWorkedTimeInput } from "@/lib/manual-worked-time";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import { normalizeTaskRecurrenceRuleInput } from "@/lib/task-recurrence";
+import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -49,6 +50,8 @@ export type CreateTaskFormState = {
     estimateMinutes: string;
     recurrenceRule: string;
     recurrenceTimezone: string;
+    scheduledStartAt: string;
+    scheduledEndAt: string;
     workedTimeStartedAt: string;
     workedTimeEndedAt: string;
     returnTo: string;
@@ -193,6 +196,9 @@ export async function createTaskAction(
   const recurrenceTimezone = String(formData.get("recurrenceTimezone") ?? "").trim();
   const workedTimeStartedAt = String(formData.get("workedTimeStartedAt") ?? "").trim();
   const workedTimeEndedAt = String(formData.get("workedTimeEndedAt") ?? "").trim();
+  const scheduledStartAt = String(formData.get("scheduledStartAt") ?? "").trim();
+  const scheduledEndAt = String(formData.get("scheduledEndAt") ?? "").trim();
+  const scheduleTimezoneOffsetMinutes = formData.get("scheduleTimezoneOffsetMinutes");
   const workedTimeTimezoneOffsetMinutes = formData.get(
     "workedTimeTimezoneOffsetMinutes",
   );
@@ -200,6 +206,11 @@ export async function createTaskAction(
   const dueDateResult = normalizeTaskDueDateInput(rawDueDate);
   const estimateResult = normalizeTaskEstimateInput(rawEstimateMinutes);
   const recurrenceResult = normalizeTaskRecurrenceRuleInput(rawRecurrenceRule);
+  const scheduleResult = normalizeTaskScheduleInput({
+    scheduledStartAt,
+    scheduledEndAt,
+    timezoneOffsetMinutes: scheduleTimezoneOffsetMinutes,
+  });
   const workedTimeResult = normalizeManualWorkedTimeInput({
     startedAt: workedTimeStartedAt,
     endedAt: workedTimeEndedAt,
@@ -218,6 +229,8 @@ export async function createTaskAction(
     estimateMinutes: rawEstimateMinutes,
     recurrenceRule: rawRecurrenceRule,
     recurrenceTimezone,
+    scheduledStartAt,
+    scheduledEndAt,
     workedTimeStartedAt,
     workedTimeEndedAt,
     returnTo,
@@ -261,6 +274,10 @@ export async function createTaskAction(
     return createErrorState(recurrenceResult.errorMessage, values);
   }
 
+  if (scheduleResult.error) {
+    return createErrorState(scheduleResult.error, values);
+  }
+
   if (workedTimeResult.error) {
     return createErrorState(workedTimeResult.error, values);
   }
@@ -276,6 +293,8 @@ export async function createTaskAction(
       priority,
       due_date: dueDateResult.value,
       estimate_minutes: estimateResult.value,
+      scheduled_start_at: scheduleResult.scheduledStartAtIso,
+      scheduled_end_at: scheduleResult.scheduledEndAtIso,
     },
     workedTime: workedTimeResult.payload,
     recurrenceRule: recurrenceResult.rule,
@@ -309,6 +328,8 @@ export async function createTaskAction(
       estimateMinutes: "",
       recurrenceRule: rawRecurrenceRule,
       recurrenceTimezone,
+      scheduledStartAt: "",
+      scheduledEndAt: "",
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo,
@@ -471,6 +492,15 @@ export async function updateTaskInlineAction(formData: FormData) {
       : undefined,
     recurrenceTimezone: formData.has("recurrenceTimezone")
       ? formData.get("recurrenceTimezone")
+      : undefined,
+    scheduledStartAt: formData.has("scheduledStartAt")
+      ? formData.get("scheduledStartAt")
+      : undefined,
+    scheduledEndAt: formData.has("scheduledEndAt")
+      ? formData.get("scheduledEndAt")
+      : undefined,
+    scheduleTimezoneOffsetMinutes: formData.has("scheduleTimezoneOffsetMinutes")
+      ? formData.get("scheduleTimezoneOffsetMinutes")
       : undefined,
   });
 

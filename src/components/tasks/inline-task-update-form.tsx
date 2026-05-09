@@ -29,6 +29,8 @@ type InlineTaskUpdateFormProps = {
   defaultPriority: string;
   defaultDueDate: string | null;
   defaultEstimateMinutes: number | null;
+  defaultScheduledStartAt: string | null;
+  defaultScheduledEndAt: string | null;
   defaultBlockedReason: string | null;
   defaultRecurrenceRule?: string | null;
   archivedAt?: string | null;
@@ -48,6 +50,8 @@ export function InlineTaskUpdateForm({
   defaultPriority,
   defaultDueDate,
   defaultEstimateMinutes,
+  defaultScheduledStartAt,
+  defaultScheduledEndAt,
   defaultBlockedReason,
   defaultRecurrenceRule,
   archivedAt,
@@ -55,6 +59,7 @@ export function InlineTaskUpdateForm({
   overflowActions,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
+  const [timezoneOffsetMinutes, setTimezoneOffsetMinutes] = useState("0");
   const [recurrenceTimezone, setRecurrenceTimezone] = useState("UTC");
   const updateFormId = `task-update-${taskId}`;
   const isArchived = Boolean(archivedAt);
@@ -66,7 +71,15 @@ export function InlineTaskUpdateForm({
 
   useEffect(() => {
     setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+    setTimezoneOffsetMinutes(String(new Date().getTimezoneOffset()));
   }, []);
+
+  const scheduledStartAtDefaultValue = defaultScheduledStartAt
+    ? defaultScheduledStartAt.slice(0, 16)
+    : "";
+  const scheduledEndAtDefaultValue = defaultScheduledEndAt
+    ? defaultScheduledEndAt.slice(0, 16)
+    : "";
 
   return (
     <div className="space-y-3">
@@ -74,6 +87,11 @@ export function InlineTaskUpdateForm({
         <input type="hidden" name="taskId" value={taskId} />
         <input type="hidden" name="returnTo" value={returnTo} />
         <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
+        <input
+          type="hidden"
+          name="scheduleTimezoneOffsetMinutes"
+          value={timezoneOffsetMinutes}
+        />
 
         <div className="ega-glass-soft grid gap-3 rounded-[1rem] p-3 sm:grid-cols-2 xl:grid-cols-5">
           <label className="space-y-2">
@@ -92,6 +110,30 @@ export function InlineTaskUpdateForm({
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="glass-label text-etch">
+              Scheduled from
+            </span>
+            <Input
+              name="scheduledStartAt"
+              type="datetime-local"
+              defaultValue={scheduledStartAtDefaultValue}
+              className="ega-glass-input min-h-10 w-full rounded-xl px-3 py-0 text-sm"
+            />
+          </label>
+
+          <label className="space-y-2">
+            <span className="glass-label text-etch">
+              Scheduled to
+            </span>
+            <Input
+              name="scheduledEndAt"
+              type="datetime-local"
+              defaultValue={scheduledEndAtDefaultValue}
+              className="ega-glass-input min-h-10 w-full rounded-xl px-3 py-0 text-sm"
+            />
           </label>
 
           <label className="space-y-2">
@@ -181,6 +223,13 @@ export function InlineTaskUpdateForm({
             <input type="hidden" name="status" value="done" />
             <input type="hidden" name="priority" value={defaultPriority} />
             <input type="hidden" name="dueDate" value={defaultDueDate ?? ""} />
+            <input type="hidden" name="scheduledStartAt" value={scheduledStartAtDefaultValue} />
+            <input type="hidden" name="scheduledEndAt" value={scheduledEndAtDefaultValue} />
+            <input
+              type="hidden"
+              name="scheduleTimezoneOffsetMinutes"
+              value={timezoneOffsetMinutes}
+            />
             <input
               type="hidden"
               name="estimateMinutes"

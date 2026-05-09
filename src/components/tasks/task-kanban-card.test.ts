@@ -16,6 +16,8 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
     priority: "high",
     due_date: null,
     planned_for_date: null,
+    scheduled_start_at: null,
+    scheduled_end_at: null,
     estimate_minutes: null,
     updated_at: "2026-04-28T10:00:00.000Z",
     completed_at: null,

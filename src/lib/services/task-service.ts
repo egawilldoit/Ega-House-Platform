@@ -6,6 +6,7 @@ import {
   shiftDateOnlyValue,
 } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
+import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import {
   getFirstTaskRecurrenceDateAfter,
   getNextTaskRecurrenceDateFromAnchor,
@@ -135,6 +136,8 @@ export type TasksWorkspaceData = {
     priority: string;
     due_date: string | null;
     planned_for_date: string | null;
+    scheduled_start_at: string | null;
+    scheduled_end_at: string | null;
     estimate_minutes: number | null;
     updated_at: string;
     completed_at: string | null;
@@ -183,6 +186,9 @@ export type ValidateTaskInlineUpdateInput = {
   recurrenceRule?: unknown;
   recurrenceAnchorDate?: unknown;
   recurrenceTimezone?: unknown;
+  scheduledStartAt?: unknown;
+  scheduledEndAt?: unknown;
+  scheduleTimezoneOffsetMinutes?: unknown;
 };
 
 export type ValidatedTaskInlineUpdateInput = {
@@ -196,6 +202,8 @@ export type ValidatedTaskInlineUpdateInput = {
   recurrenceRule?: TaskRecurrenceRule | null;
   recurrenceAnchorDate?: string | null;
   recurrenceTimezone?: string | null;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
 };
 
 const SYSTEM_TASK_SAVED_VIEWS = [
@@ -1168,6 +1176,18 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
           timezone: input.recurrenceTimezone,
           fallbackAnchorDate: dueDateResult.value ?? getTodayLocalIsoDate(),
         });
+  const hasScheduleFields =
+    input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined;
+  const scheduleResult = hasScheduleFields
+    ? normalizeTaskScheduleInput({
+        scheduledStartAt: input.scheduledStartAt ?? "",
+        scheduledEndAt: input.scheduledEndAt ?? "",
+        timezoneOffsetMinutes:
+          input.scheduleTimezoneOffsetMinutes === undefined
+            ? "0"
+            : input.scheduleTimezoneOffsetMinutes,
+      })
+    : null;
 
   if (!taskId) {
     return {
@@ -1205,6 +1225,12 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  if (scheduleResult?.error) {
+    return {
+      errorMessage: scheduleResult.error,
+    };
+  }
+
   const blockedReasonError = getTaskBlockedReasonValidationError(status, blockedReason);
   if (blockedReasonError) {
     return {
@@ -1223,6 +1249,12 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
       dueDate: dueDateResult.value,
       estimateMinutes: estimateResult.value,
       blockedReason: normalizedBlockedReason,
+      ...(scheduleResult
+        ? {
+            scheduledStartAt: scheduleResult.scheduledStartAtIso,
+            scheduledEndAt: scheduleResult.scheduledEndAtIso,
+          }
+        : {}),
       ...(input.recurrenceRule === undefined
         ? {}
         : {
@@ -1243,6 +1275,8 @@ type RecurringCompletionTaskSnapshot = {
   description: string | null;
   priority: string;
   estimate_minutes: number | null;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
 };
 
 async function findExistingGeneratedRecurringTask(
@@ -1338,7 +1372,7 @@ export async function generateNextTaskForCompletedRecurrence(
   const { data: task, error: taskError } = await supabase
     .from("tasks")
     .select(
-      "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
+      "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes, scheduled_start_at, scheduled_end_at",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -1409,6 +1443,8 @@ export async function generateNextTaskForCompletedRecurrence(
       due_date: generationDate,
       planned_for_date: null,
       estimate_minutes: task.estimate_minutes,
+      scheduled_start_at: null,
+      scheduled_end_at: null,
       focus_rank: null,
       completed_at: null,
       archived_at: null,
@@ -1495,6 +1531,11 @@ export async function updateTaskInline(
     blocked_reason: input.blockedReason,
     updated_at: updatedAtIso,
   };
+
+  if (input.scheduledStartAt !== undefined) {
+    updatePayload.scheduled_start_at = input.scheduledStartAt;
+    updatePayload.scheduled_end_at = input.scheduledEndAt ?? null;
+  }
 
   if (input.description !== undefined) {
     updatePayload.description = input.description;
@@ -1686,7 +1727,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -1695,7 +1736,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, planned_for_date, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();

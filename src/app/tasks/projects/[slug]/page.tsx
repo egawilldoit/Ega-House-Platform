@@ -72,6 +72,8 @@ type TaskRow = Pick<
   | "status"
   | "priority"
   | "due_date"
+  | "scheduled_start_at"
+  | "scheduled_end_at"
   | "estimate_minutes"
   | "updated_at"
   | "goal_id"
@@ -125,7 +127,7 @@ async function getProjectDetail(slug: string) {
     supabase
       .from("tasks")
       .select(
-        "id, title, description, blocked_reason, status, priority, due_date, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
+        "id, title, description, blocked_reason, status, priority, due_date, scheduled_start_at, scheduled_end_at, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
       )
       .eq("project_id", project.id)
       .order("updated_at", { ascending: false }),
@@ -578,6 +580,8 @@ export default async function ProjectDetailPage({
                         defaultPriority={focusedTask.priority}
                         defaultDueDate={focusedTask.due_date}
                         defaultEstimateMinutes={focusedTask.estimate_minutes}
+                        defaultScheduledStartAt={focusedTask.scheduled_start_at}
+                        defaultScheduledEndAt={focusedTask.scheduled_end_at}
                         defaultBlockedReason={focusedTask.blocked_reason}
                         defaultRecurrenceRule={focusedTask.task_recurrences[0]?.rule ?? null}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
@@ -656,6 +660,8 @@ export default async function ProjectDetailPage({
                             defaultPriority={task.priority}
                             defaultDueDate={task.due_date}
                             defaultEstimateMinutes={task.estimate_minutes}
+                            defaultScheduledStartAt={task.scheduled_start_at}
+                            defaultScheduledEndAt={task.scheduled_end_at}
                             defaultBlockedReason={task.blocked_reason}
                             defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
                             error={inlineError}

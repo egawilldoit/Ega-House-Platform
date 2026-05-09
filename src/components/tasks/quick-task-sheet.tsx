@@ -175,6 +175,8 @@ function QuickTaskSheetPanel({
       estimateMinutes: "",
       recurrenceRule: "",
       recurrenceTimezone: "",
+      scheduledStartAt: "",
+      scheduledEndAt: "",
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo: DEFAULT_RETURN_TO,

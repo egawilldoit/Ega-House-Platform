@@ -12,6 +12,7 @@ import {
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "./task-service";
+import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 
 test("normalizes blocked reason input without overvalidating free text", () => {
   assert.equal(normalizeTaskBlockedReasonInput(" waiting on vendor API "), "waiting on vendor API");
@@ -60,6 +61,60 @@ test("clears blocked reason when status is not blocked", () => {
   assert.equal(result.data?.blockedReason, null);
 });
 
+test("schedule validation accepts both blank", () => {
+  const result = normalizeTaskScheduleInput({
+    scheduledStartAt: "",
+    scheduledEndAt: "",
+    timezoneOffsetMinutes: "0",
+  });
+
+  assert.equal(result.error, null);
+  assert.equal(result.scheduledStartAtIso, null);
+  assert.equal(result.scheduledEndAtIso, null);
+});
+
+test("schedule validation rejects missing start or missing end", () => {
+  const missingStart = normalizeTaskScheduleInput({
+    scheduledStartAt: "",
+    scheduledEndAt: "2026-05-09T10:00",
+    timezoneOffsetMinutes: "0",
+  });
+  const missingEnd = normalizeTaskScheduleInput({
+    scheduledStartAt: "2026-05-09T09:00",
+    scheduledEndAt: "",
+    timezoneOffsetMinutes: "0",
+  });
+
+  assert.equal(
+    missingStart.error,
+    "Scheduled start and end are both required for a scheduled task.",
+  );
+  assert.equal(
+    missingEnd.error,
+    "Scheduled start and end are both required for a scheduled task.",
+  );
+});
+
+test("schedule validation rejects invalid datetime", () => {
+  const result = normalizeTaskScheduleInput({
+    scheduledStartAt: "bad",
+    scheduledEndAt: "2026-05-09T10:00",
+    timezoneOffsetMinutes: "0",
+  });
+
+  assert.equal(result.error, "Scheduled start must be a valid date and time.");
+});
+
+test("schedule validation rejects start >= end", () => {
+  const result = normalizeTaskScheduleInput({
+    scheduledStartAt: "2026-05-09T10:00",
+    scheduledEndAt: "2026-05-09T09:59",
+    timezoneOffsetMinutes: "0",
+  });
+
+  assert.equal(result.error, "Scheduled end must be after scheduled start.");
+});
+
 type MockSession = {
   id: string;
   task_id: string;
@@ -79,6 +134,8 @@ type MockTask = {
   status: string;
   priority?: string;
   due_date?: string | null;
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
   planned_for_date?: string | null;
   estimate_minutes?: number | null;
   focus_rank?: number | null;
@@ -120,6 +177,8 @@ function createTaskInlineSupabaseMock(options?: {
         status: "todo",
         priority: "medium",
         due_date: null,
+        scheduled_start_at: null,
+        scheduled_end_at: null,
         planned_for_date: null,
         estimate_minutes: null,
         focus_rank: null,
@@ -135,6 +194,8 @@ function createTaskInlineSupabaseMock(options?: {
       description: null,
       priority: "medium",
       due_date: null,
+      scheduled_start_at: null,
+      scheduled_end_at: null,
       planned_for_date: null,
       estimate_minutes: null,
       focus_rank: null,
@@ -275,7 +336,7 @@ function createTaskInlineSupabaseMock(options?: {
               columns === "id, status, completed_at, archived_at" ||
                 columns === "id" ||
                 columns ===
-                  "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
+                  "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes, scheduled_start_at, scheduled_end_at",
             );
             const state = {
               taskId: "",
@@ -394,6 +455,8 @@ function createTaskInlineSupabaseMock(options?: {
               status: String(row.status ?? "todo"),
               priority: String(row.priority ?? "medium"),
               due_date: (row.due_date as string | null) ?? null,
+              scheduled_start_at: (row.scheduled_start_at as string | null) ?? null,
+              scheduled_end_at: (row.scheduled_end_at as string | null) ?? null,
               planned_for_date: (row.planned_for_date as string | null) ?? null,
               estimate_minutes: (row.estimate_minutes as number | null) ?? null,
               focus_rank: (row.focus_rank as number | null) ?? null,
@@ -858,6 +921,62 @@ test("inline update persists recurrence preset when provided", async () => {
       updated_at: "2026-04-21T10:00:00.000Z",
     },
   ]);
+});
+
+test("inline update persists schedule", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+      scheduledStartAt: "2026-05-09T09:00:00.000Z",
+      scheduledEndAt: "2026-05-09T10:00:00.000Z",
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(
+    mock.taskUpdateCalls[0]?.payload.scheduled_start_at,
+    "2026-05-09T09:00:00.000Z",
+  );
+  assert.equal(
+    mock.taskUpdateCalls[0]?.payload.scheduled_end_at,
+    "2026-05-09T10:00:00.000Z",
+  );
+});
+
+test("inline update clears schedule when both blank", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+      scheduledStartAt: null,
+      scheduledEndAt: null,
+    },
+    {
+      supabase: mock.supabase,
+      updatedAtIso: "2026-04-21T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.scheduled_start_at, null);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.scheduled_end_at, null);
 });
 
 test("inline validation rejects invalid recurrence anchor date", () => {
@@ -1369,7 +1488,39 @@ test("createTaskWithOptionalWorkedTime creates a task without worked time as bef
     workedTimeLogged: false,
   });
   assert.equal(mock.taskInsertCalls.length, 1);
+  assert.equal(mock.taskInsertCalls[0]?.[0]?.scheduled_start_at, undefined);
+  assert.equal(mock.taskInsertCalls[0]?.[0]?.scheduled_end_at, undefined);
   assert.equal(mock.sessionInsertCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime persists scheduled task block", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Plan deep work slot",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        scheduled_start_at: "2026-05-09T09:00:00.000Z",
+        scheduled_end_at: "2026-05-09T10:00:00.000Z",
+      },
+      workedTime: null,
+    },
+    { supabase: mock.supabase },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(
+    mock.taskInsertCalls[0]?.[0]?.scheduled_start_at,
+    "2026-05-09T09:00:00.000Z",
+  );
+  assert.equal(
+    mock.taskInsertCalls[0]?.[0]?.scheduled_end_at,
+    "2026-05-09T10:00:00.000Z",
+  );
 });
 
 test("createTaskWithOptionalWorkedTime logs exactly one completed session", async () => {

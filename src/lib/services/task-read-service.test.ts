@@ -250,6 +250,8 @@ test("getTaskForOwner returns a normalized task row when modern task columns exi
     status: "blocked",
     priority: "high",
     due_date: "2026-05-01",
+    scheduled_start_at: null,
+    scheduled_end_at: null,
     estimate_minutes: 45,
     updated_at: "2026-04-29T10:00:00.000Z",
     completed_at: "2026-04-29T09:00:00.000Z",

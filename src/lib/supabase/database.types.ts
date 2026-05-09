@@ -351,6 +351,8 @@ export type Database = {
           planned_for_date: string | null
           priority: string
           project_id: string
+          scheduled_end_at: string | null
+          scheduled_start_at: string | null
           status: string
           title: string
           updated_at: string
@@ -371,6 +373,8 @@ export type Database = {
           planned_for_date?: string | null
           priority?: string
           project_id: string
+          scheduled_end_at?: string | null
+          scheduled_start_at?: string | null
           status?: string
           title: string
           updated_at?: string
@@ -391,6 +395,8 @@ export type Database = {
           planned_for_date?: string | null
           priority?: string
           project_id?: string
+          scheduled_end_at?: string | null
+          scheduled_start_at?: string | null
           status?: string
           title?: string
           updated_at?: string

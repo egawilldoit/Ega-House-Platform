@@ -82,6 +82,8 @@ export const tasks = pgTable(
     focusRank: integer("focus_rank"),
     dueDate: date("due_date"),
     plannedForDate: date("planned_for_date"),
+    scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
+    scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
@@ -96,12 +98,21 @@ export const tasks = pgTable(
     index("tasks_owner_user_id_idx").on(table.ownerUserId),
     index("tasks_owner_user_id_focus_rank_idx").on(table.ownerUserId, table.focusRank),
     index("tasks_owner_user_id_planned_for_date_idx").on(table.ownerUserId, table.plannedForDate),
+    index("tasks_owner_user_id_scheduled_start_at_idx").on(table.ownerUserId, table.scheduledStartAt),
     index("tasks_owner_active_updated_idx")
       .on(table.ownerUserId, table.updatedAt.desc())
       .where(sql`${table.archivedAt} is null`),
     index("tasks_owner_archived_updated_idx")
       .on(table.ownerUserId, table.archivedAt.desc())
       .where(sql`${table.archivedAt} is not null`),
+    check(
+      "tasks_scheduled_window_check",
+      sql`(
+        (${table.scheduledStartAt} is null and ${table.scheduledEndAt} is null)
+        or
+        (${table.scheduledStartAt} is not null and ${table.scheduledEndAt} is not null and ${table.scheduledStartAt} < ${table.scheduledEndAt})
+      )`,
+    ),
   ],
 );
 

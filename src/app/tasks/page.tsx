@@ -573,9 +573,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           returnTo={returnPath}
                           defaultStatus={task.status}
                           defaultPriority={task.priority}
-                          defaultDueDate={task.due_date}
-                          defaultEstimateMinutes={task.estimate_minutes}
-                          defaultBlockedReason={task.blocked_reason}
+                        defaultDueDate={task.due_date}
+                        defaultEstimateMinutes={task.estimate_minutes}
+                        defaultScheduledStartAt={task.scheduled_start_at}
+                        defaultScheduledEndAt={task.scheduled_end_at}
+                        defaultBlockedReason={task.blocked_reason}
                           defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
                           archivedAt={task.archived_at}
                           error={inlineError}

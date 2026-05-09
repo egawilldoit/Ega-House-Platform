@@ -17,6 +17,8 @@ export type NormalizedTaskRow = {
   priority: string;
   due_date: string | null;
   estimate_minutes: number | null;
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
   updated_at: string;
   completed_at: string | null;
   project_id: string;
@@ -82,6 +84,8 @@ const TASK_BASE_SELECT_COLUMNS = [
   "status",
   "priority",
   "due_date",
+  "scheduled_start_at",
+  "scheduled_end_at",
   "estimate_minutes",
   "updated_at",
   "project_id",
@@ -158,6 +162,8 @@ export function normalizeTaskRow(row: RawTaskRow): NormalizedTaskRow {
     priority: row.priority,
     due_date: row.due_date ?? null,
     estimate_minutes: row.estimate_minutes ?? null,
+    scheduled_start_at: row.scheduled_start_at ?? null,
+    scheduled_end_at: row.scheduled_end_at ?? null,
     updated_at: row.updated_at,
     completed_at: row.completed_at ?? null,
     project_id: row.project_id,

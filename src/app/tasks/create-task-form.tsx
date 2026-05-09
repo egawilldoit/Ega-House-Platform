@@ -47,6 +47,8 @@ export function buildCreateTaskFormInitialState({
         estimateMinutes: "",
         recurrenceRule: "",
         recurrenceTimezone: "",
+        scheduledStartAt: "",
+        scheduledEndAt: "",
         workedTimeStartedAt: "",
         workedTimeEndedAt: "",
         returnTo,
@@ -93,6 +95,11 @@ export function CreateTaskForm({
       <input
         type="hidden"
         name="workedTimeTimezoneOffsetMinutes"
+        value={timeZoneOffsetMinutes}
+      />
+      <input
+        type="hidden"
+        name="scheduleTimezoneOffsetMinutes"
         value={timeZoneOffsetMinutes}
       />
       <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
@@ -291,6 +298,38 @@ export function CreateTaskForm({
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="space-y-3 sm:col-span-2">
+              <div>
+                <p className="glass-label text-etch">Schedule block (optional)</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="scheduledStartAt" className="glass-label text-etch">
+                    From
+                  </label>
+                  <Input
+                    id="scheduledStartAt"
+                    name="scheduledStartAt"
+                    type="datetime-local"
+                    defaultValue={state.values.scheduledStartAt}
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="scheduledEndAt" className="glass-label text-etch">
+                    To
+                  </label>
+                  <Input
+                    id="scheduledEndAt"
+                    name="scheduledEndAt"
+                    type="datetime-local"
+                    defaultValue={state.values.scheduledEndAt}
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-3 sm:col-span-2">

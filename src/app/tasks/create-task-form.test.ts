@@ -20,6 +20,8 @@ test("create task form preserves project context and kanban return path", () => 
   assert.equal(state.initialState.values.projectId, "project-2");
   assert.equal(state.initialState.values.workedTimeStartedAt, "");
   assert.equal(state.initialState.values.workedTimeEndedAt, "");
+  assert.equal(state.initialState.values.scheduledStartAt, "");
+  assert.equal(state.initialState.values.scheduledEndAt, "");
   assert.equal(
     state.initialState.values.returnTo,
     "/tasks?status=blocked&project=project-2&goal=goal-2&due=overdue&sort=due_date_desc&archive=all&layout=kanban",
