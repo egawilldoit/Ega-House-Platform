@@ -29,6 +29,8 @@ export default defineConfig({
       "**/*.config.*",
       "**/vitest.config.ts",
       "tests/**",
+      // Mobile Expo tests run under apps/mobile Jest config, not root Vitest.
+      "apps/mobile/__tests__/smoke.test.ts",
       "src/app/tasks/create-task-form.test.ts",
       "src/components/layout/shell-signals.test.tsx",
       "src/components/layout/top-bar.test.tsx",
