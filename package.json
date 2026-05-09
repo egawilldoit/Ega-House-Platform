@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx' 'app/**/*.test.ts' 'app/**/*.test.tsx'",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "test:session": "tsx --test src/lib/supabase/cookie-options.test.ts",
     "test:timer-recovery": "tsx --test src/app/timer/session-recovery.test.ts",
@@ -33,6 +34,7 @@
     "resend": "^6.12.2"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^4.0.7",
     "@playwright/test": "^1.53.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -41,8 +43,10 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "^15.5.15",
+    "jsdom": "^26.1.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.7"
   }
 }

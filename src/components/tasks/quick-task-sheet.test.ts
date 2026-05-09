@@ -1,17 +1,26 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const quickTaskSheetSource = readFileSync(
-  fileURLToPath(new URL("./quick-task-sheet.tsx", import.meta.url)),
-  "utf8",
-);
+function resolvePathFromImportMeta(relativePath: string, fallbackPath: string) {
+  try {
+    return fileURLToPath(new URL(relativePath, import.meta.url));
+  } catch {
+    return path.resolve(process.cwd(), fallbackPath);
+  }
+}
 
-const taskActionsSource = readFileSync(
-  fileURLToPath(new URL("../../app/tasks/actions.ts", import.meta.url)),
-  "utf8",
-);
+const quickTaskSheetSource = readFileSync(resolvePathFromImportMeta(
+  "./quick-task-sheet.tsx",
+  "src/components/tasks/quick-task-sheet.tsx",
+), "utf8");
+
+const taskActionsSource = readFileSync(resolvePathFromImportMeta(
+  "../../app/tasks/actions.ts",
+  "src/app/tasks/actions.ts",
+), "utf8");
 
 function getSection(source: string, start: string, end: string) {
   const startIndex = source.indexOf(start);
