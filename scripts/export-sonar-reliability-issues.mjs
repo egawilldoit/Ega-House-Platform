@@ -47,7 +47,7 @@ function parseFilePath(component) {
 
 function csvEscape(value) {
   const text = value == null ? "" : String(value);
-  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  if (/[",\n\r]/.test(text)) return `"${text.replaceAll('"', '""')}"`;
   return text;
 }
 

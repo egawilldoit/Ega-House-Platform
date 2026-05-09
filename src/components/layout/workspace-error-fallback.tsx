@@ -81,7 +81,7 @@ export function WorkspaceErrorFallback({
         <div className="mt-8 flex justify-center">
           <div className="inline-flex items-center gap-2 rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-3 py-2 text-[10px] font-medium uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
             <span className="h-2 w-2 rounded-full bg-[var(--signal-error)]" />
-            ERR_CODE: TSK-503-ND
+            <span>ERR_CODE: TSK-503-ND</span>
           </div>
         </div>
       </section>

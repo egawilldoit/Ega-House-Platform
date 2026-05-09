@@ -110,68 +110,18 @@ function createStartupSupabaseMock(input?: {
     comparator?: string;
   };
 
-  class QueryChain<T extends Record<string, unknown>> {
-    private filters: Filter[] = [];
-    private orderBy: Array<{ column: string; ascending: boolean }> = [];
+  function createQueryChain<T extends Record<string, unknown>>(
+    sourceRows: T[],
+    transform: (row: T, columns: string) => Record<string, unknown>,
+    columns: string,
+  ) {
+    const filters: Filter[] = [];
+    const orderBy: Array<{ column: string; ascending: boolean }> = [];
 
-    constructor(
-      private readonly rows: T[],
-      private readonly transform: (row: T, columns: string) => Record<string, unknown>,
-      private readonly columns: string,
-    ) {}
+    function apply() {
+      let rows = [...sourceRows];
 
-    eq(column: string, value: unknown) {
-      this.filters.push({ op: "eq", column, value });
-      return this;
-    }
-
-    neq(column: string, value: unknown) {
-      this.filters.push({ op: "neq", column, value });
-      return this;
-    }
-
-    not(column: string, comparator: string, value: unknown) {
-      this.filters.push({ op: "not", column, comparator, value });
-      return this;
-    }
-
-    is(column: string, value: null) {
-      this.filters.push({ op: "is", column, value });
-      return this;
-    }
-
-    gte(column: string, value: unknown) {
-      this.filters.push({ op: "gte", column, value });
-      return this;
-    }
-
-    lte(column: string, value: unknown) {
-      this.filters.push({ op: "lte", column, value });
-      return this;
-    }
-
-    order(column: string, options?: { ascending?: boolean }) {
-      this.orderBy.push({ column, ascending: options?.ascending ?? true });
-      return this;
-    }
-
-    limit(value: number) {
-      const rows = this.apply().slice(0, value);
-      return Promise.resolve({ data: rows, error: null });
-    }
-
-    maybeSingle() {
-      const rows = this.apply();
-      return Promise.resolve({
-        data: rows[0] ?? null,
-        error: null,
-      });
-    }
-
-    private apply() {
-      let rows = [...this.rows];
-
-      for (const filter of this.filters) {
+      for (const filter of filters) {
         rows = rows.filter((row) => {
           const field = row[filter.column as keyof T];
 
@@ -197,8 +147,8 @@ function createStartupSupabaseMock(input?: {
         });
       }
 
-      for (let index = this.orderBy.length - 1; index >= 0; index -= 1) {
-        const order = this.orderBy[index];
+      for (let index = orderBy.length - 1; index >= 0; index -= 1) {
+        const order = orderBy[index];
         rows.sort((left, right) => {
           const leftValue = String(left[order.column as keyof T] ?? "");
           const rightValue = String(right[order.column as keyof T] ?? "");
@@ -207,25 +157,54 @@ function createStartupSupabaseMock(input?: {
         });
       }
 
-      return rows.map((row) => this.transform(row, this.columns));
+      return rows.map((row) => transform(row, columns));
     }
-  }
 
-  Object.defineProperty(QueryChain.prototype, "then", {
-    value: function then<
-      TResult1 = Awaited<{ data: Record<string, unknown>[]; error: null }>,
-      TResult2 = never,
-    >(
-      this: QueryChain<Record<string, unknown>>,
-      onfulfilled?:
-        | ((value: { data: Record<string, unknown>[]; error: null }) => TResult1 | PromiseLike<TResult1>)
-        | null,
-      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-    ) {
-      return Promise.resolve({ data: this["apply"](), error: null }).then(onfulfilled, onrejected);
-    },
-    enumerable: false,
-  });
+    const query = {
+      eq(column: string, value: unknown) {
+        filters.push({ op: "eq", column, value });
+        return this;
+      },
+      neq(column: string, value: unknown) {
+        filters.push({ op: "neq", column, value });
+        return this;
+      },
+      not(column: string, comparator: string, value: unknown) {
+        filters.push({ op: "not", column, comparator, value });
+        return this;
+      },
+      is(column: string, value: null) {
+        filters.push({ op: "is", column, value });
+        return this;
+      },
+      gte(column: string, value: unknown) {
+        filters.push({ op: "gte", column, value });
+        return this;
+      },
+      lte(column: string, value: unknown) {
+        filters.push({ op: "lte", column, value });
+        return this;
+      },
+      order(column: string, options?: { ascending?: boolean }) {
+        orderBy.push({ column, ascending: options?.ascending ?? true });
+        return this;
+      },
+      limit(value: number) {
+        const selectedRows = apply().slice(0, value);
+        return Promise.resolve({ data: selectedRows, error: null });
+      },
+      maybeSingle() {
+        const selectedRows = apply();
+        return Promise.resolve({
+          data: selectedRows[0] ?? null,
+          error: null,
+        });
+      },
+    };
+
+    const awaitable = Promise.resolve().then(() => ({ data: apply(), error: null }));
+    return Object.assign(awaitable, query);
+  }
 
   function toSelectedTask(task: MockTask, columns: string) {
     if (columns === "goal_id") {
@@ -254,7 +233,7 @@ function createStartupSupabaseMock(input?: {
       if (table === "tasks") {
         return {
           select(columns: string) {
-            return new QueryChain(tasks, toSelectedTask, columns);
+            return createQueryChain(tasks, toSelectedTask, columns);
           },
         };
       }
@@ -262,7 +241,7 @@ function createStartupSupabaseMock(input?: {
       if (table === "goals") {
         return {
           select(columns: string) {
-            return new QueryChain(
+            return createQueryChain(
               goals,
               (goal) => ({
                 id: goal.id,
@@ -282,7 +261,7 @@ function createStartupSupabaseMock(input?: {
       if (table === "week_reviews") {
         return {
           select(columns: string) {
-            return new QueryChain(
+            return createQueryChain(
               reviews,
               (review) => ({
                 id: review.id,

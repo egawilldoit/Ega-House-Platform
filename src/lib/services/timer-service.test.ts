@@ -315,51 +315,20 @@ type MockTimerSession = {
 };
 
 function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
-  class SelectQuery {
-    private filters = {
+  function createSelectQuery(columns: string) {
+    const filters = {
       endedAtIsNull: false,
       id: null as string | null,
     };
 
-    constructor(private readonly columns: string) {}
-
-    is(column: string, value: null) {
-      assert.equal(column, "ended_at");
-      assert.equal(value, null);
-      this.filters.endedAtIsNull = true;
-      return this;
-    }
-
-    eq(column: string, value: string) {
-      assert.equal(column, "id");
-      this.filters.id = value;
-      return this;
-    }
-
-    order(column: string) {
-      assert.equal(column, "started_at");
-      return this;
-    }
-
-    limit() {
-      return this;
-    }
-
-    maybeSingle() {
-      return this.execute().then((result) => ({
-        data: result.data[0] ?? null,
-        error: result.error,
-      }));
-    }
-
-    private async execute() {
+    const execute = async () => {
       let data = [...sessions];
 
-      if (this.filters.id) {
-        data = data.filter((session) => session.id === this.filters.id);
+      if (filters.id) {
+        data = data.filter((session) => session.id === filters.id);
       }
 
-      if (this.filters.endedAtIsNull) {
+      if (filters.endedAtIsNull) {
         data = data.filter((session) => session.ended_at === null);
       }
 
@@ -370,33 +339,51 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
 
       return {
         data: data.map((session) => {
-          if (this.columns.includes("tasks(")) {
+          if (columns.includes("tasks(")) {
             return session;
           }
 
           const record: Record<string, unknown> = {};
-          for (const column of this.columns.split(",").map((value) => value.trim())) {
+          for (const column of columns.split(",").map((value) => value.trim())) {
             record[column] = session[column as keyof MockTimerSession] ?? null;
           }
           return record;
         }),
         error: null,
       };
-    }
-  }
+    };
 
-  Object.defineProperty(MockSessionsQuery.prototype, "then", {
-    value: function then<TResult1 = Awaited<{ data: unknown[]; error: null }>, TResult2 = never>(
-      this: MockSessionsQuery,
-      onfulfilled?:
-        | ((value: { data: unknown[]; error: null }) => TResult1 | PromiseLike<TResult1>)
-        | null,
-      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-    ) {
-      return this["execute"]().then(onfulfilled, onrejected);
-    },
-    enumerable: false,
-  });
+    const query = {
+      is(column: string, value: null) {
+        assert.equal(column, "ended_at");
+        assert.equal(value, null);
+        filters.endedAtIsNull = true;
+        return this;
+      },
+      eq(column: string, value: string) {
+        assert.equal(column, "id");
+        filters.id = value;
+        return this;
+      },
+      order(column: string) {
+        assert.equal(column, "started_at");
+        return this;
+      },
+      limit() {
+        return this;
+      },
+      async maybeSingle() {
+        const result = await execute();
+        return {
+          data: result.data[0] ?? null,
+          error: result.error,
+        };
+      },
+    };
+
+    const awaitable = Promise.resolve().then(() => execute());
+    return Object.assign(awaitable, query);
+  }
 
   return {
     supabase: {
@@ -405,7 +392,7 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
 
         return {
           select(columns: string) {
-            return new SelectQuery(columns);
+            return createSelectQuery(columns);
           },
           update(payload: Record<string, unknown>) {
             const state = {

@@ -71,7 +71,7 @@ function createQueryMock(table: string, state: MockState) {
     },
   };
 
-  return attachThenable(query, () =>
+  return createAwaitableQuery(query, () =>
     Promise.resolve({ data: executeRows(table, state, filters, mutation), error: null }),
   );
 }
@@ -150,18 +150,12 @@ function executeRows(
   return [];
 }
 
-function attachThenable<T extends object, TResult>(
+function createAwaitableQuery<T extends object, TResult>(
   query: T,
   execute: () => Promise<TResult>,
 ): T & PromiseLike<TResult> {
-  Object.defineProperty(query, "then", {
-    value: <TResult1 = TResult, TResult2 = never>(
-      onfulfilled?: ((value: TResult) => TResult1 | PromiseLike<TResult1>) | null,
-      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-    ) => execute().then(onfulfilled, onrejected),
-    enumerable: false,
-  });
-  return query as T & PromiseLike<TResult>;
+  const awaitable = Promise.resolve().then(() => execute());
+  return Object.assign(awaitable, query) as T & PromiseLike<TResult>;
 }
 
 function createMockSupabase(tasks: TaskRow[], sessions: SessionRow[] = []) {

@@ -233,7 +233,7 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
             <CardContent className="px-7 pb-7 pt-7">
               <div className="glass-label text-etch mb-4 flex items-center gap-2">
                 <span className="inline-block h-2 w-2 rounded-full bg-[var(--signal-live)]" />
-                Cycle Velocity
+                <span>Cycle Velocity</span>
               </div>
               <div className="text-6xl font-semibold tracking-tight text-[color:var(--foreground)]">
                 {cycleVelocity}

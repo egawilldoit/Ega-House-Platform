@@ -443,7 +443,7 @@ function createTaskInlineSupabaseMock(options?: {
               taskId: "",
               requireLastGeneratedNull: false,
             };
-            return {
+            const query = {
               eq(column: string, value: string) {
                 if (column === "id") {
                   state.id = value;
@@ -478,17 +478,7 @@ function createTaskInlineSupabaseMock(options?: {
                 };
               },
             };
-            return attachThenable(query, () => {
-              const recurrence = recurrences.find(
-                (item) =>
-                  (state.id && item.id === state.id) ||
-                  (state.taskId && item.task_id === state.taskId),
-              );
-              if (recurrence) {
-                Object.assign(recurrence, payload);
-              }
-              return Promise.resolve({ data: null, error: null });
-            });
+            return query;
           },
           delete() {
             return {
@@ -2317,14 +2307,17 @@ function createWorkspaceSupabaseMock(options?: {
     query: T,
     execute: () => Promise<TResult>,
   ): T & PromiseLike<TResult> {
-    Object.defineProperty(query, "then", {
-      value: <TResult1 = TResult, TResult2 = never>(
-        onfulfilled?: ((value: TResult) => TResult1 | PromiseLike<TResult1>) | null,
-        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-      ) => execute().then(onfulfilled, onrejected),
-      enumerable: false,
-    });
-    return query as T & PromiseLike<TResult>;
+    return new Proxy(query, {
+      get(target, prop, receiver) {
+        if (prop === "then") {
+          return <TResult1 = TResult, TResult2 = never>(
+            onfulfilled?: ((value: TResult) => TResult1 | PromiseLike<TResult1>) | null,
+            onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+          ) => execute().then(onfulfilled, onrejected);
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as T & PromiseLike<TResult>;
   }
 
   function createTasksQuery(columns: string) {
