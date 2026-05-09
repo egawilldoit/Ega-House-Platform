@@ -67,7 +67,10 @@ test("buildTodayPlan includes planned-today and due-today tasks in the selected 
     timerSummary,
   });
 
-  assert.deepEqual(plan.planned.map((task) => task.id).sort(), ["due", "planned"]);
+  assert.deepEqual(
+    plan.planned.map((task) => task.id).sort((a, b) => a.localeCompare(b)),
+    ["due", "planned"],
+  );
   assert.equal(plan.summary.selectedCount, 2);
 });
 
@@ -110,7 +113,10 @@ test("buildTodayPlan groups selected tasks by status", () => {
   assert.deepEqual(plan.planned.map((task) => task.id), ["todo"]);
   assert.deepEqual(plan.inProgress.map((task) => task.id), ["progress"]);
   assert.deepEqual(plan.blocked.map((task) => task.id), ["blocked"]);
-  assert.deepEqual(plan.completed.map((task) => task.id).sort(), ["completed", "done"]);
+  assert.deepEqual(
+    plan.completed.map((task) => task.id).sort((a, b) => a.localeCompare(b)),
+    ["completed", "done"],
+  );
 });
 
 test("buildTodayPlan excludes Today-visible and completed tasks from suggestions", () => {

@@ -67,29 +67,34 @@ export function TimerStopOutcomePrompt({
 
         <fieldset className="grid gap-2">
           <legend className="sr-only">Timer outcome</legend>
-          {OUTCOME_OPTIONS.map((option) => (
-            <label
-              key={option.value}
-              className="flex cursor-pointer items-start gap-3 rounded-[0.8rem] border border-[var(--border)] bg-white px-3 py-3 text-sm transition hover:border-[var(--signal-live)]"
-            >
-              <input
-                type="radio"
-                name="outcome"
-                value={option.value}
-                checked={selectedOutcome === option.value}
-                onChange={() => setSelectedOutcome(option.value)}
-                className="mt-1"
-              />
-              <span className="min-w-0">
-                <span className="block font-medium text-[color:var(--foreground)]">
-                  {option.label}
+          {OUTCOME_OPTIONS.map((option) => {
+            const outcomeInputId = `${taskId}-timer-outcome-${option.value}`;
+            return (
+              <label
+                htmlFor={outcomeInputId}
+                key={option.value}
+                className="flex cursor-pointer items-start gap-3 rounded-[0.8rem] border border-[var(--border)] bg-white px-3 py-3 text-sm transition hover:border-[var(--signal-live)]"
+              >
+                <input
+                  id={outcomeInputId}
+                  type="radio"
+                  name="outcome"
+                  value={option.value}
+                  checked={selectedOutcome === option.value}
+                  onChange={() => setSelectedOutcome(option.value)}
+                  className="mt-1"
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium text-[color:var(--foreground)]">
+                    {option.label}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
+                    {option.detail}
+                  </span>
                 </span>
-                <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
-                  {option.detail}
-                </span>
-              </span>
-            </label>
-          ))}
+              </label>
+            );
+          })}
         </fieldset>
 
         {selectedOutcome === "blocked" ? (

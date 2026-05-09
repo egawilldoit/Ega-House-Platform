@@ -1,6 +1,6 @@
 function escapeCsvCell(value: string) {
   if (/[",\n\r]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+    return `"${value.replaceAll('"', '""')}"`;
   }
 
   return value;

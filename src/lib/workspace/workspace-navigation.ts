@@ -33,6 +33,11 @@ type WorkspaceRevalidationOptions = {
   returnTo: string;
 };
 
+const DEFAULT_WORKSPACE_NAVIGATION_DEPENDENCIES: WorkspaceNavigationDependencies = { redirect };
+const DEFAULT_WORKSPACE_REVALIDATION_DEPENDENCIES: WorkspaceRevalidationDependencies = {
+  revalidatePath,
+};
+
 function getPathname(href: string) {
   return new URL(href, WORKSPACE_NAVIGATION_BASE_URL).pathname;
 }
@@ -86,7 +91,7 @@ function getWorkspaceRevalidationPaths(
 export function redirectWithWorkspaceFeedback(
   redirectTo: string,
   feedback: WorkspaceFeedback = {},
-  dependencies: WorkspaceNavigationDependencies = { redirect },
+  dependencies: WorkspaceNavigationDependencies = DEFAULT_WORKSPACE_NAVIGATION_DEPENDENCIES,
 ): never {
   const target = new URL(redirectTo, WORKSPACE_NAVIGATION_BASE_URL);
 
@@ -119,7 +124,7 @@ export function redirectWithWorkspaceFeedback(
 export function revalidateWorkspaceFor(
   mutationType: WorkspaceMutationType,
   options: WorkspaceRevalidationOptions,
-  dependencies: WorkspaceRevalidationDependencies = { revalidatePath },
+  dependencies: WorkspaceRevalidationDependencies = DEFAULT_WORKSPACE_REVALIDATION_DEPENDENCIES,
 ) {
   for (const path of getWorkspaceRevalidationPaths(
     mutationType,

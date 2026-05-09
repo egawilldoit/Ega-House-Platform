@@ -352,15 +352,6 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
       }));
     }
 
-    then<TResult1 = Awaited<{ data: unknown[]; error: null }>, TResult2 = never>(
-      onfulfilled?:
-        | ((value: { data: unknown[]; error: null }) => TResult1 | PromiseLike<TResult1>)
-        | null,
-      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-    ) {
-      return this.execute().then(onfulfilled, onrejected);
-    }
-
     private async execute() {
       let data = [...sessions];
 
@@ -393,6 +384,19 @@ function createTimerServiceSupabaseMock(sessions: MockTimerSession[]) {
       };
     }
   }
+
+  Object.defineProperty(MockSessionsQuery.prototype, "then", {
+    value: function then<TResult1 = Awaited<{ data: unknown[]; error: null }>, TResult2 = never>(
+      this: MockSessionsQuery,
+      onfulfilled?:
+        | ((value: { data: unknown[]; error: null }) => TResult1 | PromiseLike<TResult1>)
+        | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) {
+      return this["execute"]().then(onfulfilled, onrejected);
+    },
+    enumerable: false,
+  });
 
   return {
     supabase: {

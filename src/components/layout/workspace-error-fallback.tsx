@@ -70,7 +70,7 @@ export function WorkspaceErrorFallback({
                     {workspace.label}
                   </div>
                   <div className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                    Open {workspace.label.toLowerCase()} workspace
+                    {`Open ${workspace.label.toLowerCase()} workspace`}
                   </div>
                 </div>
               </Link>

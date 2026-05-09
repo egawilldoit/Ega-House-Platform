@@ -124,7 +124,7 @@ function MostTrackedSection({
                     {row.trackedLabel}
                   </div>
                   <div className="text-xs text-[color:var(--muted-foreground)]">
-                    {row.sessionCount} session{row.sessionCount === 1 ? "" : "s"}
+                    {`${row.sessionCount} session${row.sessionCount === 1 ? "" : "s"}`}
                   </div>
                 </div>
               </>

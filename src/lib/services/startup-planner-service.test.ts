@@ -168,15 +168,6 @@ function createStartupSupabaseMock(input?: {
       });
     }
 
-    then<TResult1 = Awaited<{ data: Record<string, unknown>[]; error: null }>, TResult2 = never>(
-      onfulfilled?:
-        | ((value: { data: Record<string, unknown>[]; error: null }) => TResult1 | PromiseLike<TResult1>)
-        | null,
-      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-    ) {
-      return Promise.resolve({ data: this.apply(), error: null }).then(onfulfilled, onrejected);
-    }
-
     private apply() {
       let rows = [...this.rows];
 
@@ -219,6 +210,22 @@ function createStartupSupabaseMock(input?: {
       return rows.map((row) => this.transform(row, this.columns));
     }
   }
+
+  Object.defineProperty(QueryChain.prototype, "then", {
+    value: function then<
+      TResult1 = Awaited<{ data: Record<string, unknown>[]; error: null }>,
+      TResult2 = never,
+    >(
+      this: QueryChain<Record<string, unknown>>,
+      onfulfilled?:
+        | ((value: { data: Record<string, unknown>[]; error: null }) => TResult1 | PromiseLike<TResult1>)
+        | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) {
+      return Promise.resolve({ data: this["apply"](), error: null }).then(onfulfilled, onrejected);
+    },
+    enumerable: false,
+  });
 
   function toSelectedTask(task: MockTask, columns: string) {
     if (columns === "goal_id") {

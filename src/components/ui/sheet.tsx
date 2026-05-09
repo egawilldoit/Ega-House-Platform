@@ -141,6 +141,7 @@ export function SheetHeader({
 
 export function SheetTitle({
   className,
+  children,
   ...props
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
@@ -150,7 +151,9 @@ export function SheetTitle({
         className,
       )}
       {...props}
-    />
+    >
+      {children ?? <span className="sr-only">Sheet section</span>}
+    </h2>
   );
 }
 

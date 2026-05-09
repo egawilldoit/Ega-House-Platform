@@ -103,7 +103,8 @@ const PROJECT_COLORS = [
 function getProjectColor(name: string) {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    const charCode = name.codePointAt(i) ?? 0;
+    hash = charCode + ((hash << 5) - hash);
   }
   return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
 }

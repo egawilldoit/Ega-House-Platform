@@ -49,6 +49,7 @@ export function CardHeader({
 
 export function CardTitle({
   className,
+  children,
   ...props
 }: HTMLAttributes<HTMLHeadingElement>) {
   return (
@@ -58,7 +59,9 @@ export function CardTitle({
         className,
       )}
       {...props}
-    />
+    >
+      {children ?? <span className="sr-only">Card section</span>}
+    </h3>
   );
 }
 

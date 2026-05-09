@@ -95,7 +95,6 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
                   <div
                     key={entry.date}
                     role="listitem"
-                    tabIndex={0}
                     title={label}
                     aria-label={label}
                     className={`h-8 rounded-md border transition-transform duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)] focus-visible:ring-offset-2 ${HEATMAP_INTENSITY_CLASSES[level]}`}

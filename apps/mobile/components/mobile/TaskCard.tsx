@@ -5,7 +5,7 @@ import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
 import { mobileTheme, priorityTone, statusTone } from '@/components/mobile/theme';
 
 function formatStatus(value: string) {
-  return value.replace(/_/g, ' ');
+  return value.replaceAll("_", " ");
 }
 
 export function TaskCard({

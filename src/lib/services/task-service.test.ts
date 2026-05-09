@@ -401,7 +401,7 @@ function createTaskInlineSupabaseMock(options?: {
               archived_at: (row.archived_at as string | null) ?? null,
               archived_by: (row.archived_by as string | null) ?? null,
             });
-            return {
+            const query = {
               select(columns: string) {
                 assert.equal(columns, "id");
                 return {
@@ -409,6 +409,7 @@ function createTaskInlineSupabaseMock(options?: {
                 };
               },
             };
+            return query;
           },
         };
       }
@@ -476,18 +477,18 @@ function createTaskInlineSupabaseMock(options?: {
                   },
                 };
               },
-              then(resolve: (value: { data: null; error: null }) => void) {
-                const recurrence = recurrences.find(
-                  (item) =>
-                    (state.id && item.id === state.id) ||
-                    (state.taskId && item.task_id === state.taskId),
-                );
-                if (recurrence) {
-                  Object.assign(recurrence, payload);
-                }
-                return Promise.resolve({ data: null, error: null }).then(resolve);
-              },
             };
+            return attachThenable(query, () => {
+              const recurrence = recurrences.find(
+                (item) =>
+                  (state.id && item.id === state.id) ||
+                  (state.taskId && item.task_id === state.taskId),
+              );
+              if (recurrence) {
+                Object.assign(recurrence, payload);
+              }
+              return Promise.resolve({ data: null, error: null });
+            });
           },
           delete() {
             return {
@@ -2312,6 +2313,20 @@ function createWorkspaceSupabaseMock(options?: {
     },
   ];
 
+  function attachThenable<T extends object, TResult>(
+    query: T,
+    execute: () => Promise<TResult>,
+  ): T & PromiseLike<TResult> {
+    Object.defineProperty(query, "then", {
+      value: <TResult1 = TResult, TResult2 = never>(
+        onfulfilled?: ((value: TResult) => TResult1 | PromiseLike<TResult1>) | null,
+        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+      ) => execute().then(onfulfilled, onrejected),
+      enumerable: false,
+    });
+    return query as T & PromiseLike<TResult>;
+  }
+
   function createTasksQuery(columns: string) {
     const state = {
       activeOnly: false,
@@ -2418,15 +2433,9 @@ function createWorkspaceSupabaseMock(options?: {
       order() {
         return query;
       },
-      then(
-        resolve: (value: { data: typeof tasks | Array<{ archived_at: string | null }>; error: null }) => void,
-        reject?: (reason: unknown) => void,
-      ) {
-        return execute().then(resolve, reject);
-      },
     };
 
-    return query;
+    return attachThenable(query, execute);
   }
 
   const supabase = {

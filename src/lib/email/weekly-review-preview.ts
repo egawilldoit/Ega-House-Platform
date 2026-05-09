@@ -47,11 +47,15 @@ function escapeHtml(value: string) {
 }
 
 function normalizeAppUrl(appUrl: string) {
-  return (appUrl || "https://www.egawilldoit.online").replace(/\/+$/, "");
+  let normalized = appUrl || "https://www.egawilldoit.online";
+  while (normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
 }
 
 function textAfterHeading(value: string | null, headings: string[]) {
-  const lines = value?.replace(/\r\n/g, "\n").split("\n") ?? [];
+  const lines = value?.replaceAll("\r\n", "\n").split("\n") ?? [];
   const normalizedHeadings = headings.map((heading) => heading.toLowerCase());
   const startIndex = lines.findIndex((line) =>
     normalizedHeadings.includes(line.trim().toLowerCase()),
@@ -81,7 +85,7 @@ function bodyWithoutLeadingHeading(value: string | null, heading: string) {
     return "";
   }
 
-  const lines = normalized.replace(/\r\n/g, "\n").split("\n");
+  const lines = normalized.replaceAll("\r\n", "\n").split("\n");
   if (lines[0]?.trim().toLowerCase() === heading.toLowerCase()) {
     return lines.slice(1).join("\n").trim();
   }

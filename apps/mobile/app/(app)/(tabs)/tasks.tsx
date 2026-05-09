@@ -53,7 +53,7 @@ const DUE_FILTER_OPTIONS: Array<{ label: string; value: MobileTaskDueFilter }> =
 ];
 
 function formatToken(value: string) {
-  return value.replace(/_/g, ' ');
+  return value.replaceAll("_", " ");
 }
 
 function formatDueDate(value: string | null) {

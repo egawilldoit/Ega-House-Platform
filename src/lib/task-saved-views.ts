@@ -169,7 +169,7 @@ export function normalizeTaskSavedViewDefinition(
     }
   }
   const estimateMinMinutes =
-    typeof filters.estimateMinMinutes === "number" ? filters.estimateMinMinutes : NaN;
+    typeof filters.estimateMinMinutes === "number" ? filters.estimateMinMinutes : Number.NaN;
   const normalizedEstimateMinMinutes =
     Number.isSafeInteger(estimateMinMinutes) && estimateMinMinutes > 0
       ? estimateMinMinutes
@@ -178,7 +178,7 @@ export function normalizeTaskSavedViewDefinition(
     return null;
   }
   const estimateMaxMinutes =
-    typeof filters.estimateMaxMinutes === "number" ? filters.estimateMaxMinutes : NaN;
+    typeof filters.estimateMaxMinutes === "number" ? filters.estimateMaxMinutes : Number.NaN;
   const normalizedEstimateMaxMinutes =
     Number.isSafeInteger(estimateMaxMinutes) && estimateMaxMinutes > 0
       ? estimateMaxMinutes
@@ -187,7 +187,7 @@ export function normalizeTaskSavedViewDefinition(
     return null;
   }
   const dueWithinDays =
-    typeof filters.dueWithinDays === "number" ? filters.dueWithinDays : NaN;
+    typeof filters.dueWithinDays === "number" ? filters.dueWithinDays : Number.NaN;
   const normalizedDueWithinDays =
     Number.isSafeInteger(dueWithinDays) && dueWithinDays > 0 ? dueWithinDays : undefined;
   if (filters.dueWithinDays !== undefined && !normalizedDueWithinDays) {

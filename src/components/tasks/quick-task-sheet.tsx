@@ -824,8 +824,9 @@ function QuickTaskSheetPanel({
 
                         <div className="space-y-4">
                           <div className="space-y-2">
-                            <label className="glass-label text-etch">Title</label>
+                            <label htmlFor={`draft-${draft.id}-title`} className="glass-label text-etch">Title</label>
                             <Input
+                              id={`draft-${draft.id}-title`}
                               value={draft.title}
                               onChange={(event) =>
                                 updateDraftField(draft.id, "title", event.target.value)
@@ -837,8 +838,9 @@ function QuickTaskSheetPanel({
 
                           <div className="grid gap-3 sm:grid-cols-2">
                             <div className="space-y-2">
-                              <label className="glass-label text-etch">Project</label>
+                              <label htmlFor={`draft-${draft.id}-project`} className="glass-label text-etch">Project</label>
                               <select
+                                id={`draft-${draft.id}-project`}
                                 value={draft.projectId}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "projectId", event.target.value)
@@ -854,8 +856,9 @@ function QuickTaskSheetPanel({
                             </div>
 
                             <div className="space-y-2">
-                              <label className="glass-label text-etch">Goal</label>
+                              <label htmlFor={`draft-${draft.id}-goal`} className="glass-label text-etch">Goal</label>
                               <select
+                                id={`draft-${draft.id}-goal`}
                                 value={draft.goalId}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "goalId", event.target.value)
@@ -872,8 +875,9 @@ function QuickTaskSheetPanel({
                             </div>
 
                             <div className="space-y-2">
-                              <label className="glass-label text-etch">Status</label>
+                              <label htmlFor={`draft-${draft.id}-status`} className="glass-label text-etch">Status</label>
                               <select
+                                id={`draft-${draft.id}-status`}
                                 value={draft.status}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "status", event.target.value)
@@ -889,8 +893,9 @@ function QuickTaskSheetPanel({
                             </div>
 
                             <div className="space-y-2">
-                              <label className="glass-label text-etch">Priority</label>
+                              <label htmlFor={`draft-${draft.id}-priority`} className="glass-label text-etch">Priority</label>
                               <select
+                                id={`draft-${draft.id}-priority`}
                                 value={draft.priority}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "priority", event.target.value)
@@ -907,8 +912,9 @@ function QuickTaskSheetPanel({
 
                             {draft.status === "blocked" ? (
                               <div className="space-y-2 sm:col-span-2">
-                                <label className="glass-label text-etch">Blocked reason</label>
+                                <label htmlFor={`draft-${draft.id}-blocked-reason`} className="glass-label text-etch">Blocked reason</label>
                                 <Textarea
+                                  id={`draft-${draft.id}-blocked-reason`}
                                   value={draft.blockedReason}
                                   onChange={(event) =>
                                     updateDraftField(draft.id, "blockedReason", event.target.value)
@@ -920,8 +926,9 @@ function QuickTaskSheetPanel({
                             ) : null}
 
                             <div className="space-y-2">
-                              <label className="glass-label text-etch">Due date</label>
+                              <label htmlFor={`draft-${draft.id}-due-date`} className="glass-label text-etch">Due date</label>
                               <Input
+                                id={`draft-${draft.id}-due-date`}
                                 type="date"
                                 value={draft.dueDate}
                                 onChange={(event) =>
@@ -932,8 +939,9 @@ function QuickTaskSheetPanel({
                             </div>
 
                             <div className="space-y-2">
-                              <label className="glass-label text-etch">Estimate (minutes)</label>
+                              <label htmlFor={`draft-${draft.id}-estimate-minutes`} className="glass-label text-etch">Estimate (minutes)</label>
                               <Input
+                                id={`draft-${draft.id}-estimate-minutes`}
                                 type="number"
                                 min="0"
                                 step="15"
@@ -948,8 +956,9 @@ function QuickTaskSheetPanel({
                           </div>
 
                           <div className="space-y-2">
-                            <label className="glass-label text-etch">Description</label>
+                            <label htmlFor={`draft-${draft.id}-description`} className="glass-label text-etch">Description</label>
                             <Textarea
+                              id={`draft-${draft.id}-description`}
                               value={draft.description}
                               onChange={(event) =>
                                 updateDraftField(draft.id, "description", event.target.value)

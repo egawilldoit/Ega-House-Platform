@@ -72,6 +72,12 @@ type HandleStoppedTimerOutcomeDependencies = {
   blockTask: typeof blockTask;
 };
 
+const DEFAULT_STOPPED_TIMER_DEPENDENCIES: HandleStoppedTimerOutcomeDependencies = {
+  markTaskDone,
+  resumeTask,
+  blockTask,
+};
+
 function parseStoppedTimerOutcome(value: unknown): StoppedTimerOutcome | null {
   const normalizedValue = String(value ?? "").trim();
   if (
@@ -90,11 +96,7 @@ export async function handleStoppedTimerOutcomeByTaskId(
   taskId: string,
   outcome: StoppedTimerOutcome,
   blockedReason: unknown = null,
-  dependencies: HandleStoppedTimerOutcomeDependencies = {
-    markTaskDone,
-    resumeTask,
-    blockTask,
-  },
+  dependencies: HandleStoppedTimerOutcomeDependencies = DEFAULT_STOPPED_TIMER_DEPENDENCIES,
 ) {
   const normalizedTaskId = taskId.trim();
   if (!normalizedTaskId) {
@@ -123,11 +125,7 @@ export async function handleStoppedTimerOutcomeByTaskId(
 
 export async function completeStoppedTaskById(
   taskId: string,
-  dependencies: HandleStoppedTimerOutcomeDependencies = {
-    markTaskDone,
-    resumeTask,
-    blockTask,
-  },
+  dependencies: HandleStoppedTimerOutcomeDependencies = DEFAULT_STOPPED_TIMER_DEPENDENCIES,
 ) {
   return handleStoppedTimerOutcomeByTaskId(
     taskId,

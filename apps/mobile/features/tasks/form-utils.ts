@@ -1,5 +1,5 @@
 export function formatTaskToken(value: string) {
-  return value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function normalizeOptionalText(value: string) {

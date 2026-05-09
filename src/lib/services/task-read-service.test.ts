@@ -33,11 +33,6 @@ type MockTask = {
   goals: { title: string } | null;
 };
 
-type MockQueryResult = {
-  data: MockTask[] | null;
-  error: ReturnType<typeof createMissingColumnError> | null;
-};
-
 function createMissingColumnError(column: string) {
   return {
     code: "PGRST204",
@@ -107,7 +102,7 @@ function createTaskReadSupabaseMock(
             return { data, error: null };
           };
 
-          return {
+          const query = {
             eq(column: keyof MockTask, value: string) {
               if (column === "id") {
                 state.taskId = value;
@@ -164,12 +159,6 @@ function createTaskReadSupabaseMock(
               state.limit = count;
               return this;
             },
-            then<TResult1 = MockQueryResult, TResult2 = never>(
-              onfulfilled?: ((value: MockQueryResult) => TResult1 | PromiseLike<TResult1>) | null,
-              onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-            ) {
-              return execute().then(onfulfilled, onrejected);
-            },
             maybeSingle: async () => {
               if (missingSelectedColumn) {
                 return {
@@ -182,10 +171,26 @@ function createTaskReadSupabaseMock(
               return { data: task, error: null };
             },
           };
+
+          return attachThenable(query, execute);
         },
       };
     },
   };
+}
+
+function attachThenable<T extends object, TResult>(
+  query: T,
+  execute: () => Promise<TResult>,
+): T & PromiseLike<TResult> {
+  Object.defineProperty(query, "then", {
+    value: <TResult1 = TResult, TResult2 = never>(
+      onfulfilled?: ((value: TResult) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) => execute().then(onfulfilled, onrejected),
+    enumerable: false,
+  });
+  return query as T & PromiseLike<TResult>;
 }
 
 function createMockTask(overrides: Partial<MockTask> & Pick<MockTask, "id" | "title">): MockTask {

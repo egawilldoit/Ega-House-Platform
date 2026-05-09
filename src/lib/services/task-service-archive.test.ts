@@ -22,11 +22,9 @@ type SessionRow = {
 function createQueryMock(table: string, state: MockState) {
   const filters: Array<{ column: string; operator: "eq" | "is" | "not_is" | "in"; value: unknown }> = [];
   let mutation: Record<string, unknown> | null = null;
-  let selectedColumns = "";
 
   const query = {
     select(columns: string) {
-      selectedColumns = columns;
       state.selects.push({ table, columns });
       return query;
     },
@@ -68,15 +66,14 @@ function createQueryMock(table: string, state: MockState) {
       return query;
     },
     maybeSingle() {
-      const rows = executeRows(table, state, filters, mutation, selectedColumns);
+      const rows = executeRows(table, state, filters, mutation);
       return Promise.resolve({ data: rows[0] ?? null, error: null });
-    },
-    then(resolve: (value: { data: unknown[]; error: null; count?: number }) => void) {
-      resolve({ data: executeRows(table, state, filters, mutation, selectedColumns), error: null });
     },
   };
 
-  return query;
+  return attachThenable(query, () =>
+    Promise.resolve({ data: executeRows(table, state, filters, mutation), error: null }),
+  );
 }
 
 type MockState = {
@@ -116,7 +113,6 @@ function executeRows(
   state: MockState,
   filters: Array<{ column: string; operator: "eq" | "is" | "not_is" | "in"; value: unknown }>,
   mutation: Record<string, unknown> | null,
-  selectedColumns: string,
 ) {
   if (table === "tasks") {
     const rows = applyFilters(state.tasks as unknown as Array<Record<string, unknown>>, filters);
@@ -151,7 +147,21 @@ function executeRows(
     return [];
   }
 
-  return selectedColumns ? [] : [];
+  return [];
+}
+
+function attachThenable<T extends object, TResult>(
+  query: T,
+  execute: () => Promise<TResult>,
+): T & PromiseLike<TResult> {
+  Object.defineProperty(query, "then", {
+    value: <TResult1 = TResult, TResult2 = never>(
+      onfulfilled?: ((value: TResult) => TResult1 | PromiseLike<TResult1>) | null,
+      onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+    ) => execute().then(onfulfilled, onrejected),
+    enumerable: false,
+  });
+  return query as T & PromiseLike<TResult>;
 }
 
 function createMockSupabase(tasks: TaskRow[], sessions: SessionRow[] = []) {
@@ -239,7 +249,10 @@ test("task workspace archive views filter active archived and all tasks", async 
 
   assert.deepEqual(active.tasks.map((row) => row.id), ["active-task"]);
   assert.deepEqual(archived.tasks.map((row) => row.id), ["archived-task"]);
-  assert.deepEqual(all.tasks.map((row) => row.id).sort(), ["active-task", "archived-task"]);
+  assert.deepEqual(
+    all.tasks.map((row) => row.id).sort((a, b) => a.localeCompare(b)),
+    ["active-task", "archived-task"],
+  );
 });
 
 test("archive blocks active timer but delete protection still uses delete-safe path", async () => {
