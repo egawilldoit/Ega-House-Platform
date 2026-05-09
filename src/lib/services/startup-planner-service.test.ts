@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildStartupPlan,
   getStartupPlannerData,
   planStartupTasksForToday,
+  type StartupPlanningEvidence,
 } from "./startup-planner-service";
+import type { NormalizedTaskRow } from "./task-read-service";
 
 type MockTask = {
   id: string;
@@ -41,6 +44,55 @@ type MockReview = {
   next_steps: string | null;
   updated_at: string;
 };
+
+function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTaskRow {
+  return {
+    id: "task-1",
+    title: "Task",
+    description: null,
+    blocked_reason: null,
+    status: "todo",
+    priority: "medium",
+    due_date: null,
+    estimate_minutes: null,
+    updated_at: "2026-04-20T10:00:00.000Z",
+    completed_at: null,
+    project_id: "project-1",
+    goal_id: null,
+    focus_rank: null,
+    planned_for_date: null,
+    archived_at: null,
+    archived_by: null,
+    projects: { name: "Project", slug: "project" },
+    goals: null,
+    ...overrides,
+  };
+}
+
+function createStartupEvidence(
+  overrides: Partial<StartupPlanningEvidence> = {},
+): StartupPlanningEvidence {
+  return {
+    today: "2026-04-20",
+    weekBounds: {
+      weekStart: "2026-04-20",
+      weekEnd: "2026-04-26",
+    },
+    previousWeekBounds: {
+      weekStart: "2026-04-13",
+      weekEnd: "2026-04-19",
+    },
+    blockedRows: [],
+    focusCandidateRows: [],
+    dueSoonRows: [],
+    goalRows: [],
+    goalTaskCountRows: [],
+    todayTaskRows: [],
+    currentWeekReviewRow: null,
+    latestReviewRow: null,
+    ...overrides,
+  };
+}
 
 function createStartupSupabaseMock(input?: {
   tasks?: MockTask[];
@@ -245,6 +297,92 @@ function createStartupSupabaseMock(input?: {
     },
   };
 }
+
+test("buildStartupPlan deduplicates the weekly plan by focus, due-soon, then blocked order", () => {
+  const shared = createTaskRow({ id: "shared", focus_rank: 1, due_date: "2026-04-22" });
+  const plan = buildStartupPlan(
+    createStartupEvidence({
+      focusCandidateRows: [shared, createTaskRow({ id: "focus-only", focus_rank: 2 })],
+      dueSoonRows: [
+        createTaskRow({ id: "due-only", due_date: "2026-04-21" }),
+        createTaskRow({ ...shared, due_date: "2026-04-22" }),
+      ],
+      blockedRows: [
+        createTaskRow({ id: "blocked-only", status: "blocked" }),
+        createTaskRow({ ...shared, status: "blocked" }),
+      ],
+    }),
+  );
+
+  assert.deepEqual(plan.planThisWeekTasks.map((task) => task.id), [
+    "shared",
+    "focus-only",
+    "due-only",
+    "blocked-only",
+  ]);
+});
+
+test("buildStartupPlan preserves blocked carry-forward task context", () => {
+  const plan = buildStartupPlan(
+    createStartupEvidence({
+      blockedRows: [
+        createTaskRow({
+          id: "blocked-1",
+          title: "Unblock launch",
+          blocked_reason: "Waiting on approval",
+          status: "blocked",
+          planned_for_date: "2026-04-20",
+          projects: { name: "Launch", slug: "launch" },
+          goals: { title: "Ship launch" },
+        }),
+      ],
+    }),
+  );
+
+  assert.equal(plan.blockersCarryForward[0]?.id, "blocked-1");
+  assert.equal(plan.blockersCarryForward[0]?.blockedReason, "Waiting on approval");
+  assert.equal(plan.blockersCarryForward[0]?.isPlannedForToday, true);
+  assert.equal(plan.blockersCarryForward[0]?.projectName, "Launch");
+  assert.equal(plan.blockersCarryForward[0]?.goalTitle, "Ship launch");
+});
+
+test("buildStartupPlan maps due-soon tasks without changing supplied due ordering", () => {
+  const plan = buildStartupPlan(
+    createStartupEvidence({
+      dueSoonRows: [
+        createTaskRow({ id: "due-today", due_date: "2026-04-20" }),
+        createTaskRow({ id: "due-week", due_date: "2026-04-26" }),
+      ],
+    }),
+  );
+
+  assert.deepEqual(plan.dueSoonTasks.map((task) => task.id), ["due-today", "due-week"]);
+  assert.deepEqual(plan.dueSoonTasks.map((task) => task.dueDate), ["2026-04-20", "2026-04-26"]);
+});
+
+test("buildStartupPlan maps focus candidates with focus rank and Today state", () => {
+  const plan = buildStartupPlan(
+    createStartupEvidence({
+      focusCandidateRows: [
+        createTaskRow({
+          id: "focus-1",
+          focus_rank: 1,
+          planned_for_date: "2026-04-20",
+        }),
+        createTaskRow({
+          id: "focus-2",
+          focus_rank: 2,
+          planned_for_date: null,
+        }),
+      ],
+    }),
+  );
+
+  assert.deepEqual(plan.focusTasks.map((task) => task.id), ["focus-1", "focus-2"]);
+  assert.equal(plan.focusTasks[0]?.focusRank, 1);
+  assert.equal(plan.focusTasks[0]?.isPlannedForToday, true);
+  assert.equal(plan.focusTasks[1]?.isPlannedForToday, false);
+});
 
 test("loads startup planning data when no prior review exists", async () => {
   const result = await getStartupPlannerData({

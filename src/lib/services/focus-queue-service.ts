@@ -1,12 +1,8 @@
 import { isTaskPinned, sortFocusQueueTasks } from "@/lib/focus-queue";
+import { getFocusQueueTaskRows } from "@/lib/services/task-read-service";
 import { createClient } from "@/lib/supabase/server";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
-
-type TaskFocusRankRow = {
-  id: string;
-  focus_rank: number | null;
-};
 
 async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   if (supabase) {
@@ -147,41 +143,16 @@ export async function getFocusQueueTasks(
   options?: { supabase?: SupabaseServerClient; limit?: number },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const buildFocusQueueQuery = (includeArchiveFilter: boolean) => {
-    const query = supabase
-      .from("tasks")
-      .select("id, title, status, priority, estimate_minutes, updated_at, focus_rank, projects(name), goals(title)")
-      .not("focus_rank", "is", null)
-      .order("focus_rank", { ascending: true })
-      .order("updated_at", { ascending: false })
-      .limit(options?.limit ?? 8);
+  const result = await getFocusQueueTaskRows({
+    supabase,
+    limit: options?.limit,
+  });
 
-    return includeArchiveFilter ? query.is("archived_at", null) : query;
-  };
-
-  let { data, error } = await buildFocusQueueQuery(true);
-
-  if (error) {
-    const fallbackResult = await buildFocusQueueQuery(false);
-    data = fallbackResult.data;
-    error = fallbackResult.error;
-  }
-
-  if (error) {
+  if (result.errorMessage) {
     return { data: null, errorMessage: "Could not load focus queue right now." };
   }
 
-  const queue = sortFocusQueueTasks((data ?? []) as Array<
-    TaskFocusRankRow & {
-      title: string;
-      status: string;
-      priority: string;
-      estimate_minutes: number | null;
-      updated_at: string;
-      projects: { name: string } | null;
-      goals: { title: string } | null;
-    }
-  >).map((task) => ({
+  const queue = sortFocusQueueTasks(result.data).map((task) => ({
     id: task.id,
     title: task.title,
     status: task.status,

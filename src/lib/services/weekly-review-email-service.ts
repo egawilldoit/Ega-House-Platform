@@ -50,6 +50,7 @@ type WeeklyReviewEmailSupabaseClient = {
 
 type WeeklyReviewEmailTable = {
   select(columns: string): WeeklyReviewEmailQuery;
+  insert(payload: Record<string, unknown>): WeeklyReviewEmailQuery;
   upsert(payload: Record<string, unknown>, options: { onConflict: string }): WeeklyReviewEmailQuery;
   update(payload: Record<string, unknown>): WeeklyReviewEmailQuery;
 };
@@ -122,6 +123,26 @@ function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function getTimeZoneParts(now: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value;
+  const hour = Number(value("hour"));
+
+  return {
+    isoDate: `${value("year")}-${value("month")}-${value("day")}`,
+    weekday: value("weekday") ?? "",
+    hour: hour === 24 ? 0 : hour,
+  };
+}
+
 function normalizeOwnerUserIds(ownerUserIds: string[]) {
   return Array.from(new Set(ownerUserIds.map((id) => id.trim()).filter(Boolean)));
 }
@@ -169,6 +190,35 @@ export function getWeeklyReviewEmailTargetWeek(now = new Date()) {
   }
 
   return bounds;
+}
+
+export function getWeeklyReviewEmailTargetWeekForTimeZone(
+  now = new Date(),
+  timeZone = "America/New_York",
+) {
+  const bounds = getWeekBounds(getTimeZoneParts(now, timeZone).isoDate);
+
+  if (!bounds) {
+    throw new Error("Failed to resolve timezone weekly review email target week.");
+  }
+
+  return bounds;
+}
+
+export function shouldSendWeeklyReviewEmailNow({
+  now = new Date(),
+  timeZone = "America/New_York",
+  startHour = 18,
+  endHour = 24,
+}: {
+  now?: Date;
+  timeZone?: string;
+  startHour?: number;
+  endHour?: number;
+} = {}) {
+  const local = getTimeZoneParts(now, timeZone);
+
+  return local.weekday === "Sun" && local.hour >= startHour && local.hour < endHour;
 }
 
 export async function deliverWeeklyReviewEmails(
@@ -315,23 +365,38 @@ export function createWeeklyReviewEmailSupabaseAdapter(supabase: WeeklyReviewEma
       const nowIso = now.toISOString();
       const { data, error } = await supabase
         .from("week_reviews")
-        .upsert(
-          {
-            owner_user_id: ownerUserId,
-            week_start: weekStart,
-            week_end: weekEnd,
-            summary: draft.summary,
-            wins: draft.wins,
-            blockers: draft.blockers,
-            next_steps: draft.nextSteps,
-            updated_at: nowIso,
-          },
-          { onConflict: "owner_user_id,week_start" },
-        )
+        .insert({
+          owner_user_id: ownerUserId,
+          week_start: weekStart,
+          week_end: weekEnd,
+          summary: draft.summary,
+          wins: draft.wins,
+          blockers: draft.blockers,
+          next_steps: draft.nextSteps,
+          updated_at: nowIso,
+        })
         .select(WEEK_REVIEW_SELECT)
         .single();
 
       if (error) {
+        const { data: existingData, error: existingError } = await supabase
+          .from("week_reviews")
+          .select(WEEK_REVIEW_SELECT)
+          .eq("owner_user_id", ownerUserId)
+          .eq("week_start", weekStart)
+          .eq("week_end", weekEnd)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingError) {
+          throw new Error(`Failed to reload generated weekly review email record: ${existingError.message}`);
+        }
+
+        if (existingData) {
+          return mapReviewRecord(existingData);
+        }
+
         throw new Error(`Failed to save generated weekly review email record: ${error.message}`);
       }
 

@@ -3,7 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import {
-  getActiveTasksForOwner,
+  getStartupBlockedTasks,
+  getStartupDueSoonTasks,
+  getStartupFocusCandidates,
   type NormalizedTaskRow,
 } from "@/lib/services/task-read-service";
 
@@ -22,6 +24,44 @@ type StartupReviewRow = {
   blockers: string | null;
   next_steps: string | null;
   updated_at: string;
+};
+
+type StartupGoalRow = {
+  id: string;
+  title: string;
+  status: string;
+  health: string | null;
+  next_step: string | null;
+  updated_at: string;
+  projects: { name: string; slug?: string | null } | null;
+};
+
+type StartupGoalTaskCountRow = {
+  goal_id: string | null;
+};
+
+type StartupTodayTaskSummaryRow = {
+  id: string;
+  status: string;
+};
+
+type StartupWeekBounds = {
+  weekStart: string;
+  weekEnd: string;
+};
+
+export type StartupPlanningEvidence = {
+  today: string;
+  weekBounds: StartupWeekBounds;
+  previousWeekBounds: StartupWeekBounds;
+  blockedRows: StartupTaskRow[];
+  focusCandidateRows: StartupTaskRow[];
+  dueSoonRows: StartupTaskRow[];
+  goalRows: StartupGoalRow[];
+  goalTaskCountRows: StartupGoalTaskCountRow[];
+  todayTaskRows: StartupTodayTaskSummaryRow[];
+  currentWeekReviewRow: StartupReviewRow | null;
+  latestReviewRow: StartupReviewRow | null;
 };
 
 export type StartupPlannerTask = {
@@ -125,10 +165,10 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
-export async function getStartupPlannerData(options?: {
+export async function getStartupPlanningEvidence(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
-}) {
+}): Promise<{ errorMessage: string | null; data: StartupPlanningEvidence | null }> {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const today = getTodayLocalIsoDate(options?.now ?? new Date());
   const weekBounds = getWeekBounds(today);
@@ -151,34 +191,16 @@ export async function getStartupPlannerData(options?: {
 
   const [blockedResult, focusResult, dueSoonResult, goalsResult, goalTaskCountsResult, todayTasksResult, currentWeekReviewResult, latestReviewResult] =
     await Promise.all([
-      getActiveTasksForOwner({
+      getStartupBlockedTasks({
         supabase,
-        orderByUpdatedAt: false,
-        applyQuery: (query) => query
-          .eq("status", "blocked")
-          .order("updated_at", { ascending: false })
-          .limit(8),
       }),
-      getActiveTasksForOwner({
+      getStartupFocusCandidates({
         supabase,
-        orderByUpdatedAt: false,
-        applyQuery: (query) => query
-          .not("focus_rank", "is", null)
-          .neq("status", "done")
-          .order("focus_rank", { ascending: true })
-          .order("updated_at", { ascending: false })
-          .limit(8),
       }),
-      getActiveTasksForOwner({
+      getStartupDueSoonTasks({
         supabase,
-        orderByUpdatedAt: false,
-        applyQuery: (query) => query
-          .neq("status", "done")
-          .gte("due_date", today)
-          .lte("due_date", weekBounds.weekEnd)
-          .order("due_date", { ascending: true })
-          .order("updated_at", { ascending: false })
-          .limit(8),
+        today,
+        dueSoonEndDate: weekBounds.weekEnd,
       }),
       supabase
         .from("goals")
@@ -231,9 +253,30 @@ export async function getStartupPlannerData(options?: {
     };
   }
 
-  const blockersCarryForward = blockedResult.data.map((row) => mapTaskRow(row, today));
-  const focusTasks = focusResult.data.map((row) => mapTaskRow(row, today));
-  const dueSoonTasks = dueSoonResult.data.map((row) => mapTaskRow(row, today));
+  return {
+    errorMessage: null,
+    data: {
+      today,
+      weekBounds,
+      previousWeekBounds,
+      blockedRows: blockedResult.data,
+      focusCandidateRows: focusResult.data,
+      dueSoonRows: dueSoonResult.data,
+      goalRows: (goalsResult.data ?? []) as StartupGoalRow[],
+      goalTaskCountRows: (goalTaskCountsResult.data ?? []) as StartupGoalTaskCountRow[],
+      todayTaskRows: (todayTasksResult.data ?? []) as StartupTodayTaskSummaryRow[],
+      currentWeekReviewRow: currentWeekReviewResult.data
+        ? (currentWeekReviewResult.data as StartupReviewRow)
+        : null,
+      latestReviewRow: latestReviewResult.data ? (latestReviewResult.data as StartupReviewRow) : null,
+    },
+  };
+}
+
+export function buildStartupPlan(evidence: StartupPlanningEvidence): StartupPlannerData {
+  const blockersCarryForward = evidence.blockedRows.map((row) => mapTaskRow(row, evidence.today));
+  const focusTasks = evidence.focusCandidateRows.map((row) => mapTaskRow(row, evidence.today));
+  const dueSoonTasks = evidence.dueSoonRows.map((row) => mapTaskRow(row, evidence.today));
 
   const planThisWeekTaskById = new Map<string, StartupPlannerTask>();
   for (const task of [...focusTasks, ...dueSoonTasks, ...blockersCarryForward]) {
@@ -242,7 +285,7 @@ export async function getStartupPlannerData(options?: {
     }
   }
 
-  const goalOpenTaskCounts = (goalTaskCountsResult.data ?? []).reduce<Map<string, number>>(
+  const goalOpenTaskCounts = evidence.goalTaskCountRows.reduce<Map<string, number>>(
     (counts, task) => {
       if (!task.goal_id) {
         return counts;
@@ -253,7 +296,7 @@ export async function getStartupPlannerData(options?: {
     new Map(),
   );
 
-  const keyGoals: StartupPlannerGoal[] = (goalsResult.data ?? []).map((goal) => ({
+  const keyGoals: StartupPlannerGoal[] = evidence.goalRows.map((goal) => ({
     id: goal.id,
     title: goal.title,
     status: goal.status,
@@ -265,7 +308,7 @@ export async function getStartupPlannerData(options?: {
     linkedOpenTaskCount: goalOpenTaskCounts.get(goal.id) ?? 0,
   }));
 
-  const todaySummary = (todayTasksResult.data ?? []).reduce(
+  const todaySummary = evidence.todayTaskRows.reduce(
     (summary, task) => {
       if (isTaskCompletedStatus(task.status)) {
         return summary;
@@ -287,27 +330,41 @@ export async function getStartupPlannerData(options?: {
   );
 
   return {
+    week: {
+      weekStart: evidence.weekBounds.weekStart,
+      weekEnd: evidence.weekBounds.weekEnd,
+      previousWeekStart: evidence.previousWeekBounds.weekStart,
+      previousWeekEnd: evidence.previousWeekBounds.weekEnd,
+    },
+    review: {
+      currentWeek: evidence.currentWeekReviewRow ? mapReviewRow(evidence.currentWeekReviewRow) : null,
+      latest: evidence.latestReviewRow ? mapReviewRow(evidence.latestReviewRow) : null,
+    },
+    blockersCarryForward,
+    keyGoals,
+    focusTasks,
+    dueSoonTasks,
+    planThisWeekTasks: [...planThisWeekTaskById.values()].slice(0, 8),
+    todaySummary,
+  };
+}
+
+export async function getStartupPlannerData(options?: {
+  supabase?: SupabaseServerClient;
+  now?: Date;
+}) {
+  const evidenceResult = await getStartupPlanningEvidence(options);
+
+  if (evidenceResult.errorMessage || !evidenceResult.data) {
+    return {
+      errorMessage: evidenceResult.errorMessage ?? "Could not load startup planning data right now.",
+      data: null,
+    };
+  }
+
+  return {
     errorMessage: null,
-    data: {
-      week: {
-        weekStart: weekBounds.weekStart,
-        weekEnd: weekBounds.weekEnd,
-        previousWeekStart: previousWeekBounds.weekStart,
-        previousWeekEnd: previousWeekBounds.weekEnd,
-      },
-      review: {
-        currentWeek: currentWeekReviewResult.data
-          ? mapReviewRow(currentWeekReviewResult.data as StartupReviewRow)
-          : null,
-        latest: latestReviewResult.data ? mapReviewRow(latestReviewResult.data as StartupReviewRow) : null,
-      },
-      blockersCarryForward,
-      keyGoals,
-      focusTasks,
-      dueSoonTasks,
-      planThisWeekTasks: [...planThisWeekTaskById.values()].slice(0, 8),
-      todaySummary,
-    } satisfies StartupPlannerData,
+    data: buildStartupPlan(evidenceResult.data) satisfies StartupPlannerData,
   };
 }
 

@@ -137,3 +137,21 @@ test("handles missing optional goals and estimates", () => {
   assert.match(draft.wins, /Close inbox task \(Ops\)/);
   assert.doesNotMatch(draft.wins, /estimate/);
 });
+
+test("falls back to carried-over tasks for next steps when blockers are absent", () => {
+  const draft = generateWeeklyReviewDraft({
+    ...baseInput,
+    carriedTasks: [
+      task({
+        id: "carry-1",
+        title: "Finish review email rollout",
+        projectName: "EGA House",
+        trackedSeconds: 1_800,
+      }),
+    ],
+  });
+
+  assert.match(draft.nextSteps, /Carried-Over Tasks/);
+  assert.match(draft.nextSteps, /Finish review email rollout \(EGA House; tracked 30m 0s\)/);
+  assert.match(draft.nextSteps, /Continue: Finish review email rollout/);
+});

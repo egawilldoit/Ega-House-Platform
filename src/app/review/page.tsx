@@ -10,29 +10,17 @@ import {
   formatDateTime,
   formatIsoDate,
   getTodayIsoDate,
-  getWeekBounds,
-  getWeekWindow,
   isIsoDate,
   shiftIsoDateByDays,
 } from "@/lib/review-week";
-import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
-import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review-most-tracked";
 import {
-  getSessionDurationWithinWindowSeconds,
-  getTaskSessionDurationSeconds,
-} from "@/lib/task-session";
-import { getTasksForReview } from "@/lib/services/task-read-service";
-import {
-  generateWeeklyReviewDraft,
-  type WeeklyReviewDraftInput,
-  type WeeklyReviewTaskActivity,
-  type WeeklyReviewTimeBucket,
-} from "@/lib/weekly-review-generator";
+  getWeeklyReviewPageData,
+  type WeeklyReviewPageData,
+} from "@/lib/services/weekly-review-page-service";
 
 import { ReviewEmailPreviewForm } from "./review-email-preview-form";
 import { ReviewForm } from "./review-form";
-import { getReviewFormValuesFromRecord } from "./review-form-state";
 import { WeekSelector } from "./week-selector";
 
 export const metadata: Metadata = {
@@ -40,49 +28,7 @@ export const metadata: Metadata = {
   description: "Weekly review reflection workflow.",
 };
 
-const PAST_REVIEW_LIMIT = 100;
-
 type ReviewPageProps = { searchParams: Promise<{ draft?: string; weekOf?: string }> };
-
-type WeeklyStats = {
-  tasksCreated: number;
-  sessionsLogged: number;
-  trackedSeconds: number;
-  goalsTouched: number;
-  goalStatusCounts: Array<{ status: string; count: number }>;
-  blockedTasks: Array<{
-    id: string;
-    title: string;
-    blockedReason: string | null;
-    updatedAt: string;
-  }>;
-};
-
-async function getMostTrackedInsights(
-  weekStart: string,
-  weekEnd: string,
-  ownerUserId: string,
-): Promise<MostTrackedInsights> {
-  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select(
-      "task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(id, name, slug), goals(id, title))",
-    )
-    .eq("owner_user_id", ownerUserId)
-    .lt("started_at", endExclusiveIso)
-    .or(`ended_at.is.null,ended_at.gte.${startIso}`);
-
-  if (error) {
-    throw new Error(`Failed to load most tracked insights: ${error.message}`);
-  }
-
-  return buildMostTrackedInsights(data ?? [], {
-    startIso,
-    endIso: endExclusiveIso,
-  });
-}
 
 function toSummaryPreview(summary: string | null, maxLength = 200) {
   const normalized = summary?.trim() ?? "";
@@ -93,353 +39,6 @@ function toSummaryPreview(summary: string | null, maxLength = 200) {
     return normalized;
   }
   return `${normalized.slice(0, maxLength).trimEnd()}…`;
-}
-
-async function getPastReviews(ownerUserId: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("week_reviews")
-    .select("id, week_start, week_end, summary, created_at, updated_at")
-    .eq("owner_user_id", ownerUserId)
-    .order("week_start", { ascending: false })
-    .limit(PAST_REVIEW_LIMIT);
-  if (error) {
-    throw new Error(`Failed to load reviews: ${error.message}`);
-  }
-  return data;
-}
-
-async function getSelectedWeekReview(weekStart: string, weekEnd: string, ownerUserId: string) {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("week_reviews")
-    .select("id, summary, wins, blockers, next_steps, created_at, updated_at")
-    .eq("owner_user_id", ownerUserId)
-    .eq("week_start", weekStart)
-    .eq("week_end", weekEnd)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  if (error) {
-    throw new Error(`Failed to load selected week reviews: ${error.message}`);
-  }
-  return data?.[0] ?? null;
-}
-
-async function getWeeklyStats(
-  weekStart: string,
-  weekEnd: string,
-  ownerUserId: string,
-): Promise<WeeklyStats> {
-  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
-  const nowIso = new Date().toISOString();
-  const sessionNowIso = nowIso < endExclusiveIso ? nowIso : endExclusiveIso;
-  const supabase = await createClient();
-  const [tasksResult, sessionsResult, goalsResult, blockedTasksResult] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("owner_user_id", ownerUserId)
-      .gte("created_at", startIso)
-      .lt("created_at", endExclusiveIso),
-    supabase
-      .from("task_sessions")
-      .select("id, task_id, started_at, ended_at, duration_seconds")
-      .eq("owner_user_id", ownerUserId)
-      .gte("started_at", startIso)
-      .lt("started_at", endExclusiveIso),
-    supabase
-      .from("goals")
-      .select("id, status")
-      .eq("owner_user_id", ownerUserId)
-      .gte("updated_at", startIso)
-      .lt("updated_at", endExclusiveIso),
-    getTasksForReview({ supabase, ownerUserId, limit: 6 }),
-  ]);
-  if (tasksResult.error) {
-    throw new Error(`Failed to load weekly task stats: ${tasksResult.error.message}`);
-  }
-  if (sessionsResult.error) {
-    throw new Error(`Failed to load weekly session stats: ${sessionsResult.error.message}`);
-  }
-  if (goalsResult.error) {
-    throw new Error(`Failed to load weekly goal stats: ${goalsResult.error.message}`);
-  }
-  if (blockedTasksResult.errorMessage) {
-    throw new Error(`Failed to load blocked tasks: ${blockedTasksResult.errorMessage}`);
-  }
-  const trackedSeconds = (sessionsResult.data ?? []).reduce(
-    (total, session) => total + getTaskSessionDurationSeconds(session, sessionNowIso),
-    0,
-  );
-  const goalStatusCounts = Array.from(
-    (goalsResult.data ?? []).reduce<Map<string, number>>((counts, goal) => {
-      counts.set(goal.status, (counts.get(goal.status) ?? 0) + 1);
-      return counts;
-    }, new Map()),
-  )
-    .map(([status, count]) => ({ status, count }))
-    .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
-    .slice(0, 3);
-  return {
-    tasksCreated: tasksResult.count ?? 0,
-    sessionsLogged: sessionsResult.data?.length ?? 0,
-    trackedSeconds,
-    goalsTouched: goalsResult.data?.length ?? 0,
-    goalStatusCounts,
-    blockedTasks: (blockedTasksResult.data ?? []).map((task) => ({
-      id: task.id,
-      title: task.title,
-      blockedReason: task.blocked_reason,
-      updatedAt: task.updated_at,
-    })),
-  };
-}
-
-type ReviewTaskRow = {
-  id: string;
-  title: string;
-  status: string;
-  blocked_reason: string | null;
-  estimate_minutes: number | null;
-  completed_at: string | null;
-  updated_at: string;
-  projects: { name: string } | null;
-  goals: { title: string } | null;
-};
-
-type ReviewSessionRow = {
-  task_id: string;
-  started_at: string;
-  ended_at: string | null;
-  duration_seconds: number | null;
-  tasks:
-    | {
-        id: string;
-        title: string;
-        projects: { id: string; name: string } | null;
-        goals: { id: string; title: string } | null;
-      }
-    | null;
-};
-
-function mapTaskActivity(
-  task: ReviewTaskRow,
-  trackedSecondsByTask: Map<string, number>,
-): WeeklyReviewTaskActivity {
-  return {
-    id: task.id,
-    title: task.title,
-    status: task.status,
-    blockedReason: task.blocked_reason,
-    estimateMinutes: task.estimate_minutes,
-    completedAt: task.completed_at,
-    updatedAt: task.updated_at,
-    projectName: task.projects?.name ?? null,
-    goalTitle: task.goals?.title ?? null,
-    trackedSeconds: trackedSecondsByTask.get(task.id) ?? 0,
-  };
-}
-
-function addTimeBucket(
-  buckets: Map<string, Omit<WeeklyReviewTimeBucket, "trackedSeconds" | "sessionCount"> & {
-    trackedSeconds: number;
-    sessionCount: number;
-  }>,
-  id: string,
-  label: string,
-  trackedSeconds: number,
-) {
-  if (trackedSeconds <= 0) {
-    return;
-  }
-
-  const existing = buckets.get(id);
-  buckets.set(id, {
-    id,
-    label,
-    trackedSeconds: (existing?.trackedSeconds ?? 0) + trackedSeconds,
-    sessionCount: (existing?.sessionCount ?? 0) + 1,
-  });
-}
-
-async function getPreviousWeekReview(
-  weekStart: string,
-  ownerUserId: string,
-): Promise<WeeklyReviewDraftInput["previousReview"]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("week_reviews")
-    .select("week_start, week_end, summary, next_steps")
-    .eq("owner_user_id", ownerUserId)
-    .lt("week_start", weekStart)
-    .order("week_start", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`Failed to load previous review context: ${error.message}`);
-  }
-
-  return data
-    ? {
-        weekStart: data.week_start,
-        weekEnd: data.week_end,
-        summary: data.summary,
-        nextSteps: data.next_steps,
-      }
-    : null;
-}
-
-async function getGeneratedReviewDraft(
-  weekStart: string,
-  weekEnd: string,
-  ownerUserId: string,
-) {
-  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
-  const supabase = await createClient();
-  const [completedResult, carriedResult, blockedResult, sessionsResult, goalsResult, previousReview] =
-    await Promise.all([
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, status, blocked_reason, estimate_minutes, completed_at, updated_at, projects(name), goals(title)",
-        )
-        .eq("owner_user_id", ownerUserId)
-        .eq("status", "done")
-        .lt("updated_at", endExclusiveIso)
-        .or(`completed_at.gte.${startIso},updated_at.gte.${startIso}`)
-        .order("updated_at", { ascending: false })
-        .limit(80),
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, status, blocked_reason, estimate_minutes, completed_at, updated_at, projects(name), goals(title)",
-        )
-        .eq("owner_user_id", ownerUserId)
-        .is("archived_at", null)
-        .neq("status", "done")
-        .lt("created_at", endExclusiveIso)
-        .order("updated_at", { ascending: false })
-        .limit(120),
-      supabase
-        .from("tasks")
-        .select(
-          "id, title, status, blocked_reason, estimate_minutes, completed_at, updated_at, projects(name), goals(title)",
-        )
-        .eq("owner_user_id", ownerUserId)
-        .is("archived_at", null)
-        .eq("status", "blocked")
-        .order("updated_at", { ascending: false })
-        .limit(80),
-      supabase
-        .from("task_sessions")
-        .select(
-          "task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(id, name), goals(id, title))",
-        )
-        .eq("owner_user_id", ownerUserId)
-        .lt("started_at", endExclusiveIso)
-        .or(`ended_at.is.null,ended_at.gte.${startIso}`)
-        .order("started_at", { ascending: false })
-        .limit(500),
-      supabase
-        .from("goals")
-        .select("title")
-        .eq("owner_user_id", ownerUserId)
-        .gte("updated_at", startIso)
-        .lt("updated_at", endExclusiveIso)
-        .limit(80),
-      getPreviousWeekReview(weekStart, ownerUserId),
-    ]);
-
-  if (completedResult.error) {
-    throw new Error(`Failed to load completed review tasks: ${completedResult.error.message}`);
-  }
-  if (carriedResult.error) {
-    throw new Error(`Failed to load carried review tasks: ${carriedResult.error.message}`);
-  }
-  if (blockedResult.error) {
-    throw new Error(`Failed to load blocked review tasks: ${blockedResult.error.message}`);
-  }
-  if (sessionsResult.error) {
-    throw new Error(`Failed to load review session activity: ${sessionsResult.error.message}`);
-  }
-  if (goalsResult.error) {
-    throw new Error(`Failed to load touched review goals: ${goalsResult.error.message}`);
-  }
-
-  const window = { startIso, endIso: endExclusiveIso };
-  const nowIso = new Date().toISOString();
-  const trackedSecondsByTask = new Map<string, number>();
-  const taskTimeBuckets = new Map<string, WeeklyReviewTimeBucket>();
-  const projectTimeBuckets = new Map<string, WeeklyReviewTimeBucket>();
-  const touchedProjects = new Set<string>();
-  const touchedGoals = new Set<string>();
-
-  for (const session of (sessionsResult.data ?? []) as ReviewSessionRow[]) {
-    const trackedSeconds = getSessionDurationWithinWindowSeconds(session, window, nowIso);
-    const task = session.tasks;
-    if (!task) {
-      continue;
-    }
-
-    trackedSecondsByTask.set(
-      session.task_id,
-      (trackedSecondsByTask.get(session.task_id) ?? 0) + trackedSeconds,
-    );
-    addTimeBucket(taskTimeBuckets, task.id, task.title, trackedSeconds);
-
-    if (task.projects) {
-      touchedProjects.add(task.projects.name);
-      addTimeBucket(projectTimeBuckets, task.projects.id, task.projects.name, trackedSeconds);
-    }
-    if (task.goals) {
-      touchedGoals.add(task.goals.title);
-    }
-  }
-
-  const completedTasks = ((completedResult.data ?? []) as ReviewTaskRow[]).filter((task) =>
-    task.completed_at
-      ? task.completed_at >= startIso && task.completed_at < endExclusiveIso
-      : task.updated_at >= startIso && task.updated_at < endExclusiveIso,
-  );
-  const carriedTasks = (carriedResult.data ?? []) as ReviewTaskRow[];
-  const blockedTasks = (blockedResult.data ?? []) as ReviewTaskRow[];
-  const allTaskRows = [
-    ...completedTasks,
-    ...carriedTasks,
-    ...blockedTasks,
-  ];
-  for (const task of allTaskRows) {
-    if (task.projects?.name) {
-      touchedProjects.add(task.projects.name);
-    }
-    if (task.goals?.title) {
-      touchedGoals.add(task.goals.title);
-    }
-  }
-  for (const goal of goalsResult.data ?? []) {
-    if (goal.title) {
-      touchedGoals.add(goal.title);
-    }
-  }
-
-  return generateWeeklyReviewDraft({
-    weekStart,
-    weekEnd,
-    completedTasks: completedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
-    carriedTasks: carriedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
-    blockedTasks: blockedTasks.map((task) => mapTaskActivity(task, trackedSecondsByTask)),
-    projectTime: Array.from(projectTimeBuckets.values()),
-    taskTime: Array.from(taskTimeBuckets.values()),
-    touchedProjects: Array.from(touchedProjects),
-    touchedGoals: Array.from(touchedGoals),
-    previousReview,
-  });
-}
-
-async function getRecentSessionHeatmap(ownerUserId: string) {
-  const supabase = await createClient();
-  return getRecentDailyTrackedTime(supabase, { ownerUserId });
 }
 
 function StatPanel({
@@ -494,7 +93,7 @@ function MostTrackedSection({
   rows,
 }: {
   title: string;
-  rows: MostTrackedInsights[keyof MostTrackedInsights];
+  rows: WeeklyReviewPageData["mostTrackedInsights"][keyof WeeklyReviewPageData["mostTrackedInsights"]];
 }) {
   return (
     <div>
@@ -564,10 +163,6 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
     resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)
       ? resolvedSearchParams.weekOf
       : getTodayIsoDate();
-  const bounds = getWeekBounds(selectedWeekOf);
-  if (!bounds) {
-    throw new Error("Failed to resolve selected week.");
-  }
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) {
@@ -575,27 +170,24 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   }
   const ownerUserId = authData.user.id;
   const shouldUseGeneratedDraft = resolvedSearchParams.draft === "generated";
-  const [pastReviews, selectedReview, weeklyStats, sessionHeatmap, mostTrackedInsights, generatedDraft] =
-    await Promise.all([
-      getPastReviews(ownerUserId),
-      getSelectedWeekReview(bounds.weekStart, bounds.weekEnd, ownerUserId),
-      getWeeklyStats(bounds.weekStart, bounds.weekEnd, ownerUserId),
-      getRecentSessionHeatmap(ownerUserId),
-      getMostTrackedInsights(bounds.weekStart, bounds.weekEnd, ownerUserId),
-      getGeneratedReviewDraft(bounds.weekStart, bounds.weekEnd, ownerUserId),
-    ]);
+  const {
+    bounds,
+    pastReviews,
+    selectedReview,
+    weeklyStats,
+    sessionHeatmap,
+    mostTrackedInsights,
+    reviewFormDefaults,
+  } = await getWeeklyReviewPageData({
+    ownerUserId,
+    selectedWeekOf,
+    useGeneratedDraft: shouldUseGeneratedDraft,
+  });
 
   const cycleVelocity = Math.min(
     100,
     Math.round((weeklyStats.trackedSeconds / (40 * 60 * 60)) * 100),
   );
-  const reviewFormDefaults =
-    shouldUseGeneratedDraft || !selectedReview
-      ? {
-          ...generatedDraft,
-          weekOf: selectedWeekOf,
-        }
-      : getReviewFormValuesFromRecord(selectedReview, selectedWeekOf);
   const blockerCount = weeklyStats.blockedTasks.length;
   const velocityBand = getVelocityBand(cycleVelocity);
   const sparseHeatmap = sessionHeatmap.filter((entry) => entry.trackedSeconds > 0).length < 5;

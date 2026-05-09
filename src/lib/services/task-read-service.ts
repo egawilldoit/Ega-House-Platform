@@ -268,26 +268,57 @@ export function getTasksForTodayPlanning(options: {
 }) {
   const { mode, today } = options;
 
+  if (mode === "selected") {
+    return getTodaySelectedTaskRows({ supabase: options.supabase, today });
+  }
+
+  if (mode === "pinned") {
+    return getTodayPinnedSuggestionRows({ supabase: options.supabase });
+  }
+
+  return getTodayInProgressSuggestionRows({ supabase: options.supabase });
+}
+
+export function getTodaySelectedTaskRows(options: {
+  supabase: SupabaseServerClient;
+  today: string;
+}) {
   return getActiveTasksForOwner({
     supabase: options.supabase,
     orderByUpdatedAt: false,
     applyQuery(query) {
-      if (mode === "selected") {
-        return query
-          .or(`planned_for_date.eq.${today},due_date.eq.${today}`)
-          .order("updated_at", { ascending: false })
-          .limit(240);
-      }
+      return query
+        .or(`planned_for_date.eq.${options.today},due_date.eq.${options.today}`)
+        .order("updated_at", { ascending: false })
+        .limit(240);
+    },
+  });
+}
 
-      if (mode === "pinned") {
-        return query
-          .not("focus_rank", "is", null)
-          .neq("status", "done")
-          .order("focus_rank", { ascending: true })
-          .order("updated_at", { ascending: false })
-          .limit(80);
-      }
+export function getTodayPinnedSuggestionRows(options: {
+  supabase: SupabaseServerClient;
+}) {
+  return getActiveTasksForOwner({
+    supabase: options.supabase,
+    orderByUpdatedAt: false,
+    applyQuery(query) {
+      return query
+        .not("focus_rank", "is", null)
+        .neq("status", "done")
+        .order("focus_rank", { ascending: true })
+        .order("updated_at", { ascending: false })
+        .limit(80);
+    },
+  });
+}
 
+export function getTodayInProgressSuggestionRows(options: {
+  supabase: SupabaseServerClient;
+}) {
+  return getActiveTasksForOwner({
+    supabase: options.supabase,
+    orderByUpdatedAt: false,
+    applyQuery(query) {
       return query
         .eq("status", "in_progress")
         .order("updated_at", { ascending: false })
@@ -296,7 +327,56 @@ export function getTasksForTodayPlanning(options: {
   });
 }
 
-export function getTasksForReview(options: {
+export function getStartupBlockedTasks(options: {
+  supabase: SupabaseServerClient;
+  limit?: number;
+}) {
+  return getActiveTasksForOwner({
+    supabase: options.supabase,
+    orderByUpdatedAt: false,
+    applyQuery: (query) => query
+      .eq("status", "blocked")
+      .order("updated_at", { ascending: false })
+      .limit(options.limit ?? 8),
+  });
+}
+
+export function getStartupFocusCandidates(options: {
+  supabase: SupabaseServerClient;
+  limit?: number;
+}) {
+  return getActiveTasksForOwner({
+    supabase: options.supabase,
+    orderByUpdatedAt: false,
+    applyQuery: (query) => query
+      .not("focus_rank", "is", null)
+      .neq("status", "done")
+      .order("focus_rank", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(options.limit ?? 8),
+  });
+}
+
+export function getStartupDueSoonTasks(options: {
+  supabase: SupabaseServerClient;
+  today: string;
+  dueSoonEndDate: string;
+  limit?: number;
+}) {
+  return getActiveTasksForOwner({
+    supabase: options.supabase,
+    orderByUpdatedAt: false,
+    applyQuery: (query) => query
+      .neq("status", "done")
+      .gte("due_date", options.today)
+      .lte("due_date", options.dueSoonEndDate)
+      .order("due_date", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(options.limit ?? 8),
+  });
+}
+
+export function getReviewBlockedTasks(options: {
   supabase: SupabaseServerClient;
   ownerUserId?: string;
   limit?: number;
@@ -315,5 +395,28 @@ export function getTasksForReview(options: {
         .order("updated_at", { ascending: false })
         .limit(options.limit ?? 6);
     },
+  });
+}
+
+export function getTasksForReview(options: {
+  supabase: SupabaseServerClient;
+  ownerUserId?: string;
+  limit?: number;
+}) {
+  return getReviewBlockedTasks(options);
+}
+
+export function getFocusQueueTaskRows(options: {
+  supabase: SupabaseServerClient;
+  limit?: number;
+}) {
+  return getActiveTasksForOwner({
+    supabase: options.supabase,
+    orderByUpdatedAt: false,
+    applyQuery: (query) => query
+      .not("focus_rank", "is", null)
+      .order("focus_rank", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .limit(options.limit ?? 8),
   });
 }

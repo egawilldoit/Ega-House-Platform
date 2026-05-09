@@ -9,6 +9,7 @@ import {
   planTaskForToday,
   removeTaskFromToday,
   resumeTask,
+  updateTaskFromTodayIntent,
 } from "./task-transition-service";
 
 type MockTask = {
@@ -35,6 +36,7 @@ type MockSession = {
 function createTaskTransitionSupabaseMock(options?: {
   tasks?: MockTask[];
   sessions?: MockSession[];
+  missingBlockedReasonSelect?: boolean;
 }) {
   const tasks = [
     ...(options?.tasks ?? [
@@ -60,10 +62,6 @@ function createTaskTransitionSupabaseMock(options?: {
       if (table === "tasks") {
         return {
           select(columns: string) {
-            assert.ok(
-              columns ===
-                "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
-            );
             const state = { taskId: "" };
 
             return {
@@ -73,8 +71,43 @@ function createTaskTransitionSupabaseMock(options?: {
                 return this;
               },
               maybeSingle: async () => ({
-                data: tasks.find((task) => task.id === state.taskId) ?? null,
-                error: null,
+                data: (() => {
+                  const task = tasks.find((entry) => entry.id === state.taskId);
+                  if (!task) {
+                    return null;
+                  }
+
+                  if (columns === "id") {
+                    return { id: task.id };
+                  }
+
+                  if (columns === "blocked_reason") {
+                    return { blocked_reason: task.blocked_reason ?? null };
+                  }
+
+                  assert.equal(
+                    columns,
+                    "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes",
+                  );
+                  return {
+                    id: task.id,
+                    owner_user_id: "user-1",
+                    project_id: "project-1",
+                    goal_id: null,
+                    title: "Task",
+                    description: null,
+                    priority: "medium",
+                    estimate_minutes: null,
+                  };
+                })(),
+                error:
+                  columns === "blocked_reason" && options?.missingBlockedReasonSelect
+                    ? {
+                        code: "42703",
+                        message:
+                          'column "blocked_reason" of relation "public.tasks" does not exist',
+                      }
+                    : null,
               }),
             };
           },
@@ -369,6 +402,76 @@ test("markTaskTodo clears completed_at when moving away from done", async () => 
     completed_at: null,
     updated_at: "2026-04-21T10:15:00.000Z",
   });
+});
+
+test("updateTaskFromTodayIntent maps Today done intent through completion workflow", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    sessions: [
+      {
+        id: "session-target",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:45:00.000Z",
+        ended_at: null,
+      },
+    ],
+  });
+
+  const result = await updateTaskFromTodayIntent("task-1", "done", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(
+    mock.sessionUpdateCalls.map((call) => call.sessionId),
+    ["session-target"],
+  );
+  assert.equal(mock.tasks[0]?.status, "done");
+  assert.equal(mock.tasks[0]?.completed_at, "2026-04-21T10:00:00.000Z");
+});
+
+test("updateTaskFromTodayIntent reuses existing blocked reason when Today submits none", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "in_progress",
+        completed_at: null,
+        blocked_reason: " Waiting on vendor ",
+      },
+    ],
+  });
+
+  const result = await updateTaskFromTodayIntent("task-1", "blocked", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.tasks[0]?.status, "blocked");
+  assert.equal(mock.tasks[0]?.blocked_reason, "Waiting on vendor");
+  assert.deepEqual(mock.taskUpdateCalls[0]?.payload, {
+    status: "blocked",
+    blocked_reason: "Waiting on vendor",
+    updated_at: "2026-04-21T10:00:00.000Z",
+  });
+});
+
+test("updateTaskFromTodayIntent falls back when blocked_reason is unavailable", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    missingBlockedReasonSelect: true,
+  });
+
+  const result = await updateTaskFromTodayIntent("task-1", "blocked", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(
+    result.errorMessage,
+    "Blocked reason is required when status is Blocked.",
+  );
+  assert.equal(mock.taskUpdateCalls.length, 0);
 });
 
 test("archiveTaskSafely refuses to archive a task with an active timer", async () => {

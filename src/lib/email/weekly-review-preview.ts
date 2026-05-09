@@ -133,24 +133,26 @@ export function buildWeeklyReviewEmail(
   kind: WeeklyReviewEmailKind = "preview",
 ): WeeklyReviewEmail {
   const baseUrl = normalizeAppUrl(appUrl);
-  const reviewUrl = `${baseUrl}/review/${encodeURIComponent(review.id)}?weekOf=${encodeURIComponent(
-    review.weekStart,
-  )}`;
+  const reviewUrl = `${baseUrl}/review?weekOf=${encodeURIComponent(review.weekStart)}`;
   const sections = [
     renderSection(
       "Weekly Summary",
       textAfterHeading(review.summary, ["Weekly Summary"]) ||
         bodyWithoutLeadingHeading(review.summary, "Weekly Summary"),
     ),
-    renderSection("Wins", bodyWithoutLeadingHeading(review.wins, "Wins")),
+    renderSection(
+      "Wins",
+      textAfterHeading(review.wins, ["Wins"]) || bodyWithoutLeadingHeading(review.wins, "Wins"),
+    ),
     renderSection("Time Breakdown", textAfterHeading(review.summary, ["Time Breakdown"])),
+    renderSection("Completed Tasks", textAfterHeading(review.wins, ["Completed Tasks"])),
     renderSection("Blockers", bodyWithoutLeadingHeading(review.blockers, "Main Blockers")),
     renderSection(
       "Carried-Over Tasks",
       textAfterHeading(review.nextSteps, ["Carried-Over Tasks"]),
     ),
     renderSection(
-      "Suggested Next Week Plan",
+      "Suggested Next Steps",
       textAfterHeading(review.nextSteps, ["Suggested Next Week Plan", "Suggested Next Steps"]) ||
         bodyWithoutLeadingHeading(review.nextSteps, "Suggested Next Steps"),
     ),

@@ -2,11 +2,14 @@ import { createClient } from "@/lib/supabase/server";
 import {
   formatDurationLabel,
   getCurrentDayWindow,
-  getSessionDurationWithinWindowSeconds,
   getTaskSessionDurationSeconds,
   getTaskTotalDurationMap,
 } from "@/lib/task-session";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
+import {
+  calculateExecutionEvidenceForWindow,
+  calculateTotalTrackedSeconds,
+} from "@/lib/services/execution-evidence-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -318,56 +321,18 @@ export function calculateTimerAggregates(
   const nowIso = options?.nowIso ?? new Date().toISOString();
   const todayWindow =
     options?.todayWindow ?? getCurrentDayWindow(new Date(nowIso));
-
-  const todayTaskDurationMap = sessions.reduce<
-    Record<string, { taskTitle: string; durationSeconds: number }>
-  >((totals, session) => {
-    const durationSeconds = getSessionDurationWithinWindowSeconds(
-      session,
-      todayWindow,
-      nowIso,
-    );
-    if (durationSeconds <= 0) {
-      return totals;
-    }
-
-    const existing = totals[session.task_id];
-    totals[session.task_id] = {
-      taskTitle: existing?.taskTitle ?? session.tasks?.title ?? "Untitled task",
-      durationSeconds: (existing?.durationSeconds ?? 0) + durationSeconds,
-    };
-    return totals;
-  }, {});
-
-  const todayTaskBreakdown = Object.entries(todayTaskDurationMap)
-    .map(([taskId, details]) => ({
-      taskId,
-      taskTitle: details.taskTitle,
-      durationSeconds: details.durationSeconds,
+  const todayEvidence = calculateExecutionEvidenceForWindow(sessions, todayWindow, {
+    nowIso,
+  });
+  const todayTaskBreakdown = todayEvidence.taskTimeBuckets
+    .map((bucket) => ({
+      taskId: bucket.id,
+      taskTitle: bucket.label,
+      durationSeconds: bucket.trackedSeconds,
     }))
     .sort((left, right) => right.durationSeconds - left.durationSeconds);
 
-  const todayTotalDurationSeconds = todayTaskBreakdown.reduce(
-    (sum, row) => sum + row.durationSeconds,
-    0,
-  );
-
-  const trackedTotalSeconds = sessions.reduce((total, session) => {
-    return total + getTaskSessionDurationSeconds(session, nowIso);
-  }, 0);
-
-  const trackedTodaySeconds = sessions.reduce((total, session) => {
-    return (
-      total +
-      getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso)
-    );
-  }, 0);
-
-  const sessionsTodayCount = sessions.filter((session) => {
-    return (
-      getSessionDurationWithinWindowSeconds(session, todayWindow, nowIso) > 0
-    );
-  }).length;
+  const trackedTotalSeconds = calculateTotalTrackedSeconds(sessions, nowIso);
 
   const longestSession = sessions.reduce<{
     duration: number;
@@ -385,10 +350,10 @@ export function calculateTimerAggregates(
 
   return {
     todayTaskBreakdown,
-    todayTotalDurationSeconds,
+    todayTotalDurationSeconds: todayEvidence.totalTrackedSeconds,
     trackedTotalSeconds,
-    trackedTodaySeconds,
-    sessionsTodayCount,
+    trackedTodaySeconds: todayEvidence.totalTrackedSeconds,
+    sessionsTodayCount: todayEvidence.sessionCount,
     longestSessionSeconds: longestSession?.duration ?? null,
     longestSessionTaskTitle: longestSession?.title ?? null,
   };
