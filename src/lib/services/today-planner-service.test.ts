@@ -370,7 +370,7 @@ test("keeps non-matching tasks out of the Today main set", async () => {
   assert.equal(result.data?.completed.length, 0);
 });
 
-test("uses planned-or-due selection and excludes Today-visible tasks from suggestions", async () => {
+test("uses planned-due-scheduled selection and excludes Today-visible tasks from suggestions", async () => {
   const orClauses: string[] = [];
   const supabase = createSupabaseMock(
     [
@@ -387,6 +387,14 @@ test("uses planned-or-due selection and excludes Today-visible tasks from sugges
             due_date: null,
             planned_for_date: "2026-04-20",
             status: "done",
+          }),
+          createTaskRow({
+            id: "scheduled-main",
+            due_date: null,
+            planned_for_date: null,
+            scheduled_start_at: "2026-04-20T09:00:00.000Z",
+            scheduled_end_at: "2026-04-20T09:30:00.000Z",
+            status: "todo",
           }),
         ],
         error: null,
@@ -438,9 +446,12 @@ test("uses planned-or-due selection and excludes Today-visible tasks from sugges
   assert.equal(orClauses.length, 1);
   assert.match(orClauses[0], /planned_for_date\.eq\.2026-04-20/);
   assert.match(orClauses[0], /due_date\.eq\.2026-04-20/);
+  assert.match(orClauses[0], /scheduled_start_at\.gte\./);
+  assert.match(orClauses[0], /scheduled_start_at\.lt\./);
 
   assert.deepEqual(result.data?.suggestions.pinned.map((task) => task.id), ["pinned-extra"]);
   assert.deepEqual(result.data?.suggestions.inProgress.map((task) => task.id), ["in-progress-extra"]);
+  assert.deepEqual(result.data?.scheduledBlocks.map((task) => task.id), ["scheduled-main"]);
   assert.equal("dueToday" in (result.data?.suggestions ?? {}), false);
 });
 

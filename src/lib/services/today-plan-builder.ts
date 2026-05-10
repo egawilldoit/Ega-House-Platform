@@ -21,6 +21,8 @@ export type TodayPlannerTask = {
   priority: string;
   dueDate: string | null;
   estimateMinutes: number | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
   focusRank: number | null;
   plannedForDate: string | null;
   updatedAt: string;
@@ -39,6 +41,8 @@ export type TodayPlannerData = {
   startHere: TodayPlannerTask | null;
   focusQueue: TodayPlannerTask[];
   plannedToday: TodayPlannerTask[];
+  scheduledBlocks: TodayPlannerTask[];
+  flexibleTasks: TodayPlannerTask[];
   planned: TodayPlannerTask[];
   inProgress: TodayPlannerTask[];
   blocked: TodayPlannerTask[];
@@ -90,6 +94,8 @@ function mapTaskRow(
     priority: row.priority,
     dueDate: row.due_date,
     estimateMinutes: row.estimate_minutes,
+    scheduledStartAt: row.scheduled_start_at,
+    scheduledEndAt: row.scheduled_end_at,
     focusRank: row.focus_rank,
     plannedForDate: row.planned_for_date,
     updatedAt: row.updated_at,
@@ -174,6 +180,38 @@ function sortRecommendedTasks(left: TodayPlannerTask, right: TodayPlannerTask) {
   return right.updatedAt.localeCompare(left.updatedAt);
 }
 
+function getLocalIsoDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) {
+    return null;
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function hasScheduledRange(task: TodayPlannerTask) {
+  return Boolean(task.scheduledStartAt && task.scheduledEndAt);
+}
+
+function sortScheduledBlocks(left: TodayPlannerTask, right: TodayPlannerTask) {
+  const leftStart = left.scheduledStartAt ?? "";
+  const rightStart = right.scheduledStartAt ?? "";
+  const startCompare = leftStart.localeCompare(rightStart);
+  if (startCompare !== 0) {
+    return startCompare;
+  }
+
+  const titleCompare = left.title.localeCompare(right.title);
+  if (titleCompare !== 0) {
+    return titleCompare;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
 function getUniqueTasksByRank(tasks: TodayPlannerTask[]) {
   const tasksById = new Map<string, TodayPlannerTask>();
 
@@ -225,6 +263,16 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlannerData {
   const plannedToday = selectedTasks
     .filter((task) => task.isPlannedForToday)
     .sort(sortRecommendedTasks);
+  const scheduledBlocks = selectedTasks
+    .filter(
+      (task) =>
+        hasScheduledRange(task) &&
+        task.scheduledStartAt !== null &&
+        getLocalIsoDate(task.scheduledStartAt) === input.today,
+    )
+    .sort(sortScheduledBlocks);
+  const scheduledIds = new Set(scheduledBlocks.map((task) => task.id));
+  const flexibleTasks = plannedToday.filter((task) => !scheduledIds.has(task.id) && !hasScheduledRange(task));
   const clearableCompletedCount = completed.filter((task) => task.isPlannedForToday).length;
   const overdueCount = selectedTasks.filter((task) => task.dueBucket === "overdue").length;
   const dueTodayCount = selectedTasks.filter((task) => task.dueBucket === "today").length;
@@ -238,6 +286,8 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlannerData {
     startHere,
     focusQueue,
     plannedToday,
+    scheduledBlocks,
+    flexibleTasks,
     planned,
     inProgress,
     blocked,

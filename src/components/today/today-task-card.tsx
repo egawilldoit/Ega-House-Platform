@@ -17,6 +17,7 @@ import { formatTaskToken, isTaskCompletedStatus, TASK_STATUS_VALUES } from "@/li
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { ChevronDown, ExternalLink } from "lucide-react";
+import { TodayScheduledTimeRange } from "@/components/today/today-scheduled-time-range";
 
 type TodayTaskCardProps = {
   task: TodayPlannerTask;
@@ -56,6 +57,17 @@ export function canShowTodayTaskStartTimer(task: Pick<TodayPlannerTask, "status"
   return !isTaskCompletedStatus(task.status);
 }
 
+export function getTodayTaskScheduledRange(task: Pick<TodayPlannerTask, "scheduledStartAt" | "scheduledEndAt">) {
+  if (!task.scheduledStartAt || !task.scheduledEndAt) {
+    return null;
+  }
+
+  return {
+    startAt: task.scheduledStartAt,
+    endAt: task.scheduledEndAt,
+  };
+}
+
 export function TodayTaskCard({
   task,
   returnTo,
@@ -67,6 +79,7 @@ export function TodayTaskCard({
   const statusOptions = getTodayTaskStatusOptions(task);
   const description = task.description?.trim();
   const taskIsCompleted = !canShowTodayTaskStartTimer(task);
+  const scheduledRange = getTodayTaskScheduledRange(task);
 
   return (
     <article
@@ -107,6 +120,9 @@ export function TodayTaskCard({
               <Badge tone="muted">Est. {formatTaskEstimate(task.estimateMinutes)}</Badge>
             ) : null}
           </div>
+          {scheduledRange ? (
+            <TodayScheduledTimeRange startAt={scheduledRange.startAt} endAt={scheduledRange.endAt} />
+          ) : null}
         </div>
       </div>
 

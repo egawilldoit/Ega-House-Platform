@@ -20,6 +20,8 @@ type MockTask = {
   status: string;
   priority: string;
   due_date: string | null;
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
   estimate_minutes: number | null;
   updated_at: string;
   completed_at?: string | null;
@@ -141,14 +143,35 @@ function createTaskReadSupabaseMock(
               return this;
             },
             or(filters: string) {
-              const clauses = filters.split(",").map((filter) => {
-                const [column, operator, value] = filter.split(".");
-                assert.equal(operator, "eq");
-                return { column: column as keyof MockTask, value };
+              const clauses = filters.split(/,(?![^()]*\))/).map((filter) => filter.trim());
+              state.filters.push((task) => {
+                return clauses.some((clause) => {
+                  if (clause.startsWith("and(") && clause.endsWith(")")) {
+                    const rangeClauses = clause
+                      .slice(4, -1)
+                      .split(",")
+                      .map((entry) => entry.trim());
+                    return rangeClauses.every((rangeClause) => {
+                      const [column, operator, value] = rangeClause.split(".");
+                      if (operator === "gte") {
+                        const columnValue = task[column as keyof MockTask];
+                        return typeof columnValue === "string" && columnValue >= value;
+                      }
+
+                      if (operator === "lt") {
+                        const columnValue = task[column as keyof MockTask];
+                        return typeof columnValue === "string" && columnValue < value;
+                      }
+
+                      return false;
+                    });
+                  }
+
+                  const [column, operator, value] = clause.split(".");
+                  assert.equal(operator, "eq");
+                  return task[column as keyof MockTask] === value;
+                });
               });
-              state.filters.push((task) =>
-                clauses.some((clause) => task[clause.column] === clause.value),
-              );
               return this;
             },
             order(column: keyof MockTask, options?: { ascending?: boolean }) {
@@ -198,6 +221,8 @@ function createMockTask(overrides: Partial<MockTask> & Pick<MockTask, "id" | "ti
     status: "todo",
     priority: "medium",
     due_date: null,
+    scheduled_start_at: null,
+    scheduled_end_at: null,
     estimate_minutes: null,
     updated_at: "2026-04-29T10:00:00.000Z",
     completed_at: null,
@@ -444,7 +469,7 @@ test("getActiveTasksForOwner falls back when archive columns are unavailable", a
   assert.equal(result.data[0]?.archived_by, null);
 });
 
-test("today selected read intent returns active tasks planned or due today", async () => {
+test("today selected read intent returns active tasks planned, due, or scheduled today", async () => {
   const supabase = createTaskReadSupabaseMock([
     createMockTask({
       id: "planned",
@@ -457,6 +482,13 @@ test("today selected read intent returns active tasks planned or due today", asy
       title: "Due",
       due_date: "2026-05-07",
       updated_at: "2026-05-07T10:00:00.000Z",
+    }),
+    createMockTask({
+      id: "scheduled",
+      title: "Scheduled",
+      scheduled_start_at: "2026-05-07T09:15:00.000Z",
+      scheduled_end_at: "2026-05-07T09:45:00.000Z",
+      updated_at: "2026-05-07T09:30:00.000Z",
     }),
     createMockTask({
       id: "archived-planned",
@@ -477,7 +509,7 @@ test("today selected read intent returns active tasks planned or due today", asy
   });
 
   assert.equal(result.errorMessage, null);
-  assert.deepEqual(result.data.map((task) => task.id), ["planned", "due"]);
+  assert.deepEqual(result.data.map((task) => task.id), ["planned", "due", "scheduled"]);
 });
 
 test("startup and focus queue read intents apply their task-specific filters", async () => {

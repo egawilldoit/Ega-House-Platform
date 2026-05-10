@@ -5,6 +5,7 @@ import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 
 import {
   canShowTodayTaskStartTimer,
+  getTodayTaskScheduledRange,
   getTodayTaskCardMeta,
   getTodayTaskStatusOptions,
 } from "./today-task-card";
@@ -19,6 +20,8 @@ function createTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask
     priority: "medium",
     dueDate: null,
     estimateMinutes: null,
+    scheduledStartAt: null,
+    scheduledEndAt: null,
     focusRank: null,
     plannedForDate: "2026-04-20",
     updatedAt: "2026-04-20T10:00:00.000Z",
@@ -92,4 +95,29 @@ test("completed Today cards do not expose start timer eligibility", () => {
     false,
   );
   assert.equal(canShowTodayTaskStartTimer(createTask({ status: "todo" })), true);
+});
+
+test("scheduled range only returns when both start and end exist", () => {
+  assert.equal(getTodayTaskScheduledRange(createTask()), null);
+  assert.equal(
+    getTodayTaskScheduledRange(
+      createTask({
+        scheduledStartAt: "2026-04-20T09:00:00.000Z",
+        scheduledEndAt: null,
+      }),
+    ),
+    null,
+  );
+  assert.deepEqual(
+    getTodayTaskScheduledRange(
+      createTask({
+        scheduledStartAt: "2026-04-20T09:00:00.000Z",
+        scheduledEndAt: "2026-04-20T09:30:00.000Z",
+      }),
+    ),
+    {
+      startAt: "2026-04-20T09:00:00.000Z",
+      endAt: "2026-04-20T09:30:00.000Z",
+    },
+  );
 });

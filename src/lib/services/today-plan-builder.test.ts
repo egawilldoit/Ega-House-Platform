@@ -230,6 +230,65 @@ test("buildTodayPlan builds plannedToday from manually planned tasks ordered by 
   ]);
 });
 
+test("buildTodayPlan separates scheduled blocks and sorts by start time", () => {
+  const plan = buildTodayPlan({
+    today: "2026-04-20",
+    selectedRows: [
+      createTaskRow({
+        id: "sched-late",
+        title: "Zeta",
+        status: "todo",
+        planned_for_date: "2026-04-20",
+        scheduled_start_at: "2026-04-20T10:30:00.000Z",
+        scheduled_end_at: "2026-04-20T11:00:00.000Z",
+      }),
+      createTaskRow({
+        id: "sched-early",
+        title: "Alpha",
+        status: "todo",
+        planned_for_date: "2026-04-20",
+        scheduled_start_at: "2026-04-20T09:00:00.000Z",
+        scheduled_end_at: "2026-04-20T09:30:00.000Z",
+      }),
+      createTaskRow({
+        id: "flex",
+        status: "todo",
+        planned_for_date: "2026-04-20",
+      }),
+    ],
+    pinnedSuggestionRows: [],
+    inProgressSuggestionRows: [],
+    activeTimer: null,
+    timerSummary,
+  });
+
+  assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), ["sched-early", "sched-late"]);
+  assert.deepEqual(plan.flexibleTasks.map((task) => task.id), ["flex"]);
+});
+
+test("buildTodayPlan keeps completed scheduled tasks in scheduled blocks", () => {
+  const plan = buildTodayPlan({
+    today: "2026-04-20",
+    selectedRows: [
+      createTaskRow({
+        id: "done-scheduled",
+        status: "done",
+        planned_for_date: "2026-04-20",
+        scheduled_start_at: "2026-04-20T13:00:00.000Z",
+        scheduled_end_at: "2026-04-20T14:00:00.000Z",
+      }),
+    ],
+    pinnedSuggestionRows: [],
+    inProgressSuggestionRows: [],
+    activeTimer: null,
+    timerSummary,
+  });
+
+  assert.deepEqual(plan.completed.map((task) => task.id), ["done-scheduled"]);
+  assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), ["done-scheduled"]);
+  assert.equal(plan.flexibleTasks.length, 0);
+});
+
 test("buildTodayPlan summary preserves Today counts and timer totals", () => {
   const plan = buildTodayPlan({
     today: "2026-04-20",

@@ -289,12 +289,21 @@ export function getTodaySelectedTaskRows(options: {
   supabase: SupabaseServerClient;
   today: string;
 }) {
+  const dayStart = new Date(`${options.today}T00:00:00`);
+  const nextDayStart = new Date(dayStart);
+  nextDayStart.setDate(nextDayStart.getDate() + 1);
+
+  const dayStartIso = dayStart.toISOString();
+  const nextDayStartIso = nextDayStart.toISOString();
+
   return getActiveTasksForOwner({
     supabase: options.supabase,
     orderByUpdatedAt: false,
     applyQuery(query) {
       return query
-        .or(`planned_for_date.eq.${options.today},due_date.eq.${options.today}`)
+        .or(
+          `planned_for_date.eq.${options.today},due_date.eq.${options.today},and(scheduled_start_at.gte.${dayStartIso},scheduled_start_at.lt.${nextDayStartIso})`,
+        )
         .order("updated_at", { ascending: false })
         .limit(240);
     },

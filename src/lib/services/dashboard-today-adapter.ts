@@ -195,6 +195,8 @@ function mapSupplementalRowToTodayTask(
     priority: row.priority,
     dueDate: row.due_date,
     estimateMinutes: row.estimate_minutes,
+    scheduledStartAt: row.scheduled_start_at,
+    scheduledEndAt: row.scheduled_end_at,
     focusRank: row.focus_rank,
     plannedForDate: row.planned_for_date,
     updatedAt: row.updated_at,

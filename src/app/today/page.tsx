@@ -76,7 +76,7 @@ export default async function TodayPage({
   const todayData = todayResult.data;
   const returnTo = "/today";
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
-  const plannedTodayActionable = todayData.plannedToday.filter(
+  const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
   );
   const stoppedTaskTitle = [
@@ -186,18 +186,41 @@ export default async function TodayPage({
             {allTodayCount > 0 ? (
               <>
                 <TodaySection
-                  title="Planned today"
-                  count={plannedTodayActionable.length}
+                  title="Scheduled blocks"
+                  count={todayData.scheduledBlocks.length}
                   tone="muted"
                   emptyState={
                     <EmptyState
                       icon={CircleDashed}
-                      title="No manually planned tasks"
-                      description="Add tasks from suggestions or the full queue to build today&apos;s execution lane."
+                      title="No scheduled blocks for today."
+                      description="Scheduled tasks with time ranges will appear here."
                     />
                   }
                 >
-                  {plannedTodayActionable.map((task) => (
+                  {todayData.scheduledBlocks.map((task) => (
+                    <TodayTaskCard
+                      key={task.id}
+                      task={task}
+                      returnTo={returnTo}
+                      isCompleted={isTaskCompletedStatus(task.status)}
+                      activeTimerSessionId={activeTimerSessionId}
+                    />
+                  ))}
+                </TodaySection>
+
+                <TodaySection
+                  title="Flexible Today backlog"
+                  count={flexibleTodayActionable.length}
+                  tone="muted"
+                  emptyState={
+                    <EmptyState
+                      icon={CircleDashed}
+                      title="No flexible tasks planned for today."
+                      description="Unscheduled tasks planned for today will appear here."
+                    />
+                  }
+                >
+                  {flexibleTodayActionable.map((task) => (
                     <TodayTaskCard
                       key={task.id}
                       task={task}
