@@ -34,6 +34,13 @@ type CalendarSettingsSecretRow = CalendarSettingsSafeRow & {
   token_expires_at: string | null;
 };
 
+export type GoogleCalendarTokenConnectionInput = {
+  accessToken: string;
+  refreshToken?: string | null;
+  expiresInSeconds?: number | null;
+  googleAccountEmail?: string | null;
+};
+
 const CALENDAR_SETTINGS_SAFE_SELECT =
   "owner_user_id, provider, google_account_email, scheduled_task_sync_enabled, default_reminder_minutes, connected_at, disconnected_at";
 
@@ -117,6 +124,19 @@ export function assertCalendarSettingsViewHasNoSecrets(
     !serialized.includes("refresh_token") &&
     !serialized.includes("tokenExpires")
   );
+}
+
+function getTokenExpiresAtIso(
+  expiresInSeconds: number | null | undefined,
+  nowIso: string,
+) {
+  if (!expiresInSeconds || !Number.isFinite(expiresInSeconds)) {
+    return null;
+  }
+
+  return new Date(
+    new Date(nowIso).getTime() + Math.max(0, expiresInSeconds) * 1000,
+  ).toISOString();
 }
 
 export async function getCalendarIntegrationSettings(options?: {
@@ -235,11 +255,13 @@ export async function updateCalendarIntegrationDefaults(
   };
 }
 
-export async function connectGoogleCalendarMock(options?: {
-  supabase?: SupabaseServerClient;
-  updatedAtIso?: string;
-  googleAccountEmail?: string;
-}) {
+export async function connectGoogleCalendarWithTokens(
+  input: GoogleCalendarTokenConnectionInput,
+  options?: {
+    supabase?: SupabaseServerClient;
+    updatedAtIso?: string;
+  },
+) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const authResult = await requireAuthenticatedUserId(supabase);
 
@@ -250,22 +272,38 @@ export async function connectGoogleCalendarMock(options?: {
     };
   }
 
-  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
-  const googleAccountEmail =
-    options?.googleAccountEmail ?? "calendar-placeholder@ega.local";
+  const accessToken = input.accessToken.trim();
+  const refreshToken = input.refreshToken?.trim() ?? null;
 
+  if (!accessToken) {
+    return {
+      errorMessage: "Google Calendar did not return an access token.",
+      data: getDisconnectedSettings(),
+    };
+  }
+
+  if (!refreshToken) {
+    return {
+      errorMessage:
+        "Google Calendar did not return a refresh token. Reconnect and approve offline Calendar access.",
+      data: getDisconnectedSettings(),
+    };
+  }
+
+  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
   const { data, error } = await supabase
     .from("calendar_integration_settings")
     .upsert(
       {
         owner_user_id: authResult.userId,
         provider: GOOGLE_CALENDAR_PROVIDER,
-        google_account_email: googleAccountEmail,
-        access_token_encrypted: `mock-google-access-token:${authResult.userId}`,
-        refresh_token_encrypted: `mock-google-refresh-token:${authResult.userId}`,
-        token_expires_at: new Date(
-          new Date(updatedAtIso).getTime() + 60 * 60 * 1000,
-        ).toISOString(),
+        google_account_email: input.googleAccountEmail?.trim() || null,
+        access_token_encrypted: accessToken,
+        refresh_token_encrypted: refreshToken,
+        token_expires_at: getTokenExpiresAtIso(
+          input.expiresInSeconds,
+          updatedAtIso,
+        ),
         connected_at: updatedAtIso,
         disconnected_at: null,
         updated_at: updatedAtIso,
