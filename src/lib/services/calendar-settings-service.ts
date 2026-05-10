@@ -282,6 +282,14 @@ export async function connectGoogleCalendarWithTokens(
     };
   }
 
+  if (!refreshToken) {
+    return {
+      errorMessage:
+        "Google Calendar did not return a refresh token. Reconnect and approve offline Calendar access.",
+      data: getDisconnectedSettings(),
+    };
+  }
+
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
   const { data, error } = await supabase
     .from("calendar_integration_settings")
@@ -291,7 +299,7 @@ export async function connectGoogleCalendarWithTokens(
         provider: GOOGLE_CALENDAR_PROVIDER,
         google_account_email: input.googleAccountEmail?.trim() || null,
         access_token_encrypted: accessToken,
-        ...(refreshToken ? { refresh_token_encrypted: refreshToken } : {}),
+        refresh_token_encrypted: refreshToken,
         token_expires_at: getTokenExpiresAtIso(
           input.expiresInSeconds,
           updatedAtIso,

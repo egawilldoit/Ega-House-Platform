@@ -19,6 +19,10 @@ export type GoogleCalendarTokenResponse = {
   error_description?: string;
 };
 
+export type GoogleCalendarCallbackValidationResult =
+  | { errorMessage: string; code: null }
+  | { errorMessage: null; code: string };
+
 export function getGoogleCalendarOAuthEnv() {
   const env = {
     clientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
@@ -74,6 +78,52 @@ export function buildGoogleCalendarAuthorizationUrl(
   url.searchParams.set("include_granted_scopes", "true");
   url.searchParams.set("prompt", "consent");
   return url;
+}
+
+export function getSettingsRedirectUrl(
+  requestUrl: string,
+  type: "success" | "error",
+  message: string,
+) {
+  const url = new URL("/settings/account", requestUrl);
+  url.searchParams.set(type, message);
+  return url;
+}
+
+export function validateGoogleCalendarCallback(
+  requestUrl: string,
+  expectedState: string | null | undefined,
+): GoogleCalendarCallbackValidationResult {
+  const url = new URL(requestUrl);
+  const error = url.searchParams.get("error");
+  const errorDescription = url.searchParams.get("error_description");
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+
+  if (error) {
+    return {
+      errorMessage: `Google Calendar OAuth failed: ${
+        errorDescription || error
+      }`,
+      code: null,
+    };
+  }
+
+  if (!code) {
+    return {
+      errorMessage: "Google Calendar OAuth callback did not include a code.",
+      code: null,
+    };
+  }
+
+  if (!state || !expectedState || state !== expectedState) {
+    return {
+      errorMessage: "Google Calendar OAuth state was invalid.",
+      code: null,
+    };
+  }
+
+  return { errorMessage: null, code };
 }
 
 export async function exchangeGoogleCalendarCodeForTokens(

@@ -77,6 +77,46 @@ test("real Google Calendar adapter posts events.insert request shape", async () 
   }
 });
 
+test("real Google Calendar adapter defaults to primary calendar", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalCalendarId = process.env.GOOGLE_CALENDAR_ID;
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+
+  delete process.env.GOOGLE_CALENDAR_ID;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), init: init ?? {} });
+    return Response.json({ id: "google-event-1" });
+  }) as typeof fetch;
+
+  try {
+    const result = await createGoogleCalendarEventForTask(
+      {
+        taskId: "task-1",
+        title: "Primary calendar task",
+        scheduledStartAt: "2026-05-10T09:00:00.000Z",
+        scheduledEndAt: "2026-05-10T10:00:00.000Z",
+        calendarSyncEnabled: true,
+        calendarReminderMinutes: 20,
+      },
+      connectedCredentials,
+      { client: googleCalendarClient },
+    );
+
+    assert.equal(result.status, "synced");
+    assert.equal(
+      calls[0]?.url,
+      "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalCalendarId === undefined) {
+      delete process.env.GOOGLE_CALENDAR_ID;
+    } else {
+      process.env.GOOGLE_CALENDAR_ID = originalCalendarId;
+    }
+  }
+});
+
 test("real Google Calendar adapter refreshes expired access token before insert", async () => {
   const originalFetch = globalThis.fetch;
   const originalClientId = process.env.GOOGLE_CLIENT_ID;
@@ -131,5 +171,89 @@ test("real Google Calendar adapter refreshes expired access token before insert"
     } else {
       process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
     }
+  }
+});
+
+test("real Google Calendar adapter reports token refresh failure", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalClientId = process.env.GOOGLE_CLIENT_ID;
+  const originalClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+
+  process.env.GOOGLE_CLIENT_ID = "client-1";
+  process.env.GOOGLE_CLIENT_SECRET = "secret-1";
+  globalThis.fetch = (async () =>
+    Response.json(
+      { error_description: "Refresh token expired." },
+      { status: 400 },
+    )) as typeof fetch;
+
+  try {
+    const result = await createGoogleCalendarEventForTask(
+      {
+        taskId: "task-1",
+        title: "Refresh failure task",
+        scheduledStartAt: "2026-05-10T09:00:00.000Z",
+        scheduledEndAt: "2026-05-10T10:00:00.000Z",
+        calendarSyncEnabled: true,
+        calendarReminderMinutes: 10,
+      },
+      {
+        ...connectedCredentials,
+        access_token_encrypted: "expired-token",
+        token_expires_at: "2020-01-01T00:00:00.000Z",
+      },
+      { client: googleCalendarClient },
+    );
+
+    assert.deepEqual(result, {
+      status: "failed",
+      eventId: null,
+      failureReason: "Refresh token expired.",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalClientId === undefined) {
+      delete process.env.GOOGLE_CLIENT_ID;
+    } else {
+      process.env.GOOGLE_CLIENT_ID = originalClientId;
+    }
+    if (originalClientSecret === undefined) {
+      delete process.env.GOOGLE_CLIENT_SECRET;
+    } else {
+      process.env.GOOGLE_CLIENT_SECRET = originalClientSecret;
+    }
+  }
+});
+
+test("real Google Calendar adapter reports Calendar insert failure", async () => {
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = (async () =>
+    Response.json(
+      { error: { message: "Calendar write denied." } },
+      { status: 403 },
+    )) as typeof fetch;
+
+  try {
+    const result = await createGoogleCalendarEventForTask(
+      {
+        taskId: "task-1",
+        title: "Insert failure task",
+        scheduledStartAt: "2026-05-10T09:00:00.000Z",
+        scheduledEndAt: "2026-05-10T10:00:00.000Z",
+        calendarSyncEnabled: true,
+        calendarReminderMinutes: 10,
+      },
+      connectedCredentials,
+      { client: googleCalendarClient },
+    );
+
+    assert.deepEqual(result, {
+      status: "failed",
+      eventId: null,
+      failureReason: "Calendar write denied.",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });

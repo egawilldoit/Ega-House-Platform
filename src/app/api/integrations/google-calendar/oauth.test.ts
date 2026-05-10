@@ -5,7 +5,38 @@ import {
   buildGoogleCalendarAuthorizationUrl,
   exchangeGoogleCalendarCodeForTokens,
   getGoogleAccountEmailFromIdToken,
+  getGoogleCalendarOAuthEnv,
+  getGoogleCalendarTokenEnv,
+  validateGoogleCalendarCallback,
 } from "./oauth";
+
+function withEnv(
+  values: Record<string, string | undefined>,
+  run: () => void,
+) {
+  const previous = new Map<string, string | undefined>();
+
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
 
 test("Google Calendar connect redirect includes required OAuth params", () => {
   const url = buildGoogleCalendarAuthorizationUrl(
@@ -63,6 +94,79 @@ test("Google Calendar callback token exchange posts required request shape", asy
   assert.equal(body.get("client_secret"), "secret-1");
   assert.equal(body.get("redirect_uri"), "https://app.example.com/callback");
   assert.equal(body.get("grant_type"), "authorization_code");
+});
+
+test("Google Calendar env validation reports missing connect settings", () => {
+  withEnv(
+    {
+      GOOGLE_CLIENT_ID: undefined,
+      GOOGLE_REDIRECT_URI: "https://app.example.com/callback",
+      GOOGLE_CALENDAR_SCOPES: "calendar",
+    },
+    () => {
+      const result = getGoogleCalendarOAuthEnv();
+      assert.equal(
+        result.errorMessage,
+        "Google Calendar OAuth is not configured. Set GOOGLE_CLIENT_ID, GOOGLE_REDIRECT_URI, and GOOGLE_CALENDAR_SCOPES.",
+      );
+      assert.equal(result.env, null);
+    },
+  );
+});
+
+test("Google Calendar env validation reports missing token secret", () => {
+  withEnv(
+    {
+      GOOGLE_CLIENT_ID: "client-1",
+      GOOGLE_CLIENT_SECRET: undefined,
+      GOOGLE_REDIRECT_URI: "https://app.example.com/callback",
+      GOOGLE_CALENDAR_SCOPES: "calendar",
+    },
+    () => {
+      const result = getGoogleCalendarTokenEnv();
+      assert.equal(
+        result.errorMessage,
+        "Google Calendar OAuth is not configured. Set GOOGLE_CLIENT_SECRET.",
+      );
+      assert.equal(result.env, null);
+    },
+  );
+});
+
+test("Google Calendar callback validation handles denied OAuth", () => {
+  const result = validateGoogleCalendarCallback(
+    "https://app.example.com/api/integrations/google-calendar/callback?error=access_denied&error_description=User%20denied%20access",
+    "state-1",
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Google Calendar OAuth failed: User denied access",
+    code: null,
+  });
+});
+
+test("Google Calendar callback validation rejects state mismatch", () => {
+  const result = validateGoogleCalendarCallback(
+    "https://app.example.com/api/integrations/google-calendar/callback?code=code-1&state=bad-state",
+    "state-1",
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Google Calendar OAuth state was invalid.",
+    code: null,
+  });
+});
+
+test("Google Calendar callback validation rejects missing code", () => {
+  const result = validateGoogleCalendarCallback(
+    "https://app.example.com/api/integrations/google-calendar/callback?state=state-1",
+    "state-1",
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: "Google Calendar OAuth callback did not include a code.",
+    code: null,
+  });
 });
 
 test("Google Calendar id token email decode is optional and safe", () => {

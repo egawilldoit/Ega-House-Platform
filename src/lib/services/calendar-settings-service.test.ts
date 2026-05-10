@@ -199,6 +199,29 @@ test("Google Calendar callback token persistence stores secrets server-side but 
   assert.equal(assertCalendarSettingsViewHasNoSecrets(result.data), true);
 });
 
+test("Google Calendar callback token persistence requires refresh token", async () => {
+  const mock = createCalendarSupabaseMock({ userId: "owner-c" });
+  const result = await connectGoogleCalendarWithTokens(
+    {
+      accessToken: "google-access-token",
+      refreshToken: null,
+      expiresInSeconds: 3600,
+      googleAccountEmail: "owner@example.com",
+    },
+    {
+      supabase: mock.supabase as never,
+      updatedAtIso: "2026-05-10T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(
+    result.errorMessage,
+    "Google Calendar did not return a refresh token. Reconnect and approve offline Calendar access.",
+  );
+  assert.equal(result.data.connected, false);
+  assert.equal(mock.upsertPayloads.length, 0);
+});
+
 test("disconnect clears secrets and disables scheduled task sync", async () => {
   const mock = createCalendarSupabaseMock({ userId: "owner-d" });
   const result = await disconnectGoogleCalendar({
