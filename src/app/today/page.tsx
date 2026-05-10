@@ -186,13 +186,13 @@ export default async function TodayPage({
             {allTodayCount > 0 ? (
               <>
                 <TodaySection
-                  title="Scheduled blocks"
+                  title="Today Timeline"
                   count={todayData.scheduledBlocks.length}
                   tone="muted"
                   emptyState={
                     <EmptyState
                       icon={CircleDashed}
-                      title="No scheduled blocks for today."
+                      title="No scheduled blocks for today"
                       description="Scheduled tasks with time ranges will appear here."
                     />
                   }

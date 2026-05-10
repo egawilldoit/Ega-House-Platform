@@ -62,6 +62,13 @@ export function getTodayTaskScheduledRange(task: Pick<TodayPlannerTask, "schedul
     return null;
   }
 
+  const start = new Date(task.scheduledStartAt);
+  const end = new Date(task.scheduledEndAt);
+
+  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf()) || start >= end) {
+    return null;
+  }
+
   return {
     startAt: task.scheduledStartAt,
     endAt: task.scheduledEndAt,

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildTodayPlan } from "./today-plan-builder";
+import {
+  buildTodayPlan,
+  groupTodayTasksForTimeline,
+  isScheduledTaskForToday,
+  isValidScheduledTaskBlock,
+} from "./today-plan-builder";
 import type { NormalizedTaskRow } from "./task-read-service";
 
 function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTaskRow {
@@ -251,6 +256,14 @@ test("buildTodayPlan separates scheduled blocks and sorts by start time", () => 
         scheduled_end_at: "2026-04-20T09:30:00.000Z",
       }),
       createTaskRow({
+        id: "sched-early-shorter",
+        title: "Beta",
+        status: "todo",
+        planned_for_date: "2026-04-20",
+        scheduled_start_at: "2026-04-20T09:00:00.000Z",
+        scheduled_end_at: "2026-04-20T09:15:00.000Z",
+      }),
+      createTaskRow({
         id: "flex",
         status: "todo",
         planned_for_date: "2026-04-20",
@@ -262,8 +275,71 @@ test("buildTodayPlan separates scheduled blocks and sorts by start time", () => 
     timerSummary,
   });
 
-  assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), ["sched-early", "sched-late"]);
+  assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), [
+    "sched-early-shorter",
+    "sched-early",
+    "sched-late",
+  ]);
   assert.deepEqual(plan.flexibleTasks.map((task) => task.id), ["flex"]);
+});
+
+test("buildTodayPlan excludes partial and invalid scheduled ranges from scheduled blocks", () => {
+  const plan = buildTodayPlan({
+    today: "2026-04-20",
+    selectedRows: [
+      createTaskRow({
+        id: "partial-scheduled",
+        planned_for_date: "2026-04-20",
+        scheduled_start_at: "2026-04-20T09:00:00.000Z",
+        scheduled_end_at: null,
+      }),
+      createTaskRow({
+        id: "invalid-scheduled",
+        planned_for_date: "2026-04-20",
+        scheduled_start_at: "2026-04-20T10:00:00.000Z",
+        scheduled_end_at: "2026-04-20T09:30:00.000Z",
+      }),
+    ],
+    pinnedSuggestionRows: [],
+    inProgressSuggestionRows: [],
+    activeTimer: null,
+    timerSummary,
+  });
+
+  assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), []);
+  assert.deepEqual(plan.flexibleTasks.map((task) => task.id), [
+    "partial-scheduled",
+    "invalid-scheduled",
+  ]);
+});
+
+test("buildTodayPlan includes scheduled-only tasks whose start falls on Today", () => {
+  const plan = buildTodayPlan({
+    today: "2026-04-20",
+    selectedRows: [
+      createTaskRow({
+        id: "scheduled-only",
+        planned_for_date: null,
+        due_date: null,
+        scheduled_start_at: "2026-04-20T15:00:00.000Z",
+        scheduled_end_at: "2026-04-20T15:45:00.000Z",
+      }),
+      createTaskRow({
+        id: "scheduled-tomorrow",
+        planned_for_date: null,
+        due_date: null,
+        scheduled_start_at: "2026-04-21T09:00:00.000Z",
+        scheduled_end_at: "2026-04-21T09:45:00.000Z",
+      }),
+    ],
+    pinnedSuggestionRows: [],
+    inProgressSuggestionRows: [],
+    activeTimer: null,
+    timerSummary,
+  });
+
+  assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), ["scheduled-only"]);
+  assert.deepEqual(plan.flexibleTasks.map((task) => task.id), []);
 });
 
 test("buildTodayPlan keeps completed scheduled tasks in scheduled blocks", () => {
@@ -287,6 +363,73 @@ test("buildTodayPlan keeps completed scheduled tasks in scheduled blocks", () =>
   assert.deepEqual(plan.completed.map((task) => task.id), ["done-scheduled"]);
   assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), ["done-scheduled"]);
   assert.equal(plan.flexibleTasks.length, 0);
+});
+
+test("timeline grouping helper separates scheduled and flexible Today tasks", () => {
+  const scheduled = createTaskRow({
+    id: "scheduled",
+    planned_for_date: "2026-04-20",
+    scheduled_start_at: "2026-04-20T09:00:00.000Z",
+    scheduled_end_at: "2026-04-20T10:00:00.000Z",
+  });
+  const flexible = createTaskRow({
+    id: "flexible",
+    planned_for_date: "2026-04-20",
+  });
+  const notToday = createTaskRow({
+    id: "not-today",
+    planned_for_date: "2026-04-21",
+  });
+  const plan = buildTodayPlan({
+    today: "2026-04-20",
+    selectedRows: [scheduled, flexible, notToday],
+    pinnedSuggestionRows: [],
+    inProgressSuggestionRows: [],
+    activeTimer: null,
+    timerSummary,
+  });
+
+  const grouped = groupTodayTasksForTimeline(plan.plannedToday, "2026-04-20");
+
+  assert.deepEqual(grouped.scheduledTasks.map((task) => task.id), ["scheduled"]);
+  assert.deepEqual(grouped.flexibleTodayTasks.map((task) => task.id), ["flexible"]);
+});
+
+test("scheduled task helpers require complete positive ranges on selected date", () => {
+  assert.equal(
+    isValidScheduledTaskBlock({
+      scheduledStartAt: "2026-04-20T09:00:00.000Z",
+      scheduledEndAt: "2026-04-20T09:30:00.000Z",
+    }),
+    true,
+  );
+  assert.equal(
+    isValidScheduledTaskBlock({
+      scheduledStartAt: "2026-04-20T09:00:00.000Z",
+      scheduledEndAt: "2026-04-20T09:00:00.000Z",
+    }),
+    false,
+  );
+  assert.equal(
+    isScheduledTaskForToday(
+      {
+        scheduledStartAt: "2026-04-20T12:30:00.000Z",
+        scheduledEndAt: "2026-04-20T13:15:00.000Z",
+      },
+      "2026-04-20",
+    ),
+    true,
+  );
+  assert.equal(
+    isScheduledTaskForToday(
+      {
+        scheduledStartAt: "2026-04-21T09:00:00.000Z",
+        scheduledEndAt: "2026-04-21T09:30:00.000Z",
+      },
+      "2026-04-20",
+    ),
+    false,
+  );
 });
 
 test("buildTodayPlan summary preserves Today counts and timer totals", () => {

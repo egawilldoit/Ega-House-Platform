@@ -192,8 +192,32 @@ function getLocalIsoDate(value: string) {
   return `${year}-${month}-${day}`;
 }
 
-function hasScheduledRange(task: TodayPlannerTask) {
-  return Boolean(task.scheduledStartAt && task.scheduledEndAt);
+export function isValidScheduledTaskBlock(
+  task: Pick<TodayPlannerTask, "scheduledStartAt" | "scheduledEndAt">,
+) {
+  if (!task.scheduledStartAt || !task.scheduledEndAt) {
+    return false;
+  }
+
+  const start = new Date(task.scheduledStartAt);
+  const end = new Date(task.scheduledEndAt);
+
+  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf())) {
+    return false;
+  }
+
+  return start < end;
+}
+
+export function isScheduledTaskForToday(
+  task: Pick<TodayPlannerTask, "scheduledStartAt" | "scheduledEndAt">,
+  today: string,
+) {
+  if (!isValidScheduledTaskBlock(task) || !task.scheduledStartAt) {
+    return false;
+  }
+
+  return getLocalIsoDate(task.scheduledStartAt) === today;
 }
 
 function sortScheduledBlocks(left: TodayPlannerTask, right: TodayPlannerTask) {
@@ -204,12 +228,40 @@ function sortScheduledBlocks(left: TodayPlannerTask, right: TodayPlannerTask) {
     return startCompare;
   }
 
+  const leftEnd = left.scheduledEndAt ?? "";
+  const rightEnd = right.scheduledEndAt ?? "";
+  const endCompare = leftEnd.localeCompare(rightEnd);
+  if (endCompare !== 0) {
+    return endCompare;
+  }
+
   const titleCompare = left.title.localeCompare(right.title);
   if (titleCompare !== 0) {
     return titleCompare;
   }
 
   return left.id.localeCompare(right.id);
+}
+
+export function groupTodayTasksForTimeline(
+  tasks: TodayPlannerTask[],
+  today: string,
+) {
+  const scheduledTasks = tasks
+    .filter((task) => isScheduledTaskForToday(task, today))
+    .sort(sortScheduledBlocks);
+  const scheduledIds = new Set(scheduledTasks.map((task) => task.id));
+  const flexibleTodayTasks = tasks.filter(
+    (task) =>
+      task.isPlannedForToday &&
+      !scheduledIds.has(task.id) &&
+      !isValidScheduledTaskBlock(task),
+  ).sort(sortRecommendedTasks);
+
+  return {
+    scheduledTasks,
+    flexibleTodayTasks,
+  };
 }
 
 function getUniqueTasksByRank(tasks: TodayPlannerTask[]) {
@@ -263,16 +315,8 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlannerData {
   const plannedToday = selectedTasks
     .filter((task) => task.isPlannedForToday)
     .sort(sortRecommendedTasks);
-  const scheduledBlocks = selectedTasks
-    .filter(
-      (task) =>
-        hasScheduledRange(task) &&
-        task.scheduledStartAt !== null &&
-        getLocalIsoDate(task.scheduledStartAt) === input.today,
-    )
-    .sort(sortScheduledBlocks);
-  const scheduledIds = new Set(scheduledBlocks.map((task) => task.id));
-  const flexibleTasks = plannedToday.filter((task) => !scheduledIds.has(task.id) && !hasScheduledRange(task));
+  const { scheduledTasks: scheduledBlocks, flexibleTodayTasks: flexibleTasks } =
+    groupTodayTasksForTimeline(selectedTasks, input.today);
   const clearableCompletedCount = completed.filter((task) => task.isPlannedForToday).length;
   const overdueCount = selectedTasks.filter((task) => task.dueBucket === "overdue").length;
   const dueTodayCount = selectedTasks.filter((task) => task.dueBucket === "today").length;
