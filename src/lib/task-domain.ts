@@ -22,6 +22,11 @@ export function isTaskCompletedStatus(status: string | null | undefined): boolea
   return normalized === "done" || normalized === "complete" || normalized === "completed";
 }
 
+export function isTaskCanceledStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "canceled" || normalized === "cancelled";
+}
+
 export function isTaskPriority(value: string): value is TaskPriority {
   return TASK_PRIORITY_VALUES.includes(value as TaskPriority);
 }

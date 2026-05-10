@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 
@@ -7,7 +9,9 @@ import {
   canShowTodayTaskStartTimer,
   getTodayTaskScheduledRange,
   getTodayTaskCardMeta,
+  getTodayTaskStartTimerActionMeta,
   getTodayTaskStatusOptions,
+  TodayTaskStartTimerForm,
 } from "./today-task-card";
 
 function createTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask {
@@ -35,6 +39,32 @@ function createTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask
     dueBucket: "none",
     ...overrides,
   };
+}
+
+function renderTodayTaskCard(
+  task: TodayPlannerTask,
+  options: {
+    label?: string;
+    returnTo?: string;
+    fallbackReturnTo?: string;
+  } = {},
+) {
+  const actionMeta = getTodayTaskStartTimerActionMeta(task, {
+    fallbackReturnTo: options.fallbackReturnTo ?? "/today",
+    label: options.label,
+    returnTo: options.returnTo,
+  });
+
+  if (!actionMeta) {
+    return "";
+  }
+
+  return renderToStaticMarkup(
+    React.createElement(TodayTaskStartTimerForm, {
+      taskId: task.id,
+      actionMeta,
+    }),
+  );
 }
 
 test("keeps remove-from-today action for manually planned-only tasks", () => {
@@ -95,6 +125,67 @@ test("completed Today cards do not expose start timer eligibility", () => {
     false,
   );
   assert.equal(canShowTodayTaskStartTimer(createTask({ status: "todo" })), true);
+});
+
+test("canceled Today cards do not expose start timer eligibility", () => {
+  assert.equal(canShowTodayTaskStartTimer(createTask({ status: "canceled" as never })), false);
+  assert.equal(canShowTodayTaskStartTimer(createTask({ status: "cancelled" as never })), false);
+});
+
+test("scheduled Today timeline start action opens timer with task context", () => {
+  const actionMeta = getTodayTaskStartTimerActionMeta(createTask(), {
+    fallbackReturnTo: "/today",
+    label: "Start Focus Session",
+    returnTo: "/timer",
+  });
+
+  assert.deepEqual(actionMeta, {
+    label: "Start Focus Session",
+    returnTo: "/timer",
+  });
+
+  const markup = renderTodayTaskCard(
+    createTask({
+      scheduledStartAt: "2026-04-20T09:00:00.000Z",
+      scheduledEndAt: "2026-04-20T09:30:00.000Z",
+    }),
+    {
+      label: "Start Focus Session",
+      returnTo: "/timer",
+    },
+  );
+
+  assert.match(markup, /Start Focus Session/);
+  assert.match(markup, /name="taskId" value="task-1"/);
+  assert.match(markup, /name="returnTo" value="\/timer"/);
+});
+
+test("completed and canceled scheduled blocks hide invalid focus start path", () => {
+  for (const status of ["done", "canceled", "cancelled"]) {
+    const markup = renderTodayTaskCard(
+      createTask({
+        status: status as never,
+        scheduledStartAt: "2026-04-20T09:00:00.000Z",
+        scheduledEndAt: "2026-04-20T09:30:00.000Z",
+      }),
+      {
+        label: "Start Focus Session",
+        returnTo: "/timer",
+      },
+    );
+
+    assert.doesNotMatch(markup, /Start Focus Session/);
+    assert.doesNotMatch(markup, /name="returnTo" value="\/timer"/);
+  }
+});
+
+test("unscheduled Today task keeps existing timer handoff", () => {
+  const markup = renderTodayTaskCard(createTask());
+
+  assert.match(markup, /Start timer/);
+  assert.doesNotMatch(markup, /Start Focus Session/);
+  assert.match(markup, /name="taskId" value="task-1"/);
+  assert.match(markup, /name="returnTo" value="\/today"/);
 });
 
 test("scheduled range only returns when both start and end exist", () => {

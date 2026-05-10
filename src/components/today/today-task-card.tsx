@@ -1,4 +1,5 @@
 import Link from "next/link";
+import React from "react";
 
 import { startTimerAction } from "@/app/timer/actions";
 import {
@@ -13,7 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatTaskToken, isTaskCompletedStatus, TASK_STATUS_VALUES } from "@/lib/task-domain";
+import {
+  formatTaskToken,
+  isTaskCanceledStatus,
+  isTaskCompletedStatus,
+  TASK_STATUS_VALUES,
+} from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { ChevronDown, ExternalLink } from "lucide-react";
@@ -24,6 +30,8 @@ type TodayTaskCardProps = {
   returnTo: string;
   isCompleted?: boolean;
   activeTimerSessionId: string | null;
+  startTimerLabel?: string;
+  startTimerReturnTo?: string;
 };
 
 export function getTodayTaskHref(task: TodayPlannerTask) {
@@ -54,7 +62,43 @@ export function getTodayTaskStatusOptions(task: TodayPlannerTask) {
 }
 
 export function canShowTodayTaskStartTimer(task: Pick<TodayPlannerTask, "status">) {
-  return !isTaskCompletedStatus(task.status);
+  return !isTaskCompletedStatus(task.status) && !isTaskCanceledStatus(task.status);
+}
+
+export function getTodayTaskStartTimerActionMeta(
+  task: Pick<TodayPlannerTask, "status">,
+  options: {
+    fallbackReturnTo: string;
+    label?: string;
+    returnTo?: string;
+  },
+) {
+  if (!canShowTodayTaskStartTimer(task)) {
+    return null;
+  }
+
+  return {
+    label: options.label ?? "Start timer",
+    returnTo: options.returnTo ?? options.fallbackReturnTo,
+  };
+}
+
+export function TodayTaskStartTimerForm({
+  taskId,
+  actionMeta,
+}: {
+  taskId: string;
+  actionMeta: NonNullable<ReturnType<typeof getTodayTaskStartTimerActionMeta>>;
+}) {
+  return (
+    <form action={startTimerAction}>
+      <input type="hidden" name="taskId" value={taskId} />
+      <input type="hidden" name="returnTo" value={actionMeta.returnTo} />
+      <Button type="submit" size="sm" variant="default">
+        {actionMeta.label}
+      </Button>
+    </form>
+  );
 }
 
 export function getTodayTaskScheduledRange(task: Pick<TodayPlannerTask, "scheduledStartAt" | "scheduledEndAt">) {
@@ -80,12 +124,19 @@ export function TodayTaskCard({
   returnTo,
   isCompleted = false,
   activeTimerSessionId,
+  startTimerLabel,
+  startTimerReturnTo,
 }: TodayTaskCardProps) {
   const isActiveTimerTask = task.hasActiveTimer ? activeTimerSessionId : null;
   const cardMeta = getTodayTaskCardMeta(task);
   const statusOptions = getTodayTaskStatusOptions(task);
   const description = task.description?.trim();
-  const taskIsCompleted = !canShowTodayTaskStartTimer(task);
+  const startTimerMeta = getTodayTaskStartTimerActionMeta(task, {
+    fallbackReturnTo: returnTo,
+    label: startTimerLabel,
+    returnTo: startTimerReturnTo,
+  });
+  const taskCanStartTimer = Boolean(startTimerMeta);
   const scheduledRange = getTodayTaskScheduledRange(task);
 
   return (
@@ -137,17 +188,11 @@ export function TodayTaskCard({
         <div className="today-task-primary-actions">
           {isActiveTimerTask ? (
             <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm" />
-          ) : !taskIsCompleted ? (
-            <form action={startTimerAction}>
-              <input type="hidden" name="taskId" value={task.id} />
-              <input type="hidden" name="returnTo" value={returnTo} />
-              <Button type="submit" size="sm" variant="default">
-                Start timer
-              </Button>
-            </form>
+          ) : startTimerMeta ? (
+            <TodayTaskStartTimerForm taskId={task.id} actionMeta={startTimerMeta} />
           ) : null}
 
-          {!taskIsCompleted ? (
+          {taskCanStartTimer ? (
             <form action={completeTodayTaskAction}>
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="returnTo" value={returnTo} />
@@ -208,7 +253,7 @@ export function TodayTaskCard({
                 </form>
               ) : null}
 
-              {task.status !== "blocked" && !taskIsCompleted ? (
+              {task.status !== "blocked" && taskCanStartTimer ? (
                 <form action={markTodayTaskBlockedAction} className="space-y-2">
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />

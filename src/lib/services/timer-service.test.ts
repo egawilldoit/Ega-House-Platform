@@ -667,8 +667,14 @@ function createTimerStartSupabaseMock(options: {
   };
 }
 
-test("startTimerForTask rejects done and compatibility completed statuses", async () => {
-  for (const status of ["done", "complete", "completed"]) {
+test("startTimerForTask rejects done, completed, and canceled statuses", async () => {
+  for (const [status, expectedError] of [
+    ["done", "Completed tasks cannot start timers."],
+    ["complete", "Completed tasks cannot start timers."],
+    ["completed", "Completed tasks cannot start timers."],
+    ["canceled", "Canceled tasks cannot start timers."],
+    ["cancelled", "Canceled tasks cannot start timers."],
+  ]) {
     const mock = createTimerStartSupabaseMock({
       task: { id: "task-1", status, archived_at: null },
     });
@@ -678,7 +684,7 @@ test("startTimerForTask rejects done and compatibility completed statuses", asyn
       nowIso: "2026-04-21T10:00:00.000Z",
     });
 
-    assert.equal(result.errorMessage, "Completed tasks cannot start timers.");
+    assert.equal(result.errorMessage, expectedError);
     assert.equal(mock.insertedSessions.length, 0);
   }
 });
@@ -720,4 +726,42 @@ test("startTimerForTask still starts for todo and in-progress tasks", async () =
       },
     ]);
   }
+});
+
+test("active timer session preserves selected scheduled task context", async () => {
+  const mock = createTimerServiceSupabaseMock([
+    {
+      id: "session-open",
+      task_id: "scheduled-task",
+      started_at: "2026-04-21T09:30:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      tasks: {
+        title: "Scheduled focus block",
+        status: "in_progress",
+        priority: "high",
+        goals: { title: "Execution quality" },
+        projects: { name: "EGA House", slug: "ega-house" },
+      },
+    },
+  ]);
+
+  const activeSession = await getActiveTimerSession({
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(activeSession.errorMessage, null);
+  assert.deepEqual(activeSession.data, {
+    sessionId: "session-open",
+    taskId: "scheduled-task",
+    startedAt: "2026-04-21T09:30:00.000Z",
+    elapsedLabel: "30m 0s",
+    taskTitle: "Scheduled focus block",
+    taskStatus: "in_progress",
+    taskPriority: "high",
+    projectName: "EGA House",
+    projectSlug: "ega-house",
+    goalTitle: "Execution quality",
+  });
 });
