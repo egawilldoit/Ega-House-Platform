@@ -19,6 +19,8 @@ export type NormalizedTaskRow = {
   estimate_minutes: number | null;
   scheduled_start_at: string | null;
   scheduled_end_at: string | null;
+  calendar_sync_enabled: boolean;
+  calendar_reminder_minutes: number;
   updated_at: string;
   completed_at: string | null;
   project_id: string;
@@ -69,12 +71,14 @@ type TaskReadSelectVariant = {
   blockedReason: boolean;
   completedAt: boolean;
   archive: boolean;
+  calendar: boolean;
 };
 
 const MODERN_TASK_SELECT_VARIANT: TaskReadSelectVariant = {
   blockedReason: true,
   completedAt: true,
   archive: true,
+  calendar: true,
 };
 
 const TASK_BASE_SELECT_COLUMNS = [
@@ -86,6 +90,8 @@ const TASK_BASE_SELECT_COLUMNS = [
   "due_date",
   "scheduled_start_at",
   "scheduled_end_at",
+  "calendar_sync_enabled",
+  "calendar_reminder_minutes",
   "estimate_minutes",
   "updated_at",
   "project_id",
@@ -108,11 +114,22 @@ function isMissingTasksArchivedByColumn(
   return isMissingSupabaseColumn(error, "public.tasks", "archived_by");
 }
 
+function isMissingTasksCalendarColumn(
+  error: { code?: string | null; message?: string | null; details?: string | null; hint?: string | null } | null | undefined,
+) {
+  return (
+    isMissingSupabaseColumn(error, "public.tasks", "calendar_sync_enabled") ||
+    isMissingSupabaseColumn(error, "public.tasks", "calendar_reminder_minutes")
+  );
+}
+
 function getTaskSelect(variant: TaskReadSelectVariant) {
   return [
-    ...TASK_BASE_SELECT_COLUMNS.slice(0, 3),
+    ...TASK_BASE_SELECT_COLUMNS.slice(0, 8),
+    ...(variant.calendar ? TASK_BASE_SELECT_COLUMNS.slice(8, 10) : []),
+    ...TASK_BASE_SELECT_COLUMNS.slice(10, 11),
     ...(variant.blockedReason ? ["blocked_reason"] : []),
-    ...TASK_BASE_SELECT_COLUMNS.slice(3),
+    ...TASK_BASE_SELECT_COLUMNS.slice(11),
     ...(variant.completedAt ? ["completed_at"] : []),
     ...(variant.archive ? ["archived_at", "archived_by"] : []),
     "projects(name, slug)",
@@ -137,6 +154,10 @@ function getFallbackSelectVariant(
     (isMissingTasksArchivedAtColumn(error) || isMissingTasksArchivedByColumn(error))
   ) {
     return { ...current, archive: false };
+  }
+
+  if (current.calendar && isMissingTasksCalendarColumn(error)) {
+    return { ...current, calendar: false };
   }
 
   return null;
@@ -164,6 +185,8 @@ export function normalizeTaskRow(row: RawTaskRow): NormalizedTaskRow {
     estimate_minutes: row.estimate_minutes ?? null,
     scheduled_start_at: row.scheduled_start_at ?? null,
     scheduled_end_at: row.scheduled_end_at ?? null,
+    calendar_sync_enabled: row.calendar_sync_enabled ?? false,
+    calendar_reminder_minutes: row.calendar_reminder_minutes ?? 10,
     updated_at: row.updated_at,
     completed_at: row.completed_at ?? null,
     project_id: row.project_id,

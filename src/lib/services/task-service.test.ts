@@ -115,6 +115,25 @@ test("schedule validation rejects start >= end", () => {
   assert.equal(result.error, "Scheduled end must be after scheduled start.");
 });
 
+test("inline update normalizes Calendar sync fields without requiring sync", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+    scheduledStartAt: "",
+    scheduledEndAt: "",
+    calendarSyncEnabled: undefined,
+    calendarReminderMinutes: "30",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.calendarSyncEnabled, false);
+  assert.equal(result.data?.calendarReminderMinutes, 30);
+});
+
 type MockSession = {
   id: string;
   task_id: string;
@@ -1100,6 +1119,8 @@ test("completing a recurring task creates exactly one next task with carried met
     due_date: "2026-05-05",
     planned_for_date: null,
     estimate_minutes: 30,
+    scheduled_start_at: null,
+    scheduled_end_at: null,
     focus_rank: null,
     completed_at: null,
     archived_at: null,
@@ -2521,27 +2542,28 @@ function createWorkspaceSupabaseMock(options?: {
       };
     };
 
+    const proxyRef: { current: unknown } = { current: null };
     const query = {
       is(column: string, value: null) {
         taskQueryCalls.push({ method: "is", column, value });
         if (column === "archived_at") {
           state.activeOnly = true;
         }
-        return query;
+        return proxyRef.current;
       },
       neq(column: string, value: string) {
         taskQueryCalls.push({ method: "neq", column, value });
         if (column === "status" && value === "done") {
           state.excludeDone = true;
         }
-        return query;
+        return proxyRef.current;
       },
       in(column: string, value: string[]) {
         taskQueryCalls.push({ method: "in", column, value });
         if (column === "priority") {
           state.priorities = value;
         }
-        return query;
+        return proxyRef.current;
       },
       gte(column: string, value: number | string) {
         taskQueryCalls.push({ method: "gte", column, value });
@@ -2551,7 +2573,7 @@ function createWorkspaceSupabaseMock(options?: {
         if (column === "due_date") {
           state.dueStart = String(value);
         }
-        return query;
+        return proxyRef.current;
       },
       lte(column: string, value: number | string) {
         taskQueryCalls.push({ method: "lte", column, value });
@@ -2561,25 +2583,27 @@ function createWorkspaceSupabaseMock(options?: {
         if (column === "due_date") {
           state.dueEnd = String(value);
         }
-        return query;
+        return proxyRef.current;
       },
       eq(column: string, value: string) {
         taskQueryCalls.push({ method: "eq", column, value });
         if (column === "status") {
           state.status = value;
         }
-        return query;
+        return proxyRef.current;
       },
       not(column: string, operator: string, value: unknown) {
         taskQueryCalls.push({ method: `not.${operator}`, column, value });
-        return query;
+        return proxyRef.current;
       },
       order() {
-        return query;
+        return proxyRef.current;
       },
     };
 
-    return attachThenable(query, execute);
+    const proxy = attachThenable(query, execute);
+    proxyRef.current = proxy;
+    return proxy;
   }
 
   const supabase = {

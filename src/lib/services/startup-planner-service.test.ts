@@ -56,6 +56,8 @@ function createTaskRow(overrides: Partial<NormalizedTaskRow> = {}): NormalizedTa
     due_date: null,
     scheduled_start_at: null,
     scheduled_end_at: null,
+    calendar_sync_enabled: false,
+    calendar_reminder_minutes: 10,
     estimate_minutes: null,
     updated_at: "2026-04-20T10:00:00.000Z",
     completed_at: null,

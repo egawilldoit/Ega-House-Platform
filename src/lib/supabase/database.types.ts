@@ -9,6 +9,54 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      calendar_integration_settings: {
+        Row: {
+          access_token_encrypted: string | null
+          connected_at: string | null
+          created_at: string
+          default_reminder_minutes: number
+          disconnected_at: string | null
+          google_account_email: string | null
+          id: string
+          owner_user_id: string
+          provider: string
+          refresh_token_encrypted: string | null
+          scheduled_task_sync_enabled: boolean
+          token_expires_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token_encrypted?: string | null
+          connected_at?: string | null
+          created_at?: string
+          default_reminder_minutes?: number
+          disconnected_at?: string | null
+          google_account_email?: string | null
+          id?: string
+          owner_user_id?: string
+          provider?: string
+          refresh_token_encrypted?: string | null
+          scheduled_task_sync_enabled?: boolean
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token_encrypted?: string | null
+          connected_at?: string | null
+          created_at?: string
+          default_reminder_minutes?: number
+          disconnected_at?: string | null
+          google_account_email?: string | null
+          id?: string
+          owner_user_id?: string
+          provider?: string
+          refresh_token_encrypted?: string | null
+          scheduled_task_sync_enabled?: boolean
+          token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       goals: {
         Row: {
           created_at: string
@@ -343,6 +391,8 @@ export type Database = {
           created_at: string
           due_date: string | null
           description: string | null
+          calendar_reminder_minutes: number
+          calendar_sync_enabled: boolean
           estimate_minutes: number | null
           focus_rank: number | null
           goal_id: string | null
@@ -365,6 +415,8 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           description?: string | null
+          calendar_reminder_minutes?: number
+          calendar_sync_enabled?: boolean
           estimate_minutes?: number | null
           focus_rank?: number | null
           goal_id?: string | null
@@ -387,6 +439,8 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           description?: string | null
+          calendar_reminder_minutes?: number
+          calendar_sync_enabled?: boolean
           estimate_minutes?: number | null
           focus_rank?: number | null
           goal_id?: string | null
