@@ -15,6 +15,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { getCalendarIntegrationSettings } from "@/lib/services/calendar-settings-service";
+import {
+  type GoogleCalendarOAuthFailureCode,
+  getGoogleCalendarOAuthFailureMessage,
+} from "@/app/api/integrations/google-calendar/oauth";
 
 export const metadata: Metadata = {
   title: "Account Settings",
@@ -25,18 +29,21 @@ type AccountSettingsPageProps = {
   searchParams: Promise<{
     success?: string;
     error?: string;
+    errorCode?: GoogleCalendarOAuthFailureCode;
   }>;
 };
 
 export default async function AccountSettingsPage({
   searchParams,
 }: AccountSettingsPageProps) {
-  const [{ success, error }, settingsResult] = await Promise.all([
+  const [{ success, error, errorCode }, settingsResult] = await Promise.all([
     searchParams,
     getCalendarIntegrationSettings(),
   ]);
   const settings = settingsResult.data;
-  const feedbackError = error ?? settingsResult.errorMessage;
+  const feedbackError =
+    getGoogleCalendarOAuthFailureMessage(errorCode, error) ??
+    settingsResult.errorMessage;
 
   return (
     <AppShell
