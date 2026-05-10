@@ -5,8 +5,12 @@ import {
   buildGoogleCalendarAuthorizationUrl,
   exchangeGoogleCalendarCodeForTokens,
   getGoogleAccountEmailFromIdToken,
+  getGoogleCalendarOAuthFailureMessage,
   getGoogleCalendarOAuthEnv,
   getGoogleCalendarTokenEnv,
+  getSettingsRedirectUrl,
+  logGoogleCalendarOAuthFailure,
+  redactGoogleCalendarOAuthDiagnostic,
   validateGoogleCalendarCallback,
 } from "./oauth";
 
@@ -140,6 +144,7 @@ test("Google Calendar callback validation handles denied OAuth", () => {
   );
 
   assert.deepEqual(result, {
+    errorCode: "google_error",
     errorMessage: "Google Calendar OAuth failed: User denied access",
     code: null,
   });
@@ -152,6 +157,7 @@ test("Google Calendar callback validation rejects state mismatch", () => {
   );
 
   assert.deepEqual(result, {
+    errorCode: "state_mismatch",
     errorMessage: "Google Calendar OAuth state was invalid.",
     code: null,
   });
@@ -164,8 +170,115 @@ test("Google Calendar callback validation rejects missing code", () => {
   );
 
   assert.deepEqual(result, {
+    errorCode: "missing_code",
     errorMessage: "Google Calendar OAuth callback did not include a code.",
     code: null,
+  });
+});
+
+test("Google Calendar callback validation accepts matching state and code", () => {
+  const result = validateGoogleCalendarCallback(
+    "https://app.example.com/api/integrations/google-calendar/callback?code=code-1&state=state-1",
+    "state-1",
+  );
+
+  assert.deepEqual(result, {
+    errorCode: null,
+    errorMessage: null,
+    code: "code-1",
+  });
+});
+
+test("Google Calendar settings redirect includes specific safe error code", () => {
+  const url = getSettingsRedirectUrl(
+    "https://app.example.com/api/integrations/google-calendar/callback?code=secret-code",
+    "error",
+    getGoogleCalendarOAuthFailureMessage("token_exchange_failed") ??
+      "Google Calendar token exchange failed.",
+    "token_exchange_failed",
+  );
+
+  assert.equal(url.pathname, "/settings/account");
+  assert.equal(url.searchParams.get("errorCode"), "token_exchange_failed");
+  assert.equal(
+    url.searchParams.get("error"),
+    "Google Calendar token exchange failed. Check production OAuth client ID, client secret, and exact redirect URI.",
+  );
+  assert.equal(url.toString().includes("secret-code"), false);
+});
+
+test("Google Calendar OAuth failure codes map to actionable safe messages", () => {
+  const cases = [
+    "google_error",
+    "state_mismatch",
+    "missing_code",
+    "token_exchange_failed",
+    "missing_refresh_token",
+    "settings_write_failed",
+    "unexpected",
+  ] as const;
+
+  for (const errorCode of cases) {
+    const message = getGoogleCalendarOAuthFailureMessage(errorCode);
+    assert.equal(typeof message, "string");
+    assert.equal(message?.includes("token-"), false);
+    assert.equal(message?.includes("code="), false);
+    assert.equal(message?.includes("https://"), false);
+  }
+});
+
+test("Google Calendar OAuth diagnostics redact secrets, codes, tokens, and URLs", () => {
+  const redacted = redactGoogleCalendarOAuthDiagnostic({
+    step: "token_exchange",
+    code: "auth-code-secret",
+    callbackUrl: "https://app.example.com/callback?code=auth-code-secret",
+    nested: {
+      accessToken: "access-secret",
+      clientSecret: "client-secret",
+      redirectUri: "https://app.example.com/callback",
+      providerError: "invalid_grant",
+    },
+  });
+
+  assert.deepEqual(redacted, {
+    step: "token_exchange",
+    code: "[redacted]",
+    callbackUrl: "[redacted]",
+    nested: {
+      accessToken: "[redacted]",
+      clientSecret: "[redacted]",
+      redirectUri: "[redacted]",
+      providerError: "invalid_grant",
+    },
+  });
+});
+
+test("Google Calendar OAuth failure logger emits safe diagnostic shape", () => {
+  const calls: unknown[][] = [];
+  const logger = {
+    warn(...args: unknown[]) {
+      calls.push(args);
+    },
+  };
+
+  logGoogleCalendarOAuthFailure(
+    "missing_refresh_token",
+    {
+      step: "token_response",
+      hasAccessToken: true,
+      refreshToken: "refresh-secret",
+      fullCallbackUrl: "https://app.example.com/callback?code=auth-code-secret",
+    },
+    logger,
+  );
+
+  assert.equal(calls[0]?.[0], "google_calendar_oauth_callback_failed");
+  assert.deepEqual(calls[0]?.[1], {
+    errorCode: "missing_refresh_token",
+    step: "token_response",
+    hasAccessToken: true,
+    refreshToken: "[redacted]",
+    fullCallbackUrl: "[redacted]",
   });
 });
 

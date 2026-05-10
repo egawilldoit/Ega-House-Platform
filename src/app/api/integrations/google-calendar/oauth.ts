@@ -19,9 +19,25 @@ export type GoogleCalendarTokenResponse = {
   error_description?: string;
 };
 
+export type GoogleCalendarOAuthFailureCode =
+  | "google_error"
+  | "state_mismatch"
+  | "missing_code"
+  | "token_exchange_failed"
+  | "missing_refresh_token"
+  | "settings_write_failed"
+  | "unexpected";
+
 export type GoogleCalendarCallbackValidationResult =
-  | { errorMessage: string; code: null }
-  | { errorMessage: null; code: string };
+  | {
+      errorCode: Extract<
+        GoogleCalendarOAuthFailureCode,
+        "google_error" | "state_mismatch" | "missing_code"
+      >;
+      errorMessage: string;
+      code: null;
+    }
+  | { errorCode: null; errorMessage: null; code: string };
 
 export function getGoogleCalendarOAuthEnv() {
   const env = {
@@ -84,10 +100,87 @@ export function getSettingsRedirectUrl(
   requestUrl: string,
   type: "success" | "error",
   message: string,
+  errorCode?: GoogleCalendarOAuthFailureCode,
 ) {
   const url = new URL("/settings/account", requestUrl);
   url.searchParams.set(type, message);
+  if (type === "error" && errorCode) {
+    url.searchParams.set("errorCode", errorCode);
+  }
   return url;
+}
+
+export function getGoogleCalendarOAuthFailureMessage(
+  errorCode: GoogleCalendarOAuthFailureCode | null | undefined,
+  fallback?: string | null,
+) {
+  switch (errorCode) {
+    case "google_error":
+      return "Google rejected the Calendar connection. Retry consent and confirm Calendar access is approved.";
+    case "state_mismatch":
+      return "Google Calendar connection expired or did not match this browser session. Start Connect again from this page.";
+    case "missing_code":
+      return "Google did not return an authorization code. Start Connect again and complete the consent screen.";
+    case "token_exchange_failed":
+      return "Google Calendar token exchange failed. Check production OAuth client ID, client secret, and exact redirect URI.";
+    case "missing_refresh_token":
+      return "Google did not return offline Calendar access. Reconnect and approve consent again.";
+    case "settings_write_failed":
+      return "Google Calendar connected with Google, but EGA could not save the connection. Retry after checking database access.";
+    case "unexpected":
+      return "Google Calendar connection failed before completion. Check server logs for the safe failure step.";
+    default:
+      return fallback ?? null;
+  }
+}
+
+const SENSITIVE_DIAGNOSTIC_KEY_PATTERN =
+  /(code|token|secret|authorization|cookie|url|uri)/i;
+
+export type GoogleCalendarOAuthDiagnosticValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | GoogleCalendarOAuthDiagnosticValue[]
+  | { [key: string]: GoogleCalendarOAuthDiagnosticValue };
+
+export function redactGoogleCalendarOAuthDiagnostic(
+  value: GoogleCalendarOAuthDiagnosticValue,
+): GoogleCalendarOAuthDiagnosticValue {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactGoogleCalendarOAuthDiagnostic(item));
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key,
+      SENSITIVE_DIAGNOSTIC_KEY_PATTERN.test(key) && typeof entry === "string"
+        ? "[redacted]"
+        : redactGoogleCalendarOAuthDiagnostic(entry),
+    ]),
+  );
+}
+
+export function logGoogleCalendarOAuthFailure(
+  errorCode: GoogleCalendarOAuthFailureCode,
+  details: Record<string, GoogleCalendarOAuthDiagnosticValue>,
+  logger: Pick<typeof console, "warn"> = console,
+) {
+  const safeDetails = redactGoogleCalendarOAuthDiagnostic(details) as Record<
+    string,
+    GoogleCalendarOAuthDiagnosticValue
+  >;
+
+  logger.warn("google_calendar_oauth_callback_failed", {
+    errorCode,
+    ...safeDetails,
+  });
 }
 
 export function validateGoogleCalendarCallback(
@@ -102,6 +195,7 @@ export function validateGoogleCalendarCallback(
 
   if (error) {
     return {
+      errorCode: "google_error",
       errorMessage: `Google Calendar OAuth failed: ${
         errorDescription || error
       }`,
@@ -111,6 +205,7 @@ export function validateGoogleCalendarCallback(
 
   if (!code) {
     return {
+      errorCode: "missing_code",
       errorMessage: "Google Calendar OAuth callback did not include a code.",
       code: null,
     };
@@ -118,12 +213,13 @@ export function validateGoogleCalendarCallback(
 
   if (!state || !expectedState || state !== expectedState) {
     return {
+      errorCode: "state_mismatch",
       errorMessage: "Google Calendar OAuth state was invalid.",
       code: null,
     };
   }
 
-  return { errorMessage: null, code };
+  return { errorCode: null, errorMessage: null, code };
 }
 
 export async function exchangeGoogleCalendarCodeForTokens(
