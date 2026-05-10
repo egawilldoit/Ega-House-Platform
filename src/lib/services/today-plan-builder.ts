@@ -217,6 +217,7 @@ export function isScheduledTaskForToday(
     return false;
   }
 
+  // Scheduled blocks intentionally match the user's local Today calendar day, not UTC.
   return getLocalIsoDate(task.scheduledStartAt) === today;
 }
 

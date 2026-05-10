@@ -46,6 +46,17 @@ const timerSummary = {
   longestSessionTaskTitle: null,
 };
 
+function withTimezone<T>(timezone: string, run: () => T): T {
+  const previousTimezone = process.env.TZ;
+  process.env.TZ = timezone;
+
+  try {
+    return run();
+  } finally {
+    process.env.TZ = previousTimezone;
+  }
+}
+
 function createActiveTimer(taskId: string) {
   return {
     sessionId: "session-1",
@@ -430,6 +441,59 @@ test("scheduled task helpers require complete positive ranges on selected date",
     ),
     false,
   );
+});
+
+test("scheduled task helpers match offset-bearing timestamps by local calendar day", () => {
+  withTimezone("Etc/GMT-1", () => {
+    const lateUtcBlock = {
+      scheduledStartAt: "2026-04-20T23:30:00.000Z",
+      scheduledEndAt: "2026-04-21T00:00:00.000Z",
+    };
+    const explicitOffsetBlock = {
+      scheduledStartAt: "2026-04-21T00:30:00.000+01:00",
+      scheduledEndAt: "2026-04-21T01:00:00.000+01:00",
+    };
+
+    assert.equal(isScheduledTaskForToday(lateUtcBlock, "2026-04-20"), false);
+    assert.equal(isScheduledTaskForToday(lateUtcBlock, "2026-04-21"), true);
+    assert.equal(isScheduledTaskForToday(explicitOffsetBlock, "2026-04-21"), true);
+  });
+});
+
+test("buildTodayPlan keeps invalid local-day scheduled ranges flexible", () => {
+  withTimezone("Etc/GMT-1", () => {
+    const plan = buildTodayPlan({
+      today: "2026-04-21",
+      selectedRows: [
+        createTaskRow({
+          id: "valid-near-midnight",
+          planned_for_date: null,
+          scheduled_start_at: "2026-04-20T23:30:00.000Z",
+          scheduled_end_at: "2026-04-21T00:00:00.000Z",
+        }),
+        createTaskRow({
+          id: "invalid-near-midnight",
+          planned_for_date: "2026-04-21",
+          scheduled_start_at: "2026-04-20T23:30:00.000Z",
+          scheduled_end_at: "2026-04-20T23:00:00.000Z",
+        }),
+      ],
+      pinnedSuggestionRows: [],
+      inProgressSuggestionRows: [],
+      activeTimer: null,
+      timerSummary,
+    });
+
+    assert.deepEqual(plan.scheduledBlocks.map((task) => task.id), ["valid-near-midnight"]);
+    assert.deepEqual(plan.flexibleTasks.map((task) => task.id), ["invalid-near-midnight"]);
+    assert.equal(
+      isValidScheduledTaskBlock({
+        scheduledStartAt: "2026-04-20T23:30:00.000Z",
+        scheduledEndAt: "2026-04-20T23:00:00.000Z",
+      }),
+      false,
+    );
+  });
 });
 
 test("buildTodayPlan summary preserves Today counts and timer totals", () => {
