@@ -5,7 +5,7 @@ import {
   getTaskSessionDurationSeconds,
   getTaskTotalDurationMap,
 } from "@/lib/task-session";
-import { isTaskCompletedStatus } from "@/lib/task-domain";
+import { isTaskCanceledStatus, isTaskCompletedStatus } from "@/lib/task-domain";
 import {
   calculateExecutionEvidenceForWindow,
   calculateTotalTrackedSeconds,
@@ -433,6 +433,10 @@ export async function startTimerForTask(
 
   if (isTaskCompletedStatus(task.status)) {
     return { errorMessage: "Completed tasks cannot start timers." };
+  }
+
+  if (isTaskCanceledStatus(task.status)) {
+    return { errorMessage: "Canceled tasks cannot start timers." };
   }
 
   const { error: insertError } = await supabase.from("task_sessions").insert({

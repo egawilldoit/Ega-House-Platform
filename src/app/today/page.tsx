@@ -204,6 +204,8 @@ export default async function TodayPage({
                       returnTo={returnTo}
                       isCompleted={isTaskCompletedStatus(task.status)}
                       activeTimerSessionId={activeTimerSessionId}
+                      startTimerLabel="Start Focus Session"
+                      startTimerReturnTo="/timer"
                     />
                   ))}
                 </TodaySection>
