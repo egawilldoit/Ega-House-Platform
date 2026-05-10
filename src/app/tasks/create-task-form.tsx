@@ -14,6 +14,7 @@ import {
   TASK_RECURRENCE_RULE_VALUES,
   formatTaskRecurrenceRule,
 } from "@/lib/task-recurrence";
+import type { CalendarTaskFormDefaults } from "@/lib/services/calendar-settings-service";
 
 import { type CreateTaskFormState, createTaskAction } from "./actions";
 
@@ -22,13 +23,18 @@ type CreateTaskFormProps = {
   goals: Array<{ id: string; title: string; project_id: string }>;
   projectId?: string;
   returnTo?: string;
+  calendarDefaults?: CalendarTaskFormDefaults;
 };
 
 export function buildCreateTaskFormInitialState({
   projects,
   projectId,
   returnTo = "/tasks",
-}: Pick<CreateTaskFormProps, "projects" | "projectId" | "returnTo">) {
+  calendarDefaults = {
+    calendarSyncEnabled: false,
+    calendarReminderMinutes: 10,
+  },
+}: Pick<CreateTaskFormProps, "projects" | "projectId" | "returnTo" | "calendarDefaults">) {
   const selectedProjectId = projectId ?? projects[0]?.id ?? "";
 
   return {
@@ -49,6 +55,8 @@ export function buildCreateTaskFormInitialState({
         recurrenceTimezone: "",
         scheduledStartAt: "",
         scheduledEndAt: "",
+        calendarSyncEnabled: calendarDefaults.calendarSyncEnabled ? "on" : "",
+        calendarReminderMinutes: String(calendarDefaults.calendarReminderMinutes),
         workedTimeStartedAt: "",
         workedTimeEndedAt: "",
         returnTo,
@@ -62,11 +70,13 @@ export function CreateTaskForm({
   goals,
   projectId,
   returnTo = "/tasks",
+  calendarDefaults,
 }: CreateTaskFormProps) {
   const { initialState, isProjectScoped } = buildCreateTaskFormInitialState({
     projects,
     projectId,
     returnTo,
+    calendarDefaults,
   });
 
   const [state, formAction, isPending] = useActionState(
@@ -326,6 +336,37 @@ export function CreateTaskForm({
                     name="scheduledEndAt"
                     type="datetime-local"
                     defaultValue={state.values.scheduledEndAt}
+                    className="ega-glass-input h-10 rounded-xl"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
+                <label className="flex items-start gap-3 rounded-xl border border-[rgba(15,23,42,0.08)] p-3">
+                  <input
+                    type="checkbox"
+                    name="calendarSyncEnabled"
+                    defaultChecked={state.values.calendarSyncEnabled === "on"}
+                    className="mt-1 h-4 w-4"
+                  />
+                  <span>
+                    <span className="glass-label text-etch">Sync to Calendar</span>
+                    <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
+                      Uses account default only when this task has a schedule block.
+                    </span>
+                  </span>
+                </label>
+                <div className="space-y-2">
+                  <label htmlFor="calendarReminderMinutes" className="glass-label text-etch">
+                    Reminder
+                  </label>
+                  <Input
+                    id="calendarReminderMinutes"
+                    name="calendarReminderMinutes"
+                    type="number"
+                    min="0"
+                    max="10080"
+                    step="5"
+                    defaultValue={state.values.calendarReminderMinutes}
                     className="ega-glass-input h-10 rounded-xl"
                   />
                 </div>

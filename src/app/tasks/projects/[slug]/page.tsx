@@ -53,6 +53,10 @@ import {
   getTaskRemindersForTasks,
 } from "@/lib/services/task-service";
 import {
+  getCalendarIntegrationSettings,
+  getCalendarTaskFormDefaults,
+} from "@/lib/services/calendar-settings-service";
+import {
   TASK_STATUS_VALUES,
   formatTaskToken,
   getTaskStatusTone,
@@ -74,6 +78,8 @@ type TaskRow = Pick<
   | "due_date"
   | "scheduled_start_at"
   | "scheduled_end_at"
+  | "calendar_sync_enabled"
+  | "calendar_reminder_minutes"
   | "estimate_minutes"
   | "updated_at"
   | "goal_id"
@@ -127,7 +133,7 @@ async function getProjectDetail(slug: string) {
     supabase
       .from("tasks")
       .select(
-        "id, title, description, blocked_reason, status, priority, due_date, scheduled_start_at, scheduled_end_at, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
+        "id, title, description, blocked_reason, status, priority, due_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
       )
       .eq("project_id", project.id)
       .order("updated_at", { ascending: false }),
@@ -240,7 +246,10 @@ export default async function ProjectDetailPage({
   searchParams,
 }: ProjectDetailPageProps) {
   const [{ slug }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const projectDetail = await getProjectDetail(slug);
+  const [projectDetail, calendarSettingsResult] = await Promise.all([
+    getProjectDetail(slug),
+    getCalendarIntegrationSettings(),
+  ]);
 
   if (!projectDetail) {
     notFound();
@@ -271,6 +280,7 @@ export default async function ProjectDetailPage({
   const projectUpdateField = resolvedSearchParams.projectUpdateField ?? null;
 
   const { project, goals, tasks, statusCounts, taskTotalDurations } = projectDetail;
+  const calendarFormDefaults = getCalendarTaskFormDefaults(calendarSettingsResult.data);
   const projectIsArchived = isProjectArchivedStatus(project.status);
   const baseProjectsHref =
     activeView === "active" ? "/tasks/projects" : `/tasks/projects?view=${activeView}`;
@@ -582,6 +592,8 @@ export default async function ProjectDetailPage({
                         defaultEstimateMinutes={focusedTask.estimate_minutes}
                         defaultScheduledStartAt={focusedTask.scheduled_start_at}
                         defaultScheduledEndAt={focusedTask.scheduled_end_at}
+                        defaultCalendarSyncEnabled={focusedTask.calendar_sync_enabled}
+                        defaultCalendarReminderMinutes={focusedTask.calendar_reminder_minutes}
                         defaultBlockedReason={focusedTask.blocked_reason}
                         defaultRecurrenceRule={focusedTask.task_recurrences[0]?.rule ?? null}
                         error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
@@ -662,6 +674,8 @@ export default async function ProjectDetailPage({
                             defaultEstimateMinutes={task.estimate_minutes}
                             defaultScheduledStartAt={task.scheduled_start_at}
                             defaultScheduledEndAt={task.scheduled_end_at}
+                            defaultCalendarSyncEnabled={task.calendar_sync_enabled}
+                            defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
                             defaultBlockedReason={task.blocked_reason}
                             defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
                             error={inlineError}
@@ -798,6 +812,7 @@ export default async function ProjectDetailPage({
                     goals={goals}
                     projectId={project.id}
                     returnTo={returnTo}
+                    calendarDefaults={calendarFormDefaults}
                   />
                 )}
               </div>

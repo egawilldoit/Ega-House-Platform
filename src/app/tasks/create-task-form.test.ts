@@ -22,10 +22,25 @@ test("create task form preserves project context and kanban return path", () => 
   assert.equal(state.initialState.values.workedTimeEndedAt, "");
   assert.equal(state.initialState.values.scheduledStartAt, "");
   assert.equal(state.initialState.values.scheduledEndAt, "");
+  assert.equal(state.initialState.values.calendarSyncEnabled, "");
+  assert.equal(state.initialState.values.calendarReminderMinutes, "10");
   assert.equal(
     state.initialState.values.returnTo,
     "/tasks?status=blocked&project=project-2&goal=goal-2&due=overdue&sort=due_date_desc&archive=all&layout=kanban",
   );
+});
+
+test("create task form uses Calendar settings for scheduling defaults", () => {
+  const state = buildCreateTaskFormInitialState({
+    projects,
+    calendarDefaults: {
+      calendarSyncEnabled: true,
+      calendarReminderMinutes: 25,
+    },
+  });
+
+  assert.equal(state.initialState.values.calendarSyncEnabled, "on");
+  assert.equal(state.initialState.values.calendarReminderMinutes, "25");
 });
 
 test("create task form keeps list mode return path free of layout=list", () => {

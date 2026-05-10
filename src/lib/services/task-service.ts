@@ -25,6 +25,10 @@ import {
 } from "@/lib/task-domain";
 import type { ManualWorkedTimePayload } from "@/lib/manual-worked-time";
 import {
+  DEFAULT_CALENDAR_REMINDER_MINUTES,
+  normalizeCalendarReminderMinutes,
+} from "@/lib/services/calendar-settings-service";
+import {
   applyTaskListQuery,
   type TaskDueFilter,
   type TaskSortValue,
@@ -138,6 +142,8 @@ export type TasksWorkspaceData = {
     planned_for_date: string | null;
     scheduled_start_at: string | null;
     scheduled_end_at: string | null;
+    calendar_sync_enabled: boolean;
+    calendar_reminder_minutes: number;
     estimate_minutes: number | null;
     updated_at: string;
     completed_at: string | null;
@@ -189,6 +195,8 @@ export type ValidateTaskInlineUpdateInput = {
   scheduledStartAt?: unknown;
   scheduledEndAt?: unknown;
   scheduleTimezoneOffsetMinutes?: unknown;
+  calendarSyncEnabled?: unknown;
+  calendarReminderMinutes?: unknown;
 };
 
 export type ValidatedTaskInlineUpdateInput = {
@@ -204,6 +212,8 @@ export type ValidatedTaskInlineUpdateInput = {
   recurrenceTimezone?: string | null;
   scheduledStartAt?: string | null;
   scheduledEndAt?: string | null;
+  calendarSyncEnabled?: boolean;
+  calendarReminderMinutes?: number;
 };
 
 const SYSTEM_TASK_SAVED_VIEWS = [
@@ -1178,6 +1188,8 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
         });
   const hasScheduleFields =
     input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined;
+  const hasCalendarFields =
+    input.calendarSyncEnabled !== undefined || input.calendarReminderMinutes !== undefined;
   const scheduleResult = hasScheduleFields
     ? normalizeTaskScheduleInput({
         scheduledStartAt: input.scheduledStartAt ?? "",
@@ -1253,6 +1265,14 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
         ? {
             scheduledStartAt: scheduleResult.scheduledStartAtIso,
             scheduledEndAt: scheduleResult.scheduledEndAtIso,
+          }
+        : {}),
+      ...(hasCalendarFields
+        ? {
+            calendarSyncEnabled: input.calendarSyncEnabled === "on",
+            calendarReminderMinutes: normalizeCalendarReminderMinutes(
+              input.calendarReminderMinutes,
+            ),
           }
         : {}),
       ...(input.recurrenceRule === undefined
@@ -1537,6 +1557,12 @@ export async function updateTaskInline(
     updatePayload.scheduled_end_at = input.scheduledEndAt ?? null;
   }
 
+  if (input.calendarSyncEnabled !== undefined) {
+    updatePayload.calendar_sync_enabled = input.calendarSyncEnabled;
+    updatePayload.calendar_reminder_minutes =
+      input.calendarReminderMinutes ?? DEFAULT_CALENDAR_REMINDER_MINUTES;
+  }
+
   if (input.description !== undefined) {
     updatePayload.description = input.description;
   }
@@ -1727,7 +1753,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -1736,7 +1762,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();

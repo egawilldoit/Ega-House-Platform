@@ -6,6 +6,7 @@ import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import { normalizeTaskRecurrenceRuleInput } from "@/lib/task-recurrence";
 import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
+import { normalizeCalendarReminderMinutes } from "@/lib/services/calendar-settings-service";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
@@ -52,6 +53,8 @@ export type CreateTaskFormState = {
     recurrenceTimezone: string;
     scheduledStartAt: string;
     scheduledEndAt: string;
+    calendarSyncEnabled: string;
+    calendarReminderMinutes: string;
     workedTimeStartedAt: string;
     workedTimeEndedAt: string;
     returnTo: string;
@@ -198,6 +201,10 @@ export async function createTaskAction(
   const workedTimeEndedAt = String(formData.get("workedTimeEndedAt") ?? "").trim();
   const scheduledStartAt = String(formData.get("scheduledStartAt") ?? "").trim();
   const scheduledEndAt = String(formData.get("scheduledEndAt") ?? "").trim();
+  const calendarSyncEnabled = formData.get("calendarSyncEnabled") === "on";
+  const rawCalendarReminderMinutes = String(
+    formData.get("calendarReminderMinutes") ?? "10",
+  ).trim();
   const scheduleTimezoneOffsetMinutes = formData.get("scheduleTimezoneOffsetMinutes");
   const workedTimeTimezoneOffsetMinutes = formData.get(
     "workedTimeTimezoneOffsetMinutes",
@@ -231,6 +238,8 @@ export async function createTaskAction(
     recurrenceTimezone,
     scheduledStartAt,
     scheduledEndAt,
+    calendarSyncEnabled: calendarSyncEnabled ? "on" : "",
+    calendarReminderMinutes: rawCalendarReminderMinutes,
     workedTimeStartedAt,
     workedTimeEndedAt,
     returnTo,
@@ -295,6 +304,10 @@ export async function createTaskAction(
       estimate_minutes: estimateResult.value,
       scheduled_start_at: scheduleResult.scheduledStartAtIso,
       scheduled_end_at: scheduleResult.scheduledEndAtIso,
+      calendar_sync_enabled: calendarSyncEnabled,
+      calendar_reminder_minutes: normalizeCalendarReminderMinutes(
+        rawCalendarReminderMinutes,
+      ),
     },
     workedTime: workedTimeResult.payload,
     recurrenceRule: recurrenceResult.rule,
@@ -330,6 +343,8 @@ export async function createTaskAction(
       recurrenceTimezone,
       scheduledStartAt: "",
       scheduledEndAt: "",
+      calendarSyncEnabled: calendarSyncEnabled ? "on" : "",
+      calendarReminderMinutes: rawCalendarReminderMinutes,
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo,
@@ -501,6 +516,12 @@ export async function updateTaskInlineAction(formData: FormData) {
       : undefined,
     scheduleTimezoneOffsetMinutes: formData.has("scheduleTimezoneOffsetMinutes")
       ? formData.get("scheduleTimezoneOffsetMinutes")
+      : undefined,
+    calendarSyncEnabled: formData.has("calendarSyncEnabled")
+      ? formData.get("calendarSyncEnabled")
+      : undefined,
+    calendarReminderMinutes: formData.has("calendarReminderMinutes")
+      ? formData.get("calendarReminderMinutes")
       : undefined,
   });
 

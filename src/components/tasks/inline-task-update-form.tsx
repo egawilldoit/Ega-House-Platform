@@ -31,6 +31,8 @@ type InlineTaskUpdateFormProps = {
   defaultEstimateMinutes: number | null;
   defaultScheduledStartAt: string | null;
   defaultScheduledEndAt: string | null;
+  defaultCalendarSyncEnabled: boolean;
+  defaultCalendarReminderMinutes: number;
   defaultBlockedReason: string | null;
   defaultRecurrenceRule?: string | null;
   archivedAt?: string | null;
@@ -52,6 +54,8 @@ export function InlineTaskUpdateForm({
   defaultEstimateMinutes,
   defaultScheduledStartAt,
   defaultScheduledEndAt,
+  defaultCalendarSyncEnabled,
+  defaultCalendarReminderMinutes,
   defaultBlockedReason,
   defaultRecurrenceRule,
   archivedAt,
@@ -198,6 +202,37 @@ export function InlineTaskUpdateForm({
             </select>
           </label>
 
+          <label className="flex items-start gap-3 rounded-xl border border-[rgba(15,23,42,0.08)] p-3 xl:col-span-2">
+            <input
+              type="checkbox"
+              name="calendarSyncEnabled"
+              defaultChecked={defaultCalendarSyncEnabled}
+              className="mt-1 h-4 w-4"
+            />
+            <span>
+              <span className="glass-label text-etch">Sync to Calendar</span>
+              <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
+                Applies when this task has a schedule block.
+              </span>
+            </span>
+          </label>
+
+          <label className="space-y-2">
+            <span className="glass-label text-etch">
+              Calendar reminder
+            </span>
+            <Input
+              name="calendarReminderMinutes"
+              type="number"
+              min="0"
+              max="10080"
+              step="5"
+              inputMode="numeric"
+              defaultValue={defaultCalendarReminderMinutes}
+              className="ega-glass-input min-h-10 w-full rounded-xl px-3 py-0 text-sm"
+            />
+          </label>
+
           {selectedStatus === "blocked" ? (
             <label className="space-y-2 sm:col-span-2 xl:col-span-5">
               <span className="glass-label text-etch">
@@ -225,6 +260,14 @@ export function InlineTaskUpdateForm({
             <input type="hidden" name="dueDate" value={defaultDueDate ?? ""} />
             <input type="hidden" name="scheduledStartAt" value={scheduledStartAtDefaultValue} />
             <input type="hidden" name="scheduledEndAt" value={scheduledEndAtDefaultValue} />
+            {defaultCalendarSyncEnabled ? (
+              <input type="hidden" name="calendarSyncEnabled" value="on" />
+            ) : null}
+            <input
+              type="hidden"
+              name="calendarReminderMinutes"
+              value={defaultCalendarReminderMinutes}
+            />
             <input
               type="hidden"
               name="scheduleTimezoneOffsetMinutes"

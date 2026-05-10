@@ -16,6 +16,7 @@ import {
   Plus,
   Power,
   Rocket,
+  Settings,
   Timer,
 } from "lucide-react";
 
@@ -87,6 +88,11 @@ const GENERAL_ITEMS: NavItem[] = [
     href: "/help" as `/${string}`,
     label: "Help",
     icon: <CircleHelp />,
+  },
+  {
+    href: "/settings/account" as `/${string}`,
+    label: "Settings",
+    icon: <Settings />,
   },
 ];
 

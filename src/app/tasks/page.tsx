@@ -66,6 +66,10 @@ import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
+import {
+  getCalendarIntegrationSettings,
+  getCalendarTaskFormDefaults,
+} from "@/lib/services/calendar-settings-service";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import {
   Clock3,
@@ -153,6 +157,23 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     error: resolvedSearchParams.viewError?.slice(0, 180) ?? null,
     success: resolvedSearchParams.viewSuccess?.slice(0, 180) ?? null,
   };
+  const [workspaceData, calendarSettingsResult] = await Promise.all([
+    getTasksWorkspaceData({
+      activeStatus,
+      requestedProjectId: projectParam,
+      requestedGoalId: goalParam,
+      activeDueFilter,
+      activeSort,
+      activeView,
+      activeTasksOnly: savedViewDefinitionFilters.activeTasks,
+      activePriorityValues: savedViewDefinitionFilters.priorityValues,
+      activeEstimateMinMinutes: savedViewDefinitionFilters.estimateMinMinutes,
+      activeEstimateMaxMinutes: savedViewDefinitionFilters.estimateMaxMinutes,
+      activeDueWithinDays: savedViewDefinitionFilters.dueWithinDays,
+    }),
+    getCalendarIntegrationSettings(),
+  ]);
+  const calendarFormDefaults = getCalendarTaskFormDefaults(calendarSettingsResult.data);
   const {
     projects,
     goals,
@@ -163,19 +184,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     savedViewsUnavailable,
     activeProjectId,
     activeGoalId,
-  } = await getTasksWorkspaceData({
-    activeStatus,
-    requestedProjectId: projectParam,
-    requestedGoalId: goalParam,
-    activeDueFilter,
-    activeSort,
-    activeView,
-    activeTasksOnly: savedViewDefinitionFilters.activeTasks,
-    activePriorityValues: savedViewDefinitionFilters.priorityValues,
-    activeEstimateMinMinutes: savedViewDefinitionFilters.estimateMinMinutes,
-    activeEstimateMaxMinutes: savedViewDefinitionFilters.estimateMaxMinutes,
-    activeDueWithinDays: savedViewDefinitionFilters.dueWithinDays,
-  });
+  } = workspaceData;
   const resolvedSavedViewFeedback = {
     error:
       savedViewFeedback.error ??
@@ -577,6 +586,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         defaultEstimateMinutes={task.estimate_minutes}
                         defaultScheduledStartAt={task.scheduled_start_at}
                         defaultScheduledEndAt={task.scheduled_end_at}
+                        defaultCalendarSyncEnabled={task.calendar_sync_enabled}
+                        defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
                         defaultBlockedReason={task.blocked_reason}
                           defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
                           archivedAt={task.archived_at}
@@ -656,6 +667,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   goals={goals}
                   projectId={activeProjectId ?? undefined}
                   returnTo={returnPath}
+                  calendarDefaults={calendarFormDefaults}
                 />
               )}
             </CardContent>

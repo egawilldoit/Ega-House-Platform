@@ -211,6 +211,13 @@
       "when": 1778326757936,
       "tag": "0029_sudden_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1778433143581,
+      "tag": "0030_calendar_integration_settings",
+      "breakpoints": true
     }
   ]
 }

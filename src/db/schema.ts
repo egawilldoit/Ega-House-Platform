@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   date,
   index,
@@ -84,6 +85,8 @@ export const tasks = pgTable(
     plannedForDate: date("planned_for_date"),
     scheduledStartAt: timestamp("scheduled_start_at", { withTimezone: true }),
     scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
+    calendarSyncEnabled: boolean("calendar_sync_enabled").notNull().default(false),
+    calendarReminderMinutes: integer("calendar_reminder_minutes").notNull().default(10),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
@@ -112,6 +115,48 @@ export const tasks = pgTable(
         or
         (${table.scheduledStartAt} is not null and ${table.scheduledEndAt} is not null and ${table.scheduledStartAt} < ${table.scheduledEndAt})
       )`,
+    ),
+  ],
+);
+
+export const calendarIntegrationSettings = pgTable(
+  "calendar_integration_settings",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    provider: varchar("provider", { length: 32 }).notNull().default("google"),
+    googleAccountEmail: text("google_account_email"),
+    scheduledTaskSyncEnabled: boolean("scheduled_task_sync_enabled")
+      .notNull()
+      .default(false),
+    defaultReminderMinutes: integer("default_reminder_minutes")
+      .notNull()
+      .default(10),
+    accessTokenEncrypted: text("access_token_encrypted"),
+    refreshTokenEncrypted: text("refresh_token_encrypted"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    connectedAt: timestamp("connected_at", { withTimezone: true }),
+    disconnectedAt: timestamp("disconnected_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("calendar_integration_settings_owner_user_id_idx").on(table.ownerUserId),
+    uniqueIndex("calendar_integration_settings_owner_provider_unique").on(
+      table.ownerUserId,
+      table.provider,
+    ),
+    check(
+      "calendar_integration_settings_provider_check",
+      sql`${table.provider} in ('google')`,
+    ),
+    check(
+      "calendar_integration_settings_default_reminder_check",
+      sql`${table.defaultReminderMinutes} >= 0 and ${table.defaultReminderMinutes} <= 10080`,
     ),
   ],
 );

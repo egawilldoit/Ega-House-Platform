@@ -177,6 +177,8 @@ function QuickTaskSheetPanel({
       recurrenceTimezone: "",
       scheduledStartAt: "",
       scheduledEndAt: "",
+      calendarSyncEnabled: "",
+      calendarReminderMinutes: "10",
       workedTimeStartedAt: "",
       workedTimeEndedAt: "",
       returnTo: DEFAULT_RETURN_TO,
