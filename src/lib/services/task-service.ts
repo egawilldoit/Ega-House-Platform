@@ -26,8 +26,13 @@ import {
 import type { ManualWorkedTimePayload } from "@/lib/manual-worked-time";
 import {
   DEFAULT_CALENDAR_REMINDER_MINUTES,
+  getCalendarIntegrationSecretSnapshot,
   normalizeCalendarReminderMinutes,
 } from "@/lib/services/calendar-settings-service";
+import {
+  createGoogleCalendarEventForTask,
+  type GoogleCalendarClient,
+} from "@/lib/services/google-calendar-service";
 import {
   applyTaskListQuery,
   type TaskDueFilter,
@@ -60,6 +65,11 @@ import {
 } from "@/lib/task-saved-views";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type CreateTasksOptions = {
+  supabase?: SupabaseServerClient;
+  calendarClient?: GoogleCalendarClient;
+};
 
 type TaskSavedViewSelectRow = {
   id: string;
@@ -292,6 +302,97 @@ async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
   }
 
   return data.user?.id ?? null;
+}
+
+async function persistCalendarSyncResult(
+  supabase: SupabaseServerClient,
+  input: {
+    taskId: string;
+    ownerUserId: string;
+    status: "synced" | "failed" | "skipped";
+    eventId: string | null;
+    failureReason: string | null;
+  },
+) {
+  const payload: TablesUpdate<"tasks"> = {
+    calendar_sync_status: input.status,
+    calendar_event_id: input.eventId,
+    calendar_sync_failure_reason: input.failureReason,
+  };
+
+  const { error } = await supabase
+    .from("tasks")
+    .update(payload)
+    .eq("id", input.taskId)
+    .eq("owner_user_id", input.ownerUserId);
+
+  return error;
+}
+
+async function syncCreatedTasksToCalendar(
+  supabase: SupabaseServerClient,
+  taskRows: TablesInsert<"tasks">[],
+  createdTaskIds: string[],
+  options?: { calendarClient?: GoogleCalendarClient },
+) {
+  const syncErrors: string[] = [];
+
+  if (createdTaskIds.length === 0) {
+    return syncErrors;
+  }
+
+  const candidateRows = taskRows
+    .map((task, index) => ({ task, taskId: createdTaskIds[index] }))
+    .filter(({ task, taskId }) => Boolean(taskId && task.calendar_sync_enabled));
+
+  if (candidateRows.length === 0) {
+    return syncErrors;
+  }
+
+  const ownerUserId = await getAuthenticatedUserId(supabase);
+  if (!ownerUserId) {
+    return syncErrors;
+  }
+
+  const settingsResult = await getCalendarIntegrationSecretSnapshot({ supabase });
+  const credentials = settingsResult.data;
+
+  for (const { task, taskId } of candidateRows) {
+    const syncResult = await createGoogleCalendarEventForTask(
+      {
+        taskId,
+        title: task.title,
+        scheduledStartAt: task.scheduled_start_at,
+        scheduledEndAt: task.scheduled_end_at,
+        calendarSyncEnabled: task.calendar_sync_enabled,
+        calendarReminderMinutes: task.calendar_reminder_minutes,
+      },
+      credentials,
+      { client: options?.calendarClient },
+    );
+
+    if (syncResult.status === "skipped" && !syncResult.failureReason) {
+      continue;
+    }
+
+    const persistError = await persistCalendarSyncResult(supabase, {
+      taskId,
+      ownerUserId,
+      status: syncResult.status,
+      eventId: syncResult.eventId,
+      failureReason: syncResult.failureReason,
+    });
+
+    if (syncResult.status === "failed") {
+      syncErrors.push(syncResult.failureReason);
+    }
+
+    if (persistError) {
+      syncErrors.push("Calendar sync state could not be saved.");
+    }
+  }
+
+  return syncErrors;
 }
 
 function isTasksBlockedReasonMissing(
@@ -892,7 +993,7 @@ export async function getTasksWorkspaceData(
 
 export async function createTasks(
   taskRows: TablesInsert<"tasks">[],
-  options?: { supabase?: SupabaseServerClient },
+  options?: CreateTasksOptions,
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
 
@@ -941,9 +1042,18 @@ export async function createTasks(
     return { errorMessage: "Unable to create task right now." };
   }
 
+  const createdTaskIds = (data ?? []).map((row) => row.id);
+  const calendarSyncErrors = await syncCreatedTasksToCalendar(
+    supabase,
+    taskRows,
+    createdTaskIds,
+    { calendarClient: options?.calendarClient },
+  );
+
   return {
     errorMessage: null,
-    createdTaskIds: (data ?? []).map((row) => row.id),
+    createdTaskIds,
+    ...(calendarSyncErrors.length > 0 ? { calendarSyncErrors } : {}),
   };
 }
 
@@ -955,7 +1065,7 @@ export async function createTaskWithOptionalWorkedTime(
     recurrenceAnchorDate?: unknown;
     recurrenceTimezone?: unknown;
   },
-  options?: { supabase?: SupabaseServerClient },
+  options?: CreateTasksOptions,
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const fallbackAnchorDate = input.task.due_date ?? getTodayLocalIsoDate();
@@ -977,9 +1087,12 @@ export async function createTaskWithOptionalWorkedTime(
     };
   }
 
-  const createResult = await createTasks([input.task], { supabase });
+  const createResult = await createTasks([input.task], {
+    supabase,
+    calendarClient: options?.calendarClient,
+  });
 
-  if (createResult.errorMessage) {
+  if (createResult.errorMessage !== null) {
     return {
       errorMessage: createResult.errorMessage,
       createdTaskId: null,
@@ -988,6 +1101,8 @@ export async function createTaskWithOptionalWorkedTime(
   }
 
   const createdTaskId = createResult.createdTaskIds?.[0] ?? null;
+  const calendarSyncErrors =
+    "calendarSyncErrors" in createResult ? createResult.calendarSyncErrors : undefined;
   if (createdTaskId && recurrenceResult.schedule) {
     const setRecurrenceResult = await setTaskRecurrence(
       {
@@ -1013,6 +1128,7 @@ export async function createTaskWithOptionalWorkedTime(
       errorMessage: null,
       createdTaskId,
       workedTimeLogged: false,
+      ...(calendarSyncErrors?.length ? { calendarSyncErrors } : {}),
     };
   }
 
@@ -1043,6 +1159,7 @@ export async function createTaskWithOptionalWorkedTime(
     errorMessage: null,
     createdTaskId,
     workedTimeLogged: true,
+    ...(calendarSyncErrors?.length ? { calendarSyncErrors } : {}),
   };
 }
 

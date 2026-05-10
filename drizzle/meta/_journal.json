@@ -218,6 +218,13 @@
       "when": 1778433143581,
       "tag": "0030_calendar_integration_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1778438309345,
+      "tag": "0031_pretty_zodiak",
+      "breakpoints": true
     }
   ]
 }
