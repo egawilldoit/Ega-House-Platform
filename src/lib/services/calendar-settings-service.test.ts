@@ -3,7 +3,7 @@ import test from "node:test";
 
 import {
   assertCalendarSettingsViewHasNoSecrets,
-  connectGoogleCalendarMock,
+  connectGoogleCalendarWithTokens,
   disconnectGoogleCalendar,
   getCalendarIntegrationSettings,
   getCalendarTaskFormDefaults,
@@ -173,23 +173,28 @@ test("Calendar defaults update is owner-scoped and normalizes reminder", async (
   });
 });
 
-test("mock Google Calendar connect stores secrets server-side but returns safe view", async () => {
+test("Google Calendar callback token persistence stores secrets server-side but returns safe view", async () => {
   const mock = createCalendarSupabaseMock({ userId: "owner-c" });
-  const result = await connectGoogleCalendarMock({
-    supabase: mock.supabase as never,
-    updatedAtIso: "2026-05-10T10:00:00.000Z",
-    googleAccountEmail: "owner@example.com",
-  });
+  const result = await connectGoogleCalendarWithTokens(
+    {
+      accessToken: "google-access-token",
+      refreshToken: "google-refresh-token",
+      expiresInSeconds: 3600,
+      googleAccountEmail: "owner@example.com",
+    },
+    {
+      supabase: mock.supabase as never,
+      updatedAtIso: "2026-05-10T10:00:00.000Z",
+    },
+  );
 
   assert.equal(result.data.connected, true);
   assert.equal(result.data.googleAccountEmail, "owner@example.com");
-  assert.match(
-    String(mock.upsertPayloads[0]?.access_token_encrypted),
-    /^mock-google-access-token:/,
-  );
-  assert.match(
-    String(mock.upsertPayloads[0]?.refresh_token_encrypted),
-    /^mock-google-refresh-token:/,
+  assert.equal(mock.upsertPayloads[0]?.access_token_encrypted, "google-access-token");
+  assert.equal(mock.upsertPayloads[0]?.refresh_token_encrypted, "google-refresh-token");
+  assert.equal(
+    mock.upsertPayloads[0]?.token_expires_at,
+    "2026-05-10T11:00:00.000Z",
   );
   assert.equal(assertCalendarSettingsViewHasNoSecrets(result.data), true);
 });

@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  connectGoogleCalendarMock,
   disconnectGoogleCalendar,
   updateCalendarIntegrationDefaults,
 } from "@/lib/services/calendar-settings-service";
@@ -12,19 +11,6 @@ import {
 function redirectWithSettingsFeedback(type: "success" | "error", message: string): never {
   const params = new URLSearchParams({ [type]: message });
   redirect(`/settings/account?${params.toString()}`);
-}
-
-export async function connectGoogleCalendarAction() {
-  const result = await connectGoogleCalendarMock();
-
-  revalidatePath("/settings/account");
-  revalidatePath("/tasks");
-
-  if (result.errorMessage) {
-    redirectWithSettingsFeedback("error", result.errorMessage);
-  }
-
-  redirectWithSettingsFeedback("success", "Google Calendar connected.");
 }
 
 export async function disconnectGoogleCalendarAction() {

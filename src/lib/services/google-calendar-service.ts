@@ -18,7 +18,7 @@ export type GoogleCalendarCredentialSnapshot = {
 };
 
 export type GoogleCalendarEventCreateInput = {
-  calendarId: "primary";
+  calendarId: string;
   summary: string;
   start: { dateTime: string };
   end: { dateTime: string };
@@ -37,6 +37,13 @@ export type GoogleCalendarClient = {
     input: GoogleCalendarEventCreateInput,
     credentials: GoogleCalendarCredentialSnapshot,
   ): Promise<GoogleCalendarEventCreateResult>;
+};
+
+type TokenRefreshResponse = {
+  access_token?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
 };
 
 export type CalendarTaskEventInput = {
@@ -84,27 +91,130 @@ function getReminderMinutes(
   return reminderMinutes;
 }
 
-export const stubGoogleCalendarClient: GoogleCalendarClient = {
+function getGoogleCalendarId() {
+  return process.env.GOOGLE_CALENDAR_ID?.trim() || "primary";
+}
+
+function getTokenExpiryDate(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function shouldRefreshAccessToken(credentials: GoogleCalendarCredentialSnapshot) {
+  if (!credentials.refresh_token_encrypted) {
+    return false;
+  }
+
+  const expiresAt = getTokenExpiryDate(credentials.token_expires_at);
+  if (!credentials.access_token_encrypted || !expiresAt) {
+    return true;
+  }
+
+  return expiresAt.getTime() <= Date.now() + 60_000;
+}
+
+async function refreshGoogleCalendarAccessToken(
+  credentials: GoogleCalendarCredentialSnapshot,
+) {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  const refreshToken = credentials.refresh_token_encrypted?.trim();
+
+  if (!clientId || !clientSecret || !refreshToken) {
+    return {
+      accessToken: null,
+      errorMessage: "Google Calendar refresh credentials are not configured.",
+    };
+  }
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as TokenRefreshResponse;
+
+  if (!response.ok || !payload.access_token) {
+    return {
+      accessToken: null,
+      errorMessage:
+        payload.error_description ??
+        payload.error ??
+        "Google Calendar token refresh failed.",
+    };
+  }
+
+  return { accessToken: payload.access_token, errorMessage: null };
+}
+
+async function resolveGoogleCalendarAccessToken(
+  credentials: GoogleCalendarCredentialSnapshot,
+) {
+  if (!shouldRefreshAccessToken(credentials)) {
+    return {
+      accessToken: credentials.access_token_encrypted,
+      errorMessage: null,
+    };
+  }
+
+  return refreshGoogleCalendarAccessToken(credentials);
+}
+
+export const googleCalendarClient: GoogleCalendarClient = {
   async createEvent(input, credentials) {
-    if (!isConnectedGoogleCalendar(credentials)) {
+    const tokenResult = await resolveGoogleCalendarAccessToken(credentials);
+
+    if (tokenResult.errorMessage || !tokenResult.accessToken) {
       return {
         eventId: null,
-        errorMessage: "Google Calendar is not connected.",
+        errorMessage:
+          tokenResult.errorMessage ?? "Google Calendar access token is missing.",
       };
     }
 
-    const seed = [
-      credentials.google_account_email ?? "primary",
-      input.summary,
-      input.start.dateTime,
-      input.end.dateTime,
-    ].join(":");
-    const encodedSeed = Buffer.from(seed).toString("base64url").slice(0, 24);
+    const response = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+        input.calendarId,
+      )}/events`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${tokenResult.accessToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          summary: input.summary,
+          start: input.start,
+          end: input.end,
+          reminders: input.reminders,
+        }),
+      },
+    );
 
-    return {
-      eventId: `google-calendar-stub-${encodedSeed}`,
-      errorMessage: null,
+    const payload = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      error?: { message?: string };
     };
+
+    if (!response.ok || !payload.id) {
+      return {
+        eventId: null,
+        errorMessage:
+          payload.error?.message ?? "Google Calendar event could not be created.",
+      };
+    }
+
+    return { eventId: payload.id, errorMessage: null };
   },
 };
 
@@ -134,10 +244,10 @@ export async function createGoogleCalendarEventForTask(
   }
 
   const connectedCredentials = credentials as GoogleCalendarCredentialSnapshot;
-  const client = options?.client ?? stubGoogleCalendarClient;
+  const client = options?.client ?? googleCalendarClient;
   const result = await client.createEvent(
     {
-      calendarId: "primary",
+      calendarId: getGoogleCalendarId(),
       summary: task.title,
       start: { dateTime: task.scheduledStartAt as string },
       end: { dateTime: task.scheduledEndAt as string },

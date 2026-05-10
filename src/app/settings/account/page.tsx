@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
 import {
-  connectGoogleCalendarAction,
   disconnectGoogleCalendarAction,
   updateCalendarDefaultsAction,
 } from "@/app/settings/account/actions";
@@ -84,7 +83,10 @@ export default async function AccountSettingsPage({
                     </Button>
                   </form>
                 ) : (
-                  <form action={connectGoogleCalendarAction}>
+                  <form
+                    action="/api/integrations/google-calendar/connect"
+                    method="get"
+                  >
                     <Button type="submit" size="sm">
                       Connect Google Calendar
                     </Button>
