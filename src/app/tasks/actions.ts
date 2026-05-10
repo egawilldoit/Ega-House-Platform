@@ -291,7 +291,7 @@ export async function createTaskAction(
     return createErrorState(workedTimeResult.error, values);
   }
 
-  const { errorMessage, createdTaskId, workedTimeLogged } = await createTaskWithOptionalWorkedTime({
+  const createResult = await createTaskWithOptionalWorkedTime({
     task: {
       title,
       project_id: projectId,
@@ -314,21 +314,31 @@ export async function createTaskAction(
     recurrenceTimezone,
   });
 
-  if (errorMessage) {
-    if (createdTaskId) {
+  if (createResult.errorMessage) {
+    if (createResult.createdTaskId) {
       revalidateWorkspaceFor("task", { returnTo });
     }
 
-    return createErrorState(errorMessage, values);
+    return createErrorState(createResult.errorMessage, values);
   }
+
+  const calendarSyncErrors =
+    "calendarSyncErrors" in createResult
+      ? createResult.calendarSyncErrors
+      : undefined;
 
   revalidateWorkspaceFor("task", { returnTo });
 
   return {
     error: null,
-    success: workedTimeLogged
-      ? "Task created and worked time logged."
-      : "Task created.",
+    success: [
+      createResult.workedTimeLogged
+        ? "Task created and worked time logged."
+        : "Task created.",
+      ...(calendarSyncErrors?.length
+        ? [`Calendar sync failed: ${calendarSyncErrors[0]}`]
+        : []),
+    ].join(" "),
     values: {
       title: "",
       projectId,

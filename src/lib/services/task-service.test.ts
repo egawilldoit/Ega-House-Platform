@@ -423,8 +423,10 @@ function createTaskInlineSupabaseMock(options?: {
             const state = { taskId: "" };
             return {
               eq(column: string, value: string) {
-                assert.equal(column, "id");
-                state.taskId = value;
+                assert.ok(column === "id" || column === "owner_user_id");
+                if (column === "id") {
+                  state.taskId = value;
+                }
                 return this;
               },
               select(columns: string) {
@@ -1289,13 +1291,30 @@ function createTaskCreateSupabaseMock(options?: {
   taskInsertReturnsNoId?: boolean;
   projectRows?: Array<{ id: string }>;
   goalRows?: Array<{ id: string; project_id: string }>;
+  authUserId?: string | null;
+  calendarSettingsRow?: Record<string, unknown> | null;
 }) {
   const taskInsertCalls: Array<Record<string, unknown>[]> = [];
+  const taskUpdateCalls: Array<{
+    payload: Record<string, unknown>;
+    filters: Record<string, unknown>;
+  }> = [];
   const sessionInsertCalls: Array<Record<string, unknown>> = [];
   const recurrenceInsertCalls: Array<Record<string, unknown>> = [];
   const tasks = [{ id: "task-1" }];
 
   const supabase = {
+    auth: {
+      getUser: async () => ({
+        data: {
+          user:
+            options?.authUserId === null
+              ? null
+              : { id: options?.authUserId ?? "user-1" },
+        },
+        error: null,
+      }),
+    },
     from(table: string) {
       if (table === "projects") {
         return {
@@ -1321,16 +1340,20 @@ function createTaskCreateSupabaseMock(options?: {
       if (table === "tasks") {
         return {
           select(columns: string) {
-            assert.equal(columns, "id");
+            assert.ok(columns === "id" || columns === "id, owner_user_id");
             const state = { taskId: "" };
             return {
               eq(column: string, value: string) {
-                assert.equal(column, "id");
-                state.taskId = value;
+                assert.ok(column === "id" || column === "owner_user_id");
+                if (column === "id") {
+                  state.taskId = value;
+                }
                 return this;
               },
               maybeSingle: async () => ({
-                data: tasks.find((task) => task.id === state.taskId) ?? null,
+                data:
+                  tasks.find((task) => task.id === state.taskId) ??
+                  null,
                 error: null,
               }),
             };
@@ -1348,6 +1371,40 @@ function createTaskCreateSupabaseMock(options?: {
                 }
                 return { data: tasks, error: null };
               },
+            };
+          },
+          update(payload: Record<string, unknown>) {
+            const state: Record<string, unknown> = {};
+            return {
+              eq(column: string, value: unknown) {
+                state[column] = value;
+                return this;
+              },
+              then(resolve: (value: { data: null; error: null }) => void) {
+                taskUpdateCalls.push({ payload, filters: state });
+                resolve({ data: null, error: null });
+              },
+            };
+          },
+        };
+      }
+
+      if (table === "calendar_integration_settings") {
+        return {
+          select: () => {
+            const state: Record<string, unknown> = {};
+            return {
+              eq(column: string, value: unknown) {
+                state[column] = value;
+                return this;
+              },
+              maybeSingle: async () => ({
+                data:
+                  options?.calendarSettingsRow === undefined
+                    ? null
+                    : options.calendarSettingsRow,
+                error: null,
+              }),
             };
           },
         };
@@ -1391,6 +1448,7 @@ function createTaskCreateSupabaseMock(options?: {
   return {
     supabase: supabase as never,
     taskInsertCalls,
+    taskUpdateCalls,
     sessionInsertCalls,
     recurrenceInsertCalls,
   };
@@ -1542,6 +1600,288 @@ test("createTaskWithOptionalWorkedTime persists scheduled task block", async () 
     mock.taskInsertCalls[0]?.[0]?.scheduled_end_at,
     "2026-05-09T10:00:00.000Z",
   );
+});
+
+function createConnectedCalendarSettingsRow(overrides?: Record<string, unknown>) {
+  return {
+    owner_user_id: "user-1",
+    provider: "google",
+    google_account_email: "user@example.com",
+    scheduled_task_sync_enabled: true,
+    default_reminder_minutes: 15,
+    connected_at: "2026-05-09T08:00:00.000Z",
+    disconnected_at: null,
+    access_token_encrypted: "mock-access-token",
+    refresh_token_encrypted: "mock-refresh-token",
+    token_expires_at: "2026-05-09T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+test("createTaskWithOptionalWorkedTime creates one Google Calendar event for synced scheduled task", async () => {
+  const calendarEvents: Record<string, unknown>[] = [];
+  const mock = createTaskCreateSupabaseMock({
+    authUserId: "user-1",
+    calendarSettingsRow: createConnectedCalendarSettingsRow(),
+  });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Plan deep work slot",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        scheduled_start_at: "2026-05-09T09:00:00.000Z",
+        scheduled_end_at: "2026-05-09T10:00:00.000Z",
+        calendar_sync_enabled: true,
+        calendar_reminder_minutes: 20,
+      },
+      workedTime: null,
+    },
+    {
+      supabase: mock.supabase,
+      calendarClient: {
+        createEvent: async (event) => {
+          calendarEvents.push(event as unknown as Record<string, unknown>);
+          return { eventId: "google-event-1", errorMessage: null };
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: null,
+    createdTaskId: "task-1",
+    workedTimeLogged: false,
+  });
+  assert.equal(calendarEvents.length, 1);
+  assert.equal(calendarEvents[0]?.summary, "Plan deep work slot");
+  assert.deepEqual(calendarEvents[0]?.start, {
+    dateTime: "2026-05-09T09:00:00.000Z",
+  });
+  assert.deepEqual(calendarEvents[0]?.end, {
+    dateTime: "2026-05-09T10:00:00.000Z",
+  });
+  assert.deepEqual(mock.taskUpdateCalls, [
+    {
+      payload: {
+        calendar_sync_status: "synced",
+        calendar_event_id: "google-event-1",
+        calendar_sync_failure_reason: null,
+      },
+      filters: { id: "task-1", owner_user_id: "user-1" },
+    },
+  ]);
+});
+
+test("createTaskWithOptionalWorkedTime uses Calendar default reminder when task has none", async () => {
+  const calendarEvents: Record<string, unknown>[] = [];
+  const mock = createTaskCreateSupabaseMock({
+    calendarSettingsRow: createConnectedCalendarSettingsRow({
+      default_reminder_minutes: 25,
+    }),
+  });
+
+  await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Default reminder",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        scheduled_start_at: "2026-05-09T09:00:00.000Z",
+        scheduled_end_at: "2026-05-09T10:00:00.000Z",
+        calendar_sync_enabled: true,
+      },
+      workedTime: null,
+    },
+    {
+      supabase: mock.supabase,
+      calendarClient: {
+        createEvent: async (event) => {
+          calendarEvents.push(event as unknown as Record<string, unknown>);
+          return { eventId: "google-event-1", errorMessage: null };
+        },
+      },
+    },
+  );
+
+  assert.deepEqual(calendarEvents[0]?.reminders, {
+    useDefault: false,
+    overrides: [{ method: "popup", minutes: 25 }],
+  });
+});
+
+test("createTaskWithOptionalWorkedTime skips Calendar when sync is disabled", async () => {
+  const calendarEvents: Record<string, unknown>[] = [];
+  const mock = createTaskCreateSupabaseMock({
+    calendarSettingsRow: createConnectedCalendarSettingsRow(),
+  });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "No sync",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        scheduled_start_at: "2026-05-09T09:00:00.000Z",
+        scheduled_end_at: "2026-05-09T10:00:00.000Z",
+        calendar_sync_enabled: false,
+      },
+      workedTime: null,
+    },
+    {
+      supabase: mock.supabase,
+      calendarClient: {
+        createEvent: async (event) => {
+          calendarEvents.push(event as unknown as Record<string, unknown>);
+          return { eventId: "google-event-1", errorMessage: null };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(calendarEvents.length, 0);
+  assert.equal(mock.taskUpdateCalls.length, 0);
+});
+
+test("createTaskWithOptionalWorkedTime skips Calendar event for unscheduled synced task", async () => {
+  const calendarEvents: Record<string, unknown>[] = [];
+  const mock = createTaskCreateSupabaseMock({
+    calendarSettingsRow: createConnectedCalendarSettingsRow(),
+  });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Sync without schedule",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        calendar_sync_enabled: true,
+      },
+      workedTime: null,
+    },
+    {
+      supabase: mock.supabase,
+      calendarClient: {
+        createEvent: async (event) => {
+          calendarEvents.push(event as unknown as Record<string, unknown>);
+          return { eventId: "google-event-1", errorMessage: null };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(calendarEvents.length, 0);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.calendar_sync_status, "skipped");
+  assert.equal(
+    mock.taskUpdateCalls[0]?.payload.calendar_sync_failure_reason,
+    "Task is not scheduled.",
+  );
+});
+
+test("createTaskWithOptionalWorkedTime skips Calendar event when Google is disconnected", async () => {
+  const calendarEvents: Record<string, unknown>[] = [];
+  const mock = createTaskCreateSupabaseMock({
+    calendarSettingsRow: createConnectedCalendarSettingsRow({
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      connected_at: null,
+      disconnected_at: "2026-05-09T08:30:00.000Z",
+    }),
+  });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Disconnected",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        scheduled_start_at: "2026-05-09T09:00:00.000Z",
+        scheduled_end_at: "2026-05-09T10:00:00.000Z",
+        calendar_sync_enabled: true,
+      },
+      workedTime: null,
+    },
+    {
+      supabase: mock.supabase,
+      calendarClient: {
+        createEvent: async (event) => {
+          calendarEvents.push(event as unknown as Record<string, unknown>);
+          return { eventId: "google-event-1", errorMessage: null };
+        },
+      },
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(calendarEvents.length, 0);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.calendar_sync_status, "skipped");
+  assert.equal(
+    mock.taskUpdateCalls[0]?.payload.calendar_sync_failure_reason,
+    "Google Calendar is not connected.",
+  );
+});
+
+test("createTaskWithOptionalWorkedTime keeps local task when Calendar creation fails", async () => {
+  const mock = createTaskCreateSupabaseMock({
+    authUserId: "owner-42",
+    calendarSettingsRow: createConnectedCalendarSettingsRow(),
+  });
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Calendar failure",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+        scheduled_start_at: "2026-05-09T09:00:00.000Z",
+        scheduled_end_at: "2026-05-09T10:00:00.000Z",
+        calendar_sync_enabled: true,
+      },
+      workedTime: null,
+    },
+    {
+      supabase: mock.supabase,
+      calendarClient: {
+        createEvent: async () => ({
+          eventId: null,
+          errorMessage: "Calendar API unavailable.",
+        }),
+      },
+    },
+  );
+
+  assert.deepEqual(result, {
+    errorMessage: null,
+    createdTaskId: "task-1",
+    workedTimeLogged: false,
+    calendarSyncErrors: ["Calendar API unavailable."],
+  });
+  assert.equal(mock.taskInsertCalls.length, 1);
+  assert.deepEqual(mock.taskUpdateCalls, [
+    {
+      payload: {
+        calendar_sync_status: "failed",
+        calendar_event_id: null,
+        calendar_sync_failure_reason: "Calendar API unavailable.",
+      },
+      filters: { id: "task-1", owner_user_id: "owner-42" },
+    },
+  ]);
 });
 
 test("createTaskWithOptionalWorkedTime logs exactly one completed session", async () => {

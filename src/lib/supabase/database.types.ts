@@ -391,8 +391,11 @@ export type Database = {
           created_at: string
           due_date: string | null
           description: string | null
+          calendar_event_id: string | null
           calendar_reminder_minutes: number
+          calendar_sync_failure_reason: string | null
           calendar_sync_enabled: boolean
+          calendar_sync_status: string | null
           estimate_minutes: number | null
           focus_rank: number | null
           goal_id: string | null
@@ -415,8 +418,11 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           description?: string | null
+          calendar_event_id?: string | null
           calendar_reminder_minutes?: number
+          calendar_sync_failure_reason?: string | null
           calendar_sync_enabled?: boolean
+          calendar_sync_status?: string | null
           estimate_minutes?: number | null
           focus_rank?: number | null
           goal_id?: string | null
@@ -439,8 +445,11 @@ export type Database = {
           created_at?: string
           due_date?: string | null
           description?: string | null
+          calendar_event_id?: string | null
           calendar_reminder_minutes?: number
+          calendar_sync_failure_reason?: string | null
           calendar_sync_enabled?: boolean
+          calendar_sync_status?: string | null
           estimate_minutes?: number | null
           focus_rank?: number | null
           goal_id?: string | null

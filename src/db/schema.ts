@@ -87,6 +87,9 @@ export const tasks = pgTable(
     scheduledEndAt: timestamp("scheduled_end_at", { withTimezone: true }),
     calendarSyncEnabled: boolean("calendar_sync_enabled").notNull().default(false),
     calendarReminderMinutes: integer("calendar_reminder_minutes").notNull().default(10),
+    calendarEventId: text("calendar_event_id"),
+    calendarSyncStatus: varchar("calendar_sync_status", { length: 32 }),
+    calendarSyncFailureReason: text("calendar_sync_failure_reason"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     archivedBy: uuid("archived_by"),
@@ -115,6 +118,10 @@ export const tasks = pgTable(
         or
         (${table.scheduledStartAt} is not null and ${table.scheduledEndAt} is not null and ${table.scheduledStartAt} < ${table.scheduledEndAt})
       )`,
+    ),
+    check(
+      "tasks_calendar_sync_status_check",
+      sql`${table.calendarSyncStatus} is null or ${table.calendarSyncStatus} in ('pending', 'synced', 'failed', 'skipped')`,
     ),
   ],
 );

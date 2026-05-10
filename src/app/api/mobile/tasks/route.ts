@@ -127,7 +127,7 @@ export async function POST(request: Request) {
     { supabase: authResult.supabase },
   );
 
-  if (creationResult.errorMessage) {
+  if (creationResult.errorMessage !== null) {
     return mobileErrorResponse("VALIDATION_ERROR", creationResult.errorMessage, 400);
   }
 
