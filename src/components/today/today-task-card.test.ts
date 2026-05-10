@@ -108,6 +108,15 @@ test("scheduled range only returns when both start and end exist", () => {
     ),
     null,
   );
+  assert.equal(
+    getTodayTaskScheduledRange(
+      createTask({
+        scheduledStartAt: "2026-04-20T09:30:00.000Z",
+        scheduledEndAt: "2026-04-20T09:00:00.000Z",
+      }),
+    ),
+    null,
+  );
   assert.deepEqual(
     getTodayTaskScheduledRange(
       createTask({
