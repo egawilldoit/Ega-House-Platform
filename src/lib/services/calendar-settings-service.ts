@@ -80,6 +80,15 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
+async function resolveCalendarSettingsWriteClient(supabase?: SupabaseServerClient) {
+  if (supabase) {
+    return supabase;
+  }
+
+  const { getSupabaseServiceClient } = await import("@/lib/supabase/service");
+  return getSupabaseServiceClient();
+}
+
 async function requireAuthenticatedUserId(supabase: SupabaseServerClient) {
   const { data, error } = await supabase.auth.getUser();
 
@@ -291,27 +300,39 @@ export async function connectGoogleCalendarWithTokens(
   }
 
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
-  const { data, error } = await supabase
-    .from("calendar_integration_settings")
-    .upsert(
-      {
-        owner_user_id: authResult.userId,
-        provider: GOOGLE_CALENDAR_PROVIDER,
-        google_account_email: input.googleAccountEmail?.trim() || null,
-        access_token_encrypted: accessToken,
-        refresh_token_encrypted: refreshToken,
-        token_expires_at: getTokenExpiresAtIso(
-          input.expiresInSeconds,
-          updatedAtIso,
-        ),
-        connected_at: updatedAtIso,
-        disconnected_at: null,
-        updated_at: updatedAtIso,
-      },
-      { onConflict: "owner_user_id,provider" },
-    )
-    .select(CALENDAR_SETTINGS_SAFE_SELECT)
-    .maybeSingle();
+  let data: CalendarSettingsSafeRow | null = null;
+  let error: unknown = null;
+
+  try {
+    const writeSupabase = await resolveCalendarSettingsWriteClient(
+      options?.supabase,
+    );
+    const writeResult = await writeSupabase
+      .from("calendar_integration_settings")
+      .upsert(
+        {
+          owner_user_id: authResult.userId,
+          provider: GOOGLE_CALENDAR_PROVIDER,
+          google_account_email: input.googleAccountEmail?.trim() || null,
+          access_token_encrypted: accessToken,
+          refresh_token_encrypted: refreshToken,
+          token_expires_at: getTokenExpiresAtIso(
+            input.expiresInSeconds,
+            updatedAtIso,
+          ),
+          connected_at: updatedAtIso,
+          disconnected_at: null,
+          updated_at: updatedAtIso,
+        },
+        { onConflict: "owner_user_id,provider" },
+      )
+      .select(CALENDAR_SETTINGS_SAFE_SELECT)
+      .maybeSingle();
+    data = writeResult.data;
+    error = writeResult.error;
+  } catch (writeError) {
+    error = writeError;
+  }
 
   if (error) {
     return {
