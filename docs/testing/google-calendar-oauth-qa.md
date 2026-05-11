@@ -4,6 +4,8 @@ Production deploys must set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_
 
 After changing any of those Vercel environment variables, redeploy before testing Connect Calendar. Google Cloud Console must list the exact `GOOGLE_REDIRECT_URI` as an authorized redirect URI.
 
+Before testing callback persistence in production, verify the database has applied `drizzle/0030_calendar_integration_settings.sql`. The `calendar_integration_settings` table must include `owner_user_id`, `provider`, token columns, `connected_at`, `disconnected_at`, and the unique index on `(owner_user_id, provider)`. The callback authenticates the user from the server Supabase session, then writes the owner-scoped row with the server-only service-role Supabase client. `SUPABASE_SERVICE_ROLE_KEY` must exist only in server env vars.
+
 ## Connect URL checklist
 
 The Connect Google Calendar redirect must include:

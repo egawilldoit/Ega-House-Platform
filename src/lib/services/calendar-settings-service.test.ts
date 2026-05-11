@@ -23,10 +23,12 @@ type MockRow = {
 function createCalendarSupabaseMock(options?: {
   userId?: string;
   row?: MockRow | null;
+  upsertError?: Error;
 }) {
   const calls: Array<{ column: string; value: unknown }> = [];
   const selectedColumns: string[] = [];
   const upsertPayloads: Record<string, unknown>[] = [];
+  const upsertOptions: Record<string, unknown>[] = [];
   const userId = options?.userId ?? "user-1";
   let row = options?.row ?? null;
 
@@ -52,22 +54,36 @@ function createCalendarSupabaseMock(options?: {
           };
           return query;
         },
-        upsert(payload: Record<string, unknown>) {
+        upsert(payload: Record<string, unknown>, upsertOption?: Record<string, unknown>) {
           upsertPayloads.push(payload);
+          if (upsertOption) {
+            upsertOptions.push(upsertOption);
+          }
+
+          const existingRow = row;
           row = {
-            owner_user_id: String(payload.owner_user_id),
-            provider: String(payload.provider),
+            owner_user_id: String(payload.owner_user_id ?? existingRow?.owner_user_id),
+            provider: String(payload.provider ?? existingRow?.provider),
             google_account_email:
-              (payload.google_account_email as string | null | undefined) ?? null,
-            scheduled_task_sync_enabled: Boolean(
-              payload.scheduled_task_sync_enabled,
-            ),
+              (payload.google_account_email as string | null | undefined) ??
+              existingRow?.google_account_email ??
+              null,
+            scheduled_task_sync_enabled:
+              (payload.scheduled_task_sync_enabled as boolean | undefined) ??
+              existingRow?.scheduled_task_sync_enabled ??
+              false,
             default_reminder_minutes:
-              (payload.default_reminder_minutes as number | undefined) ?? 10,
+              (payload.default_reminder_minutes as number | undefined) ??
+              existingRow?.default_reminder_minutes ??
+              10,
             connected_at:
-              (payload.connected_at as string | null | undefined) ?? null,
+              (payload.connected_at as string | null | undefined) ??
+              existingRow?.connected_at ??
+              null,
             disconnected_at:
-              (payload.disconnected_at as string | null | undefined) ?? null,
+              (payload.disconnected_at as string | null | undefined) ??
+              existingRow?.disconnected_at ??
+              null,
           };
 
           return {
@@ -75,6 +91,10 @@ function createCalendarSupabaseMock(options?: {
               selectedColumns.push(columns);
               return {
                 async maybeSingle() {
+                  if (options?.upsertError) {
+                    return { data: null, error: options.upsertError };
+                  }
+
                   return { data: row, error: null };
                 },
               };
@@ -89,6 +109,7 @@ function createCalendarSupabaseMock(options?: {
     calls,
     selectedColumns,
     supabase,
+    upsertOptions,
     upsertPayloads,
   };
 }
@@ -171,9 +192,12 @@ test("Calendar defaults update is owner-scoped and normalizes reminder", async (
     default_reminder_minutes: 10080,
     updated_at: "2026-05-10T10:00:00.000Z",
   });
+  assert.deepEqual(mock.upsertOptions[0], {
+    onConflict: "owner_user_id,provider",
+  });
 });
 
-test("Google Calendar callback token persistence stores secrets server-side but returns safe view", async () => {
+test("Google Calendar callback token persistence inserts first-time connection server-side and returns safe view", async () => {
   const mock = createCalendarSupabaseMock({ userId: "owner-c" });
   const result = await connectGoogleCalendarWithTokens(
     {
@@ -190,6 +214,10 @@ test("Google Calendar callback token persistence stores secrets server-side but 
 
   assert.equal(result.data.connected, true);
   assert.equal(result.data.googleAccountEmail, "owner@example.com");
+  assert.equal(mock.upsertPayloads[0]?.owner_user_id, "owner-c");
+  assert.deepEqual(mock.upsertOptions[0], {
+    onConflict: "owner_user_id,provider",
+  });
   assert.equal(mock.upsertPayloads[0]?.access_token_encrypted, "google-access-token");
   assert.equal(mock.upsertPayloads[0]?.refresh_token_encrypted, "google-refresh-token");
   assert.equal(
@@ -197,6 +225,89 @@ test("Google Calendar callback token persistence stores secrets server-side but 
     "2026-05-10T11:00:00.000Z",
   );
   assert.equal(assertCalendarSettingsViewHasNoSecrets(result.data), true);
+});
+
+test("Google Calendar callback token persistence updates existing settings row without changing defaults", async () => {
+  const mock = createCalendarSupabaseMock({
+    userId: "owner-existing",
+    row: {
+      owner_user_id: "owner-existing",
+      provider: "google",
+      google_account_email: "old@example.com",
+      scheduled_task_sync_enabled: true,
+      default_reminder_minutes: 45,
+      connected_at: "2026-05-01T10:00:00.000Z",
+      disconnected_at: null,
+    },
+  });
+
+  const result = await connectGoogleCalendarWithTokens(
+    {
+      accessToken: "new-access-token",
+      refreshToken: "new-refresh-token",
+      expiresInSeconds: 1800,
+      googleAccountEmail: "new@example.com",
+    },
+    {
+      supabase: mock.supabase as never,
+      updatedAtIso: "2026-05-10T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data.connected, true);
+  assert.equal(result.data.googleAccountEmail, "new@example.com");
+  assert.equal(result.data.scheduledTaskSyncEnabled, true);
+  assert.equal(result.data.defaultReminderMinutes, 45);
+  assert.equal(mock.upsertPayloads[0]?.owner_user_id, "owner-existing");
+  assert.equal(mock.upsertPayloads[0]?.access_token_encrypted, "new-access-token");
+  assert.equal(mock.upsertPayloads[0]?.refresh_token_encrypted, "new-refresh-token");
+});
+
+test("Google Calendar callback token persistence maps database write failure for settings_write_failed", async () => {
+  const mock = createCalendarSupabaseMock({
+    userId: "owner-failure",
+    upsertError: new Error("permission denied for table calendar_integration_settings"),
+  });
+
+  const result = await connectGoogleCalendarWithTokens(
+    {
+      accessToken: "google-access-token",
+      refreshToken: "google-refresh-token",
+      expiresInSeconds: 3600,
+      googleAccountEmail: "owner@example.com",
+    },
+    {
+      supabase: mock.supabase as never,
+      updatedAtIso: "2026-05-10T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, "Unable to connect Google Calendar right now.");
+  assert.equal(result.data.connected, false);
+  assert.equal(mock.upsertPayloads[0]?.owner_user_id, "owner-failure");
+});
+
+test("Google Calendar callback token persistence scopes owner from authenticated server session", async () => {
+  const mock = createCalendarSupabaseMock({ userId: "authenticated-owner" });
+
+  await connectGoogleCalendarWithTokens(
+    {
+      accessToken: "google-access-token",
+      refreshToken: "google-refresh-token",
+      googleAccountEmail: "owner@example.com",
+    },
+    {
+      supabase: mock.supabase as never,
+      updatedAtIso: "2026-05-10T10:00:00.000Z",
+    },
+  );
+
+  assert.equal(mock.upsertPayloads[0]?.owner_user_id, "authenticated-owner");
+  assert.equal(
+    Object.hasOwn(mock.upsertPayloads[0] ?? {}, "owner_user_id"),
+    true,
+  );
 });
 
 test("Google Calendar callback token persistence requires refresh token", async () => {
