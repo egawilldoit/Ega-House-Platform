@@ -2,6 +2,7 @@ import {
   ExecutionEvidenceSessionRow,
   ExecutionEvidenceWindow,
   calculateExecutionEvidenceForWindow,
+  getExecutionEvidenceSessionOverlapSeconds,
 } from './execution-evidence-service';
 import { getCurrentDayWindow } from '@/lib/task-session';
 
@@ -80,6 +81,18 @@ export type WorkAnalyticsDaily = {
   workedMinutes: number;
   sessionCount: number;
   completedTaskCount?: number; // undefined if not computed
+};
+
+export type WorkAnalyticsProjectBreakdown = {
+  projectId: string | null;
+  projectName: string;
+  workedMinutes: number;
+  sessionCount: number;
+};
+
+export type WorkAnalyticsWithBreakdown = {
+  period: WorkAnalyticsPeriod;
+  projectBreakdown: WorkAnalyticsProjectBreakdown[];
 };
 
 /**
@@ -184,4 +197,120 @@ export function calculateWorkAnalyticsDailySeries(
   }
   
   return result;
+}
+
+/**
+ * Calculates project breakdown for work analytics.
+ * Groups worked minutes and session count by project id/name.
+ * Puts missing, deleted, or unknown project refs into a stable `Unknown project` bucket.
+ * Sorts breakdown by worked minutes descending, then name/id for stable ties.
+ * 
+ * @param sessions Raw session data from task_sessions table (with tasks relation)
+ * @param window Start and end of the period to analyze (in ISO strings)
+ * @param options Optional configuration (now for mocking, includeOpenSessions)
+ * @returns Array of project breakdown entries sorted by worked minutes descending
+ */
+export function calculateWorkAnalyticsProjectBreakdown(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsProjectBreakdown[] {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+  
+  // Map to accumulate project data: projectId -> {workedMinutes, sessionCount, projectName}
+  const projectMap = new Map<string, { workedMinutes: number; sessionCount: number; projectName: string }>();
+  
+  // Process each session
+  for (const session of sessions) {
+    // Calculate tracked seconds for this session within the window
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      {
+        task_id: session.task_id,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        duration_seconds: session.duration_seconds,
+        tasks: session.tasks
+      } as ExecutionEvidenceSessionRow,
+      {
+        startIso: window.startIso,
+        endIso: window.endIso
+      } as ExecutionEvidenceWindow,
+      {
+        nowIso,
+        includeOpenSessions
+      }
+    );
+    
+    // Skip if no tracked time
+    if (trackedSeconds <= 0) {
+      continue;
+    }
+    
+    // Determine project ID and name
+    let projectId: string | null = null;
+    let projectName: string = 'Unknown project';
+    
+    if (session.tasks?.projects?.name) {
+      projectId = session.tasks.projects.id ?? session.tasks.project_id ?? null;
+      projectName = session.tasks.projects.name;
+    }
+    
+    // Use projectId as key, or 'unknown' for missing projects
+    const key = projectId ?? 'unknown';
+    
+    // Initialize if not present
+    if (!projectMap.has(key)) {
+      projectMap.set(key, { workedMinutes: 0, sessionCount: 0, projectName });
+    } else {
+      // Update existing entry - keep the project name from the first session we saw
+      const existing = projectMap.get(key)!;
+      projectMap.set(key, {
+        workedMinutes: existing.workedMinutes + trackedSeconds,
+        sessionCount: existing.sessionCount + 1,
+        projectName: existing.projectName
+      });
+      continue;
+    }
+    
+    // Update project data for new entry
+    const projectData = projectMap.get(key)!;
+    projectData.workedMinutes += trackedSeconds;
+    projectData.sessionCount += 1;
+  }
+  
+  // Convert map to array
+  const breakdown: WorkAnalyticsProjectBreakdown[] = [];
+  
+  for (const [key, data] of projectMap.entries()) {
+    // Determine project name and id for the result
+    let resultProjectId: string | null = null;
+    let resultProjectName: string = data.projectName;
+    
+    if (key !== 'unknown') {
+      // For known projects, use the projectId from the map key
+      resultProjectId = key;
+    } else {
+      // Explicitly unknown project
+      resultProjectId = null;
+      resultProjectName = 'Unknown project';
+    }
+    
+    breakdown.push({
+      projectId: resultProjectId,
+      projectName: resultProjectName,
+      workedMinutes: Math.floor(data.workedMinutes / 60),
+      sessionCount: data.sessionCount
+    });
+  }
+  
+  // Sort by worked minutes descending, then by project name for stable ties
+  breakdown.sort((a, b) => {
+    if (a.workedMinutes !== b.workedMinutes) {
+      return b.workedMinutes - a.workedMinutes; // descending
+    }
+    return a.projectName.localeCompare(b.projectName); // ascending by name
+  });
+  
+  return breakdown;
 }

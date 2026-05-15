@@ -4,6 +4,7 @@ import test from "node:test";
 import { 
   calculateWorkAnalytics,
   calculateWorkAnalyticsDailySeries,
+  calculateWorkAnalyticsProjectBreakdown,
 } from "./work-analytics-service";
 
 const window = {
@@ -297,5 +298,191 @@ test("respects includeOpenSessions option for daily series", () => {
   });
   assert.deepEqual(result, [
     { date: "2026-04-20", workedMinutes: 60, sessionCount: 1, completedTaskCount: undefined },
+  ]);
+});
+
+test("returns empty project breakdown for no sessions", () => {
+  const result = calculateWorkAnalyticsProjectBreakdown([], {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z"
+  });
+  assert.deepEqual(result, []);
+});
+
+test("groups sessions by project", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+        projects: { id: "project-1", name: "Project Alpha" },
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T10:00:00.000Z",
+      ended_at: "2026-04-20T12:00:00.000Z",
+      duration_seconds: 7200, // 2 hours
+      tasks: {
+        id: "task-2",
+        title: "Task 2",
+        projects: { id: "project-1", name: "Project Alpha" }, // Same project
+      },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-04-20T12:00:00.000Z",
+      ended_at: "2026-04-20T13:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-3",
+        title: "Task 3",
+        projects: { id: "project-2", name: "Project Beta" },
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsProjectBreakdown(sessions, {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z"
+  });
+  
+  // Should have 2 projects: Project Alpha (3 hours), Project Beta (1 hour)
+  // Sorted by worked minutes descending
+  assert.deepEqual(result, [
+    {
+      projectId: "project-1",
+      projectName: "Project Alpha",
+      workedMinutes: 180, // 3 hours
+      sessionCount: 2
+    },
+    {
+      projectId: "project-2",
+      projectName: "Project Beta",
+      workedMinutes: 60, // 1 hour
+      sessionCount: 1
+    }
+  ]);
+});
+
+test("handles unknown/missing projects", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+        // No projects relation
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T10:00:00.000Z",
+      ended_at: "2026-04-20T11:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-2",
+        title: "Task 2",
+        projects: null, // Explicitly null
+      },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-04-20T11:00:00.000Z",
+      ended_at: "2026-04-20T12:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-3",
+        title: "Task 3",
+        projects: { name: "Named Project" }, // Has name but no id
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsProjectBreakdown(sessions, {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z"
+  });
+  
+  // All should go to "Unknown project" bucket with 3 hours total and 3 sessions
+  assert.deepEqual(result, [
+    {
+      projectId: null,
+      projectName: "Unknown project",
+      workedMinutes: 180, // 3 hours
+      sessionCount: 3
+    }
+  ]);
+});
+
+test("sorts project breakdown correctly", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+        projects: { id: "project-a", name: "AAA Project" },
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T10:00:00.000Z",
+      ended_at: "2026-04-20T11:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-2",
+        title: "Task 2",
+        projects: { id: "project-b", name: "BBB Project" },
+      },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-04-20T11:00:00.000Z",
+      ended_at: "2026-04-20T12:00:00.000Z",
+      duration_seconds: 3600, // 1 hour (same as task-2)
+      tasks: {
+        id: "task-3",
+        title: "Task 3",
+        projects: { id: "project-c", name: "CCC Project" },
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsProjectBreakdown(sessions, {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z"
+  });
+  
+  // All projects have 60 minutes, should be sorted by name (AAA, BBB, CCC)
+  assert.deepEqual(result, [
+    {
+      projectId: "project-a",
+      projectName: "AAA Project",
+      workedMinutes: 60,
+      sessionCount: 1
+    },
+    {
+      projectId: "project-b",
+      projectName: "BBB Project",
+      workedMinutes: 60,
+      sessionCount: 1
+    },
+    {
+      projectId: "project-c",
+      projectName: "CCC Project",
+      workedMinutes: 60,
+      sessionCount: 1
+    }
   ]);
 });
