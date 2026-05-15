@@ -95,6 +95,24 @@ export type WorkAnalyticsWithBreakdown = {
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
 };
 
+export type WorkAnalyticsInsights = {
+  // Period comparison
+  previousPeriodWorkedMinutes: number;
+  deltaMinutes: number;
+  percentChange: number | null; // null when no previous period
+  
+  // Best/worst days
+  bestDay: WorkAnalyticsDaily | null; // null when no data
+  lowestNonZeroDay: WorkAnalyticsDaily | null; // null when no data or all zero
+  daysWorkedCount: number; // number of days with >0 worked minutes
+  currentStreak: number; // consecutive days with work up to today
+  
+  // Session quality
+  averageSessionLength: number; // minutes
+  longestSession: number; // minutes
+  shortestNonZeroSession: number | null; // minutes, null when no sessions
+};
+
 /**
  * Calculates daily worked time and session count series for a date range.
  * Each day returns date key, worked minutes, session count, and optional completed task count.
@@ -313,4 +331,165 @@ export function calculateWorkAnalyticsProjectBreakdown(
   });
   
   return breakdown;
+}
+
+/**
+ * Calculates work insights including comparison, streaks, and session quality.
+ * 
+ * @param sessions Raw session data from task_sessions table (with tasks relation)
+ * @param window Start and end of the period to analyze (in ISO strings)
+ * @param options Optional configuration (now for mocking, includeOpenSessions)
+ * @returns Work analytics insights object
+ */
+export function calculateWorkAnalyticsInsights(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsInsights {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+  
+  // Calculate current period analytics
+  const currentPeriod = calculateWorkAnalytics(sessions, window, options);
+  
+  // Calculate previous period (same duration, immediately before current period)
+  const windowStart = new Date(window.startIso);
+  const windowEnd = new Date(window.endIso);
+  const durationMs = windowEnd.getTime() - windowStart.getTime();
+  
+  const previousWindow: ExecutionEvidenceWindow = {
+    startIso: new Date(windowStart.getTime() - durationMs).toISOString(),
+    endIso: windowStart.toISOString()
+  };
+  
+  const previousPeriod = calculateWorkAnalytics(sessions, previousWindow, options);
+  
+  // Calculate daily series for streak and best/worst day calculations
+  // We need to get the date range that covers our window
+  const startDate = new Date(window.startIso);
+  const endDate = new Date(window.endIso);
+  
+  // Convert to date strings (YYYY-MM-DD) for the daily series function
+  const startDateStr = startDate.toISOString().split('T')[0];
+  const endDateStr = endDate.toISOString().split('T')[0];
+  
+  const dailySeries = calculateWorkAnalyticsDailySeries(sessions, startDateStr, endDateStr, options);
+  
+  // Calculate period comparison
+  const previousWorkedMinutes = previousPeriod.totalWorkedMinutes;
+  const deltaMinutes = currentPeriod.totalWorkedMinutes - previousWorkedMinutes;
+  const percentChange = previousWorkedMinutes === 0 
+    ? (currentPeriod.totalWorkedMinutes > 0 ? Number.POSITIVE_INFINITY : 0)
+    : (deltaMinutes / previousWorkedMinutes) * 100;
+  
+  // Find best day (highest worked minutes)
+  let bestDay: WorkAnalyticsDaily | null = null;
+  let lowestNonZeroDay: WorkAnalyticsDaily | null = null;
+  let daysWorkedCount = 0;
+  
+  for (const day of dailySeries) {
+    if (day.workedMinutes > 0) {
+      daysWorkedCount++;
+      
+      // Update best day
+      if (!bestDay || day.workedMinutes > bestDay.workedMinutes) {
+        bestDay = day;
+      }
+      
+      // Update lowest non-zero day
+      if (!lowestNonZeroDay || day.workedMinutes < lowestNonZeroDay.workedMinutes) {
+        lowestNonZeroDay = day;
+      }
+    }
+  }
+  
+  // Calculate current streak (consecutive days with work up to today)
+  // We'll check from today backwards
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let currentStreak = 0;
+  
+  // Check each day going backwards from today
+  let checkDate = new Date(today);
+  while (true) {
+    const dateStr = checkDate.toISOString().split('T')[0];
+    const dayData = dailySeries.find(day => day.date === dateStr);
+    
+    if (dayData && dayData.workedMinutes > 0) {
+      currentStreak++;
+      checkDate = new Date(checkDate.getTime() - 24 * 60 * 60 * 1000); // Subtract one day
+    } else {
+      break;
+    }
+    
+    // Prevent infinite loop
+    if (currentStreak > 365) break;
+  }
+  
+  // Calculate session quality stats
+  // We need to get all session durations within the window
+  let totalSessionSeconds = 0;
+  let longestSessionSeconds = 0;
+  let shortestNonZeroSessionSeconds = Number.POSITIVE_INFINITY;
+  let sessionCount = 0;
+  
+  for (const session of sessions) {
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      {
+        task_id: session.task_id,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        duration_seconds: session.duration_seconds,
+        tasks: session.tasks
+      } as ExecutionEvidenceSessionRow,
+      {
+        startIso: window.startIso,
+        endIso: window.endIso
+      } as ExecutionEvidenceWindow,
+      {
+        nowIso,
+        includeOpenSessions
+      }
+    );
+    
+    if (trackedSeconds > 0) {
+      totalSessionSeconds += trackedSeconds;
+      sessionCount++;
+      
+      if (trackedSeconds > longestSessionSeconds) {
+        longestSessionSeconds = trackedSeconds;
+      }
+      
+      if (trackedSeconds < shortestNonZeroSessionSeconds) {
+        shortestNonZeroSessionSeconds = trackedSeconds;
+      }
+    }
+  }
+  
+  const averageSessionLength = sessionCount > 0 
+    ? Math.floor((totalSessionSeconds / sessionCount) / 60) 
+    : 0;
+  
+  const longestSession = Math.floor(longestSessionSeconds / 60);
+  const shortestNonZeroSession = shortestNonZeroSessionSeconds === Number.POSITIVE_INFINITY
+    ? null
+    : Math.floor(shortestNonZeroSessionSeconds / 60);
+  
+  return {
+    // Period comparison
+    previousPeriodWorkedMinutes: previousWorkedMinutes,
+    deltaMinutes: deltaMinutes,
+    percentChange: isFinite(percentChange) ? percentChange : null,
+    
+    // Best/worst days
+    bestDay: bestDay ?? null,
+    lowestNonZeroDay: lowestNonZeroDay ?? null,
+    daysWorkedCount: daysWorkedCount,
+    currentStreak: currentStreak,
+    
+    // Session quality
+    averageSessionLength,
+    longestSession,
+    shortestNonZeroSession
+  };
 }
