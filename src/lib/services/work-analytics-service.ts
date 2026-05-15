@@ -3,6 +3,36 @@ import {
   ExecutionEvidenceWindow,
   calculateExecutionEvidenceForWindow,
 } from './execution-evidence-service';
+import { getCurrentDayWindow } from '@/lib/task-session';
+
+/**
+ * Get the window for today (start of day to now)
+ */
+export function getTodayWindow(now = new Date()): ExecutionEvidenceWindow {
+  const dayWindow = getCurrentDayWindow(now);
+  return {
+    startIso: dayWindow.startIso,
+    endIso: dayWindow.endIso,
+  };
+}
+
+/**
+ * Get the window for the current week (Monday start of week to now)
+ * Uses local date handling consistent with existing app date utilities
+ */
+export function getCurrentWeekWindow(now = new Date()): ExecutionEvidenceWindow {
+  const monday = new Date(now);
+  // Set to Monday of this week (0 = Sunday, 1 = Monday, etc.)
+  const day = monday.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day; // Adjust for Sunday
+  monday.setDate(monday.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  return {
+    startIso: monday.toISOString(),
+    endIso: now.toISOString(),
+  };
+}
 
 export type WorkAnalyticsPeriod = {
   totalWorkedMinutes: number;
@@ -40,4 +70,118 @@ export function calculateWorkAnalytics(
     sessionCount: evidence.sessionCount,
     completedTaskCount: undefined,
   };
+}
+
+/**
+ * Represents a single day's work analytics
+ */
+export type WorkAnalyticsDaily = {
+  date: string; // ISO date string (YYYY-MM-DD)
+  workedMinutes: number;
+  sessionCount: number;
+  completedTaskCount?: number; // undefined if not computed
+};
+
+/**
+ * Calculates daily worked time and session count series for a date range.
+ * Each day returns date key, worked minutes, session count, and optional completed task count.
+ * Missing days are filled with zero values so charts do not need to infer gaps.
+ * 
+ * @param sessions Raw session data from task_sessions table (with tasks relation)
+ * @param startDateInclusive Start date (inclusive) in YYYY-MM-DD format
+ * @param endDateInclusive End date (inclusive) in YYYY-MM-DD format
+ * @param options Optional configuration (now for mocking, includeOpenSessions)
+ * @returns Array of daily analytics, one entry per day in range (inclusive)
+ */
+export function calculateWorkAnalyticsDailySeries(
+  sessions: ExecutionEvidenceSessionRow[],
+  startDateInclusive: string,
+  endDateInclusive: string,
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsDaily[] {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+  
+  // Parse the start and end dates
+  const startDate = new Date(startDateInclusive);
+  const endDate = new Date(endDateInclusive);
+  
+  // Validate dates
+  if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    throw new Error('Invalid date format. Use YYYY-MM-DD');
+  }
+  
+  if (startDate > endDate) {
+    throw new Error('Start date must be before or equal to end date');
+  }
+  
+  // Generate all dates in the range (inclusive)
+  const dates: string[] = [];
+  let currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    dates.push(currentDate.toISOString().split('T')[0]); // YYYY-MM-DD format
+    currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000); // Add one day
+  }
+  
+  // Initialize result with zero values for each day
+  const result: WorkAnalyticsDaily[] = dates.map(date => ({
+    date,
+    workedMinutes: 0,
+    sessionCount: 0,
+    completedTaskCount: undefined,
+  }));
+  
+  if (sessions.length === 0) {
+    return result;
+  }
+  
+  // Process each session and distribute its work across the days it spans
+  for (const session of sessions) {
+    // Skip sessions with no useful timing data
+    const sessionStartMs = new Date(session.started_at).getTime();
+    const sessionEndMs = session.ended_at 
+      ? new Date(session.ended_at).getTime() 
+      : new Date(nowIso).getTime(); // Open session uses now as end
+    
+    // Skip invalid sessions
+    if (isNaN(sessionStartMs) || isNaN(sessionEndMs) || sessionEndMs < sessionStartMs) {
+      continue;
+    }
+    
+    // Skip open sessions if includeOpenSessions is false
+    if (!session.ended_at && !includeOpenSessions) {
+      continue;
+    }
+    
+    // Calculate the overlap of this session with each day in our range
+    for (let i = 0; i < dates.length; i++) {
+      const dayStart = new Date(dates[i]);
+      // dayStart is already at 00:00:00.000Z
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1); // next day at 00:00:00.000Z (exclusive)
+      
+      const dayStartMs = dayStart.getTime();
+      const dayEndMs = dayEnd.getTime();
+      
+      // Calculate overlap between session and this day
+      const overlapStartMs = Math.max(sessionStartMs, dayStartMs);
+      const overlapEndMs = Math.min(sessionEndMs, dayEndMs);
+      
+      if (overlapEndMs > overlapStartMs) {
+        // There is overlap, calculate the duration in seconds
+        const overlapSeconds = Math.floor((overlapEndMs - overlapStartMs) / 1000);
+        
+        // Add to the day's totals (we'll convert to minutes at the end)
+        result[i].workedMinutes += overlapSeconds;
+        result[i].sessionCount += 1;
+      }
+    }
+  }
+  
+  // Convert accumulated seconds to minutes for each day
+  for (const day of result) {
+    day.workedMinutes = Math.floor(day.workedMinutes / 60);
+  }
+  
+  return result;
 }

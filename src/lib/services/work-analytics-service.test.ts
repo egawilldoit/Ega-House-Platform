@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { calculateWorkAnalytics } from "./work-analytics-service";
+import { 
+  calculateWorkAnalytics,
+  calculateWorkAnalyticsDailySeries,
+} from "./work-analytics-service";
 
 const window = {
   startIso: "2026-04-20T00:00:00.000Z",
@@ -172,4 +175,127 @@ test("handles negative or zero duration seconds safely", () => {
     sessionCount: 0,
     completedTaskCount: undefined,
   });
+});
+
+test("returns empty series for no sessions", () => {
+  const result = calculateWorkAnalyticsDailySeries([], "2026-04-20", "2026-04-22");
+  assert.deepEqual(result, [
+    { date: "2026-04-20", workedMinutes: 0, sessionCount: 0, completedTaskCount: undefined },
+    { date: "2026-04-21", workedMinutes: 0, sessionCount: 0, completedTaskCount: undefined },
+    { date: "2026-04-22", workedMinutes: 0, sessionCount: 0, completedTaskCount: undefined },
+  ]);
+});
+
+test("aggregates sessions within single day", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T14:00:00.000Z",
+      ended_at: "2026-04-20T14:30:00.000Z",
+      duration_seconds: 1800, // 30 minutes
+      tasks: {
+        id: "task-2",
+        title: "Task 2",
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsDailySeries(sessions, "2026-04-20", "2026-04-20");
+  assert.deepEqual(result, [
+    { date: "2026-04-20", workedMinutes: 90, sessionCount: 2, completedTaskCount: undefined },
+  ]);
+});
+
+test("distributes multi-day session across days", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T22:00:00.000Z", // 10 PM
+      ended_at: "2026-04-21T02:00:00.000Z", // 2 AM next day (4 hours total)
+      duration_seconds: 14400, // 4 hours
+      tasks: {
+        id: "task-1",
+        title: "Overnight task",
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsDailySeries(sessions, "2026-04-20", "2026-04-21");
+  // 2 hours on 20th (22:00-00:00), 2 hours on 21st (00:00-02:00)
+  assert.deepEqual(result, [
+    { date: "2026-04-20", workedMinutes: 120, sessionCount: 1, completedTaskCount: undefined },
+    { date: "2026-04-21", workedMinutes: 120, sessionCount: 1, completedTaskCount: undefined },
+  ]);
+});
+
+test("fills missing days with zero values", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-22T09:00:00.000Z",
+      ended_at: "2026-04-22T10:00:00.000Z",
+      duration_seconds: 3600, // 1 hour
+      tasks: {
+        id: "task-2",
+        title: "Task 2",
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsDailySeries(sessions, "2026-04-20", "2026-04-22");
+  assert.deepEqual(result, [
+    { date: "2026-04-20", workedMinutes: 60, sessionCount: 1, completedTaskCount: undefined },
+    { date: "2026-04-21", workedMinutes: 0, sessionCount: 0, completedTaskCount: undefined },
+    { date: "2026-04-22", workedMinutes: 60, sessionCount: 1, completedTaskCount: undefined },
+  ]);
+});
+
+test("respects includeOpenSessions option for daily series", () => {
+  const sessions = [
+    {
+      task_id: "open-task",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: null, // open session
+      duration_seconds: null,
+      tasks: {
+        id: "open-task",
+        title: "Open Task",
+      },
+    },
+  ];
+
+  // By default, includeOpenSessions is false -> should not count
+  let result = calculateWorkAnalyticsDailySeries(sessions, "2026-04-20", "2026-04-20");
+  assert.deepEqual(result, [
+    { date: "2026-04-20", workedMinutes: 0, sessionCount: 0, completedTaskCount: undefined },
+  ]);
+
+  // With includeOpenSessions: true -> should count the open session up to nowIso
+  result = calculateWorkAnalyticsDailySeries(sessions, "2026-04-20", "2026-04-20", {
+    includeOpenSessions: true,
+    nowIso: "2026-04-20T10:00:00.000Z"
+  });
+  assert.deepEqual(result, [
+    { date: "2026-04-20", workedMinutes: 60, sessionCount: 1, completedTaskCount: undefined },
+  ]);
 });
