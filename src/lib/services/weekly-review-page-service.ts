@@ -3,9 +3,10 @@ import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review
 import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { getWeekBounds, getWeekWindow } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
-import { getTaskSessionDurationSeconds } from "@/lib/task-session";
 import { getTasksForReview } from "@/lib/services/task-read-service";
 import { generateWeeklyReviewDraftForUser } from "@/lib/services/weekly-review-draft-service";
+import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
+import { calculateWorkAnalytics } from "@/lib/services/work-analytics-service";
 import type { WeeklyReviewDraft } from "@/lib/weekly-review-generator";
 
 const PAST_REVIEW_LIMIT = 100;
@@ -136,7 +137,7 @@ async function getWeeklyStats(
   const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
   const nowIso = new Date().toISOString();
   const sessionNowIso = nowIso < endExclusiveIso ? nowIso : endExclusiveIso;
-  const [tasksResult, sessionsResult, goalsResult, blockedTasksResult] = await Promise.all([
+  const [tasksResult, sessionsResult, goalsResult, blockedTasksResult, analyticsSessionsResult] = await Promise.all([
     supabase
       .from("tasks")
       .select("id", { count: "exact", head: true })
@@ -156,6 +157,11 @@ async function getWeeklyStats(
       .gte("updated_at", startIso)
       .lt("updated_at", endExclusiveIso),
     getTasksForReview({ supabase, ownerUserId, limit: 6 }),
+    getWorkAnalyticsSessionsForWindow({
+      ownerUserId,
+      supabase,
+      window: { startIso, endIso: endExclusiveIso },
+    }),
   ]);
 
   if (tasksResult.error) {
@@ -170,11 +176,16 @@ async function getWeeklyStats(
   if (blockedTasksResult.errorMessage) {
     throw new Error(`Failed to load blocked tasks: ${blockedTasksResult.errorMessage}`);
   }
+  if (analyticsSessionsResult.errorMessage || !analyticsSessionsResult.data) {
+    throw new Error(analyticsSessionsResult.errorMessage ?? "Failed to load weekly analytics sessions.");
+  }
 
-  const trackedSeconds = (sessionsResult.data ?? []).reduce(
-    (total, session) => total + getTaskSessionDurationSeconds(session, sessionNowIso),
-    0,
+  const analyticsPeriod = calculateWorkAnalytics(
+    analyticsSessionsResult.data,
+    { startIso, endIso: endExclusiveIso },
+    { nowIso: sessionNowIso },
   );
+  const trackedSeconds = analyticsPeriod.totalWorkedMinutes * 60;
   const goalStatusCounts = Array.from(
     (goalsResult.data ?? []).reduce<Map<string, number>>((counts, goal) => {
       counts.set(goal.status, (counts.get(goal.status) ?? 0) + 1);

@@ -32,6 +32,7 @@ import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
 import { AlertCircle, AlertTriangle, ArrowUpRight, Clock as ClockIcon, Clock3, FolderOpenDot, LayoutGrid, ListTodo, Target } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
+import WorkStatsPulse from "./WorkStatsPulse";
 
 import type {
   DashboardData,
@@ -537,6 +538,7 @@ export function DashboardOptimizedView({
             icon={LayoutGrid}
             className="border-t-4 border-t-[var(--foreground)]"
           />
+          <WorkStatsPulse />
         </div>
       </section>
 

@@ -405,7 +405,7 @@ export function calculateWorkAnalyticsInsights(
   
   // Calculate current streak (consecutive days with work up to today)
   // We'll check from today backwards
-  const today = new Date();
+  const today = new Date(nowIso);
   today.setHours(0, 0, 0, 0);
   let currentStreak = 0;
   
