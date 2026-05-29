@@ -56,3 +56,5 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+- Graphify integrations are project-scoped via `--project` (not global). Regenerate the graph locally after cloning: `graphify update . && graphify extract .` (optional semantic pass).
+- Graphify git hooks (`graphify hook install`) are not yet enabled — graph updates are manual for now.
