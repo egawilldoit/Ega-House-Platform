@@ -5,11 +5,15 @@ name: Slack PR Safe Merge Notification
 # - This workflow only notifies; it never auto-merges. Human Squash merge remains final gate.
 
 on:
-  workflow_run:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  check_suite:
     types: [completed]
+  workflow_dispatch:
 
 concurrency:
-  group: slack-pr-ready-${{ github.event.workflow_run.head_branch || github.ref }}
+  group: slack-pr-ready-${{ github.event.pull_request.head.ref || github.event.check_suite.head_branch || github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -18,12 +22,12 @@ permissions:
   checks: read
   statuses: read
   actions: read
+  issues: write
 
 jobs:
   notify:
     name: Notify Slack when PR is safe for manual merge
     runs-on: ubuntu-latest
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.name != 'Slack PR Safe Merge Notification'
 
     steps:
       - name: Evaluate PR readiness
@@ -33,7 +37,9 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const eventName = context.eventName;
             const payload = context.payload;
+            const marker = '<!-- slack-pr-ready-notified -->';
             const failConclusions = new Set([
               'action_required',
               'cancelled',
@@ -43,6 +49,7 @@ jobs:
               'timed_out',
             ]);
             const successConclusions = new Set(['success', 'neutral', 'skipped']);
+            const passingStatusStates = new Set(['success']);
             const requiredOptionalChecks = [
               { label: 'Macroscope', pattern: /macroscope/i },
               { label: 'Vercel', pattern: /vercel/i },
@@ -63,31 +70,59 @@ jobs:
             }
 
             let pr = null;
-            const run = payload.workflow_run;
 
-            pr = run.pull_requests?.find((candidate) => candidate.base?.ref === 'main') || null;
-            if (!pr) {
-              pr = await findOpenPrByHead(run.head_branch, run.head_sha);
+            if (eventName === 'pull_request') {
+              const pullNumber = payload.pull_request?.number;
+              if (pullNumber) {
+                const { data: fullPr } = await github.rest.pulls.get({
+                  owner,
+                  repo,
+                  pull_number: pullNumber,
+                });
+                pr = fullPr;
+              }
+            } else if (eventName === 'check_suite') {
+              const suite = payload.check_suite;
+              pr = suite.pull_requests?.find((candidate) => candidate.base?.ref === 'main') || null;
+              if (!pr) {
+                pr = await findOpenPrByHead(suite.head_branch, suite.head_sha);
+              }
+            } else if (eventName === 'workflow_dispatch') {
+              const branch = context.ref.replace(/^refs\/heads\//, '');
+              pr = await findOpenPrByHead(branch, context.sha);
             }
 
             if (!pr) {
-              core.info('No matching open PR found.');
+              core.info(`No matching open PR found for ${eventName}; nothing to notify.`);
               core.setOutput('should_notify', 'false');
               return;
             }
 
-            const { data: fullPr } = await github.rest.pulls.get({
-              owner,
-              repo,
-              pull_number: pr.number,
-            });
-
-            pr = fullPr;
+            if (!pr.head?.sha || !pr.html_url) {
+              const { data: fullPr } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: pr.number,
+              });
+              pr = fullPr;
+            }
 
             const skipReasons = [];
             if (pr.state !== 'open') skipReasons.push(`PR state is ${pr.state}`);
+            if (pr.merged) skipReasons.push('PR is already merged');
             if (pr.draft) skipReasons.push('PR is draft');
             if (pr.base.ref !== 'main') skipReasons.push(`Base branch is ${pr.base.ref}`);
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+
+            if (comments.some((comment) => comment.body?.includes(marker))) {
+              skipReasons.push('Slack safe-to-merge notification marker already exists');
+            }
 
             const { data: checkRuns } = await github.rest.checks.listForRef({
               owner,
@@ -97,7 +132,8 @@ jobs:
             });
 
             const relevantCheckRuns = checkRuns.check_runs.filter((run) =>
-              run.name !== 'Notify Slack when PR is safe for manual merge'
+              run.name !== 'Notify Slack when PR is safe for manual merge' &&
+              run.name !== 'Slack PR Safe Merge Notification'
             );
 
             const failingChecks = relevantCheckRuns.filter((run) =>
@@ -160,7 +196,7 @@ jobs:
                 matchingCheckRuns.some((run) =>
                   run.status === 'completed' && successConclusions.has(run.conclusion)
                 ) ||
-                matchingStatuses.some((status) => status.state === 'success');
+                matchingStatuses.some((status) => passingStatusStates.has(status.state));
 
               if (isPresent && !hasPassingResult) {
                 skipReasons.push(`${requiredCheck.label} check is present but has not passed`);
@@ -228,9 +264,11 @@ jobs:
             };
 
             core.setOutput('should_notify', 'true');
+            core.setOutput('pr_number', String(pr.number));
             core.setOutput('slack_payload', JSON.stringify(payloadForSlack));
 
       - name: Send Slack notification
+        id: slack
         if: steps.evaluate.outputs.should_notify == 'true'
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -238,6 +276,7 @@ jobs:
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
             echo "::warning::SLACK_WEBHOOK_URL repository secret is not configured; skipping Slack notification."
+            echo "sent=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -249,4 +288,24 @@ jobs:
 
           if [ "$response_code" -lt 200 ] || [ "$response_code" -gt 299 ]; then
             echo "::warning::Slack notification failed with HTTP $response_code."
+            echo "sent=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          echo "sent=true" >> "$GITHUB_OUTPUT"
+
+      - name: Mark PR as notified
+        if: steps.slack.outputs.sent == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const pullNumber = Number('${{ steps.evaluate.outputs.pr_number }}');
+
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: pullNumber,
+              body: '<!-- slack-pr-ready-notified -->\nSlack safe-to-merge notification sent.',
+            });
