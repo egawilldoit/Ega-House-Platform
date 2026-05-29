@@ -10,11 +10,23 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   check_suite:
     types: [completed]
+  check_run:
+    types: [completed]
+  status: {}
   workflow_dispatch:
-
-concurrency:
-  group: slack-pr-ready-${{ github.event.pull_request.head.ref || github.event.check_suite.head_branch || github.ref }}
-  cancel-in-progress: true
+    inputs:
+      pr_number:
+        description: "PR number to evaluate"
+        required: true
+        type: string
+      force_notify:
+        description: "Send test Slack notification even if gates are not satisfied"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 permissions:
   contents: read
@@ -26,20 +38,22 @@ permissions:
 
 jobs:
   notify:
-    name: Notify Slack when PR is safe for manual merge
+    name: Notify Slack when PR readiness changes
     runs-on: ubuntu-latest
 
     steps:
-      - name: Evaluate PR readiness
-        id: evaluate
-        uses: actions/github-script@v7
+      - name: Evaluate PR readiness and notify Slack
+        uses: actions/github-script@v8
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const eventName = context.eventName;
             const payload = context.payload;
-            const marker = '<!-- slack-pr-ready-notified -->';
+            const readyMarkerPrefix = '<!-- slack-pr-ready-notified:';
+            const notReadyMarkerPrefix = '<!-- slack-pr-not-ready-notified:';
             const failConclusions = new Set([
               'action_required',
               'cancelled',
@@ -49,11 +63,128 @@ jobs:
               'timed_out',
             ]);
             const successConclusions = new Set(['success', 'neutral', 'skipped']);
-            const passingStatusStates = new Set(['success']);
-            const requiredOptionalChecks = [
-              { label: 'Macroscope', pattern: /macroscope/i },
-              { label: 'Vercel', pattern: /vercel/i },
+            const selfCheckPatterns = [
+              /Slack PR Safe Merge Notification/i,
+              /Notify Slack when PR readiness changes/i,
+              /slack-pr-ready\.yml/i,
+              /Slack PR Safe Merge Notification \/ Notify Slack when PR readiness changes/i,
             ];
+            const optionalChecks = [
+              { key: 'macroscope', label: 'Macroscope', pattern: /macroscope/i },
+              { key: 'vercel', label: 'Vercel', pattern: /vercel/i },
+            ];
+            const isWorkflowDispatch = eventName === 'workflow_dispatch';
+            const forceNotify = isWorkflowDispatch && payload.inputs?.force_notify === 'true';
+
+            const summary = {
+              eventName,
+              prNumber: 'unresolved',
+              prUrl: 'unresolved',
+              headSha: 'unresolved',
+              baseBranch: 'unresolved',
+              headBranch: 'unresolved',
+              prState: 'unresolved',
+              draft: 'unresolved',
+              completedChecksCount: 0,
+              pendingChecksCount: 0,
+              failedChecksCount: 0,
+              ignoredNotifierChecksCount: 0,
+              ignoredNotifierCheckNames: 'None',
+              macroscope: 'missing',
+              vercel: 'missing',
+              decision: 'SKIPPED_NO_PR',
+              reason: 'No PR has been evaluated yet.',
+            };
+
+            function uniq(values) {
+              return [...new Set(values.filter(Boolean))];
+            }
+
+            function shortSha(sha) {
+              return sha ? sha.slice(0, 7) : 'unknown';
+            }
+
+            function escapeSlack(value) {
+              return String(value || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            }
+
+            function statusName(status) {
+              return status.context || 'unnamed status';
+            }
+
+            function runName(run) {
+              return run.name || 'unnamed check';
+            }
+
+            function summarizeNames(items, getName) {
+              if (items.length === 0) return 'None';
+              return items.slice(0, 15).map((item) => `- ${escapeSlack(getName(item))}`).join('\n');
+            }
+
+            function isSelfCheckName(name) {
+              return selfCheckPatterns.some((pattern) => pattern.test(name || ''));
+            }
+
+            function checkOptionalState(key, matchingRuns, matchingStatuses) {
+              const detected = matchingRuns.length > 0 || matchingStatuses.length > 0;
+              if (!detected) return 'missing';
+              const failed =
+                matchingRuns.some((run) => run.status === 'completed' && failConclusions.has(run.conclusion)) ||
+                matchingStatuses.some((status) => ['error', 'failure'].includes(status.state));
+              if (failed) return 'fail';
+              const pending =
+                matchingRuns.some((run) => run.status !== 'completed') ||
+                matchingStatuses.some((status) => status.state === 'pending');
+              if (pending) return 'pending';
+
+              const allowedConclusions = key === 'macroscope'
+                ? new Set(['success', 'neutral'])
+                : new Set(['success']);
+              const passed =
+                matchingRuns.some((run) => run.status === 'completed' && allowedConclusions.has(run.conclusion)) ||
+                matchingStatuses.some((status) => status.state === 'success');
+              return passed ? 'pass' : 'fail';
+            }
+
+            async function writeSummary() {
+              await core.summary
+                .addHeading('Slack PR-ready decision')
+                .addTable([
+                  [{ data: 'Field', header: true }, { data: 'Value', header: true }],
+                  ['Event name', String(summary.eventName)],
+                  ['PR number', String(summary.prNumber)],
+                  ['PR URL', String(summary.prUrl)],
+                  ['Head SHA', String(summary.headSha)],
+                  ['Base/head branches', `${summary.baseBranch} <- ${summary.headBranch}`],
+                  ['PR state', String(summary.prState)],
+                  ['Draft', String(summary.draft)],
+                  ['Completed checks count', String(summary.completedChecksCount)],
+                  ['Pending checks count', String(summary.pendingChecksCount)],
+                  ['Failed checks count', String(summary.failedChecksCount)],
+                  ['Ignored notifier checks count', String(summary.ignoredNotifierChecksCount)],
+                  ['Ignored notifier check names', String(summary.ignoredNotifierCheckNames)],
+                  ['Real completed checks count', String(summary.completedChecksCount)],
+                  ['Real pending checks count', String(summary.pendingChecksCount)],
+                  ['Real failed checks count', String(summary.failedChecksCount)],
+                  ['Macroscope detected/pass/fail/pending/missing', String(summary.macroscope)],
+                  ['Vercel detected/pass/fail/pending/missing', String(summary.vercel)],
+                  ['Decision', String(summary.decision)],
+                  ['Skip/send reason', String(summary.reason)],
+                ])
+                .write();
+            }
+
+            async function getPullRequest(pullNumber) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner,
+                repo,
+                pull_number: pullNumber,
+              });
+              return pr;
+            }
 
             async function findOpenPrByHead(headBranch, headSha) {
               const { data: prs } = await github.rest.pulls.list({
@@ -64,54 +195,191 @@ jobs:
               });
 
               return prs.find((pr) =>
-                pr.head.sha === headSha ||
-                pr.head.ref === headBranch
-              );
+                pr.base.ref === 'main' &&
+                (pr.head.sha === headSha || (headBranch && pr.head.ref === headBranch))
+              ) || null;
             }
 
-            let pr = null;
+            async function resolvePullRequest() {
+              if (eventName === 'pull_request' && payload.pull_request?.number) {
+                return getPullRequest(payload.pull_request.number);
+              }
 
-            if (eventName === 'pull_request') {
-              const pullNumber = payload.pull_request?.number;
-              if (pullNumber) {
-                const { data: fullPr } = await github.rest.pulls.get({
-                  owner,
-                  repo,
-                  pull_number: pullNumber,
+              if (eventName === 'workflow_dispatch') {
+                const pullNumber = Number(payload.inputs?.pr_number);
+                if (Number.isInteger(pullNumber) && pullNumber > 0) {
+                  return getPullRequest(pullNumber);
+                }
+                return null;
+              }
+
+              if (eventName === 'check_suite') {
+                const suite = payload.check_suite;
+                const suitePr = suite.pull_requests?.find((candidate) => candidate.base?.ref === 'main');
+                if (suitePr?.number) return getPullRequest(suitePr.number);
+                return findOpenPrByHead(suite.head_branch, suite.head_sha);
+              }
+
+              if (eventName === 'check_run') {
+                const run = payload.check_run;
+                const runPr = run.pull_requests?.find((candidate) => candidate.base?.ref === 'main');
+                if (runPr?.number) return getPullRequest(runPr.number);
+                return findOpenPrByHead(run.check_suite?.head_branch, run.head_sha);
+              }
+
+              if (eventName === 'status') {
+                const sha = payload.sha;
+                const branch = payload.branches?.find((candidate) => candidate.name !== 'main')?.name;
+                return findOpenPrByHead(branch, sha);
+              }
+
+              return null;
+            }
+
+            async function getReviewDecision(pr) {
+              try {
+                const result = await github.graphql(
+                  `query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      pullRequest(number: $number) {
+                        reviewDecision
+                      }
+                    }
+                  }`,
+                  { owner, repo, number: pr.number }
+                );
+                return result.repository?.pullRequest?.reviewDecision || 'UNAVAILABLE';
+              } catch (error) {
+                core.warning(`Review decision unavailable: ${error.message}`);
+                return 'UNAVAILABLE';
+              }
+            }
+
+            async function sendSlack(payloadForSlack) {
+              const webhook = process.env.SLACK_WEBHOOK_URL;
+              if (!webhook) {
+                return { ok: false, reason: 'SLACK_WEBHOOK_URL repository secret is not configured.' };
+              }
+
+              try {
+                const response = await fetch(webhook, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(payloadForSlack),
                 });
-                pr = fullPr;
+                if (!response.ok) {
+                  return { ok: false, reason: `Slack returned HTTP ${response.status}.` };
+                }
+                return { ok: true, reason: 'Slack notification sent.' };
+              } catch (error) {
+                return { ok: false, reason: `Slack request failed: ${error.message}` };
               }
-            } else if (eventName === 'check_suite') {
-              const suite = payload.check_suite;
-              pr = suite.pull_requests?.find((candidate) => candidate.base?.ref === 'main') || null;
-              if (!pr) {
-                pr = await findOpenPrByHead(suite.head_branch, suite.head_sha);
-              }
-            } else if (eventName === 'workflow_dispatch') {
-              const branch = context.ref.replace(/^refs\/heads\//, '');
-              pr = await findOpenPrByHead(branch, context.sha);
             }
 
+            async function addMarker(prNumber, body) {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body,
+              });
+            }
+
+            const pr = await resolvePullRequest();
             if (!pr) {
-              core.info(`No matching open PR found for ${eventName}; nothing to notify.`);
-              core.setOutput('should_notify', 'false');
+              summary.decision = 'SKIPPED_NO_PR';
+              summary.reason = `No open main-branch PR matched ${eventName}.`;
+              await writeSummary();
               return;
             }
 
-            if (!pr.head?.sha || !pr.html_url) {
-              const { data: fullPr } = await github.rest.pulls.get({
-                owner,
-                repo,
-                pull_number: pr.number,
-              });
-              pr = fullPr;
+            summary.prNumber = pr.number;
+            summary.prUrl = pr.html_url;
+            summary.headSha = pr.head.sha;
+            summary.baseBranch = pr.base.ref;
+            summary.headBranch = pr.head.ref;
+            summary.prState = pr.state;
+            summary.draft = pr.draft ? 'yes' : 'no';
+
+            const linearSource = `${pr.title}\n${pr.body || ''}\n${pr.head.ref}`;
+            const linearMatch = linearSource.match(/EGA-[0-9]+/i);
+            const linearId = linearMatch ? linearMatch[0].toUpperCase() : 'No Linear ID detected';
+            const headlineId = linearMatch ? linearMatch[0].toUpperCase() : 'PR';
+
+            if (!forceNotify && (pr.state !== 'open' || pr.merged || pr.draft || pr.base.ref !== 'main')) {
+              const reasons = [];
+              if (pr.state !== 'open') reasons.push(`PR state is ${pr.state}`);
+              if (pr.merged) reasons.push('PR is already merged');
+              if (pr.draft) reasons.push('PR is draft');
+              if (pr.base.ref !== 'main') reasons.push(`Base branch is ${pr.base.ref}`);
+              summary.decision = 'SKIPPED_CLOSED_OR_DRAFT';
+              summary.reason = reasons.join('; ');
+              await writeSummary();
+              return;
             }
 
-            const skipReasons = [];
-            if (pr.state !== 'open') skipReasons.push(`PR state is ${pr.state}`);
-            if (pr.merged) skipReasons.push('PR is already merged');
-            if (pr.draft) skipReasons.push('PR is draft');
-            if (pr.base.ref !== 'main') skipReasons.push(`Base branch is ${pr.base.ref}`);
+            const { data: checkRunsResponse } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+              per_page: 100,
+            });
+
+            const { data: combinedStatus } = await github.rest.repos.getCombinedStatusForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+            });
+
+            const ignoredCheckRuns = checkRunsResponse.check_runs.filter((run) => isSelfCheckName(run.name));
+            const checkRuns = checkRunsResponse.check_runs.filter((run) => !isSelfCheckName(run.name));
+            const ignoredStatuses = combinedStatus.statuses.filter((status) => isSelfCheckName(status.context));
+            const statuses = combinedStatus.statuses.filter((status) => !isSelfCheckName(status.context));
+            const ignoredNames = uniq([
+              ...ignoredCheckRuns.map(runName),
+              ...ignoredStatuses.map(statusName),
+            ]);
+            const completedChecks = checkRuns.filter((run) => run.status === 'completed');
+            const pendingChecks = checkRuns.filter((run) => run.status !== 'completed');
+            const failedChecks = completedChecks.filter((run) => failConclusions.has(run.conclusion));
+            const passedChecks = completedChecks.filter((run) => successConclusions.has(run.conclusion));
+            const completedStatuses = statuses.filter((status) => status.state !== 'pending');
+            const pendingStatuses = statuses.filter((status) => status.state === 'pending');
+            const failedStatuses = statuses.filter((status) => ['error', 'failure'].includes(status.state));
+            const passedStatuses = statuses.filter((status) => status.state === 'success');
+            const completedCount = completedChecks.length + completedStatuses.length;
+            const pendingCount = pendingChecks.length + pendingStatuses.length;
+            const failedCount = failedChecks.length + failedStatuses.length;
+            const reviewDecision = await getReviewDecision(pr);
+            const blockingReviewDecision = reviewDecision === 'CHANGES_REQUESTED';
+
+            summary.completedChecksCount = completedCount;
+            summary.pendingChecksCount = pendingCount;
+            summary.failedChecksCount = failedCount;
+            summary.ignoredNotifierChecksCount = ignoredCheckRuns.length + ignoredStatuses.length;
+            summary.ignoredNotifierCheckNames = ignoredNames.length > 0 ? ignoredNames.join(', ') : 'None';
+
+            const optionalStates = {};
+            for (const optionalCheck of optionalChecks) {
+              const matchingRuns = checkRuns.filter((run) => optionalCheck.pattern.test(run.name));
+              const matchingStatuses = statuses.filter((status) => optionalCheck.pattern.test(status.context));
+              optionalStates[optionalCheck.key] = checkOptionalState(
+                optionalCheck.key,
+                matchingRuns,
+                matchingStatuses
+              );
+              summary[optionalCheck.key] = optionalStates[optionalCheck.key];
+            }
+
+            const checksSummary = [
+              `${passedChecks.length} passing checks`,
+              `${passedStatuses.length} passing statuses`,
+              `${pendingChecks.length} pending checks`,
+              `${pendingStatuses.length} pending statuses`,
+              `${failedChecks.length} failing checks`,
+              `${failedStatuses.length} failing statuses`,
+              `review decision: ${reviewDecision}`,
+            ].join(', ');
 
             const { data: comments } = await github.rest.issues.listComments({
               owner,
@@ -120,192 +388,226 @@ jobs:
               per_page: 100,
             });
 
-            if (comments.some((comment) => comment.body?.includes(marker))) {
-              skipReasons.push('Slack safe-to-merge notification marker already exists');
-            }
+            const readyMarker = `${readyMarkerPrefix}${pr.head.sha} -->`;
+            const readyDuplicate = comments.some((comment) =>
+              comment.body?.includes(readyMarker)
+            );
+            const notReadyMarker = `${notReadyMarkerPrefix}${pr.head.sha} -->`;
+            const notReadyDuplicate = comments.some((comment) => comment.body?.includes(notReadyMarker));
 
-            const { data: checkRuns } = await github.rest.checks.listForRef({
-              owner,
-              repo,
-              ref: pr.head.sha,
-              per_page: 100,
-            });
+            const failedNames = [
+              ...failedChecks.map((run) => `${runName(run)} (${run.conclusion})`),
+              ...failedStatuses.map((status) => `${statusName(status)} (${status.state})`),
+            ];
+            const pendingNames = [
+              ...pendingChecks.map((run) => `${runName(run)} (${run.status})`),
+              ...pendingStatuses.map((status) => `${statusName(status)} (${status.state})`),
+            ];
 
-            const relevantCheckRuns = checkRuns.check_runs.filter((run) =>
-              run.name !== 'Notify Slack when PR is safe for manual merge' &&
-              run.name !== 'Slack PR Safe Merge Notification'
-            );
+            let notificationKind = null;
+            let payloadForSlack = null;
+            let markerBody = null;
+            const readyTitle = linearMatch
+              ? `✅ READY TO MERGE — ${headlineId} is valid`
+              : '✅ READY TO MERGE — PR is valid';
+            const notReadyTitle = linearMatch
+              ? `❌ NOT READY — do not merge ${headlineId} yet`
+              : '❌ NOT READY — do not merge this PR yet';
 
-            const failingChecks = relevantCheckRuns.filter((run) =>
-              run.status === 'completed' && failConclusions.has(run.conclusion)
-            );
-            const passingChecks = relevantCheckRuns.filter((run) =>
-              run.status === 'completed' && successConclusions.has(run.conclusion)
-            );
-            const pendingChecks = relevantCheckRuns.filter((run) =>
-              run.status !== 'completed'
-            );
-            const completedChecks = relevantCheckRuns.filter((run) =>
-              run.status === 'completed'
-            );
-
-            const { data: combinedStatus } = await github.rest.repos.getCombinedStatusForRef({
-              owner,
-              repo,
-              ref: pr.head.sha,
-            });
-
-            const failingStatuses = combinedStatus.statuses.filter((status) =>
-              ['error', 'failure'].includes(status.state)
-            );
-            const pendingStatuses = combinedStatus.statuses.filter((status) =>
-              status.state === 'pending'
-            );
-            const passingStatuses = combinedStatus.statuses.filter((status) =>
-              status.state === 'success'
-            );
-            const completedStatuses = combinedStatus.statuses.filter((status) =>
-              status.state !== 'pending'
-            );
-
-            if (failingChecks.length > 0) {
-              skipReasons.push(`Failing checks: ${failingChecks.map((run) => run.name).join(', ')}`);
-            }
-            if (failingStatuses.length > 0) {
-              skipReasons.push(`Failing statuses: ${failingStatuses.map((status) => status.context).join(', ')}`);
-            }
-            if (pendingChecks.length > 0) {
-              skipReasons.push(`Pending checks: ${pendingChecks.map((run) => run.name).join(', ')}`);
-            }
-            if (pendingStatuses.length > 0) {
-              skipReasons.push(`Pending statuses: ${pendingStatuses.map((status) => status.context).join(', ')}`);
-            }
-            if (completedChecks.length + completedStatuses.length === 0) {
-              skipReasons.push('No completed checks or statuses found');
-            }
-
-            for (const requiredCheck of requiredOptionalChecks) {
-              const matchingCheckRuns = relevantCheckRuns.filter((run) =>
-                requiredCheck.pattern.test(run.name)
-              );
-              const matchingStatuses = combinedStatus.statuses.filter((status) =>
-                requiredCheck.pattern.test(status.context)
-              );
-              const isPresent = matchingCheckRuns.length > 0 || matchingStatuses.length > 0;
-              const hasPassingResult =
-                matchingCheckRuns.some((run) =>
-                  run.status === 'completed' && successConclusions.has(run.conclusion)
-                ) ||
-                matchingStatuses.some((status) => passingStatusStates.has(status.state));
-
-              if (isPresent && !hasPassingResult) {
-                skipReasons.push(`${requiredCheck.label} check is present but has not passed`);
+            if (forceNotify) {
+              payloadForSlack = {
+                text: '🧪 TEST — Slack PR-ready notification wiring works',
+                blocks: [
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: '🧪 *TEST — Slack PR-ready notification wiring works*',
+                    },
+                  },
+                  {
+                    type: 'section',
+                    fields: [
+                      { type: 'mrkdwn', text: `*PR title:*\n${escapeSlack(pr.title)}` },
+                      { type: 'mrkdwn', text: `*PR URL:*\n${escapeSlack(pr.html_url)}` },
+                      { type: 'mrkdwn', text: `*Current computed decision:*\n${failedCount > 0 ? 'NOT_READY' : pendingCount > 0 ? 'PENDING' : 'READY'}` },
+                      { type: 'mrkdwn', text: `*Checks summary:*\n${escapeSlack(checksSummary)}` },
+                    ],
+                  },
+                ],
+              };
+              notificationKind = 'TEST';
+            } else if (completedCount === 0) {
+              summary.decision = 'SKIPPED_PENDING';
+              summary.reason = 'No completed checks or statuses exist yet; waiting for a real gate result before notifying.';
+              await writeSummary();
+              return;
+            } else if (failedCount > 0) {
+              if (notReadyDuplicate) {
+                summary.decision = 'SKIPPED_DUPLICATE';
+                summary.reason = `NOT READY notification already sent for head SHA ${pr.head.sha}.`;
+                await writeSummary();
+                return;
               }
+              payloadForSlack = {
+                text: notReadyTitle,
+                blocks: [
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: `*${escapeSlack(notReadyTitle)}*`,
+                    },
+                  },
+                  {
+                    type: 'section',
+                    fields: [
+                      { type: 'mrkdwn', text: `*PR title:*\n${escapeSlack(pr.title)}` },
+                      { type: 'mrkdwn', text: `*PR URL:*\n${escapeSlack(pr.html_url)}` },
+                      { type: 'mrkdwn', text: `*Author:*\n${escapeSlack(pr.user.login)}` },
+                      { type: 'mrkdwn', text: `*Base branch:*\n${escapeSlack(pr.base.ref)}` },
+                      { type: 'mrkdwn', text: `*Head branch:*\n${escapeSlack(pr.head.ref)}` },
+                      { type: 'mrkdwn', text: `*Linear issue ID:*\n${escapeSlack(linearId)}` },
+                      { type: 'mrkdwn', text: `*Commit SHA:*\n${shortSha(pr.head.sha)}` },
+                      { type: 'mrkdwn', text: `*Action:*\nWait or fix before merge.` },
+                    ],
+                  },
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: `*Failed checks/statuses:*\n${summarizeNames(failedNames, (name) => name)}\n\n*Pending checks/statuses:*\n${summarizeNames(pendingNames, (name) => name)}`,
+                    },
+                  },
+                ],
+              };
+              notificationKind = 'NOT_READY';
+              markerBody = `${notReadyMarker}\nSlack NOT READY notification sent for ${pr.head.sha}.`;
+            } else if (pendingCount > 0) {
+              summary.decision = 'SKIPPED_PENDING';
+              summary.reason = `Checks/statuses are still pending: ${uniq(pendingNames).join(', ')}`;
+              await writeSummary();
+              return;
+            } else if (optionalStates.vercel === 'fail' || optionalStates.vercel === 'pending') {
+              summary.decision = 'SKIPPED_PENDING';
+              summary.reason = `Vercel is present but not passing: ${optionalStates.vercel}.`;
+              await writeSummary();
+              return;
+            } else if (optionalStates.macroscope === 'fail' || optionalStates.macroscope === 'pending') {
+              summary.decision = 'SKIPPED_PENDING';
+              summary.reason = `Macroscope is present but not passing: ${optionalStates.macroscope}.`;
+              await writeSummary();
+              return;
+            } else if (blockingReviewDecision) {
+              if (notReadyDuplicate) {
+                summary.decision = 'SKIPPED_DUPLICATE';
+                summary.reason = `Blocking review decision notification already sent for head SHA ${pr.head.sha}.`;
+                await writeSummary();
+                return;
+              }
+              payloadForSlack = {
+                text: notReadyTitle,
+                blocks: [
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: `*${escapeSlack(notReadyTitle)}*`,
+                    },
+                  },
+                  {
+                    type: 'section',
+                    fields: [
+                      { type: 'mrkdwn', text: `*PR title:*\n${escapeSlack(pr.title)}` },
+                      { type: 'mrkdwn', text: `*PR URL:*\n${escapeSlack(pr.html_url)}` },
+                      { type: 'mrkdwn', text: `*Author:*\n${escapeSlack(pr.user.login)}` },
+                      { type: 'mrkdwn', text: `*Base branch:*\n${escapeSlack(pr.base.ref)}` },
+                      { type: 'mrkdwn', text: `*Head branch:*\n${escapeSlack(pr.head.ref)}` },
+                      { type: 'mrkdwn', text: `*Linear issue ID:*\n${escapeSlack(linearId)}` },
+                      { type: 'mrkdwn', text: `*Commit SHA:*\n${shortSha(pr.head.sha)}` },
+                      { type: 'mrkdwn', text: `*Action:*\nResolve review decision before merge.` },
+                    ],
+                  },
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: `*Failed checks/statuses:*\nReview decision: ${reviewDecision}\n\n*Pending checks/statuses:*\n${summarizeNames(pendingNames, (name) => name)}`,
+                    },
+                  },
+                ],
+              };
+              notificationKind = 'NOT_READY';
+              markerBody = `${notReadyMarker}\nSlack NOT READY notification sent for ${pr.head.sha}.`;
+            } else {
+              if (readyDuplicate) {
+                summary.decision = 'SKIPPED_DUPLICATE';
+                summary.reason = `READY notification already sent for head SHA ${pr.head.sha}.`;
+                await writeSummary();
+                return;
+              }
+              payloadForSlack = {
+                text: readyTitle,
+                blocks: [
+                  {
+                    type: 'section',
+                    text: {
+                      type: 'mrkdwn',
+                      text: `*${escapeSlack(readyTitle)}*`,
+                    },
+                  },
+                  {
+                    type: 'section',
+                    fields: [
+                      { type: 'mrkdwn', text: `*PR title:*\n${escapeSlack(pr.title)}` },
+                      { type: 'mrkdwn', text: `*PR URL:*\n${escapeSlack(pr.html_url)}` },
+                      { type: 'mrkdwn', text: `*Author:*\n${escapeSlack(pr.user.login)}` },
+                      { type: 'mrkdwn', text: `*Base branch:*\n${escapeSlack(pr.base.ref)}` },
+                      { type: 'mrkdwn', text: `*Head branch:*\n${escapeSlack(pr.head.ref)}` },
+                      { type: 'mrkdwn', text: `*Linear issue ID:*\n${escapeSlack(linearId)}` },
+                      { type: 'mrkdwn', text: `*Commit SHA:*\n${shortSha(pr.head.sha)}` },
+                      { type: 'mrkdwn', text: `*Checks summary:*\n${escapeSlack(checksSummary)}` },
+                      { type: 'mrkdwn', text: `*Macroscope status:*\n${summary.macroscope}` },
+                      { type: 'mrkdwn', text: `*Vercel status:*\n${summary.vercel}` },
+                    ],
+                  },
+                  {
+                    type: 'context',
+                    elements: [
+                      {
+                        type: 'mrkdwn',
+                        text: 'Reminder: Human must click Squash merge manually.',
+                      },
+                    ],
+                  },
+                ],
+              };
+              notificationKind = 'READY';
+              markerBody = `${readyMarker}\nSlack READY notification sent for ${pr.head.sha}.`;
             }
 
-            const checksSummary = [
-              `${passingChecks.length} passing checks`,
-              `${passingStatuses.length} passing statuses`,
-              `${pendingChecks.length} pending checks`,
-              `${failingChecks.length} failing checks`,
-              `${pendingStatuses.length} pending statuses`,
-              `${failingStatuses.length} failing statuses`,
-            ].join(', ');
-
-            if (skipReasons.length > 0) {
-              core.info(`Not notifying: ${skipReasons.join('; ')}`);
-              core.setOutput('should_notify', 'false');
+            const slackResult = await sendSlack(payloadForSlack);
+            if (!slackResult.ok) {
+              summary.decision = 'SLACK_FAILED';
+              summary.reason = slackResult.reason;
+              core.warning(slackResult.reason);
+              await writeSummary();
               return;
             }
 
-            const linearSource = `${pr.title}\n${pr.body || ''}\n${pr.head.ref}`;
-            const linearMatch = linearSource.match(/EGA-[0-9]+/i);
-            const linearId = linearMatch ? linearMatch[0].toUpperCase() : 'No Linear ID detected';
-            const headlineId = linearMatch ? linearMatch[0].toUpperCase() : 'PR';
+            if (!forceNotify && markerBody) {
+              await addMarker(pr.number, markerBody);
+            }
 
-            const payloadForSlack = {
-              text: `✅ ${headlineId} is valid — safe to merge manually`,
-              blocks: [
-                {
-                  type: 'section',
-                  text: {
-                    type: 'mrkdwn',
-                    text: `✅ *${headlineId} is valid — safe to merge manually*`,
-                  },
-                },
-                {
-                  type: 'section',
-                  fields: [
-                    { type: 'mrkdwn', text: `*PR title:*\n${pr.title}` },
-                    { type: 'mrkdwn', text: `*Author:*\n${pr.user.login}` },
-                    { type: 'mrkdwn', text: `*Base branch:*\n${pr.base.ref}` },
-                    { type: 'mrkdwn', text: `*Head branch:*\n${pr.head.ref}` },
-                    { type: 'mrkdwn', text: `*Linear issue ID:*\n${linearId}` },
-                    { type: 'mrkdwn', text: `*Checks summary:*\n${checksSummary}` },
-                  ],
-                },
-                {
-                  type: 'section',
-                  text: {
-                    type: 'mrkdwn',
-                    text: `*PR URL:*\n${pr.html_url}`,
-                  },
-                },
-                {
-                  type: 'context',
-                  elements: [
-                    {
-                      type: 'mrkdwn',
-                      text: 'Reminder: Human must click Squash merge manually.',
-                    },
-                  ],
-                },
-              ],
-            };
+            if (forceNotify) {
+              summary.decision = 'READY_NOTIFY_SENT';
+              summary.reason = 'Manual force_notify test message sent; no marker comment added.';
+            } else if (notificationKind === 'READY') {
+              summary.decision = 'READY_NOTIFY_SENT';
+              summary.reason = 'All readiness gates passed; Slack READY message sent and marker added.';
+            } else {
+              summary.decision = 'NOT_READY_NOTIFY_SENT';
+              summary.reason = 'Failing/cancelled/error/timed-out gate detected; Slack NOT READY message sent and marker added.';
+            }
 
-            core.setOutput('should_notify', 'true');
-            core.setOutput('pr_number', String(pr.number));
-            core.setOutput('slack_payload', JSON.stringify(payloadForSlack));
-
-      - name: Send Slack notification
-        id: slack
-        if: steps.evaluate.outputs.should_notify == 'true'
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_PAYLOAD: ${{ steps.evaluate.outputs.slack_payload }}
-        run: |
-          if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "::warning::SLACK_WEBHOOK_URL repository secret is not configured; skipping Slack notification."
-            echo "sent=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          response_code="$(curl --silent --show-error --output /tmp/slack-response.txt --write-out '%{http_code}' \
-            --request POST \
-            --header 'Content-Type: application/json' \
-            --data "$SLACK_PAYLOAD" \
-            "$SLACK_WEBHOOK_URL" || true)"
-
-          if [ "$response_code" -lt 200 ] || [ "$response_code" -gt 299 ]; then
-            echo "::warning::Slack notification failed with HTTP $response_code."
-            echo "sent=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "sent=true" >> "$GITHUB_OUTPUT"
-
-      - name: Mark PR as notified
-        if: steps.slack.outputs.sent == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const pullNumber = Number('${{ steps.evaluate.outputs.pr_number }}');
-
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: pullNumber,
-              body: '<!-- slack-pr-ready-notified -->\nSlack safe-to-merge notification sent.',
-            });
+            await writeSummary();
