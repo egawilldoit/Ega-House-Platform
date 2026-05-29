@@ -24,7 +24,6 @@ const PR_JSON_FIELDS = [
   'isDraft',
   'baseRefName',
   'headRefName',
-  'headRefOid',
   'mergeable',
   'reviewDecision',
   'statusCheckRollup',
@@ -262,7 +261,20 @@ async function listCandidateNumbers() {
 }
 
 async function getPr(number) {
-  return ghJson(['pr', 'view', String(number), '--repo', REPO, '--json', PR_JSON_FIELDS]);
+  const pr = await ghJson(['pr', 'view', String(number), '--repo', REPO, '--json', PR_JSON_FIELDS]);
+  if (pr) pr.headSha = await getPrHeadSha(number);
+  return pr;
+}
+
+async function getPrHeadSha(prNumber) {
+  const headSha = await gh([
+    'api',
+    `repos/${OWNER}/${REPO_NAME}/pulls/${prNumber}`,
+    '--jq',
+    '.head.sha',
+  ]);
+  if (!headSha) throw new Error(`Unable to fetch head SHA for PR #${prNumber}`);
+  return headSha;
 }
 
 async function getComments(number) {
@@ -320,7 +332,7 @@ function evaluatePr(pr, readyMarkerPresent) {
     }
   }
   if (!readyMarkerPresent) {
-    blockers.push(`missing Slack READY marker for head SHA ${pr.headRefOid}`);
+    blockers.push(`missing Slack READY marker for head SHA ${pr.headSha}`);
   }
 
   return { blockers, checks, linearId, changedFiles };
@@ -365,7 +377,7 @@ async function maybeSendBlockedSlack(pr, evaluation) {
   );
   if (serious.length === 0) return;
   const key = blockerKey(serious);
-  if (await hasRecentBlockedMarker(pr.number, pr.headRefOid, key)) return;
+  if (await hasRecentBlockedMarker(pr.number, pr.headSha, key)) return;
 
   await sendSlack(`❌ AUTO-MERGE BLOCKED — ${evaluation.linearId}`, [
     { label: 'PR', value: pr.url },
@@ -376,7 +388,7 @@ async function maybeSendBlockedSlack(pr, evaluation) {
     'api',
     `repos/${OWNER}/${REPO_NAME}/issues/${pr.number}/comments`,
     '-f',
-    `body=${BLOCKED_MARKER_PREFIX}${pr.headRefOid}:${key} -->\nHermes auto-merge blocked: ${serious[0]}`,
+    `body=${BLOCKED_MARKER_PREFIX}${pr.headSha}:${key} -->\nHermes auto-merge blocked: ${serious[0]}`,
   ]);
 }
 
@@ -439,9 +451,9 @@ async function updateLinearAfterMerge(linearId, prUrl) {
 }
 
 async function mergePr(pr, evaluation) {
-  const latest = await getPr(pr.number);
-  if (latest.headRefOid !== pr.headRefOid) {
-    throw new Error(`head SHA changed before merge: ${pr.headRefOid} -> ${latest.headRefOid}`);
+  const latestHeadSha = await getPrHeadSha(pr.number);
+  if (latestHeadSha !== pr.headSha) {
+    throw new Error(`head SHA changed before merge: ${pr.headSha} -> ${latestHeadSha}`);
   }
   const output = await gh([
     'pr',
@@ -452,13 +464,13 @@ async function mergePr(pr, evaluation) {
     '--squash',
     '--delete-branch',
     '--match-head-commit',
-    pr.headRefOid,
+    pr.headSha,
   ]);
 
   await sendSlack(`✅ AUTO-MERGED — ${evaluation.linearId}`, [
     { label: 'PR', value: pr.url },
     { label: 'Branch', value: pr.headRefName },
-    { label: 'Head SHA', value: shortSha(pr.headRefOid) },
+    { label: 'Head SHA', value: shortSha(pr.headSha) },
     { label: 'Checks', value: evaluation.checks.text },
     { label: 'Merge output', value: output || 'Merge command completed.' },
   ]);
@@ -476,7 +488,7 @@ async function main() {
   const results = [];
   for (const number of candidateNumbers) {
     const pr = await getPr(number);
-    const readyMarkerPresent = await hasReadyMarker(pr.number, pr.headRefOid);
+    const readyMarkerPresent = await hasReadyMarker(pr.number, pr.headSha);
     const evaluation = evaluatePr(pr, readyMarkerPresent);
     results.push({ pr, evaluation });
 
@@ -488,7 +500,7 @@ async function main() {
 
     await log(`PR #${pr.number} passed all gates for ${evaluation.linearId}: ${pr.url}`);
     if (dryRun) {
-      await log(`DRY RUN: would squash merge PR #${pr.number} at ${pr.headRefOid}`);
+      await log(`DRY RUN: would squash merge PR #${pr.number} at ${pr.headSha}`);
       continue;
     }
 

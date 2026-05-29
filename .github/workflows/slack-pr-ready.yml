@@ -30,7 +30,7 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
   checks: read
   statuses: read
   actions: read
@@ -596,7 +596,16 @@ jobs:
             }
 
             if (!forceNotify && markerBody) {
-              await addMarker(pr.number, markerBody);
+              try {
+                await addMarker(pr.number, markerBody);
+              } catch (error) {
+                summary.decision = 'MARKER_FAILED';
+                summary.reason = `Slack ${notificationKind} notification sent, but marker comment creation failed: ${error.message}`;
+                core.warning(summary.reason);
+                await writeSummary();
+                core.setFailed(summary.reason);
+                return;
+              }
             }
 
             if (forceNotify) {
