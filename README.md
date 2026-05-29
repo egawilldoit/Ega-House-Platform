@@ -68,3 +68,5 @@ Auto-merge guardian test: documentation-only PRs may be merged automatically whe
 
 
 [Next.js Documentation](https://nextjs.org/docs)
+
+Final auto-merge guardian validation: docs-only PRs can merge automatically after all gates pass.
