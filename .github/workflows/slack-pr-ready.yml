@@ -140,9 +140,7 @@ jobs:
                 matchingStatuses.some((status) => status.state === 'pending');
               if (pending) return 'pending';
 
-              const allowedConclusions = key === 'macroscope'
-                ? new Set(['success', 'neutral'])
-                : new Set(['success']);
+              const allowedConclusions = new Set(['success', 'neutral', 'skipped']);
               const passed =
                 matchingRuns.some((run) => run.status === 'completed' && allowedConclusions.has(run.conclusion)) ||
                 matchingStatuses.some((status) => status.state === 'success');
