@@ -46,6 +46,22 @@ The e2e auth test requires credentials and host config:
 - `E2E_AUTH_PASSWORD`
 - Optional: `E2E_AUTH_PROTOCOL`, `E2E_AUTH_PLATFORM_DOMAIN`, `E2E_AUTH_LOGIN_HOST`, `E2E_AUTH_TASKS_HOST`, `E2E_AUTH_GOALS_HOST`, `E2E_AUTH_TIMER_HOST`, `E2E_AUTH_REVIEW_HOST`
 
+## Agent-assisted development
+
+This repository supports agent-assisted development. Agent tooling and workflow rules are defined in [`AGENTS.md`](AGENTS.md).
+
+Before opening a PR, agents must run the following QA commands and confirm all pass:
+
+```bash
+npm ci
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+PRs should link the Linear issue in the PR title and body.
+
 ## Learn More
 
 
