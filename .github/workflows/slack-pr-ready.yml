@@ -28,10 +28,6 @@ on:
           - "false"
           - "true"
 
-concurrency:
-  group: slack-pr-ready-${{ github.event.pull_request.head.ref || github.event.check_suite.head_branch || github.event.check_run.check_suite.head_branch || github.event.sha || github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
   pull-requests: read
@@ -56,7 +52,7 @@ jobs:
             const repo = context.repo.repo;
             const eventName = context.eventName;
             const payload = context.payload;
-            const readyMarker = '<!-- slack-pr-ready-notified -->';
+            const readyMarkerPrefix = '<!-- slack-pr-ready-notified:';
             const notReadyMarkerPrefix = '<!-- slack-pr-not-ready-notified:';
             const failConclusions = new Set([
               'action_required',
@@ -67,13 +63,16 @@ jobs:
               'timed_out',
             ]);
             const successConclusions = new Set(['success', 'neutral', 'skipped']);
-            const optionalPassConclusions = new Set(['success']);
+            const selfCheckPatterns = [
+              /Slack PR Safe Merge Notification/i,
+              /Notify Slack when PR readiness changes/i,
+              /slack-pr-ready\.yml/i,
+              /Slack PR Safe Merge Notification \/ Notify Slack when PR readiness changes/i,
+            ];
             const optionalChecks = [
               { key: 'macroscope', label: 'Macroscope', pattern: /macroscope/i },
               { key: 'vercel', label: 'Vercel', pattern: /vercel/i },
             ];
-            const workflowName = 'Slack PR Safe Merge Notification';
-            const jobName = 'Notify Slack when PR readiness changes';
             const isWorkflowDispatch = eventName === 'workflow_dispatch';
             const forceNotify = isWorkflowDispatch && payload.inputs?.force_notify === 'true';
 
@@ -89,6 +88,8 @@ jobs:
               completedChecksCount: 0,
               pendingChecksCount: 0,
               failedChecksCount: 0,
+              ignoredNotifierChecksCount: 0,
+              ignoredNotifierCheckNames: 'None',
               macroscope: 'missing',
               vercel: 'missing',
               decision: 'SKIPPED_NO_PR',
@@ -123,7 +124,11 @@ jobs:
               return items.slice(0, 15).map((item) => `- ${escapeSlack(getName(item))}`).join('\n');
             }
 
-            function checkOptionalState(matchingRuns, matchingStatuses) {
+            function isSelfCheckName(name) {
+              return selfCheckPatterns.some((pattern) => pattern.test(name || ''));
+            }
+
+            function checkOptionalState(key, matchingRuns, matchingStatuses) {
               const detected = matchingRuns.length > 0 || matchingStatuses.length > 0;
               if (!detected) return 'missing';
               const failed =
@@ -134,8 +139,12 @@ jobs:
                 matchingRuns.some((run) => run.status !== 'completed') ||
                 matchingStatuses.some((status) => status.state === 'pending');
               if (pending) return 'pending';
+
+              const allowedConclusions = key === 'macroscope'
+                ? new Set(['success', 'neutral'])
+                : new Set(['success']);
               const passed =
-                matchingRuns.some((run) => run.status === 'completed' && optionalPassConclusions.has(run.conclusion)) ||
+                matchingRuns.some((run) => run.status === 'completed' && allowedConclusions.has(run.conclusion)) ||
                 matchingStatuses.some((status) => status.state === 'success');
               return passed ? 'pass' : 'fail';
             }
@@ -155,6 +164,11 @@ jobs:
                   ['Completed checks count', String(summary.completedChecksCount)],
                   ['Pending checks count', String(summary.pendingChecksCount)],
                   ['Failed checks count', String(summary.failedChecksCount)],
+                  ['Ignored notifier checks count', String(summary.ignoredNotifierChecksCount)],
+                  ['Ignored notifier check names', String(summary.ignoredNotifierCheckNames)],
+                  ['Real completed checks count', String(summary.completedChecksCount)],
+                  ['Real pending checks count', String(summary.pendingChecksCount)],
+                  ['Real failed checks count', String(summary.failedChecksCount)],
                   ['Macroscope detected/pass/fail/pending/missing', String(summary.macroscope)],
                   ['Vercel detected/pass/fail/pending/missing', String(summary.vercel)],
                   ['Decision', String(summary.decision)],
@@ -292,7 +306,7 @@ jobs:
             const linearId = linearMatch ? linearMatch[0].toUpperCase() : 'No Linear ID detected';
             const headlineId = linearMatch ? linearMatch[0].toUpperCase() : 'PR';
 
-            if (pr.state !== 'open' || pr.merged || pr.draft || pr.base.ref !== 'main') {
+            if (!forceNotify && (pr.state !== 'open' || pr.merged || pr.draft || pr.base.ref !== 'main')) {
               const reasons = [];
               if (pr.state !== 'open') reasons.push(`PR state is ${pr.state}`);
               if (pr.merged) reasons.push('PR is already merged');
@@ -311,23 +325,24 @@ jobs:
               per_page: 100,
             });
 
-            const checkRuns = checkRunsResponse.check_runs.filter((run) =>
-              run.name !== workflowName &&
-              run.name !== jobName &&
-              !/Slack PR Safe Merge Notification|Notify Slack when PR/.test(run.name)
-            );
-
             const { data: combinedStatus } = await github.rest.repos.getCombinedStatusForRef({
               owner,
               repo,
               ref: pr.head.sha,
             });
 
+            const ignoredCheckRuns = checkRunsResponse.check_runs.filter((run) => isSelfCheckName(run.name));
+            const checkRuns = checkRunsResponse.check_runs.filter((run) => !isSelfCheckName(run.name));
+            const ignoredStatuses = combinedStatus.statuses.filter((status) => isSelfCheckName(status.context));
+            const statuses = combinedStatus.statuses.filter((status) => !isSelfCheckName(status.context));
+            const ignoredNames = uniq([
+              ...ignoredCheckRuns.map(runName),
+              ...ignoredStatuses.map(statusName),
+            ]);
             const completedChecks = checkRuns.filter((run) => run.status === 'completed');
             const pendingChecks = checkRuns.filter((run) => run.status !== 'completed');
             const failedChecks = completedChecks.filter((run) => failConclusions.has(run.conclusion));
             const passedChecks = completedChecks.filter((run) => successConclusions.has(run.conclusion));
-            const statuses = combinedStatus.statuses;
             const completedStatuses = statuses.filter((status) => status.state !== 'pending');
             const pendingStatuses = statuses.filter((status) => status.state === 'pending');
             const failedStatuses = statuses.filter((status) => ['error', 'failure'].includes(status.state));
@@ -336,17 +351,23 @@ jobs:
             const pendingCount = pendingChecks.length + pendingStatuses.length;
             const failedCount = failedChecks.length + failedStatuses.length;
             const reviewDecision = await getReviewDecision(pr);
-            const blockingReviewDecision = ['CHANGES_REQUESTED', 'REVIEW_REQUIRED'].includes(reviewDecision);
+            const blockingReviewDecision = reviewDecision === 'CHANGES_REQUESTED';
 
             summary.completedChecksCount = completedCount;
             summary.pendingChecksCount = pendingCount;
             summary.failedChecksCount = failedCount;
+            summary.ignoredNotifierChecksCount = ignoredCheckRuns.length + ignoredStatuses.length;
+            summary.ignoredNotifierCheckNames = ignoredNames.length > 0 ? ignoredNames.join(', ') : 'None';
 
             const optionalStates = {};
             for (const optionalCheck of optionalChecks) {
               const matchingRuns = checkRuns.filter((run) => optionalCheck.pattern.test(run.name));
               const matchingStatuses = statuses.filter((status) => optionalCheck.pattern.test(status.context));
-              optionalStates[optionalCheck.key] = checkOptionalState(matchingRuns, matchingStatuses);
+              optionalStates[optionalCheck.key] = checkOptionalState(
+                optionalCheck.key,
+                matchingRuns,
+                matchingStatuses
+              );
               summary[optionalCheck.key] = optionalStates[optionalCheck.key];
             }
 
@@ -367,8 +388,9 @@ jobs:
               per_page: 100,
             });
 
+            const readyMarker = `${readyMarkerPrefix}${pr.head.sha} -->`;
             const readyDuplicate = comments.some((comment) =>
-              comment.body?.includes(readyMarker) && comment.body?.includes(pr.head.sha)
+              comment.body?.includes(readyMarker)
             );
             const notReadyMarker = `${notReadyMarkerPrefix}${pr.head.sha} -->`;
             const notReadyDuplicate = comments.some((comment) => comment.body?.includes(notReadyMarker));
@@ -385,6 +407,12 @@ jobs:
             let notificationKind = null;
             let payloadForSlack = null;
             let markerBody = null;
+            const readyTitle = linearMatch
+              ? `✅ READY TO MERGE — ${headlineId} is valid`
+              : '✅ READY TO MERGE — PR is valid';
+            const notReadyTitle = linearMatch
+              ? `❌ NOT READY — do not merge ${headlineId} yet`
+              : '❌ NOT READY — do not merge this PR yet';
 
             if (forceNotify) {
               payloadForSlack = {
@@ -422,13 +450,13 @@ jobs:
                 return;
               }
               payloadForSlack = {
-                text: `❌ NOT READY — do not merge ${headlineId} yet`,
+                text: notReadyTitle,
                 blocks: [
                   {
                     type: 'section',
                     text: {
                       type: 'mrkdwn',
-                      text: `❌ *NOT READY — do not merge ${escapeSlack(headlineId)} yet*`,
+                      text: `*${escapeSlack(notReadyTitle)}*`,
                     },
                   },
                   {
@@ -478,13 +506,13 @@ jobs:
                 return;
               }
               payloadForSlack = {
-                text: `❌ NOT READY — do not merge ${headlineId} yet`,
+                text: notReadyTitle,
                 blocks: [
                   {
                     type: 'section',
                     text: {
                       type: 'mrkdwn',
-                      text: `❌ *NOT READY — do not merge ${escapeSlack(headlineId)} yet*`,
+                      text: `*${escapeSlack(notReadyTitle)}*`,
                     },
                   },
                   {
@@ -519,13 +547,13 @@ jobs:
                 return;
               }
               payloadForSlack = {
-                text: `✅ READY TO MERGE — ${headlineId} is valid`,
+                text: readyTitle,
                 blocks: [
                   {
                     type: 'section',
                     text: {
                       type: 'mrkdwn',
-                      text: `✅ *READY TO MERGE — ${escapeSlack(headlineId)} is valid*`,
+                      text: `*${escapeSlack(readyTitle)}*`,
                     },
                   },
                   {
