@@ -64,6 +64,8 @@ PRs should link the Linear issue in the PR title and body.
 
 Auto-merge guardian test: documentation-only PRs may be merged automatically when all safety gates pass.
 
+Docs-only auto-merge validation for EGA-379.
+
 ## Learn More
 
 
