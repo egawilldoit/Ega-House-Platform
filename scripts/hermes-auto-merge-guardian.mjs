@@ -35,18 +35,23 @@ const PR_JSON_FIELDS = [
 const failConclusions = new Set([
   'ACTION_REQUIRED',
   'CANCELLED',
+  'CANCELED',
+  'ERROR',
   'FAILURE',
   'STARTUP_FAILURE',
   'STALE',
   'TIMED_OUT',
   'action_required',
   'cancelled',
+  'canceled',
+  'error',
   'failure',
   'startup_failure',
   'stale',
   'timed_out',
 ]);
 const allowedCheckConclusions = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'success', 'neutral', 'skipped']);
+const allowedOptionalConclusions = new Set(['SUCCESS', 'NEUTRAL', 'SKIPPED', 'success', 'neutral', 'skipped']);
 const selfCheckPatterns = [
   /Slack PR Safe Merge Notification/i,
   /Notify Slack when PR readiness changes/i,
@@ -54,9 +59,9 @@ const selfCheckPatterns = [
   /Slack PR Safe Merge Notification \/ Notify Slack when PR readiness changes/i,
 ];
 const requiredOptionalChecks = [
-  { key: 'vercel', label: 'Vercel', pattern: /vercel/i, allowed: new Set(['SUCCESS', 'success']) },
-  { key: 'macroscope', label: 'Macroscope', pattern: /macroscope/i, allowed: new Set(['SUCCESS', 'NEUTRAL', 'success', 'neutral']) },
-  { key: 'codeql', label: 'CodeQL', pattern: /codeql/i, allowed: new Set(['SUCCESS', 'success']) },
+  { key: 'vercel', label: 'Vercel', pattern: /vercel/i, allowed: allowedOptionalConclusions },
+  { key: 'macroscope', label: 'Macroscope', pattern: /macroscope/i, allowed: allowedOptionalConclusions },
+  { key: 'codeql', label: 'CodeQL', pattern: /codeql/i, allowed: allowedOptionalConclusions },
 ];
 
 const args = new Set(process.argv.slice(2));
