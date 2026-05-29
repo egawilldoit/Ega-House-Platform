@@ -1,0 +1,252 @@
+name: Slack PR Safe Merge Notification
+
+# Setup:
+# - Add repository secret SLACK_WEBHOOK_URL with Slack incoming webhook URL.
+# - This workflow only notifies; it never auto-merges. Human Squash merge remains final gate.
+
+on:
+  workflow_run:
+    types: [completed]
+
+concurrency:
+  group: slack-pr-ready-${{ github.event.workflow_run.head_branch || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+  actions: read
+
+jobs:
+  notify:
+    name: Notify Slack when PR is safe for manual merge
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.name != 'Slack PR Safe Merge Notification'
+
+    steps:
+      - name: Evaluate PR readiness
+        id: evaluate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const payload = context.payload;
+            const failConclusions = new Set([
+              'action_required',
+              'cancelled',
+              'failure',
+              'startup_failure',
+              'stale',
+              'timed_out',
+            ]);
+            const successConclusions = new Set(['success', 'neutral', 'skipped']);
+            const requiredOptionalChecks = [
+              { label: 'Macroscope', pattern: /macroscope/i },
+              { label: 'Vercel', pattern: /vercel/i },
+            ];
+
+            async function findOpenPrByHead(headBranch, headSha) {
+              const { data: prs } = await github.rest.pulls.list({
+                owner,
+                repo,
+                state: 'open',
+                per_page: 100,
+              });
+
+              return prs.find((pr) =>
+                pr.head.sha === headSha ||
+                pr.head.ref === headBranch
+              );
+            }
+
+            let pr = null;
+            const run = payload.workflow_run;
+
+            pr = run.pull_requests?.find((candidate) => candidate.base?.ref === 'main') || null;
+            if (!pr) {
+              pr = await findOpenPrByHead(run.head_branch, run.head_sha);
+            }
+
+            if (!pr) {
+              core.info('No matching open PR found.');
+              core.setOutput('should_notify', 'false');
+              return;
+            }
+
+            const { data: fullPr } = await github.rest.pulls.get({
+              owner,
+              repo,
+              pull_number: pr.number,
+            });
+
+            pr = fullPr;
+
+            const skipReasons = [];
+            if (pr.state !== 'open') skipReasons.push(`PR state is ${pr.state}`);
+            if (pr.draft) skipReasons.push('PR is draft');
+            if (pr.base.ref !== 'main') skipReasons.push(`Base branch is ${pr.base.ref}`);
+
+            const { data: checkRuns } = await github.rest.checks.listForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+              per_page: 100,
+            });
+
+            const relevantCheckRuns = checkRuns.check_runs.filter((run) =>
+              run.name !== 'Notify Slack when PR is safe for manual merge'
+            );
+
+            const failingChecks = relevantCheckRuns.filter((run) =>
+              run.status === 'completed' && failConclusions.has(run.conclusion)
+            );
+            const passingChecks = relevantCheckRuns.filter((run) =>
+              run.status === 'completed' && successConclusions.has(run.conclusion)
+            );
+            const pendingChecks = relevantCheckRuns.filter((run) =>
+              run.status !== 'completed'
+            );
+            const completedChecks = relevantCheckRuns.filter((run) =>
+              run.status === 'completed'
+            );
+
+            const { data: combinedStatus } = await github.rest.repos.getCombinedStatusForRef({
+              owner,
+              repo,
+              ref: pr.head.sha,
+            });
+
+            const failingStatuses = combinedStatus.statuses.filter((status) =>
+              ['error', 'failure'].includes(status.state)
+            );
+            const pendingStatuses = combinedStatus.statuses.filter((status) =>
+              status.state === 'pending'
+            );
+            const passingStatuses = combinedStatus.statuses.filter((status) =>
+              status.state === 'success'
+            );
+            const completedStatuses = combinedStatus.statuses.filter((status) =>
+              status.state !== 'pending'
+            );
+
+            if (failingChecks.length > 0) {
+              skipReasons.push(`Failing checks: ${failingChecks.map((run) => run.name).join(', ')}`);
+            }
+            if (failingStatuses.length > 0) {
+              skipReasons.push(`Failing statuses: ${failingStatuses.map((status) => status.context).join(', ')}`);
+            }
+            if (pendingChecks.length > 0) {
+              skipReasons.push(`Pending checks: ${pendingChecks.map((run) => run.name).join(', ')}`);
+            }
+            if (pendingStatuses.length > 0) {
+              skipReasons.push(`Pending statuses: ${pendingStatuses.map((status) => status.context).join(', ')}`);
+            }
+            if (completedChecks.length + completedStatuses.length === 0) {
+              skipReasons.push('No completed checks or statuses found');
+            }
+
+            for (const requiredCheck of requiredOptionalChecks) {
+              const matchingCheckRuns = relevantCheckRuns.filter((run) =>
+                requiredCheck.pattern.test(run.name)
+              );
+              const matchingStatuses = combinedStatus.statuses.filter((status) =>
+                requiredCheck.pattern.test(status.context)
+              );
+              const isPresent = matchingCheckRuns.length > 0 || matchingStatuses.length > 0;
+              const hasPassingResult =
+                matchingCheckRuns.some((run) =>
+                  run.status === 'completed' && successConclusions.has(run.conclusion)
+                ) ||
+                matchingStatuses.some((status) => status.state === 'success');
+
+              if (isPresent && !hasPassingResult) {
+                skipReasons.push(`${requiredCheck.label} check is present but has not passed`);
+              }
+            }
+
+            const checksSummary = [
+              `${passingChecks.length} passing checks`,
+              `${passingStatuses.length} passing statuses`,
+              `${pendingChecks.length} pending checks`,
+              `${failingChecks.length} failing checks`,
+              `${pendingStatuses.length} pending statuses`,
+              `${failingStatuses.length} failing statuses`,
+            ].join(', ');
+
+            if (skipReasons.length > 0) {
+              core.info(`Not notifying: ${skipReasons.join('; ')}`);
+              core.setOutput('should_notify', 'false');
+              return;
+            }
+
+            const linearSource = `${pr.title}\n${pr.body || ''}\n${pr.head.ref}`;
+            const linearMatch = linearSource.match(/EGA-[0-9]+/i);
+            const linearId = linearMatch ? linearMatch[0].toUpperCase() : 'No Linear ID detected';
+            const headlineId = linearMatch ? linearMatch[0].toUpperCase() : 'PR';
+
+            const payloadForSlack = {
+              text: `✅ ${headlineId} is valid — safe to merge manually`,
+              blocks: [
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: `✅ *${headlineId} is valid — safe to merge manually*`,
+                  },
+                },
+                {
+                  type: 'section',
+                  fields: [
+                    { type: 'mrkdwn', text: `*PR title:*\n${pr.title}` },
+                    { type: 'mrkdwn', text: `*Author:*\n${pr.user.login}` },
+                    { type: 'mrkdwn', text: `*Base branch:*\n${pr.base.ref}` },
+                    { type: 'mrkdwn', text: `*Head branch:*\n${pr.head.ref}` },
+                    { type: 'mrkdwn', text: `*Linear issue ID:*\n${linearId}` },
+                    { type: 'mrkdwn', text: `*Checks summary:*\n${checksSummary}` },
+                  ],
+                },
+                {
+                  type: 'section',
+                  text: {
+                    type: 'mrkdwn',
+                    text: `*PR URL:*\n${pr.html_url}`,
+                  },
+                },
+                {
+                  type: 'context',
+                  elements: [
+                    {
+                      type: 'mrkdwn',
+                      text: 'Reminder: Human must click Squash merge manually.',
+                    },
+                  ],
+                },
+              ],
+            };
+
+            core.setOutput('should_notify', 'true');
+            core.setOutput('slack_payload', JSON.stringify(payloadForSlack));
+
+      - name: Send Slack notification
+        if: steps.evaluate.outputs.should_notify == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_PAYLOAD: ${{ steps.evaluate.outputs.slack_payload }}
+        run: |
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::warning::SLACK_WEBHOOK_URL repository secret is not configured; skipping Slack notification."
+            exit 0
+          fi
+
+          response_code="$(curl --silent --show-error --output /tmp/slack-response.txt --write-out '%{http_code}' \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --data "$SLACK_PAYLOAD" \
+            "$SLACK_WEBHOOK_URL" || true)"
+
+          if [ "$response_code" -lt 200 ] || [ "$response_code" -gt 299 ]; then
+            echo "::warning::Slack notification failed with HTTP $response_code."
+          fi
