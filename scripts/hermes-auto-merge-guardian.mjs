@@ -468,8 +468,6 @@ async function mergePr(pr, evaluation) {
     REPO,
     '--squash',
     '--delete-branch',
-    '--match-head-commit',
-    pr.headSha,
   ]);
 
   await sendSlack(`✅ AUTO-MERGED — ${evaluation.linearId}`, [
