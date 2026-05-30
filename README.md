@@ -92,6 +92,7 @@ Known baseline:
   - Tests run
   - Risks
   - Macroscope review status
+Auto-merge guardian test: documentation-only PRs may be merged automatically when all safety gates pass.
 ## Learn More
 
 
