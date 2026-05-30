@@ -1,3 +1,4 @@
+/// <reference types="vitest/globals" />
 import assert from "node:assert/strict";
 
 import { GLOBAL_APP_ROUTES, routeBelongsToWorkspace } from "@/lib/use-canonical-url";
