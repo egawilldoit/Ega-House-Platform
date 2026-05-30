@@ -14,6 +14,7 @@ import {
 } from "@/lib/keyboard-shortcuts";
 
 import { ShortcutHelpSheet } from "./shortcut-help-sheet";
+import { useCanonicalUrl } from "@/lib/use-canonical-url";
 
 const QUICK_TASK_EVENT = "ega:open-quick-task";
 const SHORTCUT_HELP_EVENT = "ega:open-shortcut-help";
@@ -58,6 +59,7 @@ export function WorkspaceKeyboardShortcuts() {
   const [helpOpen, setHelpOpen] = useState(false);
   const navSequenceRef = useRef<string | null>(null);
   const navSequenceResetRef = useRef<number | null>(null);
+  const canonicalUrl = useCanonicalUrl();
 
   useEffect(() => {
     focusShellHeadingFromShortcutNavigation(pathname);
@@ -90,9 +92,10 @@ export function WorkspaceKeyboardShortcuts() {
     };
 
     const navigateToShortcutRoute = (route: `/${string}`) => {
+      const targetUrl = canonicalUrl.resolve(route);
       if (route !== pathname) {
         setShortcutNavigationMarker(route);
-        router.push(route);
+        router.push(targetUrl);
         return;
       }
 
@@ -156,7 +159,7 @@ export function WorkspaceKeyboardShortcuts() {
       window.removeEventListener("keydown", handleKeyDown);
       resetNavSequence();
     };
-  }, [pathname, router]);
+  }, [pathname, router, canonicalUrl]);
 
   return <ShortcutHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />;
 }

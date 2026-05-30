@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
+import { useCanonicalUrl } from "@/lib/use-canonical-url";
 
 type SidebarShellBadge = {
   label: string;
@@ -108,6 +109,7 @@ export function SidebarSignalBadge({
 
 export function TopBarSignalCluster({ metrics }: { metrics: WorkspaceShellMetrics }) {
   const signals = getTopBarShellSignals(metrics);
+  const canonicalUrl = useCanonicalUrl();
 
   if (signals.length === 0) {
     return null;
@@ -116,7 +118,7 @@ export function TopBarSignalCluster({ metrics }: { metrics: WorkspaceShellMetric
   return (
     <div className="hidden items-center gap-2 xl:flex">
       {signals.map((signal) => (
-        <Link key={signal.label} href={signal.href}>
+        <Link key={signal.label} href={canonicalUrl.resolve(signal.href)}>
           <Badge tone={signal.tone}>{signal.label}</Badge>
         </Link>
       ))}
