@@ -9,7 +9,7 @@ import {
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   type ProjectViewFilter,
@@ -20,6 +20,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import type { Tables } from "@/lib/supabase/database.types";
+import { cn } from "@/lib/utils";
 
 type ProjectRow = Pick<
   Tables<"projects">,
@@ -188,11 +189,9 @@ function EmptyState({ hasArchivedProjects }: { hasArchivedProjects: boolean }) {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <form action="/tasks/projects/new">
-            <Button variant="muted" type="submit">
-              Create first project
-            </Button>
-          </form>
+          <Link href="/tasks/projects/new" className={cn(buttonVariants({ variant: "muted" }), "")}>
+            Create first project
+          </Link>
           <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
             {hasArchivedProjects
               ? "Archived projects remain reachable through explicit project views."
@@ -376,9 +375,9 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
       title="Projects"
       description="Command index for project status, task pressure, and direct entry into each project workspace."
       actions={
-        <form action="/tasks/projects/new">
-          <Button type="submit">New Project</Button>
-        </form>
+        <Link href="/tasks/projects/new" className={cn(buttonVariants({ variant: "default" }), "")}>
+          New Project
+        </Link>
       }
     >
       <div className="mb-6 flex flex-wrap items-center gap-2">
