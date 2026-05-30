@@ -46,11 +46,13 @@ function getWorkspaceRevalidationPaths(
   mutationType: WorkspaceMutationType,
   returnTo: string,
 ) {
+  const normalizedReturnTo = getPathname(returnTo);
+
+  // Helper: push unique pathnames only — removes duplicates from iterable sources
   const pathSets: Record<WorkspaceMutationType, string[]> = {
     task: [
       "/tasks",
       "/tasks/projects",
-      getPathname(returnTo),
       "/dashboard",
       "/today",
       "/timer",
@@ -58,16 +60,20 @@ function getWorkspaceRevalidationPaths(
     ],
     timer: [
       "/timer",
-      getPathname(returnTo),
       "/tasks",
       "/dashboard",
       "/today",
       "/review",
     ],
-    today: ["/today", returnTo, "/dashboard", "/tasks", "/timer", "/review"],
+    today: [
+      "/today",
+      "/dashboard",
+      "/tasks",
+      "/timer",
+      "/review",
+    ],
     startup: [
       "/startup",
-      returnTo,
       "/today",
       "/tasks",
       "/dashboard",
@@ -76,7 +82,6 @@ function getWorkspaceRevalidationPaths(
     ],
     shutdown: [
       "/shutdown",
-      returnTo,
       "/today",
       "/dashboard",
       "/tasks",
@@ -85,7 +90,13 @@ function getWorkspaceRevalidationPaths(
     ],
   };
 
-  return pathSets[mutationType];
+  // Collect base paths, then add normalized returnTo (deduped)
+  const basePaths = pathSets[mutationType];
+  return deduplicatePaths([...basePaths, normalizedReturnTo]);
+}
+
+function deduplicatePaths(paths: string[]): string[] {
+  return Array.from(new Set(paths));
 }
 
 export function redirectWithWorkspaceFeedback(
