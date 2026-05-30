@@ -1,3 +1,4 @@
+/// <reference types="vitest/globals" />
 import assert from "node:assert/strict";
 
 /**
