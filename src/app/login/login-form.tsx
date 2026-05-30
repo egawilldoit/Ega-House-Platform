@@ -115,15 +115,33 @@ export function LoginForm() {
         return;
       }
 
-      if (safeRedirect.type === "relative") {
-        startTransition(() => {
-          router.replace(safeRedirect.href);
-          router.refresh();
-        });
-        return;
+      if (safeRedirect.type === "absolute") {
+        try {
+          const targetUrl = new URL(safeRedirect.href);
+          const currentOrigin = window.location.origin;
+
+          if (targetUrl.origin === currentOrigin) {
+            startTransition(() => {
+              router.replace(
+                targetUrl.pathname + targetUrl.search + targetUrl.hash
+              );
+              router.refresh();
+            });
+            return;
+          }
+
+          window.location.assign(safeRedirect.href);
+          return;
+        } catch {
+          window.location.assign(safeRedirect.href);
+          return;
+        }
       }
 
-      window.location.assign(safeRedirect.href);
+      startTransition(() => {
+        router.replace(safeRedirect.href);
+        router.refresh();
+      });
     } catch (submissionError) {
       const message =
         submissionError instanceof Error
