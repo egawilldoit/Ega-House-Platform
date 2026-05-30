@@ -50,6 +50,22 @@ The e2e auth test requires credentials and host config:
 
 This repository supports agent-assisted development. Agent tooling and workflow rules are defined in [`AGENTS.md`](AGENTS.md).
 
+### Workflow
+- Pull one Linear issue at a time.
+- Create Hermes Kanban tasks before implementation.
+- Analyze first, then produce a plan.
+- Wait for approval before editing files.
+- Keep changes focused on the approved Linear issue.
+- Show changed files and diff summary before push/PR.
+
+### Safety rules
+- Never push directly to main.
+- Always create a branch for Linear issues.
+- Do not edit secrets, .env files, API keys, credentials, or deployment configs unless explicitly approved.
+- Do not mark Linear issues as Done without human approval.
+- Stop and ask if requirements are unclear.
+
+### QA commands
 Before opening a PR, agents must run the following QA commands and confirm all pass:
 
 ```bash
@@ -60,12 +76,22 @@ npm test
 npm run build
 ```
 
-PRs should link the Linear issue in the PR title and body.
+Known baseline:
+- typecheck passes
+- lint has 0 errors and 3 pre-existing warnings
+- tests pass: 421 tests
+- build passes: 32/32 static pages generated
 
-Auto-merge guardian test: documentation-only PRs may be merged automatically when all safety gates pass.
-
-Docs-only auto-merge validation for EGA-379. Pipeline validated with EGA-380.
-
+### PR rules
+- Branch format: `hermes/<LINEAR_ID>-short-title`
+- PR title format: `[<LINEAR_ID>] Short title`
+- PR body must include:
+  - Linear issue
+  - Summary
+  - Files changed
+  - Tests run
+  - Risks
+  - Macroscope review status
 ## Learn More
 
 
