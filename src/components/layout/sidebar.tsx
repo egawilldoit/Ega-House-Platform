@@ -28,6 +28,7 @@ import {
   SidebarSignalBadge,
 } from "./shell-signals";
 import { SidebarLogout } from "./sidebar-logout";
+import { useCanonicalUrl } from "@/lib/use-canonical-url";
 
 type NavItem = {
   href: `/${string}`;
@@ -145,6 +146,7 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
     ? currentPath.split("/")[3]
     : null;
   const visibleProjects = projects.slice(0, 14);
+  const canonicalUrl = useCanonicalUrl();
 
   return (
     <aside className="ega-sidebar">
@@ -182,7 +184,7 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={canonicalUrl.resolve(item.href)}
                 aria-current={active ? "page" : undefined}
                 className={cn("sidebar-link", active && "active")}
               >
@@ -262,7 +264,7 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
           {GENERAL_ITEMS.map((item) => (
             <Link
               key={item.label}
-              href={item.href}
+              href={canonicalUrl.resolve(item.href)}
               aria-current={isActive(currentPath, item.href) ? "page" : undefined}
               className={cn("sidebar-link", isActive(currentPath, item.href) && "active")}
             >
