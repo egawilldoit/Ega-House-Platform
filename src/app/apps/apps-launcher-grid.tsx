@@ -7,6 +7,7 @@ import { LayoutDashboard, Target, Timer, ListChecks, NotebookTabs } from "lucide
 
 import type { AppsLauncherIconKey, AppsLauncherItem } from "./launcher-items";
 import { focusShellHeadingFromShortcutNavigation } from "@/components/layout/workspace-keyboard-shortcuts";
+import { useCanonicalUrl } from "@/lib/use-canonical-url";
 
 import { getNextLauncherIndex, isLauncherActivationKey } from "./launcher-navigation";
 
@@ -31,6 +32,7 @@ function getGridColumnCount() {
 
 export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
   const tileRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+  const canonicalUrl = useCanonicalUrl();
 
   useEffect(() => {
     const focusId = window.requestAnimationFrame(() => {
@@ -77,7 +79,7 @@ export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
         return (
           <Link
             key={item.id}
-            href={item.href}
+            href={canonicalUrl.resolve(item.href)}
             ref={(node) => {
               tileRefs.current[index] = node;
             }}

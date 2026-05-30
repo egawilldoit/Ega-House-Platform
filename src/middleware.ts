@@ -11,7 +11,26 @@ const PROTECTED_HOSTS = new Set([
   "timer.egawilldoit.online",
   "review.egawilldoit.online",
 ]);
-const LOGIN_HOST = "www.egawilldoit.online";
+const CANONICAL_HOST = "www.egawilldoit.online";
+const LOGIN_HOST = CANONICAL_HOST;
+
+/**
+ * Global app routes that live on the root host and must never be rewritten
+ * with a workspace subdomain prefix on workspace subdomains.
+ * When accessed from a workspace subdomain, these should redirect to the
+ * canonical root host instead of getting prefixed into an invalid route.
+ */
+const GLOBAL_APP_ROUTES: Array<`/${string}`> = [
+  "/apps",
+  "/dashboard",
+  "/help",
+  "/ideas",
+  "/settings",
+  "/shutdown",
+  "/startup",
+  "/today",
+];
+
 const PROTECTED_ROOT_PATH_PREFIXES: Array<`/${string}`> = [
   "/dashboard",
   "/goals",
@@ -186,6 +205,16 @@ export async function middleware(request: NextRequest) {
   if (PROTECTED_HOSTS.has(hostname)) {
     const { error, hasSession, response } = await updateSession(request);
 
+    // If the path is a known global app route, redirect to canonical root host
+    // instead of rewriting it into an invalid workspace-prefixed route.
+    if (GLOBAL_APP_ROUTES.includes(request.nextUrl.pathname as `/${string}`)) {
+      const redirectUrl = new URL(
+        request.nextUrl.pathname,
+        `https://${CANONICAL_HOST}`,
+      );
+      return copySupabaseResponse(response, NextResponse.redirect(redirectUrl));
+    }
+
     if (error || !hasSession) {
       return copySupabaseResponse(
         response,
@@ -204,6 +233,16 @@ export async function middleware(request: NextRequest) {
         : `${prefix}${request.nextUrl.pathname}`;
 
     return copySupabaseResponse(response, NextResponse.rewrite(url));
+  }
+
+  // Non-protected workspace subdomain (local/dev/preview).
+  // Still redirect global routes to canonical host instead of rewriting.
+  if (GLOBAL_APP_ROUTES.includes(request.nextUrl.pathname as `/${string}`)) {
+    const redirectUrl = new URL(
+      request.nextUrl.pathname,
+      `https://${CANONICAL_HOST}`,
+    );
+    return NextResponse.redirect(redirectUrl);
   }
 
   if (shouldSkipRewrite(request.nextUrl.pathname, prefix)) {
