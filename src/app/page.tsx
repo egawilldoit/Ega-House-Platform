@@ -188,6 +188,52 @@ export default async function HomePage() {
             ))}
           </section>
         </div>
+
+        {/* ── HOW IT WORKS ── */}
+        <div className="mt-24 border-t border-b py-16" style={{ borderColor: "rgba(51,92,103,0.15)" }}>
+          <p className="font-mono text-[0.65rem] uppercase tracking-[0.3em] mb-10 text-center" style={{ color: "#9e2a2b", opacity: 0.7 }}>
+            How it works
+          </p>
+          <div className="grid grid-cols-2 gap-6 lg:grid-cols-4">
+            {[
+              { step: "01", label: "Set your goals", desc: "Define strategic objectives and break them into actionable milestones." },
+              { step: "02", label: "Plan your tasks", desc: "Create tasks linked to goals. Assign context, priority, and deadlines." },
+              { step: "03", label: "Focus & execute", desc: "Run focused timer sessions tied directly to active tasks." },
+              { step: "04", label: "Review & correct", desc: "Weekly reflection loops to close gaps and adjust your system." },
+            ].map((item) => (
+              <div key={item.step} className="flex flex-col">
+                <span className="font-mono text-[2.5rem] font-bold leading-none" style={{ color: "#e09f3e", opacity: 0.35 }}>
+                  {item.step}
+                </span>
+                <p className="mt-3 text-base font-semibold" style={{ color: "#335c67" }}>{item.label}</p>
+                <p className="mt-2 text-sm leading-6" style={{ color: "#540b0e", opacity: 0.65 }}>{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── STATS BAR ── */}
+        <div className="mt-16 grid grid-cols-2 gap-6 lg:grid-cols-4">
+          {[
+            { value: "100%", label: "Session shared across subdomains" },
+            { value: "4 modules", label: "Goals · Tasks · Timer · Review" },
+            { value: "1 workspace", label: "Everything in one command surface" },
+            { value: "Zero friction", label: "From strategy to execution instantly" },
+          ].map((stat) => (
+            <div
+              key={stat.value}
+              className="rounded-2xl px-6 py-6"
+              style={{
+                border: "1px solid rgba(51,92,103,0.18)",
+                background: "rgba(255,255,255,0.4)",
+                backdropFilter: "blur(8px)",
+              }}
+            >
+              <p className="text-2xl font-bold tracking-tight" style={{ color: "#335c67" }}>{stat.value}</p>
+              <p className="mt-1 text-xs leading-5" style={{ color: "#540b0e", opacity: 0.65 }}>{stat.label}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </main>
   );

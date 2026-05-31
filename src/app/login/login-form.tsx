@@ -76,7 +76,7 @@ export function LoginForm() {
 
   return (
     <div
-      className="w-full rounded-2xl p-10 backdrop-blur-xl"
+      className="w-full rounded-2xl p-12 backdrop-blur-xl"
       style={{
         border: "1px solid rgba(51,92,103,0.2)",
         background: "rgba(255,255,255,0.55)",
@@ -118,7 +118,7 @@ export function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@egawilldoit.online"
-            className="h-12 w-full rounded-xl px-4 text-sm outline-none transition-all disabled:opacity-40"
+            className="h-14 w-full rounded-xl px-4 text-base outline-none transition-all disabled:opacity-40"
             style={{
               border: "1px solid rgba(51,92,103,0.25)",
               background: "rgba(255,255,255,0.6)",
@@ -153,7 +153,7 @@ export function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
-            className="h-12 w-full rounded-xl px-4 text-sm outline-none transition-all disabled:opacity-40"
+            className="h-14 w-full rounded-xl px-4 text-base outline-none transition-all disabled:opacity-40"
             style={{
               border: "1px solid rgba(51,92,103,0.25)",
               background: "rgba(255,255,255,0.6)",
@@ -188,7 +188,7 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={isPending}
-          className="mt-2 h-12 w-full rounded-xl text-sm font-semibold tracking-wide transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-2 h-14 w-full rounded-xl text-base font-bold tracking-wide transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
             background: "#335c67",
             color: "#fff3b0",
