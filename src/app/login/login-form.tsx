@@ -10,7 +10,6 @@ const PLATFORM_HOST = "egawilldoit.online";
 function getSafeRedirect(raw: string | null): URL | null {
   if (!raw) return null;
   try {
-    // Relative path
     if (raw.startsWith("/") && !raw.startsWith("//")) {
       return new URL(raw, window.location.origin);
     }
@@ -63,12 +62,8 @@ export function LoginForm() {
       const nextParam = searchParams.get("next");
       const safeRedirect = getSafeRedirect(nextParam);
 
-      // Same-origin redirect: preserve pathname + search + hash
       if (!safeRedirect || safeRedirect.origin === window.location.origin) {
-        const path = safeRedirect
-          ? safeRedirect.pathname + safeRedirect.search + safeRedirect.hash
-          : "/dashboard";
-        router.replace(path);
+        router.replace(safeRedirect?.pathname ?? "/dashboard");
         router.refresh();
       } else {
         window.location.assign(safeRedirect.href);
@@ -77,24 +72,25 @@ export function LoginForm() {
   }
 
   return (
-    <div className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur-xl shadow-[0_0_60px_rgba(0,0,0,0.5)]">
+    <div className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-10 backdrop-blur-xl shadow-[0_0_80px_rgba(0,0,0,0.6)]">
       {/* Header */}
-      <div className="mb-8">
-        <p className="font-mono text-[0.62rem] uppercase tracking-[0.28em] text-slate-500 mb-2">
+      <div className="mb-9">
+        <p className="font-mono text-[0.62rem] uppercase tracking-[0.3em] text-slate-500 mb-3">
           Login
         </p>
-        <p className="text-lg font-semibold text-white tracking-tight">
+        <p className="text-xl font-semibold text-white tracking-tight leading-tight">
           Sign in to continue
         </p>
-        <p className="mt-1 text-xs text-slate-500 leading-5">
-          Use your email and password to unlock the protected EGA House workspaces.
+        <p className="mt-2 text-sm text-slate-500 leading-6">
+          Use your email and password to unlock the protected
+          EGA House workspaces.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Email */}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="email" className="text-[0.7rem] font-medium text-slate-400 tracking-wide">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="email" className="text-[0.72rem] font-medium text-slate-400 tracking-wide">
             Email
           </label>
           <input
@@ -106,13 +102,13 @@ export function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@egawilldoit.online"
-            className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3.5 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-emerald-500/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-emerald-500/15 disabled:opacity-40"
+            className="h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-emerald-500/50 focus:bg-white/[0.08] focus:ring-2 focus:ring-emerald-500/15 disabled:opacity-40"
           />
         </div>
 
         {/* Password */}
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="password" className="text-[0.7rem] font-medium text-slate-400 tracking-wide">
+        <div className="flex flex-col gap-2">
+          <label htmlFor="password" className="text-[0.72rem] font-medium text-slate-400 tracking-wide">
             Password
           </label>
           <input
@@ -124,13 +120,13 @@ export function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
-            className="h-10 w-full rounded-lg border border-white/10 bg-white/5 px-3.5 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-emerald-500/40 focus:bg-white/[0.07] focus:ring-2 focus:ring-emerald-500/15 disabled:opacity-40"
+            className="h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-emerald-500/50 focus:bg-white/[0.08] focus:ring-2 focus:ring-emerald-500/15 disabled:opacity-40"
           />
         </div>
 
         {/* Error */}
         {error && (
-          <div className="rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-400 leading-5">
+          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-400 leading-5">
             {error}
           </div>
         )}
@@ -139,7 +135,7 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={isPending}
-          className="mt-2 h-10 w-full rounded-lg bg-emerald-500 text-xs font-semibold tracking-wide text-black transition-all hover:bg-emerald-400 hover:shadow-[0_0_20px_rgba(34,197,94,0.3)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-500 disabled:hover:shadow-none"
+          className="mt-2 h-12 w-full rounded-xl bg-emerald-500 text-sm font-semibold tracking-wide text-black transition-all hover:bg-emerald-400 hover:shadow-[0_0_28px_rgba(34,197,94,0.35)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isPending ? "Signing in…" : "Sign in"}
         </button>
