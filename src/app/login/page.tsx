@@ -160,7 +160,7 @@ export default async function LoginPage() {
         </section>
 
         {/* ── Right — form ── */}
-        <section className="w-full max-w-md self-center lg:self-auto xl:max-w-[440px] shrink-0">
+        <section className="w-full max-w-lg self-center lg:self-auto xl:max-w-[520px] shrink-0">
           <div className="relative">
             <div
               className="absolute -inset-px rounded-2xl pointer-events-none"
@@ -171,6 +171,32 @@ export default async function LoginPage() {
             </Suspense>
           </div>
         </section>
+      </div>
+
+      {/* ── TRUST STRIP ── */}
+      <div
+        className="relative z-10 mx-8 mb-12 sm:mx-14 lg:mx-20 xl:mx-28 rounded-2xl px-8 py-8"
+        style={{
+          border: "1px solid rgba(51,92,103,0.15)",
+          background: "rgba(255,255,255,0.35)",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          {[
+            { icon: "🔒", label: "Secure by default", desc: "Supabase auth with server-side session validation on every request." },
+            { icon: "⚡", label: "Single sign-on", desc: "Log in once on root domain. Session flows across all subdomains automatically." },
+            { icon: "🎯", label: "Built for operators", desc: "Not a generic tool. Designed around the Plan → Execute → Reflect loop." },
+          ].map((item) => (
+            <div key={item.label} className="flex gap-4 items-start">
+              <span className="text-2xl">{item.icon}</span>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: "#335c67" }}>{item.label}</p>
+                <p className="mt-1 text-xs leading-5" style={{ color: "#540b0e", opacity: 0.65 }}>{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </main>
   );
