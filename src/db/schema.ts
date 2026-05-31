@@ -139,6 +139,7 @@ export const calendarIntegrationSettings = pgTable(
     defaultReminderMinutes: integer("default_reminder_minutes")
       .notNull()
       .default(10),
+    calendarId: text("calendar_id").notNull().default("primary"),
     accessTokenEncrypted: text("access_token_encrypted"),
     refreshTokenEncrypted: text("refresh_token_encrypted"),
     tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
@@ -165,6 +166,43 @@ export const calendarIntegrationSettings = pgTable(
       "calendar_integration_settings_default_reminder_check",
       sql`${table.defaultReminderMinutes} >= 0 and ${table.defaultReminderMinutes} <= 10080`,
     ),
+  ],
+);
+
+export const calendarSyncJobs = pgTable(
+  "calendar_sync_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    taskId: uuid("task_id").notNull(),
+    calendarEventId: text("calendar_event_id"),
+    operation: varchar("operation", { length: 16 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("calendar_sync_jobs_pending_idx")
+      .on(table.status, table.createdAt)
+      .where(sql`${table.status} in ('pending', 'failed')`),
+    index("calendar_sync_jobs_task_id_idx").on(table.taskId),
+    index("calendar_sync_jobs_owner_user_id_idx").on(table.ownerUserId),
+    check(
+      "calendar_sync_jobs_operation_check",
+      sql`${table.operation} in ('upsert', 'delete')`,
+    ),
+    check(
+      "calendar_sync_jobs_status_check",
+      sql`${table.status} in ('pending', 'processing', 'succeeded', 'failed')`,
+    ),
+    check("calendar_sync_jobs_attempts_check", sql`${table.attempts} >= 0`),
   ],
 );
 

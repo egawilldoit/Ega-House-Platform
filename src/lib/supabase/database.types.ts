@@ -12,6 +12,7 @@ export type Database = {
       calendar_integration_settings: {
         Row: {
           access_token_encrypted: string | null
+          calendar_id: string
           connected_at: string | null
           created_at: string
           default_reminder_minutes: number
@@ -27,6 +28,7 @@ export type Database = {
         }
         Insert: {
           access_token_encrypted?: string | null
+          calendar_id?: string
           connected_at?: string | null
           created_at?: string
           default_reminder_minutes?: number
@@ -42,6 +44,7 @@ export type Database = {
         }
         Update: {
           access_token_encrypted?: string | null
+          calendar_id?: string
           connected_at?: string | null
           created_at?: string
           default_reminder_minutes?: number
@@ -53,6 +56,48 @@ export type Database = {
           refresh_token_encrypted?: string | null
           scheduled_task_sync_enabled?: boolean
           token_expires_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      calendar_sync_jobs: {
+        Row: {
+          attempts: number
+          calendar_event_id: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          locked_at: string | null
+          operation: string
+          owner_user_id: string
+          status: string
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          calendar_event_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          operation: string
+          owner_user_id: string
+          status?: string
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          calendar_event_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          locked_at?: string | null
+          operation?: string
+          owner_user_id?: string
+          status?: string
+          task_id?: string
           updated_at?: string
         }
         Relationships: []
