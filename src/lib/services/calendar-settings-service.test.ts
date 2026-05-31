@@ -9,6 +9,10 @@ import {
   getCalendarTaskFormDefaults,
   updateCalendarIntegrationDefaults,
 } from "./calendar-settings-service";
+import {
+  decryptCalendarToken,
+  isEncryptedCalendarToken,
+} from "./calendar-token-crypto";
 
 type MockRow = {
   owner_user_id: string;
@@ -218,8 +222,18 @@ test("Google Calendar callback token persistence inserts first-time connection s
   assert.deepEqual(mock.upsertOptions[0], {
     onConflict: "owner_user_id,provider",
   });
-  assert.equal(mock.upsertPayloads[0]?.access_token_encrypted, "google-access-token");
-  assert.equal(mock.upsertPayloads[0]?.refresh_token_encrypted, "google-refresh-token");
+  assert.equal(
+    isEncryptedCalendarToken(mock.upsertPayloads[0]?.access_token_encrypted as string),
+    true,
+  );
+  assert.equal(
+    decryptCalendarToken(mock.upsertPayloads[0]?.access_token_encrypted as string),
+    "google-access-token",
+  );
+  assert.equal(
+    decryptCalendarToken(mock.upsertPayloads[0]?.refresh_token_encrypted as string),
+    "google-refresh-token",
+  );
   assert.equal(
     mock.upsertPayloads[0]?.token_expires_at,
     "2026-05-10T11:00:00.000Z",
@@ -260,8 +274,14 @@ test("Google Calendar callback token persistence updates existing settings row w
   assert.equal(result.data.scheduledTaskSyncEnabled, true);
   assert.equal(result.data.defaultReminderMinutes, 45);
   assert.equal(mock.upsertPayloads[0]?.owner_user_id, "owner-existing");
-  assert.equal(mock.upsertPayloads[0]?.access_token_encrypted, "new-access-token");
-  assert.equal(mock.upsertPayloads[0]?.refresh_token_encrypted, "new-refresh-token");
+  assert.equal(
+    decryptCalendarToken(mock.upsertPayloads[0]?.access_token_encrypted as string),
+    "new-access-token",
+  );
+  assert.equal(
+    decryptCalendarToken(mock.upsertPayloads[0]?.refresh_token_encrypted as string),
+    "new-refresh-token",
+  );
 });
 
 test("Google Calendar callback token persistence maps database write failure for settings_write_failed", async () => {

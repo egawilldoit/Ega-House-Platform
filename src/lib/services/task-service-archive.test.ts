@@ -5,8 +5,10 @@ import { archiveTask, deleteTaskSafely, getTasksWorkspaceData, unarchiveTask } f
 
 type TaskRow = {
   id: string;
+  owner_user_id?: string;
   title: string;
   status: string;
+  calendar_event_id?: string | null;
   archived_at: string | null;
   archived_by: string | null;
   updated_at: string;
@@ -35,10 +37,12 @@ function createQueryMock(table: string, state: MockState) {
     },
     delete() {
       state.deletes.push(table);
+      state.operations.push(`delete:${table}`);
       return query;
     },
     insert(payload: unknown) {
       state.inserts.push({ table, payload });
+      state.operations.push(`insert:${table}`);
       return query;
     },
     eq(column: string, value: unknown) {
@@ -83,6 +87,7 @@ type MockState = {
   updates: Array<{ table: string; payload: Record<string, unknown> }>;
   deletes: string[];
   inserts: Array<{ table: string; payload: unknown }>;
+  operations: string[];
 };
 
 function applyFilters<T extends Record<string, unknown>>(
@@ -166,6 +171,7 @@ function createMockSupabase(tasks: TaskRow[], sessions: SessionRow[] = []) {
     updates: [],
     deletes: [],
     inserts: [],
+    operations: [],
   };
 
   return {
@@ -263,4 +269,31 @@ test("archive blocks active timer but delete protection still uses delete-safe p
   const deleteResult = await deleteTaskSafely("task-1", { supabase: supabase as never });
   assert.equal(deleteResult.errorMessage, "Stop the active timer on this task before deleting it.");
   assert.equal(state.deletes.length, 0);
+});
+
+test("delete enqueues calendar cleanup only after task delete succeeds", async () => {
+  const { supabase, state } = createMockSupabase([
+    {
+      ...task("task-1", "todo"),
+      owner_user_id: "user-1",
+      calendar_event_id: "google-event-1",
+    },
+  ]);
+
+  const result = await deleteTaskSafely("task-1", { supabase: supabase as never });
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(state.operations, [
+    "delete:tasks",
+    "insert:calendar_sync_jobs",
+  ]);
+  assert.equal(state.inserts[0]?.table, "calendar_sync_jobs");
+  const payload = state.inserts[0]?.payload as Record<string, unknown>;
+  assert.equal(payload.owner_user_id, "user-1");
+  assert.equal(payload.task_id, "task-1");
+  assert.equal(payload.calendar_event_id, "google-event-1");
+  assert.equal(payload.operation, "delete");
+  assert.equal(payload.status, "pending");
+  assert.equal(payload.attempts, 0);
+  assert.equal(typeof payload.updated_at, "string");
 });
