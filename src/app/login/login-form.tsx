@@ -63,10 +63,7 @@ export function LoginForm() {
       const safeRedirect = getSafeRedirect(nextParam);
 
       if (!safeRedirect || safeRedirect.origin === window.location.origin) {
-        const path = safeRedirect
-          ? safeRedirect.pathname + safeRedirect.search + safeRedirect.hash
-          : "/dashboard";
-        router.replace(path);
+        router.replace(safeRedirect?.pathname ?? "/dashboard");
         router.refresh();
       } else {
         window.location.assign(safeRedirect.href);
@@ -75,25 +72,38 @@ export function LoginForm() {
   }
 
   return (
-    <div className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-10 backdrop-blur-xl shadow-[0_0_80px_rgba(0,0,0,0.6)]">
+    <div
+      className="w-full rounded-2xl p-10 backdrop-blur-xl"
+      style={{
+        border: "1px solid rgba(51,92,103,0.2)",
+        background: "rgba(255,255,255,0.55)",
+        boxShadow: "0 8px 60px rgba(84,11,14,0.12), 0 2px 16px rgba(51,92,103,0.08)",
+      }}
+    >
       {/* Header */}
       <div className="mb-9">
-        <p className="font-mono text-[0.62rem] uppercase tracking-[0.3em] text-slate-500 mb-3">
+        <p
+          className="font-mono text-[0.62rem] uppercase tracking-[0.3em] mb-3"
+          style={{ color: "#9e2a2b", opacity: 0.7 }}
+        >
           Login
         </p>
-        <p className="text-xl font-semibold text-white tracking-tight leading-tight">
+        <p className="text-xl font-semibold tracking-tight leading-tight" style={{ color: "#335c67" }}>
           Sign in to continue
         </p>
-        <p className="mt-2 text-sm text-slate-500 leading-6">
-          Use your email and password to unlock the protected
-          EGA House workspaces.
+        <p className="mt-2 text-sm leading-6" style={{ color: "#540b0e", opacity: 0.65 }}>
+          Use your email and password to unlock the protected EGA House workspaces.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         {/* Email */}
         <div className="flex flex-col gap-2">
-          <label htmlFor="email" className="text-[0.72rem] font-medium text-slate-400 tracking-wide">
+          <label
+            htmlFor="email"
+            className="text-[0.72rem] font-medium tracking-wide"
+            style={{ color: "#335c67" }}
+          >
             Email
           </label>
           <input
@@ -105,13 +115,30 @@ export function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@egawilldoit.online"
-            className="h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-emerald-500/50 focus:bg-white/[0.08] focus:ring-2 focus:ring-emerald-500/15 disabled:opacity-40"
+            className="h-12 w-full rounded-xl px-4 text-sm outline-none transition-all disabled:opacity-40"
+            style={{
+              border: "1px solid rgba(51,92,103,0.25)",
+              background: "rgba(255,255,255,0.6)",
+              color: "#335c67",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.border = "1px solid rgba(224,159,62,0.6)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(224,159,62,0.15)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.border = "1px solid rgba(51,92,103,0.25)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
           />
         </div>
 
         {/* Password */}
         <div className="flex flex-col gap-2">
-          <label htmlFor="password" className="text-[0.72rem] font-medium text-slate-400 tracking-wide">
+          <label
+            htmlFor="password"
+            className="text-[0.72rem] font-medium tracking-wide"
+            style={{ color: "#335c67" }}
+          >
             Password
           </label>
           <input
@@ -123,13 +150,33 @@ export function LoginForm() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Enter your password"
-            className="h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white placeholder:text-slate-600 outline-none transition-all focus:border-emerald-500/50 focus:bg-white/[0.08] focus:ring-2 focus:ring-emerald-500/15 disabled:opacity-40"
+            className="h-12 w-full rounded-xl px-4 text-sm outline-none transition-all disabled:opacity-40"
+            style={{
+              border: "1px solid rgba(51,92,103,0.25)",
+              background: "rgba(255,255,255,0.6)",
+              color: "#335c67",
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.border = "1px solid rgba(224,159,62,0.6)";
+              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(224,159,62,0.15)";
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.border = "1px solid rgba(51,92,103,0.25)";
+              e.currentTarget.style.boxShadow = "none";
+            }}
           />
         </div>
 
         {/* Error */}
         {error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs text-red-400 leading-5">
+          <div
+            className="rounded-xl px-4 py-3 text-xs leading-5"
+            style={{
+              border: "1px solid rgba(158,42,43,0.3)",
+              background: "rgba(158,42,43,0.08)",
+              color: "#9e2a2b",
+            }}
+          >
             {error}
           </div>
         )}
@@ -138,7 +185,21 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={isPending}
-          className="mt-2 h-12 w-full rounded-xl bg-emerald-500 text-sm font-semibold tracking-wide text-black transition-all hover:bg-emerald-400 hover:shadow-[0_0_28px_rgba(34,197,94,0.35)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="mt-2 h-12 w-full rounded-xl text-sm font-semibold tracking-wide transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            background: "#335c67",
+            color: "#fff3b0",
+          }}
+          onMouseEnter={(e) => {
+            if (!isPending) {
+              (e.currentTarget as HTMLButtonElement).style.background = "#9e2a2b";
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 28px rgba(158,42,43,0.3)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = "#335c67";
+            (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+          }}
         >
           {isPending ? "Signing in…" : "Sign in"}
         </button>
