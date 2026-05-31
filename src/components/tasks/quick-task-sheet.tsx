@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Plus, Trash2, X } from "lucide-react";
+import { BellRing, CalendarClock, Copy, Plus, Trash2, X } from "lucide-react";
 
 import {
   createTaskAction,
@@ -456,6 +456,11 @@ function QuickTaskSheetPanel({
                   name="workedTimeTimezoneOffsetMinutes"
                   value={timeZoneOffsetMinutes}
                 />
+                <input
+                  type="hidden"
+                  name="scheduleTimezoneOffsetMinutes"
+                  value={timeZoneOffsetMinutes}
+                />
                 <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
                 <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
@@ -679,6 +684,92 @@ function QuickTaskSheetPanel({
                           onChange={(event) => setSingleEstimateMinutes(event.target.value)}
                           className="h-10"
                         />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <div className="overflow-hidden rounded-2xl border border-[rgba(15,23,42,0.08)] bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(238,247,244,0.72))] shadow-[0_16px_45px_rgba(15,23,42,0.06)]">
+                          <div className="flex items-start gap-3 border-b border-[rgba(15,23,42,0.07)] px-4 py-3">
+                            <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(5,150,105,0.1)] text-signal-live">
+                              <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="glass-label text-etch">Calendar handoff</span>
+                              <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
+                                Add a scheduled window and queue a Google Calendar event from quick
+                                capture.
+                              </span>
+                            </span>
+                          </div>
+
+                          <div className="grid gap-3 p-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <label
+                                htmlFor="quick-task-scheduled-from"
+                                className="glass-label text-etch"
+                              >
+                                Scheduled from
+                              </label>
+                              <Input
+                                id="quick-task-scheduled-from"
+                                name="scheduledStartAt"
+                                type="datetime-local"
+                                defaultValue={singleState.values.scheduledStartAt}
+                                className="h-10 bg-white/90"
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <label
+                                htmlFor="quick-task-scheduled-to"
+                                className="glass-label text-etch"
+                              >
+                                Scheduled to
+                              </label>
+                              <Input
+                                id="quick-task-scheduled-to"
+                                name="scheduledEndAt"
+                                type="datetime-local"
+                                defaultValue={singleState.values.scheduledEndAt}
+                                className="h-10 bg-white/90"
+                              />
+                            </div>
+
+                            <label className="flex items-start gap-3 rounded-xl border border-[rgba(5,150,105,0.18)] bg-white/80 p-3 sm:col-span-2">
+                              <input
+                                type="checkbox"
+                                name="calendarSyncEnabled"
+                                defaultChecked={singleState.values.calendarSyncEnabled === "on"}
+                                className="mt-1 h-4 w-4 accent-[rgb(5,150,105)]"
+                              />
+                              <span className="min-w-0">
+                                <span className="glass-label text-etch">Sync to Calendar</span>
+                                <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
+                                  Creates a calendar job after this task is saved.
+                                </span>
+                              </span>
+                            </label>
+
+                            <div className="space-y-2 sm:col-span-2">
+                              <label
+                                htmlFor="quick-task-calendar-reminder"
+                                className="glass-label flex items-center gap-2 text-etch"
+                              >
+                                <BellRing className="h-3.5 w-3.5 text-signal-warn" aria-hidden="true" />
+                                Calendar reminder
+                              </label>
+                              <Input
+                                id="quick-task-calendar-reminder"
+                                name="calendarReminderMinutes"
+                                type="number"
+                                min="0"
+                                max="10080"
+                                step="5"
+                                defaultValue={singleState.values.calendarReminderMinutes}
+                                className="h-10 bg-white/90"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="space-y-3 sm:col-span-2">
