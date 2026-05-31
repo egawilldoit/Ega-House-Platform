@@ -12,24 +12,33 @@ export default async function HomePage() {
   }
 
   return (
-    <main className="min-h-dvh bg-[#070809] text-foreground overflow-hidden">
+    <main className="min-h-dvh overflow-hidden" style={{ background: "#fff3b0" }}>
       {/* ── Ambient background ── */}
       <div className="pointer-events-none fixed inset-0 z-0">
-        {/* Large top-left bloom */}
-        <div className="absolute -top-[20%] -left-[8%] h-[80vw] max-h-[900px] w-[80vw] max-w-[900px] rounded-full bg-[radial-gradient(circle,rgba(34,197,94,0.09)_0%,transparent_60%)]" />
-        {/* Bottom-right accent */}
-        <div className="absolute bottom-[-15%] right-[-5%] h-[50vw] max-h-[600px] w-[50vw] max-w-[600px] rounded-full bg-[radial-gradient(circle,rgba(34,197,94,0.05)_0%,transparent_60%)]" />
-        {/* Grid */}
+        {/* Top-left teal bloom */}
         <div
-          className="absolute inset-0 opacity-[0.025]"
+          className="absolute -top-[20%] -left-[8%] h-[80vw] max-h-[900px] w-[80vw] max-w-[900px] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(51,92,103,0.12) 0%, transparent 60%)" }}
+        />
+        {/* Bottom-right red bloom */}
+        <div
+          className="absolute bottom-[-15%] right-[-5%] h-[50vw] max-h-[600px] w-[50vw] max-w-[600px] rounded-full"
+          style={{ background: "radial-gradient(circle, rgba(158,42,43,0.10) 0%, transparent 60%)" }}
+        />
+        {/* Subtle grid */}
+        <div
+          className="absolute inset-0 opacity-[0.04]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(255,255,255,1) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,1) 1px,transparent 1px)",
+              "linear-gradient(rgba(51,92,103,0.8) 1px,transparent 1px),linear-gradient(90deg,rgba(51,92,103,0.8) 1px,transparent 1px)",
             backgroundSize: "80px 80px",
           }}
         />
         {/* Top rule */}
-        <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent" />
+        <div
+          className="absolute top-0 left-0 right-0 h-px"
+          style={{ background: "linear-gradient(90deg, transparent, rgba(224,159,62,0.5), transparent)" }}
+        />
       </div>
 
       {/* ── Content ── */}
@@ -46,30 +55,45 @@ export default async function HomePage() {
                 width={56}
                 height={56}
                 priority
-                className="h-12 w-12 rounded-2xl object-contain ring-1 ring-white/10"
+                className="h-12 w-12 rounded-2xl object-contain"
+                style={{ boxShadow: "0 2px 16px rgba(84,11,14,0.15)" }}
               />
-              <span className="inline-flex items-center gap-2.5 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-4 py-1.5 text-[0.68rem] font-mono uppercase tracking-[0.24em] text-emerald-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(34,197,94,0.8)] animate-pulse" />
+              <span
+                className="inline-flex items-center gap-2.5 rounded-full px-4 py-1.5 font-mono text-[0.68rem] uppercase tracking-[0.24em]"
+                style={{
+                  border: "1px solid rgba(224,159,62,0.4)",
+                  background: "rgba(224,159,62,0.15)",
+                  color: "#9e2a2b",
+                }}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full animate-pulse"
+                  style={{ background: "#e09f3e", boxShadow: "0 0 6px rgba(224,159,62,0.9)" }}
+                />
                 EGA House · Operational Platform
               </span>
             </div>
 
             {/* Hero heading */}
             <h1
-              className="text-[clamp(3.2rem,6vw,5.5rem)] font-bold leading-[1.04] tracking-[-0.05em] text-white"
-              style={{ fontFamily: "var(--font-display)" }}
+              className="text-[clamp(3.2rem,6vw,5.5rem)] font-bold leading-[1.04] tracking-[-0.05em]"
+              style={{ fontFamily: "var(--font-display)", color: "#335c67" }}
             >
               One command
               <br />
-              <span className="text-emerald-400">surface for planning,</span>
+              <span style={{ color: "#9e2a2b" }}>surface for planning,</span>
               <br />
-              <span className="text-emerald-400">execution,</span> focus,
+              <span style={{ color: "#9e2a2b" }}>execution,</span>{" "}
+              <span style={{ color: "#335c67" }}>focus,</span>
               <br />
-              and review.
+              <span style={{ color: "#335c67" }}>and review.</span>
             </h1>
 
             {/* Body */}
-            <p className="mt-8 max-w-2xl text-[1.05rem] leading-8 text-slate-400">
+            <p
+              className="mt-8 max-w-2xl text-[1.05rem] leading-8"
+              style={{ color: "#540b0e" }}
+            >
               EGA House keeps goals, tasks, timer sessions, and weekly reviews in
               one shared workspace so operators can move from strategy to
               execution without losing context.
@@ -79,21 +103,28 @@ export default async function HomePage() {
             <div className="mt-12 flex flex-wrap items-center gap-5">
               <Link
                 href="/login?next=%2Fdashboard"
-                className="inline-flex h-12 items-center gap-2 rounded-xl bg-emerald-500 px-7 text-sm font-semibold tracking-wide text-black transition-all hover:bg-emerald-400 hover:shadow-[0_0_28px_rgba(34,197,94,0.4)] active:scale-[0.97]"
+                className="inline-flex h-12 items-center gap-2 rounded-xl px-7 text-sm font-semibold tracking-wide transition-all active:scale-[0.97] hover:bg-[#9e2a2b] hover:shadow-[0_0_28px_rgba(158,42,43,0.35)]"
+                style={{
+                  background: "#335c67",
+                  color: "#fff3b0",
+                }}
               >
                 Enter workspace
                 <span className="opacity-70">→</span>
               </Link>
-              <span className="text-sm text-slate-500">
+              <span className="text-sm" style={{ color: "#9e2a2b" }}>
                 Sign in to continue to your dashboard.
               </span>
             </div>
 
             {/* Divider + footnote */}
-            <div className="mt-16 h-px w-full max-w-2xl bg-gradient-to-r from-white/8 via-white/12 to-transparent" />
-            <div className="mt-5 flex gap-6 text-[0.72rem] text-slate-600 font-mono tracking-wide">
+            <div
+              className="mt-16 h-px w-full max-w-2xl"
+              style={{ background: "linear-gradient(90deg, rgba(51,92,103,0.2), rgba(51,92,103,0.08), transparent)" }}
+            />
+            <div className="mt-5 flex gap-6 font-mono tracking-wide text-[0.72rem]" style={{ color: "#9e2a2b", opacity: 0.6 }}>
               <span>Goals · Tasks · Timer · Review</span>
-              <span className="text-slate-700">·</span>
+              <span style={{ opacity: 0.4 }}>·</span>
               <span>Session-shared across subdomains</span>
             </div>
           </section>
@@ -105,39 +136,52 @@ export default async function HomePage() {
                 label: "Goals",
                 value: "Plan",
                 detail: "Strategic objectives and roadmap direction.",
-                accent: "text-emerald-400",
-                glow: "rgba(34,197,94,0.06)",
-                border: "border-emerald-500/15",
+                accent: "#335c67",
+                borderColor: "rgba(51,92,103,0.25)",
+                glowColor: "rgba(51,92,103,0.06)",
               },
               {
                 label: "Tasks",
                 value: "Execute",
                 detail: "Operational work tracking with active delivery context.",
-                accent: "text-sky-400",
-                glow: "rgba(56,189,248,0.06)",
-                border: "border-sky-500/15",
+                accent: "#9e2a2b",
+                borderColor: "rgba(158,42,43,0.25)",
+                glowColor: "rgba(158,42,43,0.06)",
               },
               {
                 label: "Review",
                 value: "Reflect",
                 detail: "Cadence loop for weekly insight and system correction.",
-                accent: "text-violet-400",
-                glow: "rgba(167,139,250,0.06)",
-                border: "border-violet-500/15",
+                accent: "#540b0e",
+                borderColor: "rgba(84,11,14,0.2)",
+                glowColor: "rgba(84,11,14,0.05)",
               },
             ].map((item) => (
               <article
                 key={item.label}
-                className={`rounded-2xl border ${item.border} px-7 py-6 transition-all duration-300 hover:brightness-110`}
-                style={{ background: `radial-gradient(ellipse at top left, ${item.glow}, transparent 70%), rgba(255,255,255,0.02)` }}
+                className="rounded-2xl px-7 py-6 transition-all duration-300"
+                style={{
+                  border: `1px solid ${item.borderColor}`,
+                  background: `radial-gradient(ellipse at top left, ${item.glowColor}, transparent 70%), rgba(255,255,255,0.45)`,
+                  backdropFilter: "blur(8px)",
+                }}
               >
-                <p className={`font-mono text-[0.65rem] uppercase tracking-[0.3em] ${item.accent} opacity-75`}>
+                <p
+                  className="font-mono text-[0.65rem] uppercase tracking-[0.3em]"
+                  style={{ color: item.accent, opacity: 0.8 }}
+                >
                   {item.label}
                 </p>
-                <p className="mt-4 text-2xl font-semibold tracking-tight text-white">
+                <p
+                  className="mt-4 text-2xl font-semibold tracking-tight"
+                  style={{ color: "#335c67" }}
+                >
                   {item.value}
                 </p>
-                <p className="mt-2 text-[0.85rem] leading-6 text-slate-500">
+                <p
+                  className="mt-2 text-[0.85rem] leading-6"
+                  style={{ color: "#540b0e", opacity: 0.7 }}
+                >
                   {item.detail}
                 </p>
               </article>
