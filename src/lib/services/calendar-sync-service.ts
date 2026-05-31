@@ -302,6 +302,20 @@ export async function processPendingCalendarSyncJobs(options?: {
         job.owner_user_id,
         { supabase },
       );
+      if (settingsResult.errorMessage) {
+        failed += 1;
+        await completeCalendarSyncJob(supabase, {
+          job,
+          task: null,
+          status: "failed",
+          taskStatus: "failed",
+          eventId: job.calendar_event_id,
+          failureReason: settingsResult.errorMessage,
+          nowIso,
+        });
+        continue;
+      }
+
       const syncResult = await syncGoogleCalendarEventForTask(
         {
           taskId: job.task_id,
@@ -332,6 +346,15 @@ export async function processPendingCalendarSyncJobs(options?: {
       }
 
       processed += 1;
+      if ("refreshedAccessToken" in syncResult) {
+        await persistRefreshedAccessToken(supabase, {
+          ownerUserId: job.owner_user_id,
+          refreshedAccessToken: syncResult.refreshedAccessToken,
+          tokenExpiresAt: syncResult.tokenExpiresAt,
+          nowIso,
+        });
+      }
+
       await completeCalendarSyncJob(supabase, {
         job,
         task: null,
@@ -362,6 +385,20 @@ export async function processPendingCalendarSyncJobs(options?: {
       job.owner_user_id,
       { supabase },
     );
+    if (settingsResult.errorMessage) {
+      failed += 1;
+      await completeCalendarSyncJob(supabase, {
+        job,
+        task: taskResult.data,
+        status: "failed",
+        taskStatus: "failed",
+        eventId: taskResult.data.calendar_event_id,
+        failureReason: settingsResult.errorMessage,
+        nowIso,
+      });
+      continue;
+    }
+
     const syncResult = await syncGoogleCalendarEventForTask(
       {
         taskId: taskResult.data.id,
