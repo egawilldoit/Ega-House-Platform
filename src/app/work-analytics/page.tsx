@@ -2,9 +2,9 @@ import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDurationLabel } from "@/lib/task-session";
 import { getCurrentUser } from "@/lib/services/auth-service";
-import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
+import { getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-data-adapter";
 import {
-  calculateWorkAnalytics,
+  calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
   calculateWorkAnalyticsInsights,
   calculateWorkAnalyticsProjectBreakdown,
@@ -33,7 +33,6 @@ export default async function WorkAnalyticsPage() {
 
   const now = new Date();
   const nowIso = now.toISOString();
-  const todayWindow = { startIso: `${nowIso.slice(0, 10)}T00:00:00.000Z`, endIso: nowIso };
   const yesterdayStart = daysAgoIsoDate(1, now);
   const weekWindow = windowFromDays(7, now);
   const monthWindow = windowFromDays(30, now);
@@ -48,10 +47,20 @@ export default async function WorkAnalyticsPage() {
   }
 
   const sessions = monthSessionsResult.data;
-  const today = calculateWorkAnalytics(sessions, todayWindow, { nowIso });
+
+  // Fetch task counts for the same window
+  const taskCountsResult = await getWorkAnalyticsTaskCounts({
+    ownerUserId: user.id,
+    window: monthWindow,
+  });
+  const taskCounts = taskCountsResult.data ?? { completedCount: 0, createdCount: 0, blockedCount: 0 };
+
+  // Core summary using the new function
+  const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts, { nowIso });
+
+  // Existing calculations for backward compatibility with trend/insight cards
   const yesterdaySeries = calculateWorkAnalyticsDailySeries(sessions, yesterdayStart, yesterdayStart, { nowIso });
   const yesterday = yesterdaySeries[0] ?? { workedMinutes: 0, sessionCount: 0 };
-  const thisWeek = calculateWorkAnalytics(sessions, weekWindow, { nowIso });
   const thisWeekInsights = calculateWorkAnalyticsInsights(sessions, weekWindow, { nowIso });
   const last7DaysSeries = calculateWorkAnalyticsDailySeries(sessions, daysAgoIsoDate(6, now), nowIso.slice(0, 10), { nowIso });
   const last30DaysSeries = calculateWorkAnalyticsDailySeries(sessions, daysAgoIsoDate(29, now), nowIso.slice(0, 10), { nowIso });
@@ -59,12 +68,71 @@ export default async function WorkAnalyticsPage() {
 
   return (
     <AppShell eyebrow="Execution" title="Work Analytics" description="Worked time/session signals for today, week, and recent trend.">
+      {/* Core summary cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card><CardHeader><CardTitle>Today</CardTitle></CardHeader><CardContent>{formatDurationLabel(today.totalWorkedMinutes * 60)} · {today.sessionCount} sessions</CardContent></Card>
-        <Card><CardHeader><CardTitle>Yesterday</CardTitle></CardHeader><CardContent>{formatDurationLabel(yesterday.workedMinutes * 60)} · {yesterday.sessionCount} sessions</CardContent></Card>
-        <Card><CardHeader><CardTitle>This week</CardTitle></CardHeader><CardContent>{formatDurationLabel(thisWeek.totalWorkedMinutes * 60)} · {thisWeek.sessionCount} sessions</CardContent></Card>
-        <Card><CardHeader><CardTitle>Streak</CardTitle></CardHeader><CardContent>{thisWeekInsights.currentStreak} days</CardContent></Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Today</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(summary.todayWorkedMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">{summary.todaySessionCount} sessions</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Yesterday</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(yesterday.workedMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">{yesterday.sessionCount} sessions</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Last 7 days</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(summary.last7DaysWorkedMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">{summary.last7DaysSessionCount} sessions</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Last 30 days</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(summary.last30DaysWorkedMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">{summary.last30DaysSessionCount} sessions</div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Secondary info row: active days, average, session length */}
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Active days (30d)</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.activeDays}</div>
+            <div className="text-xs text-muted-foreground">Avg {formatDurationLabel(summary.averageWorkPerActiveDayMinutes * 60)}/day</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Avg session</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(summary.averageSessionLengthMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">across {summary.last30DaysSessionCount} sessions</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Tasks completed</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{summary.completedTaskCount}</div>
+            <div className="text-xs text-muted-foreground">{summary.createdTaskCount} created, {summary.blockedTaskCount} blocked</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Streak</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{thisWeekInsights.currentStreak} days</div>
+            <div className="text-xs text-muted-foreground">current streak</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Existing trend and breakdown cards */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card><CardHeader><CardTitle>Last 7 days</CardTitle></CardHeader><CardContent>{last7DaysSeries.map((d) => `${d.date}: ${d.workedMinutes}m/${d.sessionCount}`).join(" | ") || "No data"}</CardContent></Card>
         <Card><CardHeader><CardTitle>Last 30 days daily</CardTitle></CardHeader><CardContent>{last30DaysSeries.map((d) => `${d.date}: ${d.workedMinutes}m/${d.sessionCount}`).join(" | ") || "No data"}</CardContent></Card>
