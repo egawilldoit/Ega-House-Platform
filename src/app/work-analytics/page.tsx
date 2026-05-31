@@ -1,5 +1,6 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TrendBarChart } from "@/components/review/trend-bar-chart";
 import { formatDurationLabel } from "@/lib/task-session";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-data-adapter";
@@ -58,7 +59,7 @@ export default async function WorkAnalyticsPage() {
   // Core summary using the new function
   const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts, { nowIso });
 
-  // Existing calculations for backward compatibility with trend/insight cards
+  // Trend and breakdown calculations
   const yesterdaySeries = calculateWorkAnalyticsDailySeries(sessions, yesterdayStart, yesterdayStart, { nowIso });
   const yesterday = yesterdaySeries[0] ?? { workedMinutes: 0, sessionCount: 0 };
   const thisWeekInsights = calculateWorkAnalyticsInsights(sessions, weekWindow, { nowIso });
@@ -132,10 +133,10 @@ export default async function WorkAnalyticsPage() {
         </Card>
       </div>
 
-      {/* Existing trend and breakdown cards */}
+      {/* Trend charts and breakdown cards */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card><CardHeader><CardTitle>Last 7 days</CardTitle></CardHeader><CardContent>{last7DaysSeries.map((d) => `${d.date}: ${d.workedMinutes}m/${d.sessionCount}`).join(" | ") || "No data"}</CardContent></Card>
-        <Card><CardHeader><CardTitle>Last 30 days daily</CardTitle></CardHeader><CardContent>{last30DaysSeries.map((d) => `${d.date}: ${d.workedMinutes}m/${d.sessionCount}`).join(" | ") || "No data"}</CardContent></Card>
+        <TrendBarChart data={last7DaysSeries} title="Last 7 days" />
+        <TrendBarChart data={last30DaysSeries} title="Last 30 days" />
         <Card><CardHeader><CardTitle>Project breakdown (30d)</CardTitle></CardHeader><CardContent>{last30Breakdown.length === 0 ? "No project data" : last30Breakdown.map((p) => `${p.projectName}: ${p.workedMinutes}m/${p.sessionCount}`).join(" | ")}</CardContent></Card>
         <Card><CardHeader><CardTitle>Insights</CardTitle></CardHeader><CardContent>Delta {thisWeekInsights.deltaMinutes}m · Best {thisWeekInsights.bestDay?.date ?? "n/a"} · Lowest {thisWeekInsights.lowestNonZeroDay?.date ?? "n/a"} · Avg {thisWeekInsights.averageSessionLength}m · Longest {thisWeekInsights.longestSession}m</CardContent></Card>
       </div>
