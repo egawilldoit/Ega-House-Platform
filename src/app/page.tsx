@@ -103,18 +103,10 @@ export default async function HomePage() {
             <div className="mt-12 flex flex-wrap items-center gap-5">
               <Link
                 href="/login?next=%2Fdashboard"
-                className="inline-flex h-12 items-center gap-2 rounded-xl px-7 text-sm font-semibold tracking-wide transition-all active:scale-[0.97]"
+                className="inline-flex h-12 items-center gap-2 rounded-xl px-7 text-sm font-semibold tracking-wide transition-all active:scale-[0.97] hover:bg-[#9e2a2b] hover:shadow-[0_0_28px_rgba(158,42,43,0.35)]"
                 style={{
                   background: "#335c67",
                   color: "#fff3b0",
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.background = "#9e2a2b";
-                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = "0 0 28px rgba(158,42,43,0.35)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLAnchorElement).style.background = "#335c67";
-                  (e.currentTarget as HTMLAnchorElement).style.boxShadow = "none";
                 }}
               >
                 Enter workspace
