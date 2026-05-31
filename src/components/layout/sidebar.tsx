@@ -6,9 +6,11 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
+  Bot,
   CalendarCheck2,
   CheckSquare,
   CircleHelp,
+  ExternalLink,
   FileText,
   Flag,
   LayoutDashboard,
@@ -260,6 +262,19 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
 
         <div className="sidebar-section sidebar-general-section">
           <div className="sidebar-section-label">General</div>
+
+          <a
+            href="https://hermes.egawilldoit.online/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="sidebar-link"
+          >
+            <span className="sidebar-link-icon">
+              <Bot />
+            </span>
+            <span className="min-w-0 truncate">Hermes</span>
+            <ExternalLink className="ml-auto h-3.5 w-3.5 opacity-60" aria-hidden="true" />
+          </a>
 
           {GENERAL_ITEMS.map((item) => (
             <Link
