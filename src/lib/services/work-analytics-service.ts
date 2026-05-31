@@ -418,6 +418,75 @@ export function calculateWorkAnalyticsCoreSummary(
   };
 }
 
+export type WorkAnalyticsMonthComparison = {
+  currentMonthMinutes: number;
+  currentMonthSessionCount: number;
+  currentMonthActiveDays: number;
+  currentMonthAvgPerActiveDayMinutes: number;
+  previousMonthMinutes: number;
+  previousMonthSessionCount: number;
+  deltaMinutes: number;
+  percentChange: number | null; // null when no previous data
+  hasPreviousData: boolean;
+};
+
+/**
+ * Calculates month-to-date vs previous month comparison.
+ * Uses calendar months based on UTC.
+ */
+export function calculateWorkAnalyticsMonthComparison(
+  sessions: ExecutionEvidenceSessionRow[],
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsMonthComparison {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const now = new Date(nowIso);
+
+  // Current month: from 1st of this month to now
+  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const currentWindow: ExecutionEvidenceWindow = {
+    startIso: currentMonthStart.toISOString(),
+    endIso: nowIso,
+  };
+
+  // Previous month: full previous calendar month
+  const previousMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const previousMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const previousWindow: ExecutionEvidenceWindow = {
+    startIso: previousMonthStart.toISOString(),
+    endIso: previousMonthEnd.toISOString(),
+  };
+
+  const currentPeriod = calculateWorkAnalytics(sessions, currentWindow, options);
+  const previousPeriod = calculateWorkAnalytics(sessions, previousWindow, options);
+
+  // Active days for current month
+  const currentStartStr = currentMonthStart.toISOString().split("T")[0];
+  const currentEndStr = nowIso.slice(0, 10);
+  const currentDaily = calculateWorkAnalyticsDailySeries(sessions, currentStartStr, currentEndStr, options);
+  const currentMonthActiveDays = currentDaily.filter((d) => d.workedMinutes > 0).length;
+  const currentMonthAvgPerActiveDayMinutes = currentMonthActiveDays > 0
+    ? Math.round(currentPeriod.totalWorkedMinutes / currentMonthActiveDays)
+    : 0;
+
+  const deltaMinutes = currentPeriod.totalWorkedMinutes - previousPeriod.totalWorkedMinutes;
+  const hasPreviousData = previousPeriod.totalWorkedMinutes > 0;
+  const percentChange = hasPreviousData
+    ? Math.round((deltaMinutes / previousPeriod.totalWorkedMinutes) * 100)
+    : null;
+
+  return {
+    currentMonthMinutes: currentPeriod.totalWorkedMinutes,
+    currentMonthSessionCount: currentPeriod.sessionCount,
+    currentMonthActiveDays,
+    currentMonthAvgPerActiveDayMinutes,
+    previousMonthMinutes: previousPeriod.totalWorkedMinutes,
+    previousMonthSessionCount: previousPeriod.sessionCount,
+    deltaMinutes,
+    percentChange,
+    hasPreviousData,
+  };
+}
+
 /**
  * Calculates work insights including comparison, streaks, and session quality.
  * 

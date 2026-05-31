@@ -8,6 +8,7 @@ import {
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
   calculateWorkAnalyticsInsights,
+  calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
 } from "@/lib/services/work-analytics-service";
 
@@ -66,6 +67,9 @@ export default async function WorkAnalyticsPage() {
   const last7DaysSeries = calculateWorkAnalyticsDailySeries(sessions, daysAgoIsoDate(6, now), nowIso.slice(0, 10), { nowIso });
   const last30DaysSeries = calculateWorkAnalyticsDailySeries(sessions, daysAgoIsoDate(29, now), nowIso.slice(0, 10), { nowIso });
   const last30Breakdown = calculateWorkAnalyticsProjectBreakdown(sessions, monthWindow, { nowIso });
+
+  // Month-to-date comparison
+  const monthComparison = calculateWorkAnalyticsMonthComparison(sessions, { nowIso });
 
   return (
     <AppShell eyebrow="Execution" title="Work Analytics" description="Worked time/session signals for today, week, and recent trend.">
@@ -129,6 +133,48 @@ export default async function WorkAnalyticsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{thisWeekInsights.currentStreak} days</div>
             <div className="text-xs text-muted-foreground">current streak</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Month-to-date comparison */}
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Month-to-date</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(monthComparison.currentMonthMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">{monthComparison.currentMonthSessionCount} sessions · {monthComparison.currentMonthActiveDays} active days</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Previous month</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(monthComparison.previousMonthMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">{monthComparison.previousMonthSessionCount} sessions</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">MoM delta</CardTitle></CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${monthComparison.deltaMinutes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {monthComparison.percentChange !== null ? `${monthComparison.percentChange >= 0 ? '+' : ''}${monthComparison.percentChange}%` : '--'}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {monthComparison.hasPreviousData
+                ? `${monthComparison.deltaMinutes >= 0 ? '+' : ''}${formatDurationLabel(Math.abs(monthComparison.deltaMinutes) * 60)} vs prev`
+                : 'No previous month data'}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-sm">Avg active day</CardTitle></CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatDurationLabel(monthComparison.currentMonthAvgPerActiveDayMinutes * 60)}</div>
+            <div className="text-xs text-muted-foreground">
+              {monthComparison.currentMonthActiveDays > 0
+                ? `across ${monthComparison.currentMonthActiveDays} days`
+                : 'No activity this month'}
+            </div>
           </CardContent>
         </Card>
       </div>
