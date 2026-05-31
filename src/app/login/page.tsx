@@ -37,7 +37,7 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen overflow-hidden" style={{ background: "#fff3b0" }}>
+    <main className="relative flex min-h-screen overflow-hidden flex-col" style={{ background: "#fff3b0" }}>
       {/* ── Ambient background ── */}
       <div className="pointer-events-none absolute inset-0 z-0">
         <div
