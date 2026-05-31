@@ -43,3 +43,6 @@ next-env.d.ts
 # local reports
 reports/*.csv
 reports/*.json
+
+# graphify generated output (regenerable with `graphify update .`)
+graphify-out/

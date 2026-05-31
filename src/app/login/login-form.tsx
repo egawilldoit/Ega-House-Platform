@@ -63,8 +63,12 @@ export function LoginForm() {
       const nextParam = searchParams.get("next");
       const safeRedirect = getSafeRedirect(nextParam);
 
+      // Same-origin redirect: preserve pathname + search + hash
       if (!safeRedirect || safeRedirect.origin === window.location.origin) {
-        router.replace(safeRedirect?.pathname ?? "/dashboard");
+        const path = safeRedirect
+          ? safeRedirect.pathname + safeRedirect.search + safeRedirect.hash
+          : "/dashboard";
+        router.replace(path);
         router.refresh();
       } else {
         window.location.assign(safeRedirect.href);
