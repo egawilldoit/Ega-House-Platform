@@ -59,7 +59,9 @@ test("quick task worked-time From and To fields submit values", () => {
 });
 
 test("quick task single mode renders schedule and calendar sync controls", () => {
-  assert.match(singleModeSection, /Schedule and calendar/);
+  assert.match(singleModeSection, /Calendar handoff/);
+  assert.match(singleModeSection, /CalendarClock/);
+  assert.match(singleModeSection, /BellRing/);
   assert.match(singleModeSection, /htmlFor="quick-task-scheduled-from"/);
   assert.match(singleModeSection, /htmlFor="quick-task-scheduled-to"/);
   assert.match(singleModeSection, /name="scheduledStartAt"/);
