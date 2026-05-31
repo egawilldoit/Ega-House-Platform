@@ -14,11 +14,11 @@ export const metadata: Metadata = {
 
 function LoginFormFallback() {
   return (
-    <div className="w-full max-w-md rounded-[2rem] border border-black/10 bg-white/80 p-8 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur">
-      <div className="h-5 w-28 animate-pulse rounded-full bg-black/10" />
-      <div className="mt-6 h-12 animate-pulse rounded-2xl bg-black/10" />
-      <div className="mt-4 h-12 animate-pulse rounded-2xl bg-black/10" />
-      <div className="mt-6 h-12 animate-pulse rounded-full bg-black/10" />
+    <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-white/[0.03] p-8 backdrop-blur">
+      <div className="h-4 w-20 animate-pulse rounded-full bg-white/10" />
+      <div className="mt-8 h-10 animate-pulse rounded-lg bg-white/10" />
+      <div className="mt-3 h-10 animate-pulse rounded-lg bg-white/10" />
+      <div className="mt-6 h-10 animate-pulse rounded-lg bg-white/10" />
     </div>
   );
 }
@@ -34,62 +34,90 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="relative flex min-h-screen overflow-hidden bg-[linear-gradient(135deg,#f7f1e8_0%,#efe6d6_38%,#d8e0dd_100%)] text-slate-950">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-10%] top-[-12%] h-[28rem] w-[28rem] rounded-full bg-[radial-gradient(circle_at_center,rgba(184,115,51,0.26),transparent_68%)] blur-3xl" />
-        <div className="absolute bottom-[-16%] right-[-8%] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(circle_at_center,rgba(33,110,91,0.16),transparent_65%)] blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(15,23,42,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(15,23,42,0.04)_1px,transparent_1px)] bg-[size:3.5rem_3.5rem] opacity-35" />
+    <main className="relative flex min-h-screen overflow-hidden bg-[#080a0d] text-white">
+      {/* Ambient background — same language as home */}
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <div className="absolute top-[-15%] left-[-5%] h-[550px] w-[550px] rounded-full bg-[radial-gradient(circle,rgba(34,197,94,0.06)_0%,transparent_65%)]" />
+        <div className="absolute bottom-[-10%] right-[30%] h-[400px] w-[400px] rounded-full bg-[radial-gradient(circle,rgba(99,102,241,0.05)_0%,transparent_60%)]" />
+        <div
+          className="absolute inset-0 opacity-[0.025]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(255,255,255,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.8) 1px, transparent 1px)",
+            backgroundSize: "72px 72px",
+          }}
+        />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 h-px w-[60%] bg-gradient-to-r from-transparent via-emerald-500/25 to-transparent" />
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-6xl flex-col justify-between gap-10 px-6 py-8 sm:px-10 lg:flex-row lg:items-center lg:px-12">
-        <section className="max-w-2xl pt-6 lg:pt-0">
-          <Image
-            src="/logo.svg"
-            alt="EGA House"
-            width={72}
-            height={72}
-            priority
-            className="mb-8 h-16 w-16 rounded-2xl object-contain shadow-[0_18px_45px_rgba(15,23,42,0.14)]"
-          />
-          <p className="inline-flex items-center rounded-full border border-black/10 bg-white/50 px-4 py-2 font-mono text-[0.68rem] uppercase tracking-[0.32em] text-slate-600 backdrop-blur">
-            Root Domain Access
-          </p>
-          <h1 className="mt-8 max-w-xl text-5xl font-semibold tracking-[-0.08em] text-balance sm:text-6xl lg:text-7xl">
-            Enter control room.
+      <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col justify-between gap-12 px-6 py-10 sm:px-10 lg:flex-row lg:items-center lg:px-12">
+
+        {/* Left — context */}
+        <section className="max-w-xl pt-4 lg:pt-0">
+          <div className="flex items-center gap-4 mb-10">
+            <Image
+              src="/logo.svg"
+              alt="EGA House"
+              width={44}
+              height={44}
+              priority
+              className="h-10 w-10 rounded-xl object-contain"
+            />
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-[0.62rem] uppercase tracking-[0.22em] text-slate-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Root Domain Access
+            </span>
+          </div>
+
+          <h1
+            className="text-[clamp(2.8rem,5vw,4.5rem)] font-semibold leading-[1.05] tracking-[-0.04em] text-white"
+          >
+            Enter control
+            <br />
+            <span className="text-emerald-400">room.</span>
           </h1>
-          <p className="mt-6 max-w-lg text-base leading-8 text-slate-700 sm:text-lg">
+
+          <p className="mt-6 max-w-md text-[0.92rem] leading-7 text-slate-400">
             Sign in once on root domain, then continue into dashboard, goals,
             tasks, timer, and review with existing shared-session flow.
           </p>
-          <div className="mt-10 grid max-w-xl gap-4 sm:grid-cols-3">
-            <div className="rounded-[1.5rem] border border-black/10 bg-white/60 p-4 backdrop-blur">
-              <p className="font-mono text-[0.68rem] uppercase tracking-[0.28em] text-slate-500">
-                Dashboard
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
-                Operational snapshot after successful sign in.
-              </p>
-            </div>
-            <div className="rounded-[1.5rem] border border-black/10 bg-white/60 p-4 backdrop-blur">
-              <p className="font-mono text-[0.68rem] uppercase tracking-[0.28em] text-slate-500">
-                Tasks
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
-                Execution boards and structured delivery.
-              </p>
-            </div>
-            <div className="rounded-[1.5rem] border border-black/10 bg-white/60 p-4 backdrop-blur">
-              <p className="font-mono text-[0.68rem] uppercase tracking-[0.28em] text-slate-500">
-                Review
-              </p>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
-                Reflection loops and operating cadence.
-              </p>
-            </div>
+
+          {/* Feature hints */}
+          <div className="mt-10 grid max-w-lg gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Dashboard",
+                text: "Operational snapshot after successful sign in.",
+                accent: "border-emerald-500/15 text-emerald-400",
+              },
+              {
+                label: "Tasks",
+                text: "Execution boards and structured delivery.",
+                accent: "border-sky-500/15 text-sky-400",
+              },
+              {
+                label: "Review",
+                text: "Reflection loops and operating cadence.",
+                accent: "border-violet-500/15 text-violet-400",
+              },
+            ].map((c) => (
+              <div
+                key={c.label}
+                className={`rounded-xl border ${c.accent.split(" ")[0]} bg-white/[0.02] p-4`}
+              >
+                <p className={`font-mono text-[0.6rem] uppercase tracking-[0.26em] ${c.accent.split(" ")[1]}`}>
+                  {c.label}
+                </p>
+                <p className="mt-2 text-[0.78rem] leading-5 text-slate-500">{c.text}</p>
+              </div>
+            ))}
           </div>
         </section>
 
-        <section className="relative w-full max-w-md self-center lg:self-auto">
+        {/* Right — form */}
+        <section className="relative w-full max-w-sm self-center lg:self-auto">
+          {/* Card glow */}
+          <div className="absolute -inset-px rounded-2xl bg-gradient-to-b from-emerald-500/10 via-transparent to-transparent pointer-events-none" />
           <Suspense fallback={<LoginFormFallback />}>
             <LoginForm />
           </Suspense>
