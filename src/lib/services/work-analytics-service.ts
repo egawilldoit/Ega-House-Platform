@@ -333,6 +333,91 @@ export function calculateWorkAnalyticsProjectBreakdown(
   return breakdown;
 }
 
+export type WorkAnalyticsCoreSummary = {
+  todayWorkedMinutes: number;
+  todaySessionCount: number;
+  last7DaysWorkedMinutes: number;
+  last7DaysSessionCount: number;
+  last30DaysWorkedMinutes: number;
+  last30DaysSessionCount: number;
+  activeDays: number;
+  averageWorkPerActiveDayMinutes: number;
+  averageSessionLengthMinutes: number;
+  completedTaskCount: number;
+  createdTaskCount: number;
+  blockedTaskCount: number;
+};
+
+/**
+ * Calculates core analytics summary including today, week, month, active days,
+ * average session length, and task counts.
+ */
+export function calculateWorkAnalyticsCoreSummary(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  taskCounts: { completedCount: number; createdCount: number; blockedCount: number },
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsCoreSummary {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const now = new Date(nowIso);
+  const todayStr = nowIso.slice(0, 10);
+
+  // Today window
+  const todayWindow: ExecutionEvidenceWindow = {
+    startIso: `${todayStr}T00:00:00.000Z`,
+    endIso: nowIso,
+  };
+
+  // 7 days ago window
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
+  const weekWindow: ExecutionEvidenceWindow = {
+    startIso: sevenDaysAgo.toISOString(),
+    endIso: nowIso,
+  };
+
+  // 30 days ago window
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
+  const monthWindow: ExecutionEvidenceWindow = {
+    startIso: thirtyDaysAgo.toISOString(),
+    endIso: nowIso,
+  };
+
+  const todayData = calculateWorkAnalytics(sessions, todayWindow, options);
+  const weekData = calculateWorkAnalytics(sessions, weekWindow, options);
+  const monthData = calculateWorkAnalytics(sessions, monthWindow, options);
+
+  // Calculate active days from the month's daily series
+  const startDateStr = thirtyDaysAgo.toISOString().split("T")[0];
+  const endDateStr = todayStr;
+  const dailySeries = calculateWorkAnalyticsDailySeries(sessions, startDateStr, endDateStr, options);
+  const activeDays = dailySeries.filter((d) => d.workedMinutes > 0).length;
+  const averageWorkPerActiveDayMinutes = activeDays > 0
+    ? Math.round(monthData.totalWorkedMinutes / activeDays)
+    : 0;
+
+  // Calculate average session length from month data
+  const averageSessionLengthMinutes = monthData.sessionCount > 0
+    ? Math.round(monthData.totalWorkedMinutes / monthData.sessionCount)
+    : 0;
+
+  return {
+    todayWorkedMinutes: todayData.totalWorkedMinutes,
+    todaySessionCount: todayData.sessionCount,
+    last7DaysWorkedMinutes: weekData.totalWorkedMinutes,
+    last7DaysSessionCount: weekData.sessionCount,
+    last30DaysWorkedMinutes: monthData.totalWorkedMinutes,
+    last30DaysSessionCount: monthData.sessionCount,
+    activeDays,
+    averageWorkPerActiveDayMinutes,
+    averageSessionLengthMinutes,
+    completedTaskCount: taskCounts.completedCount,
+    createdTaskCount: taskCounts.createdCount,
+    blockedTaskCount: taskCounts.blockedCount,
+  };
+}
+
 /**
  * Calculates work insights including comparison, streaks, and session quality.
  * 

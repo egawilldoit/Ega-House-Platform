@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { 
   calculateWorkAnalytics,
+  calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
   calculateWorkAnalyticsProjectBreakdown,
   calculateWorkAnalyticsInsights,
@@ -676,4 +677,130 @@ test("handles single session edge cases", () => {
   assert.equal(result.averageSessionLength, 30);
   assert.equal(result.longestSession, 30);
   assert.equal(result.shortestNonZeroSession, 30);
+});
+
+test("calculateWorkAnalyticsCoreSummary returns zeros for empty data", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const taskCounts = { completedCount: 0, createdCount: 0, blockedCount: 0 };
+
+  const result = calculateWorkAnalyticsCoreSummary([], window, taskCounts, {
+    nowIso: "2026-04-27T10:00:00.000Z",
+  });
+
+  assert.equal(result.todayWorkedMinutes, 0);
+  assert.equal(result.todaySessionCount, 0);
+  assert.equal(result.last7DaysWorkedMinutes, 0);
+  assert.equal(result.last7DaysSessionCount, 0);
+  assert.equal(result.last30DaysWorkedMinutes, 0);
+  assert.equal(result.last30DaysSessionCount, 0);
+  assert.equal(result.activeDays, 0);
+  assert.equal(result.averageWorkPerActiveDayMinutes, 0);
+  assert.equal(result.averageSessionLengthMinutes, 0);
+  assert.equal(result.completedTaskCount, 0);
+  assert.equal(result.createdTaskCount, 0);
+  assert.equal(result.blockedTaskCount, 0);
+});
+
+test("calculateWorkAnalyticsCoreSummary computes today, week, month from sessions", () => {
+  // 2026-04-20: 60 min session (08:00-09:00)
+  // 2026-04-22: 30 min session
+  // 2026-04-27 (today): 90 min session (08:00-09:30)
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T08:00:00.000Z",
+      ended_at: "2026-04-20T09:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-22T09:00:00.000Z",
+      ended_at: "2026-04-22T09:30:00.000Z",
+      duration_seconds: 1800,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-04-27T08:00:00.000Z",
+      ended_at: "2026-04-27T09:30:00.000Z",
+      duration_seconds: 5400,
+      tasks: { id: "task-3", title: "Task 3" },
+    },
+  ];
+
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T10:00:00.000Z",
+  };
+  const taskCounts = { completedCount: 5, createdCount: 10, blockedCount: 2 };
+
+  const result = calculateWorkAnalyticsCoreSummary(sessions, window, taskCounts, {
+    nowIso: "2026-04-27T10:00:00.000Z",
+  });
+
+  // Today: 1 session of 90 min
+  assert.equal(result.todayWorkedMinutes, 90);
+  assert.equal(result.todaySessionCount, 1);
+
+  // 7 days ago from nowIso is 2026-04-20T10:00:00.000Z
+  // Session on 20th is 08:00-09:00 — ends BEFORE window start, overlap is 0
+  // 22nd (30m) + 27th (90m) = 120 min
+  assert.equal(result.last7DaysWorkedMinutes, 120);
+  assert.equal(result.last7DaysSessionCount, 2);
+
+  // Last 30 days: same as 7 days for this data set
+  assert.equal(result.last30DaysWorkedMinutes, 180);
+  assert.equal(result.last30DaysSessionCount, 3);
+
+  // Active days: 3 (20th, 22nd, 27th)
+  assert.equal(result.activeDays, 3);
+
+  // Average per active day: 180 / 3 = 60
+  assert.equal(result.averageWorkPerActiveDayMinutes, 60);
+
+  // Average session length: 180 / 3 = 60
+  assert.equal(result.averageSessionLengthMinutes, 60);
+
+  // Task counts
+  assert.equal(result.completedTaskCount, 5);
+  assert.equal(result.createdTaskCount, 10);
+  assert.equal(result.blockedTaskCount, 2);
+});
+
+test("calculateWorkAnalyticsCoreSummary includes open sessions with includeOpenSessions option", () => {
+  const sessions = [
+    {
+      task_id: "open-task",
+      started_at: "2026-04-27T08:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      tasks: { id: "open-task", title: "Open Task" },
+    },
+  ];
+
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T10:00:00.000Z",
+  };
+  const taskCounts = { completedCount: 0, createdCount: 0, blockedCount: 0 };
+
+  // Without includeOpenSessions
+  const resultExcluded = calculateWorkAnalyticsCoreSummary(sessions, window, taskCounts, {
+    nowIso: "2026-04-27T10:00:00.000Z",
+  });
+  assert.equal(resultExcluded.todayWorkedMinutes, 0);
+
+  // With includeOpenSessions
+  const resultIncluded = calculateWorkAnalyticsCoreSummary(sessions, window, taskCounts, {
+    nowIso: "2026-04-27T10:00:00.000Z",
+    includeOpenSessions: true,
+  });
+  assert.equal(resultIncluded.todayWorkedMinutes, 120); // 2 hours from 08:00 to 10:00
+  assert.equal(resultIncluded.todaySessionCount, 1);
+  assert.equal(resultIncluded.last30DaysWorkedMinutes, 120);
+  assert.equal(resultIncluded.last30DaysSessionCount, 1);
 });
