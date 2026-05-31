@@ -26,13 +26,10 @@ import {
 import type { ManualWorkedTimePayload } from "@/lib/manual-worked-time";
 import {
   DEFAULT_CALENDAR_REMINDER_MINUTES,
-  getCalendarIntegrationSecretSnapshot,
   normalizeCalendarReminderMinutes,
 } from "@/lib/services/calendar-settings-service";
-import {
-  createGoogleCalendarEventForTask,
-  type GoogleCalendarClient,
-} from "@/lib/services/google-calendar-service";
+import { enqueueCalendarSyncJob } from "@/lib/services/calendar-sync-service";
+import type { GoogleCalendarClient } from "@/lib/services/google-calendar-service";
 import {
   applyTaskListQuery,
   type TaskDueFilter,
@@ -68,7 +65,8 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 type CreateTasksOptions = {
   supabase?: SupabaseServerClient;
-  calendarClient?: GoogleCalendarClient;
+  /** @deprecated Calendar sync is queued through calendar_sync_jobs. */
+  calendarClient?: Pick<GoogleCalendarClient, "createEvent">;
 };
 
 type TaskSavedViewSelectRow = {
@@ -304,36 +302,10 @@ async function getAuthenticatedUserId(supabase: SupabaseServerClient) {
   return data.user?.id ?? null;
 }
 
-async function persistCalendarSyncResult(
-  supabase: SupabaseServerClient,
-  input: {
-    taskId: string;
-    ownerUserId: string;
-    status: "synced" | "failed" | "skipped";
-    eventId: string | null;
-    failureReason: string | null;
-  },
-) {
-  const payload: TablesUpdate<"tasks"> = {
-    calendar_sync_status: input.status,
-    calendar_event_id: input.eventId,
-    calendar_sync_failure_reason: input.failureReason,
-  };
-
-  const { error } = await supabase
-    .from("tasks")
-    .update(payload)
-    .eq("id", input.taskId)
-    .eq("owner_user_id", input.ownerUserId);
-
-  return error;
-}
-
-async function syncCreatedTasksToCalendar(
+async function enqueueCreatedTasksForCalendarSync(
   supabase: SupabaseServerClient,
   taskRows: TablesInsert<"tasks">[],
   createdTaskIds: string[],
-  options?: { calendarClient?: GoogleCalendarClient },
 ) {
   const syncErrors: string[] = [];
 
@@ -354,41 +326,18 @@ async function syncCreatedTasksToCalendar(
     return syncErrors;
   }
 
-  const settingsResult = await getCalendarIntegrationSecretSnapshot({ supabase });
-  const credentials = settingsResult.data;
-
-  for (const { task, taskId } of candidateRows) {
-    const syncResult = await createGoogleCalendarEventForTask(
+  for (const { taskId } of candidateRows) {
+    const enqueueResult = await enqueueCalendarSyncJob(
       {
         taskId,
-        title: task.title,
-        scheduledStartAt: task.scheduled_start_at,
-        scheduledEndAt: task.scheduled_end_at,
-        calendarSyncEnabled: task.calendar_sync_enabled,
-        calendarReminderMinutes: task.calendar_reminder_minutes,
+        ownerUserId,
+        operation: "upsert",
       },
-      credentials,
-      { client: options?.calendarClient },
+      { supabase },
     );
 
-    if (syncResult.status === "skipped" && !syncResult.failureReason) {
-      continue;
-    }
-
-    const persistError = await persistCalendarSyncResult(supabase, {
-      taskId,
-      ownerUserId,
-      status: syncResult.status,
-      eventId: syncResult.eventId,
-      failureReason: syncResult.failureReason,
-    });
-
-    if (syncResult.status === "failed") {
-      syncErrors.push(syncResult.failureReason);
-    }
-
-    if (persistError) {
-      syncErrors.push("Calendar sync state could not be saved.");
+    if (enqueueResult.errorMessage) {
+      syncErrors.push(enqueueResult.errorMessage);
     }
   }
 
@@ -1043,11 +992,10 @@ export async function createTasks(
   }
 
   const createdTaskIds = (data ?? []).map((row) => row.id);
-  const calendarSyncErrors = await syncCreatedTasksToCalendar(
+  const calendarSyncErrors = await enqueueCreatedTasksForCalendarSync(
     supabase,
     taskRows,
     createdTaskIds,
-    { calendarClient: options?.calendarClient },
   );
 
   return {
@@ -1622,7 +1570,7 @@ export async function updateTaskInline(
 
   let { data: currentTask, error: currentTaskError } = await supabase
     .from("tasks")
-    .select("id, status, completed_at, archived_at")
+    .select("id, owner_user_id, status, completed_at, archived_at")
     .eq("id", input.taskId)
     .maybeSingle();
   let completedAtUnavailable = false;
@@ -1630,7 +1578,7 @@ export async function updateTaskInline(
   if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
     const fallbackResult = await supabase
       .from("tasks")
-      .select("id, status, archived_at")
+      .select("id, owner_user_id, status, archived_at")
       .eq("id", input.taskId)
       .maybeSingle();
 
@@ -1768,6 +1716,22 @@ export async function updateTaskInline(
     }
   }
 
+  const shouldEnqueueCalendarSync =
+    input.scheduledStartAt !== undefined ||
+    input.calendarSyncEnabled !== undefined ||
+    input.description !== undefined;
+
+  if (shouldEnqueueCalendarSync) {
+    await enqueueCalendarSyncJob(
+      {
+        taskId: input.taskId,
+        ownerUserId: currentTask.owner_user_id,
+        operation: "upsert",
+      },
+      { supabase, nowIso: updatedAtIso },
+    );
+  }
+
   return { errorMessage: null };
 }
 
@@ -1786,7 +1750,7 @@ export async function updateTaskArchiveState(
 
   const { data: task, error: taskError } = await supabase
     .from("tasks")
-    .select("id, archived_at")
+    .select("id, owner_user_id, archived_at")
     .eq("id", normalizedTaskId)
     .maybeSingle();
 
@@ -1835,6 +1799,15 @@ export async function updateTaskArchiveState(
   if (error) {
     return { errorMessage: "Unable to update task archive right now." };
   }
+
+  await enqueueCalendarSyncJob(
+    {
+      taskId: normalizedTaskId,
+      ownerUserId: task.owner_user_id,
+      operation: archived ? "delete" : "upsert",
+    },
+    { supabase, nowIso: updatedAtIso },
+  );
 
   return { errorMessage: null };
 }
@@ -1935,7 +1908,7 @@ export async function deleteTaskSafely(
 
   const taskResult = await supabase
     .from("tasks")
-    .select("id")
+    .select("id, owner_user_id, calendar_event_id")
     .eq("id", normalizedTaskId)
     .maybeSingle();
 
@@ -1973,6 +1946,18 @@ export async function deleteTaskSafely(
 
   if ((sessionCountResult.count ?? 0) > 0) {
     return { errorMessage: "Task has tracked timer history and cannot be deleted safely." };
+  }
+
+  if (taskResult.data.calendar_event_id) {
+    await enqueueCalendarSyncJob(
+      {
+        taskId: normalizedTaskId,
+        ownerUserId: taskResult.data.owner_user_id,
+        calendarEventId: taskResult.data.calendar_event_id,
+        operation: "delete",
+      },
+      { supabase },
+    );
   }
 
   const { error: deleteError } = await supabase

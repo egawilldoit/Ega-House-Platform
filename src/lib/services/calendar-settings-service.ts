@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { encryptCalendarToken } from "@/lib/services/calendar-token-crypto";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -11,6 +12,7 @@ export type CalendarIntegrationSettingsView = {
   googleAccountEmail: string | null;
   scheduledTaskSyncEnabled: boolean;
   defaultReminderMinutes: number;
+  calendarId?: string;
 };
 
 export type CalendarTaskFormDefaults = {
@@ -24,6 +26,7 @@ type CalendarSettingsSafeRow = {
   google_account_email: string | null;
   scheduled_task_sync_enabled: boolean | null;
   default_reminder_minutes: number | null;
+  calendar_id: string | null;
   connected_at: string | null;
   disconnected_at: string | null;
 };
@@ -42,7 +45,7 @@ export type GoogleCalendarTokenConnectionInput = {
 };
 
 const CALENDAR_SETTINGS_SAFE_SELECT =
-  "owner_user_id, provider, google_account_email, scheduled_task_sync_enabled, default_reminder_minutes, connected_at, disconnected_at";
+  "owner_user_id, provider, google_account_email, scheduled_task_sync_enabled, default_reminder_minutes, calendar_id, connected_at, disconnected_at";
 
 function getDisconnectedSettings(): CalendarIntegrationSettingsView {
   return {
@@ -69,6 +72,7 @@ function normalizeCalendarSettingsRow(
     defaultReminderMinutes: normalizeCalendarReminderMinutes(
       row.default_reminder_minutes,
     ),
+    calendarId: normalizeCalendarId(row.calendar_id),
   };
 }
 
@@ -113,6 +117,11 @@ export function normalizeCalendarReminderMinutes(value: unknown) {
   }
 
   return Math.min(Math.max(parsed, 0), MAX_CALENDAR_REMINDER_MINUTES);
+}
+
+export function normalizeCalendarId(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  return normalized.length > 0 ? normalized : "primary";
 }
 
 export function getCalendarTaskFormDefaults(
@@ -213,10 +222,44 @@ export async function getCalendarIntegrationSecretSnapshot(options?: {
   };
 }
 
+export async function getCalendarIntegrationSecretSnapshotForOwner(
+  ownerUserId: string,
+  options?: { supabase?: SupabaseServerClient },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const normalizedOwnerUserId = ownerUserId.trim();
+
+  if (!normalizedOwnerUserId) {
+    return { errorMessage: "Calendar owner is required.", data: null };
+  }
+
+  const { data, error } = await supabase
+    .from("calendar_integration_settings")
+    .select(
+      `${CALENDAR_SETTINGS_SAFE_SELECT}, access_token_encrypted, refresh_token_encrypted, token_expires_at`,
+    )
+    .eq("owner_user_id", normalizedOwnerUserId)
+    .eq("provider", GOOGLE_CALENDAR_PROVIDER)
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to load Calendar credentials right now.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: data as CalendarSettingsSecretRow | null,
+  };
+}
+
 export async function updateCalendarIntegrationDefaults(
   input: {
     scheduledTaskSyncEnabled: unknown;
     defaultReminderMinutes: unknown;
+    calendarId?: unknown;
   },
   options?: {
     supabase?: SupabaseServerClient;
@@ -234,20 +277,21 @@ export async function updateCalendarIntegrationDefaults(
   }
 
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+  const updatePayload = {
+    owner_user_id: authResult.userId,
+    provider: GOOGLE_CALENDAR_PROVIDER,
+    scheduled_task_sync_enabled: input.scheduledTaskSyncEnabled === "on",
+    default_reminder_minutes: normalizeCalendarReminderMinutes(
+      input.defaultReminderMinutes,
+    ),
+    ...(input.calendarId === undefined
+      ? {}
+      : { calendar_id: normalizeCalendarId(input.calendarId) }),
+    updated_at: updatedAtIso,
+  };
   const { data, error } = await supabase
     .from("calendar_integration_settings")
-    .upsert(
-      {
-        owner_user_id: authResult.userId,
-        provider: GOOGLE_CALENDAR_PROVIDER,
-        scheduled_task_sync_enabled: input.scheduledTaskSyncEnabled === "on",
-        default_reminder_minutes: normalizeCalendarReminderMinutes(
-          input.defaultReminderMinutes,
-        ),
-        updated_at: updatedAtIso,
-      },
-      { onConflict: "owner_user_id,provider" },
-    )
+    .upsert(updatePayload, { onConflict: "owner_user_id,provider" })
     .select(CALENDAR_SETTINGS_SAFE_SELECT)
     .maybeSingle();
 
@@ -314,8 +358,8 @@ export async function connectGoogleCalendarWithTokens(
           owner_user_id: authResult.userId,
           provider: GOOGLE_CALENDAR_PROVIDER,
           google_account_email: input.googleAccountEmail?.trim() || null,
-          access_token_encrypted: accessToken,
-          refresh_token_encrypted: refreshToken,
+          access_token_encrypted: encryptCalendarToken(accessToken),
+          refresh_token_encrypted: encryptCalendarToken(refreshToken),
           token_expires_at: getTokenExpiresAtIso(
             input.expiresInSeconds,
             updatedAtIso,
