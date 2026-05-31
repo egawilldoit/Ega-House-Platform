@@ -94,6 +94,17 @@ test("quick task schedule and calendar values are preserved after validation err
   );
 });
 
+test("quick task calendar-enabled creates trigger an immediate queue drain", () => {
+  assert.match(taskActionsSource, /import \{ after \} from "next\/server"/);
+  assert.match(taskActionsSource, /processPendingCalendarSyncJobs/);
+  assert.match(taskActionsSource, /getSupabaseServiceClient/);
+  assert.match(taskActionsSource, /drainCalendarSyncQueueAfterResponse/);
+  assert.match(
+    taskActionsSource,
+    /calendarSyncEnabled &&[\s\S]+scheduleResult\.scheduledStartAtIso[\s\S]+scheduleResult\.scheduledEndAtIso/,
+  );
+});
+
 test("quick task worked-time values are preserved after server validation errors", () => {
   assert.match(
     singleModeSection,

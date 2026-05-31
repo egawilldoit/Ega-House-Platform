@@ -1,18 +1,21 @@
 "use server";
 
 import type { TablesInsert } from "@/lib/supabase/database.types";
+import { after } from "next/server";
 import { normalizeManualWorkedTimeInput } from "@/lib/manual-worked-time";
 import { normalizeTaskDueDateInput } from "@/lib/task-due-date";
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import { normalizeTaskRecurrenceRuleInput } from "@/lib/task-recurrence";
 import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import { normalizeCalendarReminderMinutes } from "@/lib/services/calendar-settings-service";
+import { processPendingCalendarSyncJobs } from "@/lib/services/calendar-sync-service";
 import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
   isTaskPriority,
   isTaskStatus,
 } from "@/lib/task-domain";
+import { getSupabaseServiceClient } from "@/lib/supabase/service";
 import {
   cancelTaskReminder,
   createTaskEmailReminder,
@@ -149,6 +152,23 @@ function redirectWithTaskSurfaceError(
     anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
     taskErrorMessage: errorMessage,
     taskId,
+  });
+}
+
+function drainCalendarSyncQueueAfterResponse(shouldDrain: boolean) {
+  if (!shouldDrain) {
+    return;
+  }
+
+  after(async () => {
+    try {
+      await processPendingCalendarSyncJobs({
+        supabase: getSupabaseServiceClient(),
+        limit: 5,
+      });
+    } catch {
+      // Cron remains the reliable retry path if this opportunistic drain fails.
+    }
   });
 }
 
@@ -326,6 +346,11 @@ export async function createTaskAction(
     "calendarSyncErrors" in createResult
       ? createResult.calendarSyncErrors
       : undefined;
+
+  drainCalendarSyncQueueAfterResponse(
+    calendarSyncEnabled &&
+      Boolean(scheduleResult.scheduledStartAtIso && scheduleResult.scheduledEndAtIso),
+  );
 
   revalidateWorkspaceFor("task", { returnTo });
 
