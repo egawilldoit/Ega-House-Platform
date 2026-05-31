@@ -456,6 +456,11 @@ function QuickTaskSheetPanel({
                   name="workedTimeTimezoneOffsetMinutes"
                   value={timeZoneOffsetMinutes}
                 />
+                <input
+                  type="hidden"
+                  name="scheduleTimezoneOffsetMinutes"
+                  value={timeZoneOffsetMinutes}
+                />
                 <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
                 <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
@@ -679,6 +684,77 @@ function QuickTaskSheetPanel({
                           onChange={(event) => setSingleEstimateMinutes(event.target.value)}
                           className="h-10"
                         />
+                      </div>
+
+                      <div className="space-y-3 sm:col-span-2">
+                        <p className="glass-label text-etch">Schedule and calendar</p>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2">
+                            <label
+                              htmlFor="quick-task-scheduled-from"
+                              className="glass-label text-etch"
+                            >
+                              Scheduled from
+                            </label>
+                            <Input
+                              id="quick-task-scheduled-from"
+                              name="scheduledStartAt"
+                              type="datetime-local"
+                              defaultValue={singleState.values.scheduledStartAt}
+                              className="h-10"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label
+                              htmlFor="quick-task-scheduled-to"
+                              className="glass-label text-etch"
+                            >
+                              Scheduled to
+                            </label>
+                            <Input
+                              id="quick-task-scheduled-to"
+                              name="scheduledEndAt"
+                              type="datetime-local"
+                              defaultValue={singleState.values.scheduledEndAt}
+                              className="h-10"
+                            />
+                          </div>
+
+                          <label className="flex items-start gap-3 rounded-xl border border-[rgba(15,23,42,0.08)] p-3 sm:col-span-2">
+                            <input
+                              type="checkbox"
+                              name="calendarSyncEnabled"
+                              defaultChecked={singleState.values.calendarSyncEnabled === "on"}
+                              className="mt-1 h-4 w-4"
+                            />
+                            <span>
+                              <span className="glass-label text-etch">Sync to Calendar</span>
+                              <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
+                                Creates a calendar job when this task has a schedule block.
+                              </span>
+                            </span>
+                          </label>
+
+                          <div className="space-y-2 sm:col-span-2">
+                            <label
+                              htmlFor="quick-task-calendar-reminder"
+                              className="glass-label text-etch"
+                            >
+                              Calendar reminder
+                            </label>
+                            <Input
+                              id="quick-task-calendar-reminder"
+                              name="calendarReminderMinutes"
+                              type="number"
+                              min="0"
+                              max="10080"
+                              step="5"
+                              defaultValue={singleState.values.calendarReminderMinutes}
+                              className="h-10"
+                            />
+                          </div>
+                        </div>
                       </div>
 
                       <div className="space-y-3 sm:col-span-2">

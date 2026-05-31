@@ -58,6 +58,40 @@ test("quick task worked-time From and To fields submit values", () => {
   assert.match(taskActionsSource, /formData\.get\("workedTimeEndedAt"\)/);
 });
 
+test("quick task single mode renders schedule and calendar sync controls", () => {
+  assert.match(singleModeSection, /Schedule and calendar/);
+  assert.match(singleModeSection, /htmlFor="quick-task-scheduled-from"/);
+  assert.match(singleModeSection, /htmlFor="quick-task-scheduled-to"/);
+  assert.match(singleModeSection, /name="scheduledStartAt"/);
+  assert.match(singleModeSection, /name="scheduledEndAt"/);
+  assert.match(singleModeSection, /name="scheduleTimezoneOffsetMinutes"/);
+  assert.match(singleModeSection, /name="calendarSyncEnabled"/);
+  assert.match(singleModeSection, /name="calendarReminderMinutes"/);
+  assert.match(singleModeSection, /Sync to Calendar/);
+  assert.match(taskActionsSource, /formData\.get\("scheduledStartAt"\)/);
+  assert.match(taskActionsSource, /formData\.get\("scheduledEndAt"\)/);
+  assert.match(taskActionsSource, /formData\.get\("calendarReminderMinutes"\)/);
+});
+
+test("quick task schedule and calendar values are preserved after validation errors", () => {
+  assert.match(
+    singleModeSection,
+    /defaultValue=\{singleState\.values\.scheduledStartAt\}/,
+  );
+  assert.match(
+    singleModeSection,
+    /defaultValue=\{singleState\.values\.scheduledEndAt\}/,
+  );
+  assert.match(
+    singleModeSection,
+    /defaultChecked=\{singleState\.values\.calendarSyncEnabled === "on"\}/,
+  );
+  assert.match(
+    singleModeSection,
+    /defaultValue=\{singleState\.values\.calendarReminderMinutes\}/,
+  );
+});
+
 test("quick task worked-time values are preserved after server validation errors", () => {
   assert.match(
     singleModeSection,
