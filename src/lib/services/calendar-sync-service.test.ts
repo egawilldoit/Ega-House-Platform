@@ -6,7 +6,7 @@ import {
   processPendingCalendarSyncJobs,
 } from "./calendar-sync-service";
 
-function createCalendarSyncSupabaseMock() {
+function createCalendarSyncSupabaseMock(options?: { settingsLoadError?: boolean }) {
   const tasks = [
     {
       id: "task-1",
@@ -84,6 +84,10 @@ function createCalendarSyncSupabaseMock() {
         return { data: rows.slice(0, limit), error: null };
       },
       async maybeSingle() {
+        if (table === "calendar_integration_settings" && options?.settingsLoadError) {
+          return { data: null, error: new Error("settings unavailable") };
+        }
+
         const rows = queryRows(table, filters).filter((row) =>
           Object.entries(inFilters).every(([column, values]) =>
             values.includes(row[column]),
@@ -188,4 +192,81 @@ test("processPendingCalendarSyncJobs creates Google event and marks job succeede
   assert.equal(mock.jobs[0]?.status, "succeeded");
   assert.equal(mock.tasks[0]?.calendar_event_id, "google-event-1");
   assert.equal(mock.tasks[0]?.calendar_sync_status, "synced");
+});
+
+test("processPendingCalendarSyncJobs fails without clearing event id when credentials fail to load", async () => {
+  const mock = createCalendarSyncSupabaseMock({ settingsLoadError: true });
+  mock.tasks[0]!.calendar_event_id = "google-event-1";
+  await enqueueCalendarSyncJob(
+    { taskId: "task-1", operation: "upsert" },
+    { supabase: mock.supabase as never },
+  );
+
+  const result = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        throw new Error("create should not be called");
+      },
+      async patchEvent() {
+        throw new Error("patch should not be called");
+      },
+      async deleteEvent() {
+        throw new Error("delete should not be called");
+      },
+    },
+  });
+
+  assert.deepEqual(result, { ok: true, processed: 0, failed: 1 });
+  assert.equal(mock.jobs[0]?.status, "failed");
+  assert.equal(mock.tasks[0]?.calendar_event_id, "google-event-1");
+  assert.equal(mock.tasks[0]?.calendar_sync_status, "failed");
+  assert.equal(
+    mock.tasks[0]?.calendar_sync_failure_reason,
+    "Unable to load Calendar credentials right now.",
+  );
+});
+
+test("processPendingCalendarSyncJobs persists refreshed token for orphan delete jobs", async () => {
+  const mock = createCalendarSyncSupabaseMock();
+  mock.tasks.length = 0;
+  mock.jobs.push({
+    id: "job-1",
+    owner_user_id: "owner-1",
+    task_id: "deleted-task",
+    calendar_event_id: "google-event-1",
+    operation: "delete",
+    status: "pending",
+    attempts: 0,
+    created_at: "2026-05-10T08:00:00.000Z",
+    locked_at: null,
+    last_error: null,
+  });
+
+  const result = await processPendingCalendarSyncJobs({
+    supabase: mock.supabase as never,
+    nowIso: "2026-05-10T09:00:00.000Z",
+    client: {
+      async createEvent() {
+        throw new Error("create should not be called");
+      },
+      async patchEvent() {
+        throw new Error("patch should not be called");
+      },
+      async deleteEvent() {
+        return {
+          ok: true,
+          errorMessage: null,
+          refreshedAccessToken: "new-access-token",
+          tokenExpiresAt: "2026-05-10T10:00:00.000Z",
+        };
+      },
+    },
+  });
+
+  assert.deepEqual(result, { ok: true, processed: 1, failed: 0 });
+  assert.equal(mock.jobs[0]?.status, "succeeded");
+  assert.equal(mock.settings.access_token_encrypted, "new-access-token");
+  assert.equal(mock.settings.token_expires_at, "2026-05-10T10:00:00.000Z");
 });

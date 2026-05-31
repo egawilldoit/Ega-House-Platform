@@ -1948,17 +1948,8 @@ export async function deleteTaskSafely(
     return { errorMessage: "Task has tracked timer history and cannot be deleted safely." };
   }
 
-  if (taskResult.data.calendar_event_id) {
-    await enqueueCalendarSyncJob(
-      {
-        taskId: normalizedTaskId,
-        ownerUserId: taskResult.data.owner_user_id,
-        calendarEventId: taskResult.data.calendar_event_id,
-        operation: "delete",
-      },
-      { supabase },
-    );
-  }
+  const calendarEventId = taskResult.data.calendar_event_id;
+  const ownerUserId = taskResult.data.owner_user_id;
 
   const { error: deleteError } = await supabase
     .from("tasks")
@@ -1967,6 +1958,18 @@ export async function deleteTaskSafely(
 
   if (deleteError) {
     return { errorMessage: "Unable to delete task right now." };
+  }
+
+  if (calendarEventId) {
+    await enqueueCalendarSyncJob(
+      {
+        taskId: normalizedTaskId,
+        ownerUserId,
+        calendarEventId,
+        operation: "delete",
+      },
+      { supabase },
+    );
   }
 
   return { errorMessage: null };
