@@ -5,6 +5,7 @@ import {
   calculateWorkAnalytics,
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
+  calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
   calculateWorkAnalyticsInsights,
 } from "./work-analytics-service";
@@ -803,4 +804,118 @@ test("calculateWorkAnalyticsCoreSummary includes open sessions with includeOpenS
   assert.equal(resultIncluded.todaySessionCount, 1);
   assert.equal(resultIncluded.last30DaysWorkedMinutes, 120);
   assert.equal(resultIncluded.last30DaysSessionCount, 1);
+});
+
+test("calculateWorkAnalyticsMonthComparison returns zeros for empty data", () => {
+  const result = calculateWorkAnalyticsMonthComparison([], { nowIso: "2026-04-27T10:00:00.000Z" });
+
+  assert.equal(result.currentMonthMinutes, 0);
+  assert.equal(result.currentMonthSessionCount, 0);
+  assert.equal(result.currentMonthActiveDays, 0);
+  assert.equal(result.currentMonthAvgPerActiveDayMinutes, 0);
+  assert.equal(result.previousMonthMinutes, 0);
+  assert.equal(result.previousMonthSessionCount, 0);
+  assert.equal(result.deltaMinutes, 0);
+  assert.equal(result.percentChange, null);
+  assert.equal(result.hasPreviousData, false);
+});
+
+test("calculateWorkAnalyticsMonthComparison computes current month correctly", () => {
+  // Current date: 2026-04-27. Current month is April 2026.
+  // Previous month is March 2026.
+  // Sessions in April (current month)
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-27T08:00:00.000Z",
+      ended_at: "2026-04-27T09:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsMonthComparison(sessions, { nowIso: "2026-04-27T10:00:00.000Z" });
+
+  // Current month: 2 hours = 120 minutes
+  assert.equal(result.currentMonthMinutes, 120);
+  assert.equal(result.currentMonthSessionCount, 2);
+  assert.equal(result.currentMonthActiveDays, 2);
+  assert.equal(result.currentMonthAvgPerActiveDayMinutes, 60);
+
+  // Previous month: no data
+  assert.equal(result.previousMonthMinutes, 0);
+  assert.equal(result.previousMonthSessionCount, 0);
+  assert.equal(result.percentChange, null);
+  assert.equal(result.hasPreviousData, false);
+  assert.equal(result.deltaMinutes, 120);
+});
+
+test("calculateWorkAnalyticsMonthComparison handles previous month data", () => {
+  // Sessions in April (current month): 90 min on Apr 20
+  // Sessions in March (previous month): 60 min on Mar 15
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:30:00.000Z",
+      duration_seconds: 5400,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-03-15T09:00:00.000Z",
+      ended_at: "2026-03-15T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsMonthComparison(sessions, { nowIso: "2026-04-27T10:00:00.000Z" });
+
+  // Current month: 90 minutes
+  assert.equal(result.currentMonthMinutes, 90);
+  assert.equal(result.currentMonthSessionCount, 1);
+  assert.equal(result.currentMonthActiveDays, 1);
+
+  // Previous month: 60 minutes
+  assert.equal(result.previousMonthMinutes, 60);
+  assert.equal(result.previousMonthSessionCount, 1);
+
+  // Delta: 90 - 60 = 30 min, +50%
+  assert.equal(result.deltaMinutes, 30);
+  assert.equal(result.percentChange, 50);
+  assert.equal(result.hasPreviousData, true);
+});
+
+test("calculateWorkAnalyticsMonthComparison handles sessions crossing month boundaries", () => {
+  // Session that crosses from March 31 to April 1
+  const sessions = [
+    {
+      task_id: "crossing-task",
+      started_at: "2026-03-31T22:00:00.000Z",
+      ended_at: "2026-04-01T02:00:00.000Z",
+      duration_seconds: 14400,
+      tasks: { id: "crossing-task", title: "Crossing task" },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsMonthComparison(sessions, { nowIso: "2026-04-27T10:00:00.000Z" });
+
+  // Both months get partial overlap:
+  // March: 31st 22:00 - April 1 00:00 = 2 hours on March side = 120 minutes
+  // April: April 1 00:00 - April 1 02:00 = 2 hours on April side = 120 minutes
+  assert.equal(result.currentMonthMinutes, 120);
+  assert.equal(result.previousMonthMinutes, 120);
+
+  // Delta should be 0
+  assert.equal(result.deltaMinutes, 0);
+  assert.equal(result.percentChange, 0);
+  assert.equal(result.hasPreviousData, true);
 });
