@@ -42,12 +42,10 @@ export function useAnalyticsDrilldown() {
 
 type AnalyticsDrilldownProviderProps = {
   children: ReactNode;
-  allSessions: ExecutionEvidenceSessionRow[];
 };
 
 export function AnalyticsDrilldownProvider({
   children,
-  allSessions,
 }: AnalyticsDrilldownProviderProps) {
   const [drilldown, setDrilldown] = useState<DrilldownData | null>(null);
 

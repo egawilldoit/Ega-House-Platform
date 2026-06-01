@@ -1,7 +1,7 @@
 "use client";
 
-import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useMemo, useTransition } from "react";
 import { FilterPill } from "@/components/ui/filter-pill";
 import {
   buildFilterHref,
@@ -34,8 +34,14 @@ const AVAILABLE_BREAKDOWN_BYS: AnalyticsBreakdownBy[] = [
 
 export function AnalyticsFilters() {
   const pathname = usePathname();
+  const router = useRouter();
   const rawSearchParams = useSearchParams();
-  const searchParams = new URLSearchParams(rawSearchParams.toString());
+  const [isPending, startTransition] = useTransition();
+
+  const searchParams = useMemo(
+    () => new URLSearchParams(rawSearchParams.toString()),
+    [rawSearchParams],
+  );
 
   const currentRange: AnalyticsRange =
     (searchParams.get("range") as AnalyticsRange) ?? "30d";
@@ -45,12 +51,15 @@ export function AnalyticsFilters() {
     (searchParams.get("breakdownBy") as AnalyticsBreakdownBy) ?? "project";
   const currentIncludeOpen = searchParams.get("includeOpen") === "true";
 
-  const makeHref = useCallback(
+  const navigate = useCallback(
     (key: string, value: string | null) => {
       const qs = buildFilterHref(searchParams, key, value);
-      return `${pathname}${qs}`;
+      const href = `${pathname}${qs}`;
+      startTransition(() => {
+        router.replace(href, { scroll: false });
+      });
     },
-    [pathname, searchParams],
+    [pathname, searchParams, router],
   );
 
   return (
@@ -64,10 +73,11 @@ export function AnalyticsFilters() {
           {AVAILABLE_RANGES.map((r) => (
             <FilterPill
               key={r}
-              href={makeHref("range", r === "30d" ? null : r)}
+              onClick={() => navigate("range", r === "30d" ? null : r)}
               label={RANGE_LABELS[r]}
               active={currentRange === r}
               ariaCurrent={currentRange === r ? "page" : undefined}
+              disabled={isPending}
             />
           ))}
         </div>
@@ -82,10 +92,11 @@ export function AnalyticsFilters() {
           {AVAILABLE_GROUP_BYS.map((g) => (
             <FilterPill
               key={g}
-              href={makeHref("groupBy", g === "day" ? null : g)}
+              onClick={() => navigate("groupBy", g === "day" ? null : g)}
               label={GROUP_BY_LABELS[g]}
               active={currentGroupBy === g}
               ariaCurrent={currentGroupBy === g ? "page" : undefined}
+              disabled={isPending}
             />
           ))}
         </div>
@@ -100,10 +111,11 @@ export function AnalyticsFilters() {
           {AVAILABLE_BREAKDOWN_BYS.map((b) => (
             <FilterPill
               key={b}
-              href={makeHref("breakdownBy", b === "project" ? null : b)}
+              onClick={() => navigate("breakdownBy", b === "project" ? null : b)}
               label={BREAKDOWN_BY_LABELS[b]}
               active={currentBreakdownBy === b}
               ariaCurrent={currentBreakdownBy === b ? "page" : undefined}
+              disabled={isPending}
             />
           ))}
         </div>
@@ -116,16 +128,18 @@ export function AnalyticsFilters() {
         </legend>
         <div className="flex flex-wrap gap-1">
           <FilterPill
-            href={makeHref("includeOpen", null)}
+            onClick={() => navigate("includeOpen", null)}
             label="Off"
             active={!currentIncludeOpen}
             ariaCurrent={!currentIncludeOpen ? "page" : undefined}
+            disabled={isPending}
           />
           <FilterPill
-            href={makeHref("includeOpen", "true")}
+            onClick={() => navigate("includeOpen", "true")}
             label="On"
             active={currentIncludeOpen}
             ariaCurrent={currentIncludeOpen ? "page" : undefined}
+            disabled={isPending}
           />
         </div>
       </fieldset>

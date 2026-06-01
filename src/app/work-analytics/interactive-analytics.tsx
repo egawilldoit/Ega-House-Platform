@@ -41,7 +41,6 @@ function filterSessionsByDate(
 function filterSessionsByProject(
   sessions: ExecutionEvidenceSessionRow[],
   projectId: string | null,
-  projectName: string,
 ): ExecutionEvidenceSessionRow[] {
   return sessions.filter((s) => {
     const id = s.tasks?.projects?.id ?? s.tasks?.project_id ?? null;
@@ -55,7 +54,6 @@ function filterSessionsByProject(
 function filterSessionsByGoal(
   sessions: ExecutionEvidenceSessionRow[],
   goalId: string | null,
-  goalTitle: string,
 ): ExecutionEvidenceSessionRow[] {
   return sessions.filter((s) => {
     const id = s.tasks?.goals?.id ?? null;
@@ -77,10 +75,6 @@ function filterSessionsByTask(
 }
 
 // ---- Render props types for drilldown ----
-
-type DrilldownConfig = {
-  type: "date" | "project" | "goal" | "task";
-};
 
 type ChartSectionProps = {
   last7DaysSeries: WorkAnalyticsDaily[];
@@ -143,7 +137,6 @@ function BreakdownCard({
       const sessions = filterSessionsByProject(
         allSessions,
         pb.projectId,
-        pb.projectName,
       );
       openDrilldown({
         type: "project",
@@ -159,7 +152,6 @@ function BreakdownCard({
       const sessions = filterSessionsByGoal(
         allSessions,
         gb.goalId,
-        gb.goalTitle,
       );
       openDrilldown({
         type: "goal",
@@ -337,7 +329,7 @@ export function InteractiveAnalytics({
   insightsLongestSessionMinutes,
 }: InteractiveAnalyticsProps) {
   return (
-    <AnalyticsDrilldownProvider allSessions={allSessions}>
+    <AnalyticsDrilldownProvider>
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartSection
           last7DaysSeries={last7DaysSeries}
