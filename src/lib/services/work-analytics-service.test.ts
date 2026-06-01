@@ -5,8 +5,10 @@ import {
   calculateWorkAnalytics,
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
+  calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
+  calculateWorkAnalyticsTaskBreakdown,
   calculateWorkAnalyticsInsights,
 } from "./work-analytics-service";
 
@@ -918,4 +920,157 @@ test("calculateWorkAnalyticsMonthComparison handles sessions crossing month boun
   assert.equal(result.deltaMinutes, 0);
   assert.equal(result.percentChange, 0);
   assert.equal(result.hasPreviousData, true);
+});
+
+test("returns empty goal breakdown for no sessions", () => {
+  const result = calculateWorkAnalyticsGoalBreakdown([], {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z"
+  });
+  assert.deepEqual(result, []);
+});
+
+test("groups sessions by goal", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+        goals: { id: "goal-1", title: "Goal Alpha" },
+        projects: { id: "project-1", name: "Project A" },
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T10:00:00.000Z",
+      ended_at: "2026-04-20T12:00:00.000Z",
+      duration_seconds: 7200,
+      tasks: {
+        id: "task-2",
+        title: "Task 2",
+        goals: { id: "goal-1", title: "Goal Alpha" },
+        projects: { id: "project-1", name: "Project A" },
+      },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-04-20T12:00:00.000Z",
+      ended_at: "2026-04-20T13:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "task-3",
+        title: "Task 3",
+        goals: { id: "goal-2", title: "Goal Beta" },
+        projects: { id: "project-2", name: "Project B" },
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsGoalBreakdown(sessions, {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z"
+  });
+
+  assert.equal(result.length, 2);
+  assert.equal(result[0].goalTitle, "Goal Alpha");
+  assert.equal(result[0].goalId, "goal-1");
+  assert.equal(result[0].workedMinutes, 180);
+  assert.equal(result[0].sessionCount, 2);
+  assert.equal(result[0].projectName, "Project A");
+
+  assert.equal(result[1].goalTitle, "Goal Beta");
+  assert.equal(result[1].goalId, "goal-2");
+  assert.equal(result[1].workedMinutes, 60);
+  assert.equal(result[1].sessionCount, 1);
+  assert.equal(result[1].projectName, "Project B");
+});
+
+test("handles sessions without goal (no-goal bucket)", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "task-1",
+        title: "Task 1",
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsGoalBreakdown(sessions, {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z"
+  });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].goalTitle, "No goal");
+  assert.equal(result[0].goalId, null);
+  assert.equal(result[0].workedMinutes, 60);
+  assert.equal(result[0].sessionCount, 1);
+});
+
+test("returns empty task breakdown for no sessions", () => {
+  const result = calculateWorkAnalyticsTaskBreakdown([], {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z"
+  });
+  assert.deepEqual(result, []);
+});
+
+test("computes task breakdown with percent of total", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "task-1",
+        title: "Task Alpha",
+        goals: { id: "goal-1", title: "Goal A" },
+        projects: { id: "project-1", name: "Project X" },
+      },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-20T11:00:00.000Z",
+      ended_at: "2026-04-20T14:00:00.000Z",
+      duration_seconds: 10800,
+      tasks: {
+        id: "task-2",
+        title: "Task Beta",
+        goals: { id: "goal-2", title: "Goal B" },
+        projects: { id: "project-2", name: "Project Y" },
+      },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsTaskBreakdown(sessions, {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z"
+  });
+
+  assert.equal(result.length, 2);
+  assert.equal(result[0].taskTitle, "Task Beta");
+  assert.equal(result[0].taskId, "task-2");
+  assert.equal(result[0].workedMinutes, 180);
+  assert.equal(result[0].sessionCount, 1);
+  assert.equal(result[0].goalTitle, "Goal B");
+  assert.equal(result[0].projectName, "Project Y");
+  assert.equal(result[0].estimateMinutes, null);
+  assert.equal(result[0].percentOfTotal, 75);
+
+  assert.equal(result[1].taskTitle, "Task Alpha");
+  assert.equal(result[1].taskId, "task-1");
+  assert.equal(result[1].workedMinutes, 60);
+  assert.equal(result[1].sessionCount, 1);
+  assert.equal(result[1].goalTitle, "Goal A");
+  assert.equal(result[1].projectName, "Project X");
+  assert.equal(result[1].percentOfTotal, 25);
 });
