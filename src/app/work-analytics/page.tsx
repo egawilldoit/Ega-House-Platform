@@ -1,6 +1,5 @@
 import { AppShell } from "@/components/layout/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendBarChart } from "@/components/review/trend-bar-chart";
 import { formatDurationLabel } from "@/lib/task-session";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-data-adapter";
@@ -16,10 +15,9 @@ import {
 import {
   parseAnalyticsFilters,
   computeWindowForRange,
-  computeDateRangeForWindow,
-  RANGE_LABELS,
 } from "@/lib/services/work-analytics-filters";
 import type { AnalyticsBreakdownBy } from "@/lib/services/work-analytics-filters";
+import { InteractiveAnalytics } from "./interactive-analytics";
 import { AnalyticsFilters } from "./analytics-filters";
 
 export const dynamic = "force-dynamic";
@@ -122,15 +120,6 @@ export default async function WorkAnalyticsPage({
     options,
   );
 
-  // Compute window-specific series and breakdown based on filters
-  const dateRange = computeDateRangeForWindow(primaryWindow);
-  const primaryDailySeries = calculateWorkAnalyticsDailySeries(
-    sessions,
-    dateRange.startDate,
-    dateRange.endDate,
-    options,
-  );
-
   // 7d and 30d series for trend charts
   const last7DaysSeries = calculateWorkAnalyticsDailySeries(
     sessions,
@@ -145,57 +134,17 @@ export default async function WorkAnalyticsPage({
     options,
   );
 
-  // Breakdown based on selected breakdownBy
+  // Compute breakdowns for InteractiveAnalytics
   const breakdownBy: AnalyticsBreakdownBy = filters.breakdownBy;
-  let breakdownContent: React.ReactNode;
-
-  if (breakdownBy === "goal") {
-    const goalBreakdown = calculateWorkAnalyticsGoalBreakdown(
-      sessions,
-      primaryWindow,
-      options,
-    );
-    breakdownContent =
-      goalBreakdown.length === 0
-        ? "No goal data"
-        : goalBreakdown
-            .map(
-              (g) =>
-                `${g.goalTitle} (${g.projectName}): ${g.workedMinutes}m/${g.sessionCount}`,
-            )
-            .join(" | ");
-  } else if (breakdownBy === "task") {
-    const taskBreakdown = calculateWorkAnalyticsTaskBreakdown(
-      sessions,
-      primaryWindow,
-      options,
-    );
-    breakdownContent =
-      taskBreakdown.length === 0
-        ? "No task data"
-        : taskBreakdown
-            .map(
-              (t) =>
-                `${t.taskTitle}: ${t.workedMinutes}m/${t.sessionCount} (${t.percentOfTotal}%)`,
-            )
-            .join(" | ");
-  } else {
-    // Default: project breakdown
-    const projectBreakdown = calculateWorkAnalyticsProjectBreakdown(
-      sessions,
-      primaryWindow,
-      options,
-    );
-    breakdownContent =
-      projectBreakdown.length === 0
-        ? "No project data"
-        : projectBreakdown
-            .map(
-              (p) =>
-                `${p.projectName}: ${p.workedMinutes}m/${p.sessionCount}`,
-            )
-            .join(" | ");
-  }
+  const projectBreakdown = calculateWorkAnalyticsProjectBreakdown(
+    sessions, primaryWindow, options,
+  );
+  const goalBreakdown = calculateWorkAnalyticsGoalBreakdown(
+    sessions, primaryWindow, options,
+  );
+  const taskBreakdown = calculateWorkAnalyticsTaskBreakdown(
+    sessions, primaryWindow, options,
+  );
 
   // Month-to-date comparison
   const monthComparison = calculateWorkAnalyticsMonthComparison(
@@ -203,9 +152,6 @@ export default async function WorkAnalyticsPage({
     options,
   );
 
-  const rangeLabel = RANGE_LABELS[filters.range];
-
-  // Determine breakdown card title
   const breakdownTitle =
     breakdownBy === "goal"
       ? "Goal breakdown"
@@ -405,31 +351,22 @@ export default async function WorkAnalyticsPage({
         </Card>
       </div>
 
-      {/* Trend charts and breakdown cards */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <TrendBarChart data={last7DaysSeries} title="Last 7 days" />
-        <TrendBarChart data={last30DaysSeries} title="Last 30 days" />
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {breakdownTitle} ({rangeLabel})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>{breakdownContent}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Insights</CardTitle>
-          </CardHeader>
-          <CardContent>
-            Delta {thisWeekInsights.deltaMinutes}m · Best{" "}
-            {thisWeekInsights.bestDay?.date ?? "n/a"} · Lowest{" "}
-            {thisWeekInsights.lowestNonZeroDay?.date ?? "n/a"} · Avg{" "}
-            {thisWeekInsights.averageSessionLength}m · Longest{" "}
-            {thisWeekInsights.longestSession}m
-          </CardContent>
-        </Card>
-      </div>
+      {/* InteractiveAnalytics: trend charts, breakdown cards, and drilldown drawer */}
+      <InteractiveAnalytics
+        allSessions={sessions}
+        last7DaysSeries={last7DaysSeries}
+        last30DaysSeries={last30DaysSeries}
+        breakdownBy={breakdownBy}
+        breakdownTitle={breakdownTitle}
+        projectBreakdown={projectBreakdown}
+        goalBreakdown={goalBreakdown}
+        taskBreakdown={taskBreakdown}
+        insightsDeltaMinutes={thisWeekInsights.deltaMinutes}
+        insightsBestDay={thisWeekInsights.bestDay?.date ?? null}
+        insightsLowestDay={thisWeekInsights.lowestNonZeroDay?.date ?? null}
+        insightsAvgSessionMinutes={thisWeekInsights.averageSessionLength}
+        insightsLongestSessionMinutes={thisWeekInsights.longestSession}
+      />
     </AppShell>
   );
 }
