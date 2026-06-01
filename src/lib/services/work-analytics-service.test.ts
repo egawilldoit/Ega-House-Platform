@@ -10,6 +10,7 @@ import {
   calculateWorkAnalyticsProjectBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
   calculateWorkAnalyticsInsights,
+  calculateEstimateAccuracy,
   calculateSessionQuality,
   extractSessionDurationsInWindow,
 } from "./work-analytics-service";
@@ -1237,4 +1238,162 @@ test("calculateSessionQuality via extractSessionDurationsInWindow integration", 
   assert.equal(quality.sessionsOver90Min, 1);   // 120m
   assert.equal(quality.longestSessionMinutes, 120);
   assert.equal(quality.averageSessionLengthMinutes, 43); // (5+3+120)/3 = 42.67 → 43
+});
+test("calculateEstimateAccuracy returns zeros for empty data", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const result = calculateEstimateAccuracy([], window);
+  assert.equal(result.totalEstimatedMinutes, 0);
+  assert.equal(result.totalTrackedMinutes, 0);
+  assert.equal(result.tasks.length, 0);
+});
+
+test("calculateEstimateAccuracy handles exact estimate match", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1", estimate_minutes: 60, projects: { name: "Project A" } },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.totalEstimatedMinutes, 60);
+  assert.equal(result.totalTrackedMinutes, 60);
+  assert.equal(result.exactCount, 1);
+  assert.equal(result.tasks[0].status, "exact");
+  assert.equal(result.tasks[0].percentError, 0);
+});
+
+test("calculateEstimateAccuracy handles over-estimated task", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T11:00:00.000Z",
+      duration_seconds: 7200,
+      tasks: { id: "task-1", title: "Task 1", estimate_minutes: 60, projects: { name: "Project A" } },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.totalTrackedMinutes, 120);
+  assert.equal(result.overCount, 1);
+  assert.equal(result.tasks[0].status, "over");
+  assert.equal(result.tasks[0].deltaMinutes, 60);
+  assert.equal(result.tasks[0].percentError, 100);
+});
+
+test("calculateEstimateAccuracy handles under-estimated task", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T09:30:00.000Z",
+      duration_seconds: 1800,
+      tasks: { id: "task-1", title: "Task 1", estimate_minutes: 120, projects: { name: "Project A" } },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.underCount, 1);
+  assert.equal(result.tasks[0].status, "under");
+  assert.equal(result.tasks[0].deltaMinutes, -90);
+  assert.equal(result.tasks[0].percentError, -75);
+});
+
+test("calculateEstimateAccuracy handles task without estimate", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.noEstimateCount, 1);
+  assert.equal(result.tasks[0].status, "no-estimate");
+  assert.equal(result.tasks[0].estimateMinutes, null);
+});
+
+test("calculateEstimateAccuracy aggregates sessions per task", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1", estimate_minutes: 60 },
+    },
+    {
+      task_id: "task-1",
+      started_at: "2026-04-21T09:00:00.000Z",
+      ended_at: "2026-04-21T11:00:00.000Z",
+      duration_seconds: 7200,
+      tasks: { id: "task-1", title: "Task 1", estimate_minutes: 60 },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.tasks.length, 1);
+  assert.equal(result.tasks[0].sessionCount, 2);
+  assert.equal(result.tasks[0].status, "over");
+});
+
+test("calculateEstimateAccuracy handles mixed estimates with project accuracy", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-over",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:30:00.000Z",
+      duration_seconds: 5400,
+      tasks: { id: "task-over", title: "Over", estimate_minutes: 30, projects: { name: "Project A" } },
+    },
+    {
+      task_id: "task-under",
+      started_at: "2026-04-20T11:00:00.000Z",
+      ended_at: "2026-04-20T11:30:00.000Z",
+      duration_seconds: 1800,
+      tasks: { id: "task-under", title: "Under", estimate_minutes: 90, projects: { name: "Project B" } },
+    },
+    {
+      task_id: "task-none",
+      started_at: "2026-04-20T14:00:00.000Z",
+      ended_at: "2026-04-20T15:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-none", title: "No est" },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.tasks.length, 3);
+  assert.equal(result.overCount, 1);
+  assert.equal(result.underCount, 1);
+  assert.equal(result.noEstimateCount, 1);
+  assert.equal(result.projectAccuracy.length, 3);
 });

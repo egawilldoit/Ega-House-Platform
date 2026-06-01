@@ -6,6 +6,7 @@ import { getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "@
 import {
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
+  calculateEstimateAccuracy,
   calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsInsights,
   calculateWorkAnalyticsMonthComparison,
@@ -151,6 +152,9 @@ export default async function WorkAnalyticsPage({
     sessions,
     options,
   );
+
+  // Estimate accuracy
+  const estimateAccuracy = calculateEstimateAccuracy(sessions, primaryWindow, options);
 
   const breakdownTitle =
     breakdownBy === "goal"
@@ -346,6 +350,48 @@ export default async function WorkAnalyticsPage({
               {monthComparison.currentMonthActiveDays > 0
                 ? `across ${monthComparison.currentMonthActiveDays} days`
                 : "No activity this month"}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Estimate accuracy panel */}
+      <div className="mt-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Estimate accuracy</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+              <div>
+                <div className="text-xs text-muted-foreground">Estimated</div>
+                <div className="text-lg font-bold">{formatDurationLabel(estimateAccuracy.totalEstimatedMinutes * 60)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Tracked</div>
+                <div className="text-lg font-bold">{formatDurationLabel(estimateAccuracy.totalTrackedMinutes * 60)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Delta</div>
+                <div className={`text-lg font-bold ${estimateAccuracy.estimateDeltaMinutes > 0 ? 'text-red-600' : estimateAccuracy.estimateDeltaMinutes < 0 ? 'text-green-600' : ''}`}>
+                  {estimateAccuracy.estimateDeltaPercent !== null
+                    ? `${estimateAccuracy.estimateDeltaMinutes >= 0 ? '+' : ''}${estimateAccuracy.estimateDeltaPercent}%`
+                    : '--'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Tasks with estimates</div>
+                <div className="text-lg font-bold">
+                  {estimateAccuracy.overCount + estimateAccuracy.underCount + estimateAccuracy.exactCount}
+                  <span className="text-xs text-muted-foreground ml-1">
+                    ({estimateAccuracy.overCount} over, {estimateAccuracy.underCount} under)
+                  </span>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">No estimate</div>
+                <div className="text-lg font-bold">{estimateAccuracy.noEstimateCount}</div>
+              </div>
             </div>
           </CardContent>
         </Card>
