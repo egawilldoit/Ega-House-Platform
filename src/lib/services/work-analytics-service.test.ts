@@ -1037,6 +1037,7 @@ test("computes task breakdown with percent of total", () => {
       tasks: {
         id: "task-1",
         title: "Task Alpha",
+        estimate_minutes: 45,
         goals: { id: "goal-1", title: "Goal A" },
         projects: { id: "project-1", name: "Project X" },
       },
@@ -1049,6 +1050,7 @@ test("computes task breakdown with percent of total", () => {
       tasks: {
         id: "task-2",
         title: "Task Beta",
+        estimate_minutes: null,
         goals: { id: "goal-2", title: "Goal B" },
         projects: { id: "project-2", name: "Project Y" },
       },
@@ -1067,7 +1069,7 @@ test("computes task breakdown with percent of total", () => {
   assert.equal(result[0].sessionCount, 1);
   assert.equal(result[0].goalTitle, "Goal B");
   assert.equal(result[0].projectName, "Project Y");
-  assert.equal(result[0].estimateMinutes, null);
+  assert.equal(result[0].estimateMinutes, null); // fixture has estimate_minutes: null
   assert.equal(result[0].percentOfTotal, 75);
 
   assert.equal(result[1].taskTitle, "Task Alpha");
@@ -1076,6 +1078,7 @@ test("computes task breakdown with percent of total", () => {
   assert.equal(result[1].sessionCount, 1);
   assert.equal(result[1].goalTitle, "Goal A");
   assert.equal(result[1].projectName, "Project X");
+  assert.equal(result[1].estimateMinutes, 45); // fixture has estimate_minutes: 45
   assert.equal(result[1].percentOfTotal, 25);
 });
 

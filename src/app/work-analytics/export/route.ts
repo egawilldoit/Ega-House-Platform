@@ -124,10 +124,6 @@ export function buildEstimateAccuracySummary(
   let noEstimateCount = 0;
 
   for (const task of breakdown) {
-    // Note: estimate data is not directly in session rows; this is a placeholder.
-    // We use task.estimateMinutes which may be null since session data doesn't
-    // include estimate_minutes through the current adapter select.
-    // We track what we can.
     totalTrackedMinutes += task.workedMinutes;
 
     if (task.estimateMinutes == null) {
