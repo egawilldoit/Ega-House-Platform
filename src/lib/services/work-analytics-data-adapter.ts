@@ -42,36 +42,48 @@ export async function getWorkAnalyticsTaskCounts(args: {
 }): Promise<{ data: WorkAnalyticsTaskCounts | null; errorMessage: string | null }> {
   const supabase = await resolveSupabaseClient(args.supabase);
 
-  const { data, error } = await supabase
+  // Count tasks created within the window: created_at >= start AND created_at < end
+  const { data: createdData, error: createdError } = await supabase
     .from("tasks")
-    .select("status, completed_at, blocked_reason")
+    .select("id", { count: "exact", head: true })
     .eq("owner_user_id", args.ownerUserId)
-    .lt("created_at", args.window.endIso)
-    .or(`completed_at.is.null,completed_at.gte.${args.window.startIso}`);
+    .gte("created_at", args.window.startIso)
+    .lt("created_at", args.window.endIso);
 
-  if (error) {
-    return { data: null, errorMessage: `Failed to load work analytics task counts: ${error.message}` };
+  if (createdError) {
+    return { data: null, errorMessage: `Failed to load work analytics task counts: ${createdError.message}` };
   }
+  const createdCount = createdData?.length ?? 0;
 
-  const tasks = data ?? [];
-  let completedCount = 0;
-  let createdCount = 0;
-  let blockedCount = 0;
+  // Count tasks completed within the window: completed_at >= start AND completed_at < end AND status = 'done'
+  const { data: completedData, error: completedError } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", args.ownerUserId)
+    .eq("status", "done")
+    .gte("completed_at", args.window.startIso)
+    .lt("completed_at", args.window.endIso);
 
-  for (const task of tasks) {
-    // Count tasks created within the window
-    createdCount++;
-
-    // Count completed tasks (where completed_at falls within window or task status is done)
-    if (task.status === "done") {
-      completedCount++;
-    }
-
-    // Count blocked tasks
-    if (task.blocked_reason || task.status === "blocked") {
-      blockedCount++;
-    }
+  if (completedError) {
+    return { data: null, errorMessage: `Failed to load work analytics task counts: ${completedError.message}` };
   }
+  const completedCount = completedData?.length ?? 0;
+
+  // Count tasks that are currently blocked within scope:
+  // completed_at IS NULL AND (blocked_reason IS NOT NULL OR status = 'blocked')
+  // AND created_at < window.endIso (tasks that existed within the window)
+  const { data: blockedData, error: blockedError } = await supabase
+    .from("tasks")
+    .select("id", { count: "exact", head: true })
+    .eq("owner_user_id", args.ownerUserId)
+    .is("completed_at", null)
+    .or(`blocked_reason.not.is.null,status.eq.blocked`)
+    .lt("created_at", args.window.endIso);
+
+  if (blockedError) {
+    return { data: null, errorMessage: `Failed to load work analytics task counts: ${blockedError.message}` };
+  }
+  const blockedCount = blockedData?.length ?? 0;
 
   return { data: { completedCount, createdCount, blockedCount }, errorMessage: null };
 }
