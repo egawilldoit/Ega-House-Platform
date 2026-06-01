@@ -488,6 +488,120 @@ export function calculateWorkAnalyticsMonthComparison(
 }
 
 /**
+ * Session quality metrics focusing on fragmentation and session length distribution.
+ */
+export type SessionQuality = {
+  averageSessionLengthMinutes: number;
+  medianSessionLengthMinutes: number;
+  longestSessionMinutes: number;
+  sessionsUnder5Min: number;
+  sessionsUnder15Min: number;
+  sessionsOver90Min: number;
+  sessionsOver180Min: number;
+  totalSessions: number;
+};
+
+/**
+ * Calculates session quality metrics: average, median, longest session lengths
+ * and fragmentation counts (short/long session buckets).
+ *
+ * @param durationsInSeconds - Array of session durations in seconds (pre-filtered to the time window)
+ * @returns Session quality metrics, all zeroed when no sessions provided
+ */
+export function calculateSessionQuality(
+  durationsInSeconds: number[]
+): SessionQuality {
+  if (durationsInSeconds.length === 0) {
+    return {
+      averageSessionLengthMinutes: 0,
+      medianSessionLengthMinutes: 0,
+      longestSessionMinutes: 0,
+      sessionsUnder5Min: 0,
+      sessionsUnder15Min: 0,
+      sessionsOver90Min: 0,
+      sessionsOver180Min: 0,
+      totalSessions: 0,
+    };
+  }
+
+  const durationsInMinutes = durationsInSeconds.map((s) => s / 60);
+  const sorted = [...durationsInMinutes].sort((a, b) => a - b);
+  const n = sorted.length;
+
+  // Average
+  const sum = sorted.reduce((acc, d) => acc + d, 0);
+  const averageSessionLengthMinutes = Math.round(sum / n);
+
+  // Median
+  let medianSessionLengthMinutes: number;
+  if (n % 2 === 1) {
+    medianSessionLengthMinutes = sorted[Math.floor(n / 2)];
+  } else {
+    medianSessionLengthMinutes =
+      (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  }
+
+  // Longest
+  const longestSessionMinutes = sorted[n - 1];
+
+  // Fragmentation buckets
+  const sessionsUnder5Min = durationsInMinutes.filter((d) => d < 5).length;
+  const sessionsUnder15Min = durationsInMinutes.filter((d) => d < 15).length;
+  const sessionsOver90Min = durationsInMinutes.filter((d) => d > 90).length;
+  const sessionsOver180Min = durationsInMinutes.filter((d) => d > 180).length;
+
+  return {
+    averageSessionLengthMinutes,
+    medianSessionLengthMinutes,
+    longestSessionMinutes,
+    sessionsUnder5Min,
+    sessionsUnder15Min,
+    sessionsOver90Min,
+    sessionsOver180Min,
+    totalSessions: n,
+  };
+}
+
+/**
+ * Extracts session durations within the given window, returning an array of seconds.
+ * Used by calculateSessionQuality and calculateWorkAnalyticsInsights.
+ */
+export function extractSessionDurationsInWindow(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): number[] {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+  const durations: number[] = [];
+
+  for (const session of sessions) {
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      {
+        task_id: session.task_id,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        duration_seconds: session.duration_seconds,
+        tasks: session.tasks,
+      } as ExecutionEvidenceSessionRow,
+      {
+        startIso: window.startIso,
+        endIso: window.endIso,
+      } as ExecutionEvidenceWindow,
+      {
+        nowIso,
+        includeOpenSessions,
+      }
+    );
+    if (trackedSeconds > 0) {
+      durations.push(trackedSeconds);
+    }
+  }
+
+  return durations;
+}
+
+/**
  * Calculates work insights including comparison, streaks, and session quality.
  * 
  * @param sessions Raw session data from task_sessions table (with tasks relation)

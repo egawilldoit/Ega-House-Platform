@@ -10,6 +10,8 @@ import {
   calculateWorkAnalyticsProjectBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
   calculateWorkAnalyticsInsights,
+  calculateSessionQuality,
+  extractSessionDurationsInWindow,
 } from "./work-analytics-service";
 
 const window = {
@@ -1073,4 +1075,166 @@ test("computes task breakdown with percent of total", () => {
   assert.equal(result[1].goalTitle, "Goal A");
   assert.equal(result[1].projectName, "Project X");
   assert.equal(result[1].percentOfTotal, 25);
+});
+
+// ─── calculateSessionQuality tests ────────────────────────────────────
+
+test("calculateSessionQuality returns zeros for empty durations", () => {
+  const result = calculateSessionQuality([]);
+  assert.deepEqual(result, {
+    averageSessionLengthMinutes: 0,
+    medianSessionLengthMinutes: 0,
+    longestSessionMinutes: 0,
+    sessionsUnder5Min: 0,
+    sessionsUnder15Min: 0,
+    sessionsOver90Min: 0,
+    sessionsOver180Min: 0,
+    totalSessions: 0,
+  });
+});
+
+test("calculateSessionQuality computes average, median, longest for single session", () => {
+  const result = calculateSessionQuality([3600]); // 60 minutes
+  assert.equal(result.averageSessionLengthMinutes, 60);
+  assert.equal(result.medianSessionLengthMinutes, 60);
+  assert.equal(result.longestSessionMinutes, 60);
+  assert.equal(result.totalSessions, 1);
+  assert.equal(result.sessionsUnder5Min, 0);
+  assert.equal(result.sessionsUnder15Min, 0);
+  assert.equal(result.sessionsOver90Min, 0);
+  assert.equal(result.sessionsOver180Min, 0);
+});
+
+test("calculateSessionQuality computes median for odd number of sessions", () => {
+  // Durations in seconds: 10m, 20m, 30m, 40m, 50m
+  const result = calculateSessionQuality([600, 1200, 1800, 2400, 3000]);
+  assert.equal(result.averageSessionLengthMinutes, 30);
+  assert.equal(result.medianSessionLengthMinutes, 30); // middle value
+  assert.equal(result.longestSessionMinutes, 50);
+  assert.equal(result.totalSessions, 5);
+});
+
+test("calculateSessionQuality computes median for even number of sessions", () => {
+  // Durations in seconds: 10m, 20m, 30m, 40m
+  const result = calculateSessionQuality([600, 1200, 1800, 2400]);
+  assert.equal(result.averageSessionLengthMinutes, 25);
+  assert.equal(result.medianSessionLengthMinutes, 25); // (20+30)/2 = 25
+  assert.equal(result.longestSessionMinutes, 40);
+  assert.equal(result.totalSessions, 4);
+});
+
+test("calculateSessionQuality counts short sessions correctly", () => {
+  // 3 min, 4 min, 7 min, 12 min, 30 min, 60 min
+  const result = calculateSessionQuality([180, 240, 420, 720, 1800, 3600]);
+  assert.equal(result.sessionsUnder5Min, 2);   // 3m, 4m
+  assert.equal(result.sessionsUnder15Min, 4);  // 3m, 4m, 7m, 12m
+  assert.equal(result.sessionsOver90Min, 0);
+  assert.equal(result.sessionsOver180Min, 0);
+  assert.equal(result.totalSessions, 6);
+});
+
+test("calculateSessionQuality counts long sessions correctly", () => {
+  // 30 min, 90 min, 120 min, 200 min
+  const result = calculateSessionQuality([1800, 5400, 7200, 12000]);
+  assert.equal(result.sessionsOver90Min, 2);    // 120m, 200m (90m is NOT > 90)
+  assert.equal(result.sessionsOver180Min, 1);   // 200m only
+  assert.equal(result.sessionsUnder5Min, 0);
+  assert.equal(result.sessionsUnder15Min, 0);
+  assert.equal(result.totalSessions, 4);
+});
+
+test("calculateSessionQuality handles mixed durations with boundary values", () => {
+  // Exactly 5 min (300s) — should NOT count as under5
+  // Exactly 15 min (900s) — should NOT count as under15
+  // Exactly 90 min (5400s) — should NOT count as over90
+  // Exactly 180 min (10800s) — should NOT count as over180, but 180 > 90 so DOES count as over90
+  const result = calculateSessionQuality([300, 900, 5400, 10800]);
+  assert.equal(result.sessionsUnder5Min, 0);
+  assert.equal(result.sessionsUnder15Min, 1);  // 5m only (<15)
+  assert.equal(result.sessionsOver90Min, 1);   // 180m is > 90
+  assert.equal(result.sessionsOver180Min, 0);  // 180 is NOT > 180
+  assert.equal(result.totalSessions, 4);
+});
+
+test("calculateSessionQuality sorts correctly for longest regardless of input order", () => {
+  // Unsorted input: 120m, 5m, 60m, 30m
+  const result = calculateSessionQuality([7200, 300, 3600, 1800]);
+  assert.equal(result.longestSessionMinutes, 120);
+  assert.equal(result.averageSessionLengthMinutes, 54); // (120+5+60+30)/4 = 53.75 → 54
+  assert.equal(result.totalSessions, 4);
+});
+
+test("calculateSessionQuality median with two sessions", () => {
+  const result = calculateSessionQuality([300, 3600]); // 5m, 60m
+  assert.equal(result.medianSessionLengthMinutes, 32.5); // (5+60)/2 = 32.5
+  assert.equal(result.totalSessions, 2);
+});
+
+// ─── extractSessionDurationsInWindow tests ────────────────────────────
+
+test("extractSessionDurationsInWindow returns empty array for no sessions", () => {
+  const result = extractSessionDurationsInWindow([], window);
+  assert.deepEqual(result, []);
+});
+
+test("extractSessionDurationsInWindow extracts durations for sessions within window", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-21T09:00:00.000Z",
+      ended_at: "2026-04-21T09:30:00.000Z",
+      duration_seconds: 1800,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+  ];
+
+  const result = extractSessionDurationsInWindow(sessions, window);
+  assert.deepEqual(result, [3600, 1800]);
+});
+
+test("extractSessionDurationsInWindow skips sessions with no overlap", () => {
+  const sessions = [
+    {
+      task_id: "task-outside",
+      started_at: "2026-04-19T23:00:00.000Z",
+      ended_at: "2026-04-20T00:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-outside", title: "Outside" },
+    },
+    {
+      task_id: "task-inside",
+      started_at: "2026-04-20T01:00:00.000Z",
+      ended_at: "2026-04-20T02:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-inside", title: "Inside" },
+    },
+  ];
+
+  const result = extractSessionDurationsInWindow(sessions, window);
+  assert.deepEqual(result, [3600]); // only the inside session
+});
+
+test("calculateSessionQuality via extractSessionDurationsInWindow integration", () => {
+  const sessions = [
+    { task_id: "t1", started_at: "2026-04-20T09:00:00.000Z", ended_at: "2026-04-20T09:05:00.000Z", duration_seconds: 300, tasks: { id: "t1", title: "5 min" } },
+    { task_id: "t2", started_at: "2026-04-20T09:10:00.000Z", ended_at: "2026-04-20T09:13:00.000Z", duration_seconds: 180, tasks: { id: "t2", title: "3 min" } },
+    { task_id: "t3", started_at: "2026-04-20T10:00:00.000Z", ended_at: "2026-04-20T12:00:00.000Z", duration_seconds: 7200, tasks: { id: "t3", title: "120 min" } },
+  ];
+
+  const durations = extractSessionDurationsInWindow(sessions, window);
+  const quality = calculateSessionQuality(durations);
+
+  assert.equal(quality.totalSessions, 3);
+  assert.equal(quality.sessionsUnder5Min, 1);   // 3m only (5m is NOT < 5)
+  assert.equal(quality.sessionsUnder15Min, 2);  // 5m, 3m
+  assert.equal(quality.sessionsOver90Min, 1);   // 120m
+  assert.equal(quality.longestSessionMinutes, 120);
+  assert.equal(quality.averageSessionLengthMinutes, 43); // (5+3+120)/3 = 42.67 → 43
 });
