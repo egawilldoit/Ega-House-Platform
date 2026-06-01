@@ -1,10 +1,15 @@
+"use client";
+
 import React from "react";
 import { formatDurationLabel } from "@/lib/task-session";
 import type { WorkAnalyticsDaily } from "@/lib/services/work-analytics-service";
+import type { ExecutionEvidenceSessionRow } from "@/lib/services/execution-evidence-service";
 
 type TrendBarChartProps = {
   data: WorkAnalyticsDaily[];
   title: string;
+  /** Called when a bar row is clicked, passing the date string (YYYY-MM-DD) */
+  onBarClick?: (date: string, label: string) => void;
 };
 
 function toDayLabel(date: string) {
@@ -16,7 +21,15 @@ function toDayLabel(date: string) {
   });
 }
 
-export function TrendBarChart({ data, title }: TrendBarChartProps) {
+function formatDateShort(date: string) {
+  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
   const maxMinutes = data.reduce(
     (max, item) => Math.max(max, item.workedMinutes),
     0,
@@ -65,8 +78,22 @@ export function TrendBarChart({ data, title }: TrendBarChartProps) {
               : 6;
 
           return (
-            <div key={entry.date} className="grid grid-cols-[6rem_minmax(0,1fr)_5rem] items-center gap-3">
-              <span className="text-xs font-semibold text-[color:var(--muted-foreground)] truncate">
+            <button
+              key={entry.date}
+              type="button"
+              onClick={() => {
+                if (onBarClick && entry.workedMinutes > 0) {
+                  onBarClick(entry.date, formatDateShort(entry.date));
+                }
+              }}
+              disabled={!onBarClick || entry.workedMinutes === 0}
+              className={`grid w-full grid-cols-[6rem_minmax(0,1fr)_5rem] items-center gap-3 text-left ${
+                onBarClick && entry.workedMinutes > 0
+                  ? "cursor-pointer rounded-md transition-colors hover:bg-[var(--accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)]"
+                  : ""
+              }`}
+            >
+              <span className="truncate text-xs font-semibold text-[color:var(--muted-foreground)]">
                 {toDayLabel(entry.date)}
               </span>
               <div className="h-3 rounded-full bg-[color:var(--instrument-raised)]">
@@ -83,7 +110,7 @@ export function TrendBarChart({ data, title }: TrendBarChartProps) {
                   {entry.sessionCount}
                 </span>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
