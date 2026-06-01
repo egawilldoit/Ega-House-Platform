@@ -58,7 +58,7 @@ export default async function WorkAnalyticsPage({
   const filters = parseAnalyticsFilters(
     new URLSearchParams(
       Object.entries(resolvedSearchParams)
-        .filter(([_, v]) => v !== undefined)
+        .filter(([, v]) => v !== undefined)
         .map(([k, v]) => [k, v!]),
     ),
   );

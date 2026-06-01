@@ -3,7 +3,6 @@
 import React from "react";
 import { formatDurationLabel } from "@/lib/task-session";
 import type { WorkAnalyticsDaily } from "@/lib/services/work-analytics-service";
-import type { ExecutionEvidenceSessionRow } from "@/lib/services/execution-evidence-service";
 
 type TrendBarChartProps = {
   data: WorkAnalyticsDaily[];
