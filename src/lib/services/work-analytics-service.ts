@@ -1285,7 +1285,7 @@ export function calculateWorkAnalyticsTaskBreakdown(
         taskTitle: session.tasks?.title ?? "Untitled task",
         goalTitle: session.tasks?.goals?.title ?? null,
         projectName: session.tasks?.projects?.name ?? null,
-        estimateMinutes: null, // estimates aren't in session data
+        estimateMinutes: session.tasks?.estimate_minutes ?? null,
       });
     }
   }
