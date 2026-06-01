@@ -13,6 +13,7 @@ export type ExecutionEvidenceSessionTask = {
   title?: string | null;
   project_id?: string | null;
   goal_id?: string | null;
+  estimate_minutes?: number | null;
   projects?: { id?: string | null; name?: string | null } | null;
   goals?: { id?: string | null; title?: string | null } | null;
 } | null;

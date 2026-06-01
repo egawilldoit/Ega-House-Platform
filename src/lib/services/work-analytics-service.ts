@@ -837,6 +837,218 @@ export function calculateWorkAnalyticsGoalBreakdown(
   return breakdown;
 }
 
+// ── Estimate accuracy types ──────────────────────────────────────────────
+
+export type EstimateAccuracyTask = {
+  taskId: string;
+  taskTitle: string;
+  projectName: string | null;
+  estimateMinutes: number | null;
+  trackedMinutes: number;
+  sessionCount: number;
+  deltaMinutes: number; // tracked - estimated (positive = over, negative = under)
+  percentError: number | null; // ((tracked - estimated) / estimated) * 100, null when no estimate
+  status: 'over' | 'under' | 'exact' | 'no-estimate';
+};
+
+export type ProjectAccuracy = {
+  projectName: string;
+  totalEstimatedMinutes: number;
+  totalTrackedMinutes: number;
+  deltaMinutes: number;
+  percentError: number | null;
+  taskCount: number;
+};
+
+export type EstimateAccuracySummary = {
+  totalEstimatedMinutes: number;
+  totalTrackedMinutes: number;
+  estimateDeltaMinutes: number;
+  estimateDeltaPercent: number | null;
+  overCount: number;
+  underCount: number;
+  exactCount: number;
+  noEstimateCount: number;
+  tasks: EstimateAccuracyTask[];
+  projectAccuracy: ProjectAccuracy[];
+};
+
+/**
+ * Calculates estimate accuracy by comparing task estimate_minutes with actual tracked time.
+ * Groups tracked time by task, then computes per-task delta, percent error, and status.
+ * Also computes aggregated project-level accuracy.
+ * Tasks without estimates are included in the summary counts but have null percentError.
+ */
+export function calculateEstimateAccuracy(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): EstimateAccuracySummary {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+
+  // Aggregate tracked time by task
+  const taskMap = new Map<string, {
+    trackedSeconds: number;
+    sessionCount: number;
+    taskTitle: string;
+    projectName: string | null;
+    estimateMinutes: number | null;
+  }>();
+
+  for (const session of sessions) {
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      session, window, { nowIso, includeOpenSessions }
+    );
+    if (trackedSeconds <= 0) continue;
+
+    const taskId = session.task_id;
+    const existing = taskMap.get(taskId);
+
+    if (existing) {
+      existing.trackedSeconds += trackedSeconds;
+      existing.sessionCount += 1;
+    } else {
+      taskMap.set(taskId, {
+        trackedSeconds,
+        sessionCount: 1,
+        taskTitle: session.tasks?.title ?? 'Untitled task',
+        projectName: session.tasks?.projects?.name ?? null,
+        estimateMinutes: session.tasks?.estimate_minutes ?? null,
+      });
+    }
+  }
+
+  // Build per-task accuracy entries
+  const tasks: EstimateAccuracyTask[] = [];
+  let totalEstimatedMinutes = 0;
+  let totalTrackedMinutes = 0;
+  let overCount = 0;
+  let underCount = 0;
+  let exactCount = 0;
+  let noEstimateCount = 0;
+
+  for (const [taskId, data] of taskMap.entries()) {
+    const trackedMinutes = Math.floor(data.trackedSeconds / 60);
+    const estimateMinutes = data.estimateMinutes;
+
+    totalTrackedMinutes += trackedMinutes;
+    if (estimateMinutes != null) {
+      totalEstimatedMinutes += estimateMinutes;
+    }
+
+    let deltaMinutes: number;
+    let percentError: number | null;
+    let status: 'over' | 'under' | 'exact' | 'no-estimate';
+
+    if (estimateMinutes == null) {
+      deltaMinutes = 0;
+      percentError = null;
+      status = 'no-estimate';
+      noEstimateCount++;
+    } else {
+      deltaMinutes = trackedMinutes - estimateMinutes;
+      if (estimateMinutes === 0) {
+        percentError = trackedMinutes > 0 ? Infinity : 0;
+      } else {
+        percentError = Math.round((deltaMinutes / estimateMinutes) * 100);
+      }
+
+      if (trackedMinutes === estimateMinutes) {
+        status = 'exact';
+        exactCount++;
+      } else if (trackedMinutes > estimateMinutes) {
+        status = 'over';
+        overCount++;
+      } else {
+        status = 'under';
+        underCount++;
+      }
+    }
+
+    tasks.push({
+      taskId,
+      taskTitle: data.taskTitle,
+      projectName: data.projectName,
+      estimateMinutes,
+      trackedMinutes,
+      sessionCount: data.sessionCount,
+      deltaMinutes,
+      percentError,
+      status,
+    });
+  }
+
+  // Sort tasks by percentError magnitude descending (most inaccurate first),
+  // with no-estimate tasks at the end
+  tasks.sort((a, b) => {
+    const aErr = a.percentError != null ? Math.abs(a.percentError) : Infinity;
+    const bErr = b.percentError != null ? Math.abs(b.percentError) : Infinity;
+    if (aErr !== bErr) return bErr - aErr;
+    return a.taskTitle.localeCompare(b.taskTitle);
+  });
+
+  // Aggregate project-level accuracy
+  const projectMap = new Map<string, {
+    totalEstimatedMinutes: number;
+    totalTrackedMinutes: number;
+    taskCount: number;
+  }>();
+
+  for (const task of tasks) {
+    const projectName = task.projectName ?? 'Unknown project';
+    const existing = projectMap.get(projectName);
+    if (existing) {
+      existing.totalEstimatedMinutes += task.estimateMinutes ?? 0;
+      existing.totalTrackedMinutes += task.trackedMinutes;
+      existing.taskCount += 1;
+    } else {
+      projectMap.set(projectName, {
+        totalEstimatedMinutes: task.estimateMinutes ?? 0,
+        totalTrackedMinutes: task.trackedMinutes,
+        taskCount: 1,
+      });
+    }
+  }
+
+  const projectAccuracy: ProjectAccuracy[] = [];
+  for (const [projectName, data] of projectMap.entries()) {
+    const deltaMinutes = data.totalTrackedMinutes - data.totalEstimatedMinutes;
+    const percentError = data.totalEstimatedMinutes > 0
+      ? Math.round((deltaMinutes / data.totalEstimatedMinutes) * 100)
+      : null;
+    projectAccuracy.push({
+      projectName,
+      totalEstimatedMinutes: data.totalEstimatedMinutes,
+      totalTrackedMinutes: data.totalTrackedMinutes,
+      deltaMinutes,
+      percentError,
+      taskCount: data.taskCount,
+    });
+  }
+
+  // Sort projects by tracked minutes descending
+  projectAccuracy.sort((a, b) => b.totalTrackedMinutes - a.totalTrackedMinutes);
+
+  const estimateDeltaMinutes = totalTrackedMinutes - totalEstimatedMinutes;
+  const estimateDeltaPercent = totalEstimatedMinutes > 0
+    ? Math.round((estimateDeltaMinutes / totalEstimatedMinutes) * 100)
+    : null;
+
+  return {
+    totalEstimatedMinutes,
+    totalTrackedMinutes,
+    estimateDeltaMinutes,
+    estimateDeltaPercent,
+    overCount,
+    underCount,
+    exactCount,
+    noEstimateCount,
+    tasks,
+    projectAccuracy,
+  };
+}
+
 export type WorkAnalyticsTaskBreakdown = {
   taskId: string;
   taskTitle: string;
