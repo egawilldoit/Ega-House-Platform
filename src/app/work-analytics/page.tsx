@@ -13,6 +13,7 @@ import {
   calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
+  buildDrilldownIndexes,
 } from "@/lib/services/work-analytics-service";
 import {
   parseAnalyticsFilters,
@@ -158,6 +159,9 @@ export default async function WorkAnalyticsPage({
 
   // Estimate accuracy
   const estimateAccuracy = calculateEstimateAccuracy(sessions, primaryWindow, options);
+
+  // Build compact drilldown indexes
+  const drilldownIndexes = buildDrilldownIndexes(sessions, primaryWindow, options);
 
   const breakdownTitle =
     breakdownBy === "goal"
@@ -402,7 +406,7 @@ export default async function WorkAnalyticsPage({
 
       {/* InteractiveAnalytics: trend charts, breakdown cards, and drilldown drawer */}
       <InteractiveAnalytics
-        allSessions={sessions}
+        drilldownIndexes={drilldownIndexes}
         last7DaysSeries={last7DaysSeries}
         last30DaysSeries={last30DaysSeries}
         breakdownBy={breakdownBy}

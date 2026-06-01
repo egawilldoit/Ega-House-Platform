@@ -1134,6 +1134,101 @@ export function calculateEstimateAccuracy(
   };
 }
 
+/**
+ * Lightweight session DTO for drilldown display.
+ * Only carries fields needed by the drilldown drawer, greatly reducing payload size.
+ */
+export type DrilldownSessionDTO = {
+  taskId: string;
+  taskTitle: string;
+  projectName: string | null;
+  projectId: string | null;
+  goalTitle: string | null;
+  goalId: string | null;
+  startedAt: string; // ISO
+  endedAt: string | null; // ISO
+  durationSeconds: number;
+};
+
+/**
+ * Drilldown indexes keyed by bucket label.
+ * - date: key is YYYY-MM-DD
+ * - project: key is projectId (or '__unknown__' for null)
+ * - goal: key is goalId (or '__no-goal__' for null)
+ * - task: key is taskId
+ */
+export type DrilldownIndexes = {
+  date: Record<string, DrilldownSessionDTO[]>;
+  project: Record<string, DrilldownSessionDTO[]>;
+  goal: Record<string, DrilldownSessionDTO[]>;
+  task: Record<string, DrilldownSessionDTO[]>;
+};
+
+/**
+ * Builds compact drilldown indexes from full session rows.
+ * Returns pre-indexed DTOs keyed by date, project, goal, and task,
+ * so the client can look up drilldown data with O(1) instead of filtering O(n).
+ *
+ * @param sessions Full session rows to index
+ * @param _window Time window (reserved for future filtering, currently unused)
+ * @param _options Optional configuration (reserved for future use)
+ * @returns Drilldown indexes for date, project, goal, and task
+ */
+export function buildDrilldownIndexes(
+  sessions: ExecutionEvidenceSessionRow[],
+  _window?: ExecutionEvidenceWindow,
+  _options?: WorkAnalyticsOptions,
+): DrilldownIndexes {
+  const date: Record<string, DrilldownSessionDTO[]> = {};
+  const project: Record<string, DrilldownSessionDTO[]> = {};
+  const goal: Record<string, DrilldownSessionDTO[]> = {};
+  const task: Record<string, DrilldownSessionDTO[]> = {};
+
+  const nowMs = Date.now();
+
+  for (const session of sessions) {
+    const sessionStartMs = new Date(session.started_at).getTime();
+    const sessionEndMs = session.ended_at
+      ? new Date(session.ended_at).getTime()
+      : nowMs;
+    const durationSeconds = Math.max(0, Math.floor((sessionEndMs - sessionStartMs) / 1000));
+
+    const dto: DrilldownSessionDTO = {
+      taskId: session.tasks?.id ?? session.task_id,
+      taskTitle: session.tasks?.title ?? 'Untitled task',
+      projectName: session.tasks?.projects?.name ?? null,
+      projectId: session.tasks?.projects?.id ?? session.tasks?.project_id ?? null,
+      goalTitle: session.tasks?.goals?.title ?? null,
+      goalId: session.tasks?.goals?.id ?? null,
+      startedAt: session.started_at,
+      endedAt: session.ended_at,
+      durationSeconds,
+    };
+
+    // Index by date (YYYY-MM-DD of session start)
+    const dateKey = session.started_at.slice(0, 10);
+    if (!date[dateKey]) date[dateKey] = [];
+    date[dateKey].push(dto);
+
+    // Index by project
+    const projectKey = dto.projectId ?? '__unknown__';
+    if (!project[projectKey]) project[projectKey] = [];
+    project[projectKey].push(dto);
+
+    // Index by goal
+    const goalKey = dto.goalId ?? '__no-goal__';
+    if (!goal[goalKey]) goal[goalKey] = [];
+    goal[goalKey].push(dto);
+
+    // Index by task
+    const taskKey = dto.taskId;
+    if (!task[taskKey]) task[taskKey] = [];
+    task[taskKey].push(dto);
+  }
+
+  return { date, project, goal, task };
+}
+
 export type WorkAnalyticsTaskBreakdown = {
   taskId: string;
   taskTitle: string;
