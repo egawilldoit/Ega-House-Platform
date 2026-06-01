@@ -218,6 +218,91 @@ export function calculateWorkAnalyticsDailySeries(
 }
 
 /**
+ * Calculates grouped work analytics series (daily, weekly, or monthly).
+ * Returns the same `WorkAnalyticsDaily[]` shape for compatibility with TrendBarChart.
+ *
+ * For 'day': delegates to the existing `calculateWorkAnalyticsDailySeries`.
+ * For 'week': groups sessions by ISO week start (Monday), consolidating workedMinutes and sessionCount.
+ * For 'month': groups sessions by month-start (1st), consolidating workedMinutes and sessionCount.
+ *
+ * @param sessions Raw session data
+ * @param startDateInclusive Start date in YYYY-MM-DD format
+ * @param endDateInclusive End date in YYYY-MM-DD format
+ * @param groupBy Grouping level: 'day', 'week', or 'month'
+ * @param options Optional configuration
+ * @returns Array of WorkAnalyticsDaily, one entry per group bucket
+ */
+export function calculateWorkAnalyticsGroupedSeries(
+  sessions: ExecutionEvidenceSessionRow[],
+  startDateInclusive: string,
+  endDateInclusive: string,
+  groupBy: 'day' | 'week' | 'month',
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsDaily[] {
+  // For 'day', delegate to the existing daily series function
+  if (groupBy === 'day') {
+    return calculateWorkAnalyticsDailySeries(sessions, startDateInclusive, endDateInclusive, options);
+  }
+
+  // For week/month, start from the daily series and consolidate
+  const dailySeries = calculateWorkAnalyticsDailySeries(sessions, startDateInclusive, endDateInclusive, options);
+
+  if (dailySeries.length === 0) {
+    return [];
+  }
+
+  // Build a map of bucket key -> consolidated data
+  const bucketMap = new Map<string, { workedMinutes: number; sessionCount: number }>();
+
+  for (const day of dailySeries) {
+    const dayDate = new Date(day.date + 'T00:00:00.000Z');
+    let bucketKey: string;
+
+    if (groupBy === 'week') {
+      // ISO week start: Monday
+      const dayOfWeek = dayDate.getUTCDay();
+      // getUTCDay(): 0=Sun, 1=Mon, ..., 6=Sat
+      // diff to Monday: if Sunday (0), go back 6; otherwise go back (dayOfWeek - 1)
+      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(dayDate);
+      monday.setUTCDate(dayDate.getUTCDate() + diffToMonday);
+      bucketKey = monday.toISOString().split('T')[0]; // YYYY-MM-DD (Monday)
+    } else {
+      // 'month': first of the month
+      const monthStart = new Date(Date.UTC(dayDate.getUTCFullYear(), dayDate.getUTCMonth(), 1));
+      bucketKey = monthStart.toISOString().split('T')[0]; // YYYY-MM-01
+    }
+
+    const existing = bucketMap.get(bucketKey);
+    if (existing) {
+      existing.workedMinutes += day.workedMinutes;
+      existing.sessionCount += day.sessionCount;
+    } else {
+      bucketMap.set(bucketKey, {
+        workedMinutes: day.workedMinutes,
+        sessionCount: day.sessionCount,
+      });
+    }
+  }
+
+  // Convert map back to sorted array
+  const result: WorkAnalyticsDaily[] = [];
+  for (const [date, data] of bucketMap.entries()) {
+    result.push({
+      date,
+      workedMinutes: data.workedMinutes,
+      sessionCount: data.sessionCount,
+      completedTaskCount: undefined,
+    });
+  }
+
+  // Sort by date ascending
+  result.sort((a, b) => a.date.localeCompare(b.date));
+
+  return result;
+}
+
+/**
  * Calculates project breakdown for work analytics.
  * Groups worked minutes and session count by project id/name.
  * Puts missing, deleted, or unknown project refs into a stable `Unknown project` bucket.

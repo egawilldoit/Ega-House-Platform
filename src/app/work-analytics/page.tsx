@@ -6,6 +6,7 @@ import { getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "@
 import {
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
+  calculateWorkAnalyticsGroupedSeries,
   calculateEstimateAccuracy,
   calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsInsights,
@@ -122,16 +123,18 @@ export default async function WorkAnalyticsPage({
   );
 
   // 7d and 30d series for trend charts
-  const last7DaysSeries = calculateWorkAnalyticsDailySeries(
+  const last7DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     daysAgoIsoDate(6, now),
     nowIso.slice(0, 10),
+    filters.groupBy,
     options,
   );
-  const last30DaysSeries = calculateWorkAnalyticsDailySeries(
+  const last30DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     daysAgoIsoDate(29, now),
     nowIso.slice(0, 10),
+    filters.groupBy,
     options,
   );
 

@@ -5,6 +5,7 @@ import {
   calculateWorkAnalytics,
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
+  calculateWorkAnalyticsGroupedSeries,
   calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsMonthComparison,
   calculateWorkAnalyticsProjectBreakdown,
@@ -1524,4 +1525,150 @@ test("estimateAccuracy handles sessions outside window", () => {
   const result = calculateEstimateAccuracy(sessions, window);
   assert.equal(result.totalTrackedMinutes, 0);
   assert.equal(result.tasks.length, 0);
+});
+
+// ─── calculateWorkAnalyticsGroupedSeries tests ─────────────────────────
+
+test("calculateWorkAnalyticsGroupedSeries with groupBy=day equals daily series", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-22T09:00:00.000Z",
+      ended_at: "2026-04-22T09:30:00.000Z",
+      duration_seconds: 1800,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+  ];
+
+  const grouped = calculateWorkAnalyticsGroupedSeries(
+    sessions, "2026-04-20", "2026-04-22", "day",
+  );
+  const daily = calculateWorkAnalyticsDailySeries(
+    sessions, "2026-04-20", "2026-04-22",
+  );
+
+  assert.deepEqual(grouped, daily);
+  assert.equal(grouped.length, 3);
+  assert.equal(grouped[0].date, "2026-04-20");
+  assert.equal(grouped[0].workedMinutes, 60);
+  assert.equal(grouped[1].date, "2026-04-21");
+  assert.equal(grouped[1].workedMinutes, 0);
+  assert.equal(grouped[2].date, "2026-04-22");
+  assert.equal(grouped[2].workedMinutes, 30);
+});
+
+test("calculateWorkAnalyticsGroupedSeries with groupBy=week consolidates into fewer entries", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-21T09:00:00.000Z",
+      ended_at: "2026-04-21T10:30:00.000Z",
+      duration_seconds: 5400,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-04-27T09:00:00.000Z",
+      ended_at: "2026-04-27T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-3", title: "Task 3" },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsGroupedSeries(
+    sessions, "2026-04-20", "2026-04-30", "week",
+  );
+
+  assert.ok(result.length < 11, `Expected fewer than 11 entries, got ${result.length}`);
+
+  assert.equal(result[0].date, "2026-04-20");
+  assert.equal(result[0].workedMinutes, 150);
+  assert.equal(result[0].sessionCount, 2);
+
+  const week2 = result.find(r => r.date === "2026-04-27");
+  assert.ok(week2, "Expected a weekly bucket for Apr 27");
+  assert.equal(week2!.workedMinutes, 60);
+  assert.equal(week2!.sessionCount, 1);
+});
+
+test("calculateWorkAnalyticsGroupedSeries with groupBy=month consolidates into monthly buckets", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+    {
+      task_id: "task-2",
+      started_at: "2026-04-21T09:00:00.000Z",
+      ended_at: "2026-04-21T10:30:00.000Z",
+      duration_seconds: 5400,
+      tasks: { id: "task-2", title: "Task 2" },
+    },
+    {
+      task_id: "task-3",
+      started_at: "2026-05-15T09:00:00.000Z",
+      ended_at: "2026-05-15T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-3", title: "Task 3" },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsGroupedSeries(
+    sessions, "2026-04-20", "2026-05-31", "month",
+  );
+
+  assert.equal(result.length, 2, `Expected 2 monthly entries, got ${result.length}`);
+
+  assert.equal(result[0].date, "2026-04-01");
+  assert.equal(result[0].workedMinutes, 150);
+  assert.equal(result[0].sessionCount, 2);
+
+  assert.equal(result[1].date, "2026-05-01");
+  assert.equal(result[1].workedMinutes, 60);
+  assert.equal(result[1].sessionCount, 1);
+});
+
+test("calculateWorkAnalyticsGroupedSeries with empty sessions returns zero-filled entries", () => {
+  const result = calculateWorkAnalyticsGroupedSeries([], "2026-04-20", "2026-04-22", "week");
+  // The daily series fills zero entries for each day, which get consolidated by week
+  assert.ok(result.length > 0, "Expected non-empty weekly buckets even with empty sessions");
+  assert.equal(result[0].workedMinutes, 0);
+  assert.equal(result[0].sessionCount, 0);
+});
+
+test("calculateWorkAnalyticsGroupedSeries with groupBy=week on single week returns one entry", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+
+  const result = calculateWorkAnalyticsGroupedSeries(
+    sessions, "2026-04-20", "2026-04-26", "week",
+  );
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].date, "2026-04-20");
+  assert.equal(result[0].workedMinutes, 60);
 });
