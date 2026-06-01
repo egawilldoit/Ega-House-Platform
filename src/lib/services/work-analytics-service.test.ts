@@ -1397,3 +1397,131 @@ test("calculateEstimateAccuracy handles mixed estimates with project accuracy", 
   assert.equal(result.noEstimateCount, 1);
   assert.equal(result.projectAccuracy.length, 3);
 });
+
+// --- EGA-394: Regression edge cases ---
+
+test("calculateWorkAnalyticsCoreSummary handles sessions at month boundary", () => {
+  // Session crossing March 31 to April 1
+  const sessions = [
+    {
+      task_id: "task-boundary",
+      started_at: "2026-03-31T22:00:00.000Z",
+      ended_at: "2026-04-01T02:00:00.000Z",
+      duration_seconds: 14400,
+      tasks: { id: "task-boundary", title: "Boundary task" },
+    },
+  ];
+  const window = {
+    startIso: "2026-03-20T00:00:00.000Z",
+    endIso: "2026-04-27T10:00:00.000Z",
+  };
+  // nowIso is Apr 27 so both 7d and 30d windows capture it
+  const result = calculateWorkAnalyticsCoreSummary(sessions, window, {
+    completedCount: 0, createdCount: 0, blockedCount: 0,
+  }, { nowIso: "2026-04-27T10:00:00.000Z" });
+  // Session is 4h total, captured in both windows
+  assert.equal(result.last30DaysWorkedMinutes, 240);
+  assert.equal(result.last30DaysSessionCount, 1);
+});
+
+test("calculateWorkAnalytics handles open session include/exclude", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T10:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "open-task",
+      started_at: "2026-04-27T08:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      tasks: { id: "open-task", title: "Open task" },
+    },
+  ];
+  // Excluded (default)
+  const excluded = calculateWorkAnalyticsCoreSummary(sessions, window, {
+    completedCount: 0, createdCount: 0, blockedCount: 0,
+  }, { nowIso: "2026-04-27T10:00:00.000Z" });
+  assert.equal(excluded.todayWorkedMinutes, 0);
+
+  // Included
+  const included = calculateWorkAnalyticsCoreSummary(sessions, window, {
+    completedCount: 0, createdCount: 0, blockedCount: 0,
+  }, { nowIso: "2026-04-27T10:00:00.000Z", includeOpenSessions: true });
+  assert.equal(included.todayWorkedMinutes, 120);
+});
+
+test("calculateWorkAnalyticsMonthComparison handles empty previous month", () => {
+  // Only sessions in current month, none in previous
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+  const result = calculateWorkAnalyticsMonthComparison(sessions, { nowIso: "2026-04-27T10:00:00.000Z" });
+  assert.equal(result.currentMonthMinutes, 60);
+  assert.equal(result.previousMonthMinutes, 0);
+  assert.equal(result.percentChange, null);
+  assert.equal(result.hasPreviousData, false);
+});
+
+test("calculateWorkAnalyticsGoalBreakdown returns empty for no sessions", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const result = calculateWorkAnalyticsGoalBreakdown([], window);
+  assert.deepEqual(result, []);
+});
+
+test("calculateWorkAnalyticsTaskBreakdown returns empty for no sessions", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  const result = calculateWorkAnalyticsTaskBreakdown([], window);
+  assert.deepEqual(result, []);
+});
+
+test("calculateWorkAnalyticsProjectBreakdown handles null project gracefully", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-21T00:00:00.000Z",
+  };
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-20T09:00:00.000Z",
+      ended_at: "2026-04-20T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1", projects: null },
+    },
+  ];
+  const result = calculateWorkAnalyticsProjectBreakdown(sessions, window);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].projectName, "Unknown project");
+});
+
+test("estimateAccuracy handles sessions outside window", () => {
+  const window = {
+    startIso: "2026-04-20T00:00:00.000Z",
+    endIso: "2026-04-27T00:00:00.000Z",
+  };
+  // Session entirely before window
+  const sessions = [
+    {
+      task_id: "old-task",
+      started_at: "2026-04-19T22:00:00.000Z",
+      ended_at: "2026-04-19T23:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "old-task", title: "Old", estimate_minutes: 60 },
+    },
+  ];
+  const result = calculateEstimateAccuracy(sessions, window);
+  assert.equal(result.totalTrackedMinutes, 0);
+  assert.equal(result.tasks.length, 0);
+});
