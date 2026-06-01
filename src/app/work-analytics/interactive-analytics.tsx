@@ -9,92 +9,36 @@ import {
 } from "./analytics-drilldown-context";
 import { AnalyticsDrilldownDrawer } from "./analytics-drilldown-drawer";
 
-import type { ExecutionEvidenceSessionRow } from "@/lib/services/execution-evidence-service";
 import type {
   WorkAnalyticsDaily,
   WorkAnalyticsProjectBreakdown,
   WorkAnalyticsGoalBreakdown,
   WorkAnalyticsTaskBreakdown,
+  DrilldownSessionDTO,
+  DrilldownIndexes,
 } from "@/lib/services/work-analytics-service";
-
-/**
- * Filters sessions that start on a given date (YYYY-MM-DD).
- * A session is considered active on a date if any part of it overlaps that calendar day.
- */
-function filterSessionsByDate(
-  sessions: ExecutionEvidenceSessionRow[],
-  dateStr: string,
-): ExecutionEvidenceSessionRow[] {
-  const dayStart = new Date(`${dateStr}T00:00:00.000Z`).getTime();
-  const dayEnd = dayStart + 86_400_000; // 24 hours in ms
-
-  return sessions.filter((s) => {
-    const sStart = new Date(s.started_at).getTime();
-    const sEnd = s.ended_at
-      ? new Date(s.ended_at).getTime()
-      : Date.now();
-    // Overlap: session started before day ends AND session ended after day starts
-    return sStart < dayEnd && sEnd > dayStart;
-  });
-}
-
-function filterSessionsByProject(
-  sessions: ExecutionEvidenceSessionRow[],
-  projectId: string | null,
-): ExecutionEvidenceSessionRow[] {
-  return sessions.filter((s) => {
-    const id = s.tasks?.projects?.id ?? s.tasks?.project_id ?? null;
-    if (projectId === null) {
-      return id === null;
-    }
-    return id === projectId;
-  });
-}
-
-function filterSessionsByGoal(
-  sessions: ExecutionEvidenceSessionRow[],
-  goalId: string | null,
-): ExecutionEvidenceSessionRow[] {
-  return sessions.filter((s) => {
-    const id = s.tasks?.goals?.id ?? null;
-    if (goalId === null) {
-      return id === null;
-    }
-    return id === goalId;
-  });
-}
-
-function filterSessionsByTask(
-  sessions: ExecutionEvidenceSessionRow[],
-  taskId: string,
-): ExecutionEvidenceSessionRow[] {
-  return sessions.filter((s) => {
-    const id = s.tasks?.id ?? s.task_id;
-    return id === taskId;
-  });
-}
 
 // ---- Render props types for drilldown ----
 
 type ChartSectionProps = {
   last7DaysSeries: WorkAnalyticsDaily[];
   last30DaysSeries: WorkAnalyticsDaily[];
-  allSessions: ExecutionEvidenceSessionRow[];
+  dateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
 };
 
 function ChartSection({
   last7DaysSeries,
   last30DaysSeries,
-  allSessions,
+  dateDrilldownIndex,
 }: ChartSectionProps) {
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const handleBarClick = React.useCallback(
     (date: string, label: string) => {
-      const sessions = filterSessionsByDate(allSessions, date);
+      const sessions = dateDrilldownIndex[date] ?? [];
       openDrilldown({ type: "date", label, sessions });
     },
-    [allSessions, openDrilldown],
+    [dateDrilldownIndex, openDrilldown],
   );
 
   return (
@@ -119,7 +63,9 @@ type BreakdownCardProps = {
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
   goalBreakdown: WorkAnalyticsGoalBreakdown[];
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
-  allSessions: ExecutionEvidenceSessionRow[];
+  projectDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
+  goalDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
+  taskDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
 };
 
 function BreakdownCard({
@@ -128,50 +74,48 @@ function BreakdownCard({
   projectBreakdown,
   goalBreakdown,
   taskBreakdown,
-  allSessions,
+  projectDrilldownIndex,
+  goalDrilldownIndex,
+  taskDrilldownIndex,
 }: BreakdownCardProps) {
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const handleProjectClick = React.useCallback(
     (pb: WorkAnalyticsProjectBreakdown) => {
-      const sessions = filterSessionsByProject(
-        allSessions,
-        pb.projectId,
-      );
+      const key = pb.projectId ?? "__unknown__";
+      const sessions = projectDrilldownIndex[key] ?? [];
       openDrilldown({
         type: "project",
         label: pb.projectName,
         sessions,
       });
     },
-    [allSessions, openDrilldown],
+    [projectDrilldownIndex, openDrilldown],
   );
 
   const handleGoalClick = React.useCallback(
     (gb: WorkAnalyticsGoalBreakdown) => {
-      const sessions = filterSessionsByGoal(
-        allSessions,
-        gb.goalId,
-      );
+      const key = gb.goalId ?? "__no-goal__";
+      const sessions = goalDrilldownIndex[key] ?? [];
       openDrilldown({
         type: "goal",
         label: gb.goalTitle,
         sessions,
       });
     },
-    [allSessions, openDrilldown],
+    [goalDrilldownIndex, openDrilldown],
   );
 
   const handleTaskClick = React.useCallback(
     (tb: WorkAnalyticsTaskBreakdown) => {
-      const sessions = filterSessionsByTask(allSessions, tb.taskId);
+      const sessions = taskDrilldownIndex[tb.taskId] ?? [];
       openDrilldown({
         type: "task",
         label: tb.taskTitle,
         sessions,
       });
     },
-    [allSessions, openDrilldown],
+    [taskDrilldownIndex, openDrilldown],
   );
 
   if (breakdownBy === "goal") {
@@ -298,7 +242,7 @@ function BreakdownCard({
 // ---- Main interactive wrapper ----
 
 type InteractiveAnalyticsProps = {
-  allSessions: ExecutionEvidenceSessionRow[];
+  drilldownIndexes: DrilldownIndexes;
   last7DaysSeries: WorkAnalyticsDaily[];
   last30DaysSeries: WorkAnalyticsDaily[];
   breakdownBy: string;
@@ -314,7 +258,7 @@ type InteractiveAnalyticsProps = {
 };
 
 export function InteractiveAnalytics({
-  allSessions,
+  drilldownIndexes,
   last7DaysSeries,
   last30DaysSeries,
   breakdownBy,
@@ -334,7 +278,7 @@ export function InteractiveAnalytics({
         <ChartSection
           last7DaysSeries={last7DaysSeries}
           last30DaysSeries={last30DaysSeries}
-          allSessions={allSessions}
+          dateDrilldownIndex={drilldownIndexes.date}
         />
         <BreakdownCard
           title={breakdownTitle}
@@ -342,7 +286,9 @@ export function InteractiveAnalytics({
           projectBreakdown={projectBreakdown}
           goalBreakdown={goalBreakdown}
           taskBreakdown={taskBreakdown}
-          allSessions={allSessions}
+          projectDrilldownIndex={drilldownIndexes.project}
+          goalDrilldownIndex={drilldownIndexes.goal}
+          taskDrilldownIndex={drilldownIndexes.task}
         />
         <Card>
           <CardHeader>
