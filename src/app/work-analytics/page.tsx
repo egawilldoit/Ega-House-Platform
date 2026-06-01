@@ -4,39 +4,14 @@ import { formatDurationLabel } from "@/lib/task-session";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWorkAnalyticsSessionsForWindow, getWorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-data-adapter";
 import {
-  calculateWorkAnalyticsCoreSummary,
-  calculateWorkAnalyticsDailySeries,
-  calculateWorkAnalyticsGroupedSeries,
-  calculateEstimateAccuracy,
-  calculateWorkAnalyticsGoalBreakdown,
-  calculateWorkAnalyticsInsights,
-  calculateWorkAnalyticsMonthComparison,
-  calculateWorkAnalyticsProjectBreakdown,
-  calculateWorkAnalyticsTaskBreakdown,
-  buildDrilldownIndexes,
-} from "@/lib/services/work-analytics-service";
-import {
   parseAnalyticsFilters,
   computeWindowForRange,
 } from "@/lib/services/work-analytics-filters";
-import type { AnalyticsBreakdownBy } from "@/lib/services/work-analytics-filters";
+import { buildWorkAnalyticsReport } from "@/lib/services/work-analytics-report-builder";
 import { InteractiveAnalytics } from "./interactive-analytics";
 import { AnalyticsFilters } from "./analytics-filters";
 
 export const dynamic = "force-dynamic";
-
-function daysAgoIsoDate(days: number, now: Date) {
-  const d = new Date(now);
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-function windowFromDays(days: number, now: Date) {
-  const end = new Date(now);
-  const start = new Date(now);
-  start.setUTCDate(start.getUTCDate() - days);
-  return { startIso: start.toISOString(), endIso: end.toISOString() };
-}
 
 type WorkAnalyticsPageProps = {
   searchParams: Promise<{
@@ -66,9 +41,6 @@ export default async function WorkAnalyticsPage({
   );
 
   const now = new Date();
-  const nowIso = now.toISOString();
-  const includeOpen = filters.includeOpen;
-  const options = { nowIso, includeOpenSessions: includeOpen };
 
   // Compute window based on selected range
   const primaryWindow = computeWindowForRange(filters.range, now);
@@ -96,79 +68,8 @@ export default async function WorkAnalyticsPage({
     blockedCount: 0,
   };
 
-  // Core summary (always uses 30d for consistency with summary cards)
-  const monthWindow = windowFromDays(30, now);
-  const summary = calculateWorkAnalyticsCoreSummary(
-    sessions,
-    monthWindow,
-    taskCounts,
-    options,
-  );
-
-  // Yesterday
-  const yesterdayStart = daysAgoIsoDate(1, now);
-  const yesterdaySeries = calculateWorkAnalyticsDailySeries(
-    sessions,
-    yesterdayStart,
-    yesterdayStart,
-    options,
-  );
-  const yesterday = yesterdaySeries[0] ?? { workedMinutes: 0, sessionCount: 0 };
-
-  // Week window for insights
-  const weekWindow = windowFromDays(7, now);
-  const thisWeekInsights = calculateWorkAnalyticsInsights(
-    sessions,
-    weekWindow,
-    options,
-  );
-
-  // 7d and 30d series for trend charts
-  const last7DaysSeries = calculateWorkAnalyticsGroupedSeries(
-    sessions,
-    daysAgoIsoDate(6, now),
-    nowIso.slice(0, 10),
-    filters.groupBy,
-    options,
-  );
-  const last30DaysSeries = calculateWorkAnalyticsGroupedSeries(
-    sessions,
-    daysAgoIsoDate(29, now),
-    nowIso.slice(0, 10),
-    filters.groupBy,
-    options,
-  );
-
-  // Compute breakdowns for InteractiveAnalytics
-  const breakdownBy: AnalyticsBreakdownBy = filters.breakdownBy;
-  const projectBreakdown = calculateWorkAnalyticsProjectBreakdown(
-    sessions, primaryWindow, options,
-  );
-  const goalBreakdown = calculateWorkAnalyticsGoalBreakdown(
-    sessions, primaryWindow, options,
-  );
-  const taskBreakdown = calculateWorkAnalyticsTaskBreakdown(
-    sessions, primaryWindow, options,
-  );
-
-  // Month-to-date comparison
-  const monthComparison = calculateWorkAnalyticsMonthComparison(
-    sessions,
-    options,
-  );
-
-  // Estimate accuracy
-  const estimateAccuracy = calculateEstimateAccuracy(sessions, primaryWindow, options);
-
-  // Build compact drilldown indexes
-  const drilldownIndexes = buildDrilldownIndexes(sessions, primaryWindow, options);
-
-  const breakdownTitle =
-    breakdownBy === "goal"
-      ? "Goal breakdown"
-      : breakdownBy === "task"
-        ? "Task breakdown"
-        : "Project breakdown";
+  // Build the full report in one call — all metrics computed from same sessions
+  const report = buildWorkAnalyticsReport(sessions, taskCounts, filters, now);
 
   return (
     <AppShell
@@ -189,10 +90,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(summary.todayWorkedMinutes * 60)}
+              {formatDurationLabel(report.summary.todayWorkedMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {summary.todaySessionCount} sessions
+              {report.summary.todaySessionCount} sessions
             </div>
           </CardContent>
         </Card>
@@ -202,10 +103,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(yesterday.workedMinutes * 60)}
+              {formatDurationLabel(report.yesterday.workedMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {yesterday.sessionCount} sessions
+              {report.yesterday.sessionCount} sessions
             </div>
           </CardContent>
         </Card>
@@ -215,10 +116,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(summary.last7DaysWorkedMinutes * 60)}
+              {formatDurationLabel(report.summary.last7DaysWorkedMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {summary.last7DaysSessionCount} sessions
+              {report.summary.last7DaysSessionCount} sessions
             </div>
           </CardContent>
         </Card>
@@ -228,10 +129,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(summary.last30DaysWorkedMinutes * 60)}
+              {formatDurationLabel(report.summary.last30DaysWorkedMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {summary.last30DaysSessionCount} sessions
+              {report.summary.last30DaysSessionCount} sessions
             </div>
           </CardContent>
         </Card>
@@ -244,9 +145,9 @@ export default async function WorkAnalyticsPage({
             <CardTitle className="text-sm">Active days (30d)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{summary.activeDays}</div>
+            <div className="text-2xl font-bold">{report.summary.activeDays}</div>
             <div className="text-xs text-muted-foreground">
-              Avg {formatDurationLabel(summary.averageWorkPerActiveDayMinutes * 60)}/day
+              Avg {formatDurationLabel(report.summary.averageWorkPerActiveDayMinutes * 60)}/day
             </div>
           </CardContent>
         </Card>
@@ -256,10 +157,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(summary.averageSessionLengthMinutes * 60)}
+              {formatDurationLabel(report.summary.averageSessionLengthMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              across {summary.last30DaysSessionCount} sessions
+              across {report.summary.last30DaysSessionCount} sessions
             </div>
           </CardContent>
         </Card>
@@ -269,10 +170,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {summary.completedTaskCount}
+              {report.summary.completedTaskCount}
             </div>
             <div className="text-xs text-muted-foreground">
-              {summary.createdTaskCount} created, {summary.blockedTaskCount} blocked
+              {report.summary.createdTaskCount} created, {report.summary.blockedTaskCount} blocked
             </div>
           </CardContent>
         </Card>
@@ -282,7 +183,7 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {thisWeekInsights.currentStreak} days
+              {report.thisWeekInsights.currentStreak} days
             </div>
             <div className="text-xs text-muted-foreground">
               current streak
@@ -299,11 +200,11 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(monthComparison.currentMonthMinutes * 60)}
+              {formatDurationLabel(report.monthComparison.currentMonthMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {monthComparison.currentMonthSessionCount} sessions ·{" "}
-              {monthComparison.currentMonthActiveDays} active days
+              {report.monthComparison.currentMonthSessionCount} sessions ·{" "}
+              {report.monthComparison.currentMonthActiveDays} active days
             </div>
           </CardContent>
         </Card>
@@ -313,10 +214,10 @@ export default async function WorkAnalyticsPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatDurationLabel(monthComparison.previousMonthMinutes * 60)}
+              {formatDurationLabel(report.monthComparison.previousMonthMinutes * 60)}
             </div>
             <div className="text-xs text-muted-foreground">
-              {monthComparison.previousMonthSessionCount} sessions
+              {report.monthComparison.previousMonthSessionCount} sessions
             </div>
           </CardContent>
         </Card>
@@ -327,18 +228,18 @@ export default async function WorkAnalyticsPage({
           <CardContent>
             <div
               className={`text-2xl font-bold ${
-                monthComparison.deltaMinutes >= 0
+                report.monthComparison.deltaMinutes >= 0
                   ? "text-green-600"
                   : "text-red-600"
               }`}
             >
-              {monthComparison.percentChange !== null
-                ? `${monthComparison.percentChange >= 0 ? "+" : ""}${monthComparison.percentChange}%`
+              {report.monthComparison.percentChange !== null
+                ? `${report.monthComparison.percentChange >= 0 ? "+" : ""}${report.monthComparison.percentChange}%`
                 : "--"}
             </div>
             <div className="text-xs text-muted-foreground">
-              {monthComparison.hasPreviousData
-                ? `${monthComparison.deltaMinutes >= 0 ? "+" : ""}${formatDurationLabel(Math.abs(monthComparison.deltaMinutes) * 60)} vs prev`
+              {report.monthComparison.hasPreviousData
+                ? `${report.monthComparison.deltaMinutes >= 0 ? "+" : ""}${formatDurationLabel(Math.abs(report.monthComparison.deltaMinutes) * 60)} vs prev`
                 : "No previous month data"}
             </div>
           </CardContent>
@@ -350,12 +251,12 @@ export default async function WorkAnalyticsPage({
           <CardContent>
             <div className="text-2xl font-bold">
               {formatDurationLabel(
-                monthComparison.currentMonthAvgPerActiveDayMinutes * 60,
+                report.monthComparison.currentMonthAvgPerActiveDayMinutes * 60,
               )}
             </div>
             <div className="text-xs text-muted-foreground">
-              {monthComparison.currentMonthActiveDays > 0
-                ? `across ${monthComparison.currentMonthActiveDays} days`
+              {report.monthComparison.currentMonthActiveDays > 0
+                ? `across ${report.monthComparison.currentMonthActiveDays} days`
                 : "No activity this month"}
             </div>
           </CardContent>
@@ -372,32 +273,32 @@ export default async function WorkAnalyticsPage({
             <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
               <div>
                 <div className="text-xs text-muted-foreground">Estimated</div>
-                <div className="text-lg font-bold">{formatDurationLabel(estimateAccuracy.totalEstimatedMinutes * 60)}</div>
+                <div className="text-lg font-bold">{formatDurationLabel(report.estimateAccuracy.totalEstimatedMinutes * 60)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Tracked</div>
-                <div className="text-lg font-bold">{formatDurationLabel(estimateAccuracy.totalTrackedMinutes * 60)}</div>
+                <div className="text-lg font-bold">{formatDurationLabel(report.estimateAccuracy.totalTrackedMinutes * 60)}</div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Delta</div>
-                <div className={`text-lg font-bold ${estimateAccuracy.estimateDeltaMinutes > 0 ? 'text-red-600' : estimateAccuracy.estimateDeltaMinutes < 0 ? 'text-green-600' : ''}`}>
-                  {estimateAccuracy.estimateDeltaPercent !== null
-                    ? `${estimateAccuracy.estimateDeltaMinutes >= 0 ? '+' : ''}${estimateAccuracy.estimateDeltaPercent}%`
+                <div className={`text-lg font-bold ${report.estimateAccuracy.estimateDeltaMinutes > 0 ? 'text-red-600' : report.estimateAccuracy.estimateDeltaMinutes < 0 ? 'text-green-600' : ''}`}>
+                  {report.estimateAccuracy.estimateDeltaPercent !== null
+                    ? `${report.estimateAccuracy.estimateDeltaMinutes >= 0 ? '+' : ''}${report.estimateAccuracy.estimateDeltaPercent}%`
                     : '--'}
                 </div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">Tasks with estimates</div>
                 <div className="text-lg font-bold">
-                  {estimateAccuracy.overCount + estimateAccuracy.underCount + estimateAccuracy.exactCount}
+                  {report.estimateAccuracy.overCount + report.estimateAccuracy.underCount + report.estimateAccuracy.exactCount}
                   <span className="text-xs text-muted-foreground ml-1">
-                    ({estimateAccuracy.overCount} over, {estimateAccuracy.underCount} under)
+                    ({report.estimateAccuracy.overCount} over, {report.estimateAccuracy.underCount} under)
                   </span>
                 </div>
               </div>
               <div>
                 <div className="text-xs text-muted-foreground">No estimate</div>
-                <div className="text-lg font-bold">{estimateAccuracy.noEstimateCount}</div>
+                <div className="text-lg font-bold">{report.estimateAccuracy.noEstimateCount}</div>
               </div>
             </div>
           </CardContent>
@@ -406,19 +307,19 @@ export default async function WorkAnalyticsPage({
 
       {/* InteractiveAnalytics: trend charts, breakdown cards, and drilldown drawer */}
       <InteractiveAnalytics
-        drilldownIndexes={drilldownIndexes}
-        last7DaysSeries={last7DaysSeries}
-        last30DaysSeries={last30DaysSeries}
-        breakdownBy={breakdownBy}
-        breakdownTitle={breakdownTitle}
-        projectBreakdown={projectBreakdown}
-        goalBreakdown={goalBreakdown}
-        taskBreakdown={taskBreakdown}
-        insightsDeltaMinutes={thisWeekInsights.deltaMinutes}
-        insightsBestDay={thisWeekInsights.bestDay?.date ?? null}
-        insightsLowestDay={thisWeekInsights.lowestNonZeroDay?.date ?? null}
-        insightsAvgSessionMinutes={thisWeekInsights.averageSessionLength}
-        insightsLongestSessionMinutes={thisWeekInsights.longestSession}
+        drilldownIndexes={report.drilldownIndexes}
+        last7DaysSeries={report.last7DaysSeries}
+        last30DaysSeries={report.last30DaysSeries}
+        breakdownBy={report.breakdownBy}
+        breakdownTitle={report.breakdownTitle}
+        projectBreakdown={report.projectBreakdown}
+        goalBreakdown={report.goalBreakdown}
+        taskBreakdown={report.taskBreakdown}
+        insightsDeltaMinutes={report.thisWeekInsights.deltaMinutes}
+        insightsBestDay={report.thisWeekInsights.bestDay?.date ?? null}
+        insightsLowestDay={report.thisWeekInsights.lowestNonZeroDay?.date ?? null}
+        insightsAvgSessionMinutes={report.thisWeekInsights.averageSessionLength}
+        insightsLongestSessionMinutes={report.thisWeekInsights.longestSession}
       />
     </AppShell>
   );
