@@ -647,3 +647,164 @@ export function calculateWorkAnalyticsInsights(
     shortestNonZeroSession
   };
 }
+
+export type WorkAnalyticsGoalBreakdown = {
+  goalId: string | null;
+  goalTitle: string;
+  projectName: string;
+  workedMinutes: number;
+  sessionCount: number;
+  linkedTaskCount?: number;
+  completedTaskCount?: number;
+};
+
+/**
+ * Calculates goal breakdown for work analytics.
+ * Groups worked minutes and session count by goal id/title.
+ * Sorts by worked minutes descending.
+ */
+export function calculateWorkAnalyticsGoalBreakdown(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsGoalBreakdown[] {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+
+  const goalMap = new Map<string, {
+    workedMinutes: number;
+    sessionCount: number;
+    goalTitle: string;
+    projectName: string;
+  }>();
+
+  for (const session of sessions) {
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      session, window, { nowIso, includeOpenSessions }
+    );
+    if (trackedSeconds <= 0) continue;
+
+    const goal = session.tasks?.goals;
+    const key = goal?.id ?? "no-goal";
+    const existing = goalMap.get(key);
+
+    const goalTitle = goal?.title ?? "No goal";
+    const projectName = session.tasks?.projects?.name ?? "Unknown project";
+
+    if (existing) {
+      existing.workedMinutes += trackedSeconds;
+      existing.sessionCount += 1;
+    } else {
+      goalMap.set(key, {
+        workedMinutes: trackedSeconds,
+        sessionCount: 1,
+        goalTitle,
+        projectName,
+      });
+    }
+  }
+
+  const breakdown: WorkAnalyticsGoalBreakdown[] = [];
+  for (const [key, data] of goalMap.entries()) {
+    breakdown.push({
+      goalId: key === "no-goal" ? null : key,
+      goalTitle: data.goalTitle,
+      projectName: data.projectName,
+      workedMinutes: Math.floor(data.workedMinutes / 60),
+      sessionCount: data.sessionCount,
+    });
+  }
+
+  breakdown.sort((a, b) => {
+    if (a.workedMinutes !== b.workedMinutes) return b.workedMinutes - a.workedMinutes;
+    return a.goalTitle.localeCompare(b.goalTitle);
+  });
+
+  return breakdown;
+}
+
+export type WorkAnalyticsTaskBreakdown = {
+  taskId: string;
+  taskTitle: string;
+  goalTitle: string | null;
+  projectName: string | null;
+  workedMinutes: number;
+  sessionCount: number;
+  estimateMinutes: number | null;
+  percentOfTotal: number;
+};
+
+/**
+ * Calculates task breakdown for work analytics.
+ * Groups worked minutes by task, with estimate and percent-of-total.
+ * Sorts by worked minutes descending.
+ */
+export function calculateWorkAnalyticsTaskBreakdown(
+  sessions: ExecutionEvidenceSessionRow[],
+  window: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {}
+): WorkAnalyticsTaskBreakdown[] {
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
+
+  // First pass: calculate total tracked seconds
+  let totalTrackedSeconds = 0;
+  const taskMap = new Map<string, {
+    workedSeconds: number;
+    sessionCount: number;
+    taskTitle: string;
+    goalTitle: string | null;
+    projectName: string | null;
+    estimateMinutes: number | null;
+  }>();
+
+  for (const session of sessions) {
+    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(
+      session, window, { nowIso, includeOpenSessions }
+    );
+    if (trackedSeconds <= 0) continue;
+
+    const taskId = session.task_id;
+    const existing = taskMap.get(taskId);
+
+    totalTrackedSeconds += trackedSeconds;
+
+    if (existing) {
+      existing.workedSeconds += trackedSeconds;
+      existing.sessionCount += 1;
+    } else {
+      taskMap.set(taskId, {
+        workedSeconds: trackedSeconds,
+        sessionCount: 1,
+        taskTitle: session.tasks?.title ?? "Untitled task",
+        goalTitle: session.tasks?.goals?.title ?? null,
+        projectName: session.tasks?.projects?.name ?? null,
+        estimateMinutes: null, // estimates aren't in session data
+      });
+    }
+  }
+
+  const breakdown: WorkAnalyticsTaskBreakdown[] = [];
+  for (const [taskId, data] of taskMap.entries()) {
+    const workedMinutes = Math.floor(data.workedSeconds / 60);
+    breakdown.push({
+      taskId,
+      taskTitle: data.taskTitle,
+      goalTitle: data.goalTitle,
+      projectName: data.projectName,
+      workedMinutes,
+      sessionCount: data.sessionCount,
+      estimateMinutes: data.estimateMinutes,
+      percentOfTotal: totalTrackedSeconds > 0
+        ? Math.round((data.workedSeconds / totalTrackedSeconds) * 100)
+        : 0,
+    });
+  }
+
+  breakdown.sort((a, b) => {
+    if (a.workedMinutes !== b.workedMinutes) return b.workedMinutes - a.workedMinutes;
+    return a.taskTitle.localeCompare(b.taskTitle);
+  });
+
+  return breakdown;
+}
