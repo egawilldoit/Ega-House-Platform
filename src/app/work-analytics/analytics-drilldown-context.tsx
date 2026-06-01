@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ExecutionEvidenceSessionRow } from "@/lib/services/execution-evidence-service";
+import type { DrilldownSessionDTO } from "@/lib/services/work-analytics-service";
 
 export type DrilldownType =
   | "date"
@@ -19,7 +19,7 @@ export type DrilldownType =
 export type DrilldownData = {
   type: DrilldownType;
   label: string;
-  sessions: ExecutionEvidenceSessionRow[];
+  sessions: DrilldownSessionDTO[];
 };
 
 type DrilldownContextValue = {
