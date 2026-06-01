@@ -74,6 +74,11 @@ const CORE_ITEMS: NavItem[] = [
     label: "Review",
     icon: <FileText />,
   },
+  {
+    href: "/work-analytics",
+    label: "Analytics",
+    icon: <BarChart3 />,
+  },
 ];
 
 const GENERAL_ITEMS: NavItem[] = [
