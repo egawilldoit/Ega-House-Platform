@@ -16,7 +16,7 @@ export async function getWorkAnalyticsSessionsForWindow(args: {
   const supabase = await resolveSupabaseClient(args.supabase);
   const { data, error } = await supabase
     .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, projects(id, name), goals(id, title))")
+    .select("task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name), goals(id, title))")
     .eq("owner_user_id", args.ownerUserId)
     .lt("started_at", args.window.endIso)
     .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
