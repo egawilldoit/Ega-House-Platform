@@ -143,6 +143,37 @@ export function AnalyticsFilters() {
           />
         </div>
       </fieldset>
+
+      {/* Loading bar — visible during filter transitions */}
+      <div
+        className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--border)] transition-opacity duration-200"
+        aria-hidden="true"
+      >
+        <div
+          className={`h-full w-1/3 rounded-full bg-[var(--signal-live)] transition-all duration-500 ${
+            isPending ? "opacity-100" : "opacity-0"
+          }`}
+          style={{
+            animation: isPending
+              ? "loading-indeterminate 1.4s ease-in-out infinite"
+              : "none",
+          }}
+        />
+      </div>
+
+      <style jsx>{`
+        @keyframes loading-indeterminate {
+          0% {
+            transform: translateX(-100%);
+          }
+          60% {
+            transform: translateX(300%);
+          }
+          100% {
+            transform: translateX(300%);
+          }
+        }
+      `}</style>
     </div>
   );
 }
