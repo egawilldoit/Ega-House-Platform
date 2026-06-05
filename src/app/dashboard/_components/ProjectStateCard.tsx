@@ -12,8 +12,8 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskToken } from "@/lib/task-domain";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 
+import { RelativeTime } from "./RelativeTime";
 import type { DashboardData, DashboardProjectStatus } from "../_lib/dashboard-data";
 
 interface ProjectStateCardProps {
@@ -30,7 +30,7 @@ function ProjectRow({ project }: { project: DashboardProjectStatus }) {
           {project.name}
         </p>
         <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-          Updated {formatTimerDateTime(project.updatedAt)}
+          Updated <RelativeTime isoString={project.updatedAt} />
         </p>
       </div>
       <StatusBadge status={project.status} label={formatTaskToken(project.status)} />

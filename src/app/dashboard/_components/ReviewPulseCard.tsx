@@ -14,8 +14,8 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/ui/stat-card";
 import { formatIsoDate } from "@/lib/review-week";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 
+import { RelativeTime } from "./RelativeTime";
 import { toPreviewText } from "../_lib/dashboard-helpers";
 import type { DashboardData } from "../_lib/dashboard-data";
 
@@ -59,7 +59,7 @@ export function ReviewPulseCard({ review, goals, health }: ReviewPulseCardProps)
                 {formatIsoDate(latestReviewItem.weekStart)} - {formatIsoDate(latestReviewItem.weekEnd)}
               </Badge>
               <Badge tone="muted" className="rounded-full px-3 shadow-sm">
-                Updated {formatTimerDateTime(latestReviewItem.updatedAt)}
+                Updated <RelativeTime isoString={latestReviewItem.updatedAt} />
               </Badge>
             </div>
             <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
@@ -85,7 +85,7 @@ export function ReviewPulseCard({ review, goals, health }: ReviewPulseCardProps)
           />
           <StatCard
             label="Latest Check"
-            value={formatTimerDateTime(health.checkedAt)}
+            value={<RelativeTime isoString={health.checkedAt} />}
             subtitle="OpenClaw health probe timestamp"
             icon={ClockIcon}
           />

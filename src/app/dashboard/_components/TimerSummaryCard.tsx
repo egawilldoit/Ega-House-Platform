@@ -13,8 +13,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 
+import { RelativeTime } from "./RelativeTime";
 import type { DashboardData } from "../_lib/dashboard-data";
 
 interface TimerSummaryCardProps {
@@ -94,7 +94,7 @@ export function TimerSummaryCard({ summary, activeTimer }: TimerSummaryCardProps
                       {activeTimer.data.taskTitle}
                     </p>
                     <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                      {activeTimer.data.projectName} · Started {formatTimerDateTime(activeTimer.data.startedAt)}
+                      {activeTimer.data.projectName} · Started <RelativeTime isoString={activeTimer.data.startedAt} />
                     </p>
                   </div>
                   <Badge tone="active">{activeTimer.data.elapsedLabel}</Badge>

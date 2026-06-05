@@ -15,10 +15,10 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { formatTaskToken } from "@/lib/task-domain";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 import { Target } from "lucide-react";
 
+import { RelativeTime } from "./RelativeTime";
 import type { DashboardData, DashboardTodayTask } from "../_lib/dashboard-data";
 
 interface TodayPlannerCardProps {
@@ -47,7 +47,7 @@ function TaskRow({ task, showPinAction = true }: { task: DashboardTodayTask; sho
         </div>
         <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
           {task.projectName}
-          {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated {formatTimerDateTime(task.updatedAt)}
+          {task.goalTitle ? ` · ${task.goalTitle}` : ""} · Updated <RelativeTime isoString={task.updatedAt} />
         </p>
         {task.status === "blocked" && task.blockedReason?.trim() ? (
           <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">

@@ -17,10 +17,10 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 import { pinTaskAction, unpinTaskAction } from "@/app/tasks/actions";
 import { startTimerAction, stopTimerAction } from "@/app/timer/actions";
 
+import { RelativeTime } from "./RelativeTime";
 import { getTaskContextHref } from "../_lib/dashboard-helpers";
 import type { DashboardData } from "../_lib/dashboard-data";
 
@@ -59,7 +59,7 @@ function FocusPanelBody({
           <p className="mt-2 text-xs text-[color:var(--muted-foreground)]">
             {activeTimer.projectName}
             {activeTimer.goalTitle ? ` · ${activeTimer.goalTitle}` : ""} · Started{" "}
-            {formatTimerDateTime(activeTimer.startedAt)}
+            <RelativeTime isoString={activeTimer.startedAt} />
           </p>
         </div>
 
@@ -169,7 +169,7 @@ function FocusPanelBody({
             ? ` · Est. ${formatTaskEstimate(recommendedTask.estimateMinutes)}`
             : ""}
           {" · "}
-          Updated {formatTimerDateTime(recommendedTask.updatedAt)}
+          Updated <RelativeTime isoString={recommendedTask.updatedAt} />
         </p>
       </div>
 
