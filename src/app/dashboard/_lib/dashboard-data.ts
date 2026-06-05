@@ -163,7 +163,7 @@ export type DashboardData = {
   workStats: PanelResult<DashboardWorkStats>;
 };
 
-function isLinearTokenMissingError(error: unknown) {
+export function isLinearTokenMissingError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
   }
