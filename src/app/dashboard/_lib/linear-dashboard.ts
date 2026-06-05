@@ -120,7 +120,7 @@ function readLinearToken() {
   return token;
 }
 
-function readLinearProjectName() {
+export function readLinearProjectName() {
   const configured = process.env.LINEAR_PROJECT_NAME?.trim();
   if (configured && configured.length > 0) {
     return configured;

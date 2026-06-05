@@ -66,6 +66,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "src"),
       "node:test": path.resolve(__dirname, "src/test-support/vitest-node-test.ts"),
+      "server-only": path.resolve(__dirname, "src/test-support/server-only.ts"),
     },
   },
 });
