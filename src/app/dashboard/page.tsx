@@ -100,7 +100,7 @@ export default async function DashboardPage({
         Skip to main content
       </a>
 
-      <main id="dashboard-main" className="flex flex-col gap-6">
+      <main id="dashboard-main" aria-label="Dashboard main content" className="flex flex-col gap-6">
         <Suspense fallback={<HeroSkeleton />}>
           <HeroPanelAsync />
         </Suspense>
