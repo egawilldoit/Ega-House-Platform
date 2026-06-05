@@ -4,9 +4,9 @@ import { cn } from "@/lib/utils";
 
 type StatCardProps = HTMLAttributes<HTMLDivElement> & {
   label: string;
-  value: string | number;
+  value: ReactNode;
   icon?: LucideIcon;
-  subtitle?: string;
+  subtitle?: ReactNode;
   trend?: ReactNode;
   variant?: "default" | "green" | "cyan" | "muted";
 };
