@@ -691,3 +691,111 @@ export async function getDashboardData({
     workStats,
   };
 }
+
+export type HeroPanelData = {
+  displayName: string;
+  health: DashboardHealthData;
+  timerSummary: DashboardTimerSummary | null;
+  workStats: DashboardWorkStats | null;
+  workStatsError: string | null;
+  tasks: DashboardTodayTask[];
+  completedCount: number;
+  completionRate: number | null;
+  urgentCount: number;
+  activeProjectCount: number;
+  totalProjectCount: number;
+};
+
+export async function getHeroPanelData(
+  ownerUserId: string | null,
+  displayName: string,
+): Promise<HeroPanelData> {
+  const [health, todayPlanner, projectStatuses, timerSummary, workStats] = await Promise.all([
+    getDashboardHealthData(),
+    getTodayPlanner(),
+    getProjectStatuses(),
+    getTimerSummaryCached(),
+    getWorkStatsForOwner(ownerUserId),
+  ]);
+
+  const tasks = todayPlanner.data?.all ?? [];
+  const completedCount = tasks.filter((task) => isTaskCompletedStatus(task.status)).length;
+  const completionRate =
+    tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : null;
+  const urgentCount = tasks.filter((task) => task.priority === "urgent").length;
+  const projectItems = projectStatuses.data ?? [];
+  const activeProjectCount = projectItems.filter((p) => p.status === "active").length;
+  const totalProjectCount = projectItems.length;
+
+  return {
+    displayName,
+    health,
+    timerSummary: timerSummary.data,
+    workStats: workStats.data,
+    workStatsError: workStats.error,
+    tasks,
+    completedCount,
+    completionRate,
+    urgentCount,
+    activeProjectCount,
+    totalProjectCount,
+  };
+}
+
+export async function getCommandCenterPanelData() {
+  const [linearProject, activeTimer, health, timerSummary] = await Promise.all([
+    getLinearProjectCached(),
+    getActiveTimer(),
+    getDashboardHealthData(),
+    getTimerSummaryCached(),
+  ]);
+  return { linearProject, activeTimer, health, timerSummary };
+}
+
+export async function getPlannerPanelData() {
+  const todayPlanner = await getTodayPlanner();
+  return { todayPlanner };
+}
+
+export async function getFocusPanelData() {
+  const [focusPanel, activeTimer] = await Promise.all([getFocusPanel(), getActiveTimer()]);
+  return { focusPanel, activeTimer };
+}
+
+export async function getGoalsPanelData() {
+  const goals = await getGoals();
+  return { goals };
+}
+
+export async function getProjectsPanelData() {
+  const projectStatuses = await getProjectStatuses();
+  const projectItems = projectStatuses.data ?? [];
+  return {
+    projectStatuses,
+    activeProjectCount: projectItems.filter((p) => p.status === "active").length,
+    totalProjectCount: projectItems.length,
+  };
+}
+
+export async function getReviewPulsePanelData() {
+  const [latestReview, goals, health] = await Promise.all([
+    getLatestReviewCached(),
+    getGoals(),
+    getDashboardHealthData(),
+  ]);
+  return { latestReview, goals, health };
+}
+
+export async function getTimerSummaryPanelData() {
+  const [timerSummary, activeTimer] = await Promise.all([
+    getTimerSummaryCached(),
+    getActiveTimer(),
+  ]);
+  return { timerSummary, activeTimer };
+}
+
+// Re-exports for page-level (non-Suspense) consumers that need the raw panel
+// fetchers outside the streaming architecture (e.g. the AppShell context,
+// which sits above all Suspense boundaries).
+// Note: getDashboardHealthData is already exported above.
+export { getActiveTimer, getTodayPlanner, getTimerSummary };
