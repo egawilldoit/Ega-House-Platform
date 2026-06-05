@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/services/auth-service";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 import { DashboardOptimizedView } from "./_components/DashboardOptimizedView";
+import { displayNameForUser } from "./_lib/dashboard-helpers";
 import { getDashboardData } from "./_lib/dashboard-data";
 import "./_components/dashboard.css";
 
@@ -19,8 +20,7 @@ export default async function DashboardPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
-  const data = await getDashboardData();
-  const user = await getCurrentUser();
+  const [data, user] = await Promise.all([getDashboardData(), getCurrentUser()]);
   const { todayPlanner, projectStatuses } = data;
 
   const tasks = todayPlanner.data?.all ?? [];
@@ -33,9 +33,12 @@ export default async function DashboardPage({
     projectStatuses.data?.filter((project) => project.status === "active").length ?? 0;
   const totalProjectCount = projectStatuses.data?.length ?? 0;
 
+  const displayName = displayNameForUser(user);
+
   return (
     <DashboardOptimizedView
       data={data}
+      displayName={displayName}
       ownerUserId={user?.id ?? null}
       completedCount={completedCount}
       completionRate={completionRate}
