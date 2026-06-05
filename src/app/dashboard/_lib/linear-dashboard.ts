@@ -1,7 +1,7 @@
 import "server-only";
 
 const LINEAR_GRAPHQL_URL = "https://api.linear.app/graphql";
-const LINEAR_PROJECT_NAME = "EGA House Platform";
+const LINEAR_PROJECT_NAME_FALLBACK = "EGA House Platform";
 const LINEAR_TIMEOUT_MS = 5000;
 const MAX_MILESTONES = 6;
 const MAX_ISSUES = 250;
@@ -118,6 +118,21 @@ function readLinearToken() {
   }
 
   return token;
+}
+
+function readLinearProjectName() {
+  const configured = process.env.LINEAR_PROJECT_NAME?.trim();
+  if (configured && configured.length > 0) {
+    return configured;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "LINEAR_PROJECT_NAME env var is required in production (set it to your Linear project name).",
+    );
+  }
+
+  return LINEAR_PROJECT_NAME_FALLBACK;
 }
 
 async function linearGraphQL<T>(
@@ -259,7 +274,7 @@ async function getProjectFromStatusField(): Promise<{
         }
       }
     `,
-    { projectName: LINEAR_PROJECT_NAME },
+    { projectName: readLinearProjectName() },
   );
 
   const project = data.projects?.nodes?.[0];
@@ -303,7 +318,7 @@ async function getProjectFromStateField(): Promise<{
         }
       }
     `,
-    { projectName: LINEAR_PROJECT_NAME },
+    { projectName: readLinearProjectName() },
   );
 
   const project = data.projects?.nodes?.[0];

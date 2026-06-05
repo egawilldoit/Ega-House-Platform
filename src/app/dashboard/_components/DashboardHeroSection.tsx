@@ -2,7 +2,7 @@ import { AlertCircle, AlertTriangle, ArrowUpRight, Clock as ClockIcon, LayoutGri
 
 import { StatCard } from "@/components/ui/stat-card";
 
-import WorkStatsPulse from "./WorkStatsPulse";
+import { WorkStatsPulse } from "./WorkStatsPulse";
 import { getGreeting, getHeroSummary } from "../_lib/dashboard-helpers";
 import type { DashboardData } from "../_lib/dashboard-data";
 
@@ -15,6 +15,8 @@ interface DashboardHeroSectionProps {
   activeProjectCount: number;
   totalProjectCount: number;
   timerSummary: DashboardData["timerSummary"]["data"];
+  workStats: DashboardData["workStats"]["data"];
+  workStatsError: string | null;
 }
 
 export function DashboardHeroSection({
@@ -26,6 +28,8 @@ export function DashboardHeroSection({
   activeProjectCount,
   totalProjectCount,
   timerSummary,
+  workStats,
+  workStatsError,
 }: DashboardHeroSectionProps) {
   const greeting = getGreeting();
   const ringPercent = completionRate ?? 0;
@@ -101,7 +105,7 @@ export function DashboardHeroSection({
           icon={LayoutGrid}
           className="border-t-4 border-t-[var(--foreground)]"
         />
-        <WorkStatsPulse />
+        <WorkStatsPulse workStats={workStats} workStatsError={workStatsError} />
       </div>
     </section>
   );
