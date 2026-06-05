@@ -28,7 +28,6 @@ import {
   ReviewPulseSkeleton,
   TimerSummarySkeleton,
 } from "./_components/skeletons";
-import { displayNameForUser } from "./_lib/dashboard-helpers";
 import {
   getActiveTimer,
   getTodayPlanner,
@@ -51,7 +50,6 @@ export default async function DashboardPage({
   const resolvedSearchParams = await searchParams;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const user = await getCurrentUser();
-  const displayName = displayNameForUser(user);
 
   if (resolvedSearchParams.debug === "1") {
     const data = await getDashboardData({ ownerUserId: user?.id ?? null });
