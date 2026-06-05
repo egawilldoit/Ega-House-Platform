@@ -512,8 +512,8 @@ export function DashboardOptimizedView({
             subtitle={completedCount > 0 ? `${completedCount} completed recently` : "Backlog surfaced when today is quiet"}
             variant="green"
             icon={ListTodo}
-            className="border-t-4 border-t-[#177b52]"
-            trend={<ArrowUpRight className="w-3 h-3 text-[#177b52] inline-block mr-1" />}
+            className="border-t-4 border-t-[var(--signal-live)]"
+            trend={<ArrowUpRight className="w-3 h-3 text-[var(--signal-live)] inline-block mr-1" />}
           />
           <StatCard
             label="Urgent"
@@ -629,7 +629,7 @@ export function DashboardOptimizedView({
             ) : latestReviewItem ? (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Badge tone="info" className="rounded-full border-[#90caf9] bg-[#e3f2fd] px-3 text-[#1565c0] shadow-sm">
+                  <Badge tone="info" className="rounded-full px-3 shadow-sm">
                     {formatIsoDate(latestReviewItem.weekStart)} - {formatIsoDate(latestReviewItem.weekEnd)}
                   </Badge>
                   <Badge tone="muted" className="rounded-full px-3 shadow-sm">

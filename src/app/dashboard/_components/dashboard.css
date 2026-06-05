@@ -1,0 +1,163 @@
+/* Dashboard co-located styles
+ * Originally lived in src/app/globals.css.
+ * Scoped to the dashboard surface so it ships only where it's used.
+ */
+
+@layer components {
+  .dashboard-optimized-page {
+    background: transparent;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ega-dashboard-hero {
+    display: grid;
+    gap: 1.25rem;
+    grid-template-columns: minmax(0, 1.25fr) minmax(22rem, 0.95fr);
+    margin-bottom: 1.5rem;
+  }
+
+  .ega-dashboard-hero-compact .ega-dashboard-hero-copy {
+    padding: 1.5rem;
+  }
+
+  .ega-dashboard-hero-compact .ega-dashboard-hero-rail {
+    padding: 0.85rem;
+  }
+
+  .ega-dashboard-hero-copy,
+  .ega-dashboard-hero-rail {
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-card) + 0.25rem);
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--shadow-card);
+  }
+
+  .ega-dashboard-hero-copy {
+    padding: 1.75rem;
+    background:
+      radial-gradient(circle at top right, rgba(23, 123, 82, 0.12), transparent 28%),
+      rgba(255, 255, 255, 0.84);
+  }
+
+  .ega-dashboard-hero-title {
+    margin-top: 0.75rem;
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 3vw, 3.25rem);
+    line-height: 0.98;
+    letter-spacing: -0.055em;
+    color: var(--foreground);
+  }
+
+  .ega-dashboard-hero-title span {
+    color: var(--signal-live);
+  }
+
+  .ega-dashboard-hero-subtitle {
+    margin-top: 1rem;
+    max-width: 42rem;
+    font-size: 0.95rem;
+    line-height: 1.8;
+    color: var(--muted-foreground);
+  }
+
+  .ega-dashboard-hero-rail {
+    display: grid;
+    gap: 0.875rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 1rem;
+  }
+
+  .ega-dashboard-metric {
+    border-radius: 1.25rem;
+    border: 1px solid var(--border);
+    background: rgba(247, 249, 244, 0.9);
+    padding: 1rem 1rem 0.95rem;
+  }
+
+  .ega-dashboard-metric.is-accent {
+    background: linear-gradient(180deg, rgba(23, 123, 82, 0.12), rgba(255, 255, 255, 0.94));
+    border-color: rgba(23, 123, 82, 0.16);
+  }
+
+  .ega-dashboard-metric-value {
+    margin-top: 0.6rem;
+    font-family: var(--font-display);
+    font-size: 1.7rem;
+    line-height: 1;
+    letter-spacing: -0.05em;
+    color: var(--foreground);
+  }
+
+  .ega-dashboard-metric-detail {
+    margin-top: 0.55rem;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    color: var(--muted-foreground);
+  }
+
+  .ega-dashboard-spotlight {
+    overflow: hidden;
+  }
+
+  .ega-dashboard-spotlight-shell {
+    padding: 1.75rem;
+    border-radius: calc(var(--radius-card) + 0.25rem);
+    background:
+      radial-gradient(circle at top left, rgba(255, 255, 255, 0.14), transparent 22%),
+      linear-gradient(145deg, #173b2d 0%, #0f241c 50%, #177b52 150%);
+  }
+
+  .ega-dashboard-spotlight-stat {
+    min-width: 11rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.85rem 0.95rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .ega-dashboard-spotlight-stat strong {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    line-height: 1.1;
+    letter-spacing: -0.04em;
+    color: #fff;
+  }
+
+  .ega-dashboard-spotlight-stat span:last-child {
+    font-size: 0.76rem;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.7);
+  }
+
+  .ega-dashboard-list-row,
+  .ega-dashboard-mini-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.05rem;
+    border-radius: 1.15rem;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(238, 242, 234, 0.66));
+  }
+
+  .ega-dashboard-mini-row {
+    align-items: center;
+  }
+}
+
+@media (max-width: 768px) {
+  .ega-dashboard-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .ega-dashboard-hero-rail {
+    grid-template-columns: 1fr;
+  }
+}

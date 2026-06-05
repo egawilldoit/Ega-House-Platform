@@ -5,6 +5,7 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 import { DashboardOptimizedView } from "./_components/DashboardOptimizedView";
 import { getDashboardData } from "./_lib/dashboard-data";
+import "./_components/dashboard.css";
 
 export const metadata: Metadata = {
   title: "Dashboard",
