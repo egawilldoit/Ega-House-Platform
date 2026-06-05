@@ -20,7 +20,8 @@ export default async function DashboardPage({
 }) {
   const resolvedSearchParams = await searchParams;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
-  const [data, user] = await Promise.all([getDashboardData(), getCurrentUser()]);
+  const user = await getCurrentUser();
+  const data = await getDashboardData({ ownerUserId: user?.id ?? null });
   const { todayPlanner, projectStatuses } = data;
 
   const tasks = todayPlanner.data?.all ?? [];

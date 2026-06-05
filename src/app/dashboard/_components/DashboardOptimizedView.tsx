@@ -38,7 +38,7 @@ export function DashboardOptimizedView({
   totalProjectCount,
   stoppedTaskId,
 }: DashboardOptimizedViewProps) {
-  const { health, focusPanel, activeTimer, todayPlanner, projectStatuses, goals, timerSummary, latestReview, linearProject } = data;
+  const { health, focusPanel, activeTimer, todayPlanner, projectStatuses, goals, timerSummary, latestReview, linearProject, workStats } = data;
 
   const tasks = todayPlanner.data?.all ?? [];
   const stoppedTaskTitle =
@@ -97,6 +97,8 @@ export function DashboardOptimizedView({
           activeProjectCount={activeProjectCount}
           totalProjectCount={totalProjectCount}
           timerSummary={timerSummary.data}
+          workStats={workStats.data}
+          workStatsError={workStats.error}
         />
 
         <section className="workspace-main-rail-grid">
