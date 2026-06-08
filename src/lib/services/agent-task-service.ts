@@ -560,7 +560,7 @@ export async function createTasks(
     const auditRows = created.map((task) => ({
       owner_user_id: ownerUserId,
       token_id: tokenId,
-      event_type: "task.created",
+      action: "task.created",
       resource_type: "task",
       resource_id: task.id,
       metadata: {
@@ -748,7 +748,7 @@ export async function updateTasks(
     await (supabase as any).from("agent_integration_events").insert({
       owner_user_id: ownerUserId,
       token_id: tokenId,
-      event_type: "task.updated",
+      action: "task.updated",
       resource_type: "task",
       resource_id: resolved.id,
       metadata: { updates: Object.keys(updateRow).filter((k) => k !== "updated_at") },
