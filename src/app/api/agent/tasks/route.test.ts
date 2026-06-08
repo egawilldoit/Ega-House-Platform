@@ -25,7 +25,7 @@ vi.mock("next/server", async () => {
   };
 });
 
-import { GET as GET_TASKS } from "@/app/api/agent/tasks/route";
+import { GET as GET_TASKS, POST as POST_TASKS } from "@/app/api/agent/tasks/route";
 
 describe("GET /api/agent/tasks (route integration)", () => {
   it("exports a GET handler", () => {
@@ -35,6 +35,25 @@ describe("GET /api/agent/tasks (route integration)", () => {
   it("returns 401 without auth header", async () => {
     const request = new Request("http://localhost:3000/api/agent/tasks");
     const response = await GET_TASKS(request);
+
+    expect(response.status).toBe(401);
+    const body = await response.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+  });
+});
+
+describe("POST /api/agent/tasks (route integration)", () => {
+  it("exports a POST handler", () => {
+    expect(POST_TASKS).toBeInstanceOf(Function);
+  });
+
+  it("returns 401 without auth header", async () => {
+    const request = new Request("http://localhost:3000/api/agent/tasks", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tasks: [] }),
+    });
+    const response = await POST_TASKS(request);
 
     expect(response.status).toBe(401);
     const body = await response.json();

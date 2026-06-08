@@ -15,16 +15,18 @@ vi.mock("@/lib/services/agent-task-service", () => ({
   getProjects: vi.fn(),
   getGoals: vi.fn(),
   getTasks: vi.fn(),
+  createTasks: vi.fn(),
 }));
 
 import { resolveAgentAuth } from "@/lib/services/agent-token-service";
-import { getProjects, getGoals, getTasks } from "@/lib/services/agent-task-service";
-import { createReadHandlers } from "@/lib/http/agent-task-handlers";
+import { getProjects, getGoals, getTasks, createTasks } from "@/lib/services/agent-task-service";
+import { createReadHandlers, createCreateHandlers } from "@/lib/http/agent-task-handlers";
 
 const mockResolveAgentAuth = resolveAgentAuth as unknown as ReturnType<typeof vi.fn>;
 const mockGetProjects = getProjects as unknown as ReturnType<typeof vi.fn>;
 const mockGetGoals = getGoals as unknown as ReturnType<typeof vi.fn>;
 const mockGetTasks = getTasks as unknown as ReturnType<typeof vi.fn>;
+const mockCreateTasks = createTasks as unknown as ReturnType<typeof vi.fn>;
 
 const mockRepo: TokenRepository = {
   findByPrefix: vi.fn(),
@@ -324,5 +326,279 @@ describe("agent-task-handlers", () => {
       // Must not leak internal details
       expect(body.error.message).not.toContain("Unexpected error");
     });
+  });
+});
+
+describe("POST_TASKS", () => {
+  function makeCreateRequest(body: unknown, url = "http://localhost:3000/api/agent/tasks"): Request {
+    return new Request(url, {
+      method: "POST",
+      headers: { authorization: "Bearer test_prefix_test_secret_here", "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  function authContext(overrides?: Partial<ReturnType<typeof makeAuthContext>>) {
+    return makeAuthContext({
+      scopes: {
+        tasks: { read: true, create: true },
+        projects: { read: true },
+        goals: { read: true },
+      },
+      ...overrides,
+    });
+  }
+
+  beforeEach(() => {
+    mockCreateTasks.mockResolvedValue({
+      ok: true,
+      created: [],
+      existing: [],
+      errors: [],
+    });
+  });
+
+  it("returns 200 with created tasks", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+    mockCreateTasks.mockResolvedValue({
+      ok: true,
+      created: [
+        {
+          id: "task-1",
+          projectId: "proj-1",
+          goalId: null,
+          title: "New Task",
+          description: null,
+          blockedReason: null,
+          status: "todo",
+          priority: "medium",
+          estimateMinutes: null,
+          focusRank: null,
+          dueDate: null,
+          plannedForDate: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          completedAt: null,
+          archivedAt: null,
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-02T00:00:00Z",
+          projectName: "Test Project",
+          goalTitle: null,
+        },
+      ],
+      existing: [],
+      errors: [],
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(
+      makeCreateRequest({ tasks: [{ title: "New Task", projectId: "proj-1" }] }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.created).toHaveLength(1);
+    expect(body.created[0]!.title).toBe("New Task");
+    expect(body.existing).toHaveLength(0);
+    expect(body.errors).toHaveLength(0);
+  });
+
+  it("returns 200 with existing tasks from idempotency", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+    mockCreateTasks.mockResolvedValue({
+      ok: true,
+      created: [],
+      existing: [
+        {
+          id: "existing-1",
+          projectId: "proj-1",
+          goalId: null,
+          title: "Existing Task",
+          description: null,
+          blockedReason: null,
+          status: "todo",
+          priority: "medium",
+          estimateMinutes: null,
+          focusRank: null,
+          dueDate: null,
+          plannedForDate: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          completedAt: null,
+          archivedAt: null,
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-02T00:00:00Z",
+          projectName: "Test Project",
+          goalTitle: null,
+        },
+      ],
+      errors: [],
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(
+      makeCreateRequest({
+        tasks: [{ title: "Existing Task", projectId: "proj-1", source: "linear", sourceId: "L-123" }],
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.created).toHaveLength(0);
+    expect(body.existing).toHaveLength(1);
+    expect(body.existing[0]!.title).toBe("Existing Task");
+  });
+
+  it("returns 200 with partial errors", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+    mockCreateTasks.mockResolvedValue({
+      ok: true,
+      created: [
+        {
+          id: "task-1",
+          projectId: "proj-1",
+          goalId: null,
+          title: "Good Task",
+          description: null,
+          blockedReason: null,
+          status: "todo",
+          priority: "medium",
+          estimateMinutes: null,
+          focusRank: null,
+          dueDate: null,
+          plannedForDate: null,
+          scheduledStartAt: null,
+          scheduledEndAt: null,
+          completedAt: null,
+          archivedAt: null,
+          createdAt: "2024-01-01T00:00:00Z",
+          updatedAt: "2024-01-02T00:00:00Z",
+          projectName: "Test Project",
+          goalTitle: null,
+        },
+      ],
+      existing: [],
+      errors: [{ index: 1, error: "Title is required." }],
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(
+      makeCreateRequest({
+        tasks: [
+          { title: "Good Task", projectId: "proj-1" },
+          { title: "", projectId: "proj-1" },
+        ],
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.created).toHaveLength(1);
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0]!.index).toBe(1);
+    expect(body.errors[0]!.error).toBe("Title is required.");
+  });
+
+  it("returns 401 when not authenticated", async () => {
+    mockResolveAgentAuth.mockResolvedValue({
+      ok: false,
+      response: {
+        ok: false,
+        error: { code: "UNAUTHENTICATED", message: "Missing or invalid agent token." },
+      },
+      status: 401,
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(makeCreateRequest({ tasks: [] }));
+
+    expect(response.status).toBe(401);
+  });
+
+  it("returns 403 without tasks:create scope", async () => {
+    mockResolveAgentAuth.mockResolvedValue({
+      ok: true,
+      context: authContext({ scopes: { tasks: { read: true }, projects: { read: true }, goals: { read: true } } }),
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(makeCreateRequest({ tasks: [] }));
+    const body = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(body.error.code).toBe("FORBIDDEN");
+  });
+
+  it("returns 400 when body is not valid JSON", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+
+    const request = new Request("http://localhost:3000/api/agent/tasks", {
+      method: "POST",
+      headers: { authorization: "Bearer test_prefix_test_secret_here", "content-type": "application/json" },
+      body: "not-json",
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(request);
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 when tasks array is missing", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(makeCreateRequest({}));
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("returns 400 when tasks array exceeds max limit", async () => {
+    mockResolveAgentAuth.mockResolvedValue({
+      ok: true,
+      context: authContext({ scopes: { tasks: { create: true, bulkLimit: 5 }, projects: { read: true }, goals: { read: true } } }),
+    });
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(
+      makeCreateRequest({
+        tasks: Array.from({ length: 6 }, (_, i) => ({ title: `Task ${i}`, projectId: "proj-1" })),
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("INVALID_REQUEST");
+  });
+
+  it("returns 429 when rate limited", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+
+    const rateLimiter = new AgentRateLimitService({ windowSeconds: 60, maxRequests: 1 });
+    rateLimiter.check("token-1"); // consume the only slot
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo, rateLimiter);
+    const response = await POST_TASKS(makeCreateRequest({ tasks: [] }));
+
+    expect(response.status).toBe(429);
+    const body = await response.json();
+    expect(body.error.code).toBe("RATE_LIMITED");
+
+    rateLimiter.dispose();
+  });
+
+  it("returns 500 on internal service error", async () => {
+    mockResolveAgentAuth.mockResolvedValue({ ok: true, context: authContext() });
+    mockCreateTasks.mockRejectedValue(new Error("Unexpected database error"));
+
+    const { POST_TASKS } = createCreateHandlers(mockRepo);
+    const response = await POST_TASKS(makeCreateRequest({ tasks: [{ title: "Fail", projectId: "proj-1" }] }));
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body.error.code).toBe("INTERNAL_ERROR");
   });
 });
