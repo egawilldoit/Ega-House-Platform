@@ -169,6 +169,30 @@ export const calendarIntegrationSettings = pgTable(
   ],
 );
 
+export const agentIntegrationEvents = pgTable("agent_integration_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ownerUserId: uuid("owner_user_id").notNull(),
+  tokenId: uuid("token_id").notNull(),
+  action: varchar("action", { length: 64 }).notNull(),
+  resourceType: varchar("resource_type", { length: 32 }),
+  resourceId: uuid("resource_id"),
+  outcome: varchar("outcome", { length: 16 }).notNull(), // "success" | "failure"
+  ipAddress: varchar("ip_address", { length: 45 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const taskExternalRefs = pgTable("task_external_refs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  ownerUserId: uuid("owner_user_id").notNull(),
+  taskId: uuid("task_id").notNull().references(() => tasks.id),
+  source: varchar("source", { length: 64 }).notNull(),
+  sourceId: varchar("source_id", { length: 256 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("task_external_refs_owner_source_source_id_unique").on(table.ownerUserId, table.source, table.sourceId),
+  index("task_external_refs_owner_idx").on(table.ownerUserId),
+]);
+
 export const calendarSyncJobs = pgTable(
   "calendar_sync_jobs",
   {
