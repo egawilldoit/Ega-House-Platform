@@ -159,3 +159,66 @@ export type AgentTaskListResponse = {
   ok: true;
   tasks: AgentTaskResponse[];
 };
+
+// ---- Agent task create types ----
+
+export type AgentCreateTaskPayload = {
+  title: string;
+  projectId: string;
+  goalId?: string | null;
+  description?: string | null;
+  status?: string;
+  priority?: string;
+  estimateMinutes?: number | null;
+  focusRank?: number | null;
+  dueDate?: string | null;
+  plannedForDate?: string | null;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+  blockedReason?: string | null;
+  source?: string;
+  sourceId?: string;
+};
+
+export type AgentTaskCreateBulkResponse = {
+  ok: true;
+  created: AgentTaskResponse[];
+  existing: AgentTaskResponse[];
+  errors: { index: number; error: string }[];
+};
+
+export type AgentTaskUpdatePayload = {
+  taskId?: string;
+  source?: string;
+  sourceId?: string;
+  title?: string;
+  description?: string | null;
+  goalId?: string | null;
+  status?: string;
+  priority?: string;
+  dueDate?: string | null;
+  estimateMinutes?: number | null;
+  scheduledStartAt?: string | null;
+  scheduledEndAt?: string | null;
+  blockedReason?: string | null;
+};
+
+export type AgentTaskUpdateBulkResponse = {
+  ok: true;
+  updated: AgentTaskResponse[];
+  errors: { index: number; error: string }[];
+};
+
+export type AgentTaskArchivePayload = {
+  taskId?: string;
+  source?: string;
+  sourceId?: string;
+  archived: boolean;
+};
+
+export type AgentTaskArchiveBulkResponse = {
+  ok: true;
+  archived: AgentTaskResponse[];
+  unarchived: AgentTaskResponse[];
+  errors: { index: number; error: string }[];
+};

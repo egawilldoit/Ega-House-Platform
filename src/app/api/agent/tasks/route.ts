@@ -9,6 +9,8 @@ import { DrizzleTokenRepository } from "@/lib/services/agent-token-repository";
 import { AgentRateLimitService } from "@/lib/services/agent-rate-limit-service";
 import {
   createReadHandlers,
+  createCreateHandlers,
+  createUpdateHandlers,
   type TelemetryFn,
 } from "@/lib/http/agent-task-handlers";
 
@@ -30,3 +32,5 @@ const telemetry: TelemetryFn = async (tokenId) => {
 };
 
 export const { GET_TASKS: GET } = createReadHandlers(repo, rateLimiter, telemetry);
+export const { POST_TASKS: POST } = createCreateHandlers(repo, rateLimiter, telemetry);
+export const { PATCH_TASKS: PATCH } = createUpdateHandlers(repo, rateLimiter, telemetry);
