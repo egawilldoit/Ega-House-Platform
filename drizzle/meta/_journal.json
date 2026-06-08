@@ -232,6 +232,13 @@
       "when": 1780223637746,
       "tag": "0032_google_calendar_reliable_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1780763112386,
+      "tag": "0033_zippy_shatterstar",
+      "breakpoints": true
     }
   ]
 }
