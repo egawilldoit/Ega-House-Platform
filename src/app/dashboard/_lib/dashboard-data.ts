@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+
 import { type GoalHealth, toGoalHealthOrNull } from "@/lib/goal-health";
 import { getOpenClawHealth } from "@/lib/openclaw";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +14,13 @@ import {
   getActiveTimerSession,
   getTimerSummary as getTimerSummaryData,
 } from "@/lib/services/timer-service";
+import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
+import type { ExecutionEvidenceSessionRow } from "@/lib/services/execution-evidence-service";
+import {
+  calculateWorkAnalytics,
+  calculateWorkAnalyticsInsights,
+  getCurrentWeekWindow,
+} from "@/lib/services/work-analytics-service";
 
 import {
   getLinearProjectSnapshot,
@@ -22,6 +31,7 @@ import {
   getFocusPanelCandidateState,
   type FocusPanelCandidateState,
 } from "./focus-panel";
+import { getTodayWindow } from "./dashboard-helpers";
 
 const TODAY_TASK_LIMIT = 8;
 const PANEL_ERROR_MESSAGES = {
@@ -132,6 +142,12 @@ export type DashboardLinearProject = {
   issueStatusCounts: LinearIssueStatusCount[];
 };
 
+export type DashboardWorkStats = {
+  totalWorkedMinutes: number;
+  sessionCount: number;
+  currentStreak: number;
+};
+
 export type DashboardData = {
   health: DashboardHealthData;
   todaysTasks: PanelResult<DashboardTodayTask[]>;
@@ -144,28 +160,18 @@ export type DashboardData = {
   timerSummary: PanelResult<DashboardTimerSummary>;
   latestReview: PanelResult<DashboardLatestReview | null>;
   linearProject: PanelResult<DashboardLinearProject | null>;
+  workStats: PanelResult<DashboardWorkStats>;
 };
 
-function isLinearTokenMissingError(error: unknown) {
+export function isLinearTokenMissingError(error: unknown) {
   if (!(error instanceof Error)) {
     return false;
   }
 
-  return error.message.includes("Linear API token is not configured");
-}
-
-function getTodayWindow() {
-  const now = new Date();
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-
-  return {
-    startIso: start.toISOString(),
-    endIso: end.toISOString(),
-  };
+  return (
+    error.message.includes("Linear API token is not configured") ||
+    error.message.includes("LINEAR_PROJECT_NAME env var is required")
+  );
 }
 
 export async function getDashboardHealthData(): Promise<DashboardHealthData> {
@@ -572,7 +578,75 @@ async function getLinearProject(): Promise<PanelResult<DashboardLinearProject | 
   }
 }
 
-export async function getDashboardData(): Promise<DashboardData> {
+export const getLatestReviewCached = unstable_cache(
+  getLatestReview,
+  ["dashboard-latest-review"],
+  { revalidate: 60, tags: ["dashboard-review"] },
+);
+
+export const getLinearProjectCached = unstable_cache(
+  getLinearProject,
+  ["dashboard-linear-project"],
+  { revalidate: 120, tags: ["dashboard-linear"] },
+);
+
+export const getTimerSummaryCached = unstable_cache(
+  getTimerSummary,
+  ["dashboard-timer-summary"],
+  { revalidate: 60, tags: ["dashboard-timer"] },
+);
+
+async function getWorkStatsForOwner(
+  ownerUserId: string | null,
+): Promise<PanelResult<DashboardWorkStats>> {
+  if (!ownerUserId) {
+    return {
+      data: { totalWorkedMinutes: 0, sessionCount: 0, currentStreak: 0 },
+      error: null,
+    };
+  }
+
+  try {
+    const now = new Date();
+    const todayWindow = getTodayWindow();
+    const weekWindow = getCurrentWeekWindow(now);
+    const sessionsResult = await getWorkAnalyticsSessionsForWindow({
+      ownerUserId,
+      window: weekWindow,
+    });
+    if (sessionsResult.errorMessage || !sessionsResult.data) {
+      return {
+        data: null,
+        error: sessionsResult.errorMessage ?? "Work analytics unavailable.",
+      };
+    }
+
+    const sessions: ExecutionEvidenceSessionRow[] = sessionsResult.data;
+    const today = calculateWorkAnalytics(sessions, todayWindow, { nowIso: now.toISOString() });
+    const week = calculateWorkAnalyticsInsights(sessions, weekWindow, { nowIso: now.toISOString() });
+
+    return {
+      data: {
+        totalWorkedMinutes: today.totalWorkedMinutes,
+        sessionCount: today.sessionCount,
+        currentStreak: week.currentStreak,
+      },
+      error: null,
+    };
+  } catch (error) {
+    return {
+      data: null,
+      error:
+        error instanceof Error
+          ? `Work analytics failed: ${error.message}`
+          : "Work analytics failed.",
+    };
+  }
+}
+
+export async function getDashboardData({
+  ownerUserId = null,
+}: { ownerUserId?: string | null } = {}): Promise<DashboardData> {
   const [
     health,
     todaysTasks,
@@ -585,6 +659,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     timerSummary,
     latestReview,
     linearProject,
+    workStats,
   ] =
     await Promise.all([
       getDashboardHealthData(),
@@ -595,9 +670,10 @@ export async function getDashboardData(): Promise<DashboardData> {
       getActiveTimer(),
       getProjectStatuses(),
       getGoals(),
-      getTimerSummary(),
-      getLatestReview(),
-      getLinearProject(),
+      getTimerSummaryCached(),
+      getLatestReviewCached(),
+      getLinearProjectCached(),
+      getWorkStatsForOwner(ownerUserId),
     ]);
 
   return {
@@ -612,5 +688,114 @@ export async function getDashboardData(): Promise<DashboardData> {
     timerSummary,
     latestReview,
     linearProject,
+    workStats,
   };
 }
+
+export type HeroPanelData = {
+  displayName: string;
+  health: DashboardHealthData;
+  timerSummary: DashboardTimerSummary | null;
+  workStats: DashboardWorkStats | null;
+  workStatsError: string | null;
+  tasks: DashboardTodayTask[];
+  completedCount: number;
+  completionRate: number | null;
+  urgentCount: number;
+  activeProjectCount: number;
+  totalProjectCount: number;
+};
+
+export async function getHeroPanelData(
+  ownerUserId: string | null,
+  displayName: string,
+): Promise<HeroPanelData> {
+  const [health, todayPlanner, projectStatuses, timerSummary, workStats] = await Promise.all([
+    getDashboardHealthData(),
+    getTodayPlanner(),
+    getProjectStatuses(),
+    getTimerSummaryCached(),
+    getWorkStatsForOwner(ownerUserId),
+  ]);
+
+  const tasks = todayPlanner.data?.all ?? [];
+  const completedCount = tasks.filter((task) => isTaskCompletedStatus(task.status)).length;
+  const completionRate =
+    tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : null;
+  const urgentCount = tasks.filter((task) => task.priority === "urgent").length;
+  const projectItems = projectStatuses.data ?? [];
+  const activeProjectCount = projectItems.filter((p) => p.status === "active").length;
+  const totalProjectCount = projectItems.length;
+
+  return {
+    displayName,
+    health,
+    timerSummary: timerSummary.data,
+    workStats: workStats.data,
+    workStatsError: workStats.error,
+    tasks,
+    completedCount,
+    completionRate,
+    urgentCount,
+    activeProjectCount,
+    totalProjectCount,
+  };
+}
+
+export async function getCommandCenterPanelData() {
+  const [linearProject, activeTimer, health, timerSummary] = await Promise.all([
+    getLinearProjectCached(),
+    getActiveTimer(),
+    getDashboardHealthData(),
+    getTimerSummaryCached(),
+  ]);
+  return { linearProject, activeTimer, health, timerSummary };
+}
+
+export async function getPlannerPanelData() {
+  const todayPlanner = await getTodayPlanner();
+  return { todayPlanner };
+}
+
+export async function getFocusPanelData() {
+  const [focusPanel, activeTimer] = await Promise.all([getFocusPanel(), getActiveTimer()]);
+  return { focusPanel, activeTimer };
+}
+
+export async function getGoalsPanelData() {
+  const goals = await getGoals();
+  return { goals };
+}
+
+export async function getProjectsPanelData() {
+  const projectStatuses = await getProjectStatuses();
+  const projectItems = projectStatuses.data ?? [];
+  return {
+    projectStatuses,
+    activeProjectCount: projectItems.filter((p) => p.status === "active").length,
+    totalProjectCount: projectItems.length,
+  };
+}
+
+export async function getReviewPulsePanelData() {
+  const [latestReview, goals, health] = await Promise.all([
+    getLatestReviewCached(),
+    getGoals(),
+    getDashboardHealthData(),
+  ]);
+  return { latestReview, goals, health };
+}
+
+export async function getTimerSummaryPanelData() {
+  const [timerSummary, activeTimer] = await Promise.all([
+    getTimerSummaryCached(),
+    getActiveTimer(),
+  ]);
+  return { timerSummary, activeTimer };
+}
+
+// Re-exports for page-level (non-Suspense) consumers that need the raw panel
+// fetchers outside the streaming architecture (e.g. the AppShell context,
+// which sits above all Suspense boundaries).
+// Note: getDashboardHealthData is already exported above.
+export { getActiveTimer, getTodayPlanner, getTimerSummary };

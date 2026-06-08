@@ -404,3 +404,27 @@ export const weekReviews = pgTable(
     ),
   ],
 );
+
+export const agentIntegrationTokens = pgTable(
+  "agent_integration_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").notNull(),
+    name: varchar("name", { length: 256 }).notNull(),
+    tokenPrefix: varchar("token_prefix", { length: 16 }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    scopes: jsonb("scopes").notNull().default(sql`'{}'::jsonb`),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_token_prefix_unique").on(table.tokenPrefix),
+    index("agent_tokens_owner_idx").on(table.ownerUserId),
+  ],
+);
