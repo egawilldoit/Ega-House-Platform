@@ -239,6 +239,13 @@
       "when": 1780763112386,
       "tag": "0033_zippy_shatterstar",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1780877164185,
+      "tag": "0034_agent_read_endpoints",
+      "breakpoints": true
     }
   ]
 }

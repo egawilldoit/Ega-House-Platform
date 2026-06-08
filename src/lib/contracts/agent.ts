@@ -45,7 +45,7 @@ export type AgentCapabilitiesResponse = {
   capabilities: AgentCapabilities;
 };
 
-export type AgentErrorCode = "UNAUTHENTICATED" | "INTERNAL_ERROR";
+export type AgentErrorCode = "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "INVALID_REQUEST" | "VALIDATION_ERROR" | "CONFLICT" | "UNPROCESSABLE" | "RATE_LIMITED" | "INTERNAL_ERROR";
 
 export type AgentErrorResponse = {
   ok: false;
@@ -95,4 +95,67 @@ export type NewTokenRecord = {
   tokenPrefix: string;
   tokenHash: string;
   scopes: AgentTokenScopes;
+};
+
+// ---- Agent read response types ----
+
+export type AgentProjectResponse = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentGoalResponse = {
+  id: string;
+  projectId: string;
+  title: string;
+  slug: string | null;
+  description: string | null;
+  nextStep: string | null;
+  health: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AgentTaskResponse = {
+  id: string;
+  projectId: string;
+  goalId: string | null;
+  title: string;
+  description: string | null;
+  blockedReason: string | null;
+  status: string;
+  priority: string;
+  estimateMinutes: number | null;
+  focusRank: number | null;
+  dueDate: string | null;
+  plannedForDate: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
+  completedAt: string | null;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  projectName: string | null;
+  goalTitle: string | null;
+};
+
+export type AgentProjectListResponse = {
+  ok: true;
+  projects: AgentProjectResponse[];
+};
+
+export type AgentGoalListResponse = {
+  ok: true;
+  goals: AgentGoalResponse[];
+};
+
+export type AgentTaskListResponse = {
+  ok: true;
+  tasks: AgentTaskResponse[];
 };
