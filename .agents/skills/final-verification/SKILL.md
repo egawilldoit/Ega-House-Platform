@@ -1,31 +1,27 @@
 ---
 name: final-verification
-description: Evidence-based final check for an EGA House implementation or delivery. Use before claiming completion, handing off a patch, opening/merging a PR, or reporting autonomous Runner success.
+description: >
+  Use only after implementation and validation evidence exist to certify an EGA House patch, PR, handoff, or delivery claim; matching terms include verify, final check, handoff, ready, complete, and certify. Do not use for initial planning, coding, broad architecture discovery, or the first pass of code review.
 ---
 
 # Final Verification
 
 ## Required evidence
+
 - Base/head commit and final Git diff.
-- Changed-file scope and generated/untracked file review.
-- Exact targeted and broader validation commands/results.
+- Changed-file scope and generated/untracked review.
+- Exact targeted and broader commands with exit codes.
 - Runtime/database evidence when behavior depends on them.
-- For Runner work: queue message, claim owner, lease, attempt/worktree, Hermes artifacts, changed paths, implementation commit, pushed SHA, PR, checks, preview, and terminal events as required.
+- For Runner work: queue, claim, lease, attempt/worktree, Hermes artifacts, changed paths, implementation commit, pushed SHA, PR, checks, preview, and terminal events as required.
 - Explicit unavailable checks and external blockers.
 
 ## Workflow
+
 1. Re-read acceptance criteria and map each to evidence.
-2. Verify no pre-existing/unrelated work is claimed.
+2. Verify no pre-existing or unrelated work is claimed.
 3. Re-run the minimum validation matrix.
-4. Inspect final diff for secrets, bypasses, duplicate authority, and stale documentation.
-5. Distinguish static, integration, supervised runtime, and external-system proof.
-6. Select exactly one verdict.
+4. Inspect the final diff for secrets, bypasses, duplicate authority, and stale documentation.
+5. Distinguish structural, static, integration, supervised runtime, discovery, and external-system proof.
+6. Select exactly one verdict permitted by the task contract.
 
-## Allowed verdicts
-- `COMPLETE`
-- `COMPLETE — EXTERNAL VALIDATION PENDING`
-- `IMPLEMENTED — RUNTIME VALIDATION REQUIRED`
-- `PARTIAL`
-- `BLOCKED`
-
-Never use `COMPLETE` when a required PR, check, preview, lease/queue, database, or runtime fact was inferred rather than observed.
+Never use a completion verdict when required evidence was inferred rather than observed.
