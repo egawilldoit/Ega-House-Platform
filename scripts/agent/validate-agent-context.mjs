@@ -7,6 +7,15 @@ import process from "node:process";
 const root = process.cwd();
 const errors = [];
 const warnings = [];
+const ignoredDirectories = new Set([
+  ".git",
+  ".next",
+  ".expo",
+  "node_modules",
+  "coverage",
+  "dist",
+  "build",
+]);
 
 const required = [
   "AGENTS.md",
@@ -35,11 +44,21 @@ async function walk(dir, predicate = () => true) {
   if (!(await exists(dir))) return [];
   const output = [];
   for (const entry of await readdir(absolute, { withFileTypes: true })) {
+    if (entry.isDirectory() && ignoredDirectories.has(entry.name)) continue;
     const relative = path.join(dir, entry.name);
     if (entry.isDirectory()) output.push(...(await walk(relative, predicate)));
     else if (predicate(relative)) output.push(relative);
   }
   return output;
+}
+
+async function readJson(relativePath) {
+  try {
+    return JSON.parse(await readFile(path.join(root, relativePath), "utf8"));
+  } catch (error) {
+    errors.push(`${relativePath}: invalid or unreadable JSON (${error instanceof Error ? error.message : String(error)})`);
+    return null;
+  }
 }
 
 function parseFrontmatter(content, file) {
@@ -87,6 +106,7 @@ async function validateMarkdownLinks() {
     "AGENTS.md",
     "ARCHITECTURE.md",
     "HERMES_MASTER_PROMPT.md",
+    "scripts/ega-runner/README.md",
     ...(await walk("docs/agent-context", (file) => file.endsWith(".md"))),
     ...(await walk("docs/architecture", (file) => file.endsWith(".md"))),
   ];
@@ -111,6 +131,62 @@ async function validateRootInstructions() {
   if (content.includes("ega-house-auto-pipeline")) errors.push("AGENTS.md references removed/nonexistent ega-house-auto-pipeline skill");
 }
 
+async function validateInstructionChain() {
+  const instructionFiles = await walk(".", (file) => {
+    const name = path.basename(file);
+    return name === "AGENTS.md" || name === "AGENTS.override.md";
+  });
+  let totalLines = 0;
+  const conflictPatterns = [
+    { pattern: /(?:work|implement|commit)\s+(?:directly\s+)?on\s+main/i, label: "direct main-branch implementation" },
+    { pattern: /auto[- ]merge\s+(?:all|every|without\s+(?:review|approval)|by\s+default)/i, label: "broad automatic merge" },
+    { pattern: /(?:Hermes|agent).{0,40}(?:output|exit code|result JSON).{0,30}(?:is|as)\s+(?:proof|success)/i, label: "agent self-certification" },
+    { pattern: /pgmq\s*\.\s*pop\s*\([^)]*\).{0,40}(?:canonical|recommended|required)/i, label: "unsafe queue consumption" },
+  ];
+
+  for (const file of instructionFiles) {
+    const content = await readFile(path.join(root, file), "utf8");
+    totalLines += content.split(/\r?\n/).length;
+    if (path.normalize(file) === "AGENTS.md") continue;
+    for (const { pattern, label } of conflictPatterns) {
+      if (pattern.test(content)) errors.push(`${file}: conflicts with root authority (${label})`);
+    }
+  }
+
+  if (totalLines > 400) {
+    errors.push(`automatically loaded AGENTS instruction chain is ${totalLines} lines; keep total at or below 400`);
+  }
+}
+
+async function validateCommands() {
+  const rootPackage = await readJson("package.json");
+  const mobilePackage = await readJson("apps/mobile/package.json");
+  const runnerPackage = await readJson("scripts/ega-runner/package.json");
+
+  const requiredScripts = [
+    ["package.json", rootPackage, ["build", "lint", "test", "typecheck", "validate:agent-context"]],
+    ["apps/mobile/package.json", mobilePackage, ["typecheck", "test", "doctor", "validate:bundle"]],
+    ["scripts/ega-runner/package.json", runnerPackage, ["start", "typecheck", "smoke"]],
+  ];
+
+  for (const [file, manifest, scripts] of requiredScripts) {
+    if (!manifest) continue;
+    for (const script of scripts) {
+      if (!manifest.scripts?.[script]) errors.push(`${file}: missing documented npm script '${script}'`);
+    }
+  }
+
+  const documentedRunnerTests = [
+    "scripts/ega-runner/test/execution-contract.test.mjs",
+    "scripts/ega-runner/test/hermes-executor.test.mjs",
+    "scripts/ega-runner/test/schema-preflight.test.mjs",
+    "scripts/ega-runner/test/worktree-cleanup.test.mjs",
+  ];
+  for (const file of documentedRunnerTests) {
+    if (!(await exists(file))) errors.push(`documented Runner validation file does not exist: ${file}`);
+  }
+}
+
 async function validateQueueSafety() {
   const runnerFiles = await walk("scripts/ega-runner/src", (file) => /\.(ts|js|mjs)$/.test(file));
   for (const file of runnerFiles) {
@@ -123,6 +199,8 @@ await validateRequiredFiles();
 await validateSkills();
 await validateMarkdownLinks();
 await validateRootInstructions();
+await validateInstructionChain();
+await validateCommands();
 await validateQueueSafety();
 
 for (const warning of warnings) console.warn(`WARN: ${warning}`);
