@@ -2,106 +2,83 @@
 
 ## Product identity
 
-EGA House is a multi-surface productivity platform with a Next.js web application, an Expo mobile application, an agent task-control API, and an autonomous-delivery Runner under active development.
+EGA House is a multi-surface productivity platform with a Next.js web application, an Expo mobile application, an agent task-control API, and a partially implemented autonomous-delivery Runner.
 
-Do not describe the full Linear → Runner → PR → preview lifecycle as production-complete. The repository proves a meaningful Runner vertical slice, but authorization, stale-attempt isolation, PR/check/preview completion, and reconciliation still contain gaps documented in [`ARCHITECTURE.md`](ARCHITECTURE.md).
+Detailed component status and current Runner gaps live in [`ARCHITECTURE.md`](ARCHITECTURE.md). Do not duplicate that fast-changing inventory here.
 
-## Repository authority
+## Evidence and authority
 
-Use this precedence when sources disagree:
+Use two distinct questions:
 
-1. Current executable code and migrations.
-2. Tests that exercise the current path.
-3. [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md).
-4. [`ARCHITECTURE.md`](ARCHITECTURE.md) and current architecture documents.
-5. Runbooks and feature documentation.
-6. Historical plans, proof notes, prompts, and chat transcripts.
+- **What does the repository currently do?** Use the current-behavior evidence hierarchy in [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md).
+- **What behavior is required?** Use the normative product-authority hierarchy in the same document.
 
-Never promote documentation-only or external production behavior to `IMPLEMENTED` without repository evidence.
+When implementation conflicts with normative authority, classify the difference as a defect or unresolved product decision. Do not silently normalize current code and do not silently rewrite product policy.
 
-## Current system status
-
-| Area | Status | Canonical path |
-|---|---|---|
-| Web productivity product | Implemented | `src/app`, `src/lib`, `src/db/schema.ts` |
-| Mobile client | Implemented/partial by feature | `apps/mobile` |
-| Agent task-control API | Implemented | `src/app/api/agent`, `src/lib/services/agent-task-service.ts` |
-| Queue/claim/lease Runner | Partially implemented | `scripts/ega-runner/src` |
-| Worktree/Hermes/Git verification | Partially implemented | `scripts/ega-runner/src/{worktree,hermes-executor,result}.ts` |
-| PR synchronization | Partially implemented | `scripts/ega-runner/src/github.ts` |
-| Check and Vercel completion | Scaffolded, not wired into terminal success | `scripts/ega-runner/src/{github,vercel}.ts` |
-| Reconciliation and stale-attempt recovery | Absent | No canonical implementation |
-
-## Non-negotiable boundaries
+## Universal safety invariants
 
 - Never implement directly on `main` or another protected branch.
 - Keep one authorized issue or explicitly bounded request as the unit of work. Do not select the next issue autonomously.
-- Do not create a second state authority. Web product state belongs to its service/database path; automation run state belongs to `automation.implementation_runs` and its event/artifact records.
-- Runner queue consumption must use the canonical `pgmq.read()` → visibility/lease renewal → durable terminal transition → `pgmq.archive()` pattern. Never introduce `pgmq.pop()`.
-- Do not archive queue work on ambiguity, an exception, or ownership loss.
-- Do not continue external side effects after lease ownership is uncertain. Current heartbeat cancellation is incomplete; treat this as a defect, not permission.
-- Never trust Hermes prose, exit code, or result JSON as implementation proof. Verify actual changed paths, Git diff, commit ancestry, branch, pushed SHA, and required validations independently.
-- Do not treat a nullable/missing PR, pending checks, or absent preview as completed delivery. Current Runner terminal semantics are incomplete.
-- Do not reuse or force-reset an unverified stale branch/worktree. Current `--force` behavior is a known safety gap.
-- Slack is reporting only. Slack messages and READY markers are not workflow truth.
-- Runner-created PRs require human review and merge. Do not enable broad automatic merge or weaken guardian gates without explicit authorization.
+- Do not create a second state authority. Use the canonical product service/database path or the canonical automation run/event/artifact path.
+- Runner queue consumption must preserve the `pgmq.read()` → visibility/lease renewal → durable classification → `pgmq.archive()` direction. Never introduce executable `pgmq.pop()` usage.
+- Do not archive queue work on ambiguity, exception, or ownership loss.
+- Do not perform new external side effects after lease ownership becomes uncertain.
+- Never trust Hermes prose, exit code, or result JSON as implementation proof. Verify the actual filesystem, Git, validations, pushed SHA, PR, checks, and preview required by the contract.
+- Do not reuse or force-reset an unverified stale branch/worktree.
+- Slack is reporting only, never workflow truth.
+- Runner-created PRs require human review and merge unless a separate, explicit authorization changes that policy.
 - Never expose or edit secrets, `.env` values, credentials, production tokens, or deployment settings without explicit authorization.
 
-## Repository map
-
-- [`ARCHITECTURE.md`](ARCHITECTURE.md): verified system map and status classification.
-- [`docs/agent-context/index.md`](docs/agent-context/index.md): agent-context entry point.
-- [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md): ownership and forbidden bypasses.
-- [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md): real validation commands by change type.
-- [`docs/architecture/delivery-lifecycle.md`](docs/architecture/delivery-lifecycle.md): current lifecycle and terminal gaps.
-- [`docs/architecture/queue-and-leases.md`](docs/architecture/queue-and-leases.md): queue, claim, lease, and archive contract.
-- [`docs/architecture/runner-and-worktrees.md`](docs/architecture/runner-and-worktrees.md): Runner and attempt isolation.
-- [`docs/architecture/hermes-execution.md`](docs/architecture/hermes-execution.md): Hermes invocation and proof boundaries.
-- `src/app`, `src/lib`, `src/db`: web product and API.
-- `apps/mobile`: Expo client and mobile validation.
-- `scripts/ega-runner`: autonomous delivery Runner.
-- `.github/workflows/slack-pr-ready.yml`: PR readiness reporting; it does not merge.
-- `scripts/hermes-auto-merge-guardian.mjs`: separate controlled docs-only guardian, not canonical Runner completion.
-
-## Default working method
-
-1. Read the assigned issue/request and extract explicit scope, acceptance criteria, authorized paths, and required evidence.
-2. Read this file and the closest subsystem documentation. Use a focused skill when its trigger matches.
-3. Trace the current implementation and tests before editing. Identify the canonical service/module rather than adding a parallel path.
-4. Record what is implemented, partial, scaffolded, absent, or contradicted by code.
-5. Make the smallest coherent patch that preserves unrelated behavior and existing contracts.
-6. Add or update tests at the closest reliable public seam. Do not replace runtime validation with mocked self-claims.
-7. Run the minimum validation matrix, then broader checks when the changed surface requires them.
-8. Inspect the final diff for scope, generated files, secrets, duplicate authority, and stale documentation.
-9. Report commands, results, runtime evidence, and limitations honestly. Use the verdict vocabulary from the final-verification skill.
-
-## Approval boundaries
+## Scope and approval
 
 Allowed without additional approval:
 
 - Read/search repository files and Git history.
-- Inspect local Git state, logs, generated evidence, and local database state read-only.
-- Edit in-scope repository files on a task branch.
-- Run non-destructive tests, lint, type checks, builds, and local validation scripts.
-- Create task-local temporary evidence that is not committed.
+- Inspect local Git state, logs, generated evidence, and approved read-only database evidence.
+- Edit in-scope files on the assigned task branch.
+- Run non-destructive tests, lint, type checks, builds, and repository validation scripts.
 
 Require explicit approval:
 
 - Merge, deploy, force-push, rebase shared branches, or alter protected-branch policy.
-- Delete user work, force-clean worktrees, reset branches, or perform destructive database operations.
-- Modify secrets, production credentials, external production state, authorization boundaries, or broad data migrations.
-- Add production dependencies or enable automatic merge behavior.
+- Delete user work, force-clean worktrees, reset branches, or run destructive database operations.
+- Modify secrets, production credentials, external production state, authorization boundaries, broad migrations, or automatic-merge behavior.
+
+## Default working method
+
+1. Read the assigned issue/request and extract acceptance criteria, scope, authorized paths, and required evidence.
+2. Read this file and the closest relevant architecture document.
+3. Trace current implementation and tests before editing; identify the canonical owner instead of adding a parallel path.
+4. Compare current behavior with normative authority and record defects or unresolved decisions explicitly.
+5. Make the smallest coherent patch that preserves unrelated behavior.
+6. Add or update tests at the closest reliable public seam.
+7. Run the minimum validation matrix, then broader checks required by the changed surface.
+8. Inspect the final diff for scope, generated files, secrets, duplicated authority, and stale documentation.
+9. Report exact commands, exit codes, observed evidence, unavailable checks, and one evidence-based verdict.
+
+## Repository navigation
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): current system map and implementation status.
+- [`docs/agent-context/index.md`](docs/agent-context/index.md): agent-context entry point.
+- [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md): current-behavior evidence and normative authority.
+- [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md): command matrix and evidence labels.
+- [`docs/agent-context/skill-routing-evaluation.md`](docs/agent-context/skill-routing-evaluation.md): expected skill-routing examples.
+- [`docs/architecture/`](docs/architecture/): delivery, queue/lease, worktree, and Hermes contracts.
+- `src/app`, `src/lib`, `src/db`: web product and APIs.
+- `apps/mobile`: Expo application.
+- `scripts/ega-runner`: autonomous-delivery Runner.
 
 ## Validation navigation
 
-Run `npm run validate:agent-context` for agent-context changes. Select all other commands from [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md). Do not repeat stale test counts as a permanent baseline; report the exact result from the current commit.
+For agent-context changes run `npm run validate:agent-context`; it runs validator regression tests and structural validation. It does not prove semantic documentation accuracy, Codex/Hermes semantic routing, runtime behavior, or external systems. Select all other commands from [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md).
 
 ## Repository skills
 
-- `code-truth-audit`: multi-pass repository or feature truth audit before architecture/context changes.
-- `issue-implementation`: implement one authorized issue through the canonical path.
-- `delivery-run-diagnostics`: reconstruct one delivery/run/attempt chronologically.
-- `database-evidence`: bounded read-only automation-state evidence collection.
-- `code-review`: review for EGA House state, queue, lease, worktree, authorization, and evidence risks.
-- `final-verification`: produce an evidence-based completion verdict.
-- Existing focused skills such as `tdd`, `graphify`, and `improve-codebase-architecture` remain optional helpers; they cannot weaken the boundaries above.
+- `code-truth-audit`: disputed repository truth, architecture contradictions, or agent-context changes.
+- `issue-implementation`: one authorized, bounded implementation issue.
+- `delivery-run-diagnostics`: one failed, stuck, stale, duplicated, or externally inconsistent run.
+- `database-evidence`: bounded read-only persistence evidence.
+- `code-review`: defects in a proposed diff or PR.
+- `final-verification`: completion gate after implementation and validation evidence exist.
+
+General helper skills such as `tdd`, `graphify`, and `improve-codebase-architecture` remain optional and cannot weaken the boundaries above.
