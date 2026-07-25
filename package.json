@@ -17,7 +17,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "sonar:export-reliability": "node scripts/export-sonar-reliability-issues.mjs"
+    "sonar:export-reliability": "node scripts/export-sonar-reliability-issues.mjs",
+    "validate:agent-context": "node scripts/agent/validate-agent-context.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.49.0",
