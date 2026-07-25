@@ -1,101 +1,43 @@
 ## EGA House Platform
 
-This repository hosts the web platform surfaces for tasks, goals, timer, and weekly review on top of Supabase SSR auth.
+EGA House is a productivity platform with a Next.js web application, an Expo mobile application, agent-facing task APIs, and an autonomous-delivery Runner under active development.
 
-## Route Strategy
+## Product surfaces
 
-- Canonical workspace routes: `/tasks`, `/goals`, `/timer`, `/review`
-- `/apps/*` routes are compatibility redirects only:
-- `/apps/tasks` -> `/tasks`
-- `/apps/goals` -> `/goals`
-- `/apps/timer` -> `/timer`
-- `/apps/review` -> `/review`
-- `/apps` redirects to `/tasks`
+- Web workspace: tasks, goals, timer, review, analytics, and integrations under `src/`.
+- Mobile client: Expo application under `apps/mobile`.
+- Agent task-control API: scoped project/goal/task endpoints under `src/app/api/agent`.
+- Autonomous Runner: partial Linear/PGMQ/Hermes/GitHub delivery vertical slice under `scripts/ega-runner`.
 
-Both root-domain routes and protected workspace subdomains are guarded by middleware and redirect unauthenticated users to `/login?next=...`.
+The Runner is not yet a fully proven end-to-end production delivery system. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for current/partial/scaffolded/absent classification and known terminal-evidence gaps.
 
-## Getting Started
+## Route strategy
 
-First, run the development server:
+- Canonical workspace routes: `/tasks`, `/goals`, `/timer`, `/review`.
+- `/apps/*` routes are compatibility redirects.
+- Protected root/subdomain routes redirect unauthenticated users to `/login?next=...`.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Tests
-
-- Cookie-domain/session option checks: `npm run test:session`
-- Timer conflict recovery unit tests: `npm run test:timer-recovery`
-- Real cross-subdomain auth/session browser test: `npm run test:auth-session:e2e`
-
-The e2e auth test requires credentials and host config:
-
-- `E2E_AUTH_EMAIL`
-- `E2E_AUTH_PASSWORD`
-- Optional: `E2E_AUTH_PROTOCOL`, `E2E_AUTH_PLATFORM_DOMAIN`, `E2E_AUTH_LOGIN_HOST`, `E2E_AUTH_TASKS_HOST`, `E2E_AUTH_GOALS_HOST`, `E2E_AUTH_TIMER_HOST`, `E2E_AUTH_REVIEW_HOST`
-
-## Agent-assisted development
-
-This repository supports agent-assisted development. Agent tooling and workflow rules are defined in [`AGENTS.md`](AGENTS.md).
-
-### Workflow
-- Pull one Linear issue at a time.
-- Create Hermes Kanban tasks before implementation.
-- Analyze first, then produce a plan.
-- Wait for approval before editing files.
-- Keep changes focused on the approved Linear issue.
-- Show changed files and diff summary before push/PR.
-
-### Safety rules
-- Never push directly to main.
-- Always create a branch for Linear issues.
-- Do not edit secrets, .env files, API keys, credentials, or deployment configs unless explicitly approved.
-- Do not mark Linear issues as Done without human approval.
-- Stop and ask if requirements are unclear.
-
-### QA commands
-Before opening a PR, agents must run the following QA commands and confirm all pass:
+## Development
 
 ```bash
 npm ci
+npm run dev
+```
+
+## Validation
+
+```bash
+npm run validate:agent-context
 npm run typecheck
 npm run lint
 npm test
 npm run build
 ```
 
-Known baseline:
-- typecheck passes
-- lint has 0 errors and 3 pre-existing warnings
-- tests pass: 421 tests
-- build passes: 32/32 static pages generated
+Mobile and Runner validation have separate commands in [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md). Report current command results rather than preserving test/page counts as a permanent baseline.
 
-### PR rules
-- Branch format: `hermes/<LINEAR_ID>-short-title`
-- PR title format: `[<LINEAR_ID>] Short title`
-- PR body must include:
-  - Linear issue
-  - Summary
-  - Files changed
-  - Tests run
-  - Risks
-  - Macroscope review status
-Auto-merge guardian test: documentation-only PRs may be merged automatically when all safety gates pass.
-## Learn More
+## Agent-assisted development
 
+Start with [`AGENTS.md`](AGENTS.md). It defines repository authority, safety boundaries, scope discipline, validation navigation, and focused skills. [`HERMES_MASTER_PROMPT.md`](HERMES_MASTER_PROMPT.md) is only a thin Hermes entry point; it is not a second product specification.
 
-[Next.js Documentation](https://nextjs.org/docs)
-
-Final auto-merge guardian validation: docs-only PRs can merge automatically after all gates pass.
+Current merge policy for Runner-created PRs is human review. `.github/workflows/slack-pr-ready.yml` reports readiness but does not merge. The separate docs-only guardian is controlled automation and must not be treated as general Runner authority.
