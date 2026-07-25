@@ -12,6 +12,7 @@ import {
   findExecutablePgmqPopCalls,
   loadCodexDiscoveryConfig,
   parseCodexConfig,
+  parseHermesExternalDirs,
   parseSkillFrontmatter,
   resolveMarkdownTarget,
   validateSkillDocuments,
@@ -24,6 +25,7 @@ export {
   findExecutablePgmqPopCalls,
   loadCodexDiscoveryConfig,
   parseCodexConfig,
+  parseHermesExternalDirs,
   parseSkillFrontmatter,
   resolveMarkdownTarget,
   validateSkillDocuments,
@@ -153,8 +155,11 @@ async function validateInstructions(root, errors, warnings, output, options) {
     }
   }
 
-  const rootBytes = Buffer.byteLength(await readFile(join(root, "AGENTS.md"), "utf8"), "utf8");
-  if (rootBytes > config.projectDocMaxBytes / 2) warnings.push(`MAINTAINABILITY WARNING AGENTS.md uses ${rootBytes}/${config.projectDocMaxBytes} instruction bytes`);
+  const rootInstructions = join(root, "AGENTS.md");
+  if (await exists(rootInstructions)) {
+    const rootBytes = Buffer.byteLength(await readFile(rootInstructions, "utf8"), "utf8");
+    if (rootBytes > config.projectDocMaxBytes / 2) warnings.push(`MAINTAINABILITY WARNING AGENTS.md uses ${rootBytes}/${config.projectDocMaxBytes} instruction bytes`);
+  }
   output.push(`Config inspected: ${config.inspectedConfigFiles.length ? config.inspectedConfigFiles.join(", ") : "none; using 32768-byte default"}`);
 }
 
