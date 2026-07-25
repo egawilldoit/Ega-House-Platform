@@ -18,7 +18,9 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "sonar:export-reliability": "node scripts/export-sonar-reliability-issues.mjs",
-    "validate:agent-context": "node scripts/agent/validate-agent-context.mjs"
+    "test:agent-context": "node --test scripts/agent/validate-agent-context.test.mjs",
+    "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
+    "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.49.0",
