@@ -5,7 +5,15 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { readFile, readdir, stat } from "node:fs/promises";
 import process from "node:process";
-import { REQUIRED_EGA_SKILLS, parseSkillFrontmatter } from "./validate-agent-context.mjs";
+import { parseHermesExternalDirs, REQUIRED_EGA_SKILLS, parseSkillFrontmatter } from "./agent-context-core.mjs";
+
+async function isFile(path) {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
 
 async function isDirectory(path) {
   try {
@@ -64,6 +72,29 @@ async function main() {
     return 1;
   }
 
+  const configFile = join(homedir(), ".hermes", "config.yaml");
+  if (!(await isFile(configFile))) {
+    console.error(`DISCOVERY NOT VERIFIED Hermes config missing: ${configFile}`);
+    console.error("Configure skills.external_dirs with the repository skill directory shown below.");
+    console.error("skills:\n  external_dirs:\n    - " + externalSkills);
+    return 1;
+  }
+
+  let configuredDirectories;
+  try {
+    configuredDirectories = parseHermesExternalDirs(await readFile(configFile, "utf8"));
+  } catch (error) {
+    console.error(`DISCOVERY NOT VERIFIED Hermes config could not be inspected: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+  const configured = configuredDirectories.some((directory) => resolve(directory) === resolve(externalSkills));
+  if (!configured) {
+    console.error(`DISCOVERY NOT VERIFIED repository skill directory is not configured in ${configFile}`);
+    console.error("skills:\n  external_dirs:\n    - " + externalSkills);
+    return 1;
+  }
+  console.log(`Hermes repository skill source configured: ${externalSkills}`);
+
   const version = command("hermes", ["--version"]);
   if (version.error?.code === "ENOENT" || version.status === 127) {
     console.error("DISCOVERY NOT VERIFIED Hermes CLI is not installed on PATH.");
@@ -92,13 +123,11 @@ async function main() {
   const missing = REQUIRED_EGA_SKILLS.filter((name) => !new RegExp(`(^|[^A-Za-z0-9_-])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^A-Za-z0-9_-]|$)`, "m").test(listing));
   if (missing.length > 0) {
     console.error(`DISCOVERY NOT VERIFIED missing Hermes skills: ${missing.join(", ")}`);
-    console.error("Configure ~/.hermes/config.yaml without exposing secrets:");
-    console.error("skills:\n  external_dirs:\n    - " + externalSkills);
     return 1;
   }
 
-  for (const name of REQUIRED_EGA_SKILLS) console.log(`DISCOVERY VERIFIED Hermes skill visible: ${name}`);
-  console.log(`External repository skill directory: ${externalSkills}`);
+  for (const name of REQUIRED_EGA_SKILLS) console.log(`DISCOVERY VERIFIED repository-backed Hermes skill visible: ${name}`);
+  console.log(`Verified configured repository source: ${externalSkills}`);
   console.log("RUNTIME NOT VERIFIED this preflight does not prove semantic skill selection or Runner delivery behavior.");
   return 0;
 }
