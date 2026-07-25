@@ -123,10 +123,50 @@ export function resolveMarkdownTarget(repoRoot, markdownFile, target) {
 
 export function parseCodexConfig(content) {
   const max = content.match(/^\s*project_doc_max_bytes\s*=\s*(\d+)\s*(?:#.*)?$/m);
-  const list = content.match(/project_doc_fallback_filenames\s*=\s*\[([\s\S]*?)\]/m)?.[1] ?? "";
+  const list = content.match(/^\s*project_doc_fallback_filenames\s*=\s*\[([\s\S]*?)\]/m)?.[1] ?? "";
   const fallbackFilenames = [...list.matchAll(/"((?:\\.|[^"\\])*)"|'((?:''|[^'])*)'/g)]
     .map((match) => match[1] !== undefined ? JSON.parse(`"${match[1]}"`) : match[2].replace(/''/g, "'"));
   return { projectDocMaxBytes: max ? Number(max[1]) : undefined, fallbackFilenames };
+}
+
+export function parseHermesExternalDirs(content) {
+  const lines = content.replace(/^\uFEFF/, "").split(/\r?\n/);
+  let skillsIndent = null;
+  let dirsIndent = null;
+  const directories = [];
+
+  for (const line of lines) {
+    const withoutComment = line.replace(/\s+#.*$/, "");
+    if (!withoutComment.trim()) continue;
+    const indent = withoutComment.match(/^\s*/)[0].length;
+    const text = withoutComment.trim();
+
+    if (/^skills\s*:\s*$/.test(text)) {
+      skillsIndent = indent;
+      dirsIndent = null;
+      continue;
+    }
+    if (skillsIndent === null) continue;
+    if (indent <= skillsIndent) {
+      skillsIndent = null;
+      dirsIndent = null;
+      continue;
+    }
+    if (/^external_dirs\s*:\s*$/.test(text)) {
+      dirsIndent = indent;
+      continue;
+    }
+    if (dirsIndent === null) continue;
+    if (indent <= dirsIndent) {
+      dirsIndent = null;
+      continue;
+    }
+    const item = text.match(/^-\s*(.+?)\s*$/)?.[1];
+    if (!item) continue;
+    directories.push(quoted(item, "Hermes config", "skills.external_dirs"));
+  }
+
+  return directories.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim());
 }
 
 export async function loadCodexDiscoveryConfig({ repoRoot, env = process.env, userHome = homedir() }) {
