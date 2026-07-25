@@ -1,31 +1,33 @@
 ---
 name: code-truth-audit
-description: Multi-pass evidence audit for repository architecture, runtime behavior, or agent context. Use when claims conflict, the user asks for deep repository truth, or architecture instructions must be changed.
+description: >
+  Use for disputed repository truth, architecture contradictions, deep current-behavior mapping, or agent-context changes; matching terms include audit, map, reconcile, architecture, and source of truth. Do not use for a small localized issue whose ownership and behavior are already known.
 ---
 
 # Code Truth Audit
 
 ## Purpose
+
 Establish current repository truth before changing architecture or agent guidance.
 
-## Do not use when
-The task is a small, already-localized implementation with no disputed behavior.
+## Authority model
 
-## Required inputs
-Repository/ref, requested scope, target files that must not be edited before the audit, and available runtime evidence.
+Read [`../../../docs/agent-context/product-authority.md`](../../../docs/agent-context/product-authority.md). Use current-behavior evidence to establish what exists and normative product authority to establish what is required. Classify conflicts as defects or unresolved decisions.
 
 ## Workflow
-1. Record branch/commit/status/worktrees/remotes without destructive cleanup.
+
+1. Record branch, commit, status, worktrees, and remotes without destructive cleanup.
 2. Pass 1: map topology, entry points, persistence, integrations, tests, and documented claims.
-3. Save Pass 1 evidence with `PROVEN`, `SUPPORTED`, `DOCUMENTATION_ONLY`, `INFERRED`, or `UNRESOLVED` confidence.
-4. Pass 2: reopen canonical files and attack every important hypothesis; find duplicate paths, bypasses, stale docs, and failure semantics.
-5. Save confirmations, disprovals, and mechanical enforcement gaps.
-6. Pass 3: reopen authority files, resolve contradictions, classify implemented/partial/scaffolded/absent behavior, and design the smallest correction.
-7. Edit only after Pass 3.
-8. Validate links, commands, skills, affected tests, and final diff.
+3. Save evidence with `PROVEN`, `SUPPORTED`, `DOCUMENTATION_ONLY`, `INFERRED`, or `UNRESOLVED` confidence.
+4. Pass 2: reopen canonical files and attack every important hypothesis; find bypasses, duplicate owners, stale docs, and failure semantics.
+5. Pass 3: resolve contradictions, classify current behavior, compare it with normative authority, and design the smallest correction.
+6. Edit only after Pass 3.
+7. Validate links, commands, skills, affected tests, and final diff.
 
 ## Forbidden actions
-Do not run the passes in parallel, treat plans as code truth, erase pre-existing work, or invent unresolved product decisions.
+
+Do not run the passes in parallel, treat plans as implementation evidence, erase pre-existing work, or invent unresolved product decisions.
 
 ## Output contract
-Pass comparison, final authority map, contradictions, changed files, exact validation results, remaining gaps, and an evidence-based verdict.
+
+Pass comparison, current-behavior map, normative authority, contradictions, changed files, exact validation results, remaining gaps, and an evidence-based verdict.
