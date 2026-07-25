@@ -1,11 +1,12 @@
 # EGA Runner
 
-The EGA Runner is a **partially implemented** durable PGMQ consumer for the EGA House autonomous-delivery pipeline. It provides a meaningful queue-to-GitHub vertical slice, but it does not yet prove the full Linear webhook → checks → Vercel preview → merge → deployment lifecycle.
+The EGA Runner is a **partially implemented** durable PGMQ consumer for the EGA House autonomous-delivery pipeline. It provides a meaningful queue-to-GitHub vertical slice, but it does not prove the full webhook → checks → Vercel preview → merge → deployment lifecycle.
 
 Read the repository-wide authority first:
 
 - [`../../AGENTS.md`](../../AGENTS.md)
 - [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)
+- [`../../docs/agent-context/product-authority.md`](../../docs/agent-context/product-authority.md)
 - [`../../docs/architecture/delivery-lifecycle.md`](../../docs/architecture/delivery-lifecycle.md)
 - [`../../docs/architecture/queue-and-leases.md`](../../docs/architecture/queue-and-leases.md)
 - [`../../docs/architecture/runner-and-worktrees.md`](../../docs/architecture/runner-and-worktrees.md)
@@ -32,13 +33,13 @@ PGMQ message
 → archive eligible queue message
 ```
 
-## What is implemented
+## Implemented current behavior
 
 - `pgmq.read()` with visibility timeout.
 - Explicit claim outcomes and atomic queued → preparing claim.
 - DB lease plus PGMQ visibility heartbeat.
 - Event persistence in `automation.implementation_events`.
-- Real Linear GraphQL lookup when `LINEAR_API_KEY` is configured; bounded mock mode only for test/development.
+- Real Linear GraphQL lookup when `LINEAR_API_KEY` is configured; bounded mock mode for test/development.
 - Authorized-path extraction and scope enforcement.
 - Deterministic branch/worktree identifiers.
 - Bounded Hermes CLI execution and result-file recovery.
@@ -47,20 +48,39 @@ PGMQ message
 - Local evidence directory and manifest.
 - Slack operational reporting.
 
-## What is not yet enforced
+## Known current gaps
 
-- PR existence is **not** a prerequisite for the current `completed` database state. PR creation failure is logged and execution continues.
-- `waitForChecks()` exists but is not called by the current terminal path.
-- `verifyVercelDeployment()` exists but is not called by the current terminal path.
-- Required validations are reported by Hermes and inspected, but are not independently rerun by the Runner.
-- Lease/heartbeat failure does not immediately terminate active Hermes work or fence every external side effect.
-- Existing deterministic branches can be force-reset and worktrees are added with `--force`; stale-attempt isolation is incomplete.
-- Linear project membership is currently hardcoded, and blocker semantics are not proven against Linear blocked-by relations.
+- PR existence is not a prerequisite for the current `completed` database state.
+- `waitForChecks()` and `verifyVercelDeployment()` are not called by the terminal path.
+- Reported validations are not independently rerun by Runner.
+- Lease/heartbeat loss does not immediately terminate Hermes or fence every side effect.
+- Existing branches can be force-reset and worktrees are added with `--force`.
+- Linear project membership is hardcoded and blocker semantics are not proven against blocked-by relations.
 - Existing PR lookup/idempotent PR synchronization is absent.
 - Reconciliation, dead-letter policy, and automatic stale-attempt recovery are absent.
-- The complete automation base schema and signed webhook implementation are not fully versioned in this repository.
+- The complete automation base schema and signed webhook are not fully versioned here.
+- The deployed Runner profile has not yet proven repository-local Hermes skill visibility.
 
-Therefore, treat `automation.implementation_runs.status='completed'` as **current Runner-path completion**, not proof of PR/check/preview/merge/deployment completion.
+Treat `automation.implementation_runs.status='completed'` as current Runner-path completion, not proof of PR/check/preview/merge/deployment completion.
+
+## Hermes skill preflight
+
+Hermes repository skill discovery is environment-dependent. Before operating the Runner, execute the read-only preflight under the same service user, environment, and working directory:
+
+```bash
+cd /absolute/path/to/Ega-House-Platform
+npm run preflight:hermes-skills
+```
+
+When external discovery is required, configure the same service user's `~/.hermes/config.yaml`:
+
+```yaml
+skills:
+  external_dirs:
+    - /absolute/path/to/Ega-House-Platform/.agents/skills
+```
+
+Do not commit or print the rest of that user-global configuration. Local same-name Hermes skills shadow repository external skills; the preflight treats that as unverified.
 
 ## Commands
 
@@ -71,7 +91,7 @@ npm run typecheck
 npm start
 ```
 
-Smoke mode requires an approved disposable Postgres/PGMQ environment because it claims, updates, cancels, and archives a test run:
+Smoke mode mutates approved test records and requires a disposable Postgres/PGMQ environment:
 
 ```bash
 cd scripts/ega-runner
@@ -80,26 +100,26 @@ npm run smoke
 
 ## Required environment
 
-- `DATABASE_URL`: Postgres with the deployed `automation.*` tables and PGMQ queue.
-- `LINEAR_API_KEY`: required for normal real-issue context resolution.
-- Hermes CLI available on `PATH`.
+- `DATABASE_URL`: Postgres with deployed `automation.*` tables and PGMQ queue.
+- `LINEAR_API_KEY`: required for real-issue context resolution.
+- Hermes CLI available on `PATH` with successful repository-skill preflight.
 - Authenticated `gh` CLI and configured Git remote.
 - Optional reporting/integration credentials such as Slack and Vercel tokens.
 
-See `src/config.ts` for current variable names and defaults. Do not copy secret values into documentation, logs, prompts, or evidence.
+See `src/config.ts` for variable names and defaults. Do not copy secret values into documentation, logs, prompts, or evidence.
 
 ## Queue and ownership invariants
 
-- Never introduce `pgmq.pop()`.
+- Never introduce executable `pgmq.pop()` calls.
 - Preserve work on ambiguity, exception, claim race, or inconsistent state.
-- Archive only after the relevant durable terminal/classification path is persisted.
-- Treat `claimed_by` and `lease_expires_at` as temporary ownership, not advisory metadata.
+- Archive only after the relevant durable classification is persisted.
+- Treat `claimed_by` and `lease_expires_at` as temporary ownership.
 - Do not perform new side effects after ownership is uncertain.
 - Do not work on `main`.
 - Do not trust Hermes prose, exit status, or result JSON as proof.
-- Do not reuse or force-reset stale branches/worktrees; current code violates this and requires correction.
-- Do not claim end-to-end delivery success without real PR, required checks, preview, and durable evidence when the contract requires them.
+- Do not reuse or force-reset stale branches/worktrees; current code violates this rule.
+- Do not claim end-to-end delivery success without required PR, checks, preview, and durable evidence.
 
 ## Validation
 
-Use the Runner matrix in [`../../docs/agent-context/testing-and-validation.md`](../../docs/agent-context/testing-and-validation.md). A production-style smoke delivery requires real external credentials and supervised evidence; static typecheck alone is not runtime validation.
+Use the Runner matrix in [`../../docs/agent-context/testing-and-validation.md`](../../docs/agent-context/testing-and-validation.md). Static validation does not prove a production-style delivery.
