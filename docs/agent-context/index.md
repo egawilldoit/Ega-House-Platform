@@ -1,13 +1,14 @@
 # Agent Context Index
 
-Use this directory for current, repository-local guidance. Executable code and tests remain higher authority when they disagree with prose.
+Use this directory for current repository-local guidance. Determine current behavior and normative requirements using the separate hierarchies in [`product-authority.md`](product-authority.md).
 
 ## Start here
 
 1. [`../../AGENTS.md`](../../AGENTS.md) — stable repository-wide boundaries and navigation.
-2. [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — system map with implementation status.
-3. [`product-authority.md`](product-authority.md) — state ownership, approvals, and forbidden bypasses.
-4. [`testing-and-validation.md`](testing-and-validation.md) — command matrix and evidence expectations.
+2. [`product-authority.md`](product-authority.md) — current-behavior evidence and normative product authority.
+3. [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — current system map and implementation status.
+4. [`testing-and-validation.md`](testing-and-validation.md) — command matrix and evidence labels.
+5. [`skill-routing-evaluation.md`](skill-routing-evaluation.md) — expected specialized-skill routing and unexecuted semantic checks.
 
 ## Delivery subsystem
 
@@ -18,4 +19,4 @@ Use this directory for current, repository-local guidance. Executable code and t
 
 ## Skill design
 
-Repository skills are small and composable. Their frontmatter description states the trigger and scope; the body provides only the workflow and evidence contract needed for that task. Product authority remains in versioned architecture documents rather than being duplicated into every skill.
+Repository skills are small and composable. Their frontmatter description carries the inclusion and exclusion trigger because agent skill selection may happen before the body is loaded. Product authority remains in versioned documents rather than being duplicated in every skill.
