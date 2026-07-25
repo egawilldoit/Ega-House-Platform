@@ -1,0 +1,20 @@
+commit cb9f94fc74a9383d1a4f2a47cbfa0b6555d91e91
+Author:     ABDELILAH MORTAKI <ABDELILAHMORTAKI@egainthehouse.online>
+AuthorDate: Mon Jun 8 20:41:44 2026 +0000
+Commit:     ABDELILAH MORTAKI <ABDELILAHMORTAKI@egainthehouse.online>
+CommitDate: Mon Jun 8 20:41:44 2026 +0000
+
+    docs(agent-api): EGA-418 documentation + EGA-419 security fix
+    
+    EGA-418:
+    - docs/agent-task-control-api.md — comprehensive API reference
+    - All 7 endpoints documented with curl examples
+    - Setup, idempotency, bulk ops, rate limit, error codes
+    - Troubleshooting and security warnings
+    
+    EGA-419 security fix:
+    - Fixed audit events to use 'action' column (not 'event_type')
+    - ega-419-security-audit-report.md — 13/13 controls PASS
+    - All CI passes: typecheck clean, lint 0 errors, 757 tests
+    
+    Run: npm test (94 files, 757 tests), npm run typecheck, npm run lint
