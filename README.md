@@ -9,7 +9,7 @@ EGA House is a productivity platform with a Next.js web application, an Expo mob
 - Agent task-control API: scoped project/goal/task endpoints under `src/app/api/agent`.
 - Autonomous Runner: partial Linear/PGMQ/Hermes/GitHub delivery vertical slice under `scripts/ega-runner`.
 
-The Runner is not yet a fully proven end-to-end production delivery system. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for current/partial/scaffolded/absent classification and known terminal-evidence gaps.
+The Runner is not yet a fully proven end-to-end production delivery system. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for current-behavior classification and known evidence gaps.
 
 ## Route strategy
 
@@ -38,6 +38,6 @@ Mobile and Runner validation have separate commands in [`docs/agent-context/test
 
 ## Agent-assisted development
 
-Start with [`AGENTS.md`](AGENTS.md). It defines repository authority, safety boundaries, scope discipline, validation navigation, and focused skills. [`HERMES_MASTER_PROMPT.md`](HERMES_MASTER_PROMPT.md) is only a thin Hermes entry point; it is not a second product specification.
+Start with [`AGENTS.md`](AGENTS.md). It defines stable safety, scope, approval, navigation, and skill-routing rules. [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md) separates current-behavior evidence from normative product authority. [`HERMES_MASTER_PROMPT.md`](HERMES_MASTER_PROMPT.md) is a compact Hermes fallback and discovery contract, not a second product specification.
 
 Current merge policy for Runner-created PRs is human review. `.github/workflows/slack-pr-ready.yml` reports readiness but does not merge. The separate docs-only guardian is controlled automation and must not be treated as general Runner authority.
