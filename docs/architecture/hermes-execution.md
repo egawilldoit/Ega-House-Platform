@@ -12,9 +12,21 @@ The EGA Runner owns process creation, working directory, environment, timeout, c
 hermes chat --quiet --query <prompt> --source ega-runner --max-turns <n> --accept-hooks
 ```
 
-The process runs in the attempt worktree, in its own process group, with bounded timeout/turns and `HERMES_YOLO_MODE=0`. The result contract is `.ega-runner/hermes-result.json`.
+The process runs in the attempt worktree with bounded timeout/turns and `HERMES_YOLO_MODE=0`. The result contract is `.ega-runner/hermes-result.json`.
 
-## Context supplied
+## Repository instruction and skill discovery
+
+The repository contains [`../../HERMES_MASTER_PROMPT.md`](../../HERMES_MASTER_PROMPT.md) and EGA skills under `../../.agents/skills/`, but the current Runner invocation does not by itself prove that the deployed Hermes profile loads either source.
+
+Hermes supports external skill directories through `skills.external_dirs`. EGA House requires a read-only preflight under the same user/profile as the Runner:
+
+```bash
+npm run preflight:hermes-skills
+```
+
+The preflight must confirm the six EGA skills are visible and not shadowed by same-name local skills. Missing Hermes CLI, unsupported commands, missing skills, or local shadowing means `DISCOVERY NOT VERIFIED`; it is not permission to claim specialized workflow loading.
+
+## Context supplied by Runner
 
 - run and issue identifiers,
 - pinned base SHA,
@@ -24,7 +36,7 @@ The process runs in the attempt worktree, in its own process group, with bounded
 - result-file path,
 - recovery-mode flag.
 
-The Runner also resolves Linear issue/parent context, but the current generated Hermes prompt does not include the full issue description/parent specification. That is a context-quality gap.
+The Runner resolves Linear issue/parent context, but the generated Hermes prompt does not include the complete issue/parent specification. That remains a context-quality gap.
 
 ## Evidence layers
 
@@ -41,15 +53,16 @@ Keep these separate:
 9. Vercel deployment state.
 10. Durable run/event/artifact records.
 
-Only layers 4–10 can establish external implementation/delivery facts. The result JSON is an input to verification, not proof.
+Only layers 4–10 can establish external implementation or delivery facts. The result JSON is an input to verification, not proof.
 
 ## Current contradictions
 
-- The prompt instructs Hermes to create a PR, while `main.ts` also owns PR creation. Future work should choose one canonical owner; current architecture favors Runner-owned idempotent synchronization.
-- Hermes reports validation results, but Runner does not independently rerun the commands.
-- Recovery asks Hermes to write only the result file and checks the HEAD SHA, but uncommitted filesystem changes also need explicit protection.
+- The prompt instructs Hermes to create a PR while `main.ts` also attempts PR creation.
+- Hermes reports validation results, but Runner does not independently rerun commands.
+- Recovery protects HEAD but uncommitted filesystem changes need explicit protection.
 - Lease loss does not immediately cancel the process.
+- Repository skill discovery is environment-dependent and has not been proven for the deployed Runner profile.
 
 ## Completion rule
 
-A successful Hermes process may justify “implementation candidate produced.” It must not produce `COMPLETE` until the Runner independently proves the required Git, validation, PR, check, and preview evidence for the authorized contract.
+A successful Hermes process may justify “implementation candidate produced.” It must not produce `COMPLETE` until the Runner independently proves the required Git, validation, PR, check, preview, and durable evidence for the authorized contract.
