@@ -7,8 +7,11 @@ import {
   DEFAULT_PROJECT_DOC_MAX_BYTES,
   discoverCodexInstructionChain,
   findExecutablePgmqPopCalls,
+  parseCodexConfig,
+  parseHermesExternalDirs,
   parseSkillFrontmatter,
   resolveMarkdownTarget,
+  validateRepository,
   validateSkillDocuments,
 } from "./validate-agent-context.mjs";
 
@@ -151,5 +154,40 @@ test("Codex discovery: byte-budget overflow uses UTF-8 bytes", async () => {
     assert.equal(result.combinedBytes, 40);
     assert.equal(result.withinBudget, false);
     assert.equal(DEFAULT_PROJECT_DOC_MAX_BYTES, 32768);
+  });
+});
+
+test("Codex config: commented fallback assignments are ignored", () => {
+  const parsed = parseCodexConfig('# project_doc_fallback_filenames = ["OLD.md"]\nproject_doc_fallback_filenames = ["CURRENT.md"]\n');
+  assert.deepEqual(parsed.fallbackFilenames, ["CURRENT.md"]);
+});
+
+test("Hermes config: repository external directory is parsed only under skills.external_dirs", () => {
+  const parsed = parseHermesExternalDirs(`
+other:
+  external_dirs:
+    - /wrong/section
+skills:
+  external_dirs:
+    - "/repo/.agents/skills"
+    - '/shared/skills' # optional shared source
+`);
+  assert.deepEqual(parsed, ["/repo/.agents/skills", "/shared/skills"]);
+});
+
+test("Hermes config: commented external directories are ignored", () => {
+  const parsed = parseHermesExternalDirs(`
+skills:
+  external_dirs:
+    # - /old/repo/.agents/skills
+    - /current/repo/.agents/skills
+`);
+  assert.deepEqual(parsed, ["/current/repo/.agents/skills"]);
+});
+
+test("repository validation: missing root AGENTS.md is accumulated instead of thrown", async () => {
+  await withTempRepo(async (root) => {
+    const result = await validateRepository(root, { env: {}, userHome: root });
+    assert.match(result.errors.join("\n"), /missing required agent-context file: AGENTS\.md/);
   });
 });
