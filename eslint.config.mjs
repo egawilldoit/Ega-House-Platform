@@ -20,6 +20,12 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     "apps/mobile/.expo/**",
   ]),
+  {
+    files: ["scripts/ega-runner/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-empty-object-type": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
