@@ -22,7 +22,7 @@
     "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
     "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
     "typecheck:ega-runner": "tsc --noEmit -p scripts/ega-runner/tsconfig.json",
-    "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-contract.test.mjs"
+    "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.49.0",
@@ -44,7 +44,7 @@
     "@types/jsdom": "^28.0.3",
     "@types/node": "^20",
     "@types/react": "^19",
-    "@types/react-dom": "^19",
+    "@types/react-dom": "^19.2.4",
     "@vitest/coverage-v8": "^4.0.7",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
