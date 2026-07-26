@@ -185,15 +185,17 @@ async function withHeartbeat<T>(
   const beat = async (): Promise<void> => {
     if (stopped || shuttingDown) return;
     const lease = await extendLease(db, runId, config.runnerId, config.leaseSeconds);
+    if (stopped || shuttingDown) return;
     if (!lease.ok) {
-      if (!stopped) heartbeatFailure = new Error(lease.reason ?? "Execution lease lost");
+      heartbeatFailure = new Error(lease.reason ?? "Execution lease lost");
       return;
     }
     if (activeRun) {
       try {
         await setVisibilityTimeout(db, config.queueName, activeRun.msgId, config.visibilityTimeoutSeconds);
       } catch (error) {
-        if (!stopped) heartbeatFailure = error instanceof Error ? error : new Error(String(error));
+        if (stopped || shuttingDown) return;
+        heartbeatFailure = error instanceof Error ? error : new Error(String(error));
       }
     }
   };
