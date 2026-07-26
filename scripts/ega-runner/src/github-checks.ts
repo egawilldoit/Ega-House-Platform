@@ -27,25 +27,17 @@ function readAllCheckRuns(repoRoot: string, repo: string, commitSha: string): Ar
 
 function readAllCommitStatuses(repoRoot: string, repo: string, commitSha: string): Array<Record<string, unknown>> {
   const rows: Array<Record<string, unknown>> = [];
-  let expectedTotal: number | null = null;
   for (let page = 1; page <= 100; page += 1) {
     const raw = runGh(repoRoot, [
       "api",
-      `repos/${repo}/commits/${commitSha}/status?per_page=100&page=${page}`,
+      `repos/${repo}/commits/${commitSha}/statuses?per_page=100&page=${page}`,
     ]);
-    const data = JSON.parse(raw) as Record<string, unknown>;
-    const pageRows = (data.statuses as Array<Record<string, unknown>> | undefined) ?? [];
-    const total = Number(data.total_count ?? pageRows.length);
-    if (expectedTotal === null) expectedTotal = total;
-    else if (expectedTotal !== total) throw new Error("GitHub commit-status total changed during pagination");
+    const pageRows = JSON.parse(raw) as Array<Record<string, unknown>>;
+    if (!Array.isArray(pageRows)) throw new Error("GitHub commit-status endpoint returned an invalid payload");
     rows.push(...pageRows);
-    if (rows.length >= total) break;
-    if (pageRows.length === 0) throw new Error(`GitHub commit-status pagination stopped at ${rows.length}/${total}`);
+    if (pageRows.length < 100) return rows;
   }
-  if (expectedTotal !== null && rows.length !== expectedTotal) {
-    throw new Error(`GitHub commit-status pagination incomplete: ${rows.length}/${expectedTotal}`);
-  }
-  return rows;
+  throw new Error("GitHub commit-status pagination incomplete after 100 pages");
 }
 
 function readChecks(repoRoot: string, commitSha: string): CheckStatus {
