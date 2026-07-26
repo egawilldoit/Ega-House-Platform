@@ -13,7 +13,7 @@ import type postgres from "postgres";
 import { loadConfig, type Config } from "./config.js";
 import { closeDb, getDb } from "./db.js";
 import { insertEvent } from "./event-log.js";
-import { executeImplementationRun } from "./implementation-pipeline.js";
+import { executeImplementationSubprocess } from "./implementation-subprocess.js";
 import { monitorDuePullRequests } from "./pr-monitor.js";
 import { archiveMessage, readMessage, setVisibilityTimeout } from "./queue.js";
 import {
@@ -43,6 +43,7 @@ const POST_QUEUE_STATUSES = new Set([
 ]);
 
 let activeRun: ActiveRun | null = null;
+let activeController: AbortController | null = null;
 let shuttingDown = false;
 
 async function main(): Promise<void> {
@@ -87,6 +88,7 @@ async function pollImplementationQueue(
 ): Promise<void> {
   if (shuttingDown) return;
   const message = await readMessage(db, config.queueName, config.visibilityTimeoutSeconds);
+  if (shuttingDown) return;
   if (!message) {
     if (config.smokeMode) shuttingDown = true;
     else await sleep(config.pollSeconds * 1_000);
@@ -100,6 +102,7 @@ async function pollImplementationQueue(
   }
 
   const claim = await claimRun(db, runId, config.runnerId, config.leaseSeconds);
+  if (shuttingDown) return;
   switch (claim.outcome) {
     case "CLAIMED": {
       activeRun = { runId, msgId: message.msg_id };
@@ -111,12 +114,12 @@ async function pollImplementationQueue(
           source: "ega_runner",
         });
 
-        const outcome = await withHeartbeat(db, config, runId, async () => {
+        const outcome = await withHeartbeat(db, config, runId, async (signal) => {
           if (config.smokeMode) {
-            await executeSmokeFlow(db, config, runId);
+            await executeSmokeFlow(db, config, runId, signal);
             return { archiveMessage: true, status: "cancelled" };
           }
-          return executeImplementationRun(db, config, runId, message.message);
+          return executeImplementationSubprocess(config, runId, message.message, signal);
         });
 
         if (outcome.archiveMessage) {
@@ -178,21 +181,24 @@ async function withHeartbeat<T>(
   db: postgres.Sql<{}>,
   config: Config,
   runId: string,
-  work: () => Promise<T>,
+  work: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
+  activeController = controller;
   let heartbeatFailure: Error | null = null;
+  let stopped = false;
 
   const captureFailure = (error: unknown): void => {
-    if (controller.signal.aborted || shuttingDown) return;
+    if (stopped || controller.signal.aborted) return;
     heartbeatFailure = error instanceof Error ? error : new Error(String(error));
+    controller.abort(heartbeatFailure);
   };
 
   const beat = async (): Promise<void> => {
-    if (controller.signal.aborted || shuttingDown) return;
+    if (stopped || controller.signal.aborted || shuttingDown) return;
     try {
       const lease = await extendLease(db, runId, config.runnerId, config.leaseSeconds);
-      if (controller.signal.aborted || shuttingDown) return;
+      if (stopped || controller.signal.aborted || shuttingDown) return;
       if (!lease.ok) {
         captureFailure(new Error(lease.reason ?? "Execution lease lost"));
         return;
@@ -209,24 +215,17 @@ async function withHeartbeat<T>(
     void beat();
   }, config.heartbeatSeconds * 1_000);
   try {
-    const result = await work();
-    controller.abort();
-    if (heartbeatFailure) {
-      const rows = await db`
-        SELECT status, claimed_by
-        FROM automation.implementation_runs
-        WHERE id = ${runId}::uuid
-      `;
-      const status = rows[0]?.status ? String(rows[0].status) : null;
-      const owner = rows[0]?.claimed_by ? String(rows[0].claimed_by) : null;
-      if ((status === "preparing" || status === "running") && owner === config.runnerId) {
-        throw heartbeatFailure;
-      }
+    const result = await work(controller.signal);
+    if (controller.signal.aborted) {
+      if (heartbeatFailure) throw heartbeatFailure;
+      if (controller.signal.reason instanceof Error) throw controller.signal.reason;
+      throw new Error(controller.signal.reason ? String(controller.signal.reason) : "Execution aborted");
     }
     return result;
   } finally {
-    controller.abort();
+    stopped = true;
     clearInterval(timer);
+    if (activeController === controller) activeController = null;
   }
 }
 
@@ -234,12 +233,15 @@ async function executeSmokeFlow(
   db: postgres.Sql<{}>,
   config: Config,
   runId: string,
+  signal: AbortSignal,
 ): Promise<void> {
+  throwIfAborted(signal);
   await insertEvent(db, runId, "runner_smoke_started", {
     runner_id: config.runnerId,
     source: "ega_runner",
   });
   await sleep(Math.min(config.heartbeatSeconds, 1) * 1_000);
+  throwIfAborted(signal);
   const cancelled = await cancelRun(db, runId, config.runnerId, "SMOKE_TEST_CLEANUP");
   if (!cancelled) throw new Error("Smoke cleanup could not persist cancellation");
   await insertEvent(db, runId, "runner_smoke_completed", {
@@ -259,10 +261,17 @@ async function archiveDurably(
 function requestShutdown(signal: string): void {
   if (shuttingDown) process.exit(1);
   shuttingDown = true;
+  activeController?.abort(new Error(`Runner shutdown requested by ${signal}`));
   console.log(
     `[ega-runner] ${signal} received; no new work will be claimed` +
-    (activeRun ? `; active run ${activeRun.runId} will be recovered through VT/lease semantics` : ""),
+    (activeRun ? `; active run ${activeRun.runId} is being interrupted and will recover through VT/lease semantics` : ""),
   );
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (!signal.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new Error(signal.reason ? String(signal.reason) : "Execution aborted");
 }
 
 function sleep(ms: number): Promise<void> {
