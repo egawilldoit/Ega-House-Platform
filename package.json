@@ -20,7 +20,9 @@
     "sonar:export-reliability": "node scripts/export-sonar-reliability-issues.mjs",
     "test:agent-context": "node --test scripts/agent/validate-agent-context.test.mjs",
     "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
-    "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs"
+    "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
+    "typecheck:ega-runner": "tsc --noEmit -p scripts/ega-runner/tsconfig.json",
+    "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-contract.test.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.49.0",
