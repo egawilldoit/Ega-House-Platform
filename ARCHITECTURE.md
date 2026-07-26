@@ -16,18 +16,16 @@ Use the **current-behavior evidence** hierarchy to determine what is implemented
 | Expo mobile app | CURRENT/PARTIAL | Mobile task/today experiences | `apps/mobile` |
 | Supabase/Postgres | CURRENT | Durable product data | Versioned schema/migrations plus deployed Supabase evidence when available |
 | Agent task-control API | CURRENT | Scoped external task/project/goal access | `src/app/api/agent`, `src/lib/services/agent-task-service.ts` |
-| Automation schema | PARTIAL/EXTERNAL_UNVERIFIED | Run, event, artifact, and webhook records | Deployed `automation.*`; only additive compatibility migration is versioned |
-| PGMQ | PARTIAL | Pending implementation work | `hermes_implementation_jobs` queue and Runner queue adapter |
-| EGA Runner | PARTIAL | Claim, lease, worktree, Hermes, Git, push, PR attempt | `scripts/ega-runner/src` |
-| Hermes CLI | PARTIAL | Generate and commit scoped code in a Runner worktree | `hermes-executor.ts`; repository skill discovery remains environment-dependent |
-| GitHub sync | PARTIAL | Push, commit status, PR attempt | `github.ts`; terminal proof is incomplete |
-| Vercel sync | SCAFFOLDED | Verify deployment by SHA | Adapter exists but is not called by Runner completion |
-| Slack | CURRENT reporting | Start/failure/completion and PR readiness notifications | Notification code and workflow; never workflow truth |
-| Reconciliation | ABSENT | Repair partial side effects and stale attempts | No canonical engine |
+| Automation schema | PARTIAL/EXTERNAL_UNVERIFIED | Run, event, artifact, webhook, PR-monitor, and repair records | `drizzle/0035_*`, `drizzle/0036_*`; deployed state still requires proof |
+| PGMQ | PARTIAL | Pending implementation work | `hermes_implementation_jobs` and Runner queue adapter |
+| EGA Runner | CURRENT/PARTIAL | Claim, lease, worktree, Hermes, validation, push, PR, monitor, repair | `scripts/ega-runner/src` |
+| Hermes CLI | PARTIAL | Generate and commit scoped code in Runner-owned worktrees | `hermes-executor.ts`, `repair-loop.ts`; deployed skill discovery remains environment-dependent |
+| GitHub sync | CURRENT/PARTIAL | Verified PR identity, checks, reviews, merge readiness | `github.ts`, `pr-monitor.ts` |
+| Vercel sync | PARTIAL | Optional exact-SHA preview gate | `vercel.ts`, `pr-monitor.ts` |
+| Slack | CURRENT reporting | Threaded human-readable projections | `notify.ts`; never workflow truth |
+| Reconciliation | ABSENT | Repair partial side effects and stale attempts | No canonical reconciliation engine |
 
 ## Product architecture
-
-The primary shipped product is the productivity platform:
 
 ```text
 Browser / Expo client
@@ -36,71 +34,67 @@ Browser / Expo client
 → Supabase/Postgres
 ```
 
-The web schema in `src/db/schema.ts` covers projects, goals, tasks, calendar synchronization, agent integration audit records, external task references, and related product entities. The mobile app consumes dedicated mobile API contracts.
-
-## Autonomous delivery target
+## Autonomous delivery graph
 
 ```text
-Authorized Linear issue
+ChatGPT planning
+→ authorized Linear issue
 → authenticated webhook
-→ durable automation run
-→ PGMQ message
+→ durable automation run + PGMQ
 → Runner claim + lease
-→ isolated attempt/worktree
-→ Hermes execution
-→ independent Git verification
-→ branch push
-→ GitHub PR
-→ required checks
-→ Vercel preview
-→ human review/merge
+→ isolated worktree
+→ Hermes implementation
+→ independent scope/commit/command validation
+→ verified push and PR
+→ GitHub check/review monitor
+→ bounded Hermes repair ↺
+→ preview gate when configured
+→ human approval and merge
 → deployment synchronization
-→ durable completion evidence
-→ Slack reporting
 → reconciliation
 ```
 
 ### Current evidence classification
 
-- CURRENT/PARTIAL: queue read, atomic claim, DB lease, queue visibility renewal, event persistence.
-- CURRENT/PARTIAL: deterministic branch/path calculation, worktree creation, Hermes process invocation, result-file parsing, changed-path and commit verification.
-- CURRENT/PARTIAL: branch push, pushed-SHA comparison, commit status, PR creation attempt.
-- SCAFFOLDED: check polling and Vercel verification functions.
-- EXTERNAL_UNVERIFIED: signed webhook and complete automation schema because the repository only contains an additive compatibility migration.
-- EXTERNAL_UNVERIFIED: Hermes repository-skill visibility for the deployed Runner profile until the repository preflight succeeds under that service user.
-- ABSENT: durable attempt aggregate separate from run rows, automatic stale-attempt recovery, reconciliation, and proven production deployment synchronization.
+- CURRENT/PARTIAL: queue read, atomic claim, leases, visibility renewal, events.
+- CURRENT/PARTIAL: Linear context, deterministic scope/context, worktree, Hermes execution, result parsing.
+- CURRENT/PARTIAL: Runner-owned scope, commit, command, push, remote-SHA, and strict PR verification.
+- CURRENT/PARTIAL: polling-based PR check/review observation and bounded repair attempts.
+- PARTIAL: exact-SHA Vercel preview verification is integrated as an optional gate, not yet live-proven.
+- EXTERNAL_UNVERIFIED: webhook ingress and deployed automation schema.
+- EXTERNAL_UNVERIFIED: Hermes repository-skill visibility under the VM service profile.
+- ABSENT: automatic stale-attempt creation, canonical cross-system reconciliation, and proven production deployment synchronization.
 
-## Dependency and state direction
+## State and authority direction
 
 ```text
 Linear / webhook producer
         ↓
-automation.implementation_runs + events/artifacts ← PGMQ pending work
+automation.implementation_runs + events ← PGMQ implementation messages
         ↓
-EGA Runner (temporary owner through claimed_by + lease)
+EGA Runner temporary execution ownership
         ↓
-worktree → Hermes → Git verification → GitHub
-                                 ↓
-                         Vercel / human merge
-                                 ↓
-                     durable synchronization (incomplete)
+worktree → Hermes → Runner verification → GitHub PR
+                                      ↓
+                         checks / reviews / Vercel
+                                      ↓
+                         human merge by default
+                                      ↓
+                    deployment sync (incomplete)
 
 Slack receives projections; it does not own state.
 ```
 
-The Runner may update an owned run, but every terminal or external action must remain conditional on current ownership and durable evidence. Existing code does not yet enforce every part of this normative rule.
+## Known implementation conflicts and limits
 
-## Known implementation conflicts
-
-1. `main.ts` can mark a run completed even when PR creation returns no PR.
-2. Check waiting and Vercel verification are scaffolded but not part of the terminal path.
-3. Existing worktree creation force-resets branches and adds worktrees with `--force`, conflicting with stale-attempt isolation.
-4. Linear project authorization is not proven because the current adapter hardcodes the project check.
-5. The Hermes prompt asks Hermes to create a PR while the Runner also attempts PR creation.
-6. The Runner invocation does not itself prove that repository-local skills are visible to Hermes.
-7. No reconciliation service repairs partial GitHub, Vercel, Linear, or Slack effects.
-
-These are defects or unresolved decisions relative to the normative contracts. This PR documents them; it does not repair unrelated Runner runtime behavior.
+1. Worktree creation still contains legacy force-reset/`--force` behavior and needs separate stale-attempt hardening.
+2. Linear project authorization is not fully proven by deployed evidence.
+3. The initial Hermes prompt still contains legacy PR-authoring language; the Runner now verifies/reuses the exact PR, but Runner-only PR ownership should be completed.
+4. Hermes repository skill discovery is not proven until preflight succeeds as the VM service user.
+5. Automated repair depends on the persisted isolated worktree remaining available.
+6. Lease-loss detection does not yet actively interrupt every in-flight subprocess and side effect.
+7. No reconciliation engine repairs partial GitHub, Vercel, Linear, or Slack effects after process failure.
+8. Repository implementation and focused local checks do not equal live VM E2E proof.
 
 ## Deeper documents
 

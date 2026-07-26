@@ -1,125 +1,151 @@
 # EGA Runner
 
-The EGA Runner is a **partially implemented** durable PGMQ consumer for the EGA House autonomous-delivery pipeline. It provides a meaningful queue-to-GitHub vertical slice, but it does not prove the full webhook → checks → Vercel preview → merge → deployment lifecycle.
-
-Read the repository-wide authority first:
-
-- [`../../AGENTS.md`](../../AGENTS.md)
-- [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)
-- [`../../docs/agent-context/product-authority.md`](../../docs/agent-context/product-authority.md)
-- [`../../docs/architecture/delivery-lifecycle.md`](../../docs/architecture/delivery-lifecycle.md)
-- [`../../docs/architecture/queue-and-leases.md`](../../docs/architecture/queue-and-leases.md)
-- [`../../docs/architecture/runner-and-worktrees.md`](../../docs/architecture/runner-and-worktrees.md)
-- [`../../docs/architecture/hermes-execution.md`](../../docs/architecture/hermes-execution.md)
-
-## Current execution path
+Durable worker for the EGA House governed implementation loop.
 
 ```text
-PGMQ message
-→ classify and atomically claim automation.implementation_runs
-→ establish DB lease and queue visibility timeout
-→ resolve Linear issue/parent context
-→ recheck current authorization logic
-→ extract authorized paths
-→ pin base SHA and create branch/worktree
-→ invoke Hermes CLI
-→ preserve stdout/stderr/result artifacts
-→ verify actual changed paths and implementation commit
-→ push branch and compare remote SHA
-→ publish commit status
-→ attempt GitHub PR creation
-→ persist evidence and current run terminal state
-→ report to Slack
-→ archive eligible queue message
+Linear authorization
+→ signed webhook / durable run
+→ PGMQ message
+→ Runner claim + lease
+→ isolated worktree
+→ Hermes implementation
+→ Runner-owned scope, commit, and command validation
+→ verified branch push
+→ verified GitHub PR
+→ PR/check/review/preview monitor
+→ bounded Hermes repair loop
+→ READY_TO_MERGE
+→ human merge by default
 ```
 
-## Implemented current behavior
+The Runner is the orchestration and evidence authority. Hermes edits code inside the authorized worktree; Hermes does not decide whether delivery succeeded.
 
-- `pgmq.read()` with visibility timeout.
-- Explicit claim outcomes and atomic queued → preparing claim.
-- DB lease plus PGMQ visibility heartbeat.
-- Event persistence in `automation.implementation_events`.
-- Real Linear GraphQL lookup when `LINEAR_API_KEY` is configured; bounded mock mode for test/development.
-- Authorized-path extraction and scope enforcement.
-- Deterministic branch/worktree identifiers.
-- Bounded Hermes CLI execution and result-file recovery.
-- Actual changed-file, Git ancestry, commit, push, and remote-SHA verification.
-- GitHub commit status and PR creation attempt.
-- Local evidence directory and manifest.
-- Slack operational reporting.
+## Durable graph
 
-## Known current gaps
-
-- PR existence is not a prerequisite for the current `completed` database state.
-- `waitForChecks()` and `verifyVercelDeployment()` are not called by the terminal path.
-- Reported validations are not independently rerun by Runner.
-- Lease/heartbeat loss does not immediately terminate Hermes or fence every side effect.
-- Existing branches can be force-reset and worktrees are added with `--force`.
-- Linear project membership is hardcoded and blocker semantics are not proven against blocked-by relations.
-- Existing PR lookup/idempotent PR synchronization is absent.
-- Reconciliation, dead-letter policy, and automatic stale-attempt recovery are absent.
-- The complete automation base schema and signed webhook are not fully versioned here.
-- The deployed Runner profile has not yet proven repository-local Hermes skill visibility.
-
-Treat `automation.implementation_runs.status='completed'` as current Runner-path completion, not proof of PR/check/preview/merge/deployment completion.
-
-## Hermes skill preflight
-
-Hermes repository skill discovery is environment-dependent. Before operating the Runner, execute the read-only preflight under the same service user, environment, and working directory:
-
-```bash
-cd /absolute/path/to/Ega-House-Platform
-npm run preflight:hermes-skills
+```text
+queued
+→ preparing
+→ running
+→ pr_open
+→ repairing ↺
+→ awaiting_review
+→ ready_to_merge
+→ merged
 ```
 
-When external discovery is required, configure the same service user's `~/.hermes/config.yaml`:
+Failure/stop states:
 
-```yaml
-skills:
-  external_dirs:
-    - /absolute/path/to/Ega-House-Platform/.agents/skills
+```text
+validation_failed
+pr_failed
+needs_human
+failed
+cancelled
+stale
 ```
 
-Do not commit or print the rest of that user-global configuration. Local same-name Hermes skills shadow repository external skills; the preflight treats that as unverified.
+A run is never marked successful merely because Hermes exits with code `0`. A verified PR is required before `pr_open` is persisted. PR creation or identity verification failure produces `pr_failed` and the queue message is archived only after that durable failure is recorded.
 
-## Commands
+## Implementation path
+
+The queue-driven path performs:
+
+1. Atomic run claim and coordinated database/PGMQ leases.
+2. Real Linear issue and parent-Spec resolution.
+3. Exact authorized-path extraction.
+4. Deterministic context hash, branch, and worktree.
+5. Bounded Hermes execution with YOLO disabled.
+6. Structured result validation.
+7. Independent scope and Git commit verification.
+8. Runner-owned validation commands.
+9. Branch push and remote SHA verification.
+10. Idempotent PR create-or-reuse and exact head/base verification.
+11. Durable `pr_open` transition and queue archival.
+
+## PR monitor and repair
+
+The same Runner process polls due runs in `pr_open`, `awaiting_review`, and `ready_to_merge`.
+
+It observes:
+
+- exact PR branch and head SHA;
+- GitHub check runs and commit statuses;
+- bounded failed-workflow log excerpts;
+- review decision and unresolved review threads;
+- exact-SHA Vercel preview when required.
+
+A failed check or new actionable review finding starts one bounded repair attempt. Hermes receives only the failed evidence, unresolved review context, authorized paths, and validation commands. The Runner then verifies the new commit, scope, validation, push, and remote SHA.
+
+Failed repair attempts preserve evidence and reset the isolated worktree to the observed PR head before retrying. The default limit is three attempts. Exhaustion, history rewrite, external branch mutation, review pagination beyond the bounded inspection limit, or merge conflict produces `needs_human`.
+
+Old unresolved comments that already triggered a repair are not repeatedly sent to Hermes. They remain a merge blocker until a reviewer resolves or supersedes them.
+
+## Start
 
 ```bash
 cd scripts/ega-runner
-npm ci
-npm run typecheck
 npm start
 ```
 
-Smoke mode mutates approved test records and requires a disposable Postgres/PGMQ environment:
+Smoke mode:
 
 ```bash
-cd scripts/ega-runner
 npm run smoke
 ```
 
-## Required environment
+Focused validation:
 
-- `DATABASE_URL`: Postgres with deployed `automation.*` tables and PGMQ queue.
-- `LINEAR_API_KEY`: required for real-issue context resolution.
-- Hermes CLI available on `PATH` with successful repository-skill preflight.
-- Authenticated `gh` CLI and configured Git remote.
-- Optional reporting/integration credentials such as Slack and Vercel tokens.
+```bash
+npm run typecheck
+npm run test:pr-loop
+```
 
-See `src/config.ts` for variable names and defaults. Do not copy secret values into documentation, logs, prompts, or evidence.
+From the repository root:
 
-## Queue and ownership invariants
+```bash
+npm run typecheck:ega-runner
+npm run test:ega-runner-pr-loop
+```
 
-- Never introduce executable `pgmq.pop()` calls.
-- Preserve work on ambiguity, exception, claim race, or inconsistent state.
-- Archive only after the relevant durable classification is persisted.
-- Treat `claimed_by` and `lease_expires_at` as temporary ownership.
-- Do not perform new side effects after ownership is uncertain.
-- Do not work on `main`.
-- Do not trust Hermes prose, exit status, or result JSON as proof.
-- Do not reuse or force-reset stale branches/worktrees; current code violates this rule.
-- Do not claim end-to-end delivery success without required PR, checks, preview, and durable evidence.
+## Required configuration
 
-## Validation
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | required | Postgres/PGMQ connection |
+| `LINEAR_API_KEY` | required in production | Resolve the authorized issue contract |
+| `EGA_RUNNER_REPO_ROOT` | repository root | Authoritative local clone |
+| `EGA_RUNNER_QUEUE_NAME` | `hermes_implementation_jobs` | PGMQ queue |
+| `EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS` | `300` | Initial queue visibility timeout |
+| `EGA_RUNNER_HEARTBEAT_SECONDS` | `60` | DB and queue heartbeat |
+| `EGA_RUNNER_LEASE_SECONDS` | `300` | Run ownership lease |
+| `EGA_RUNNER_MAX_TURNS` | `50` | Initial Hermes turn limit |
+| `EGA_RUNNER_REPAIR_MAX_TURNS` | `25` | Repair turn limit |
+| `EGA_RUNNER_MAX_REPAIR_ATTEMPTS` | `3` | Bounded repair attempts |
+| `EGA_RUNNER_PR_MONITOR_INTERVAL_SECONDS` | `60` | PR polling interval |
+| `EGA_RUNNER_PR_MONITOR_BATCH_SIZE` | `5` | Due PRs per loop |
+| `EGA_RUNNER_REQUIRE_VERCEL_PREVIEW` | `false` | Require exact-SHA READY preview |
+| `EGA_RUNNER_AUTO_MERGE` | `false` | Request GitHub auto-merge only after readiness |
+| `EGA_RUNNER_SLACK_CHANNEL` | `#hermes-today` | Notification channel |
 
-Use the Runner matrix in [`../../docs/agent-context/testing-and-validation.md`](../../docs/agent-context/testing-and-validation.md). Static validation does not prove a production-style delivery.
+The VM also requires Git, authenticated `gh`, Hermes, Node.js 20+, and the database migration `0036_runner_pr_watch_repair_graph`.
+
+## Safety invariants
+
+- Never execute destructive `pgmq.pop()`; use `read → set_vt → archive`.
+- Never work directly on `main`.
+- Never trust Hermes prose, exit status, validation claims, branch, or commit without independent proof.
+- Never mark a queue run complete without a verified PR.
+- Never treat Slack as workflow truth.
+- Never auto-merge by default.
+- External mutation of the owned PR branch fails closed to `needs_human`.
+- A repair may modify only the original authorized paths.
+
+## Current limitations
+
+- The monitor is polling-based rather than GitHub-webhook-driven.
+- Human approval and repository branch protection remain external GitHub controls.
+- The persisted worktree must remain available for automated repair.
+- Stale-attempt creation and cross-system reconciliation are not yet implemented.
+- Worktree creation still contains legacy force-reuse behavior that requires a separate hardening change.
+- The initial Hermes prompt still contains legacy PR-authoring language; strict Runner PR verification limits the impact, but Runner-only PR ownership should be completed separately.
+- Live Linear, PGMQ, Hermes, GitHub, Vercel, and Slack execution must still be proven on the VM.

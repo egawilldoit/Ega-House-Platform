@@ -1,6 +1,6 @@
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { hostname } from "node:os";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -8,131 +8,84 @@ const PROJECT_ROOT = resolve(__dirname, "..", "..", "..");
 const LOCAL_ENV_PATH = resolve(PROJECT_ROOT, ".env.local");
 
 export interface Config {
-  /** Postgres connection string */
   databaseUrl: string;
-
-  /** Unique identity for this runner instance */
   runnerId: string;
-
-  /** pgmq queue name */
   queueName: string;
-
-  /** Seconds to wait between poll cycles when queue is empty */
   pollSeconds: number;
-
-  /** Initial visibility timeout for queue messages (seconds) */
   visibilityTimeoutSeconds: number;
-
-  /** Interval between heartbeats (seconds) */
   heartbeatSeconds: number;
-
-  /** Duration of the execution lease (seconds) */
   leaseSeconds: number;
-
-  /** When true, stop after first completed smoke cycle */
   smokeMode: boolean;
-
-  /** Maximum Hermes execution turns */
   maxTurns: number;
-
-  /** Hermes execution timeout (ms) */
+  repairMaxTurns: number;
   hermesTimeoutMs: number;
-
-  /** Slack channel for notifications */
   slackChannel: string;
+  repoRoot: string;
+  prMonitorIntervalSeconds: number;
+  prMonitorBatchSize: number;
+  maxRepairAttempts: number;
+  requireVercelPreview: boolean;
+  autoMerge: boolean;
 }
 
-function loadEnvFile(path: string): Record<string, string> {
-  const vars: Record<string, string> = {};
-
-  if (!existsSync(path)) {
-    return vars;
-  }
-
-  const content = readFileSync(path, "utf8");
-  for (const line of content.split("\n")) {
+function loadEnvFile(filePath: string): Record<string, string> {
+  if (!existsSync(filePath)) return {};
+  const values: Record<string, string> = {};
+  for (const line of readFileSync(filePath, "utf8").split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) continue;
-    const eqIdx = trimmed.indexOf("=");
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const value = trimmed.slice(eqIdx + 1).trim();
-    if (key && value) {
-      vars[key] = value;
-    }
+    const separator = trimmed.indexOf("=");
+    if (separator < 1) continue;
+    const key = trimmed.slice(0, separator).trim();
+    const value = trimmed.slice(separator + 1).trim();
+    if (key) values[key] = value;
   }
+  return values;
+}
 
-  return vars;
+function positiveInt(env: Record<string, string | undefined>, key: string, fallback: number): number {
+  const parsed = Number.parseInt(env[key] ?? String(fallback), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${key} must be a positive integer`);
+  }
+  return parsed;
 }
 
 export function loadConfig(): Config {
-  const env: Record<string, string | undefined> = {
-    ...loadEnvFile(LOCAL_ENV_PATH),
-    ...process.env,
-  };
+  const env: Record<string, string | undefined> = { ...loadEnvFile(LOCAL_ENV_PATH), ...process.env };
+  const databaseUrl = env.DATABASE_URL;
+  if (!databaseUrl) throw new Error("DATABASE_URL is required");
 
-  const databaseUrl = env["DATABASE_URL"] as string | undefined;
-  if (!databaseUrl) {
-    console.error("FATAL: DATABASE_URL is required");
-    process.exit(1);
-  }
-
-  const runnerId =
-    (env["EGA_RUNNER_ID"] as string | undefined) || `ega-runner-${hostname()}-${process.pid}`;
-
-  const queueName = (env["EGA_RUNNER_QUEUE_NAME"] as string | undefined) || "hermes_implementation_jobs";
-  const pollSeconds = parseInt(env["EGA_RUNNER_POLL_SECONDS"] as string || "10", 10);
-  const visibilityTimeoutSeconds = parseInt(
-    (env["EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS"] as string) || "300",
-    10,
-  );
-  const heartbeatSeconds = parseInt(
-    (env["EGA_RUNNER_HEARTBEAT_SECONDS"] as string) || "60",
-    10,
-  );
-  const leaseSeconds = parseInt(
-    (env["EGA_RUNNER_LEASE_SECONDS"] as string) || "300",
-    10,
-  );
-  const smokeMode = (env["EGA_RUNNER_SMOKE_MODE"] as string | undefined) === "true";
-  const maxTurns = parseInt(
-    (env["EGA_RUNNER_MAX_TURNS"] as string) || "50",
-    10,
-  );
-  const hermesTimeoutMs = parseInt(
-    (env["EGA_RUNNER_HERMES_TIMEOUT_MS"] as string) || "1800000",
-    10,
-  );
-  const slackChannel =
-    (env["EGA_RUNNER_SLACK_CHANNEL"] as string | undefined) || "#hermes-today";
-
-  if (heartbeatSeconds >= visibilityTimeoutSeconds) {
-    console.error(
-      `FATAL: EGA_RUNNER_HEARTBEAT_SECONDS (${heartbeatSeconds}) must be less than EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS (${visibilityTimeoutSeconds})`,
-    );
-    process.exit(1);
+  const visibilityTimeoutSeconds = positiveInt(env, "EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS", 300);
+  const heartbeatSeconds = positiveInt(env, "EGA_RUNNER_HEARTBEAT_SECONDS", 60);
+  const leaseSeconds = positiveInt(env, "EGA_RUNNER_LEASE_SECONDS", 300);
+  if (heartbeatSeconds >= visibilityTimeoutSeconds || heartbeatSeconds >= leaseSeconds) {
+    throw new Error("EGA_RUNNER_HEARTBEAT_SECONDS must be lower than both VT and lease duration");
   }
 
   return {
-    databaseUrl: databaseUrl as string,
-    runnerId,
-    queueName,
-    pollSeconds,
+    databaseUrl,
+    runnerId: env.EGA_RUNNER_ID ?? `ega-runner-${hostname()}-${process.pid}`,
+    queueName: env.EGA_RUNNER_QUEUE_NAME ?? "hermes_implementation_jobs",
+    pollSeconds: positiveInt(env, "EGA_RUNNER_POLL_SECONDS", 10),
     visibilityTimeoutSeconds,
     heartbeatSeconds,
     leaseSeconds,
-    smokeMode,
-    maxTurns,
-    hermesTimeoutMs,
-    slackChannel,
+    smokeMode: env.EGA_RUNNER_SMOKE_MODE === "true",
+    maxTurns: positiveInt(env, "EGA_RUNNER_MAX_TURNS", 50),
+    repairMaxTurns: positiveInt(env, "EGA_RUNNER_REPAIR_MAX_TURNS", 25),
+    hermesTimeoutMs: positiveInt(env, "EGA_RUNNER_HERMES_TIMEOUT_MS", 1_800_000),
+    slackChannel: env.EGA_RUNNER_SLACK_CHANNEL ?? "#hermes-today",
+    repoRoot: resolve(env.EGA_RUNNER_REPO_ROOT ?? PROJECT_ROOT),
+    prMonitorIntervalSeconds: positiveInt(env, "EGA_RUNNER_PR_MONITOR_INTERVAL_SECONDS", 60),
+    prMonitorBatchSize: positiveInt(env, "EGA_RUNNER_PR_MONITOR_BATCH_SIZE", 5),
+    maxRepairAttempts: positiveInt(env, "EGA_RUNNER_MAX_REPAIR_ATTEMPTS", 3),
+    requireVercelPreview: env.EGA_RUNNER_REQUIRE_VERCEL_PREVIEW === "true",
+    autoMerge: env.EGA_RUNNER_AUTO_MERGE === "true",
   };
 }
 
-// Print known variable names only — never values
 export function printConfigVariables(): void {
-  console.log("Configuration sources:");
-  console.log("  .env.local expected at:", LOCAL_ENV_PATH);
-  console.log(
-    "  Expected vars: DATABASE_URL, EGA_RUNNER_ID (optional), EGA_RUNNER_QUEUE_NAME (optional), etc.",
-  );
+  console.log("Configuration file:", LOCAL_ENV_PATH);
+  console.log("Known variables: DATABASE_URL, EGA_RUNNER_*, LINEAR_API_KEY, VERCEL_TOKEN, SLACK_BOT_TOKEN");
 }
