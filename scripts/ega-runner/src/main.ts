@@ -186,19 +186,19 @@ async function withHeartbeat<T>(
   const controller = new AbortController();
   activeController = controller;
   let heartbeatFailure: Error | null = null;
-  let stopped = false;
+  const heartbeatController = new AbortController();
 
   const captureFailure = (error: unknown): void => {
-    if (stopped || controller.signal.aborted) return;
+    if (heartbeatController.signal.aborted || controller.signal.aborted) return;
     heartbeatFailure = error instanceof Error ? error : new Error(String(error));
     controller.abort(heartbeatFailure);
   };
 
   const beat = async (): Promise<void> => {
-    if (stopped || controller.signal.aborted || shuttingDown) return;
+    if (heartbeatController.signal.aborted || controller.signal.aborted || shuttingDown) return;
     try {
       const lease = await extendLease(db, runId, config.runnerId, config.leaseSeconds);
-      if (stopped || controller.signal.aborted || shuttingDown) return;
+      if (heartbeatController.signal.aborted || controller.signal.aborted || shuttingDown) return;
       if (!lease.ok) {
         captureFailure(new Error(lease.reason ?? "Execution lease lost"));
         return;
@@ -223,7 +223,7 @@ async function withHeartbeat<T>(
     }
     return result;
   } finally {
-    stopped = true;
+    heartbeatController.abort();
     clearInterval(timer);
     if (activeController === controller) activeController = null;
   }
