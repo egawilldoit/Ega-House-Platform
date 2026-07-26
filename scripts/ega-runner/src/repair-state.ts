@@ -67,7 +67,7 @@ export async function persistPostPushFailure(
   db: postgres.Sql<{}>,
   config: Config,
   run: RepairRunRecord,
-  attemptNumber: number;
+  attemptNumber: number,
   pushedHead: string,
   reason: string,
 ): Promise<RepairOutcome> {
