@@ -85,6 +85,7 @@ async function pollImplementationQueue(
   db: postgres.Sql<{}>,
   config: Config,
 ): Promise<void> {
+  if (shuttingDown) return;
   const message = await readMessage(db, config.queueName, config.visibilityTimeoutSeconds);
   if (!message) {
     if (config.smokeMode) shuttingDown = true;
@@ -179,31 +180,37 @@ async function withHeartbeat<T>(
   runId: string,
   work: () => Promise<T>,
 ): Promise<T> {
-  let stopped = false;
+  const controller = new AbortController();
   let heartbeatFailure: Error | null = null;
 
+  const captureFailure = (error: unknown): void => {
+    if (controller.signal.aborted || shuttingDown) return;
+    heartbeatFailure = error instanceof Error ? error : new Error(String(error));
+  };
+
   const beat = async (): Promise<void> => {
-    if (stopped || shuttingDown) return;
-    const lease = await extendLease(db, runId, config.runnerId, config.leaseSeconds);
-    if (stopped || shuttingDown) return;
-    if (!lease.ok) {
-      heartbeatFailure = new Error(lease.reason ?? "Execution lease lost");
-      return;
-    }
-    if (activeRun) {
-      try {
-        await setVisibilityTimeout(db, config.queueName, activeRun.msgId, config.visibilityTimeoutSeconds);
-      } catch (error) {
-        if (stopped || shuttingDown) return;
-        heartbeatFailure = error instanceof Error ? error : new Error(String(error));
+    if (controller.signal.aborted || shuttingDown) return;
+    try {
+      const lease = await extendLease(db, runId, config.runnerId, config.leaseSeconds);
+      if (controller.signal.aborted || shuttingDown) return;
+      if (!lease.ok) {
+        captureFailure(new Error(lease.reason ?? "Execution lease lost"));
+        return;
       }
+      if (activeRun) {
+        await setVisibilityTimeout(db, config.queueName, activeRun.msgId, config.visibilityTimeoutSeconds);
+      }
+    } catch (error) {
+      captureFailure(error);
     }
   };
 
-  const timer = setInterval(() => void beat(), config.heartbeatSeconds * 1_000);
+  const timer = setInterval(() => {
+    void beat();
+  }, config.heartbeatSeconds * 1_000);
   try {
     const result = await work();
-    stopped = true;
+    controller.abort();
     if (heartbeatFailure) {
       const rows = await db`
         SELECT status, claimed_by
@@ -218,7 +225,7 @@ async function withHeartbeat<T>(
     }
     return result;
   } finally {
-    stopped = true;
+    controller.abort();
     clearInterval(timer);
   }
 }

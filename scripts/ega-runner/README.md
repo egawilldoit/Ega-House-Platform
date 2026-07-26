@@ -124,7 +124,7 @@ npm run test:ega-runner-pr-loop
 | `EGA_RUNNER_PR_MONITOR_INTERVAL_SECONDS` | `60` | PR polling interval |
 | `EGA_RUNNER_PR_MONITOR_BATCH_SIZE` | `5` | Due PRs per loop |
 | `EGA_RUNNER_REQUIRE_VERCEL_PREVIEW` | `false` | Require exact-SHA READY preview |
-| `EGA_RUNNER_AUTO_MERGE` | `false` | Request GitHub auto-merge only after readiness |
+| `EGA_RUNNER_AUTO_MERGE` | `false` | Request GitHub auto-merge only after readiness, pinned to the observed head SHA |
 | `EGA_RUNNER_SLACK_CHANNEL` | `#hermes-today` | Notification channel |
 
 The VM also requires Git, authenticated `gh`, Hermes, Node.js 20+, and the database migration `0036_runner_pr_watch_repair_graph`.
@@ -136,8 +136,11 @@ The VM also requires Git, authenticated `gh`, Hermes, Node.js 20+, and the datab
 - Never trust Hermes prose, exit status, validation claims, branch, or commit without independent proof.
 - Never mark a queue run complete without a verified PR.
 - Never treat Slack as workflow truth.
-- Never auto-merge by default.
+- Never auto-merge by default; when explicitly enabled, require the reviewed head SHA with `--match-head-commit`.
 - External mutation of the owned PR branch fails closed to `needs_human`.
+- GitHub checks and statuses are paginated and tracked by stable record identity before readiness is computed.
+- Monitor and repair transitions use compare-and-swap predicates on state and PR head.
+- Attempt branch/path collisions are rejected; stale work is never force-reset.
 - A repair may modify only the original authorized paths.
 
 ## Current limitations
@@ -146,6 +149,4 @@ The VM also requires Git, authenticated `gh`, Hermes, Node.js 20+, and the datab
 - Human approval and repository branch protection remain external GitHub controls.
 - The persisted worktree must remain available for automated repair.
 - Stale-attempt creation and cross-system reconciliation are not yet implemented.
-- Worktree creation still contains legacy force-reuse behavior that requires a separate hardening change.
-- The initial Hermes prompt still contains legacy PR-authoring language; strict Runner PR verification limits the impact, but Runner-only PR ownership should be completed separately.
 - Live Linear, PGMQ, Hermes, GitHub, Vercel, and Slack execution must still be proven on the VM.

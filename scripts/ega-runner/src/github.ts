@@ -16,6 +16,7 @@ export interface PRInfo {
 }
 
 export interface CheckRun {
+  id: string;
   name: string;
   status: string;
   conclusion: string | null;
@@ -291,7 +292,7 @@ export function createOrReusePR(
       created: false,
       prNumber: null,
       url: null,
-      error: (error instanceof Error ? error.message : String(error)).slice(0, 1000),
+      error: (error instanceof Error ? error.message : String(error)).slice(0, 1_000),
     };
   }
 }
@@ -304,7 +305,7 @@ export function createPR(
   title: string,
   body: string,
 ): { prNumber: number | null; url: string | null } {
-  const headSha = runGit(repoRoot, ["rev-parse", "HEAD"]);
+  const headSha = runGit(repoRoot, ["rev-parse", `refs/heads/${branchName}^{commit}`]);
   const result = createOrReusePR(repoRoot, branchName, baseBranch, headSha, title, body);
   return { prNumber: result.ok ? result.prNumber : null, url: result.ok ? result.url : null };
 }
@@ -318,17 +319,57 @@ export function updatePR(repoRoot: string, prNumber: number, body: string): bool
   }
 }
 
+function readAllCheckRuns(repoRoot: string, repo: string, commitSha: string): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  let expectedTotal: number | null = null;
+  for (let page = 1; page <= 100; page += 1) {
+    const raw = runGh(repoRoot, ["api", `repos/${repo}/commits/${commitSha}/check-runs?per_page=100&page=${page}`, "--Header", "Accept: application/vnd.github+json"]);
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const total = Number(data.total_count ?? 0);
+    const pageRows = (data.check_runs as Array<Record<string, unknown>> | undefined) ?? [];
+    if (expectedTotal === null) expectedTotal = total;
+    if (total !== expectedTotal) throw new Error("GitHub check-run total changed during pagination");
+    rows.push(...pageRows);
+    if (rows.length >= total) break;
+    if (pageRows.length === 0) throw new Error(`GitHub check-run pagination stopped at ${rows.length}/${total}`);
+  }
+  if (expectedTotal !== null && rows.length !== expectedTotal) {
+    throw new Error(`GitHub check-run pagination incomplete: ${rows.length}/${expectedTotal}`);
+  }
+  return rows;
+}
+
+function readAllCommitStatuses(repoRoot: string, repo: string, commitSha: string): Array<Record<string, unknown>> {
+  const rows: Array<Record<string, unknown>> = [];
+  let expectedTotal: number | null = null;
+  for (let page = 1; page <= 100; page += 1) {
+    const raw = runGh(repoRoot, ["api", `repos/${repo}/commits/${commitSha}/statuser?per_page=100&page=${page}`]);
+    const data = JSON.parse(raw) as Record<string, unknown>;
+    const total = Number(data.total_count ?? 0);
+    const pageRows = (data.statuses as Array<Record<string, unknown>> | undefined) ?? [];
+    if (expectedTotal === null) expectedTotal = total;
+    if (total !== expectedTotal) throw new Error("GitHub commit-status total changed during pagination");
+    rows.push(...pageRows);
+    if (rows.length >= total) break;
+    if (pageRows.length === 0) throw new Error(`GitHub commit-status pagination stopped at ${rows.length}/${total}`);
+  }
+  if (expectedTotal !== null && rows.length !== expectedTotal) {
+    throw new Error(`GitHub commit-status pagination incomplete: ${rows.length}/${expectedTotal}`);
+  }
+  return rows;
+}
+
 function readChecks(repoRoot: string, commitSha: string): CheckStatus {
   const repo = getRepoFullName(repoRoot);
   const checks: CheckRun[] = [];
 
-  const checkRunsRaw = runGh(repoRoot, [
-    "api",
-    `repos/${repo}/commits/${commitSha}/check-runs?per_page=100`,
-  ]);
-  const checkRunsData = JSON.parse(checkRunsRaw) as Record<string, unknown>;
-  for (const item of (checkRunsData.check_runs as Array<Record<string, unknown>> | undefined) ?? []) {
+  for (const item of readAllCheckRuns(repoRoot, repo, commitSha)) {
+    const id = String(item.id ?? "");
+    if (!id) throw new Error("GitHub check run is missing its stable ID");
+    const app = item.app as Record<string, unknown> | null | undefined;
+    const suite = item.check_suite as Record<string, unknown> | null | undefined;
     checks.push({
+      id: `check-run:${id}:${String(app?.id ?? "no-app")}:${String(suite?.id ?? "no-suite")}`,
       name: String(item.name ?? "unnamed-check"),
       status: String(item.status ?? "unknown"),
       conclusion: typeof item.conclusion === "string" ? item.conclusion : null,
@@ -338,13 +379,14 @@ function readChecks(repoRoot: string, commitSha: string): CheckStatus {
     });
   }
 
-  const statusRaw = runGh(repoRoot, ["api", `repos/${repo}/commits/${commitSha}/status`]);
-  const statusData = JSON.parse(statusRaw) as Record<string, unknown>;
-  for (const item of (statusData.statuses as Array<Record<string, unknown>> | undefined) ?? []) {
+  for (const item of readAllCommitStatuses(repoRoot, repo, commitSha)) {
     const context = String(item.context ?? "unnamed-status");
     if (context === "ega/hermes-pipeline") continue;
+    const id = String(item.id ?? "");
+    if (!id) throw new Error("GitHub commit status is missing its stable ID");
     const state = String(item.state ?? "pending");
     checks.push({
+      id: `commit-status:${id}`,
       name: context,
       status: state === "pending" ? "in_progress" : "completed",
       conclusion: state === "success" ? "success" : state === "pending" ? null : "failure",
@@ -354,9 +396,11 @@ function readChecks(repoRoot: string, commitSha: string): CheckStatus {
     });
   }
 
-  const deduplicated = [...new Map(checks.map((check) => [`${check.source}:${check.name}`, check])).values()];
+  const unique = [...new Map(checks.map((check) => [check.id, check])).values()];
+  if (unique.length !== checks.length) throw new Error("GitHub returned duplicate check/status IDs across pages");
+
   const diagnosticCache = new Map<string, string | null>();
-  for (const check of deduplicated) {
+  for (const check of unique) {
     if (check.status !== "completed" || ["success", "neutral", "skipped"].includes(check.conclusion ?? "")) continue;
     const runId = check.detailsUrl?.match(/\/actions\/runs\/(\d+)/)?.[1] ?? null;
     if (!runId) continue;
@@ -369,11 +413,11 @@ function readChecks(repoRoot: string, commitSha: string): CheckStatus {
     }
     check.diagnostic = diagnosticCache.get(runId) ?? null;
   }
-  const hasChecks = deduplicated.length > 0;
-  const allComplete = hasChecks && deduplicated.every((check) => check.status === "completed");
+  const hasChecks = unique.length > 0;
+  const allComplete = hasChecks && unique.every((check) => check.status === "completed");
   const acceptedConclusions = new Set(["success", "neutral", "skipped"]);
-  const allPassing = allComplete && deduplicated.every((check) => acceptedConclusions.has(check.conclusion ?? ""));
-  return { hasChecks, allComplete, allPassing, checks: deduplicated };
+  const allPassing = allComplete && unique.every((check) => acceptedConclusions.has(check.conclusion ?? ""));
+  return { hasChecks, allComplete, allPassing, checks: unique };
 }
 
 function readReviewThreads(repoRoot: string, prNumber: number): ReviewThread[] {
@@ -418,7 +462,7 @@ function readReviewThreads(repoRoot: string, prNumber: number): ReviewThread[] {
       path: typeof comment.path === "string" ? comment.path : null,
       body: typeof comment.body === "string" ? comment.body : "",
       url: typeof comment.url === "string" ? comment.url : null,
-      createdAt: typeof comment.createdAt === "string" ? comment.createdAt : null,
+      creatdAt: typeof comment.createdAt === "string" ? comment.createdAt : null,
     };
   });
   if (connection.pageInfo?.hasNextPage === true) {
@@ -481,10 +525,23 @@ export function requestReview(repoRoot: string, prNumber: number, reviewers: str
   }
 }
 
-export function mergePR(repoRoot: string, prNumber: number, autoMerge: boolean): boolean {
-  if (!autoMerge) return false;
+export function mergePR(
+  repoRoot: string,
+  prNumber: number,
+  autoMerge: boolean,
+  expectedHeadSha?: string,
+): boolean {
+  if (!autoMerge || !expectedHeadSha) return false;
   try {
-    runGh(repoRoot, ["pr", "merge", String(prNumber), "--merge", "--auto"]);
+    runGh(repoRoot, [
+      "pr",
+      "merge",
+      String(prNumber),
+      "--merge",
+      "--auto",
+      "--match-head-commit",
+      expectedHeadSha,
+    ]);
     return true;
   } catch {
     return false;

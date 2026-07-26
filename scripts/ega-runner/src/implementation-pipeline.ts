@@ -92,6 +92,18 @@ async function persistFailure(
   context: PipelineContext | null,
   slackThreadTs: string | null,
 ): Promise<PipelineOutcome> {
+  if (context) {
+    writeFailureSummary(context.evidenceDir, failureCode, message, context.attemptNumber);
+  }
+
+  await insertEvent(db, runId, "run_failed", {
+    final_status: status,
+    failure_code: failureCode,
+    error: message,
+    branch: context?.branchName ?? null,
+    source: "ega_runner",
+  });
+
   const rows = await db`
     UPDATE automation.implementation_runs
     SET status = ${status},
@@ -106,19 +118,14 @@ async function persistFailure(
     RETURNING id
   `;
   if (rows.length !== 1) {
-    throw new Error(`Failed to persist terminal state ${status} for run ${runId}`);
-  }
-
-  await insertEvent(db, runId, "run_failed", {
-    final_status: status,
-    failure_code: failureCode,
-    error: message,
-    branch: context?.branchName ?? null,
-    source: "ega_runner",
-  });
-
-  if (context) {
-    writeFailureSummary(context.evidenceDir, failureCode, message, context.attemptNumber);
+    const current = await db`
+      SELECT status, failure_code
+      FROM automation.implementation_runs
+      WHERE id = ${runId}::uuid
+    `;
+    if (String(current[0]?.status ?? "") !== status || String(current[0]?.failure_code ?? "") !== failureCode) {
+      throw new Error(`Failed to persist terminal state ${status} for run ${runId}`);
+    }
   }
 
   await postSlackNotification({
@@ -131,7 +138,7 @@ async function persistFailure(
     status: "failed",
     summary: `[${failureCode}] ${message}`,
     threadTs: slackThreadTs ?? undefined,
-  });
+  }).catch(() => undefined);
   return { archiveMessage: true, status };
 }
 
@@ -226,27 +233,23 @@ export async function executeImplementationRun(
         runId,
         "failed",
         "AUTHORIZED_SCOPE_MISSING",
-        "No explicit authorized paths were found in the Linear work contract",
+        "No authorized product files could be extracted from the LiRnear issue",
         null,
         slackThreadTs,
       );
     }
 
-    const evidenceDir = createEvidenceDir(
-      config.repoRoot,
-      contextResult.issue.identifier,
-      runId,
-      payload.attempt_number,
-    );
     worktree = createWorktree(
       config.repoRoot,
       payload.base_branch,
-      payload.linear_issue_identifier,
+      contextResult.issue.identifier,
       payload.attempt_number,
       runId,
     );
+
     const contextHash = computeContextHash(payload, contextResult.issue, contextResult.parent, allowedPaths, worktree.baseSha);
     const hermesRunId = `ega:${runId}:attempt:${payload.attempt_number}`;
+    const evidenceDir = createEvidenceDir(config.repoRoot, contextResult.issue.identifier, runId, payload.attempt_number);
     context = {
       runId,
       issueIdentifier: contextResult.issue.identifier,
@@ -268,13 +271,13 @@ export async function executeImplementationRun(
 
     const prepared = await db`
       UPDATE automation.implementation_runs
-      SET context_hash = ${context.contextHash},
+      SET parent_issue_id = ${contextResult.parent?.id ?? null},
+          parent_issue_identifier = ${contextResult.parent?.identifier ?? null},
+          context_hash = ${contextHash},
           base_sha = ${context.baseSha},
           branch_name = ${context.branchName},
           worktree_path = ${context.worktreePath},
           hermes_run_id = ${context.hermesRunId},
-          parent_issue_id = ${contextResult.parent?.id ?? null},
-          parent_issue_identifier = ${contextResult.parent?.identifier ?? null},
           project_slug = ${context.projectSlug},
           evidence_dir = ${context.evidenceDir},
           authorized_paths = ${JSON.stringify(context.allowedPaths)}::jsonb,
@@ -325,8 +328,16 @@ export async function executeImplementationRun(
       context.evidenceDir,
       hermesOutput.rawStdout,
       hermesOutput.rawStderr,
-      hermesOutput.recoveryAttempted,
+      false,
     );
+    if (hermesOutput.recoveryAttempted) {
+      artifacts.push(...preserveHermesOutput(
+        context.evidenceDir,
+        hermesOutput.recoveryStdout ?? "",
+        hermesOutput.recoveryStderr ?? "",
+        true,
+      ));
+    }
     await insertEvent(db, runId, "pipeline_hermes_exited", {
       exit_code: hermesOutput.exitCode,
       timed_out: hermesOutput.timedOut,

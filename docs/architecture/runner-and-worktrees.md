@@ -7,50 +7,58 @@ cd scripts/ega-runner
 npm start
 ```
 
-`src/main.ts` verifies the automation schema, installs signal handlers, polls one PGMQ message at a time, and executes either smoke or full-pipeline mode.
+`src/main.ts` verifies the automation schema, installs signal handlers, monitors durable PR states, and polls one PGMQ implementation message at a time.
 
 ## Attempt identity
 
-Current identifiers include:
+Each attempt uses:
 
-- durable run UUID,
-- `attempt_number` field on the run,
-- branch `hermes/<issue-identifier>-<attempt>`,
-- worktree `/tmp/ega-runner-worktrees/<run-id>/<attempt>`,
+- durable run UUID;
+- positive `attempt_number`;
+- branch `hermes/<issue-identifier>-<attempt>`;
+- worktree `/tmp/ega-runner-worktrees/<run-id>/<attempt>`;
 - Hermes correlation ID `ega:<run-id>:attempt:<attempt>`.
 
-The target invariant is one verified attempt → one branch → one worktree. A retry that needs new implementation work must use a new attempt identity.
+The enforced invariant is one attempt → one local branch → one worktree. A retry requiring a fresh implementation must use a new attempt identity.
 
 ## Current worktree behavior
 
-`worktree.ts`:
+`worktree.ts` now:
 
-1. fetches `origin`,
-2. pins `origin/<baseBranch>`,
-3. creates the deterministic branch,
-4. force-resets it when it already exists,
-5. creates a deterministic directory,
-6. runs `git worktree add --force`.
+1. validates the durable run/attempt identity;
+2. validates the queue-provided base branch with `git check-ref-format --branch`;
+3. calls Git only through `execFileSync` argument arrays;
+4. fetches `origin` and pins the exact remote base commit;
+5. rejects an existing attempt branch;
+6. rejects an existing attempt worktree path;
+7. creates the branch and worktree without force-reset or `git worktree add --force`;
+8. removes a partially created branch if worktree creation fails.
 
-Steps 4 and 6 violate stale-attempt isolation. Agents must not cite the comments “never reuse stale attempts” as enforced behavior.
+Queue values are never interpolated into shell commands. Existing branch/path collisions fail closed so stale evidence or user work is not overwritten.
 
-## Safe change requirements
+## Repair worktree behavior
 
-Before making worktree behavior production-reliable:
+Automated PR repairs use the same persisted worktree and branch only when both still match the stored PR head. Before resetting a rejected repair, the Runner preserves:
 
-- Reject `main`/protected target branches for implementation.
-- Refuse an existing branch unless it is proven to belong to the same untouched attempt.
-- Refuse an existing worktree/path unless ownership and Git state match the persisted attempt.
-- Never force-reset a branch that may contain evidence or user work.
-- Persist base SHA, branch, path, and owner before invoking Hermes.
-- Recheck ownership before push, PR creation, terminal transition, and cleanup.
-- Cleanup only after evidence is copied and the branch/worktree is safe to remove.
-- Preserve failed/stale evidence for reconciliation.
+- tracked/committed binary diff;
+- product status;
+- bounded untracked-file inventory and contents;
+- Hermes output and validation evidence.
+
+Every rejected repair is reset to the previously observed PR head, including exhausted or human-escalated attempts. Once a repair commit reaches the remote, the Runner never resets it locally as though the push did not happen; post-push persistence failures move to reconciliation-required human review.
+
+## Remaining safe-change requirements
+
+- Reject protected implementation targets through project/branch policy, not only naming validation.
+- Persist explicit worktree ownership metadata if multiple Runner hosts are introduced.
+- Recheck ownership before every destructive cleanup.
+- Add automatic stale-attempt creation and reconciliation.
+- Keep failed/stale evidence until retention policy authorizes removal.
 
 ## Shutdown and lease loss
 
-SIGINT/SIGTERM stops new polling and leaves the queue message to reappear. Hermes runs in a detached process group and can be killed on timeout. Current lease-loss handling does not immediately kill the process; treat immediate cancellation and side-effect fencing as required follow-up work.
+SIGINT/SIGTERM prevents new queue claims. Hermes runs in a detached process group and is terminated on timeout. Current lease-loss detection is checked before queue archival, but it does not yet actively interrupt every in-flight subprocess and external side effect; immediate cancellation/fencing remains follow-up work.
 
 ## Validation
 
-Use the commands in [`../agent-context/testing-and-validation.md`](../agent-context/testing-and-validation.md), including a disposable real Git repository for branch collisions, dirty trees, stale paths, and cleanup behavior.
+Use the commands in [`../agent-context/testing-and-validation.md`](../agent-context/testing-and-validation.md), including a disposable real Git repository for branch collisions, dirty trees, stale paths, untracked evidence, and cleanup behavior.

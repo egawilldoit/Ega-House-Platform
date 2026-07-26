@@ -59,7 +59,7 @@ ChatGPT planning
 - CURRENT/PARTIAL: queue read, atomic claim, leases, visibility renewal, events.
 - CURRENT/PARTIAL: Linear context, deterministic scope/context, worktree, Hermes execution, result parsing.
 - CURRENT/PARTIAL: Runner-owned scope, commit, command, push, remote-SHA, and strict PR verification.
-- CURRENT/PARTIAL: polling-based PR check/review observation and bounded repair attempts.
+- CURRENT/PARTIAL: polling-based PR check/review observation, bounded repair attempts, and optional head-SHA-pinned auto-merge requests.
 - PARTIAL: exact-SHA Vercel preview verification is integrated as an optional gate, not yet live-proven.
 - EXTERNAL_UNVERIFIED: webhook ingress and deployed automation schema.
 - EXTERNAL_UNVERIFIED: Hermes repository-skill visibility under the VM service profile.
@@ -87,14 +87,13 @@ Slack receives projections; it does not own state.
 
 ## Known implementation conflicts and limits
 
-1. Worktree creation still contains legacy force-reset/`--force` behavior and needs separate stale-attempt hardening.
-2. Linear project authorization is not fully proven by deployed evidence.
-3. The initial Hermes prompt still contains legacy PR-authoring language; the Runner now verifies/reuses the exact PR, but Runner-only PR ownership should be completed.
-4. Hermes repository skill discovery is not proven until preflight succeeds as the VM service user.
-5. Automated repair depends on the persisted isolated worktree remaining available.
-6. Lease-loss detection does not yet actively interrupt every in-flight subprocess and side effect.
-7. No reconciliation engine repairs partial GitHub, Vercel, Linear, or Slack effects after process failure.
-8. Repository implementation and focused local checks do not equal live VM E2E proof.
+1. Linear project authorization is not fully proven by deployed evidence.
+2. Hermes repository skill discovery is not proven until preflight succeeds as the VM service user.
+3. The initial Hermes prompt still lacks the complete child/parent issue descriptions.
+4. Automated repair depends on the persisted isolated worktree remaining available.
+5. Lease-loss detection does not yet actively interrupt every in-flight subprocess and side effect.
+6. Post-push repair failures are fenced to `needs_human`, but no general reconciliation engine repairs all partial GitHub, Vercel, Linear, or Slack effects.
+7. Repository implementation and focused local checks do not equal live VM E2E proof.
 
 ## Deeper documents
 

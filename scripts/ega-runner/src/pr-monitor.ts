@@ -32,6 +32,7 @@ export function classifyPullRequest(
 ): MonitorDecision {
   if (snapshot.pr.merged) return "merged";
   if (snapshot.pr.state === "CLOSED" || snapshot.pr.mergeable === "CONFLICTING") return "needs_human";
+  if (snapshot.pr.state !== "OPEN") return "needs_human";
   if (snapshot.pr.isDraft) return "awaiting_review";
   if (snapshot.unresolvedThreads.some((thread) => thread.id === "PAGINATION_LIMIT")) return "needs_human";
 
@@ -57,6 +58,7 @@ export function classifyPullRequest(
   if (!snapshot.checks.hasChecks || !snapshot.checks.allComplete) return "wait_checks";
   if (!snapshot.checks.allPassing) return policy.repairAttemptsRemaining ? "repair" : "needs_human";
   if (policy.requireVercelPreview && !policy.previewReady) return "wait_preview";
+  if (snapshot.pr.mergeable !== "MERGEABLE") return "wait_checks";
 
   // Previously handled review findings remain a merge blocker until a reviewer
   // resolves/re-approves them; they must not trigger the same repair repeatedly.
@@ -136,7 +138,7 @@ async function persistMonitorState(
   snapshot: PullRequestSnapshot,
   decision: MonitorDecision,
   previewUrl: string | null,
-): Promise<void> {
+): Promise<boolean> {
   const status = decision === "wait_checks" || decision === "wait_preview"
     ? "pr_open"
     : decision;
@@ -144,7 +146,7 @@ async function persistMonitorState(
     ? new Date(Date.now() + config.prMonitorIntervalSeconds * 1_000)
     : null;
 
-  await db`
+  const updated = await db`
     UPDATE automation.implementation_runs
     SET status = ${status},
         last_observed_pr_sha = ${snapshot.pr.headSha},
@@ -155,8 +157,11 @@ async function persistMonitorState(
         finished_at = CASE WHEN ${status} IN ('merged', 'needs_human') THEN now() ELSE finished_at END,
         updated_at = now()
     WHERE id = ${run.id}::uuid
-      AND status IN ('pr_open', 'awaiting_review', 'ready_to_merge')
+      AND status = ${run.status}
+      AND pr_head_sha = ${run.pr_head_sha}
+    RETURNING id
   `;
+  if (updated.length !== 1) return false;
 
   await insertEvent(db, run.id, "pr_monitor_observed", {
     decision,
@@ -167,7 +172,7 @@ async function persistMonitorState(
     unresolved_threads: snapshot.unresolvedThreads.length,
     preview_url: previewUrl,
     source: "ega_runner",
-  });
+  }).catch(() => undefined);
 
   if (status !== run.status && !["pr_open"].includes(status)) {
     await postSlackNotification({
@@ -186,8 +191,9 @@ async function persistMonitorState(
             ? `PR #${run.pr_number} was merged.`
             : `PR #${run.pr_number} needs human intervention.`,
       threadTs: run.slack_thread_ts ?? undefined,
-    });
+    }).catch(() => undefined);
   }
+  return true;
 }
 
 async function monitorOne(
@@ -199,27 +205,25 @@ async function monitorOne(
   try {
     snapshot = inspectPullRequest(config.repoRoot, run.pr_number);
   } catch (error) {
-    await insertEvent(db, run.id, "pr_monitor_error", {
-      error: error instanceof Error ? error.message : String(error),
-      source: "ega_runner",
-    });
-    await db`
+    const updated = await db`
       UPDATE automation.implementation_runs
       SET next_check_at = now() + (${config.prMonitorIntervalSeconds}::text || ' seconds')::interval,
           updated_at = now()
       WHERE id = ${run.id}::uuid
+        AND status = ${run.status}
+        AND pr_head_sha = ${run.pr_head_sha}
+      RETURNING id
     `;
+    if (updated.length === 1) {
+      await insertEvent(db, run.id, "pr_monitor_error", {
+        error: error instanceof Error ? error.message : String(error),
+        source: "ega_runner",
+      }).catch(() => undefined);
+    }
     return;
   }
 
   if (snapshot.pr.headRef !== run.branch_name || snapshot.pr.headSha !== run.pr_head_sha) {
-    await insertEvent(db, run.id, "pr_head_identity_mismatch", {
-      expected_branch: run.branch_name,
-      observed_branch: snapshot.pr.headRef,
-      expected_sha: run.pr_head_sha,
-      observed_sha: snapshot.pr.headSha,
-      source: "ega_runner",
-    });
     await persistMonitorState(db, config, run, snapshot, "needs_human", null);
     return;
   }
@@ -244,10 +248,11 @@ async function monitorOne(
     return;
   }
 
-  await persistMonitorState(db, config, run, snapshot, decision, previewUrl);
+  const persisted = await persistMonitorState(db, config, run, snapshot, decision, previewUrl);
+  if (!persisted) return;
 
   if (decision === "ready_to_merge" && config.autoMerge) {
-    const merged = mergePR(config.repoRoot, run.pr_number, true);
+    const merged = mergePR(config.repoRoot, run.pr_number, true, snapshot.pr.headSha);
     await insertEvent(db, run.id, "pr_auto_merge_requested", {
       ok: merged,
       pr_number: run.pr_number,

@@ -63,7 +63,7 @@ Failure/stop states are `VALIDATION_FAILED`, `PR_FAILED`, `NEEDS_HUMAN`, `FAILED
 - exactly one PR was created or reused;
 - its head branch, base branch, and head SHA match the owned run.
 
-`ready_to_merge` means the observed PR head still matches the owned SHA, required checks are complete and passing, the configured preview gate is satisfied, no unresolved review blocker remains, and GitHub reports approval. It does not itself merge the PR unless explicit auto-merge configuration is enabled.
+`ready_to_merge` means the observed PR head still matches the owned SHA, required checks are complete and passing, the configured preview gate is satisfied, no unresolved review blocker remains, and GitHub reports approval. It does not itself merge the PR unless explicit auto-merge configuration is enabled; that request is pinned to the exact observed head SHA.
 
 `merged` is observed from GitHub. It is not equivalent to production deployment.
 
@@ -79,7 +79,7 @@ A repair is triggered only by failed checks or review findings newer than the la
 6. pushes and verifies the new remote SHA;
 7. returns the run to `pr_open`.
 
-Retryable failures preserve evidence and reset the isolated worktree to the previously observed PR head. History rewrites, external branch changes, scope violations, missing worktrees, conflicts, or exhausted retries produce `needs_human`.
+Retryable failures preserve tracked and bounded untracked evidence, then reset the isolated worktree to the previously observed PR head. History rewrites, external branch changes, scope violations, missing worktrees, conflicts, or exhausted retries produce `needs_human`. If a repair commit already reached the remote, the Runner preserves that head and enters reconciliation-required human review instead of resetting local history.
 
 ## Remaining graph gaps
 

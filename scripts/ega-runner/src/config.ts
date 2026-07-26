@@ -65,8 +65,8 @@ export function loadConfig(): Config {
 
   return {
     databaseUrl,
-    runnerId: env.EGA_RUNNER_ID ?? `ega-runner-${hostname()}-${process.pid}`,
-    queueName: env.EGA_RUNNER_QUEUE_NAME ?? "hermes_implementation_jobs",
+    runnerId: env.EGA_RUNNER_ID || `ega-runner-${hostname()}-${process.pid}`,
+    queueName: env.EGA_RUNNER_QUEUE_NAME || "hermes_implementation_jobs",
     pollSeconds: positiveInt(env, "EGA_RUNNER_POLL_SECONDS", 10),
     visibilityTimeoutSeconds,
     heartbeatSeconds,
@@ -75,8 +75,8 @@ export function loadConfig(): Config {
     maxTurns: positiveInt(env, "EGA_RUNNER_MAX_TURNS", 50),
     repairMaxTurns: positiveInt(env, "EGA_RUNNER_REPAIR_MAX_TURNS", 25),
     hermesTimeoutMs: positiveInt(env, "EGA_RUNNER_HERMES_TIMEOUT_MS", 1_800_000),
-    slackChannel: env.EGA_RUNNER_SLACK_CHANNEL ?? "#hermes-today",
-    repoRoot: resolve(env.EGA_RUNNER_REPO_ROOT ?? PROJECT_ROOT),
+    slackChannel: env.EGA_RUNNER_SLACK_CHANNEL || "#hermes-today",
+    repoRoot: resolve(env.EGA_RUNNER_REPO_ROOT || PROJECT_ROOT),
     prMonitorIntervalSeconds: positiveInt(env, "EGA_RUNNER_PR_MONITOR_INTERVAL_SECONDS", 60),
     prMonitorBatchSize: positiveInt(env, "EGA_RUNNER_PR_MONITOR_BATCH_SIZE", 5),
     maxRepairAttempts: positiveInt(env, "EGA_RUNNER_MAX_REPAIR_ATTEMPTS", 3),
