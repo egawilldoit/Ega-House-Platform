@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { execFileSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { runAbortableChildProcess } from "../src/implementation-subprocess.ts";
 import { buildBranchName, createWorktree, removeWorktree } from "../src/worktree.ts";
 
 const source = (name) => readFileSync(resolve(import.meta.dirname, `../src/${name}`), "utf8");
@@ -24,7 +25,27 @@ test("implementation cannot complete without a verified PR", () => {
   assert.match(main, /monitorDuePullRequests/);
   assert.match(main, /if \(shuttingDown\) return/);
   assert.match(main, /new AbortController\(\)/);
-  assert.match(main, /captureFailure\(error\)/);
+  assert.match(main, /work: \(signal: AbortSignal\)/);
+});
+
+test("lease loss and shutdown interrupt the implementation process tree", async () => {
+  const main = source("main.ts");
+  const subprocess = source("implementation-subprocess.ts");
+  assert.match(main, /activeController\?\.abort/);
+  assert.match(main, /executeImplementationSubprocess\(config, runId, message\.message, signal\)/);
+  assert.match(subprocess, /terminateProcessTree\(child\)/);
+  assert.match(subprocess, /signal\.addEventListener\("abort"/);
+
+  const controller = new AbortController();
+  const running = runAbortableChildProcess({
+    command: process.execPath,
+    args: ["-e", "setInterval(() => {}, 1000)"],
+    cwd: process.cwd(),
+    env: process.env,
+    signal: controller.signal,
+  });
+  setTimeout(() => controller.abort(new Error("test lease lost")), 100).unref();
+  await assert.rejects(running, /test lease lost/);
 });
 
 test("worktree operations reject shell interpolation and stale reuse", () => {
@@ -33,18 +54,20 @@ test("worktree operations reject shell interpolation and stale reuse", () => {
   assert.match(worktree, /check-ref-format/);
   assert.match(worktree, /Attempt branch already exists/);
   assert.match(worktree, /Attempt worktree path already exists/);
-  assert.doesNotMatch(worktree, /worktree", "add", "--force"/);
+  assert.doesNotMatch(worktree, /worktree", "add", "--force/);
 });
 
 test("GitHub aggregation is complete and identity-preserving", () => {
-  const github = source("github.ts");
-  assert.match(github, /check-runs\?per_page=100&page=/);
-  assert.match(github, /status\?per_page=100&page=/);
-  assert.match(github, /check-run:\$\{id\}/);
-  assert.match(github, /commit-status:\$\{id\}/);
-  assert.match(github, /pagination incomplete/);
-  assert.match(github, /refs\/heads\/\$\{branchName\}/);
-  assert.match(github, /--match-head-commit/);
+  const checks = source("github-checks.ts");
+  const pullRequests = source("github-pr.ts");
+  assert.match(checks, /check-runs\?per_page=100&page=/);
+  assert.match(checks, /statuses\?per_page=100&page=/);
+  assert.doesNotMatch(checks, /\/statuser|\/status\?per_page/);
+  assert.match(checks, /check-run:\$\{id\}/);
+  assert.match(checks, /commit-status:\$\{id\}/);
+  assert.match(checks, /pagination incomplete/);
+  assert.match(pullRequests, /refs\/heads\/\$\{branchName\}/);
+  assert.match(pullRequests, /--match-head-commit/);
 });
 
 test("monitor and repair transitions use compare-and-swap ownership", () => {
