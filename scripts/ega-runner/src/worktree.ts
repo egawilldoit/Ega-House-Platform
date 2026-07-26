@@ -1,23 +1,16 @@
 /**
- * Worktree Manager — creates deterministic branches and worktrees.
- *
- * Identity chain: 1 run → 1 attempt → 1 branch → 1 worktree.
- * Never work on main. Never reuse stale attempts.
+ * Worktree Manager — creates one isolated branch/worktree per run attempt.
+ * All Git/process calls use argument arrays; queue-provided values never enter a shell.
  */
 
-import { randomUUID } from "node:crypto";
-import { execSync, type ExecSyncOptions } from "node:child_process";
-
-// ── Types ──────────────────────────────────────────────────────────────────
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 
 export interface WorktreeResult {
-  /** Absolute path to the worktree */
   worktreePath: string;
-  /** Branch name created for this attempt */
   branchName: string;
-  /** Pinned base SHA */
   baseSha: string;
-  /** Repo root (original clone) */
   repoRoot: string;
 }
 
@@ -26,41 +19,49 @@ export interface WorktreeError {
   reason: string;
 }
 
-// ── Constants ──────────────────────────────────────────────────────────────
-
 const WORKTREE_BASE_DIR = "/tmp/ega-runner-worktrees";
-const REPO_URL_PREFIX = "git@github.com:";
 
-// ── Branch naming ──────────────────────────────────────────────────────────
+function git(repoRoot: string, args: string[], timeout = 60_000): string {
+  return execFileSync("git", args, {
+    cwd: repoRoot,
+    stdio: "pipe",
+    encoding: "utf8",
+    timeout,
+    maxBuffer: 10 * 1024 * 1024,
+  }).trim();
+}
 
-/**
- * Deterministic branch name per attempt.
- * Format: hermes/<issue-identifier>-<attempt>
- */
-export function buildBranchName(
-  issueIdentifier: string,
-  attemptNumber: number,
-): string {
+function validateBaseBranch(repoRoot: string, baseBranch: string): void {
+  if (!baseBranch || baseBranch.length > 240 || /[\u0000-\u001f\u007f]/.test(baseBranch)) {
+    throw new Error("Base branch is empty or contains invalid control characters");
+  }
+  try {
+    git(repoRoot, ["check-ref-format", "--branch", baseBranch], 10_000);
+  } catch {
+    throw new Error(`Invalid base branch name: ${baseBranch}`);
+  }
+}
+
+function validateRunIdentity(runId: string, attemptNumber: number): void {
+  if (!/^[0-9a-f-]{16,64}$/i.test(runId)) {
+    throw new Error("runId is not a valid durable run identifier");
+  }
+  if (!Number.isSafeInteger(attemptNumber) || attemptNumber < 1) {
+    throw new Error("attemptNumber must be a positive integer");
+  }
+}
+
+export function buildBranchName(issueIdentifier: string, attemptNumber: number): string {
   const slug = issueIdentifier
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-  return `hermes/${slug}-${attemptNumber}`;
+  if (!slug) throw new Error("Issue identifier cannot produce an empty branch name");
+  const branchName = `hermes/${slug}-${attemptNumber}`;
+  if (branchName.length > 240) throw new Error("Generated branch name is too long");
+  return branchName;
 }
 
-// ── Worktree creation ──────────────────────────────────────────────────────
-
-/**
- * Create a deterministic worktree for a run attempt.
- *
- * Steps:
- *  1. Fetch latest from origin
- *  2. Create branch from base_branch
- *  3. Create git worktree at a deterministic path
- *  4. Persist worktree_path for cleanup
- *
- * Throws on failure — the caller handles cleanup and event persistence.
- */
 export function createWorktree(
   repoRoot: string,
   baseBranch: string,
@@ -68,96 +69,68 @@ export function createWorktree(
   attemptNumber: number,
   runId: string,
 ): WorktreeResult {
-  const branchName = buildBranchName(issueIdentifier, attemptNumber);
-  const worktreePath = `${WORKTREE_BASE_DIR}/${runId}/${attemptNumber}`;
+  const canonicalRoot = resolve(repoRoot);
+  validateRunIdentity(runId, attemptNumber);
+  validateBaseBranch(canonicalRoot, baseBranch);
 
-  const opts: ExecSyncOptions = {
-    cwd: repoRoot,
-    stdio: "pipe",
-    timeout: 60_000,
-    encoding: "utf8",
-  };
+  const branchName = buildBranchName(issueIdentifier, attemptNumber);
+  const worktreePath = join(WORKTREE_BASE_DIR, runId, String(attemptNumber));
 
   try {
-    // 1. Fetch latest from origin
-    execSync("git fetch --quiet origin", opts);
+    git(canonicalRoot, ["fetch", "--quiet", "origin"]);
+    const remoteRef = `refs/remotes/origin/${baseBranch}`;
+    const baseSha = git(canonicalRoot, ["rev-parse", "--verify", `${remoteRef}^{commit}`]);
 
-    // 2. Get the pinned base SHA
-    const baseSha = execSync(
-      `git rev-parse origin/${baseBranch}`,
-      opts,
-    ).toString().trim();
-
-    // 3. Create branch (fail if already exists — deterministic naming prevents stale reuse)
     try {
-      execSync(`git branch ${branchName} ${baseSha}`, opts);
-    } catch {
-      // Branch may already exist from a previous attempt — ensure it's at the right SHA
-      execSync(`git branch -f ${branchName} ${baseSha}`, opts);
+      git(canonicalRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${branchName}`], 10_000);
+      throw new Error(`Attempt branch already exists: ${branchName}`);
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Attempt branch already exists:")) throw error;
+      // show-ref exits non-zero when the branch does not exist, which is expected.
     }
 
-    // 4. Ensure worktree base dir exists
-    execSync(`mkdir -p ${worktreePath}`, {
-      ...opts,
-      cwd: undefined,
-    });
+    if (existsSync(worktreePath)) {
+      throw new Error(`Attempt worktree path already exists: ${worktreePath}`);
+    }
 
-    // 5. Create worktree — use --force in case of leftover from failed run
-    execSync(
-      `git worktree add --force ${worktreePath} ${branchName}`,
-      opts,
-    );
+    mkdirSync(dirname(worktreePath), { recursive: true });
+    git(canonicalRoot, ["branch", branchName, baseSha]);
+    try {
+      git(canonicalRoot, ["worktree", "add", worktreePath, branchName]);
+    } catch (error) {
+      try {
+        git(canonicalRoot, ["branch", "-D", branchName], 10_000);
+      } catch {
+        // Preserve the original worktree error.
+      }
+      throw error;
+    }
 
-    console.log(
-      `[worktree] Created worktree at ${worktreePath} on branch ${branchName} (base: ${baseSha})`,
-    );
-
-    return { worktreePath, branchName, baseSha, repoRoot };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(`Worktree creation failed: ${msg}`);
+    return { worktreePath, branchName, baseSha, repoRoot: canonicalRoot };
+  } catch (error) {
+    throw new Error(`Worktree creation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
-// ── Worktree cleanup ───────────────────────────────────────────────────────
-
-/**
- * Remove a worktree and delete the branch.
- * Safe to call multiple times — idempotent.
- */
 export function removeWorktree(
   repoRoot: string,
   worktreePath: string,
   branchName: string,
 ): void {
+  const canonicalRoot = resolve(repoRoot);
   try {
-    execSync(`git worktree remove --force ${worktreePath}`, {
-      cwd: repoRoot,
-      stdio: "pipe",
-      timeout: 30_000,
-    });
+    git(canonicalRoot, ["worktree", "remove", "--force", resolve(worktreePath)], 30_000);
   } catch {
-    // If already removed, that's fine
+    // Idempotent cleanup.
   }
-
   try {
-    execSync(`git branch -D ${branchName} 2>/dev/null || true`, {
-      cwd: repoRoot,
-      stdio: "pipe",
-      timeout: 10_000,
-    });
+    git(canonicalRoot, ["branch", "-D", branchName], 10_000);
   } catch {
-    // best-effort
+    // Idempotent cleanup.
   }
-
   try {
-    execSync(`rm -rf ${worktreePath} 2>/dev/null || true`, {
-      stdio: "pipe",
-      timeout: 10_000,
-    });
+    rmSync(resolve(worktreePath), { recursive: true, force: true });
   } catch {
-    // best-effort
+    // Best effort after Git has released the worktree.
   }
-
-  console.log(`[worktree] Cleaned up worktree ${worktreePath} and branch ${branchName}`);
 }

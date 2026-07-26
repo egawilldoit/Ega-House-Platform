@@ -1,163 +1,152 @@
 # EGA Runner
 
-Durable pgmq consumer for the EGA House autonomous implementation pipeline.
+Durable worker for the EGA House governed implementation loop.
 
-## Architecture
-
-```
-Linear → Signed Webhook → Supabase Edge Function → automation.implementation_runs
-                                                          ↓
-                                                     pgmq queue
-                                                          ↓
-                                                    EGA Runner
-                                                          ↓
-    ┌─────────────────── Full Pipeline ───────────────────┐
-    │  1. Claim run, persist preparing event               │
-    │  2. Fetch Linear issue spec + parent spec            │
-    │  3. Recheck authorization gates                      │
-    │  4. Build context_hash                               │
-    │  5. Pin base SHA, create deterministic branch        │
-    │  6. Create git worktree                              │
-    │  7. Spawn Hermes CLI in worktree                     │
-    │  8. Read .ega-runner/hermes-result.json              │
-    │  9. Verify against Git/GitHub                        │
-    │ 10. Update GitHub check run                          │
-    │ 11. Wait for CI checks                               │
-    │ 12. Verify Vercel deployment by SHA                  │
-    │ 13. Post Slack thread                                │
-    │ 14. Archive PGMQ message (only after evidence)       │
-    └──────────────────────────────────────────────────────┘
+```text
+Linear authorization
+→ signed webhook / durable run
+→ PGMQ message
+→ Runner claim + lease
+→ isolated worktree
+→ Hermes implementation
+→ Runner-owned scope, commit, and command validation
+→ verified branch push
+→ verified GitHub PR
+→ PR/check/review/preview monitor
+→ bounded Hermes repair loop
+→ READY_TO_MERGE
+→ human merge by default
 ```
 
-## V1 Smoke Mode (backward compatible)
+The Runner is the orchestration and evidence authority. Hermes edits code inside the authorized worktree; Hermes does not decide whether delivery succeeded.
 
-Validates the runner infrastructure without real execution:
+## Durable graph
 
-```
-Claim → heartbeat (3 cycles) → events → cancel → archive
-```
-
-```bash
-cd scripts/ega-runner
-npm run smoke
-```
-
-## V2 Full Pipeline (default)
-
-Full autonomous delivery from queue message to PR:
-
-```bash
-cd scripts/ega-runner
-npm start
+```text
+queued
+→ preparing
+→ running
+→ pr_open
+→ repairing ↺
+→ awaiting_review
+→ ready_to_merge
+→ merged
 ```
 
-Requires:
-- DATABASE_URL (Postgres with pgmq)
-- Hermes CLI installed and available on PATH
-- gh CLI authenticated (for GitHub operations)
-- Git remotes configured
-- Optional: VERCEL_TOKEN, EGA_RUNNER_SLACK_WEBHOOK_URL
+Failure/stop states:
 
-## Vertical Slice
-
-This first implementation proves:
-
-- **Durable queue read** via `pgmq.read()` with visibility timeout
-- **Atomic run claim** — `status: queued → preparing`, guarded by optimistic locking
-- **Execution lease** — `automation.implementation_runs.lease_expires_at`
-- **Queue visibility lease** — `pgmq.set_vt()` extends visibility while processing
-- **Coordinated heartbeat** — extends both DB lease and queue VT every 60s
-- **Event persistence** — `automation.implementation_events`
-- **Safe message finalization** — `pgmq.archive()` only after proven completion
-- **Signal handling** — SIGINT/SIGTERM stop accepting work, do not archive incomplete messages
-
-## Prerequisites
-
-- DATABASE_URL in the project `.env.local` (PostgreSQL with pgmq v1.5.1)
-- The `hermes_implementation_jobs` pgmq queue must exist
-- Node.js ≥ 20
-
-## Setup
-
-```bash
-# Dependencies are installed from the project root
-cd scripts/ega-runner
-npm install    # installs postgres + dotenv
+```text
+validation_failed
+pr_failed
+needs_human
+failed
+cancelled
+stale
 ```
 
-## Usage
+A run is never marked successful merely because Hermes exits with code `0`. A verified PR is required before `pr_open` is persisted. PR creation or identity verification failure produces `pr_failed` and the queue message is archived only after that durable failure is recorded.
 
-### Normal mode (foreground — one job at a time)
+## Implementation path
+
+The queue-driven path performs:
+
+1. Atomic run claim and coordinated database/PGMQ leases.
+2. Real Linear issue and parent-Spec resolution.
+3. Exact authorized-path extraction.
+4. Deterministic context hash, branch, and worktree.
+5. Bounded Hermes execution with YOLO disabled.
+6. Structured result validation.
+7. Independent scope and Git commit verification.
+8. Runner-owned validation commands.
+9. Branch push and remote SHA verification.
+10. Idempotent PR create-or-reuse and exact head/base verification.
+11. Durable `pr_open` transition and queue archival.
+
+## PR monitor and repair
+
+The same Runner process polls due runs in `pr_open`, `awaiting_review`, and `ready_to_merge`.
+
+It observes:
+
+- exact PR branch and head SHA;
+- GitHub check runs and commit statuses;
+- bounded failed-workflow log excerpts;
+- review decision and unresolved review threads;
+- exact-SHA Vercel preview when required.
+
+A failed check or new actionable review finding starts one bounded repair attempt. Hermes receives only the failed evidence, unresolved review context, authorized paths, and validation commands. The Runner then verifies the new commit, scope, validation, push, and remote SHA.
+
+Failed repair attempts preserve evidence and reset the isolated worktree to the observed PR head before retrying. The default limit is three attempts. Exhaustion, history rewrite, external branch mutation, review pagination beyond the bounded inspection limit, or merge conflict produces `needs_human`.
+
+Old unresolved comments that already triggered a repair are not repeatedly sent to Hermes. They remain a merge blocker until a reviewer resolves or supersedes them.
+
+## Start
 
 ```bash
 cd scripts/ega-runner
 npm start
 ```
 
-### Smoke mode
-
-Reads one queue message, claims it, runs 3 heartbeat cycles, persists events,
-cancels the run, and archives the message.
+Smoke mode:
 
 ```bash
-cd scripts/ega-runner
 npm run smoke
 ```
 
-### Environment variables
+Focused validation:
 
-| Variable | Default | Description |
+```bash
+npm run typecheck
+npm run test:pr-loop
+```
+
+From the repository root:
+
+```bash
+npm run typecheck:ega-runner
+npm run test:ega-runner-pr-loop
+```
+
+## Required configuration
+
+| Variable | Default | Purpose |
 |---|---|---|
-| `DATABASE_URL` | (required) | Postgres connection string |
-| `EGA_RUNNER_ID` | `ega-runner-<hostname>-<pid>` | Runner identity |
-| `EGA_RUNNER_QUEUE_NAME` | `hermes_implementation_jobs` | pgmq queue name |
-| `EGA_RUNNER_POLL_SECONDS` | `10` | Poll interval when queue empty |
-| `EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS` | `300` | Initial pgmq visibility timeout |
-| `EGA_RUNNER_HEARTBEAT_SECONDS` | `60` | Heartbeat interval |
-| `EGA_RUNNER_LEASE_SECONDS` | `300` | DB lease duration |
-| `EGA_RUNNER_SMOKE_MODE` | `false` | Single-cycle smoke test |
-| `EGA_RUNNER_MAX_TURNS` | `50` | Maximum Hermes execution turns |
-| `EGA_RUNNER_HERMES_TIMEOUT_MS` | `1800000` | Hermes execution timeout (ms, 30 min) |
-| `EGA_RUNNER_SLACK_CHANNEL` | `#hermes-today` | Slack channel for notifications |
-| `EGA_RUNNER_SLACK_WEBHOOK_URL` | (none) | Slack webhook URL |
-| `EGA_RUNNER_REPO_ROOT` | `process.cwd()` | Git repository root path |
-| `VERCEL_TOKEN` | (none) | Vercel API token |
-| `SLACK_BOT_TOKEN` | (none) | Slack Bot API token |
+| `DATABASE_URL` | required | Postgres/PGMQ connection |
+| `LINEAR_API_KEY` | required in production | Resolve the authorized issue contract |
+| `EGA_RUNNER_REPO_ROOT` | repository root | Authoritative local clone |
+| `EGA_RUNNER_QUEUE_NAME` | `hermes_implementation_jobs` | PGMQ queue |
+| `EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS` | `300` | Initial queue visibility timeout |
+| `EGA_RUNNER_HEARTBEAT_SECONDS` | `60` | DB and queue heartbeat |
+| `EGA_RUNNER_LEASE_SECONDS` | `300` | Run ownership lease |
+| `EGA_RUNNER_MAX_TURNS` | `50` | Initial Hermes turn limit |
+| `EGA_RUNNER_REPAIR_MAX_TURNS` | `25` | Repair turn limit |
+| `EGA_RUNNER_MAX_REPAIR_ATTEMPTS` | `3` | Bounded repair attempts |
+| `EGA_RUNNER_PR_MONITOR_INTERVAL_SECONDS` | `60` | PR polling interval |
+| `EGA_RUNNER_PR_MONITOR_BATCH_SIZE` | `5` | Due PRs per loop |
+| `EGA_RUNNER_REQUIRE_VERCEL_PREVIEW` | `false` | Require exact-SHA READY preview |
+| `EGA_RUNNER_AUTO_MERGE` | `false` | Request GitHub auto-merge only after readiness, pinned to the observed head SHA |
+| `EGA_RUNNER_SLACK_CHANNEL` | `#hermes-today` | Notification channel |
+
+The VM also requires Git, authenticated `gh`, Hermes, Node.js 20+, and the database migration `0036_runner_pr_watch_repair_graph`.
 
 ## Safety invariants
 
-- Never use `pgmq.pop()` — messages are never deleted before processing
-- A crashed runner lets the queue message become visible again after VT expiry
-- The DB lease acts as a second ownership indicator
-- If heartbeat detects lease loss, processing stops immediately
-- Failed processing does NOT archive the queue message — it reappears for retry
-- Queue messages are classified explicitly on claim attempt:
-  - **CLAIMED** — normal processing, archives on success, NOT on failure
-  - **ACTIVE_VALID_LEASE** — another healthy runner owns it; message preserved (not archived), VT expires naturally
-  - **STALE_EXPIRED_LEASE** — lease expired; atomically marks run as `stale`, persists `run_stale` event, THEN archives
-  - **TERMINAL** — run already completed/cancelled; archives the obsolete message
-  - **NOT_FOUND** — run record missing; archives with diagnostic evidence
-  - **CLAIM_RACE_LOST** — transient race; message preserved for retry
-  - **UNKNOWN_INCONSISTENT_STATE** — fail closed; message preserved for investigation
-- Stale run marking is atomic and preserves evidence (attempt_number, claimed_by, original timestamps)
-- **Never trust Hermes exit code/prose alone** — every claim verified against Git/GitHub
-- **Never work on main** — deterministic branches per attempt
-- **Never archive on ambiguity, exception, or lease loss**
+- Never execute destructive `pgmq.pop()`; use `read → set_vt → archive`.
+- Never work directly on `main`.
+- Never trust Hermes prose, exit status, validation claims, branch, or commit without independent proof.
+- Never mark a queue run complete without a verified PR.
+- Never treat Slack as workflow truth.
+- Never auto-merge by default; when explicitly enabled, require the reviewed head SHA with `--match-head-commit`.
+- External mutation of the owned PR branch fails closed to `needs_human`.
+- GitHub checks and statuses are paginated and tracked by stable record identity before readiness is computed.
+- Monitor and repair transitions use compare-and-swap predicates on state and PR head.
+- Attempt branch/path collisions are rejected; stale work is never force-reset.
+- A repair may modify only the original authorized paths.
 
-## Current Limitations
+## Current limitations
 
-- **Mock Linear client**: Issue fetching uses a synthetic mock (returns ready-for-hermes, Implementation project). Replace with real GraphQL client for production.
-- **No stale-run recovery engine**: When a run is marked `stale`, a new Attempt 2 row must be created externally
-- **No parallel worker support**: Single-run-at-a-time design
-- **V1 human review gate**: PRs are created but not auto-merged
-- **Hermes CLI dependency**: Requires Hermes installed and on PATH
-- **GitHub CLI dependency**: Requires `gh` authenticated
-
-## Future
-
-- [ ] Real Linear GraphQL client
-- [ ] Stale-run recovery engine (auto-create Attempt 2)
-- [ ] Hermes API `/v1/runs` integration
-- [ ] Parallel worker support
-- [ ] Systemd service (`ega-runner.service`)
-- [ ] Slack slash commands for pipeline status
+- The monitor is polling-based rather than GitHub-webhook-driven.
+- Human approval and repository branch protection remain external GitHub controls.
+- The persisted worktree must remain available for automated repair.
+- Stale-attempt creation and cross-system reconciliation are not yet implemented.
+- Live Linear, PGMQ, Hermes, GitHub, Vercel, and Slack execution must still be proven on the VM.
