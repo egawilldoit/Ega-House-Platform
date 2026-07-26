@@ -5,13 +5,10 @@ export interface PreflightResult {
   missingColumns: string[];
 }
 
-/**
- * Runner-required columns on automation.implementation_runs.
- * These are the columns the Runner writes to or reads from at runtime.
- */
 const REQUIRED_COLUMNS = [
   "id",
   "project_id",
+  "project_slug",
   "linear_issue_id",
   "linear_issue_identifier",
   "linear_issue_url",
@@ -36,41 +33,34 @@ const REQUIRED_COLUMNS = [
   "slack_thread_ts",
   "parent_issue_id",
   "parent_issue_identifier",
+  "evidence_dir",
+  "authorized_paths",
+  "validation_commands",
+  "repair_attempt_count",
+  "max_repair_attempts",
+  "last_observed_pr_sha",
+  "last_check_state",
+  "last_review_state",
+  "last_repair_at",
+  "next_check_at",
   "created_at",
   "updated_at",
 ] as const;
 
-/**
- * Verify that all Runner-required columns exist on
- * automation.implementation_runs.
- *
- * If any are missing, logs them and returns { ok: false, missingColumns }.
- * The caller should exit non-zero without reading queue messages.
- */
 export async function verifyImplementationRunsSchema(
   db: postgres.Sql<{}>,
 ): Promise<PreflightResult> {
-  const missing: string[] = [];
-
-  for (const col of REQUIRED_COLUMNS) {
-    const rows = await db`
-      SELECT 1 FROM information_schema.columns
-      WHERE table_schema = 'automation'
-        AND table_name = 'implementation_runs'
-        AND column_name = ${col}
-    `;
-    if (rows.length === 0) {
-      missing.push(col);
-    }
+  const rows = await db`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'automation'
+      AND table_name = 'implementation_runs'
+  `;
+  const present = new Set(rows.map((row) => String(row.column_name)));
+  const missingColumns = REQUIRED_COLUMNS.filter((column) => !present.has(column));
+  if (missingColumns.length > 0) {
+    console.error("[preflight] Missing automation.implementation_runs columns:");
+    for (const column of missingColumns) console.error(`  - ${column}`);
   }
-
-  if (missing.length > 0) {
-    console.error("[preflight] MISSING COLUMNS on automation.implementation_runs:");
-    for (const col of missing) {
-      console.error(`  - ${col}`);
-    }
-    return { ok: false, missingColumns: missing };
-  }
-
-  return { ok: true, missingColumns: [] };
+  return { ok: missingColumns.length === 0, missingColumns };
 }

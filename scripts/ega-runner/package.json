@@ -6,7 +6,8 @@
   "scripts": {
     "start": "tsx src/main.ts",
     "smoke": "EGA_RUNNER_SMOKE_MODE=true tsx src/main.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:pr-loop": "node --import tsx --test test/pr-loop-*.test.mjs"
   },
   "dependencies": {
     "postgres": "^3.4.9",
