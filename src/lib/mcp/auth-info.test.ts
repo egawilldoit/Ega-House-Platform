@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createMcpAuthInfo,
+  MCP_AUTHORIZED_SCOPE,
   readPrincipalFromAuthInfo,
 } from "@/lib/mcp/auth-info";
 import type { McpPrincipal } from "@/lib/mcp/principal";
@@ -16,13 +17,18 @@ const PRINCIPAL: McpPrincipal = {
 };
 
 describe("MCP AuthInfo adapter", () => {
-  it("carries the verified token, client, permissions, and principal", () => {
+  it("carries the verified token, client, authorization marker, permissions, and principal", () => {
     const authInfo = createMcpAuthInfo("signed-token", PRINCIPAL, 2_000_000_100);
 
     expect(authInfo).toEqual({
       token: "signed-token",
       clientId: "hermes-client",
-      scopes: ["projects.read", "goals.read", "tasks.read"],
+      scopes: [
+        MCP_AUTHORIZED_SCOPE,
+        "projects.read",
+        "goals.read",
+        "tasks.read",
+      ],
       expiresAt: 2_000_000_100,
       extra: { principal: PRINCIPAL },
     });
