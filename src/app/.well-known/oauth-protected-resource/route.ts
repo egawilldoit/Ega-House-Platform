@@ -4,6 +4,13 @@ import { buildProtectedResourceMetadata } from "@/lib/mcp/metadata";
 
 export const dynamic = "force-dynamic";
 
+const PREFLIGHT_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
+};
+
 function requireEnv(
   name:
     | "MCP_RESOURCE_URL"
@@ -30,7 +37,15 @@ export async function GET() {
 
   return NextResponse.json(metadata, {
     headers: {
+      ...PREFLIGHT_HEADERS,
       "Cache-Control": "public, max-age=300, stale-while-revalidate=300",
     },
+  });
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: PREFLIGHT_HEADERS,
   });
 }
