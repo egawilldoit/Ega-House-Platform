@@ -60,7 +60,7 @@ export function getPermissionsForProfile(
 
 export function hasMcpPermission(
   permissions: readonly McpPermission[],
-  requiredPermission: McpPermission,
+  requiredPermission: string,
 ): boolean {
-  return permissions.includes(requiredPermission);
+  return permissions.some((permission) => permission === requiredPermission);
 }
