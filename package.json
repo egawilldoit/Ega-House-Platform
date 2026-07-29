@@ -25,18 +25,21 @@
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@sentry/nextjs": "^10.49.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.8.0",
+    "mcp-handler": "1.1.0",
     "next": "^15.5.15",
     "postgres": "^3.4.9",
     "posthog-js": "^1.369.5",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "resend": "^6.12.2"
+    "resend": "^6.12.2",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.2",
