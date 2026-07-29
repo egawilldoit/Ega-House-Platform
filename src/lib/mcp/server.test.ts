@@ -1,4 +1,6 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { describe, expect, it, vi } from "vitest";
+import type { z } from "zod";
 
 import { registerMcpReadTools } from "@/lib/mcp/server";
 
@@ -22,7 +24,7 @@ function createFakeServer() {
           registrations.push({ name, config, handler });
         },
       ),
-    },
+    } as unknown as McpServer,
   };
 }
 
@@ -33,6 +35,10 @@ function createHandlers() {
     listGoals: vi.fn().mockResolvedValue({ content: [] }),
     listTasks: vi.fn().mockResolvedValue({ content: [] }),
   };
+}
+
+function getInputSchema(registration: Registration): z.ZodTypeAny {
+  return registration.config.inputSchema as z.ZodTypeAny;
 }
 
 describe("registerMcpReadTools", () => {
@@ -63,6 +69,17 @@ describe("registerMcpReadTools", () => {
     }
   });
 
+  it("uses strict schemas that reject unknown keys", () => {
+    const fake = createFakeServer();
+    registerMcpReadTools(fake.server, createHandlers());
+
+    for (const registration of fake.registrations) {
+      expect(
+        getInputSchema(registration).safeParse({ unexpected: true }).success,
+      ).toBe(false);
+    }
+  });
+
   it("uses a bounded integer limit for list tools", () => {
     const fake = createFakeServer();
     registerMcpReadTools(fake.server, createHandlers());
@@ -72,16 +89,13 @@ describe("registerMcpReadTools", () => {
       "ega_list_goals",
       "ega_list_tasks",
     ]) {
-      const registration = fake.registrations.find((item) => item.name === name);
-      const inputSchema = registration?.config.inputSchema as Record<
-        string,
-        { safeParse: (value: unknown) => { success: boolean } }
-      >;
+      const registration = fake.registrations.find((item) => item.name === name)!;
+      const schema = getInputSchema(registration);
 
-      expect(inputSchema.limit.safeParse(25).success).toBe(true);
-      expect(inputSchema.limit.safeParse(0).success).toBe(false);
-      expect(inputSchema.limit.safeParse(101).success).toBe(false);
-      expect(inputSchema.limit.safeParse(1.5).success).toBe(false);
+      expect(schema.safeParse({ limit: 25 }).success).toBe(true);
+      expect(schema.safeParse({ limit: 0 }).success).toBe(false);
+      expect(schema.safeParse({ limit: 101 }).success).toBe(false);
+      expect(schema.safeParse({ limit: 1.5 }).success).toBe(false);
     }
   });
 
@@ -95,20 +109,12 @@ describe("registerMcpReadTools", () => {
     const tasks = fake.registrations.find(
       (item) => item.name === "ega_list_tasks",
     )!;
-    const goalShape = goals.config.inputSchema as Record<
-      string,
-      { safeParse: (value: unknown) => { success: boolean } }
-    >;
-    const taskShape = tasks.config.inputSchema as Record<
-      string,
-      { safeParse: (value: unknown) => { success: boolean } }
-    >;
     const uuid = "00000000-0000-0000-0000-000000000001";
 
-    expect(goalShape.projectId.safeParse(uuid).success).toBe(true);
-    expect(goalShape.projectId.safeParse("project-1").success).toBe(false);
-    expect(taskShape.goalId.safeParse(uuid).success).toBe(true);
-    expect(taskShape.goalId.safeParse("goal-1").success).toBe(false);
+    expect(getInputSchema(goals).safeParse({ projectId: uuid }).success).toBe(true);
+    expect(getInputSchema(goals).safeParse({ projectId: "project-1" }).success).toBe(false);
+    expect(getInputSchema(tasks).safeParse({ goalId: uuid }).success).toBe(true);
+    expect(getInputSchema(tasks).safeParse({ goalId: "goal-1" }).success).toBe(false);
   });
 
   it("forwards request-local auth info and validated arguments", async () => {
@@ -126,7 +132,7 @@ describe("registerMcpReadTools", () => {
     const capabilities = fake.registrations.find(
       (item) => item.name === "ega_get_capabilities",
     )!;
-    await capabilities.handler({ authInfo });
+    await capabilities.handler({}, { authInfo });
     expect(handlers.getCapabilities).toHaveBeenCalledWith(authInfo);
   });
 });
