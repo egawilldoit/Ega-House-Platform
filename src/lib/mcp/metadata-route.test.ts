@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { GET } from "@/app/.well-known/oauth-protected-resource/route";
+import {
+  GET,
+  OPTIONS,
+} from "@/app/.well-known/oauth-protected-resource/route";
 
 const ORIGINAL_ENV = process.env;
 
@@ -32,6 +35,20 @@ describe("OAuth protected resource discovery route", () => {
       bearer_methods_supported: ["header"],
       resource_documentation: "https://ega.example.com/integrations/mcp",
     });
+  });
+
+  it("allows metadata GET preflight without credentials", async () => {
+    const response = await OPTIONS();
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("access-control-allow-origin")).toBe("*");
+    expect(response.headers.get("access-control-allow-methods")).toBe(
+      "GET, OPTIONS",
+    );
+    expect(response.headers.get("access-control-allow-headers")).toBe(
+      "Content-Type",
+    );
+    expect(response.headers.get("access-control-max-age")).toBe("86400");
   });
 
   it.each(["MCP_RESOURCE_URL", "NEXT_PUBLIC_SUPABASE_URL"] as const)(
