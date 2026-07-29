@@ -20,7 +20,7 @@ export const mcpAuthorizationGrants = pgTable(
     clientName: text("client_name"),
     status: text("status").notNull().default("pending"),
     permissionProfile: text("permission_profile").notNull(),
-    permissions: jsonb("permissions").notNull().default(sql`'{}'::jsonb`),
+    permissions: jsonb("permissions").notNull().default(sql`'[]'::jsonb`),
     permissionsVersion: integer("permissions_version").notNull().default(1),
     approvedAt: timestamp("approved_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -52,6 +52,10 @@ export const mcpAuthorizationGrants = pgTable(
     check(
       "mcp_authorization_grants_profile_check",
       sql`${table.permissionProfile} in ('read_only', 'task_manager', 'delivery_observer')`,
+    ),
+    check(
+      "mcp_authorization_grants_permissions_array_check",
+      sql`jsonb_typeof(${table.permissions}) = 'array'`,
     ),
     check(
       "mcp_authorization_grants_permissions_version_check",
