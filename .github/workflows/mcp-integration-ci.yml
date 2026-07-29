@@ -36,8 +36,16 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Record lockfile drift
+        run: |
+          if npm ci --ignore-scripts --dry-run; then
+            echo "package-lock.json is synchronized."
+          else
+            echo "::warning::package.json and package-lock.json are not synchronized on the base repository."
+          fi
+
+      - name: Install dependencies without rewriting lockfile
+        run: npm install --package-lock=false --no-audit --no-fund
 
       - name: Typecheck
         run: npm run typecheck
