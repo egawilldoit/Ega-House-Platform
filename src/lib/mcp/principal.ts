@@ -13,6 +13,7 @@ export type McpGrantRecord = {
   oauthClientId: string;
   status: McpGrantStatus;
   permissionProfile: string;
+  permissions: unknown;
   permissionsVersion: number;
 };
 
@@ -70,6 +71,30 @@ function denyInactiveGrant(): never {
   );
 }
 
+function permissionsMatchProfile(
+  storedPermissions: unknown,
+  expectedPermissions: readonly McpPermission[],
+): boolean {
+  if (
+    !Array.isArray(storedPermissions)
+    || !storedPermissions.every((permission) => typeof permission === "string")
+  ) {
+    return false;
+  }
+
+  const uniquePermissions = new Set(storedPermissions);
+  if (
+    uniquePermissions.size !== storedPermissions.length
+    || uniquePermissions.size !== expectedPermissions.length
+  ) {
+    return false;
+  }
+
+  return expectedPermissions.every((permission) =>
+    uniquePermissions.has(permission),
+  );
+}
+
 export function resolveMcpPrincipal(
   claims: Record<string, unknown>,
   grant: McpGrantRecord | null,
@@ -102,12 +127,17 @@ export function resolveMcpPrincipal(
     return denyInactiveGrant();
   }
 
+  const permissions = getPermissionsForProfile(permissionProfile);
+  if (!permissionsMatchProfile(grant.permissions, permissions)) {
+    return denyInactiveGrant();
+  }
+
   return {
     ownerUserId,
     oauthClientId,
     grantId: grant.id,
     permissionProfile,
     permissionsVersion: grant.permissionsVersion,
-    permissions: getPermissionsForProfile(permissionProfile),
+    permissions,
   };
 }
