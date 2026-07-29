@@ -42,7 +42,7 @@ function isExplicitlyEnabled(value: string | undefined): boolean {
 }
 
 export function getMcpRuntimeConfig(
-  env: McpEnvironment = process.env,
+  env: McpEnvironment = process.env as McpEnvironment,
 ): McpRuntimeConfig {
   const enabled = isExplicitlyEnabled(env.MCP_ENABLED);
   const supabaseUrl = requireEnv(env, "NEXT_PUBLIC_SUPABASE_URL");
