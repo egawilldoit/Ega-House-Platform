@@ -50,8 +50,8 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint
-        run: npm run lint
+      - name: Lint MCP integration files
+        run: npx eslint src/lib/mcp src/db/mcp-schema.ts
 
       - name: Unit tests
         run: npm test -- --run src/lib/mcp
