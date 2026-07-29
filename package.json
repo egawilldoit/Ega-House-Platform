@@ -25,7 +25,7 @@
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.26.0",
     "@sentry/nextjs": "^10.49.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
