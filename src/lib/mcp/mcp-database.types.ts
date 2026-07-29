@@ -49,12 +49,71 @@ type McpGrantTable = {
   Relationships: [];
 };
 
+type IntegrationAuditTable = {
+  Row: {
+    id: string;
+    owner_user_id: string;
+    token_id: string | null;
+    oauth_client_id: string | null;
+    grant_id: string | null;
+    action: string;
+    resource_type: string | null;
+    resource_id: string | null;
+    outcome: string;
+    ip_address: string | null;
+    request_id: string | null;
+    tool_name: string | null;
+    metadata: Json;
+    duration_ms: number | null;
+    error_code: string | null;
+    created_at: string;
+  };
+  Insert: {
+    id?: string;
+    owner_user_id: string;
+    token_id?: string | null;
+    oauth_client_id?: string | null;
+    grant_id?: string | null;
+    action: string;
+    resource_type?: string | null;
+    resource_id?: string | null;
+    outcome: string;
+    ip_address?: string | null;
+    request_id?: string | null;
+    tool_name?: string | null;
+    metadata?: Json;
+    duration_ms?: number | null;
+    error_code?: string | null;
+    created_at?: string;
+  };
+  Update: {
+    id?: string;
+    owner_user_id?: string;
+    token_id?: string | null;
+    oauth_client_id?: string | null;
+    grant_id?: string | null;
+    action?: string;
+    resource_type?: string | null;
+    resource_id?: string | null;
+    outcome?: string;
+    ip_address?: string | null;
+    request_id?: string | null;
+    tool_name?: string | null;
+    metadata?: Json;
+    duration_ms?: number | null;
+    error_code?: string | null;
+    created_at?: string;
+  };
+  Relationships: [];
+};
+
 type PublicSchema = Database["public"];
 
 export type McpDatabase = Omit<Database, "public"> & {
   public: Omit<PublicSchema, "Tables"> & {
     Tables: PublicSchema["Tables"] & {
       mcp_authorization_grants: McpGrantTable;
+      agent_integration_events: IntegrationAuditTable;
     };
   };
 };
