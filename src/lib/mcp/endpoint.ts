@@ -15,7 +15,7 @@ type McpEndpointDependencies = {
 };
 
 const DEFAULT_DEPENDENCIES: McpEndpointDependencies = {
-  getEnvironment: () => process.env,
+  getEnvironment: () => process.env as McpEndpointEnvironment,
   getConfig: getMcpRuntimeConfig,
   buildRuntime: createMcpRouteRuntime,
 };
