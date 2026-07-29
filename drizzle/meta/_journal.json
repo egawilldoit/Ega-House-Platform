@@ -39,6 +39,7 @@
     { "idx": 34, "version": "7", "when": 1780877164185, "tag": "0034_agent_read_endpoints", "breakpoints": true },
     { "idx": 35, "version": "7", "when": 1784804169631, "tag": "0035_automation_implementation_runs", "breakpoints": true },
     { "idx": 36, "version": "7", "when": 1785058733263, "tag": "0036_runner_pr_watch_repair_graph", "breakpoints": true },
-    { "idx": 37, "version": "7", "when": 1785331602000, "tag": "0037_mcp_oauth_foundation", "breakpoints": true }
+    { "idx": 37, "version": "7", "when": 1785331602000, "tag": "0037_mcp_oauth_foundation", "breakpoints": true },
+    { "idx": 38, "version": "7", "when": 1785333192000, "tag": "0038_mcp_read_only_rls", "breakpoints": true }
   ]
 }
