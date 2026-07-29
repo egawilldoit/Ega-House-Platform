@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS "mcp_authorization_grants" (
   "client_name" text,
   "status" text NOT NULL DEFAULT 'pending',
   "permission_profile" text NOT NULL,
-  "permissions" jsonb NOT NULL DEFAULT '{}'::jsonb,
+  "permissions" jsonb NOT NULL DEFAULT '[]'::jsonb,
   "permissions_version" integer NOT NULL DEFAULT 1,
   "approved_at" timestamptz,
   "revoked_at" timestamptz,
@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS "mcp_authorization_grants" (
     CHECK ("status" IN ('pending', 'active', 'failed', 'revoked')),
   CONSTRAINT "mcp_authorization_grants_profile_check"
     CHECK ("permission_profile" IN ('read_only', 'task_manager', 'delivery_observer')),
+  CONSTRAINT "mcp_authorization_grants_permissions_array_check"
+    CHECK (jsonb_typeof("permissions") = 'array'),
   CONSTRAINT "mcp_authorization_grants_permissions_version_check"
     CHECK ("permissions_version" > 0),
   CONSTRAINT "mcp_authorization_grants_owner_client_unique"
