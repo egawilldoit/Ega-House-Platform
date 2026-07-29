@@ -47,13 +47,6 @@ describe("createMcpHandlerTokenVerifier", () => {
     expect(dependencies.createAccessTokenVerifier).toHaveBeenCalledWith(
       verifierClient,
     );
-    expect(dependencies.createUserClient).toHaveBeenCalledWith(
-      "signed-token",
-      {
-        supabaseUrl: CONFIG.supabaseUrl,
-        publishableKey: CONFIG.publishableKey,
-      },
-    );
     expect(dependencies.verifyHandlerToken).toHaveBeenCalledWith(
       "signed-token",
       expect.objectContaining({
@@ -62,6 +55,18 @@ describe("createMcpHandlerTokenVerifier", () => {
         verifyAccessToken,
         loadGrant: dependencies.loadGrant,
       }),
+    );
+
+    const handlerDependencies = vi.mocked(dependencies.verifyHandlerToken)
+      .mock.calls[0]?.[1];
+    expect(handlerDependencies).toBeDefined();
+    expect(handlerDependencies!.createUserClient("signed-token")).toBe(userClient);
+    expect(dependencies.createUserClient).toHaveBeenCalledWith(
+      "signed-token",
+      {
+        supabaseUrl: CONFIG.supabaseUrl,
+        publishableKey: CONFIG.publishableKey,
+      },
     );
   });
 
