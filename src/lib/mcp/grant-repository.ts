@@ -17,7 +17,16 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
 
-function mapGrantRow(row: Record<string, unknown>): McpGrantRecord {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mapGrantRow(value: unknown): McpGrantRecord {
+  if (!isRecord(value)) {
+    throw new Error("Invalid EGA MCP authorization grant record.");
+  }
+
+  const row = value;
   if (
     !isNonEmptyString(row.id)
     || !isNonEmptyString(row.owner_user_id)
@@ -64,5 +73,5 @@ export async function loadActiveMcpGrant(
     return null;
   }
 
-  return mapGrantRow(data as Record<string, unknown>);
+  return mapGrantRow(data as unknown);
 }
