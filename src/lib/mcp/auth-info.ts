@@ -8,6 +8,8 @@ import {
 } from "@/lib/mcp/permissions";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 
+export const MCP_AUTHORIZED_SCOPE = "ega.mcp.authorized";
+
 function clonePrincipal(principal: McpPrincipal): McpPrincipal {
   return {
     ...principal,
@@ -50,7 +52,7 @@ export function createMcpAuthInfo(
   const authInfo: AuthInfo = {
     token: accessToken,
     clientId: principal.oauthClientId,
-    scopes: [...principal.permissions],
+    scopes: [MCP_AUTHORIZED_SCOPE, ...principal.permissions],
     extra: {
       principal: clonePrincipal(principal),
     },
