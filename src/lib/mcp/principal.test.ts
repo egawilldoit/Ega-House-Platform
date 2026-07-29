@@ -17,6 +17,7 @@ const ACTIVE_GRANT: McpGrantRecord = {
   oauthClientId: CLAIMS.client_id,
   status: "active",
   permissionProfile: "read_only",
+  permissions: ["projects.read", "goals.read", "tasks.read"],
   permissionsVersion: 1,
 };
 
@@ -93,6 +94,33 @@ describe("resolveMcpPrincipal", () => {
       resolveMcpPrincipal(CLAIMS, {
         ...ACTIVE_GRANT,
         permissionProfile: "administrator",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "PERMISSION_DENIED", status: 403 }),
+    );
+  });
+
+  it("rejects a permission document that does not match the profile", () => {
+    expect(() =>
+      resolveMcpPrincipal(CLAIMS, {
+        ...ACTIVE_GRANT,
+        permissions: ["projects.read", "tasks.create"],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "PERMISSION_DENIED", status: 403 }),
+    );
+  });
+
+  it("rejects duplicate permission entries", () => {
+    expect(() =>
+      resolveMcpPrincipal(CLAIMS, {
+        ...ACTIVE_GRANT,
+        permissions: [
+          "projects.read",
+          "goals.read",
+          "tasks.read",
+          "tasks.read",
+        ],
       }),
     ).toThrowError(
       expect.objectContaining({ code: "PERMISSION_DENIED", status: 403 }),
