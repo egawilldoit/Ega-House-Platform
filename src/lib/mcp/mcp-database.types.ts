@@ -5,6 +5,7 @@ type McpGrantTable = {
     id: string;
     owner_user_id: string;
     oauth_client_id: string;
+    resource_uri: string;
     client_name: string | null;
     status: string;
     permission_profile: string;
@@ -20,6 +21,7 @@ type McpGrantTable = {
     id?: string;
     owner_user_id: string;
     oauth_client_id: string;
+    resource_uri: string;
     client_name?: string | null;
     status?: string;
     permission_profile: string;
@@ -35,6 +37,7 @@ type McpGrantTable = {
     id?: string;
     owner_user_id?: string;
     oauth_client_id?: string;
+    resource_uri?: string;
     client_name?: string | null;
     status?: string;
     permission_profile?: string;
@@ -49,7 +52,7 @@ type McpGrantTable = {
   Relationships: [];
 };
 
-type IntegrationAuditTable = {
+type AgentEventTable = {
   Row: {
     id: string;
     owner_user_id: string;
@@ -111,9 +114,9 @@ type PublicSchema = Database["public"];
 
 export type McpDatabase = Omit<Database, "public"> & {
   public: Omit<PublicSchema, "Tables"> & {
-    Tables: PublicSchema["Tables"] & {
+    Tables: Omit<PublicSchema["Tables"], "agent_integration_events"> & {
       mcp_authorization_grants: McpGrantTable;
-      agent_integration_events: IntegrationAuditTable;
+      agent_integration_events: AgentEventTable;
     };
   };
 };
