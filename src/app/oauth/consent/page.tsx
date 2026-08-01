@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Authorize MCP access",
-  description: "Review and approve read-only EGA House MCP access.",
+  description: "Review and approve secure, read-only EGA House MCP access.",
 };
 
 type ConsentPageProps = {
