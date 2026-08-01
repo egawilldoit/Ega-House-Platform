@@ -65,8 +65,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const config = getMcpRuntimeConfig();
-    if (!config.enabled && decision === "approve") {
+    const config = decision === "approve" ? getMcpRuntimeConfig() : null;
+    if (config && !config.enabled) {
       return redirectToConsentError(request, authorizationId);
     }
 
@@ -74,9 +74,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       decision,
       authorizationId,
       ownerUserId: user.id,
-      resourceUri: config.resource,
+      resourceUri: config?.resource ?? "",
       oauth: supabase.auth.oauth as OAuthDecisionClient,
-      admin: decision === "approve" ? createAdminClient() : undefined,
+      admin: config ? createAdminClient() : undefined,
     });
 
     return NextResponse.redirect(redirectUrl, 303);
