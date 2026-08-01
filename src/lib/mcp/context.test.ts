@@ -28,6 +28,7 @@ describe("createAuthenticatedMcpContext", () => {
       id: "10000000-0000-0000-0000-000000000001",
       ownerUserId: USER_ID,
       oauthClientId: CLIENT_ID,
+      resourceUri: AUDIENCE,
       status: "active",
       permissionProfile: "read_only",
       permissions: ["projects.read", "goals.read", "tasks.read"],
@@ -56,7 +57,12 @@ describe("createAuthenticatedMcpContext", () => {
     });
 
     expect(createUserClient).toHaveBeenCalledWith("signed-token");
-    expect(loadGrant).toHaveBeenCalledWith(client, USER_ID, CLIENT_ID);
+    expect(loadGrant).toHaveBeenCalledWith(
+      client,
+      USER_ID,
+      CLIENT_ID,
+      AUDIENCE,
+    );
   });
 
   it("does not create a database client when token verification fails", async () => {
