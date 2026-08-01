@@ -63,7 +63,8 @@ describe("validateMcpAccessTokenClaims", () => {
   });
 
   it("requires an expiration claim", () => {
-    const { exp: _exp, ...withoutExpiration } = VALID_CLAIMS;
+    const withoutExpiration: McpAccessTokenClaims = { ...VALID_CLAIMS };
+    delete withoutExpiration.exp;
 
     expect(() =>
       validateMcpAccessTokenClaims(withoutExpiration, EXPECTED),
