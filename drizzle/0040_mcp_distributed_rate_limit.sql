@@ -41,21 +41,21 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 DECLARE
-  current_user_id uuid;
-  current_client_id text;
-  current_resource_uri text;
-  current_time timestamptz;
-  current_window timestamptz;
-  current_count integer;
-  grant_exists boolean;
+  v_user_id uuid;
+  v_client_id text;
+  v_resource_uri text;
+  v_now timestamptz;
+  v_window timestamptz;
+  v_count integer;
+  v_grant_exists boolean;
 BEGIN
-  current_user_id := auth.uid();
-  current_client_id := NULLIF(auth.jwt() ->> 'client_id', '');
-  current_resource_uri := NULLIF(auth.jwt() ->> 'aud', '');
+  v_user_id := auth.uid();
+  v_client_id := NULLIF(auth.jwt() ->> 'client_id', '');
+  v_resource_uri := NULLIF(auth.jwt() ->> 'aud', '');
 
-  IF current_user_id IS NULL
-    OR current_client_id IS NULL
-    OR current_resource_uri IS NULL THEN
+  IF v_user_id IS NULL
+    OR v_client_id IS NULL
+    OR v_resource_uri IS NULL THEN
     RAISE EXCEPTION 'MCP authentication context is required.'
       USING ERRCODE = '42501';
   END IF;
@@ -73,21 +73,21 @@ BEGIN
   SELECT EXISTS (
     SELECT 1
     FROM public.mcp_authorization_grants AS grant_record
-    WHERE grant_record.owner_user_id = current_user_id
-      AND grant_record.oauth_client_id = current_client_id
-      AND grant_record.resource_uri = current_resource_uri
+    WHERE grant_record.owner_user_id = v_user_id
+      AND grant_record.oauth_client_id = v_client_id
+      AND grant_record.resource_uri = v_resource_uri
       AND grant_record.status = 'active'
       AND grant_record.revoked_at IS NULL
-  ) INTO grant_exists;
+  ) INTO v_grant_exists;
 
-  IF NOT grant_exists THEN
+  IF NOT v_grant_exists THEN
     RAISE EXCEPTION 'No active EGA MCP authorization grant.'
       USING ERRCODE = '42501';
   END IF;
 
-  current_time := clock_timestamp();
-  current_window := to_timestamp(
-    floor(extract(epoch FROM current_time) / p_window_seconds)
+  v_now := clock_timestamp();
+  v_window := to_timestamp(
+    floor(extract(epoch FROM v_now) / p_window_seconds)
     * p_window_seconds
   );
 
@@ -99,12 +99,12 @@ BEGIN
     request_count,
     updated_at
   ) VALUES (
-    current_user_id,
-    current_client_id,
+    v_user_id,
+    v_client_id,
     p_tool_name,
-    current_window,
+    v_window,
     1,
-    current_time
+    v_now
   )
   ON CONFLICT (owner_user_id, oauth_client_id, tool_name)
   DO UPDATE SET
@@ -114,10 +114,10 @@ BEGIN
         THEN rate_window.request_count + 1
       ELSE 1
     END,
-    updated_at = current_time
-  RETURNING request_count INTO current_count;
+    updated_at = v_now
+  RETURNING request_count INTO v_count;
 
-  allowed := current_count <= p_limit;
+  allowed := v_count <= p_limit;
   retry_after_seconds := CASE
     WHEN allowed THEN 0
     ELSE GREATEST(
@@ -125,9 +125,9 @@ BEGIN
       CEIL(
         EXTRACT(
           epoch FROM (
-            current_window
+            v_window
             + make_interval(secs => p_window_seconds)
-            - current_time
+            - v_now
           )
         )
       )::integer
