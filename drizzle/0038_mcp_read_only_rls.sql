@@ -2,7 +2,7 @@
 --
 -- Direct Supabase user sessions retain owner-scoped CRUD access. OAuth clients
 -- receive SELECT access only when an active EGA grant contains the matching
--- read permission. The MCP application layer still rechecks tool permission.
+-- resource URI and read permission. The application layer rechecks permission.
 
 --> statement-breakpoint
 
@@ -18,12 +18,15 @@ AS $$
   SELECT
     auth.uid() IS NOT NULL
     AND COALESCE(auth.jwt() ->> 'client_id', '') <> ''
+    AND COALESCE(auth.jwt() ->> 'aud', '') <> ''
     AND EXISTS (
       SELECT 1
       FROM public.mcp_authorization_grants AS grant_record
       WHERE grant_record.owner_user_id = auth.uid()
         AND grant_record.oauth_client_id = (auth.jwt() ->> 'client_id')
+        AND grant_record.resource_uri = (auth.jwt() ->> 'aud')
         AND grant_record.status = 'active'
+        AND grant_record.revoked_at IS NULL
         AND grant_record.permissions @> jsonb_build_array(requested_permission)
     );
 $$;
