@@ -11,6 +11,7 @@ export type McpGrantRecord = {
   id: string;
   ownerUserId: string;
   oauthClientId: string;
+  resourceUri: string;
   status: McpGrantStatus;
   permissionProfile: string;
   permissions: unknown;
@@ -109,6 +110,7 @@ export function resolveMcpPrincipal(
   if (
     grant.ownerUserId !== ownerUserId
     || grant.oauthClientId !== oauthClientId
+    || grant.resourceUri.trim() === ""
   ) {
     return denyInactiveGrant();
   }
