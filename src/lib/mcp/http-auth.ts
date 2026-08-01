@@ -21,12 +21,7 @@ function challenge(
   description: string,
 ): string {
   const resourceMetadata = `${options.resourceUrl}${options.resourceMetadataPath}`;
-  return [
-    "Bearer",
-    `error="${error}"`,
-    `error_description="${description}"`,
-    `resource_metadata="${resourceMetadata}"`,
-  ].join(", ");
+  return `Bearer error="${error}", error_description="${description}", resource_metadata="${resourceMetadata}"`;
 }
 
 function oauthError(
@@ -109,7 +104,7 @@ export function withEgaMcpAuth(
     }
 
     const hasRequiredScopes = options.requiredScopes.every((scope) =>
-      authInfo?.scopes.includes(scope),
+      authInfo.scopes.includes(scope),
     );
     if (!hasRequiredScopes) {
       return oauthError(
