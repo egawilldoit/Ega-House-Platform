@@ -45,11 +45,12 @@ describe("verifyMcpHandlerToken", () => {
     expect(dependencies.verifyAccessToken).not.toHaveBeenCalled();
   });
 
-  it("returns an authorized AuthInfo for an active matching grant", async () => {
+  it("returns authorized AuthInfo for an active resource-bound grant", async () => {
     const dependencies = createDependencies({
       id: "10000000-0000-0000-0000-000000000001",
       ownerUserId: USER_ID,
       oauthClientId: CLIENT_ID,
+      resourceUri: AUDIENCE,
       status: "active",
       permissionProfile: "read_only",
       permissions: ["projects.read", "goals.read", "tasks.read"],
@@ -70,6 +71,12 @@ describe("verifyMcpHandlerToken", () => {
         ],
         expiresAt: EXPIRY,
       }),
+    );
+    expect(dependencies.loadGrant).toHaveBeenCalledWith(
+      expect.anything(),
+      USER_ID,
+      CLIENT_ID,
+      AUDIENCE,
     );
   });
 
@@ -102,5 +109,6 @@ describe("verifyMcpHandlerToken", () => {
     ).rejects.toEqual(
       expect.objectContaining({ code: "UNAUTHENTICATED", status: 401 }),
     );
+    expect(dependencies.loadGrant).not.toHaveBeenCalled();
   });
 });
