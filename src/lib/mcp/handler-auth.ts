@@ -20,6 +20,7 @@ export type McpHandlerAuthDependencies = {
     client: SupabaseClient<McpDatabase>,
     ownerUserId: string,
     oauthClientId: string,
+    resourceUri: string,
   ) => Promise<McpGrantRecord | null>;
 };
 
@@ -42,6 +43,7 @@ export async function verifyMcpHandlerToken(
     client,
     identity.sub,
     identity.client_id,
+    dependencies.audience,
   );
 
   if (!grant) {
