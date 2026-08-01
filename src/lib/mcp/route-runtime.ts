@@ -8,6 +8,7 @@ import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
 import { createAuditedMcpReadHandlers } from "@/lib/mcp/audited-read-handlers";
 import { MCP_AUTHORIZED_SCOPE } from "@/lib/mcp/auth-info";
 import type { McpRuntimeConfig } from "@/lib/mcp/config";
+import { consumeMcpRateLimit } from "@/lib/mcp/rate-limit-repository";
 import { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
 import {
   listMcpGoals,
@@ -77,6 +78,7 @@ function createReadHandlers(config: McpRuntimeConfig): McpReadToolHandlers {
 
   return createAuditedMcpReadHandlers(baseHandlers, {
     createUserClient,
+    consumeRateLimit: consumeMcpRateLimit,
     writeAudit: writeMcpAuditEvent,
     nowMs: () => performance.now(),
     createRequestId: randomUUID,
