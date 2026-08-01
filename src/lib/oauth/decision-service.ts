@@ -30,7 +30,7 @@ type ProcessConsentInput = {
   ownerUserId: string;
   resourceUri: string;
   oauth: OAuthDecisionClient;
-  admin: SupabaseClient<McpDatabase>;
+  admin?: SupabaseClient<McpDatabase>;
   activateGrant?: ActivateGrant;
   failGrant?: FailGrant;
 };
@@ -83,7 +83,12 @@ export async function processOAuthConsentDecision(
     return parseRedirectUrl(denied.data);
   }
 
-  await activateGrant(input.admin, {
+  const admin = input.admin;
+  if (!admin) {
+    throw new Error("OAuth grant administration is unavailable.");
+  }
+
+  await activateGrant(admin, {
     ownerUserId: input.ownerUserId,
     oauthClientId: details.clientId,
     clientName: details.clientName,
@@ -93,7 +98,7 @@ export async function processOAuthConsentDecision(
   const approved = await input.oauth.approveAuthorization(input.authorizationId);
   if (approved.error || !approved.data) {
     try {
-      await failGrant(input.admin, {
+      await failGrant(admin, {
         ownerUserId: input.ownerUserId,
         oauthClientId: details.clientId,
       });
@@ -108,7 +113,7 @@ export async function processOAuthConsentDecision(
     return parseRedirectUrl(approved.data);
   } catch {
     try {
-      await failGrant(input.admin, {
+      await failGrant(admin, {
         ownerUserId: input.ownerUserId,
         oauthClientId: details.clientId,
       });
