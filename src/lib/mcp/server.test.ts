@@ -117,22 +117,40 @@ describe("registerMcpReadTools", () => {
     expect(getInputSchema(tasks).safeParse({ goalId: "goal-1" }).success).toBe(false);
   });
 
-  it("forwards request-local auth info and validated arguments", async () => {
+  it("accepts only canonical task status and priority filters", () => {
+    const fake = createFakeServer();
+    registerMcpReadTools(fake.server, createHandlers());
+    const tasks = fake.registrations.find(
+      (item) => item.name === "ega_list_tasks",
+    )!;
+    const schema = getInputSchema(tasks);
+
+    expect(schema.safeParse({ status: "blocked", priority: "urgent" }).success).toBe(true);
+    expect(schema.safeParse({ status: "complete" }).success).toBe(false);
+    expect(schema.safeParse({ priority: "critical" }).success).toBe(false);
+  });
+
+  it("forwards request-local auth info, request ID, and validated arguments", async () => {
     const fake = createFakeServer();
     const handlers = createHandlers();
     registerMcpReadTools(fake.server, handlers);
     const authInfo = { token: "test-bearer", clientId: "hermes", scopes: [] };
+    const context = { requestId: "mcp-request-1" };
 
     const projects = fake.registrations.find(
       (item) => item.name === "ega_list_projects",
     )!;
-    await projects.handler({ limit: 10 }, { authInfo });
-    expect(handlers.listProjects).toHaveBeenCalledWith(authInfo, { limit: 10 });
+    await projects.handler({ limit: 10 }, { authInfo, ...context });
+    expect(handlers.listProjects).toHaveBeenCalledWith(
+      authInfo,
+      { limit: 10 },
+      context,
+    );
 
     const capabilities = fake.registrations.find(
       (item) => item.name === "ega_get_capabilities",
     )!;
-    await capabilities.handler({}, { authInfo });
-    expect(handlers.getCapabilities).toHaveBeenCalledWith(authInfo);
+    await capabilities.handler({}, { authInfo, ...context });
+    expect(handlers.getCapabilities).toHaveBeenCalledWith(authInfo, context);
   });
 });
