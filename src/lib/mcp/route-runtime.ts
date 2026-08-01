@@ -1,22 +1,26 @@
+import { randomUUID } from "node:crypto";
+
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 
+import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
+import { createAuditedMcpReadHandlers } from "@/lib/mcp/audited-read-handlers";
 import { MCP_AUTHORIZED_SCOPE } from "@/lib/mcp/auth-info";
 import type { McpRuntimeConfig } from "@/lib/mcp/config";
-import {
-  createMcpReadToolHandlers,
-} from "@/lib/mcp/read-tool-handlers";
+import { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
 import {
   listMcpGoals,
   listMcpProjects,
   listMcpTasks,
 } from "@/lib/mcp/read-repository";
 import { createMcpHandlerTokenVerifier } from "@/lib/mcp/runtime-auth";
-import { registerMcpReadTools } from "@/lib/mcp/server";
+import {
+  registerMcpReadTools,
+  type McpReadToolHandlers,
+} from "@/lib/mcp/server";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 
-type McpReadHandlers = ReturnType<typeof createMcpReadToolHandlers>;
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 type TokenVerifier = (
   request: Request,
@@ -37,10 +41,10 @@ type AuthOptions = {
 };
 
 export type McpRouteRuntimeDependencies = {
-  createReadHandlers: (config: McpRuntimeConfig) => McpReadHandlers;
+  createReadHandlers: (config: McpRuntimeConfig) => McpReadToolHandlers;
   registerReadTools: (
     server: McpServer,
-    handlers: McpReadHandlers,
+    handlers: McpReadToolHandlers,
   ) => void;
   createTransportHandler: (
     registerServer: (server: McpServer) => void,
@@ -55,20 +59,28 @@ export type McpRouteRuntimeDependencies = {
   ) => RequestHandler;
 };
 
-function createReadHandlers(config: McpRuntimeConfig): McpReadHandlers {
-  return createMcpReadToolHandlers(
+function createReadHandlers(config: McpRuntimeConfig): McpReadToolHandlers {
+  const createUserClient = (accessToken: string) =>
+    createMcpSupabaseClient(accessToken, {
+      supabaseUrl: config.supabaseUrl,
+      publishableKey: config.publishableKey,
+    });
+  const baseHandlers = createMcpReadToolHandlers(
     {
-      createUserClient: (accessToken) =>
-        createMcpSupabaseClient(accessToken, {
-          supabaseUrl: config.supabaseUrl,
-          publishableKey: config.publishableKey,
-        }),
+      createUserClient,
       listProjects: listMcpProjects,
       listGoals: listMcpGoals,
       listTasks: listMcpTasks,
     },
     config.writesEnabled,
   );
+
+  return createAuditedMcpReadHandlers(baseHandlers, {
+    createUserClient,
+    writeAudit: writeMcpAuditEvent,
+    nowMs: () => performance.now(),
+    createRequestId: randomUUID,
+  });
 }
 
 const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
