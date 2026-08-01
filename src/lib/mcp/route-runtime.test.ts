@@ -44,6 +44,7 @@ describe("createMcpRouteRuntime", () => {
         basePath: "/api",
         maxDuration: 60,
         verboseLogs: false,
+        resourceUrl: CONFIG.resource,
       },
     );
     expect(dependencies.createTokenVerifier).toHaveBeenCalledWith(CONFIG);
@@ -82,7 +83,7 @@ describe("createMcpRouteRuntime", () => {
     );
   });
 
-  it("uses the same authenticated handler for GET and POST", () => {
+  it("uses the same authenticated boundary for GET and POST", () => {
     const handler = vi.fn();
     const dependencies: McpRouteRuntimeDependencies = {
       createReadHandlers: vi.fn().mockReturnValue({}),
@@ -98,7 +99,7 @@ describe("createMcpRouteRuntime", () => {
     expect(runtime.POST).toBe(handler);
   });
 
-  it("returns a credential-aware MCP preflight response", async () => {
+  it("returns a credential-aware JSON-only preflight response", async () => {
     const dependencies: McpRouteRuntimeDependencies = {
       createReadHandlers: vi.fn().mockReturnValue({}),
       registerReadTools: vi.fn(),
@@ -112,7 +113,7 @@ describe("createMcpRouteRuntime", () => {
     expect(response.status).toBe(204);
     expect(response.headers.get("access-control-allow-origin")).toBe("*");
     expect(response.headers.get("access-control-allow-methods")).toBe(
-      "GET, POST, OPTIONS",
+      "POST, OPTIONS",
     );
     expect(response.headers.get("access-control-allow-headers")).toBe(
       "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
