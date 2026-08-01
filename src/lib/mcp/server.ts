@@ -1,10 +1,45 @@
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
 import { MCP_PERMISSIONS, MCP_PERMISSION_PROFILES } from "@/lib/mcp/permissions";
-import type { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
+import type {
+  McpGoalFilters,
+  McpTaskFilters,
+} from "@/lib/mcp/read-repository";
+import {
+  GOAL_STATUS_VALUES,
+  PROJECT_STATUS_VALUES,
+  TASK_PRIORITY_VALUES,
+  TASK_STATUS_VALUES,
+} from "@/lib/task-domain";
 
-type McpReadToolHandlers = ReturnType<typeof createMcpReadToolHandlers>;
+export type McpProtocolContext = {
+  requestId?: string | number;
+};
+
+export type McpReadToolHandlers = {
+  getCapabilities: (
+    authInfo: AuthInfo | undefined,
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  listProjects: (
+    authInfo: AuthInfo | undefined,
+    input: { limit?: number },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  listGoals: (
+    authInfo: AuthInfo | undefined,
+    input: McpGoalFilters,
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  listTasks: (
+    authInfo: AuthInfo | undefined,
+    input: McpTaskFilters,
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+};
 
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
@@ -15,8 +50,6 @@ const READ_ONLY_ANNOTATIONS = {
 
 const limitSchema = z.number().int().min(1).max(100).default(25);
 const uuidSchema = z.string().uuid();
-const optionalFilterSchema = z.string().trim().min(1).max(64).optional();
-
 const nullableStringSchema = z.string().nullable();
 const nullableNumberSchema = z.number().finite().nullable();
 
@@ -25,7 +58,7 @@ const projectSchema = z.object({
   name: z.string(),
   slug: z.string(),
   description: nullableStringSchema,
-  status: z.string(),
+  status: z.enum(PROJECT_STATUS_VALUES),
   createdAt: z.string(),
   updatedAt: z.string(),
 }).strict();
@@ -38,7 +71,7 @@ const goalSchema = z.object({
   description: nullableStringSchema,
   nextStep: nullableStringSchema,
   health: nullableStringSchema,
-  status: z.string(),
+  status: z.enum(GOAL_STATUS_VALUES),
   createdAt: z.string(),
   updatedAt: z.string(),
 }).strict();
@@ -50,8 +83,8 @@ const taskSchema = z.object({
   title: z.string(),
   description: nullableStringSchema,
   blockedReason: nullableStringSchema,
-  status: z.string(),
-  priority: z.string(),
+  status: z.enum(TASK_STATUS_VALUES),
+  priority: z.enum(TASK_PRIORITY_VALUES),
   estimateMinutes: nullableNumberSchema,
   focusRank: nullableNumberSchema,
   dueDate: nullableStringSchema,
@@ -77,8 +110,8 @@ const goalsInputSchema = z.object({
 const tasksInputSchema = z.object({
   projectId: uuidSchema.optional(),
   goalId: uuidSchema.optional(),
-  status: optionalFilterSchema,
-  priority: optionalFilterSchema,
+  status: z.enum(TASK_STATUS_VALUES).optional(),
+  priority: z.enum(TASK_PRIORITY_VALUES).optional(),
   includeArchived: z.boolean().default(false),
   limit: limitSchema,
 }).strict();
@@ -109,6 +142,10 @@ const tasksOutputSchema = z.object({
   count: z.number().int().nonnegative(),
 }).strict();
 
+function getProtocolContext(extra: { requestId?: string | number }): McpProtocolContext {
+  return { requestId: extra.requestId };
+}
+
 export function registerMcpReadTools(
   server: McpServer,
   handlers: McpReadToolHandlers,
@@ -123,7 +160,8 @@ export function registerMcpReadTools(
       outputSchema: capabilitiesOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (_input, extra) => handlers.getCapabilities(extra.authInfo),
+    async (_input, extra) =>
+      handlers.getCapabilities(extra.authInfo, getProtocolContext(extra)),
   );
 
   server.registerTool(
@@ -136,7 +174,8 @@ export function registerMcpReadTools(
       outputSchema: projectsOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input, extra) => handlers.listProjects(extra.authInfo, input),
+    async (input, extra) =>
+      handlers.listProjects(extra.authInfo, input, getProtocolContext(extra)),
   );
 
   server.registerTool(
@@ -149,7 +188,8 @@ export function registerMcpReadTools(
       outputSchema: goalsOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input, extra) => handlers.listGoals(extra.authInfo, input),
+    async (input, extra) =>
+      handlers.listGoals(extra.authInfo, input, getProtocolContext(extra)),
   );
 
   server.registerTool(
@@ -162,6 +202,7 @@ export function registerMcpReadTools(
       outputSchema: tasksOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input, extra) => handlers.listTasks(extra.authInfo, input),
+    async (input, extra) =>
+      handlers.listTasks(extra.authInfo, input, getProtocolContext(extra)),
   );
 }
