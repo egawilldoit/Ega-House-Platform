@@ -17,6 +17,7 @@ on:
       - "drizzle.config.ts"
       - "package.json"
       - "package-lock.json"
+      - "eslint.config.mjs"
       - ".github/workflows/mcp-integration-ci.yml"
   push:
     branches:
@@ -28,7 +29,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -59,3 +60,12 @@ jobs:
 
       - name: Unit and migration contract tests
         run: npm test -- --run src/lib/mcp
+
+      - name: Build production application
+        env:
+          MCP_ENABLED: "false"
+          MCP_WRITES_ENABLED: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+          NEXT_PUBLIC_SITE_URL: "https://example.com"
+        run: npm run build
