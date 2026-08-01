@@ -10,6 +10,10 @@ on:
       - "src/app/.well-known/**"
       - "src/app/oauth/**"
       - "drizzle/0037_mcp_oauth_foundation.sql"
+      - "drizzle/0038_mcp_read_only_rls.sql"
+      - "drizzle/0039_mcp_grant_permission_consistency.sql"
+      - "drizzle/0040_mcp_distributed_rate_limit.sql"
+      - "drizzle/meta/_journal.json"
       - "drizzle.config.ts"
       - "package.json"
       - "package-lock.json"
@@ -24,7 +28,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -36,22 +40,22 @@ jobs:
           node-version: 20
           cache: npm
 
-      - name: Record lockfile drift
-        run: |
-          if npm ci --ignore-scripts --dry-run; then
-            echo "package-lock.json is synchronized."
-          else
-            echo "::warning::package.json and package-lock.json are not synchronized on the base repository."
-          fi
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
 
-      - name: Install dependencies without rewriting lockfile
-        run: npm install --package-lock=false --no-audit --no-fund
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Typecheck
         run: npm run typecheck
 
       - name: Lint MCP integration files
-        run: npx eslint src/lib/mcp src/db/mcp-schema.ts
+        run: >-
+          npx eslint
+          src/lib/mcp
+          src/db/mcp-schema.ts
+          src/app/api/mcp
+          src/app/.well-known
 
-      - name: Unit tests
+      - name: Unit and migration contract tests
         run: npm test -- --run src/lib/mcp
