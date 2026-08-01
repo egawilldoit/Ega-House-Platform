@@ -54,6 +54,10 @@ function createDependencies(): AuditedReadHandlerDependencies {
     createUserClient: vi
       .fn()
       .mockReturnValue({ marker: "client" } as unknown as SupabaseClient<McpDatabase>),
+    consumeRateLimit: vi.fn().mockResolvedValue({
+      allowed: true,
+      retryAfterSeconds: 0,
+    }),
     writeAudit: vi.fn().mockResolvedValue(undefined),
     nowMs: vi.fn(() => values.shift() ?? 112),
     createRequestId: vi.fn(() => "generated-request"),
@@ -61,7 +65,7 @@ function createDependencies(): AuditedReadHandlerDependencies {
 }
 
 describe("createAuditedMcpReadHandlers", () => {
-  it("records a successful authenticated tool call", async () => {
+  it("rate limits and records a successful authenticated tool call", async () => {
     const handlers = createBaseHandlers();
     const dependencies = createDependencies();
     const audited = createAuditedMcpReadHandlers(handlers, dependencies);
@@ -74,6 +78,10 @@ describe("createAuditedMcpReadHandlers", () => {
 
     expect(result).toEqual(successResult(3));
     expect(dependencies.createUserClient).toHaveBeenCalledWith("test-bearer");
+    expect(dependencies.consumeRateLimit).toHaveBeenCalledWith(
+      expect.anything(),
+      "ega_list_projects",
+    );
     expect(dependencies.writeAudit).toHaveBeenCalledWith(
       expect.anything(),
       {
@@ -85,6 +93,38 @@ describe("createAuditedMcpReadHandlers", () => {
         errorCode: undefined,
         metadata: { resultCount: 3 },
       },
+    );
+  });
+
+  it("returns and audits a stable denial when the distributed limit is exceeded", async () => {
+    const handlers = createBaseHandlers();
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.consumeRateLimit).mockResolvedValue({
+      allowed: false,
+      retryAfterSeconds: 17,
+    });
+    const audited = createAuditedMcpReadHandlers(handlers, dependencies);
+
+    const result = await audited.listTasks(AUTH_INFO, { limit: 25 });
+
+    expect(handlers.listTasks).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toEqual({
+      ok: false,
+      error: {
+        code: "RATE_LIMITED",
+        message: "EGA House MCP rate limit exceeded.",
+      },
+      retryAfterSeconds: 17,
+    });
+    expect(dependencies.writeAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        toolName: "ega_list_tasks",
+        outcome: "denied",
+        errorCode: "RATE_LIMITED",
+        metadata: { retryAfterSeconds: 17 },
+      }),
     );
   });
 
@@ -111,6 +151,27 @@ describe("createAuditedMcpReadHandlers", () => {
         errorCode: "DEPENDENCY_UNAVAILABLE",
       }),
     );
+  });
+
+  it("fails closed when rate limiting is unavailable", async () => {
+    const handlers = createBaseHandlers();
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.consumeRateLimit).mockRejectedValue(
+      new Error("Failed to enforce EGA MCP rate limit."),
+    );
+    const audited = createAuditedMcpReadHandlers(handlers, dependencies);
+
+    const result = await audited.listGoals(AUTH_INFO, { limit: 25 });
+
+    expect(handlers.listGoals).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toEqual({
+      ok: false,
+      error: {
+        code: "DEPENDENCY_UNAVAILABLE",
+        message: "EGA House rate limiting is temporarily unavailable.",
+      },
+    });
   });
 
   it("uses a generated request ID when the protocol ID is unavailable", async () => {
@@ -151,7 +212,7 @@ describe("createAuditedMcpReadHandlers", () => {
     });
   });
 
-  it("does not attempt database auditing for malformed auth context", async () => {
+  it("does not access MCP database guards for malformed auth context", async () => {
     const handlers = createBaseHandlers();
     handlers.listProjects.mockResolvedValue(errorResult("UNAUTHENTICATED"));
     const dependencies = createDependencies();
@@ -164,6 +225,7 @@ describe("createAuditedMcpReadHandlers", () => {
 
     expect(result).toEqual(errorResult("UNAUTHENTICATED"));
     expect(dependencies.createUserClient).not.toHaveBeenCalled();
+    expect(dependencies.consumeRateLimit).not.toHaveBeenCalled();
     expect(dependencies.writeAudit).not.toHaveBeenCalled();
   });
 });
