@@ -7,6 +7,7 @@ const GRANT_COLUMNS = [
   "id",
   "owner_user_id",
   "oauth_client_id",
+  "resource_uri",
   "status",
   "permission_profile",
   "permissions",
@@ -18,7 +19,8 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  return Boolean(value);
 }
 
 function mapGrantRow(value: unknown): McpGrantRecord {
@@ -31,6 +33,7 @@ function mapGrantRow(value: unknown): McpGrantRecord {
     !isNonEmptyString(row.id)
     || !isNonEmptyString(row.owner_user_id)
     || !isNonEmptyString(row.oauth_client_id)
+    || !isNonEmptyString(row.resource_uri)
     || row.status !== "active"
     || !isNonEmptyString(row.permission_profile)
     || !Array.isArray(row.permissions)
@@ -45,6 +48,7 @@ function mapGrantRow(value: unknown): McpGrantRecord {
     id: row.id,
     ownerUserId: row.owner_user_id,
     oauthClientId: row.oauth_client_id,
+    resourceUri: row.resource_uri,
     status: "active",
     permissionProfile: row.permission_profile,
     permissions: row.permissions,
@@ -56,12 +60,14 @@ export async function loadActiveMcpGrant(
   client: SupabaseClient<McpDatabase>,
   ownerUserId: string,
   oauthClientId: string,
+  resourceUri: string,
 ): Promise<McpGrantRecord | null> {
   const { data, error } = await client
     .from("mcp_authorization_grants")
     .select(GRANT_COLUMNS)
     .eq("owner_user_id", ownerUserId)
     .eq("oauth_client_id", oauthClientId)
+    .eq("resource_uri", resourceUri)
     .eq("status", "active")
     .maybeSingle();
 
