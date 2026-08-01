@@ -19,6 +19,7 @@ type LoadGrant = (
   client: SupabaseClient<McpDatabase>,
   ownerUserId: string,
   oauthClientId: string,
+  resourceUri: string,
 ) => Promise<McpGrantRecord | null>;
 
 type CreateAuthenticatedMcpContextOptions = {
@@ -51,6 +52,7 @@ export async function createAuthenticatedMcpContext(
     client,
     authenticatedRequest.claims.sub,
     authenticatedRequest.claims.client_id,
+    options.audience,
   );
   const principal = resolveMcpPrincipal(
     authenticatedRequest.claims,
