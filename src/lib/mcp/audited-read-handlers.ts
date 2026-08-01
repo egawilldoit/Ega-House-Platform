@@ -128,6 +128,15 @@ function durationMs(start: number, end: number): number {
   return Math.max(0, Math.round(end - start));
 }
 
+function buildAuditMetadata(
+  resultCount: number | undefined,
+  retryAfterSeconds: number | undefined,
+): NonNullable<McpAuditEventInput["metadata"]> {
+  if (resultCount !== undefined) return { resultCount };
+  if (retryAfterSeconds !== undefined) return { retryAfterSeconds };
+  return {};
+}
+
 const DEFAULT_DEPENDENCIES: AuditedReadHandlerDependencies = {
   createUserClient: () => {
     throw new Error("MCP audit user client dependency is not configured.");
@@ -171,13 +180,10 @@ export function createAuditedMcpReadHandlers(
 
     const endedAt = dependencies.nowMs();
     const errorCode = getErrorCode(result);
-    const resultCount = getResultCount(result);
-    const retryAfterSeconds = getRetryAfterSeconds(result);
-    const metadata = resultCount !== undefined
-      ? { resultCount }
-      : retryAfterSeconds !== undefined
-        ? { retryAfterSeconds }
-        : {};
+    const metadata = buildAuditMetadata(
+      getResultCount(result),
+      getRetryAfterSeconds(result),
+    );
     const auditInput: McpAuditEventInput = {
       principal,
       requestId: normalizeRequestId(context, dependencies.createRequestId),
