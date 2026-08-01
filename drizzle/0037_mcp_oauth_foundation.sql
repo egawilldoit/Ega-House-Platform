@@ -2,8 +2,7 @@
 --
 -- This migration is additive and idempotent. It is intentionally limited to
 -- MCP grants and the existing integration audit authority. Core product-table
--- RLS is handled by a separately reviewed migration after policy compatibility
--- is proven against the current web and mobile access paths.
+-- RLS is handled by the separately reviewed read-only policy migration.
 
 --> statement-breakpoint
 
@@ -11,6 +10,7 @@ CREATE TABLE IF NOT EXISTS "mcp_authorization_grants" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "owner_user_id" uuid NOT NULL,
   "oauth_client_id" text NOT NULL,
+  "resource_uri" text NOT NULL,
   "client_name" text,
   "status" text NOT NULL DEFAULT 'pending',
   "permission_profile" text NOT NULL,
@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS "mcp_authorization_grants" (
     CHECK ("status" IN ('pending', 'active', 'failed', 'revoked')),
   CONSTRAINT "mcp_authorization_grants_profile_check"
     CHECK ("permission_profile" IN ('read_only', 'task_manager', 'delivery_observer')),
+  CONSTRAINT "mcp_authorization_grants_resource_uri_check"
+    CHECK (
+      "resource_uri" ~ '^https://[^?#]+$'
+      OR "resource_uri" ~ '^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?/[^?#]*$'
+    ),
   CONSTRAINT "mcp_authorization_grants_permissions_array_check"
     CHECK (jsonb_typeof("permissions") = 'array'),
   CONSTRAINT "mcp_authorization_grants_permissions_version_check"
@@ -45,27 +50,88 @@ CREATE INDEX IF NOT EXISTS "mcp_authorization_grants_client_status_idx"
 
 ALTER TABLE "mcp_authorization_grants" ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "mcp_grants_insert_own" ON "mcp_authorization_grants";
+DROP POLICY IF EXISTS "mcp_grants_update_own" ON "mcp_authorization_grants";
 DROP POLICY IF EXISTS "mcp_grants_select_own" ON "mcp_authorization_grants";
+DROP POLICY IF EXISTS "mcp_grants_auth_hook_read" ON "mcp_authorization_grants";
+
 CREATE POLICY "mcp_grants_select_own"
   ON "mcp_authorization_grants"
   FOR SELECT
   TO authenticated
   USING ("owner_user_id" = auth.uid());
 
-DROP POLICY IF EXISTS "mcp_grants_insert_own" ON "mcp_authorization_grants";
-CREATE POLICY "mcp_grants_insert_own"
+-- Supabase Auth needs narrowly scoped read access when issuing or refreshing an
+-- OAuth access token. No client role receives INSERT, UPDATE, or DELETE access.
+CREATE POLICY "mcp_grants_auth_hook_read"
   ON "mcp_authorization_grants"
-  FOR INSERT
-  TO authenticated
-  WITH CHECK ("owner_user_id" = auth.uid());
+  FOR SELECT
+  TO supabase_auth_admin
+  USING (true);
 
-DROP POLICY IF EXISTS "mcp_grants_update_own" ON "mcp_authorization_grants";
-CREATE POLICY "mcp_grants_update_own"
-  ON "mcp_authorization_grants"
-  FOR UPDATE
-  TO authenticated
-  USING ("owner_user_id" = auth.uid())
-  WITH CHECK ("owner_user_id" = auth.uid());
+REVOKE INSERT, UPDATE, DELETE
+  ON TABLE "mcp_authorization_grants"
+  FROM authenticated, anon;
+GRANT SELECT ON TABLE "mcp_authorization_grants" TO authenticated;
+GRANT SELECT (
+  "owner_user_id",
+  "oauth_client_id",
+  "resource_uri",
+  "status",
+  "revoked_at"
+) ON TABLE "mcp_authorization_grants" TO supabase_auth_admin;
+
+--> statement-breakpoint
+
+-- Supabase issues the default `authenticated` audience. This Auth Hook changes
+-- the audience only for an OAuth token whose user/client pair already has an
+-- active EGA grant. Tokens without a matching grant remain unusable by MCP.
+CREATE OR REPLACE FUNCTION public.custom_access_token_hook(event jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
+DECLARE
+  claims jsonb;
+  user_id uuid;
+  oauth_client_id text;
+  granted_resource_uri text;
+BEGIN
+  claims := event -> 'claims';
+  oauth_client_id := NULLIF(claims ->> 'client_id', '');
+
+  IF NULLIF(event ->> 'user_id', '') IS NULL OR oauth_client_id IS NULL THEN
+    RETURN event;
+  END IF;
+
+  user_id := (event ->> 'user_id')::uuid;
+
+  SELECT grant_record.resource_uri
+    INTO granted_resource_uri
+  FROM public.mcp_authorization_grants AS grant_record
+  WHERE grant_record.owner_user_id = user_id
+    AND grant_record.oauth_client_id = oauth_client_id
+    AND grant_record.status = 'active'
+    AND grant_record.revoked_at IS NULL
+  LIMIT 1;
+
+  IF granted_resource_uri IS NULL THEN
+    RETURN event;
+  END IF;
+
+  claims := jsonb_set(claims, '{aud}', to_jsonb(granted_resource_uri), true);
+  RETURN jsonb_set(event, '{claims}', claims, true);
+END;
+$$;
+
+GRANT USAGE ON SCHEMA public TO supabase_auth_admin;
+GRANT EXECUTE
+  ON FUNCTION public.custom_access_token_hook(jsonb)
+  TO supabase_auth_admin;
+REVOKE EXECUTE
+  ON FUNCTION public.custom_access_token_hook(jsonb)
+  FROM authenticated, anon, public;
 
 --> statement-breakpoint
 
