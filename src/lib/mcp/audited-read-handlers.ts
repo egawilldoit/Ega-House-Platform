@@ -10,6 +10,10 @@ import {
 } from "@/lib/mcp/audit-repository";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import {
+  consumeMcpRateLimit,
+  type McpRateLimitResult,
+} from "@/lib/mcp/rate-limit-repository";
 import type { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
 
 type BaseReadHandlers = ReturnType<typeof createMcpReadToolHandlers>;
@@ -20,18 +24,24 @@ type ProtocolContext = {
 
 export type AuditedReadHandlerDependencies = {
   createUserClient: (accessToken: string) => SupabaseClient<McpDatabase>;
+  consumeRateLimit: (
+    client: SupabaseClient<McpDatabase>,
+    toolName: string,
+  ) => Promise<McpRateLimitResult>;
   writeAudit: typeof writeMcpAuditEvent;
   nowMs: () => number;
   createRequestId: () => string;
 };
 
-function auditUnavailableResult(): CallToolResult {
+function stableErrorResult(
+  code: "DEPENDENCY_UNAVAILABLE" | "RATE_LIMITED",
+  message: string,
+  extra: Record<string, unknown> = {},
+): CallToolResult {
   const payload = {
     ok: false,
-    error: {
-      code: "DEPENDENCY_UNAVAILABLE",
-      message: "EGA House audit persistence is temporarily unavailable.",
-    },
+    error: { code, message },
+    ...extra,
   };
 
   return {
@@ -41,8 +51,30 @@ function auditUnavailableResult(): CallToolResult {
   };
 }
 
+function auditUnavailableResult(): CallToolResult {
+  return stableErrorResult(
+    "DEPENDENCY_UNAVAILABLE",
+    "EGA House audit persistence is temporarily unavailable.",
+  );
+}
+
+function rateLimitUnavailableResult(): CallToolResult {
+  return stableErrorResult(
+    "DEPENDENCY_UNAVAILABLE",
+    "EGA House rate limiting is temporarily unavailable.",
+  );
+}
+
+function rateLimitedResult(retryAfterSeconds: number): CallToolResult {
+  return stableErrorResult(
+    "RATE_LIMITED",
+    "EGA House MCP rate limit exceeded.",
+    { retryAfterSeconds },
+  );
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function getResultCount(result: CallToolResult): number | undefined {
@@ -54,11 +86,28 @@ function getResultCount(result: CallToolResult): number | undefined {
     : undefined;
 }
 
+function getRetryAfterSeconds(result: CallToolResult): number | undefined {
+  const structured = result.structuredContent;
+  if (!isRecord(structured)) return undefined;
+  const value = structured.retryAfterSeconds;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
 function getErrorCode(result: CallToolResult): string | undefined {
   if (!result.isError || !isRecord(result.structuredContent)) return undefined;
   const error = result.structuredContent.error;
   if (!isRecord(error)) return undefined;
   return typeof error.code === "string" ? error.code : undefined;
+}
+
+function getOutcome(result: CallToolResult, errorCode: string | undefined) {
+  if (!result.isError) return "success" as const;
+  if (errorCode === "RATE_LIMITED" || errorCode === "PERMISSION_DENIED") {
+    return "denied" as const;
+  }
+  return "error" as const;
 }
 
 function normalizeRequestId(
@@ -83,6 +132,7 @@ const DEFAULT_DEPENDENCIES: AuditedReadHandlerDependencies = {
   createUserClient: () => {
     throw new Error("MCP audit user client dependency is not configured.");
   },
+  consumeRateLimit: consumeMcpRateLimit,
   writeAudit: writeMcpAuditEvent,
   nowMs: () => performance.now(),
   createRequestId: randomUUID,
@@ -108,19 +158,34 @@ export function createAuditedMcpReadHandlers(
 
     const client = dependencies.createUserClient(authInfo.token);
     const startedAt = dependencies.nowMs();
-    const result = await callTool();
+    let result: CallToolResult;
+
+    try {
+      const rateLimit = await dependencies.consumeRateLimit(client, toolName);
+      result = rateLimit.allowed
+        ? await callTool()
+        : rateLimitedResult(rateLimit.retryAfterSeconds);
+    } catch {
+      result = rateLimitUnavailableResult();
+    }
+
     const endedAt = dependencies.nowMs();
     const errorCode = getErrorCode(result);
     const resultCount = getResultCount(result);
+    const retryAfterSeconds = getRetryAfterSeconds(result);
+    const metadata = resultCount !== undefined
+      ? { resultCount }
+      : retryAfterSeconds !== undefined
+        ? { retryAfterSeconds }
+        : {};
     const auditInput: McpAuditEventInput = {
       principal,
       requestId: normalizeRequestId(context, dependencies.createRequestId),
       toolName,
-      outcome: result.isError ? "error" : "success",
+      outcome: getOutcome(result, errorCode),
       durationMs: durationMs(startedAt, endedAt),
       errorCode,
-      metadata:
-        resultCount === undefined ? {} : { resultCount },
+      metadata,
     };
 
     try {
