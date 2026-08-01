@@ -2,12 +2,12 @@ import { randomUUID } from "node:crypto";
 
 import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createMcpHandler, withMcpAuth } from "mcp-handler";
 
 import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
 import { createAuditedMcpReadHandlers } from "@/lib/mcp/audited-read-handlers";
 import { MCP_AUTHORIZED_SCOPE } from "@/lib/mcp/auth-info";
 import type { McpRuntimeConfig } from "@/lib/mcp/config";
+import { withEgaMcpAuth } from "@/lib/mcp/http-auth";
 import { consumeMcpRateLimit } from "@/lib/mcp/rate-limit-repository";
 import { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
 import {
@@ -21,6 +21,7 @@ import {
   type McpReadToolHandlers,
 } from "@/lib/mcp/server";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
+import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
 
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 type TokenVerifier = (
@@ -32,6 +33,7 @@ type TransportOptions = {
   basePath: string;
   maxDuration: number;
   verboseLogs: boolean;
+  resourceUrl: string;
 };
 
 type AuthOptions = {
@@ -88,14 +90,14 @@ function createReadHandlers(config: McpRuntimeConfig): McpReadToolHandlers {
 const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
   createReadHandlers,
   registerReadTools: registerMcpReadTools,
-  createTransportHandler: createMcpHandler as unknown as McpRouteRuntimeDependencies["createTransportHandler"],
+  createTransportHandler: createWebMcpHandler,
   createTokenVerifier: createMcpHandlerTokenVerifier,
-  wrapAuth: withMcpAuth as unknown as McpRouteRuntimeDependencies["wrapAuth"],
+  wrapAuth: withEgaMcpAuth,
 };
 
 const PREFLIGHT_HEADERS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
     "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
   "Access-Control-Max-Age": "86400",
@@ -119,6 +121,7 @@ export function createMcpRouteRuntime(
       basePath: "/api",
       maxDuration: 60,
       verboseLogs: false,
+      resourceUrl: config.resource,
     },
   );
   const verifyToken = dependencies.createTokenVerifier(config);
