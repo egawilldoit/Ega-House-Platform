@@ -41,6 +41,7 @@
     { "idx": 36, "version": "7", "when": 1785058733263, "tag": "0036_runner_pr_watch_repair_graph", "breakpoints": true },
     { "idx": 37, "version": "7", "when": 1785331602000, "tag": "0037_mcp_oauth_foundation", "breakpoints": true },
     { "idx": 38, "version": "7", "when": 1785333192000, "tag": "0038_mcp_read_only_rls", "breakpoints": true },
-    { "idx": 39, "version": "7", "when": 1785333624000, "tag": "0039_mcp_grant_permission_consistency", "breakpoints": true }
+    { "idx": 39, "version": "7", "when": 1785333624000, "tag": "0039_mcp_grant_permission_consistency", "breakpoints": true },
+    { "idx": 40, "version": "7", "when": 1785598200000, "tag": "0040_mcp_distributed_rate_limit", "breakpoints": true }
   ]
 }
