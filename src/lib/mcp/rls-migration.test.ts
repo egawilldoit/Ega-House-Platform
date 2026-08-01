@@ -3,19 +3,50 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const migrationPath = resolve(
+const foundationMigrationPath = resolve(
+  process.cwd(),
+  "drizzle/0037_mcp_oauth_foundation.sql",
+);
+const rlsMigrationPath = resolve(
   process.cwd(),
   "drizzle/0038_mcp_read_only_rls.sql",
 );
 
-function readMigration(): string {
-  return readFileSync(migrationPath, "utf8");
+function readFoundationMigration(): string {
+  return readFileSync(foundationMigrationPath, "utf8");
 }
+
+function readRlsMigration(): string {
+  return readFileSync(rlsMigrationPath, "utf8");
+}
+
+describe("MCP OAuth foundation migration", () => {
+  it("does not allow authenticated clients to create or activate grants", () => {
+    const migration = readFoundationMigration();
+
+    expect(migration).not.toContain("mcp_grants_insert_own");
+    expect(migration).not.toContain("mcp_grants_update_own");
+    expect(migration).not.toMatch(
+      /CREATE POLICY[\s\S]*mcp_authorization_grants[\s\S]*FOR (INSERT|UPDATE)/,
+    );
+  });
+
+  it("binds every grant and issued OAuth token to an MCP resource", () => {
+    const migration = readFoundationMigration();
+
+    expect(migration).toContain('"resource_uri" text NOT NULL');
+    expect(migration).toContain("custom_access_token_hook");
+    expect(migration).toContain("jsonb_set(claims, '{aud}'");
+    expect(migration).toContain("GRANT EXECUTE");
+    expect(migration).toContain("TO supabase_auth_admin");
+    expect(migration).toContain("FROM authenticated, anon, public");
+  });
+});
 
 describe("MCP read-only RLS migration", () => {
   it("removes unrestricted authenticated access", () => {
-    expect(readMigration()).not.toContain("USING (true)");
-    expect(readMigration()).not.toContain("WITH CHECK (true)");
+    expect(readRlsMigration()).not.toContain("USING (true)");
+    expect(readRlsMigration()).not.toContain("WITH CHECK (true)");
   });
 
   it.each([
@@ -23,15 +54,21 @@ describe("MCP read-only RLS migration", () => {
     ["goals", "goals.read"],
     ["tasks", "tasks.read"],
   ])("adds owner-scoped direct and OAuth read policies for %s", (table, permission) => {
-    const migration = readMigration();
+    const migration = readRlsMigration();
 
     expect(migration).toContain(`${table}_direct_user_access`);
     expect(migration).toContain(`${table}_mcp_read_access`);
     expect(migration).toContain(`has_active_mcp_permission('${permission}')`);
   });
 
+  it("requires the active grant to match the token audience", () => {
+    expect(readRlsMigration()).toContain(
+      "grant_record.resource_uri = (auth.jwt() ->> 'aud')",
+    );
+  });
+
   it("does not create OAuth write policies", () => {
-    const migration = readMigration();
+    const migration = readRlsMigration();
 
     expect(migration).not.toMatch(/mcp_(insert|update|delete)_access/);
     expect(migration).not.toContain("tasks.create");
@@ -39,7 +76,7 @@ describe("MCP read-only RLS migration", () => {
   });
 
   it("uses a restricted security-definer permission helper", () => {
-    const migration = readMigration();
+    const migration = readRlsMigration();
 
     expect(migration).toContain("SECURITY DEFINER");
     expect(migration).toContain("SET search_path = ''");
