@@ -113,10 +113,23 @@ type AgentEventTable = {
 type PublicSchema = Database["public"];
 
 export type McpDatabase = Omit<Database, "public"> & {
-  public: Omit<PublicSchema, "Tables"> & {
+  public: Omit<PublicSchema, "Tables" | "Functions"> & {
     Tables: Omit<PublicSchema["Tables"], "agent_integration_events"> & {
       mcp_authorization_grants: McpGrantTable;
       agent_integration_events: AgentEventTable;
+    };
+    Functions: PublicSchema["Functions"] & {
+      consume_mcp_rate_limit: {
+        Args: {
+          p_tool_name: string;
+          p_limit?: number;
+          p_window_seconds?: number;
+        };
+        Returns: Array<{
+          allowed: boolean;
+          retry_after_seconds: number;
+        }>;
+      };
     };
   };
 };
