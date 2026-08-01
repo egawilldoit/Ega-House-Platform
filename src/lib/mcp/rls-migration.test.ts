@@ -11,6 +11,10 @@ const rlsMigrationPath = resolve(
   process.cwd(),
   "drizzle/0038_mcp_read_only_rls.sql",
 );
+const hardeningMigrationPath = resolve(
+  process.cwd(),
+  "drizzle/0041_mcp_security_performance_hardening.sql",
+);
 
 function readFoundationMigration(): string {
   return readFileSync(foundationMigrationPath, "utf8");
@@ -18,6 +22,10 @@ function readFoundationMigration(): string {
 
 function readRlsMigration(): string {
   return readFileSync(rlsMigrationPath, "utf8");
+}
+
+function readHardeningMigration(): string {
+  return readFileSync(hardeningMigrationPath, "utf8");
 }
 
 describe("MCP OAuth foundation migration", () => {
@@ -86,5 +94,57 @@ describe("MCP read-only RLS migration", () => {
     expect(migration).toContain("SET search_path = ''");
     expect(migration).toContain("REVOKE ALL ON FUNCTION");
     expect(migration).toContain("GRANT EXECUTE ON FUNCTION");
+  });
+});
+
+describe("MCP database hardening migration", () => {
+  it("moves the RLS helper out of the exposed public schema", () => {
+    const migration = readHardeningMigration();
+
+    expect(migration).toContain(
+      "CREATE OR REPLACE FUNCTION private.has_active_mcp_permission",
+    );
+    expect(migration).toContain(
+      "DROP FUNCTION IF EXISTS public.has_active_mcp_permission(text)",
+    );
+    expect(migration).toContain(
+      "REVOKE ALL ON SCHEMA private FROM PUBLIC, anon",
+    );
+  });
+
+  it("uses init-plan-safe auth expressions and one select policy per table", () => {
+    const migration = readHardeningMigration();
+
+    expect(migration).toContain("(SELECT auth.uid())");
+    expect(migration).toContain("(SELECT auth.jwt())");
+    for (const table of ["projects", "goals", "tasks"]) {
+      expect(migration).toContain(`${table}_select_access`);
+      expect(migration).toContain(`${table}_direct_user_insert`);
+      expect(migration).toContain(`${table}_direct_user_update`);
+      expect(migration).toContain(`${table}_direct_user_delete`);
+    }
+  });
+
+  it("adds covering indexes and removes the duplicate audit owner index", () => {
+    const migration = readHardeningMigration();
+
+    expect(migration).toContain(
+      "DROP INDEX IF EXISTS public.agent_integration_events_owner_idx",
+    );
+    expect(migration).toContain("agent_integration_events_grant_id_idx");
+    expect(migration).toContain("agent_integration_events_token_id_idx");
+    expect(migration).toContain("tasks_project_id_idx");
+    expect(migration).toContain("tasks_goal_id_idx");
+  });
+
+  it("locks internal tables and the automatic RLS event function", () => {
+    const migration = readHardeningMigration();
+
+    expect(migration).toContain("agent_tokens_deny_client_access");
+    expect(migration).toContain("mcp_rate_limits_deny_client_table_access");
+    expect(migration).toContain("public.rls_auto_enable()");
+    expect(migration).toContain(
+      "FROM PUBLIC, anon, authenticated",
+    );
   });
 });
