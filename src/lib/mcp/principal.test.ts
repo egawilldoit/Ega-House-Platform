@@ -15,6 +15,7 @@ const ACTIVE_GRANT: McpGrantRecord = {
   id: "10000000-0000-0000-0000-000000000001",
   ownerUserId: CLAIMS.sub,
   oauthClientId: CLAIMS.client_id,
+  resourceUri: "https://ega.example.com/api/mcp",
   status: "active",
   permissionProfile: "read_only",
   permissions: ["projects.read", "goals.read", "tasks.read"],
@@ -83,6 +84,17 @@ describe("resolveMcpPrincipal", () => {
       resolveMcpPrincipal(CLAIMS, {
         ...ACTIVE_GRANT,
         oauthClientId: "codex-client",
+      }),
+    ).toThrowError(
+      expect.objectContaining({ code: "PERMISSION_DENIED", status: 403 }),
+    );
+  });
+
+  it("rejects a grant without a resource binding", () => {
+    expect(() =>
+      resolveMcpPrincipal(CLAIMS, {
+        ...ACTIVE_GRANT,
+        resourceUri: "",
       }),
     ).toThrowError(
       expect.objectContaining({ code: "PERMISSION_DENIED", status: 403 }),
