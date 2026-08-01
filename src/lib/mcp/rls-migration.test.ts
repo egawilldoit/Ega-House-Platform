@@ -24,10 +24,14 @@ describe("MCP OAuth foundation migration", () => {
   it("does not allow authenticated clients to create or activate grants", () => {
     const migration = readFoundationMigration();
 
-    expect(migration).not.toContain("mcp_grants_insert_own");
-    expect(migration).not.toContain("mcp_grants_update_own");
     expect(migration).not.toMatch(
-      /CREATE POLICY[\s\S]*mcp_authorization_grants[\s\S]*FOR (INSERT|UPDATE)/,
+      /CREATE POLICY "mcp_grants_(?:insert|update|delete)[^"]*"/,
+    );
+    expect(migration).toContain(
+      "REVOKE INSERT, UPDATE, DELETE\n  ON TABLE \"mcp_authorization_grants\"\n  FROM authenticated, anon;",
+    );
+    expect(migration).toContain(
+      'CREATE POLICY "mcp_grants_select_own"',
     );
   });
 
