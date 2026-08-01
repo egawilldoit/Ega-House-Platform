@@ -17,6 +17,7 @@ export const mcpAuthorizationGrants = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     ownerUserId: uuid("owner_user_id").notNull(),
     oauthClientId: text("oauth_client_id").notNull(),
+    resourceUri: text("resource_uri").notNull(),
     clientName: text("client_name"),
     status: text("status").notNull().default("pending"),
     permissionProfile: text("permission_profile").notNull(),
@@ -52,6 +53,10 @@ export const mcpAuthorizationGrants = pgTable(
     check(
       "mcp_authorization_grants_profile_check",
       sql`${table.permissionProfile} in ('read_only', 'task_manager', 'delivery_observer')`,
+    ),
+    check(
+      "mcp_authorization_grants_resource_uri_check",
+      sql`${table.resourceUri} ~ '^https://[^?#]+$' or ${table.resourceUri} ~ '^http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?/[^?#]*$'`,
     ),
     check(
       "mcp_authorization_grants_permissions_array_check",
