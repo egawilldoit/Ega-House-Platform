@@ -110,6 +110,7 @@ export function resolveMcpPrincipal(
   if (
     grant.ownerUserId !== ownerUserId
     || grant.oauthClientId !== oauthClientId
+    || typeof grant.resourceUri !== "string"
     || grant.resourceUri.trim() === ""
   ) {
     return denyInactiveGrant();
