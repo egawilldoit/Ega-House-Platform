@@ -158,11 +158,14 @@ describe("MCP database hardening migration", () => {
 });
 
 describe("MCP production ownership reconciliation migration", () => {
-  it("resolves the approved owner dynamically and never hardcodes generated IDs", () => {
+  it("resolves the approved owner dynamically without UUID aggregation or hardcoded IDs", () => {
     const migration = readProductionOwnerReconciliationMigration();
 
     expect(migration).toContain("lower(email) = 'ab.mortaki@gmail.com'");
     expect(migration).toContain("v_target_count <> 1");
+    expect(migration).not.toContain("min(id)");
+    expect(migration).toContain("SELECT id");
+    expect(migration).toContain("LIMIT 1");
     expect(migration).not.toMatch(
       /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
     );
