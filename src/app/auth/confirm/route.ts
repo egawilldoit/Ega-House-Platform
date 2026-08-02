@@ -21,26 +21,33 @@ function confirmationFailureUrl(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const tokenHash = request.nextUrl.searchParams.get("token_hash");
-  const rawType = request.nextUrl.searchParams.get("type");
+  const searchParams = request.nextUrl.searchParams;
+  const tokenHash = searchParams.get("token_hash");
+  const rawType = searchParams.get("type");
+  const code = searchParams.get("code");
   const destination = resolveSafeAuthDestination(
-    request.nextUrl.searchParams.get("next"),
+    searchParams.get("next"),
     request.nextUrl.origin,
   );
-
-  if (!tokenHash || !rawType || !EMAIL_OTP_TYPES.has(rawType as EmailOtpType)) {
-    return NextResponse.redirect(confirmationFailureUrl(request));
-  }
-
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({
-    token_hash: tokenHash,
-    type: rawType as EmailOtpType,
-  });
 
-  if (error) {
-    return NextResponse.redirect(confirmationFailureUrl(request));
+  if (tokenHash && rawType && EMAIL_OTP_TYPES.has(rawType as EmailOtpType)) {
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: rawType as EmailOtpType,
+    });
+
+    return NextResponse.redirect(
+      error ? confirmationFailureUrl(request) : destination,
+    );
   }
 
-  return NextResponse.redirect(destination);
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    return NextResponse.redirect(
+      error ? confirmationFailureUrl(request) : destination,
+    );
+  }
+
+  return NextResponse.redirect(confirmationFailureUrl(request));
 }
