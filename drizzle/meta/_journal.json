@@ -43,6 +43,7 @@
     { "idx": 38, "version": "7", "when": 1785333192000, "tag": "0038_mcp_read_only_rls", "breakpoints": true },
     { "idx": 39, "version": "7", "when": 1785333624000, "tag": "0039_mcp_grant_permission_consistency", "breakpoints": true },
     { "idx": 40, "version": "7", "when": 1785598200000, "tag": "0040_mcp_distributed_rate_limit", "breakpoints": true },
-    { "idx": 41, "version": "7", "when": 1785603600000, "tag": "0041_mcp_security_performance_hardening", "breakpoints": true }
+    { "idx": 41, "version": "7", "when": 1785603600000, "tag": "0041_mcp_security_performance_hardening", "breakpoints": true },
+    { "idx": 42, "version": "7", "when": 1785656500000, "tag": "0042_fix_mcp_oauth_hook_variable_ambiguity", "breakpoints": true }
   ]
 }
