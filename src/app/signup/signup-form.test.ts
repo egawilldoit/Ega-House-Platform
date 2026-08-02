@@ -1,8 +1,15 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("./signup-form.tsx", import.meta.url), "utf8");
-const styles = readFileSync(new URL("./signup.module.css", import.meta.url), "utf8");
+const source = readFileSync(
+  resolve(process.cwd(), "src/app/signup/signup-form.tsx"),
+  "utf8",
+);
+const styles = readFileSync(
+  resolve(process.cwd(), "src/app/signup/signup.module.css"),
+  "utf8",
+);
 
 describe("public signup UI contract", () => {
   it("contains the required signup fields and accessible autocomplete values", () => {
