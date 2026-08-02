@@ -1,7 +1,9 @@
 # Dashboard MCP Coming Soon Announcement — Design
 
-**Date:** 2026-08-02  
-**Branch:** `feat/dashboard-mcp-coming-soon`  
+**Date:** 2026-08-02
+
+**Branch:** `feat/dashboard-mcp-coming-soon`
+
 **Status:** Approved — persistent announcement
 
 ## Goal
