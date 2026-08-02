@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useTransition, type FormEvent } from "react";
 
 import { createClient } from "@/lib/supabase/client";
 
@@ -27,7 +28,11 @@ function getSafeRedirect(raw: string | null): URL | null {
   return null;
 }
 
-export function LoginForm() {
+type LoginFormProps = {
+  signupHref: string;
+};
+
+export function LoginForm({ signupHref }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -337,6 +342,30 @@ export function LoginForm() {
           line-height: 1.5;
         }
 
+        .ega-signup-prompt {
+          margin-top: 24px;
+          padding-top: 20px;
+          border-top: 1px solid rgba(18,58,62,0.1);
+          color: rgba(18,58,62,0.58);
+          font-size: 13.5px;
+          line-height: 1.5;
+          text-align: center;
+        }
+
+        .ega-signup-link {
+          color: #9E2A2B;
+          font-weight: 700;
+          text-decoration: none;
+          text-underline-offset: 4px;
+        }
+
+        .ega-signup-link:hover { text-decoration: underline; }
+        .ega-signup-link:focus-visible {
+          border-radius: 4px;
+          outline: 2px solid #9E2A2B;
+          outline-offset: 4px;
+        }
+
         .ega-trust {
           grid-column: 1 / -1;
           display: grid;
@@ -463,6 +492,13 @@ export function LoginForm() {
                   }
                 </button>
               </form>
+
+              <p className="ega-signup-prompt">
+                New to EGA House?{" "}
+                <Link className="ega-signup-link" href={signupHref}>
+                  Create your account
+                </Link>
+              </p>
             </div>
           </div>
 
