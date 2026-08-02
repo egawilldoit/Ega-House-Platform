@@ -1,0 +1,72 @@
+name: MCP Integration CI
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/mcp/**"
+      - "src/db/mcp-schema.ts"
+      - "src/app/api/mcp/**"
+      - "src/app/.well-known/**"
+      - "src/app/oauth/**"
+      - "drizzle/0037_mcp_oauth_foundation.sql"
+      - "drizzle/0038_mcp_read_only_rls.sql"
+      - "drizzle/0039_mcp_grant_permission_consistency.sql"
+      - "drizzle/0040_mcp_distributed_rate_limit.sql"
+      - "drizzle/meta/_journal.json"
+      - "drizzle.config.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.config.mjs"
+      - ".github/workflows/mcp-integration-ci.yml"
+  push:
+    branches:
+      - "feat/mcp-oauth-integration"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint MCP integration files
+        run: >-
+          npx eslint
+          src/lib/mcp
+          src/db/mcp-schema.ts
+          src/app/api/mcp
+          src/app/.well-known
+
+      - name: Unit and migration contract tests
+        run: npm test -- --run src/lib/mcp
+
+      - name: Build production application
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+          MCP_ENABLED: "false"
+          MCP_WRITES_ENABLED: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+          NEXT_PUBLIC_SITE_URL: "https://example.com"
+        run: npm run build

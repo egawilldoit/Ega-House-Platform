@@ -172,7 +172,7 @@ async function updateSession(request: NextRequest) {
   };
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const hostname = getRequestHostname(request);
 
   if (!hostname) {
