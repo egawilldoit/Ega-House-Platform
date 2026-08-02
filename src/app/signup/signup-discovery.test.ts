@@ -18,7 +18,9 @@ describe("public signup discovery", () => {
   });
 
   it("offers signup in the homepage hero and after the workflow explanation", () => {
-    expect(homePage.match(/https:\/\/www\.egawilldoit\.online\/signup/g)).toHaveLength(2);
+    const signupLinks = homePage.match(/https:\/\/www\.egawilldoit\.online\/signup/g) ?? [];
+
+    expect(signupLinks).toHaveLength(2);
     expect(homePage).toContain("Create account");
     expect(homePage).toContain("Ready to start?");
     expect(homePage).toContain("Turn the workflow into your workspace.");
@@ -28,6 +30,6 @@ describe("public signup discovery", () => {
   it("keeps existing-user navigation available", () => {
     expect(homePage).toContain("Enter workspace");
     expect(homePage).toContain("Sign in instead");
-    expect(loginForm).toContain("Sign in to your workspace");
+    expect(loginForm).toContain("Sign in to continue");
   });
 });
