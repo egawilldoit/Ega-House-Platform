@@ -17,6 +17,7 @@ import {
   ReviewPulseAsync,
   TimerSummaryAsync,
 } from "./_components/dashboard-async-panels";
+import { McpComingSoonAnnouncement } from "./_components/McpComingSoonAnnouncement";
 import { PanelErrorBoundary } from "./_components/PanelErrorBoundary";
 import {
   CommandCenterSkeleton,
@@ -119,6 +120,8 @@ export default async function DashboardPage({
       </a>
 
       <main id="dashboard-main" aria-label="Dashboard main content" className="flex flex-col gap-6">
+        <McpComingSoonAnnouncement />
+
         <PanelErrorBoundary panelName="Hero">
           <Suspense fallback={<HeroSkeleton />}>
             <HeroPanelAsync />
