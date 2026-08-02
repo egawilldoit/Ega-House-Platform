@@ -4,7 +4,7 @@
 
 **Branch:** `feat/public-signup`
 
-**Status:** Approved direction; awaiting written-spec review
+**Status:** Written spec ready for review
 
 ## Goal
 
@@ -17,7 +17,7 @@ A new user must be able to:
 3. Receive a clear confirmation-email state without being told they are already signed in.
 4. Confirm their email through an SSR-safe `/auth/confirm` route.
 5. Land on the intended safe destination, defaulting to `/dashboard`.
-6. Sign in later from the existing `/login` flow if they do not complete the confirmation flow immediately.
+6. Sign in later from the existing `/login` flow if they do not complete confirmation immediately.
 
 ## Product truth
 
@@ -31,8 +31,7 @@ A new user must be able to:
 
 The design follows current guidance from:
 
-- Supabase password signup and PKCE email-confirmation documentation.
-- Supabase redirect URL configuration guidance for production, local development, and Vercel previews.
+- Supabase password signup, PKCE email-confirmation, redirect URL, CAPTCHA, and production-checklist documentation.
 - W3C WAI form validation and notification guidance.
 - GOV.UK password-input research for show/hide controls and avoiding duplicate password fields.
 - NIST and OWASP guidance favoring password length and passphrases over arbitrary character-composition rules.
@@ -76,6 +75,19 @@ Add:
 
 `signup-form.tsx` is a Client Component that owns form state and calls `supabase.auth.signUp()`.
 
+### Shared redirect policy
+
+Add a small pure auth URL utility used by login, signup, and confirmation. It must normalize and validate destinations without reading browser globals inside the pure validation function.
+
+Allowed destinations:
+
+- Relative paths beginning with one `/` and not `//`.
+- `egawilldoit.online`.
+- Any subdomain of `egawilldoit.online`.
+- `localhost` and loopback hosts for development.
+
+Reject unsupported schemes, malformed URLs, URL credentials, protocol-relative URLs, and all other hosts.
+
 ### Confirmation route
 
 Add:
@@ -85,7 +97,7 @@ Add:
 The GET route:
 
 1. Reads `token_hash`, `type`, and optional `next` query parameters.
-2. Accepts only a safe internal path or an approved EGA House/localhost URL.
+2. Accepts only a safe destination from the shared redirect policy.
 3. Uses the existing server Supabase client to call `verifyOtp()`.
 4. Redirects successful confirmations to the safe destination, defaulting to `/dashboard`.
 5. Redirects failures to `/login?error=confirmation_failed` without preserving secret confirmation parameters.
@@ -135,6 +147,7 @@ For this first release:
 - Spaces and printable Unicode characters are accepted.
 - No uppercase, lowercase, digit, or symbol composition rules.
 - Requirements are shown before entry, not only after an error.
+- Supabase project password settings must accept this application-level range.
 
 The UI will describe this as: `Use at least 12 characters. A short passphrase works well.`
 
@@ -168,15 +181,21 @@ Replace the form card content with a success panel:
 - Explain that the account is not active until the email is confirmed.
 - Provide `Back to sign in` and `Use a different email` actions.
 - Do not auto-redirect or imply an active session.
-- Do not add resend-email behavior in this release because it introduces rate-limit and abuse handling that should be designed separately.
+- Do not add resend-email behavior in this release because it introduces separate rate-limit and abuse-handling requirements.
 
 #### Immediate session
 
-Although production is designed for email confirmation, Supabase can return a session when confirmation is disabled in another environment. If a valid session is returned, use the same safe redirect logic as login and continue to `/dashboard` or the safe `next` destination.
+Production is designed for email confirmation, but Supabase can return a session when confirmation is disabled in another environment. If a valid session is returned, use the same safe redirect logic as login and continue to `/dashboard` or the safe `next` destination.
 
-## Supabase call
+## Exact confirmation URL contract
 
-Call:
+The signup form always builds a full confirmation URL with a `next` query parameter, even when using the default destination:
+
+```text
+https://www.egawilldoit.online/auth/confirm?next=%2Fdashboard
+```
+
+The Supabase call passes that full URL as `emailRedirectTo`:
 
 ```ts
 supabase.auth.signUp({
@@ -185,26 +204,49 @@ supabase.auth.signUp({
   options: {
     data: { full_name: fullName },
     emailRedirectTo: confirmationUrl,
+    captchaToken,
   },
 });
 ```
 
-`confirmationUrl` points to the current root origin `/auth/confirm` route and carries only a sanitized internal `next` value.
+The Confirm signup email template must use the redirect URL directly and append the token parameters:
 
-The UI must not perform user-existence probing. Supabase intentionally obscures some existing-account responses when email confirmations are enabled. User-facing errors remain generic where needed.
+```html
+<a href="{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=email">
+  Confirm email address
+</a>
+```
 
-## Redirect safety
+This produces one unambiguous application callback URL:
 
-Move the current login redirect parser into a small shared auth utility so login, signup, and confirmation use one policy.
+```text
+/auth/confirm?next=...&token_hash=...&type=email
+```
 
-Allowed destinations:
+The implementation must not combine a template that appends `/auth/confirm` with an `emailRedirectTo` value that already contains `/auth/confirm`.
 
-- Relative paths beginning with one `/` and not `//`.
-- `egawilldoit.online`.
-- Any subdomain of `egawilldoit.online`.
-- `localhost` for development.
+The UI must not perform user-existence probing. Supabase intentionally obscures some existing-account responses when email confirmation is enabled. User-facing errors remain generic where needed.
 
-Reject unsupported schemes, malformed URLs, credentials in URLs, and all other hosts.
+## Bot and abuse protection
+
+Public signup must support Supabase Auth CAPTCHA protection using Cloudflare Turnstile.
+
+Implementation requirements:
+
+- Read the public site key from `NEXT_PUBLIC_TURNSTILE_SITE_KEY`.
+- Render a managed Turnstile challenge near the submit action when the key is configured.
+- Pass the resulting token as `options.captchaToken` to `signUp()`.
+- Reset the challenge after a failed signup attempt.
+- Block submission with a deployment-configuration message if production enables Supabase CAPTCHA but the frontend key is missing.
+- Tests use a deterministic CAPTCHA adapter and never call Cloudflare.
+
+Operational requirements:
+
+- Configure the Turnstile secret in Supabase Auth's bot and abuse protection settings.
+- Keep the managed challenge visually subordinate to the form.
+- Do not use an intrusive image puzzle unless Turnstile determines a challenge is necessary.
+
+Local development may omit the key only when CAPTCHA is also disabled in the linked local/test auth environment.
 
 ## Operational Supabase configuration gates
 
@@ -213,27 +255,27 @@ Before merge or production activation, verify in the `Ega-House-Platform` Supaba
 1. Public email signup is enabled.
 2. Confirm Email is enabled.
 3. Site URL is the canonical production root URL.
-4. Redirect URLs include:
-   - Canonical production `/auth/confirm` destinations.
-   - Local development callback URLs.
-   - Approved Vercel preview patterns when preview email flows are tested.
-5. The Confirm signup email template sends `token_hash` and `type=email` to `/auth/confirm`.
-6. Production SMTP is configured or explicitly accepted as a launch risk; Supabase's built-in sender is rate-limited and best-effort.
+4. Redirect URLs allow the canonical `/auth/confirm` URL, local development callbacks, and approved Vercel preview patterns used for auth testing.
+5. The Confirm signup email template exactly follows the confirmation URL contract above.
+6. Turnstile CAPTCHA protection and matching frontend/secret keys are configured.
+7. Production SMTP is configured or explicitly accepted as a launch blocker; Supabase's built-in sender is rate-limited and best-effort.
+8. Auth rate limits are reviewed for the expected launch traffic.
 
-No secret key is added to client code. The existing publishable key remains the only browser credential.
+No secret key is added to client code. The existing Supabase publishable key and Turnstile public site key are the only browser credentials.
 
 ## Error handling
 
 Map errors into stable user-facing categories:
 
-- Missing Supabase environment values: deployment configuration message.
+- Missing Supabase or Turnstile environment values: deployment configuration message.
 - Invalid email or password policy: field-level guidance.
+- CAPTCHA incomplete or expired: ask the user to complete the security check again.
 - Rate limit or email delivery problem: retry-later guidance without exposing internals.
 - Existing-account ambiguity: `We could not create this account. Try signing in, or use another email.`
 - Confirmation failure: return to login with a clear recovery message.
 - Unexpected failure: generic message and preserve non-password field values.
 
-Never render raw stack traces, keys, token hashes, or confirmation parameters.
+Never render raw stack traces, keys, CAPTCHA tokens, token hashes, or confirmation parameters.
 
 ## Accessibility
 
@@ -243,6 +285,7 @@ Never render raw stack traces, keys, token hashes, or confirmation parameters.
 - Focus is moved deliberately to the error summary or success heading.
 - Keyboard order follows visual order.
 - Color is not the only error or success indicator.
+- The Turnstile widget has an accessible surrounding label and does not disrupt keyboard flow.
 - Motion follows the existing auth page behavior and respects `prefers-reduced-motion`.
 - Text contrast remains accessible over the yellow/glass surface.
 
@@ -254,6 +297,7 @@ Reuse the auth page's existing `960px` breakpoint:
 - Tablet/mobile: one column, form directly after the introductory content.
 - Inputs and buttons remain at least 44px high.
 - Long email addresses and validation messages wrap without overflow.
+- Turnstile fits within the form card without horizontal scrolling.
 - No horizontal scrolling at 320px viewport width.
 
 ## Testing
@@ -263,12 +307,12 @@ Reuse the auth page's existing `960px` breakpoint:
 Add focused tests for:
 
 - Redirect allow-list and rejection behavior.
-- Signup copy, labels, autocomplete attributes, password reveal, and absence of confirm-password field.
+- Signup copy, labels, autocomplete attributes, password reveal, and absence of a confirm-password field.
 - Validation for blank name, malformed email, short password, and overlong values.
-- Supabase call payload including `full_name` metadata and confirmation URL.
+- Supabase call payload including `full_name`, the exact confirmation URL, and CAPTCHA token.
 - Confirmation-required success state.
 - Immediate-session redirect behavior.
-- Generic handling for existing-user ambiguity and rate limits.
+- Generic handling for existing-user ambiguity, CAPTCHA errors, and rate limits.
 - Confirmation route success, failure, missing parameters, and unsafe `next` values.
 - Existing login behavior after shared-shell extraction.
 
@@ -286,7 +330,7 @@ npm run lint
 npm run build
 ```
 
-A Vercel preview for the exact final SHA must be `READY`. The visual review must cover desktop and mobile signup, validation, password reveal, and inbox-confirmation states.
+A Vercel preview for the exact final SHA must be `READY`. The visual review must cover desktop and mobile signup, validation, password reveal, CAPTCHA, and inbox-confirmation states.
 
 ## Database scope and known security advisory
 
@@ -300,7 +344,6 @@ A separate audit found several existing public tables with RLS disabled. That is
 - OAuth/social providers.
 - Password reset.
 - Confirmation email resend.
-- CAPTCHA or bot challenge.
 - Terms/privacy acceptance checkbox.
 - Organization or team creation.
 - Profile table or avatar setup.
