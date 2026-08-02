@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
@@ -25,7 +26,12 @@ function LoginFormFallback() {
   );
 }
 
-export default async function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -35,9 +41,33 @@ export default async function LoginPage() {
     redirect("/dashboard");
   }
 
+  const nextParam = typeof params.next === "string" ? params.next : null;
+  const signupHref = nextParam
+    ? `/signup?next=${encodeURIComponent(nextParam)}`
+    : "/signup";
+  const confirmationFailed = params.error === "confirmation_failed";
+
   return (
-    <Suspense fallback={<LoginFormFallback />}>
-      <LoginForm />
-    </Suspense>
+    <>
+      {confirmationFailed ? (
+        <div
+          role="alert"
+          className="fixed left-1/2 top-5 z-50 w-[min(92vw,540px)] -translate-x-1/2 rounded-2xl border border-red-900/15 bg-white/90 px-5 py-4 text-sm font-medium text-red-900 shadow-xl backdrop-blur-xl"
+        >
+          That confirmation link is invalid or expired. Create a new account or sign in if you already confirmed it.
+        </div>
+      ) : null}
+
+      <div className="fixed right-4 top-4 z-40 rounded-full border border-[#1E3A3D]/15 bg-white/55 px-4 py-2 text-sm text-[#1E3A3D] shadow-sm backdrop-blur-xl sm:right-7 sm:top-7">
+        New here?{" "}
+        <Link className="font-bold underline-offset-4 hover:underline" href={signupHref}>
+          Create an account
+        </Link>
+      </div>
+
+      <Suspense fallback={<LoginFormFallback />}>
+        <LoginForm />
+      </Suspense>
+    </>
   );
 }
