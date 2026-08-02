@@ -4,9 +4,11 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "src/app/page.tsx"
       - "src/app/signup/**"
       - "src/app/auth/confirm/**"
       - "src/app/login/page.tsx"
+      - "src/app/login/login-form.tsx"
       - "src/lib/auth/**"
       - "package.json"
       - "package-lock.json"
@@ -15,6 +17,7 @@ on:
   push:
     branches:
       - "feat/public-signup"
+      - "feat/signup-discovery-ctas"
 
 permissions:
   contents: read
@@ -43,6 +46,7 @@ jobs:
           src/lib/auth/safe-redirect.test.ts
           src/app/signup/signup-validation.test.ts
           src/app/signup/signup-form.test.ts
+          src/app/signup/signup-discovery.test.ts
           src/app/auth/confirm/route.test.ts
 
       - name: Typecheck
@@ -52,9 +56,11 @@ jobs:
         run: >-
           npx eslint
           src/lib/auth
+          src/app/page.tsx
           src/app/signup
           src/app/auth/confirm
           src/app/login/page.tsx
+          src/app/login/login-form.tsx
 
       - name: Build production application
         env:

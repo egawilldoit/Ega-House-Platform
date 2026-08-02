@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
 
+const PUBLIC_SIGNUP_URL = "https://www.egawilldoit.online/signup";
+
 export const metadata: Metadata = {
   title: "Login",
   description: "Sign in to access your EGA House workspace.",
@@ -43,8 +45,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const nextParam = typeof params.next === "string" ? params.next : null;
   const signupHref = nextParam
-    ? `/signup?next=${encodeURIComponent(nextParam)}`
-    : "/signup";
+    ? `${PUBLIC_SIGNUP_URL}?next=${encodeURIComponent(nextParam)}`
+    : PUBLIC_SIGNUP_URL;
   const confirmationFailed = params.error === "confirmation_failed";
 
   return (
@@ -60,13 +62,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
       <div className="fixed right-4 top-4 z-40 rounded-full border border-[#1E3A3D]/15 bg-white/55 px-4 py-2 text-sm text-[#1E3A3D] shadow-sm backdrop-blur-xl sm:right-7 sm:top-7">
         New here?{" "}
-        <Link className="font-bold underline-offset-4 hover:underline" href={signupHref}>
+        <Link className="font-bold underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#9e2a2b]" href={signupHref}>
           Create an account
         </Link>
       </div>
 
       <Suspense fallback={<LoginFormFallback />}>
-        <LoginForm />
+        <LoginForm signupHref={signupHref} />
       </Suspense>
     </>
   );
