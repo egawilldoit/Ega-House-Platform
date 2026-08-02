@@ -22,6 +22,8 @@ test("renders the premium MCP coming-soon announcement without implying live acc
   assert.match(markup, /OAuth protected/);
   assert.match(markup, /Scoped to your account/);
   assert.match(markup, /Read-only first release/);
+  assert.match(markup, /<ul[^>]+aria-label="Connection safeguards"/);
+  assert.equal(markup.match(/mcp-connector-signal/g)?.length ?? 0, 1);
   assert.doesNotMatch(markup, /<button/);
   assert.doesNotMatch(markup, /href=/);
   assert.doesNotMatch(markup, /Connect your AI to EGA House/);
