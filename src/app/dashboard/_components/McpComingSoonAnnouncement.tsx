@@ -92,14 +92,19 @@ export function McpComingSoonAnnouncement() {
           </div>
         </div>
 
-        <div className="mt-6 flex flex-wrap gap-2" aria-label="Connection safeguards">
+        <ul
+          className="mt-6 flex list-none flex-wrap gap-2 p-0"
+          aria-label="Connection safeguards"
+        >
           {trustItems.map(({ label, icon: Icon }) => (
-            <Badge key={label} tone="muted" className="mcp-trust-chip">
-              <Icon aria-hidden="true" className="h-3.5 w-3.5 text-[color:var(--signal-live)]" />
-              {label}
-            </Badge>
+            <li key={label}>
+              <Badge tone="muted" className="mcp-trust-chip">
+                <Icon aria-hidden="true" className="h-3.5 w-3.5 text-[color:var(--signal-live)]" />
+                {label}
+              </Badge>
+            </li>
           ))}
-        </div>
+        </ul>
       </div>
     </aside>
   );
