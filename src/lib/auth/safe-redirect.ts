@@ -42,6 +42,12 @@ export function resolveSafeAuthDestination(
     return fallbackUrl;
   }
 
+  const isInternalPath = raw.startsWith("/");
+  const isAbsoluteHttpUrl = /^https?:\/\//i.test(raw);
+  if (!isInternalPath && !isAbsoluteHttpUrl) {
+    return fallbackUrl;
+  }
+
   try {
     const candidate = new URL(raw, base);
     return isAllowedDestination(candidate) ? candidate : fallbackUrl;
