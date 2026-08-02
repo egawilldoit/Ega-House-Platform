@@ -27,52 +27,19 @@
 
 **Interfaces:**
 - Consumes: `McpComingSoonAnnouncement(): React.JSX.Element` and co-located `dashboard.css`.
-- Produces: A contract for copy, semantics, non-live positioning, and reduced-motion support.
+- Produces: A contract for copy, semantics, non-live positioning, one animated signal, and reduced-motion support.
 
-- [ ] **Step 1: Replace the old render expectations**
+- [x] **Step 1: Replace the old render expectations**
 
-The test must assert:
+The test asserts the new badge, status, headline, result-first copy, all three flow nodes, all three safeguards, semantic safeguards list, and exactly one signal element. It rejects buttons, links, dismiss controls, and the superseded dark-card headline.
 
-```tsx
-assert.match(markup, /NEW IN EGA HOUSE/);
-assert.match(markup, /Coming soon/);
-assert.match(markup, /Your workspace is about to become AI-connected\./);
-assert.match(markup, /Nothing changes until you choose to connect one\./);
-assert.match(markup, /AI clients/);
-assert.match(markup, /Secure gateway/);
-assert.match(markup, /Projects · Goals · Tasks/);
-assert.match(markup, /OAuth protected/);
-assert.match(markup, /Scoped to your account/);
-assert.match(markup, /Read-only first release/);
-assert.match(markup, /role="img"/);
-assert.doesNotMatch(markup, /<button/);
-assert.doesNotMatch(markup, /href=/);
-assert.doesNotMatch(markup, /Connect your AI to EGA House/);
-```
+- [x] **Step 2: Define the CSS motion contract**
 
-Add a CSS contract using `readFileSync(new URL("./dashboard.css", import.meta.url), "utf8")` and assert both:
+The CSS test reads the co-located stylesheet and verifies the signal keyframes, signal selector, and reduced-motion media query.
 
-```tsx
-assert.match(styles, /@keyframes mcp-signal-travel/);
-assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
-```
+- [x] **Step 3: Verify RED against the old implementation**
 
-- [ ] **Step 2: Verify RED**
-
-Run:
-
-```bash
-npm test -- src/app/dashboard/_components/McpComingSoonAnnouncement.test.tsx
-```
-
-Expected: FAIL because the current dark component lacks the new headline, flow, and trust copy.
-
-- [ ] **Step 3: Commit the failing contract**
-
-```bash
-git add src/app/dashboard/_components/McpComingSoonAnnouncement.test.tsx
-git commit -m "test: define premium MCP announcement contract"
-```
+The old component failed the new headline, flow, safeguards, and motion contract before production markup changed.
 
 ---
 
@@ -83,51 +50,26 @@ git commit -m "test: define premium MCP announcement contract"
 
 **Interfaces:**
 - Consumes: `Badge`, `StatusBadge`, Lucide icons, and CSS classes from Task 3.
-- Produces: Stateless semantic markup for the announcement, connection flow, and trust indicators.
+- Produces: Stateless semantic markup for the announcement, connection flow, and safeguard indicators.
 
-- [ ] **Step 1: Replace dark-card markup**
+- [x] **Step 1: Replace dark-card markup**
 
-Use these primitives:
+The component now uses:
 
 ```tsx
 <Badge tone="active">NEW IN EGA HOUSE</Badge>
 <StatusBadge status="todo" label="Coming soon" />
 ```
 
-Use this result-first content:
+It renders the approved result-first headline and copy, an accessible labelled flow, and a semantic list of safeguards.
 
-```tsx
-<h2>Your workspace is about to become AI-connected.</h2>
-<p>
-  Approved AI tools will soon be able to read your projects, goals, and tasks directly.
-  Nothing changes until you choose to connect one.
-</p>
-```
+- [x] **Step 2: Keep the component server-compatible**
 
-Render one accessible flow wrapper:
+No `use client`, React state, effects, browser storage, event handlers, or runtime fetches were added.
 
-```tsx
-<div
-  className="mcp-connection-flow"
-  role="img"
-  aria-label="Approved AI tools connect through a secure gateway to read projects, goals, and tasks."
->
-  {/* AI clients → Secure gateway → Projects · Goals · Tasks */}
-</div>
-```
+- [x] **Step 3: Keep the integration point unchanged**
 
-Render trust indicators with muted `Badge` components and lock, user, and eye icons.
-
-- [ ] **Step 2: Keep the component server-compatible**
-
-Do not add `use client`, React state, effects, browser storage, or event handlers.
-
-- [ ] **Step 3: Commit markup**
-
-```bash
-git add src/app/dashboard/_components/McpComingSoonAnnouncement.tsx
-git commit -m "feat: redesign MCP announcement as light connection console"
-```
+The component remains the first content block inside `#dashboard-main`, immediately above the existing hero.
 
 ---
 
@@ -140,63 +82,21 @@ git commit -m "feat: redesign MCP announcement as light connection console"
 - Consumes: Existing variables `--foreground`, `--muted-foreground`, `--signal-live`, `--radius-card`, `--shadow-card`, and the dashboard `768px` breakpoint.
 - Produces: `.mcp-launch-console`, flow-node, connector, signal, mobile, and reduced-motion rules.
 
-- [ ] **Step 1: Add the premium card surface**
+- [x] **Step 1: Add the premium card surface**
 
-Implement:
+The card uses a pale-mint/warm-off-white layered background, transparent gradient border, existing card radius/shadow, and a four-percent dot-grid texture.
 
-```css
-.mcp-launch-console {
-  border: 1px solid transparent;
-  border-radius: calc(var(--radius-card) + 0.25rem);
-  background:
-    linear-gradient(135deg, rgba(247, 250, 246, 0.98), rgba(251, 250, 246, 0.96)) padding-box,
-    linear-gradient(120deg, transparent, rgba(23, 123, 82, 0.3), transparent) border-box;
-  box-shadow: var(--shadow-card);
-}
-```
+- [x] **Step 2: Add the responsive connection flow**
 
-Add a full-bleed low-opacity dot-grid pseudo-element and keep it pointer-inert.
+Desktop uses a five-column node/connector layout. Mobile switches to a vertical stack and downward arrows at `768px`.
 
-- [ ] **Step 2: Add the responsive connection flow**
+- [x] **Step 3: Add one traveling signal**
 
-Desktop uses a five-column grid: node, connector, gateway, connector, node. Mobile switches to one column and rotates arrows downward at the existing `768px` breakpoint.
+Only the first connector contains `.mcp-connector-signal`; it travels toward the secure gateway on a slow loop.
 
-- [ ] **Step 3: Add one traveling signal**
+- [x] **Step 4: Respect reduced motion**
 
-Define:
-
-```css
-@keyframes mcp-signal-travel {
-  from { transform: translateX(0); opacity: 0; }
-  18%, 82% { opacity: 1; }
-  to { transform: translateX(var(--mcp-signal-distance)); opacity: 0; }
-}
-```
-
-Only the first connector receives the animated signal. Mobile overrides the transform axis to vertical.
-
-- [ ] **Step 4: Respect reduced motion**
-
-Add:
-
-```css
-@media (prefers-reduced-motion: reduce) {
-  .mcp-connector-signal {
-    animation: none;
-    opacity: 0.75;
-    transform: translateX(50%);
-  }
-}
-```
-
-Include the vertical mobile equivalent.
-
-- [ ] **Step 5: Commit styles**
-
-```bash
-git add src/app/dashboard/_components/dashboard.css
-git commit -m "style: add premium MCP connection flow"
-```
+The reduced-motion query disables animation and leaves one static signal at the connector midpoint.
 
 ---
 
@@ -205,7 +105,19 @@ git commit -m "style: add premium MCP connection flow"
 **Files:**
 - Verify: component, test, CSS, existing dashboard placement, design, and plan.
 
-- [ ] **Step 1: Run focused and full verification**
+- [x] **Step 1: Run isolated verification**
+
+Fresh isolated checks on the final source confirmed:
+
+- TypeScript component compilation passes with project-interface stubs.
+- Required copy and semantic structure are present.
+- No button, link, dismiss control, or superseded headline is present.
+- Exactly one animated signal element is rendered.
+- Signal keyframes and reduced-motion CSS exist.
+
+- [ ] **Step 2: Run repository verification**
+
+Still required on the complete checkout before merge:
 
 ```bash
 npm test -- src/app/dashboard/_components/McpComingSoonAnnouncement.test.tsx
@@ -215,18 +127,10 @@ npm run lint
 npm run build
 ```
 
-Expected: all commands exit successfully with no new warnings caused by the announcement.
+- [x] **Step 3: Inspect branch scope**
 
-- [ ] **Step 2: Inspect final changes**
+The branch remains based on `main`, is not behind, and changes only the announcement implementation, dashboard placement, dashboard-scoped CSS, test, and Superpowers documents.
 
-```bash
-git diff --check main...HEAD
-git diff --stat main...HEAD
-git log --oneline main..HEAD
-```
+- [ ] **Step 4: Confirm hosted preview for the final SHA**
 
-Expected: no whitespace errors; only the intended announcement implementation and Superpowers documents differ from `main`.
-
-- [ ] **Step 3: Update PR #114**
-
-Record the final SHA, visual redesign summary, exact verification results, and any unavailable hosted checks. Do not claim full-suite or production-build success without fresh evidence.
+The latest known Vercel preview still targets an earlier branch SHA. A successful preview for the exact final head is required before merge.
