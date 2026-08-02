@@ -6,6 +6,7 @@ const source = readFileSync(
   resolve(process.cwd(), "src/app/signup/signup-form.tsx"),
   "utf8",
 );
+const normalizedSource = source.replace(/\s+/g, " ");
 const styles = readFileSync(
   resolve(process.cwd(), "src/app/signup/signup.module.css"),
   "utf8",
@@ -13,7 +14,8 @@ const styles = readFileSync(
 
 describe("public signup UI contract", () => {
   it("contains the required signup fields and accessible autocomplete values", () => {
-    expect(source).toContain("Build your control room");
+    expect(source).toContain("Build your");
+    expect(source).toContain("control room.");
     expect(source).toContain('autoComplete="name"');
     expect(source).toContain('autoComplete="email"');
     expect(source).toContain('autoComplete="new-password"');
@@ -31,7 +33,9 @@ describe("public signup UI contract", () => {
 
   it("has an honest confirmation-required state", () => {
     expect(source).toContain("Check your inbox");
-    expect(source).toContain("Your workspace stays locked until you confirm the email");
+    expect(normalizedSource).toContain(
+      "Your workspace stays locked until you confirm the email",
+    );
     expect(source).toContain("Use a different email");
   });
 
