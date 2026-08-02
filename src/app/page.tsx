@@ -100,10 +100,10 @@ export default async function HomePage() {
             </p>
 
             {/* CTA */}
-            <div className="mt-12 flex flex-wrap items-center gap-5">
+            <div className="mt-12 flex flex-wrap items-center gap-4">
               <Link
                 href="/login?next=%2Fdashboard"
-                className="inline-flex h-12 items-center gap-2 rounded-xl px-7 text-sm font-semibold tracking-wide transition-all active:scale-[0.97] hover:bg-[#9e2a2b] hover:shadow-[0_0_28px_rgba(158,42,43,0.35)]"
+                className="inline-flex h-12 items-center gap-2 rounded-xl px-7 text-sm font-semibold tracking-wide transition-all active:scale-[0.97] hover:bg-[#9e2a2b] hover:shadow-[0_0_28px_rgba(158,42,43,0.35)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#335c67]"
                 style={{
                   background: "#335c67",
                   color: "#fff3b0",
@@ -112,8 +112,20 @@ export default async function HomePage() {
                 Enter workspace
                 <span className="opacity-70">→</span>
               </Link>
-              <span className="text-sm" style={{ color: "#9e2a2b" }}>
-                Sign in to continue to your dashboard.
+              <Link
+                href="https://www.egawilldoit.online/signup"
+                className="inline-flex h-12 items-center gap-2 rounded-xl border px-7 text-sm font-semibold tracking-wide transition-all active:scale-[0.97] hover:-translate-y-0.5 hover:bg-white/65 hover:shadow-[0_10px_30px_rgba(84,11,14,0.10)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#9e2a2b]"
+                style={{
+                  borderColor: "rgba(158,42,43,0.3)",
+                  background: "rgba(255,255,255,0.38)",
+                  color: "#9e2a2b",
+                }}
+              >
+                Create account
+                <span aria-hidden="true" className="opacity-70">↗</span>
+              </Link>
+              <span className="w-full text-sm sm:w-auto" style={{ color: "#9e2a2b" }}>
+                Sign in or create your workspace to get started.
               </span>
             </div>
 
@@ -210,6 +222,51 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
+
+          <section
+            className="mt-14 grid gap-8 rounded-3xl px-7 py-8 sm:px-10 lg:grid-cols-[1fr_auto] lg:items-center"
+            style={{
+              border: "1px solid rgba(51,92,103,0.2)",
+              background: "radial-gradient(circle at top left, rgba(224,159,62,0.18), transparent 45%), rgba(255,255,255,0.52)",
+              boxShadow: "0 24px 70px rgba(84,11,14,0.08)",
+              backdropFilter: "blur(14px)",
+            }}
+            aria-labelledby="signup-cta-title"
+          >
+            <div>
+              <p className="font-mono text-[0.65rem] uppercase tracking-[0.28em]" style={{ color: "#9e2a2b" }}>
+                Ready to start?
+              </p>
+              <h2
+                id="signup-cta-title"
+                className="mt-3 text-2xl font-bold tracking-[-0.03em] sm:text-3xl"
+                style={{ color: "#335c67" }}
+              >
+                Turn the workflow into your workspace.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 sm:text-base" style={{ color: "#540b0e", opacity: 0.72 }}>
+                Create your EGA House account and move from goals to focused execution in one place.
+              </p>
+            </div>
+
+            <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center lg:flex-col lg:items-stretch">
+              <Link
+                href="https://www.egawilldoit.online/signup"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-semibold transition-all active:scale-[0.97] hover:-translate-y-0.5 hover:shadow-[0_12px_28px_rgba(51,92,103,0.22)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#335c67]"
+                style={{ background: "#335c67", color: "#fff3b0" }}
+              >
+                Create your account
+                <span aria-hidden="true">→</span>
+              </Link>
+              <Link
+                href="/login?next=%2Fdashboard"
+                className="inline-flex h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#9e2a2b]"
+                style={{ color: "#9e2a2b" }}
+              >
+                Sign in instead
+              </Link>
+            </div>
+          </section>
         </div>
 
         {/* ── STATS BAR ── */}
