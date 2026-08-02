@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const source = readFileSync(new URL("./route.ts", import.meta.url), "utf8");
+const source = readFileSync(
+  resolve(process.cwd(), "src/app/auth/confirm/route.ts"),
+  "utf8",
+);
 
 describe("signup confirmation route contract", () => {
   it("supports token-hash and standard PKCE confirmation callbacks", () => {
