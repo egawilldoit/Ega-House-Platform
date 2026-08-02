@@ -15,6 +15,10 @@ const hardeningMigrationPath = resolve(
   process.cwd(),
   "drizzle/0041_mcp_security_performance_hardening.sql",
 );
+const productionOwnerReconciliationMigrationPath = resolve(
+  process.cwd(),
+  "drizzle/0043_mcp_production_owner_reconciliation.sql",
+);
 
 function readFoundationMigration(): string {
   return readFileSync(foundationMigrationPath, "utf8");
@@ -26,6 +30,10 @@ function readRlsMigration(): string {
 
 function readHardeningMigration(): string {
   return readFileSync(hardeningMigrationPath, "utf8");
+}
+
+function readProductionOwnerReconciliationMigration(): string {
+  return readFileSync(productionOwnerReconciliationMigrationPath, "utf8");
 }
 
 describe("MCP OAuth foundation migration", () => {
@@ -145,6 +153,40 @@ describe("MCP database hardening migration", () => {
     expect(migration).toContain("public.rls_auto_enable()");
     expect(migration).toContain(
       "FROM PUBLIC, anon, authenticated",
+    );
+  });
+});
+
+describe("MCP production ownership reconciliation migration", () => {
+  it("resolves the approved owner dynamically and never hardcodes generated IDs", () => {
+    const migration = readProductionOwnerReconciliationMigration();
+
+    expect(migration).toContain("lower(email) = 'ab.mortaki@gmail.com'");
+    expect(migration).toContain("v_target_count <> 1");
+    expect(migration).not.toMatch(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    );
+  });
+
+  it("repairs only invalid owners and fails on unresolved ownership", () => {
+    const migration = readProductionOwnerReconciliationMigration();
+
+    expect(migration).toContain("project_record.owner_user_id IS NULL");
+    expect(migration).toContain("goal_record.owner_user_id IS NULL");
+    expect(migration).toContain("task_record.owner_user_id IS NULL");
+    expect(migration).toContain("NOT EXISTS (");
+    expect(migration).toContain("FROM auth.users AS auth_user");
+    expect(migration).toContain("Project ownership reconciliation failed.");
+  });
+
+  it("requires goal and task owners to match their parent project", () => {
+    const migration = readProductionOwnerReconciliationMigration();
+
+    expect(migration).toContain(
+      "goal_record.owner_user_id IS DISTINCT FROM project_record.owner_user_id",
+    );
+    expect(migration).toContain(
+      "task_record.owner_user_id IS DISTINCT FROM project_record.owner_user_id",
     );
   });
 });
