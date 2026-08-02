@@ -9,15 +9,25 @@ DECLARE
   v_target_owner uuid;
   v_target_count integer;
 BEGIN
-  SELECT count(*), min(id)
-    INTO v_target_count, v_target_owner
+  SELECT count(*)
+    INTO v_target_count
   FROM auth.users
   WHERE lower(email) = 'ab.mortaki@gmail.com';
 
-  IF v_target_count <> 1 OR v_target_owner IS NULL THEN
+  IF v_target_count <> 1 THEN
     RAISE EXCEPTION
       'Expected exactly one reconciliation owner for ab.mortaki@gmail.com; found %.',
       v_target_count;
+  END IF;
+
+  SELECT id
+    INTO v_target_owner
+  FROM auth.users
+  WHERE lower(email) = 'ab.mortaki@gmail.com'
+  LIMIT 1;
+
+  IF v_target_owner IS NULL THEN
+    RAISE EXCEPTION 'Reconciliation owner could not be resolved.';
   END IF;
 
   UPDATE public.projects AS project_record
