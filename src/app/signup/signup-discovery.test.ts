@@ -25,9 +25,9 @@ describe("public signup discovery", () => {
 
   it("offers signup in the homepage hero and final workspace study", () => {
     expect(homeSources).toContain(`SIGNUP_HREF = "${canonicalSignupUrl}"`);
-    expect(homeSources).toContain("Create account");
+    expect(homeSources.match(/Create account/g)).toHaveLength(2);
+    expect(homeSources).not.toContain("Create your account");
     expect(homeSources).toContain("Build the week.");
-    expect(homeSources).toContain("Create your account");
   });
 
   it("keeps existing-user navigation available", () => {
