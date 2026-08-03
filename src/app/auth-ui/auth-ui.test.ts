@@ -56,4 +56,14 @@ describe("shared auth editorial system", () => {
     expect(signup).toContain("control room.");
     expect(signup).toContain("AUTH 02");
   });
+
+  it("keeps the desktop login story and form inside the safe viewport", () => {
+    const css = read("src/app/auth-ui/auth.css");
+
+    expect(css).toContain('[data-auth-theme="black-signal"] .auth-layout');
+    expect(css).toContain("align-items: start");
+    expect(css).toContain('[data-auth-theme="black-signal"] .auth-display');
+    expect(css).toContain('[data-auth-theme="black-signal"] .auth-operation-list');
+    expect(css).toContain('@media (min-width: 861px) and (max-height: 1080px)');
+  });
 });
