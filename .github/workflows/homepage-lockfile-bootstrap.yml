@@ -1,0 +1,42 @@
+name: Homepage Lockfile Bootstrap
+
+on:
+  push:
+    branches:
+      - feat/homepage-operational-studies
+    paths:
+      - ".github/workflows/homepage-lockfile-bootstrap.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  update-lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/homepage-operational-studies
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Add exact Motion dependency
+        run: npm install motion@12.42.2 --save-exact --ignore-scripts --no-audit --no-fund
+
+      - name: Commit generated manifests
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          if git diff --cached --quiet; then
+            echo "No manifest changes"
+            exit 0
+          fi
+          git commit -m "feat: add Motion dependency for homepage"
+          git push origin HEAD:feat/homepage-operational-studies
