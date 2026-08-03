@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
 
-const PUBLIC_SIGNUP_URL = "https://www.egawilldoit.online/signup";
+const PUBLIC_SIGNUP_PATH = "/signup";
 
 export const metadata: Metadata = {
   title: "Login",
@@ -62,8 +62,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const nextParam = typeof params.next === "string" ? params.next : null;
   const signupHref = nextParam
-    ? `${PUBLIC_SIGNUP_URL}?next=${encodeURIComponent(nextParam)}`
-    : PUBLIC_SIGNUP_URL;
+    ? `${PUBLIC_SIGNUP_PATH}?next=${encodeURIComponent(nextParam)}`
+    : PUBLIC_SIGNUP_PATH;
   const confirmationFailed = params.error === "confirmation_failed";
 
   return (
