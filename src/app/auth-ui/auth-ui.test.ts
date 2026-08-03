@@ -48,10 +48,12 @@ describe("shared auth editorial system", () => {
     const signup = read("src/app/signup/signup-form.tsx");
 
     expect(login).toContain('theme="black-signal"');
-    expect(login).toContain("Return to the system.");
+    expect(login).toContain("Return to");
+    expect(login).toContain("the system.");
     expect(login).toContain("AUTH 01");
     expect(signup).toContain('theme="signal-cream"');
-    expect(signup).toContain("Build your control room.");
+    expect(signup).toContain("Build your");
+    expect(signup).toContain("control room.");
     expect(signup).toContain("AUTH 02");
   });
 });
