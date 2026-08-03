@@ -64,6 +64,8 @@ MCP Integration CI run `30832748349` passed on the same implementation head.
 
 GitHub code-quality review identified one unused login import. Commit `6e760faa81c1e31d7f8be6de36d4441d4f6fa416` removed it, and the review thread was resolved.
 
+The commits after the verified implementation head modify this evidence document only; no runtime, test, configuration, dependency, or styling file changed after the successful gates.
+
 ## Preview status
 
 Vercel currently exposes a READY branch preview for commit `8bf9de22787a6721fff61eff8a1cf1902976b066`, which contains the earlier homepage implementation but not this final auth/refinement head. No deployment for `6e760faa81c1e31d7f8be6de36d4441d4f6fa416` was available during verification.
