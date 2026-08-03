@@ -1,7 +1,7 @@
 import type { HomeStudy } from "./home.types";
 
 export const LOGIN_HREF = "/login?next=%2Fdashboard";
-export const SIGNUP_HREF = "https://www.egawilldoit.online/signup";
+export const SIGNUP_HREF = "/signup";
 
 export const HOME_STUDIES: readonly HomeStudy[] = [
   {
