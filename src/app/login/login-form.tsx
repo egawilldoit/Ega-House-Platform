@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, LockKeyhole, Mail, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
