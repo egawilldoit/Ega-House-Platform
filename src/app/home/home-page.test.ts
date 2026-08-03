@@ -47,4 +47,12 @@ describe("homepage operational studies", () => {
       expect(styles).toContain(`[data-theme="${theme}"]`);
     }
   });
+
+  it("defines presentation safeguards for normal zoom and wide screens", () => {
+    expect(styles).toContain("--home-content-max");
+    expect(styles).toContain("@media (min-width: 1680px)");
+    expect(styles).toContain("@media (max-width: 1180px)");
+    expect(styles).toContain("text-wrap: balance");
+    expect(styles).toContain("overflow-wrap: anywhere");
+  });
 });
