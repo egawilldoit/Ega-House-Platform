@@ -32,6 +32,7 @@
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "lucide-react": "^1.8.0",
+    "motion": "12.42.2",
     "next": "16.2.12",
     "postgres": "^3.4.9",
     "posthog-js": "1.407.2",
