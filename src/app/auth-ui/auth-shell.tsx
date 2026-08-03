@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import "./auth.css";
+import "./auth-login-viewport.css";
 import { AuthMotion } from "./auth-motion";
 
 export type AuthTheme = "black-signal" | "signal-cream";
