@@ -9,7 +9,10 @@ export function ConversionStudy() {
   return (
     <StudyShell study={study} className="home-conversion">
       <div className="home-conversion__signal" aria-hidden="true">
-        <span>05</span>
+        <div className="home-index-lockup home-index-lockup--workspace">
+          <span className="home-index-lockup__number">05</span>
+          <span className="home-index-lockup__label">Workspace</span>
+        </div>
         <span className="home-conversion__disc" />
       </div>
 
@@ -31,7 +34,7 @@ export function ConversionStudy() {
         </Reveal>
         <Reveal className="home-conversion__actions" delay={0.2}>
           <HomeCta href={SIGNUP_HREF} tone="signal">
-            Create your account
+            Create account
           </HomeCta>
           <HomeCta href={LOGIN_HREF} tone="secondary">
             Enter workspace
