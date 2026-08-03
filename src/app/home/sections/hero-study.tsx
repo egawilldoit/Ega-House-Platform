@@ -20,7 +20,10 @@ export function HeroStudy() {
         <Reveal className="home-hero__signal-word">
           <span>EGA</span>
         </Reveal>
-        <span className="home-hero__signal-number">00</span>
+        <div className="home-index-lockup home-index-lockup--intro">
+          <span className="home-index-lockup__number">00</span>
+          <span className="home-index-lockup__label">Introduction</span>
+        </div>
         <span className="home-orbit home-orbit--one" />
         <span className="home-orbit home-orbit--two" />
       </div>
