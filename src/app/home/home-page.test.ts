@@ -7,6 +7,9 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const page = read("src/app/page.tsx");
 const homePage = read("src/app/home/home-page.tsx");
 const data = read("src/app/home/home-data.ts");
+const heroStudy = read("src/app/home/sections/hero-study.tsx");
+const focusStudy = read("src/app/home/sections/focus-study.tsx");
+const conversionStudy = read("src/app/home/sections/conversion-study.tsx");
 const styles = [
   read("src/app/home/home.css"),
   read("src/app/home/home-polish.css"),
@@ -57,6 +60,40 @@ describe("homepage operational studies", () => {
     expect(styles).toContain("@media (min-width: 1680px)");
     expect(styles).toContain("@media (max-width: 1180px)");
     expect(styles).toContain("text-wrap: balance");
-    expect(styles).toContain("overflow-wrap: anywhere");
+  });
+
+  it("prevents vertical clipping and mid-word heading breaks", () => {
+    expect(styles).toContain("overflow-x: clip");
+    expect(styles).toContain("overflow-y: visible");
+    expect(styles).toContain("overflow-wrap: normal");
+    expect(styles).toContain("word-break: normal");
+    expect(styles).toContain("hyphens: none");
+    expect(styles).not.toContain("overflow-wrap: anywhere");
+    expect(focusStudy).toContain("into momentum.");
+  });
+
+  it("keeps the fixed header inside the safe viewport", () => {
+    expect(styles).toContain("grid-template-columns: auto minmax(0, 1fr) auto");
+    expect(styles).toContain("min-width: max-content");
+    expect(styles).toContain("white-space: nowrap");
+  });
+
+  it("anchors the large intro and workspace indices", () => {
+    expect(heroStudy).toContain('className="home-index-lockup home-index-lockup--intro"');
+    expect(heroStudy).toContain('className="home-index-lockup__label">Introduction');
+    expect(conversionStudy).toContain('className="home-index-lockup home-index-lockup--workspace"');
+    expect(conversionStudy).toContain('className="home-index-lockup__label">Workspace');
+  });
+
+  it("uses one canonical account-creation CTA", () => {
+    expect(heroStudy).toContain("Create account");
+    expect(conversionStudy).toContain("Create account");
+    expect(conversionStudy).not.toContain("Create your account");
+  });
+
+  it("defines explicit target viewport contracts", () => {
+    expect(styles).toContain("@media (max-width: 1440px)");
+    expect(styles).toContain("@media (max-width: 1024px)");
+    expect(styles).toContain("@media (max-width: 390px)");
   });
 });
