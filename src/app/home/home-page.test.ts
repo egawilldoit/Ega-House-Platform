@@ -7,7 +7,10 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const page = read("src/app/page.tsx");
 const homePage = read("src/app/home/home-page.tsx");
 const data = read("src/app/home/home-data.ts");
-const styles = read("src/app/home/home.css");
+const styles = [
+  read("src/app/home/home.css"),
+  read("src/app/home/home-polish.css"),
+].join("\n");
 const motionLayer = read("src/app/home/components/home-motion.tsx");
 
 describe("homepage operational studies", () => {
@@ -21,6 +24,7 @@ describe("homepage operational studies", () => {
       expect(data).toContain(`id: "${id}"`);
     }
 
+    expect(homePage).toContain('import "./home-polish.css"');
     expect(homePage).toContain("<HeroStudy");
     expect(homePage).toContain("<GoalsStudy");
     expect(homePage).toContain("<PlanningStudy");
