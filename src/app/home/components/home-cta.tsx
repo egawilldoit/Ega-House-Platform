@@ -1,8 +1,9 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 type HomeCtaProps = {
   href: string;
-  children: React.ReactNode;
+  children: ReactNode;
   tone?: "primary" | "secondary" | "signal";
 };
 
