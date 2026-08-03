@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/app/page.tsx"
+      - "src/app/home/**"
       - "src/app/signup/**"
       - "src/app/auth/confirm/**"
       - "src/app/login/page.tsx"
@@ -18,6 +19,7 @@ on:
     branches:
       - "feat/public-signup"
       - "feat/signup-discovery-ctas"
+      - "feat/homepage-operational-studies"
 
 permissions:
   contents: read
@@ -40,10 +42,11 @@ jobs:
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Focused signup tests
+      - name: Focused signup and homepage tests
         run: >-
           npm test -- --run
           src/lib/auth/safe-redirect.test.ts
+          src/app/home/home-page.test.ts
           src/app/signup/signup-validation.test.ts
           src/app/signup/signup-form.test.ts
           src/app/signup/signup-discovery.test.ts
@@ -52,11 +55,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint signup and auth files
+      - name: Lint signup, homepage, and auth files
         run: >-
           npx eslint
           src/lib/auth
           src/app/page.tsx
+          src/app/home
           src/app/signup
           src/app/auth/confirm
           src/app/login/page.tsx
