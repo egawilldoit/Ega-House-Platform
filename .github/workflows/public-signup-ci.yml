@@ -6,10 +6,13 @@ on:
     paths:
       - "src/app/page.tsx"
       - "src/app/home/**"
+      - "src/app/auth-ui/**"
       - "src/app/signup/**"
       - "src/app/auth/confirm/**"
       - "src/app/login/page.tsx"
       - "src/app/login/login-form.tsx"
+      - "src/app/login/**/*.test.ts"
+      - "src/app/login/**/*.test.tsx"
       - "src/lib/auth/**"
       - "package.json"
       - "package-lock.json"
@@ -42,11 +45,14 @@ jobs:
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Focused signup and homepage tests
+      - name: Focused public surface tests
         run: >-
           npm test -- --run
           src/lib/auth/safe-redirect.test.ts
+          src/app/auth-ui/auth-ui.test.ts
           src/app/home/home-page.test.ts
+          src/app/login/login-form.test.ts
+          src/app/login/__tests__/navigation-regression.test.tsx
           src/app/signup/signup-validation.test.ts
           src/app/signup/signup-form.test.ts
           src/app/signup/signup-discovery.test.ts
@@ -58,11 +64,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint signup, homepage, and auth files
+      - name: Lint public homepage and auth files
         run: >-
           npx eslint
           src/lib/auth
           src/app/page.tsx
+          src/app/auth-ui
           src/app/home
           src/app/signup
           src/app/auth/confirm
