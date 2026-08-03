@@ -1,4 +1,5 @@
 import "./home.css";
+import "./home-polish.css";
 
 import { HomeMotion } from "./components/home-motion";
 import { StudyHeader } from "./components/study-header";
