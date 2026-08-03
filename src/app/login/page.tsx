@@ -1,30 +1,47 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { AuthFeedback } from "@/app/auth-ui/auth-feedback";
+import { AuthHeader } from "@/app/auth-ui/auth-header";
+import { AuthShell } from "@/app/auth-ui/auth-shell";
+import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
 import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
 
-const PUBLIC_SIGNUP_URL = "https://www.egawilldoit.online/signup";
+const PUBLIC_SIGNUP_PATH = "/signup";
 
 export const metadata: Metadata = {
   title: "Login",
   description: "Sign in to access your EGA House workspace.",
 };
 
-function LoginFormFallback() {
+function LoginFormFallback({ signupHref }: { signupHref: string }) {
   return (
-    <div
-      className="w-full rounded-2xl p-10 backdrop-blur"
-      style={{ border: "1px solid rgba(51,92,103,0.2)", background: "rgba(255,255,255,0.5)" }}
-    >
-      <div className="h-4 w-20 animate-pulse rounded-full" style={{ background: "rgba(51,92,103,0.15)" }} />
-      <div className="mt-8 h-12 animate-pulse rounded-xl" style={{ background: "rgba(51,92,103,0.1)" }} />
-      <div className="mt-3 h-12 animate-pulse rounded-xl" style={{ background: "rgba(51,92,103,0.1)" }} />
-      <div className="mt-6 h-12 animate-pulse rounded-xl" style={{ background: "rgba(51,92,103,0.1)" }} />
-    </div>
+    <AuthShell theme="black-signal">
+      <AuthHeader
+        status="AUTH / SIGN IN"
+        actionHref={signupHref}
+        actionLabel="Create account"
+      />
+      <div className="auth-stage" aria-label="Loading sign in">
+        <AuthStudyLabel number="AUTH 01" title="SIGN IN" direction="BLACK SIGNAL" />
+        <div className="auth-layout">
+          <section className="auth-story">
+            <p className="auth-kicker">The operating loop is waiting.</p>
+            <div className="auth-display">Return to the system.</div>
+          </section>
+          <section className="auth-form-column">
+            <div className="auth-form-frame">
+              <div className="auth-form-eyebrow">Preparing secure access</div>
+              <div className="auth-form-title">Sign in to continue</div>
+              <p className="auth-form-copy">Loading the protected account form…</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </AuthShell>
   );
 }
 
@@ -45,29 +62,20 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
   const nextParam = typeof params.next === "string" ? params.next : null;
   const signupHref = nextParam
-    ? `${PUBLIC_SIGNUP_URL}?next=${encodeURIComponent(nextParam)}`
-    : PUBLIC_SIGNUP_URL;
+    ? `${PUBLIC_SIGNUP_PATH}?next=${encodeURIComponent(nextParam)}`
+    : PUBLIC_SIGNUP_PATH;
   const confirmationFailed = params.error === "confirmation_failed";
 
   return (
     <>
       {confirmationFailed ? (
-        <div
-          role="alert"
-          className="fixed left-1/2 top-5 z-50 w-[min(92vw,540px)] -translate-x-1/2 rounded-2xl border border-red-900/15 bg-white/90 px-5 py-4 text-sm font-medium text-red-900 shadow-xl backdrop-blur-xl"
-        >
-          That confirmation link is invalid or expired. Create a new account or sign in if you already confirmed it.
-        </div>
+        <AuthFeedback className="auth-page-alert">
+          That confirmation link is invalid or expired. Create a new account or sign in if you
+          already confirmed it.
+        </AuthFeedback>
       ) : null}
 
-      <div className="fixed right-4 top-4 z-40 rounded-full border border-[#1E3A3D]/15 bg-white/55 px-4 py-2 text-sm text-[#1E3A3D] shadow-sm backdrop-blur-xl sm:right-7 sm:top-7">
-        New here?{" "}
-        <Link className="font-bold underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#9e2a2b]" href={signupHref}>
-          Create an account
-        </Link>
-      </div>
-
-      <Suspense fallback={<LoginFormFallback />}>
+      <Suspense fallback={<LoginFormFallback signupHref={signupHref} />}>
         <LoginForm signupHref={signupHref} />
       </Suspense>
     </>
