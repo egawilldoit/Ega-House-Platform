@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -33,7 +34,10 @@ describe("McpComingSoonAnnouncement", () => {
   });
 
   it("keeps the connector motion scoped and reduced-motion safe", () => {
-    const styles = readFileSync(new URL("./dashboard.css", import.meta.url), "utf8");
+    const styles = readFileSync(
+      resolve(process.cwd(), "src/app/dashboard/_components/dashboard.css"),
+      "utf8",
+    );
 
     expect(styles).toMatch(/@keyframes mcp-signal-travel/);
     expect(styles).toMatch(/\.mcp-connector-signal/);
