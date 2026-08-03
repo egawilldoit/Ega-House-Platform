@@ -16,6 +16,7 @@ const sharedFiles = [
   "src/app/auth-ui/auth-submit.tsx",
   "src/app/auth-ui/auth-feedback.tsx",
   "src/app/auth-ui/auth.css",
+  "src/app/auth-ui/auth-login-viewport.css",
 ] as const;
 
 describe("shared auth editorial system", () => {
@@ -58,7 +59,7 @@ describe("shared auth editorial system", () => {
   });
 
   it("keeps the desktop login story and form inside the safe viewport", () => {
-    const css = read("src/app/auth-ui/auth.css");
+    const css = read("src/app/auth-ui/auth-login-viewport.css");
 
     expect(css).toContain('[data-auth-theme="black-signal"] .auth-layout');
     expect(css).toContain("align-items: start");
