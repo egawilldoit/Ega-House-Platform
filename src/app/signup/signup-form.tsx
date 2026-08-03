@@ -2,23 +2,26 @@
 
 import {
   AlertCircle,
-  ArrowRight,
   CheckCircle2,
   Eye,
   EyeOff,
-  LayoutDashboard,
   LockKeyhole,
   Mail,
   ShieldCheck,
-  Sparkles,
-  Target,
-  TimerReset,
   UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 
+import { AuthFeedback } from "@/app/auth-ui/auth-feedback";
+import { AuthField } from "@/app/auth-ui/auth-field";
+import { AuthGeometry } from "@/app/auth-ui/auth-geometry";
+import { AuthHeader } from "@/app/auth-ui/auth-header";
+import { AuthReveal } from "@/app/auth-ui/auth-motion";
+import { AuthShell } from "@/app/auth-ui/auth-shell";
+import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
+import { AuthSubmit } from "@/app/auth-ui/auth-submit";
 import {
   resolveSafeAuthDestination,
   toInternalDestination,
@@ -36,39 +39,21 @@ import { TurnstileWidget } from "./TurnstileWidget";
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
 
-const valueCards = [
+const valueNotes = [
   {
-    title: "One command center",
+    number: "01",
+    title: "One command surface",
     copy: "See priorities, progress, and the next move without rebuilding context.",
-    icon: LayoutDashboard,
   },
   {
+    number: "02",
     title: "Goals into action",
-    copy: "Connect long-term outcomes to the tasks that move them forward today.",
-    icon: Target,
+    copy: "Connect long-term outcomes to the work that moves them forward today.",
   },
   {
+    number: "03",
     title: "A tighter loop",
     copy: "Plan, execute, and reflect from one shared operating system.",
-    icon: TimerReset,
-  },
-] as const;
-
-const trustItems = [
-  {
-    title: "Email verified",
-    copy: "Your workspace unlocks only after you confirm your address.",
-    icon: Mail,
-  },
-  {
-    title: "Secure sessions",
-    copy: "Supabase-backed sessions work across protected EGA House apps.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "You stay in control",
-    copy: "Your account and workspace remain private to your authenticated session.",
-    icon: LockKeyhole,
   },
 ] as const;
 
@@ -212,100 +197,96 @@ export function SignupForm() {
   }
 
   return (
-    <main className={styles.root}>
-      <div className={styles.noise} aria-hidden="true" />
-      <div className={styles.orb} aria-hidden="true" />
-      <div className={styles.shell}>
-        <section className={styles.story} aria-labelledby="signup-story-title">
-          <div className={styles.brandRow}>
-            <span className={styles.badge}>
-              <Sparkles size={14} aria-hidden="true" /> EGA House
-            </span>
-            <span className={styles.liveBadge}>
-              <span className={styles.liveDot} aria-hidden="true" /> Public signup
-            </span>
-          </div>
+    <AuthShell theme="signal-cream">
+      <AuthHeader status="AUTH / CREATE" actionHref={loginHref} actionLabel="Sign in" />
 
-          <h1 id="signup-story-title" className={styles.headline}>
-            Build your
-            <span className={styles.headlineAccent}>control room.</span>
-          </h1>
-          <p className={styles.storyCopy}>
-            Turn scattered goals, tasks, focus sessions, and reviews into one operating
-            rhythm. Your account is the secure key to every EGA House workspace.
-          </p>
+      <div className="auth-stage">
+        <AuthStudyLabel number="AUTH 02" title="CREATE" direction="SIGNAL CREAM" />
 
-          <div className={styles.valueGrid}>
-            {valueCards.map(({ title, copy, icon: Icon }) => (
-              <article key={title} className={styles.valueCard}>
-                <span className={styles.valueIcon} aria-hidden="true">
-                  <Icon size={18} />
-                </span>
-                <div className={styles.valueTitle}>{title}</div>
-                <p className={styles.valueCopy}>{copy}</p>
-              </article>
-            ))}
-          </div>
-        </section>
+        <div className="auth-layout">
+          <section className="auth-story" aria-labelledby="signup-story-title">
+            <AuthGeometry variant="orbit" />
+            <AuthReveal>
+              <p className="auth-kicker">A workspace starts with one deliberate account.</p>
+              <h1 id="signup-story-title" className="auth-display">
+                Build your
+                <span className="auth-display__accent">control room.</span>
+              </h1>
+              <p className="auth-lead">
+                Turn scattered goals, tasks, focus sessions, and reviews into one operating
+                rhythm. Your account is the secure key to the full EGA House workspace.
+              </p>
+            </AuthReveal>
 
-        <section className={styles.formColumn} aria-label="Create your EGA House account">
-          <div className={styles.formCard}>
-            <div className={styles.formContent}>
-              {submittedEmail ? (
-                <div className={styles.success} role="status" aria-live="polite">
-                  <div className={styles.successIcon} aria-hidden="true">
-                    <CheckCircle2 size={30} />
+            <AuthReveal delay={0.08}>
+              <ol className="auth-operation-list" aria-label="Workspace benefits">
+                {valueNotes.map((note) => (
+                  <li key={note.number}>
+                    <span>{note.number}</span>
+                    <strong>{note.title}</strong>
+                    <small>{note.copy}</small>
+                  </li>
+                ))}
+              </ol>
+            </AuthReveal>
+          </section>
+
+          <section className="auth-form-column" aria-label="Create your EGA House account">
+            <AuthReveal delay={0.14}>
+              <div className="auth-form-frame">
+                {submittedEmail ? (
+                  <div className="auth-success" role="status" aria-live="polite">
+                    <div className="auth-success__mark" aria-hidden="true">
+                      <CheckCircle2 size={30} />
+                    </div>
+                    <div className="auth-form-eyebrow">One last step</div>
+                    <h2 className="auth-form-title">Check your inbox</h2>
+                    <p className="auth-form-copy">
+                      We sent a confirmation link to the address below. Your workspace stays
+                      locked until you confirm the email.
+                    </p>
+                    <div className="auth-email-chip">{submittedEmail}</div>
+                    <div className="auth-success__actions">
+                      <Link className="auth-text-link" href={loginHref}>
+                        Back to sign in
+                      </Link>
+                      <button className="auth-link-button" type="button" onClick={restartSignup}>
+                        Use a different email
+                      </button>
+                    </div>
                   </div>
-                  <div className={styles.eyebrow}>One last step</div>
-                  <h2 className={styles.successTitle}>Check your inbox</h2>
-                  <p className={styles.successCopy}>
-                    We sent a confirmation link to the address below. Your workspace stays
-                    locked until you confirm the email.
-                  </p>
-                  <div className={styles.emailChip}>{submittedEmail}</div>
-                  <div className={styles.successActions}>
-                    <Link className={styles.textLink} href={loginHref}>
-                      Back to sign in
-                    </Link>
-                    <button className={styles.linkButton} type="button" onClick={restartSignup}>
-                      Use a different email
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className={styles.eyebrow}>
-                    <UserRound size={14} aria-hidden="true" /> Create account
-                  </div>
-                  <h2 className={styles.formTitle}>Create your secure workspace</h2>
-                  <p className={styles.formIntro}>
-                    One account unlocks your dashboard, goals, tasks, timer, and weekly review.
-                  </p>
+                ) : (
+                  <>
+                    <div className="auth-form-eyebrow">
+                      <UserRound size={14} aria-hidden="true" /> Create account
+                    </div>
+                    <h2 className="auth-form-title">Create your secure workspace</h2>
+                    <p className="auth-form-copy">
+                      One account unlocks your dashboard, goals, tasks, timer, and weekly review.
+                    </p>
 
-                  <form onSubmit={handleSubmit} noValidate>
-                    {submissionError ? (
-                      <div
-                        ref={errorSummaryRef}
-                        className={styles.alert}
-                        role="alert"
-                        tabIndex={-1}
+                    <form onSubmit={handleSubmit} noValidate>
+                      {submissionError ? (
+                        <AuthFeedback ref={errorSummaryRef} tabIndex={-1}>
+                          {submissionError}
+                        </AuthFeedback>
+                      ) : null}
+
+                      <AuthField
+                        id="signup-name"
+                        label="Your name"
+                        error={
+                          errors.fullName ? (
+                            <>
+                              <AlertCircle size={14} aria-hidden="true" /> {errors.fullName}
+                            </>
+                          ) : undefined
+                        }
                       >
-                        <AlertCircle size={18} aria-hidden="true" />
-                        <span>{submissionError}</span>
-                      </div>
-                    ) : null}
-
-                    <div className={styles.field}>
-                      <div className={styles.labelRow}>
-                        <label className={styles.label} htmlFor="signup-name">
-                          Your name
-                        </label>
-                      </div>
-                      <div className={styles.inputWrap}>
                         <input
                           ref={nameRef}
                           id="signup-name"
-                          className={styles.input}
+                          className="auth-input"
                           type="text"
                           autoComplete="name"
                           maxLength={100}
@@ -317,29 +298,38 @@ export function SignupForm() {
                           aria-describedby={errors.fullName ? "signup-name-error" : undefined}
                           onChange={(event) => {
                             setFullName(event.target.value);
-                            if (errors.fullName) setErrors((current) => ({ ...current, fullName: undefined }));
+                            if (errors.fullName) {
+                              setErrors((current) => ({ ...current, fullName: undefined }));
+                            }
                           }}
                         />
-                        <UserRound className={styles.inputIcon} size={17} aria-hidden="true" />
-                      </div>
-                      {errors.fullName ? (
-                        <p id="signup-name-error" className={styles.error}>
-                          <AlertCircle size={14} aria-hidden="true" /> {errors.fullName}
-                        </p>
-                      ) : null}
-                    </div>
+                        <UserRound
+                          aria-hidden="true"
+                          size={17}
+                          style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
+                        />
+                        {errors.fullName ? (
+                          <span id="signup-name-error" className={styles.srOnly}>
+                            {errors.fullName}
+                          </span>
+                        ) : null}
+                      </AuthField>
 
-                    <div className={styles.field}>
-                      <div className={styles.labelRow}>
-                        <label className={styles.label} htmlFor="signup-email">
-                          Email address
-                        </label>
-                      </div>
-                      <div className={styles.inputWrap}>
+                      <AuthField
+                        id="signup-email"
+                        label="Email address"
+                        error={
+                          errors.email ? (
+                            <>
+                              <AlertCircle size={14} aria-hidden="true" /> {errors.email}
+                            </>
+                          ) : undefined
+                        }
+                      >
                         <input
                           ref={emailRef}
                           id="signup-email"
-                          className={styles.input}
+                          className="auth-input"
                           type="email"
                           inputMode="email"
                           autoComplete="email"
@@ -351,30 +341,51 @@ export function SignupForm() {
                           aria-describedby={errors.email ? "signup-email-error" : undefined}
                           onChange={(event) => {
                             setEmail(event.target.value);
-                            if (errors.email) setErrors((current) => ({ ...current, email: undefined }));
+                            if (errors.email) {
+                              setErrors((current) => ({ ...current, email: undefined }));
+                            }
                           }}
                         />
-                        <Mail className={styles.inputIcon} size={17} aria-hidden="true" />
-                      </div>
-                      {errors.email ? (
-                        <p id="signup-email-error" className={styles.error}>
-                          <AlertCircle size={14} aria-hidden="true" /> {errors.email}
-                        </p>
-                      ) : null}
-                    </div>
+                        <Mail
+                          aria-hidden="true"
+                          size={17}
+                          style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
+                        />
+                        {errors.email ? (
+                          <span id="signup-email-error" className={styles.srOnly}>
+                            {errors.email}
+                          </span>
+                        ) : null}
+                      </AuthField>
 
-                    <div className={styles.field}>
-                      <div className={styles.labelRow}>
-                        <label className={styles.label} htmlFor="signup-password">
-                          Password
-                        </label>
-                        <span className={styles.optionalHint}>12–128 characters</span>
-                      </div>
-                      <div className={styles.inputWrap}>
+                      <AuthField
+                        id="signup-password"
+                        label="Password"
+                        hint="12–128 characters"
+                        help={<span id="signup-password-help">Use at least 12 characters. A short passphrase works well.</span>}
+                        error={
+                          errors.password ? (
+                            <>
+                              <AlertCircle size={14} aria-hidden="true" /> {errors.password}
+                            </>
+                          ) : undefined
+                        }
+                        trailing={
+                          <button
+                            className="auth-icon-button"
+                            type="button"
+                            disabled={isSubmitting}
+                            aria-label={showPassword ? "Hide password" : "Show password"}
+                            onClick={() => setShowPassword((visible) => !visible)}
+                          >
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                          </button>
+                        }
+                      >
                         <input
                           ref={passwordRef}
                           id="signup-password"
-                          className={styles.input}
+                          className="auth-input"
                           type={showPassword ? "text" : "password"}
                           autoComplete="new-password"
                           minLength={12}
@@ -384,77 +395,70 @@ export function SignupForm() {
                           value={password}
                           placeholder="A memorable passphrase"
                           aria-invalid={Boolean(errors.password)}
-                          aria-describedby="signup-password-help signup-password-error"
+                          aria-describedby={
+                            errors.password
+                              ? "signup-password-help signup-password-error"
+                              : "signup-password-help"
+                          }
                           onChange={(event) => {
                             setPassword(event.target.value);
-                            if (errors.password) setErrors((current) => ({ ...current, password: undefined }));
+                            if (errors.password) {
+                              setErrors((current) => ({ ...current, password: undefined }));
+                            }
                           }}
                         />
-                        <button
-                          className={styles.revealButton}
-                          type="button"
-                          disabled={isSubmitting}
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                          onClick={() => setShowPassword((visible) => !visible)}
-                        >
-                          {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                        </button>
+                        {errors.password ? (
+                          <span id="signup-password-error" className={styles.srOnly}>
+                            {errors.password}
+                          </span>
+                        ) : null}
+                      </AuthField>
+
+                      <div className={styles.securityRow}>
+                        <TurnstileWidget
+                          siteKey={TURNSTILE_SITE_KEY}
+                          onToken={setCaptchaToken}
+                          resetSignal={captchaResetSignal}
+                        />
                       </div>
-                      <p id="signup-password-help" className={styles.help}>
-                        Use at least 12 characters. A short passphrase works well.
-                      </p>
-                      {errors.password ? (
-                        <p id="signup-password-error" className={styles.error}>
-                          <AlertCircle size={14} aria-hidden="true" /> {errors.password}
-                        </p>
-                      ) : null}
-                    </div>
 
-                    <div className={styles.securityRow}>
-                      <TurnstileWidget
-                        siteKey={TURNSTILE_SITE_KEY}
-                        onToken={setCaptchaToken}
-                        resetSignal={captchaResetSignal}
-                      />
-                    </div>
+                      <AuthSubmit
+                        type="submit"
+                        pending={isSubmitting}
+                        pendingLabel="Creating account…"
+                      >
+                        Create my workspace
+                      </AuthSubmit>
+                    </form>
 
-                    <button className={styles.submit} type="submit" disabled={isSubmitting}>
-                      {isSubmitting ? (
-                        <>
-                          <span className={styles.spinner} aria-hidden="true" /> Creating account…
-                        </>
-                      ) : (
-                        <>
-                          Create my workspace <ArrowRight size={17} aria-hidden="true" />
-                        </>
-                      )}
-                    </button>
-                  </form>
-
-                  <p className={styles.accountPrompt}>
-                    Already have an account?{" "}
-                    <Link className={styles.textLink} href={loginHref}>
-                      Sign in
-                    </Link>
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.trustBar} aria-label="Account safeguards">
-          {trustItems.map(({ title, copy, icon: Icon }) => (
-            <div key={title} className={styles.trustItem}>
-              <Icon size={21} aria-hidden="true" />
-              <div>
-                <div className={styles.trustTitle}>{title}</div>
-                <div className={styles.trustCopy}>{copy}</div>
+                    <p className="auth-account-prompt">
+                      Already have an account?{" "}
+                      <Link className="auth-text-link" href={loginHref}>
+                        Sign in
+                      </Link>
+                    </p>
+                  </>
+                )}
               </div>
-            </div>
-          ))}
-        </section>
+
+              <div className="auth-security-meta" aria-label="Account safeguards">
+                <div>
+                  <strong>Email verified</strong>
+                  <span>Workspace unlocks after confirmation</span>
+                </div>
+                <div>
+                  <strong>Secure sessions</strong>
+                  <span>Supabase protected authentication</span>
+                </div>
+                <div>
+                  <strong>Owner controlled</strong>
+                  <span>Private authenticated workspace</span>
+                </div>
+              </div>
+            </AuthReveal>
+          </section>
+        </div>
       </div>
-    </main>
+    </AuthShell>
   );
 }

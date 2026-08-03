@@ -4,32 +4,37 @@ import { describe, expect, it } from "vitest";
 
 const loginPage = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"), "utf8");
 const loginForm = readFileSync(resolve(process.cwd(), "src/app/login/login-form.tsx"), "utf8");
-const homePage = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
+const homeSources = [
+  "src/app/home/home-data.ts",
+  "src/app/home/sections/hero-study.tsx",
+  "src/app/home/sections/conversion-study.tsx",
+]
+  .map((path) => readFileSync(resolve(process.cwd(), path), "utf8"))
+  .join("\n");
 
-const canonicalSignupUrl = "https://www.egawilldoit.online/signup";
+const signupPath = "/signup";
 
 describe("public signup discovery", () => {
-  it("uses the canonical signup destination from both login entry points", () => {
-    expect(loginPage).toContain(canonicalSignupUrl);
+  it("keeps both login signup links on the current deployment origin", () => {
+    expect(loginPage).toContain(`const PUBLIC_SIGNUP_PATH = "${signupPath}"`);
     expect(loginPage).toContain("encodeURIComponent(nextParam)");
     expect(loginPage).toContain("<LoginForm signupHref={signupHref} />");
+    expect(loginPage).not.toContain("www.egawilldoit.online/signup");
     expect(loginForm).toContain("signupHref: string");
     expect(loginForm).toContain("Create your account");
   });
 
-  it("offers signup in the homepage hero and after the workflow explanation", () => {
-    const signupLinks = homePage.match(/https:\/\/www\.egawilldoit\.online\/signup/g) ?? [];
-
-    expect(signupLinks).toHaveLength(2);
-    expect(homePage).toContain("Create account");
-    expect(homePage).toContain("Ready to start?");
-    expect(homePage).toContain("Turn the workflow into your workspace.");
-    expect(homePage).toContain("Create your account");
+  it("offers same-origin signup in the homepage hero and final workspace study", () => {
+    expect(homeSources).toContain(`SIGNUP_HREF = "${signupPath}"`);
+    expect(homeSources).not.toContain("www.egawilldoit.online/signup");
+    expect(homeSources.match(/Create account/g)).toHaveLength(2);
+    expect(homeSources).not.toContain("Create your account");
+    expect(homeSources).toContain("Build the week.");
   });
 
   it("keeps existing-user navigation available", () => {
-    expect(homePage).toContain("Enter workspace");
-    expect(homePage).toContain("Sign in instead");
+    expect(homeSources).toContain('LOGIN_HREF = "/login?next=%2Fdashboard"');
+    expect(homeSources).toContain("Enter workspace");
     expect(loginForm).toContain("Sign in to continue");
   });
 });

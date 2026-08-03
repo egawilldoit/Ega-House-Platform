@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { AuthHeader } from "@/app/auth-ui/auth-header";
+import { AuthShell } from "@/app/auth-ui/auth-shell";
+import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
 import { createClient } from "@/lib/supabase/server";
 
-import styles from "./signup.module.css";
 import { SignupForm } from "./signup-form";
 
 export const metadata: Metadata = {
@@ -14,21 +16,25 @@ export const metadata: Metadata = {
 
 function SignupFallback() {
   return (
-    <main className={styles.root} aria-label="Loading signup">
-      <div className={styles.noise} aria-hidden="true" />
-      <div className={styles.shell}>
-        <div className={styles.story} />
-        <div className={styles.formColumn}>
-          <div className={styles.formCard}>
-            <div className={styles.formContent}>
-              <div className={styles.eyebrow}>Preparing signup</div>
-              <div className={styles.formTitle}>Create your secure workspace</div>
-              <div className={styles.formIntro}>Loading the protected account form…</div>
+    <AuthShell theme="signal-cream">
+      <AuthHeader status="AUTH / CREATE" actionHref="/login" actionLabel="Sign in" />
+      <div className="auth-stage" aria-label="Loading signup">
+        <AuthStudyLabel number="AUTH 02" title="CREATE" direction="SIGNAL CREAM" />
+        <div className="auth-layout">
+          <section className="auth-story">
+            <p className="auth-kicker">A workspace starts with one deliberate account.</p>
+            <div className="auth-display">Build your control room.</div>
+          </section>
+          <section className="auth-form-column">
+            <div className="auth-form-frame">
+              <div className="auth-form-eyebrow">Preparing signup</div>
+              <div className="auth-form-title">Create your secure workspace</div>
+              <p className="auth-form-copy">Loading the protected account form…</p>
             </div>
-          </div>
+          </section>
         </div>
       </div>
-    </main>
+    </AuthShell>
   );
 }
 
