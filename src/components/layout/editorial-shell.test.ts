@@ -96,8 +96,10 @@ describe("editorial authenticated workspace shell", () => {
   });
 
   it("turns the dashboard into an editorial control board without replacing panels", () => {
-    const css = read("src/app/dashboard/_components/dashboard.css");
+    const dashboard = read("src/app/dashboard/page.tsx");
+    const css = read("src/app/dashboard/_components/dashboard-editorial.css");
 
+    expect(dashboard).toContain('import "./_components/dashboard-editorial.css"');
     expect(css).toContain('[data-workspace-theme="editorial"] .ega-dashboard-hero');
     expect(css).toContain('[data-workspace-theme="editorial"] .workspace-main-rail-grid');
     expect(css).toContain('[data-workspace-theme="editorial"] .ega-dashboard-metric');
