@@ -4,6 +4,7 @@ import Image from "next/image";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -32,12 +33,13 @@ export function WorkspaceNavigationDrawer({
   const previousOverflowRef = useRef("");
   const reduceMotion = useReducedMotion();
 
-  function closeDrawer({ restoreFocus = true } = {}) {
+  const closeDrawer = useCallback((options?: { restoreFocus?: boolean }) => {
+    const restoreFocus = options?.restoreFocus ?? true;
     setOpen(false);
     if (restoreFocus) {
       queueMicrotask(() => triggerRef.current?.focus());
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -62,7 +64,7 @@ export function WorkspaceNavigationDrawer({
       document.removeEventListener("keydown", onKeyDown);
       document.body.style.overflow = previousOverflowRef.current;
     };
-  }, [open]);
+  }, [closeDrawer, open]);
 
   function onPanelClick(event: ReactMouseEvent<HTMLDivElement>) {
     const target = event.target as HTMLElement;
