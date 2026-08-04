@@ -8,6 +8,7 @@ import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
 import { TopBar } from "./top-bar";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
 import "./editorial-shell.css";
+import "./editorial-shell-responsive.css";
 
 type AppShellProps = {
   children: ReactNode;
