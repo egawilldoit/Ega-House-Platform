@@ -7,12 +7,14 @@ on:
       - "src/app/page.tsx"
       - "src/app/home/**"
       - "src/app/auth-ui/**"
+      - "src/app/dashboard/**"
       - "src/app/signup/**"
       - "src/app/auth/confirm/**"
       - "src/app/login/page.tsx"
       - "src/app/login/login-form.tsx"
       - "src/app/login/**/*.test.ts"
       - "src/app/login/**/*.test.tsx"
+      - "src/components/layout/**"
       - "src/lib/auth/**"
       - "package.json"
       - "package-lock.json"
@@ -23,6 +25,7 @@ on:
       - "feat/public-signup"
       - "feat/signup-discovery-ctas"
       - "feat/homepage-operational-studies"
+      - "feat/editorial-workspace-shell"
 
 permissions:
   contents: read
@@ -45,7 +48,7 @@ jobs:
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Focused public surface tests
+      - name: Focused public and workspace surface tests
         run: >-
           npm test -- --run
           src/lib/auth/safe-redirect.test.ts
@@ -57,6 +60,7 @@ jobs:
           src/app/signup/signup-form.test.ts
           src/app/signup/signup-discovery.test.ts
           src/app/auth/confirm/route.test.ts
+          src/components/layout/editorial-shell.test.ts
 
       - name: Full regression suite
         run: npm test
@@ -64,17 +68,19 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Lint public homepage and auth files
+      - name: Lint public and workspace UI files
         run: >-
           npx eslint
           src/lib/auth
           src/app/page.tsx
           src/app/auth-ui
           src/app/home
+          src/app/dashboard
           src/app/signup
           src/app/auth/confirm
           src/app/login/page.tsx
           src/app/login/login-form.tsx
+          src/components/layout
 
       - name: Build production application
         env:
