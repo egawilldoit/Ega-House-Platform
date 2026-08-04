@@ -3,10 +3,16 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const sidebarFile = path.join(process.cwd(), "src", "components", "layout", "sidebar.tsx");
+const navigationFile = path.join(
+  process.cwd(),
+  "src",
+  "components",
+  "layout",
+  "sidebar-navigation.tsx",
+);
 
-test("renders Hermes external sidebar link in General section", () => {
-  const source = readFileSync(sidebarFile, "utf8");
+test("renders Hermes external link in shared workspace navigation", () => {
+  const source = readFileSync(navigationFile, "utf8");
 
   assert.match(source, /href="https:\/\/hermes\.egawilldoit\.online\/"/);
   assert.match(source, /target="_blank"/);
