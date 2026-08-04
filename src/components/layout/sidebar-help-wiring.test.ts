@@ -3,17 +3,27 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const sidebarFile = path.join(process.cwd(), "src", "components", "layout", "sidebar.tsx");
+const routeMetaFile = path.join(
+  process.cwd(),
+  "src",
+  "components",
+  "layout",
+  "shell-route-meta.ts",
+);
+const navigationFile = path.join(
+  process.cwd(),
+  "src",
+  "components",
+  "layout",
+  "sidebar-navigation.tsx",
+);
 
-test("sidebar general section points Help to the real /help route", () => {
-  const source = readFileSync(sidebarFile, "utf8");
+test("shared workspace navigation points Help to the real /help route", () => {
+  const routeMeta = readFileSync(routeMetaFile, "utf8");
+  const navigation = readFileSync(navigationFile, "utf8");
 
-  assert.match(
-    source,
-    /\{\s*href:\s*"\/help"\s+as\s+`\/\$\{string\}`,\s*label:\s*"Help"/,
-  );
-  assert.doesNotMatch(
-    source,
-    /\{\s*href:\s*"\/dashboard"\s+as\s+`\/\$\{string\}`,\s*label:\s*"Help"/,
-  );
+  assert.match(routeMeta, /href:\s*"\/help",\s*index:\s*"S5",\s*label:\s*"Help"/s);
+  assert.doesNotMatch(routeMeta, /href:\s*"\/dashboard",\s*index:\s*"S5",\s*label:\s*"Help"/s);
+  assert.match(navigation, /SYSTEM_ROUTES\.map/);
+  assert.match(navigation, /canonicalUrl\.resolve\(route\.href\)/);
 });
