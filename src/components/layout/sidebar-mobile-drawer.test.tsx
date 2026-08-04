@@ -24,7 +24,9 @@ async function renderDrawer() {
   await act(async () => {
     root.render(
       <WorkspaceNavigationDrawer>
-        <a href="/dashboard">Dashboard</a>
+        <a href="/dashboard" onClick={(event) => event.preventDefault()}>
+          Dashboard
+        </a>
       </WorkspaceNavigationDrawer>,
     );
   });
