@@ -8,6 +8,7 @@ const read = (path: string) => readFileSync(pathFor(path), "utf8");
 
 const requiredShellFiles = [
   "src/components/layout/editorial-shell.css",
+  "src/components/layout/editorial-shell-responsive.css",
   "src/components/layout/shell-route-meta.ts",
   "src/components/layout/sidebar-navigation.tsx",
   "src/components/layout/sidebar-mobile-drawer.tsx",
@@ -44,6 +45,7 @@ describe("editorial authenticated workspace shell", () => {
     const appShell = read("src/components/layout/app-shell.tsx");
 
     expect(appShell).toContain('import "./editorial-shell.css"');
+    expect(appShell).toContain('import "./editorial-shell-responsive.css"');
     expect(appShell).toContain('data-workspace-theme="editorial"');
     expect(appShell).toContain("getSidebarProjects");
     expect(appShell).toContain("getSidebarGoals");
@@ -71,6 +73,20 @@ describe("editorial authenticated workspace shell", () => {
     expect(css).toContain("@media (max-width: 420px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("overflow-x: clip");
+  });
+
+  it("keeps full labels in the mobile drawer and compacts logout only in the tablet rail", () => {
+    const css = read("src/components/layout/editorial-shell-responsive.css");
+
+    expect(css).toContain(".workspace-drawer-panel .workspace-nav-label");
+    expect(css).toContain(".workspace-drawer-panel .workspace-nav-index");
+    expect(css).toContain(".workspace-drawer-panel .sidebar-section-label");
+    expect(css).toContain("display: inline");
+    expect(css).toContain("@media (min-width: 761px) and (max-width: 1180px)");
+    expect(css).toContain(".workspace-sidebar .sidebar-general-section form .sidebar-link");
+    expect(css).toContain("font-size: 0");
+    expect(css).toContain("[data-workspace-theme=\"editorial\"]::before");
+    expect(css).toContain("inset: 0");
   });
 
   it("preserves the dashboard data and failure-isolation boundaries", () => {
