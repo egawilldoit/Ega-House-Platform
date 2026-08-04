@@ -61,6 +61,7 @@ jobs:
           src/app/signup/signup-discovery.test.ts
           src/app/auth/confirm/route.test.ts
           src/components/layout/editorial-shell.test.ts
+          src/components/layout/sidebar-mobile-drawer.test.tsx
 
       - name: Full regression suite
         run: npm test
