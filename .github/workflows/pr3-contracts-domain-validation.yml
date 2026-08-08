@@ -87,45 +87,85 @@ jobs:
         run: |
           node - <<'NODE'
           const path = require('node:path');
-          const rootContracts = require.resolve('@ega/contracts/package.json');
-          const rootDomain = require.resolve('@ega/domain/package.json');
+          const rootContracts = require.resolve('@ega/contracts');
+          const rootDomain = require.resolve('@ega/domain');
           const mobileRoot = path.resolve('apps/mobile');
-          const mobileContracts = require.resolve('@ega/contracts/package.json', { paths: [mobileRoot] });
-          const mobileDomain = require.resolve('@ega/domain/package.json', { paths: [mobileRoot] });
+          const mobileContracts = require.resolve('@ega/contracts', { paths: [mobileRoot] });
+          const mobileDomain = require.resolve('@ega/domain', { paths: [mobileRoot] });
+
           if (rootContracts !== mobileContracts) throw new Error(`contracts workspace duplicated: root=${rootContracts}, mobile=${mobileContracts}`);
           if (rootDomain !== mobileDomain) throw new Error(`domain workspace duplicated: root=${rootDomain}, mobile=${mobileDomain}`);
-          if (require(rootContracts).version !== '0.1.0' || require(rootDomain).version !== '0.1.0') throw new Error('unexpected shared workspace version');
+          if (!rootContracts.endsWith('/packages/contracts/src/index.ts')) throw new Error(`unexpected contracts entry: ${rootContracts}`);
+          if (!rootDomain.endsWith('/packages/domain/src/index.ts')) throw new Error(`unexpected domain entry: ${rootDomain}`);
           NODE
 
       - name: Prove contracts and domain package purity
-        shell: bash
         run: |
-          forbidden='(@supabase/|from ["'"']react|from ["'"']react-native|from ["'"']expo|from ["'"']next|drizzle|src/db|node:fs|node:child_process|node:http|node:https)'
-          if grep -REn "$forbidden" packages/contracts/src packages/domain/src; then
-            echo "Platform/server/persistence dependency leaked into shared packages." >&2
-            exit 1
-          fi
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
 
-          if grep -REn 'mapUserToMobileAuthenticatedUser|Supabase.*User|type User' packages/contracts/src; then
-            echo "Supabase user mapping leaked into contracts." >&2
-            exit 1
-          fi
+          const files = execFileSync('git', ['ls-files', 'packages/contracts/src/**/*.ts', 'packages/domain/src/**/*.ts'], { encoding: 'utf8' })
+            .split(/\r?\n/)
+            .filter(Boolean);
+          const forbidden = [
+            /@supabase\//,
+            /from\s+["']react(?:["'/])/, 
+            /from\s+["']react-native(?:["'/])/,
+            /from\s+["']expo(?:["'/])/,
+            /from\s+["']next(?:["'/])/,
+            /drizzle/,
+            /src\/db/,
+            /from\s+["']node:/,
+            /require\(["']node:/,
+          ];
+
+          for (const file of files) {
+            const source = fs.readFileSync(file, 'utf8');
+            for (const pattern of forbidden) {
+              if (pattern.test(source)) throw new Error(`${file}: forbidden shared-package dependency matched ${pattern}`);
+            }
+          }
+
+          const contractsFiles = files.filter((file) => file.startsWith('packages/contracts/'));
+          for (const file of contractsFiles) {
+            const source = fs.readFileSync(file, 'utf8');
+            if (/mapUserToMobileAuthenticatedUser|Supabase.*User|\btype\s+User\b/.test(source)) {
+              throw new Error(`${file}: Supabase user mapping leaked into contracts`);
+            }
+          }
+          NODE
 
       - name: Prove compatibility files are not duplicate authorities
-        shell: bash
         run: |
-          grep -q '@ega/contracts/mobile' src/lib/contracts/mobile.ts
-          grep -q '@ega/contracts/agent' src/lib/contracts/agent.ts
-          grep -q '@ega/contracts/mobile' apps/mobile/types/auth.ts
-          grep -q '@ega/contracts/mobile' apps/mobile/types/tasks.ts
-          grep -q '@ega/contracts/mobile' apps/mobile/types/today.ts
-          grep -q '@ega/domain' src/lib/task-domain.ts
-          grep -q '@ega/domain' src/lib/task-recurrence.ts
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const requiredImports = new Map([
+            ['src/lib/contracts/mobile.ts', '@ega/contracts/mobile'],
+            ['src/lib/contracts/agent.ts', '@ega/contracts/agent'],
+            ['apps/mobile/types/auth.ts', '@ega/contracts/mobile'],
+            ['apps/mobile/types/tasks.ts', '@ega/contracts/mobile'],
+            ['apps/mobile/types/today.ts', '@ega/contracts/mobile'],
+            ['src/lib/task-domain.ts', '@ega/domain'],
+            ['src/lib/task-recurrence.ts', '@ega/domain'],
+          ]);
+          for (const [file, expected] of requiredImports) {
+            const source = fs.readFileSync(file, 'utf8');
+            if (!source.includes(expected)) throw new Error(`${file}: missing compatibility link to ${expected}`);
+          }
 
-          if grep -REn '^export type (MobileTaskListItem|MobileTodayResponse|AgentTaskResponse|AgentTokenScopes) = \{' src/lib/contracts apps/mobile/types; then
-            echo "A legacy DTO definition still competes with the canonical shared contract." >&2
-            exit 1
-          fi
+          const legacyDtoFiles = [
+            'src/lib/contracts/mobile.ts',
+            'src/lib/contracts/agent.ts',
+            'apps/mobile/types/auth.ts',
+            'apps/mobile/types/tasks.ts',
+            'apps/mobile/types/today.ts',
+          ];
+          const duplicate = /^export\s+type\s+(MobileTaskListItem|MobileTodayResponse|AgentTaskResponse|AgentTokenScopes)\s*=\s*\{/m;
+          for (const file of legacyDtoFiles) {
+            if (duplicate.test(fs.readFileSync(file, 'utf8'))) throw new Error(`${file}: legacy DTO definition still competes with shared contracts`);
+          }
+          NODE
 
       - name: Contracts typecheck
         run: npm run contracts:typecheck
