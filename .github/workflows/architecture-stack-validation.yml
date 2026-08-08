@@ -76,8 +76,11 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout exact migration head
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -143,3 +146,11 @@ jobs:
           else
             echo "check:architecture not present on this commit"
           fi
+
+      - name: Verify PR1 diff hygiene
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          git diff --check "$PINNED_PR1_MAIN_SHA"...HEAD
+          git diff --stat "$PINNED_PR1_MAIN_SHA"...HEAD
+          test -z "$(git status --porcelain)"
