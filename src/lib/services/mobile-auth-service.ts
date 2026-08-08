@@ -1,15 +1,25 @@
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import {
+  createClient as createSupabaseClient,
+  type User,
+} from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/database.types";
 import type { createClient as createServerSupabaseClient } from "@/lib/supabase/server";
-import {
-  mapUserToMobileAuthenticatedUser,
-  type MobileAuthSessionResponse,
-  type MobileAuthRefreshResponse,
-  type MobileSessionPayload,
+import type {
+  MobileAuthenticatedUser,
+  MobileAuthSessionResponse,
+  MobileAuthRefreshResponse,
+  MobileSessionPayload,
 } from "@/lib/contracts/mobile";
 
 type ServiceSupabaseClient = Awaited<ReturnType<typeof createServerSupabaseClient>>;
+
+function mapUserToMobileAuthenticatedUser(user: User): MobileAuthenticatedUser {
+  return {
+    id: user.id,
+    email: user.email ?? "",
+  };
+}
 
 function getSupabaseEnv(
   name: "NEXT_PUBLIC_SUPABASE_URL" | "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
@@ -66,10 +76,7 @@ export async function createMobileScopedSupabaseClient(accessToken: string) {
 
 export async function signInMobileWithPassword(email: string, password: string) {
   const supabase = createStatelessSupabaseClient();
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email,
-    password,
-  });
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error || !data.user || !data.session) {
     return {
@@ -95,9 +102,7 @@ export async function signInMobileWithPassword(email: string, password: string) 
 
 export async function refreshMobileSession(refreshToken: string) {
   const supabase = createStatelessSupabaseClient();
-  const { data, error } = await supabase.auth.refreshSession({
-    refresh_token: refreshToken,
-  });
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
 
   if (error || !data.session) {
     return {
@@ -144,9 +149,7 @@ export async function resolveMobileUserFromAccessToken(accessToken: string) {
 
 export async function logoutMobileSession(accessToken: string) {
   const userResult = await resolveMobileUserFromAccessToken(accessToken);
-  if (userResult.errorCode) {
-    return userResult;
-  }
+  if (userResult.errorCode) return userResult;
 
   const supabase = createStatelessSupabaseClient(accessToken);
   await supabase.auth.signOut();
