@@ -1,0 +1,117 @@
+name: PR2 Workspace Validation
+
+on:
+  push:
+    branches:
+      - arch/02-npm-workspace-foundation
+  pull_request:
+    branches:
+      - arch/01-baseline-guardrails
+
+permissions:
+  contents: read
+
+env:
+  PR2_BASE_SHA: d71d689d8801aaa03cfb4a7a2963f2dde0f8b437
+
+jobs:
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify committed PR2 diff hygiene
+        run: |
+          git diff --check "$PR2_BASE_SHA"...HEAD
+          test -z "$(git status --porcelain)"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Prove one authoritative lockfile and pinned mobile frameworks
+        run: |
+          test "$(git ls-files '*package-lock.json' | wc -l)" -eq 1
+          test "$(git ls-files '*package-lock.json')" = "package-lock.json"
+          node - <<'NODE'
+          const root = require('./package.json');
+          const mobile = require('./apps/mobile/package.json');
+          if (JSON.stringify(root.workspaces) !== JSON.stringify(['apps/*', 'packages/*'])) throw new Error('unexpected root workspaces');
+          if (mobile.name !== '@ega/mobile') throw new Error('unexpected mobile package name');
+          if (mobile.dependencies.expo !== '~54.0.34') throw new Error('Expo version changed');
+          if (mobile.dependencies.react !== '19.1.0') throw new Error('mobile React version changed');
+          if (mobile.dependencies['react-native'] !== '0.81.5') throw new Error('React Native version changed');
+          NODE
+
+      - name: Install exact root workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Audit React and React Native resolution
+        run: |
+          npm ls react react-dom react-native
+          npm why react-native
+          npm why react
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const tree = JSON.parse(execFileSync('npm', ['ls', 'react-native', '--workspace', '@ega/mobile', '--json'], { encoding: 'utf8' }));
+          const versions = new Set();
+          function walk(node) {
+            if (!node || typeof node !== 'object') return;
+            const rn = node.dependencies?.['react-native'];
+            if (rn?.version) versions.add(rn.version);
+            for (const dep of Object.values(node.dependencies || {})) walk(dep);
+          }
+          walk(tree);
+          if (versions.size !== 1 || !versions.has('0.81.5')) throw new Error(`mobile resolves unexpected React Native versions: ${[...versions].join(', ')}`);
+          NODE
+
+      - name: Mobile doctor
+        run: npm run mobile:doctor
+
+      - name: Mobile typecheck
+        run: npm run mobile:typecheck
+
+      - name: Mobile tests
+        run: npm run mobile:test
+
+      - name: Mobile Android bundle validation
+        run: npm run mobile:bundle
+
+      - name: Architecture tests
+        run: npm run test:architecture
+
+      - name: Architecture current-tree check
+        run: npm run check:architecture
+
+      - name: Root typecheck
+        run: npm run typecheck
+
+      - name: Root tests
+        run: npm test
+
+      - name: Root build
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+          MCP_ENABLED: "false"
+          MCP_WRITES_ENABLED: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+          NEXT_PUBLIC_SITE_URL: "https://example.com"
+        run: npm run build
+
+      - name: Prove generated mobile outputs are not tracked
+        run: |
+          test -z "$(git ls-files 'apps/mobile/android/**' 'apps/mobile/ios/**' 'apps/mobile/.expo/ci-export/**' 'apps/mobile/artifacts/**')"
+
+      - name: Report validation workspace mutations
+        if: ${{ always() }}
+        run: git status --short
