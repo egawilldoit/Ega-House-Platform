@@ -12,8 +12,66 @@ on:
 permissions:
   contents: read
 
+env:
+  PINNED_PR1_MAIN_SHA: 7b997c4e726615da36614cdbbd0665b4e88eff6f
+
 jobs:
-  root-baseline:
+  pinned-main-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout pinned main
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PINNED_PR1_MAIN_SHA }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install exact dependencies
+        id: install
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate agent context
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run validate:agent-context
+
+      - name: Typecheck EGA Runner
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run typecheck:ega-runner
+
+      - name: Test EGA Runner PR loop
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run test:ega-runner-pr-loop
+
+      - name: Typecheck web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run typecheck
+
+      - name: Lint web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm run lint
+
+      - name: Test web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        run: npm test
+
+      - name: Build web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
+        env:
+          DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+          MCP_ENABLED: "false"
+          MCP_WRITES_ENABLED: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+          NEXT_PUBLIC_SITE_URL: "https://example.com"
+        run: npm run build
+
+  migration-head:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -28,27 +86,35 @@ jobs:
           cache: npm
 
       - name: Install exact dependencies
+        id: install
         run: npm ci --no-audit --no-fund
 
       - name: Validate agent context
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm run validate:agent-context
 
       - name: Typecheck EGA Runner
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm run typecheck:ega-runner
 
       - name: Test EGA Runner PR loop
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm run test:ega-runner-pr-loop
 
       - name: Typecheck web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm run typecheck
 
       - name: Lint web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm run lint
 
       - name: Test web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
         run: npm test
 
       - name: Build web root
+        if: ${{ always() && steps.install.outcome == 'success' }}
         env:
           DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
           MCP_ENABLED: "false"
@@ -59,6 +125,7 @@ jobs:
         run: npm run build
 
       - name: Test architecture guardrails when available
+        if: ${{ always() && steps.install.outcome == 'success' }}
         shell: bash
         run: |
           if node -e "const p=require('./package.json');process.exit(p.scripts?.['test:architecture'] ? 0 : 1)"; then
@@ -68,6 +135,7 @@ jobs:
           fi
 
       - name: Check architecture guardrails when available
+        if: ${{ always() && steps.install.outcome == 'success' }}
         shell: bash
         run: |
           if node -e "const p=require('./package.json');process.exit(p.scripts?.['check:architecture'] ? 0 : 1)"; then
