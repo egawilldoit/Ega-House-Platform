@@ -36,9 +36,16 @@ jobs:
 
       - name: Prove mobile workspace discovery
         run: |
-          test "$(npm pkg get name --workspace @ega/mobile --json | tr -d '\n ')" = '"@ega/mobile"'
           node - <<'NODE'
+          const root = require('./package.json');
+          const mobileManifest = require('./apps/mobile/package.json');
           const lock = require('./package-lock.json');
+          if (!root.workspaces?.includes('apps/*') || !root.workspaces?.includes('packages/*')) {
+            throw new Error('root workspace patterns are missing');
+          }
+          if (mobileManifest.name !== '@ega/mobile') {
+            throw new Error('mobile workspace name is not @ega/mobile');
+          }
           const mobile = lock.packages?.['apps/mobile'];
           if (!mobile || mobile.name !== '@ega/mobile') {
             throw new Error('root package-lock.json does not contain @ega/mobile workspace metadata');
