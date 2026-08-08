@@ -53,22 +53,25 @@ jobs:
           if (mobile.dependencies.react !== '19.1.0') throw new Error('mobile React version changed');
           if (mobile.dependencies['react-native'] !== '0.81.5') throw new Error('React Native version changed');
           if (mobile.dependencies['@react-navigation/bottom-tabs'] !== '^7.4.0') throw new Error('mobile bottom-tabs direct dependency is missing');
+          if (mobile.devDependencies['babel-preset-expo'] !== '~54.0.12') throw new Error('mobile Expo Babel preset ownership is missing');
           if (root.dependencies.next !== '16.2.12') throw new Error('Next version changed');
           if (root.dependencies.react !== '19.1.0' || root.dependencies['react-dom'] !== '19.1.0') throw new Error('root React singleton alignment is not pinned to 19.1.0');
           if (lock.packages?.['apps/mobile']?.name !== '@ega/mobile') throw new Error('root lock does not own the mobile workspace');
           if (lock.packages?.['apps/mobile']?.dependencies?.['@react-navigation/bottom-tabs'] !== '^7.4.0') throw new Error('root lock does not record the mobile bottom-tabs dependency');
+          if (lock.packages?.['apps/mobile']?.devDependencies?.['babel-preset-expo'] !== '~54.0.12') throw new Error('root lock does not record the mobile Expo Babel preset');
           if (lock.packages?.['']?.dependencies?.react !== '19.1.0' || lock.packages?.['']?.dependencies?.['react-dom'] !== '19.1.0') throw new Error('root lock does not record the justified React 19.1.0 alignment');
           NODE
 
       - name: Install exact root workspace dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Audit React and React Native resolution
+      - name: Audit React, React Native, and Expo build resolution
         run: |
           npm ls react react-dom react-native
           npm why react-native
           npm why react
           node - <<'NODE'
+          const path = require('node:path');
           const { execFileSync } = require('node:child_process');
           const tree = JSON.parse(execFileSync('npm', ['ls', 'react-native', '--workspace', '@ega/mobile', '--json'], { encoding: 'utf8' }));
           const versions = new Set();
@@ -83,6 +86,10 @@ jobs:
           const reactVersion = require('./node_modules/react/package.json').version;
           const reactDomVersion = require('./node_modules/react-dom/package.json').version;
           if (reactVersion !== '19.1.0' || reactDomVersion !== '19.1.0') throw new Error(`workspace root resolves React ${reactVersion} / ReactDOM ${reactDomVersion}, expected 19.1.0`);
+          const mobileRoot = path.resolve('apps/mobile');
+          const presetPath = require.resolve('babel-preset-expo/package.json', { paths: [mobileRoot] });
+          const presetVersion = require(presetPath).version;
+          if (presetVersion !== '54.0.12') throw new Error(`mobile resolves babel-preset-expo ${presetVersion}, expected 54.0.12`);
           NODE
 
       - name: Mobile doctor
