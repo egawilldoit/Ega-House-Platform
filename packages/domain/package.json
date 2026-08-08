@@ -1,0 +1,16 @@
+{
+  "name": "@ega/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./tasks": "./src/tasks/index.ts",
+    "./projects": "./src/projects/index.ts",
+    "./goals": "./src/goals/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  }
+}
