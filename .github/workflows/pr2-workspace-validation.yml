@@ -43,6 +43,7 @@ jobs:
           test -f package-lock.json
           test -z "$(git ls-files 'apps/*/package-lock.json' 'packages/*/package-lock.json')"
           test -f scripts/ega-runner/package-lock.json
+          test -f apps/mobile/babel.config.js
           node - <<'NODE'
           const root = require('./package.json');
           const mobile = require('./apps/mobile/package.json');
@@ -52,14 +53,19 @@ jobs:
           if (mobile.dependencies.expo !== '~54.0.34') throw new Error('Expo version changed');
           if (mobile.dependencies.react !== '19.1.0') throw new Error('mobile React version changed');
           if (mobile.dependencies['react-native'] !== '0.81.5') throw new Error('React Native version changed');
+          if (mobile.dependencies['expo-router'] !== '~6.0.23') throw new Error('mobile Expo Router version changed');
           if (mobile.dependencies['@react-navigation/bottom-tabs'] !== '^7.4.0') throw new Error('mobile bottom-tabs direct dependency is missing');
           if (mobile.devDependencies['babel-preset-expo'] !== '~54.0.12') throw new Error('mobile Expo Babel preset ownership is missing');
           if (root.dependencies.next !== '16.2.12') throw new Error('Next version changed');
           if (root.dependencies.react !== '19.1.0' || root.dependencies['react-dom'] !== '19.1.0') throw new Error('root React singleton alignment is not pinned to 19.1.0');
+          if (root.devDependencies['expo-router'] !== '~6.0.23') throw new Error('workspace tooling must expose the mobile Expo Router range to babel-preset-expo');
           if (lock.packages?.['apps/mobile']?.name !== '@ega/mobile') throw new Error('root lock does not own the mobile workspace');
           if (lock.packages?.['apps/mobile']?.dependencies?.['@react-navigation/bottom-tabs'] !== '^7.4.0') throw new Error('root lock does not record the mobile bottom-tabs dependency');
           if (lock.packages?.['apps/mobile']?.devDependencies?.['babel-preset-expo'] !== '~54.0.12') throw new Error('root lock does not record the mobile Expo Babel preset');
           if (lock.packages?.['']?.dependencies?.react !== '19.1.0' || lock.packages?.['']?.dependencies?.['react-dom'] !== '19.1.0') throw new Error('root lock does not record the justified React 19.1.0 alignment');
+          if (lock.packages?.['']?.devDependencies?.['expo-router'] !== '~6.0.23') throw new Error('root lock does not record the Expo Router tooling exposure');
+          if (lock.packages?.['node_modules/expo-router']?.version !== '6.0.24') throw new Error('Expo Router is not hoisted to the workspace root at 6.0.24');
+          if (lock.packages?.['apps/mobile/node_modules/expo-router']) throw new Error('duplicate nested Expo Router remains under the mobile workspace');
           NODE
 
       - name: Install exact root workspace dependencies
@@ -67,11 +73,13 @@ jobs:
 
       - name: Audit React, React Native, and Expo build resolution
         run: |
-          npm ls react react-dom react-native
+          npm ls react react-dom react-native expo-router
           npm why react-native
           npm why react
+          npm why expo-router
           node - <<'NODE'
           const path = require('node:path');
+          const { createRequire } = require('node:module');
           const { execFileSync } = require('node:child_process');
           const tree = JSON.parse(execFileSync('npm', ['ls', 'react-native', '--workspace', '@ega/mobile', '--json'], { encoding: 'utf8' }));
           const versions = new Set();
@@ -90,6 +98,18 @@ jobs:
           const presetPath = require.resolve('babel-preset-expo/package.json', { paths: [mobileRoot] });
           const presetVersion = require(presetPath).version;
           if (presetVersion !== '54.0.12') throw new Error(`mobile resolves babel-preset-expo ${presetVersion}, expected 54.0.12`);
+          const rootRouterPath = require.resolve('expo-router/package.json');
+          const mobileRouterPath = require.resolve('expo-router/package.json', { paths: [mobileRoot] });
+          const presetRouterPath = createRequire(presetPath).resolve('expo-router/package.json');
+          const rootRouterVersion = require(rootRouterPath).version;
+          const mobileRouterVersion = require(mobileRouterPath).version;
+          const presetRouterVersion = require(presetRouterPath).version;
+          if (rootRouterVersion !== '6.0.24' || mobileRouterVersion !== '6.0.24' || presetRouterVersion !== '6.0.24') {
+            throw new Error(`unexpected Expo Router resolution: root=${rootRouterVersion}, mobile=${mobileRouterVersion}, preset=${presetRouterVersion}`);
+          }
+          if (rootRouterPath !== mobileRouterPath || rootRouterPath !== presetRouterPath) {
+            throw new Error(`Expo Router is duplicated across resolution roots: root=${rootRouterPath}, mobile=${mobileRouterPath}, preset=${presetRouterPath}`);
+          }
           NODE
 
       - name: Mobile doctor
