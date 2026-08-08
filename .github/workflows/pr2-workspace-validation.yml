@@ -78,7 +78,17 @@ jobs:
           NODE
 
       - name: Mobile doctor
-        run: npm run mobile:doctor
+        shell: bash
+        run: |
+          set +e
+          npm run mobile:doctor 2>&1 | tee /tmp/expo-doctor.log
+          doctor_status=${PIPESTATUS[0]}
+          set -e
+          if [ "$doctor_status" -ne 0 ]; then
+            diagnostic="$(tail -n 40 /tmp/expo-doctor.log | tr '\n' ' ' | sed 's/%/%25/g')"
+            echo "::error title=Expo Doctor diagnostics::$diagnostic"
+            exit "$doctor_status"
+          fi
 
       - name: Mobile typecheck
         run: npm run mobile:typecheck
