@@ -1,36 +1,17 @@
-export type MobileAuthUser = {
-  id: string;
-  email: string;
-};
+import type {
+  MobileApiErrorResponse as ContractMobileApiErrorResponse,
+  MobileAuthenticatedUser,
+  MobileAuthRefreshResponse as ContractMobileAuthRefreshResponse,
+  MobileAuthSessionResponse as ContractMobileAuthSessionResponse,
+  MobileSessionPayload,
+} from "@ega/contracts/mobile";
 
-export type MobileAuthSession = {
-  accessToken: string;
-  refreshToken: string;
-  expiresAt: number;
-};
-
-export type MobileApiError = {
-  code: string;
-  message: string;
-  details?: Record<string, unknown>;
-};
-
-export type MobileApiErrorResponse = {
-  ok: false;
-  error: MobileApiError;
-};
-
-export type MobileAuthSessionResponse = {
-  ok: true;
-  session: MobileAuthSession;
-  user: MobileAuthUser;
-};
-
-export type MobileAuthRefreshResponse = {
-  ok: true;
-  session: MobileAuthSession;
-  user?: MobileAuthUser;
-};
+export type MobileAuthUser = MobileAuthenticatedUser;
+export type MobileAuthSession = MobileSessionPayload;
+export type MobileApiErrorResponse = ContractMobileApiErrorResponse;
+export type MobileApiError = ContractMobileApiErrorResponse["error"];
+export type MobileAuthSessionResponse = ContractMobileAuthSessionResponse;
+export type MobileAuthRefreshResponse = ContractMobileAuthRefreshResponse;
 
 export type StoredMobileSession = {
   session: MobileAuthSession;
