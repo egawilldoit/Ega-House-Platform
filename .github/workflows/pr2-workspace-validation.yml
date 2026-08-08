@@ -38,7 +38,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Prove one authoritative platform workspace lockfile and pinned mobile frameworks
+      - name: Prove one authoritative platform workspace lockfile and pinned frameworks
         run: |
           test -f package-lock.json
           test -z "$(git ls-files 'apps/*/package-lock.json' 'packages/*/package-lock.json')"
@@ -52,7 +52,10 @@ jobs:
           if (mobile.dependencies.expo !== '~54.0.34') throw new Error('Expo version changed');
           if (mobile.dependencies.react !== '19.1.0') throw new Error('mobile React version changed');
           if (mobile.dependencies['react-native'] !== '0.81.5') throw new Error('React Native version changed');
+          if (root.dependencies.next !== '16.2.12') throw new Error('Next version changed');
+          if (root.dependencies.react !== '19.1.0' || root.dependencies['react-dom'] !== '19.1.0') throw new Error('root React singleton alignment is not pinned to 19.1.0');
           if (lock.packages?.['apps/mobile']?.name !== '@ega/mobile') throw new Error('root lock does not own the mobile workspace');
+          if (lock.packages?.['']?.dependencies?.react !== '19.1.0' || lock.packages?.['']?.dependencies?.['react-dom'] !== '19.1.0') throw new Error('root lock does not record the justified React 19.1.0 alignment');
           NODE
 
       - name: Install exact root workspace dependencies
@@ -75,6 +78,9 @@ jobs:
           }
           walk(tree);
           if (versions.size !== 1 || !versions.has('0.81.5')) throw new Error(`mobile resolves unexpected React Native versions: ${[...versions].join(', ')}`);
+          const reactVersion = require('./node_modules/react/package.json').version;
+          const reactDomVersion = require('./node_modules/react-dom/package.json').version;
+          if (reactVersion !== '19.1.0' || reactDomVersion !== '19.1.0') throw new Error(`workspace root resolves React ${reactVersion} / ReactDOM ${reactDomVersion}, expected 19.1.0`);
           NODE
 
       - name: Mobile doctor
@@ -104,6 +110,15 @@ jobs:
 
       - name: Architecture current-tree check
         run: npm run check:architecture
+
+      - name: Agent context regression
+        run: npm run validate:agent-context
+
+      - name: Runner typecheck regression
+        run: npm run typecheck:ega-runner
+
+      - name: Runner PR-loop regression
+        run: npm run test:ega-runner-pr-loop
 
       - name: Root typecheck
         run: npm run typecheck
