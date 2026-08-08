@@ -21,6 +21,13 @@ test("mobile may import shared api client", () => {
   );
 });
 
+test("mobile workspace alias remains mobile-local", () => {
+  assert.deepEqual(
+    diagnostics("apps/mobile/features/tasks/query.ts", 'import { api } from "@/lib/api/tasks";'),
+    [],
+  );
+});
+
 test("mobile may not import application", () => {
   assert.deepEqual(
     diagnostics("apps/mobile/features/tasks/api.ts", 'import { listProjects } from "@ega/application";'),
