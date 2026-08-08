@@ -1,0 +1,312 @@
+[data-workspace-theme="editorial"] #dashboard-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(1.1rem, 2vw, 1.8rem);
+}
+
+[data-workspace-theme="editorial"] #dashboard-main::before {
+  content: "DASHBOARD / CONTROL BOARD";
+  display: block;
+  padding: 0.65rem 0 0.75rem;
+  color: var(--workspace-muted);
+  border-top: 1px solid var(--workspace-line);
+  border-bottom: 1px solid var(--workspace-line);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero {
+  position: relative;
+  grid-template-columns: minmax(0, 1.22fr) minmax(21rem, 0.78fr);
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--workspace-line);
+  background: var(--workspace-line);
+  box-shadow: 10px 10px 0 rgba(17, 17, 15, 0.07);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero::after {
+  content: "01 / SYSTEM SNAPSHOT";
+  position: absolute;
+  top: 0.85rem;
+  right: 1rem;
+  z-index: 2;
+  color: var(--workspace-signal);
+  font-family: var(--font-mono);
+  font-size: 0.54rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero-copy,
+[data-workspace-theme="editorial"] .ega-dashboard-hero-rail {
+  border: 0;
+  border-radius: 0;
+  background: var(--workspace-paper);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero-copy {
+  min-height: 24rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: clamp(1.5rem, 3.5vw, 4rem);
+  background:
+    linear-gradient(90deg, transparent 49.8%, rgba(17, 17, 15, 0.07) 50%, transparent 50.2%),
+    linear-gradient(rgba(17, 17, 15, 0.07) 1px, transparent 1px),
+    var(--workspace-paper);
+  background-size: 100% 100%, 100% 3.25rem, auto;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero-title {
+  max-width: 11ch;
+  margin-top: 0.8rem;
+  color: var(--workspace-ink);
+  font-size: clamp(3rem, 5.5vw, 6.7rem);
+  font-weight: 800;
+  letter-spacing: -0.085em;
+  line-height: 0.86;
+  text-wrap: balance;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero-title span {
+  color: var(--workspace-signal);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero-subtitle {
+  max-width: 44rem;
+  margin-top: 1.2rem;
+  color: var(--workspace-muted);
+  font-size: clamp(0.94rem, 1.15vw, 1.08rem);
+  line-height: 1.65;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-hero-rail {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  padding: 0;
+  background: var(--workspace-line);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-metric {
+  position: relative;
+  min-height: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 0;
+  border-radius: 0;
+  background: var(--workspace-cream);
+  padding: 1.2rem;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-metric::before {
+  content: "METRIC";
+  color: var(--workspace-muted);
+  font-family: var(--font-mono);
+  font-size: 0.52rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-metric.is-accent {
+  color: var(--workspace-black);
+  background: var(--workspace-citrus);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-metric.is-accent::before {
+  color: rgba(17, 17, 15, 0.6);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-metric-value {
+  margin-top: 1rem;
+  color: inherit;
+  font-size: clamp(2.2rem, 3vw, 3.5rem);
+  font-weight: 800;
+  letter-spacing: -0.07em;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-metric-detail {
+  color: inherit;
+  opacity: 0.68;
+}
+
+[data-workspace-theme="editorial"] .workspace-main-rail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(19rem, 0.65fr);
+  gap: clamp(1rem, 2vw, 1.5rem);
+  align-items: start;
+}
+
+[data-workspace-theme="editorial"] #dashboard-main > section:not(.workspace-main-rail-grid) {
+  gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+[data-workspace-theme="editorial"] #dashboard-main .instrument-card,
+[data-workspace-theme="editorial"] #dashboard-main .ega-shell-section {
+  position: relative;
+  overflow: hidden;
+  border-color: var(--workspace-line);
+  background: rgba(255, 249, 237, 0.94);
+  box-shadow: 7px 7px 0 rgba(17, 17, 15, 0.055);
+}
+
+[data-workspace-theme="editorial"] #dashboard-main .instrument-card::before,
+[data-workspace-theme="editorial"] #dashboard-main .ega-shell-section::before {
+  content: "OPERATIONAL PANEL";
+  display: block;
+  padding: 0.55rem 0.8rem;
+  color: var(--workspace-muted);
+  border-bottom: 1px solid var(--workspace-line-soft);
+  background: rgba(17, 17, 15, 0.025);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-spotlight {
+  border-radius: 0;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-spotlight-shell {
+  position: relative;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(255, 212, 0, 0.18), transparent 25%),
+    var(--workspace-black);
+  box-shadow: 8px 8px 0 rgba(255, 75, 43, 0.2);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-spotlight-shell::before {
+  content: "02 / ACTIVE COMMAND";
+  display: block;
+  margin-bottom: 1rem;
+  padding-bottom: 0.7rem;
+  color: var(--workspace-citrus);
+  border-bottom: 1px solid rgba(255, 249, 237, 0.2);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: 0.11em;
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-spotlight-stat {
+  border-radius: 2px;
+  border-color: rgba(255, 249, 237, 0.2);
+  background: rgba(255, 249, 237, 0.06);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-list-row,
+[data-workspace-theme="editorial"] .ega-dashboard-mini-row {
+  border-radius: 2px;
+  border-color: var(--workspace-line);
+  background: rgba(244, 239, 227, 0.72);
+}
+
+[data-workspace-theme="editorial"] .ega-dashboard-list-row:hover,
+[data-workspace-theme="editorial"] .ega-dashboard-mini-row:hover {
+  background: rgba(255, 212, 0, 0.12);
+}
+
+[data-workspace-theme="editorial"] .mcp-launch-console {
+  border-radius: 2px;
+  border-color: var(--workspace-line);
+  background:
+    linear-gradient(135deg, rgba(255, 249, 237, 0.98), rgba(244, 239, 227, 0.96)) padding-box,
+    var(--workspace-black) border-box;
+  box-shadow: 8px 8px 0 rgba(17, 17, 15, 0.07);
+}
+
+[data-workspace-theme="editorial"] .mcp-launch-console::before {
+  background-image:
+    linear-gradient(var(--workspace-line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--workspace-line-soft) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+[data-workspace-theme="editorial"] .mcp-flow-stage,
+[data-workspace-theme="editorial"] .mcp-flow-node {
+  border-radius: 2px;
+  border-color: var(--workspace-line);
+  background: rgba(255, 249, 237, 0.82);
+  box-shadow: none;
+}
+
+[data-workspace-theme="editorial"] .mcp-flow-node-gateway {
+  color: var(--workspace-paper);
+  background: var(--workspace-black);
+  border-color: var(--workspace-black);
+}
+
+[data-workspace-theme="editorial"] .mcp-flow-node-icon-gateway {
+  color: var(--workspace-black);
+  background: var(--workspace-citrus);
+}
+
+[data-workspace-theme="editorial"] .mcp-connector-line {
+  background: linear-gradient(90deg, var(--workspace-signal), var(--workspace-citrus));
+}
+
+[data-workspace-theme="editorial"] .mcp-connector-signal {
+  background: var(--workspace-signal);
+  box-shadow: 0 0 0 4px rgba(255, 75, 43, 0.12);
+}
+
+@media (max-width: 1024px) {
+  [data-workspace-theme="editorial"] .ega-dashboard-hero,
+  [data-workspace-theme="editorial"] .workspace-main-rail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-hero-copy {
+    min-height: 20rem;
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-hero-rail {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-metric {
+    min-height: 8.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  [data-workspace-theme="editorial"] #dashboard-main {
+    gap: 1rem;
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-hero-copy {
+    min-height: 17rem;
+    padding: 1.2rem;
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-hero-title {
+    font-size: clamp(2.7rem, 14vw, 4.4rem);
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-hero-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-workspace-theme="editorial"] .ega-dashboard-metric {
+    min-height: 7.5rem;
+    padding: 0.9rem;
+  }
+
+  [data-workspace-theme="editorial"] .mcp-flow-stage {
+    padding: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-workspace-theme="editorial"] .mcp-connector-signal {
+    animation: none;
+  }
+}

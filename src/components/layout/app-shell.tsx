@@ -4,8 +4,11 @@ import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { cn } from "@/lib/utils";
 import { Sidebar, type SidebarGoal, type SidebarProject } from "./sidebar";
+import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
 import { TopBar } from "./top-bar";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
+import "./editorial-shell.css";
+import "./editorial-shell-responsive.css";
 
 type AppShellProps = {
   children: ReactNode;
@@ -99,36 +102,45 @@ export async function AppShell({
   ]);
 
   return (
-    <div className={cn("ega-app-shell text-foreground selection:bg-secondary selection:text-foreground", className)}>
+    <div
+      data-workspace-theme="editorial"
+      className={cn(
+        "ega-app-shell text-foreground selection:bg-secondary selection:text-foreground",
+        className,
+      )}
+    >
       <Sidebar projects={projects} goals={goals} metrics={metrics} />
 
-      <main className="ega-main">
+      <main className="ega-main workspace-main">
         <WorkspaceKeyboardShortcuts />
-        <TopBar metrics={metrics} />
+        <TopBar
+          metrics={metrics}
+          mobileNavigation={
+            <SidebarMobileDrawer projects={projects} goals={goals} metrics={metrics} />
+          }
+        />
 
-        <div className="flex-1 overflow-y-auto">
-          {/* Page header */}
-          <div className="ega-page-header">
-            <div className="ega-shell-max ega-shell-page-head">
-              <div>
-                {eyebrow && (
-                  <div className="ega-shell-eyebrow">{eyebrow}</div>
-                )}
-                <h1 tabIndex={-1} data-shell-page-title className="ega-shell-title focus:outline-none">{title}</h1>
-                {description && (
+        <div className="workspace-scroll-region">
+          <div className="ega-page-header workspace-page-header">
+            <div className="ega-shell-max ega-shell-page-head workspace-page-head">
+              <div className="workspace-page-heading">
+                {eyebrow ? <div className="ega-shell-eyebrow">{eyebrow}</div> : null}
+                <h1
+                  tabIndex={-1}
+                  data-shell-page-title
+                  className="ega-shell-title focus:outline-none"
+                >
+                  {title}
+                </h1>
+                {description ? (
                   <p className="ega-shell-description">{description}</p>
-                )}
+                ) : null}
               </div>
-              {actions && (
-                <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>
-              )}
+              {actions ? <div className="workspace-page-actions">{actions}</div> : null}
             </div>
           </div>
 
-          {/* Content */}
-          <div className={cn("ega-content ega-shell-max", contentClassName)}>
-            {children}
-          </div>
+          <div className={cn("ega-content ega-shell-max", contentClassName)}>{children}</div>
         </div>
       </main>
     </div>
