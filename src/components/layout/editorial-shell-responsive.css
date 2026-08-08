@@ -1,0 +1,68 @@
+@media (min-width: 761px) and (max-width: 1180px) {
+  [data-workspace-theme="editorial"]
+    .workspace-sidebar
+    .sidebar-general-section
+    form
+    .sidebar-link {
+    justify-content: center;
+    padding-inline: 0.35rem;
+    font-size: 0;
+  }
+
+  [data-workspace-theme="editorial"]
+    .workspace-sidebar
+    .sidebar-general-section
+    form
+    .sidebar-link-icon {
+    margin: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  [data-workspace-theme="editorial"]::before {
+    inset: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .workspace-nav-label,
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .workspace-nav-index {
+    display: inline;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-section-label {
+    display: block;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .workspace-nav-external {
+    display: block;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-link .sidebar-badge,
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-count,
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-status {
+    display: inline-flex;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-link {
+    justify-content: flex-start;
+    padding-inline: 0.62rem;
+    font-size: 0.79rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .workspace-nav-index {
+    width: 1.55rem;
+    flex: 0 0 1.55rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-section {
+    flex: 1 1 auto;
+    min-height: 9rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-list {
+    max-height: min(31dvh, 18rem);
+  }
+
+  [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-section-heading {
+    justify-content: space-between;
+  }
+}

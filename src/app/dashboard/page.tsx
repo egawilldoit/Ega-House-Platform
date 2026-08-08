@@ -37,6 +37,7 @@ import {
   getDashboardData,
 } from "./_lib/dashboard-data";
 import "./_components/dashboard.css";
+import "./_components/dashboard-editorial.css";
 
 export const metadata = {
   title: "Dashboard",
