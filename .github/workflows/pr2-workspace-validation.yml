@@ -52,9 +52,11 @@ jobs:
           if (mobile.dependencies.expo !== '~54.0.34') throw new Error('Expo version changed');
           if (mobile.dependencies.react !== '19.1.0') throw new Error('mobile React version changed');
           if (mobile.dependencies['react-native'] !== '0.81.5') throw new Error('React Native version changed');
+          if (mobile.dependencies['@react-navigation/bottom-tabs'] !== '^7.4.0') throw new Error('mobile bottom-tabs direct dependency is missing');
           if (root.dependencies.next !== '16.2.12') throw new Error('Next version changed');
           if (root.dependencies.react !== '19.1.0' || root.dependencies['react-dom'] !== '19.1.0') throw new Error('root React singleton alignment is not pinned to 19.1.0');
           if (lock.packages?.['apps/mobile']?.name !== '@ega/mobile') throw new Error('root lock does not own the mobile workspace');
+          if (lock.packages?.['apps/mobile']?.dependencies?.['@react-navigation/bottom-tabs'] !== '^7.4.0') throw new Error('root lock does not record the mobile bottom-tabs dependency');
           if (lock.packages?.['']?.dependencies?.react !== '19.1.0' || lock.packages?.['']?.dependencies?.['react-dom'] !== '19.1.0') throw new Error('root lock does not record the justified React 19.1.0 alignment');
           NODE
 
@@ -84,17 +86,7 @@ jobs:
           NODE
 
       - name: Mobile doctor
-        shell: bash
-        run: |
-          set +e
-          npm run mobile:doctor 2>&1 | tee /tmp/expo-doctor.log
-          doctor_status=${PIPESTATUS[0]}
-          set -e
-          if [ "$doctor_status" -ne 0 ]; then
-            diagnostic="$(tail -n 40 /tmp/expo-doctor.log | tr '\n' ' ' | sed 's/%/%25/g')"
-            echo "::error title=Expo Doctor diagnostics::$diagnostic"
-            exit "$doctor_status"
-          fi
+        run: npm run mobile:doctor
 
       - name: Mobile typecheck
         run: npm run mobile:typecheck
