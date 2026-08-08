@@ -110,10 +110,15 @@ function specifierMatches(specifier, expected) {
   return specifier === expected || specifier.startsWith(`${expected}/`);
 }
 
+function workspaceAliasRoot(filePath) {
+  if (filePath.startsWith("apps/mobile/")) return "apps/mobile";
+  if (filePath.startsWith("apps/web/")) return "apps/web/src";
+  return "src";
+}
+
 function resolveRepositoryImport(filePath, specifier) {
   if (specifier.startsWith("@/")) {
-    const root = filePath.startsWith("apps/web/") ? "apps/web/src" : "src";
-    return normalizeRepoPath(path.posix.join(root, specifier.slice(2)));
+    return normalizeRepoPath(path.posix.join(workspaceAliasRoot(filePath), specifier.slice(2)));
   }
 
   if (!specifier.startsWith(".")) {
