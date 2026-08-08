@@ -110,7 +110,7 @@ jobs:
             .filter(Boolean);
           const forbidden = [
             /@supabase\//,
-            /from\s+["']react(?:["'/])/, 
+            /from\s+["']react(?:["'/])/,
             /from\s+["']react-native(?:["'/])/,
             /from\s+["']expo(?:["'/])/,
             /from\s+["']next(?:["'/])/,
