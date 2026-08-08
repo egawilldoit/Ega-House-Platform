@@ -95,7 +95,36 @@ jobs:
         run: npm run mobile:test
 
       - name: Mobile Android bundle validation
-        run: npm run mobile:bundle
+        run: |
+          set +e
+          log_file="$(mktemp)"
+          npm run mobile:bundle 2>&1 | tee "$log_file"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### Mobile Android bundle diagnostics"
+              echo '```text'
+              tail -n 120 "$log_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            diagnostic="$(node - "$log_file" <<'NODE'
+          const fs = require('node:fs');
+          const path = process.argv[2];
+          const lines = fs.readFileSync(path, 'utf8').split(/\r?\n/).slice(-80);
+          const value = lines.join('\n')
+            .replaceAll('%', '%25')
+            .replaceAll('\r', '%0D')
+            .replaceAll('\n', '%0A');
+          process.stdout.write(value);
+          NODE
+            )"
+            echo "::error title=Mobile bundle diagnostics::$diagnostic"
+          fi
+
+          exit "$status"
 
       - name: Architecture tests
         run: npm run test:architecture
