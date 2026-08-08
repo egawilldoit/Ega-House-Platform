@@ -38,18 +38,21 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Prove one authoritative lockfile and pinned mobile frameworks
+      - name: Prove one authoritative platform workspace lockfile and pinned mobile frameworks
         run: |
-          test "$(git ls-files '*package-lock.json' | wc -l)" -eq 1
-          test "$(git ls-files '*package-lock.json')" = "package-lock.json"
+          test -f package-lock.json
+          test -z "$(git ls-files 'apps/*/package-lock.json' 'packages/*/package-lock.json')"
+          test -f scripts/ega-runner/package-lock.json
           node - <<'NODE'
           const root = require('./package.json');
           const mobile = require('./apps/mobile/package.json');
+          const lock = require('./package-lock.json');
           if (JSON.stringify(root.workspaces) !== JSON.stringify(['apps/*', 'packages/*'])) throw new Error('unexpected root workspaces');
           if (mobile.name !== '@ega/mobile') throw new Error('unexpected mobile package name');
           if (mobile.dependencies.expo !== '~54.0.34') throw new Error('Expo version changed');
           if (mobile.dependencies.react !== '19.1.0') throw new Error('mobile React version changed');
           if (mobile.dependencies['react-native'] !== '0.81.5') throw new Error('React Native version changed');
+          if (lock.packages?.['apps/mobile']?.name !== '@ega/mobile') throw new Error('root lock does not own the mobile workspace');
           NODE
 
       - name: Install exact root workspace dependencies
