@@ -3,9 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { PROJECT_ARCHIVE_STATUS } from "@/lib/project-archive";
+import {
+  archiveProject,
+  createAuthenticatedActor,
+  unarchiveProject,
+  updateProjectStatus,
+  type AuthenticatedActor,
+} from "@ega/application";
+import { SupabaseProjectsRepository } from "@ega/data-access";
+
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
-import { isProjectStatus } from "@/lib/task-domain";
 
 function getProjectsReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
@@ -38,34 +46,31 @@ function redirectWithProjectsError(
   );
 }
 
+async function resolveProjectContext(): Promise<{
+  actor: AuthenticatedActor;
+  repository: SupabaseProjectsRepository;
+}> {
+  const supabase = await createClient();
+  const user = await requireAuthenticatedUser({ supabase });
+
+  return {
+    actor: createAuthenticatedActor(user.id),
+    repository: new SupabaseProjectsRepository(supabase),
+  };
+}
+
 export async function updateProjectStatusAction(formData: FormData) {
   const returnPath = getProjectsReturnPath(formData.get("returnTo"));
   const projectId = String(formData.get("projectId") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
 
-  if (!projectId || !isProjectStatus(status)) {
+  const { actor, repository } = await resolveProjectContext();
+  const result = await updateProjectStatus(actor, repository, { projectId, status });
+
+  if (!result.ok) {
     redirectWithProjectsError(
       returnPath,
-      "Project update request is invalid.",
-      projectId,
-      "status",
-    );
-  }
-
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("projects")
-    .update({
-      status,
-      updated_at: updatedAt,
-    })
-    .eq("id", projectId);
-
-  if (error) {
-    redirectWithProjectsError(
-      returnPath,
-      "Unable to update project right now.",
+      result.errorMessage,
       projectId,
       "status",
     );
@@ -80,33 +85,20 @@ export async function updateProjectStatusAction(formData: FormData) {
   redirect(`${returnPath}#project-${projectId}`);
 }
 
-async function updateProjectArchiveState(formData: FormData, status: string) {
+async function updateProjectArchiveState(formData: FormData, status: "archived" | "active") {
   const returnPath = getProjectsReturnPath(formData.get("returnTo"));
   const projectId = String(formData.get("projectId") ?? "").trim();
 
-  if (!projectId) {
+  const { actor, repository } = await resolveProjectContext();
+  const result =
+    status === "archived"
+      ? await archiveProject(actor, repository, { projectId })
+      : await unarchiveProject(actor, repository, { projectId });
+
+  if (!result.ok) {
     redirectWithProjectsError(
       returnPath,
-      "Project update request is invalid.",
-      projectId,
-      "archive",
-    );
-  }
-
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("projects")
-    .update({
-      status,
-      updated_at: updatedAt,
-    })
-    .eq("id", projectId);
-
-  if (error) {
-    redirectWithProjectsError(
-      returnPath,
-      "Unable to update project right now.",
+      result.errorMessage,
       projectId,
       "archive",
     );
@@ -122,7 +114,7 @@ async function updateProjectArchiveState(formData: FormData, status: string) {
 }
 
 export async function archiveProjectAction(formData: FormData) {
-  await updateProjectArchiveState(formData, PROJECT_ARCHIVE_STATUS);
+  await updateProjectArchiveState(formData, "archived");
 }
 
 export async function unarchiveProjectAction(formData: FormData) {
