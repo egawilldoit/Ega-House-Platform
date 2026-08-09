@@ -439,18 +439,6 @@
       "errors": 0,
       "warnings": 0
     },
-    "replace.js": {
-      "errors": 0,
-      "warnings": 2
-    },
-    "replace2.js": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "replace3.js": {
-      "errors": 0,
-      "warnings": 0
-    },
     "scripts/agent/agent-context-core.mjs": {
       "errors": 0,
       "warnings": 0
