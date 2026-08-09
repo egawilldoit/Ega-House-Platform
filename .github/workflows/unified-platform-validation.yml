@@ -1,0 +1,403 @@
+name: Unified Platform Validation
+
+on:
+  pull_request:
+    branches: [main, "arch/**"]
+  push:
+    branches: [main, "arch/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: unified-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+  MCP_ENABLED: "false"
+  MCP_WRITES_ENABLED: "false"
+  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+  NEXT_PUBLIC_SITE_URL: "https://example.com"
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+      server: ${{ steps.filter.outputs.server }}
+      api-client: ${{ steps.filter.outputs.api-client }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            mobile:
+              - 'apps/mobile/**'
+              - 'packages/contracts/**'
+              - 'packages/domain/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            server:
+              - 'apps/server/**'
+              - 'packages/contracts/**'
+              - 'packages/domain/**'
+              - 'packages/application/**'
+              - 'packages/data-access/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            api-client:
+              - 'packages/api-client/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            web:
+              - 'apps/web/**'
+              - 'src/**'
+              - 'drizzle/**'
+              - 'drizzle.config.ts'
+              - 'packages/**'
+              - 'apps/server/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Diff hygiene pre-install
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          elif [ -n "$GITHUB_EVENT_BEFORE" ] && [ "$GITHUB_EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            BASE="$GITHUB_EVENT_BEFORE"
+          else
+            BASE="HEAD~1"
+          fi
+          git diff --check "$BASE"...HEAD
+          test -z "$(git status --porcelain)"
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install exact workspace dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Prove workspace and lockfile integrity
+        run: npm run ci:workspace
+      - name: Audit framework resolution
+        run: npm ls react react-dom react-native expo-router
+      - name: Dependency audit high/critical policy
+        run: node scripts/ci/audit-production.mjs
+      - name: Prove package purity
+        run: npm run ci:purity
+      - name: Prove security invariants
+        run: npm run ci:security
+      - name: Architecture current-tree check
+        run: npm run check:architecture
+      - name: Architecture fixture tests
+        run: npm run test:architecture
+
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run contracts:typecheck
+      - run: npm run contracts:test
+
+  domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run domain:typecheck
+      - run: npm run domain:test
+
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run application:typecheck
+      - run: npm run application:test
+
+  data-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run data-access:typecheck
+      - run: npm run data-access:test
+
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Agent context regression
+        run: npm run validate:agent-context
+      - name: Runner typecheck regression
+        run: npm run typecheck:ega-runner
+      - name: Runner PR-loop regression
+        run: npm run test:ega-runner-pr-loop
+
+  lint-changed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Scoped lint regression vs captured baseline
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="origin/main"
+          fi
+          npm run lint:changed -- --base "$BASE"
+
+  lint-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Full-repo lint informational report
+        run: npm run lint:report
+
+  web:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Web typecheck
+        run: npm run typecheck
+      - name: Web tests
+        run: npm test
+      - name: Web production build
+        run: npm run build
+
+  mobile:
+    needs: [changes]
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Mobile doctor
+        run: npm run mobile:doctor
+      - name: Mobile typecheck
+        run: npm run mobile:typecheck
+      - name: Mobile tests
+        run: npm run mobile:test
+      - name: Mobile Android bundle validation
+        run: npm run mobile:bundle
+
+  server:
+    needs: [changes]
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Server validation
+        if: hashFiles('apps/server/package.json') != ''
+        run: |
+          npm run server:typecheck
+          npm run server:test
+
+  api-client:
+    needs: [changes]
+    if: needs.changes.outputs.api-client == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: API client validation
+        if: hashFiles('packages/api-client/package.json') != ''
+        run: |
+          npm run api-client:typecheck
+          npm run api-client:test
+
+  hygiene:
+    needs: [workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Diff hygiene final check
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain)"
+      - name: Prove generated outputs remain untracked
+        shell: bash
+        run: |
+          test -z "$(git ls-files 'apps/mobile/android/**' 'apps/mobile/ios/**' 'apps/mobile/.expo/**' 'apps/mobile/artifacts/**' '.next/**' 'apps/web/.next/**' 'apps/server/dist/**' 'packages/api-client/dist/**')"
+      - name: Report validation workspace mutations
+        if: ${{ always() }}
+        run: git status --short
