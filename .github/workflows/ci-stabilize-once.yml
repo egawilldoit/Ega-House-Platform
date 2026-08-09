@@ -31,33 +31,57 @@ jobs:
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Map vulnerable production dependency ownership
+      - name: Print concise audit ownership
         shell: bash
         run: |
-          echo '=== versions ==='
-          node - <<'NODE'
-          for (const name of ['hono','ws','fast-uri','js-yaml','nanoid','image-size','ajv','react-native','react-native-reanimated','expo']) {
-            try { console.log(name, require(`${name}/package.json`).version) } catch { console.log(name, 'not root-resolvable') }
-          }
-          NODE
-          echo '=== dependency tree ==='
-          npm ls hono ws fast-uri js-yaml nanoid image-size ajv react-native react-native-reanimated expo --all || true
-          echo '=== explain ==='
-          for p in hono ws fast-uri js-yaml nanoid image-size ajv react-native react-native-reanimated expo; do
-            echo "--- $p ---"
-            npm explain "$p" || true
-          done
-          echo '=== registry compatible/latest evidence ==='
-          for p in hono ws fast-uri js-yaml nanoid ajv react-native-reanimated expo react-native; do
-            echo "--- $p ---"
-            npm view "$p" version dist-tags --json || true
-          done
-          echo '=== high/critical audit objects ==='
           npm audit --omit=dev --json > /tmp/audit.json || true
-          node - <<'NODE'
-          const a=require('/tmp/audit.json');
-          for (const [name,v] of Object.entries(a.vulnerabilities||{})) {
-            if (!['high','critical'].includes(v.severity)) continue;
-            console.log(JSON.stringify({name,severity:v.severity,isDirect:v.isDirect,via:v.via,effects:v.effects,range:v.range,nodes:v.nodes,fixAvailable:v.fixAvailable}, null, 2));
+          node <<'NODE'
+          const fs = require('node:fs');
+          const a = JSON.parse(fs.readFileSync('/tmp/audit.json','utf8'));
+          const all = a.vulnerabilities || {};
+          function leaves(name, seen = new Set()) {
+            if (seen.has(name)) return [];
+            seen.add(name);
+            const v = all[name];
+            if (!v) return [];
+            const out = [];
+            for (const x of v.via || []) {
+              if (typeof x === 'string') out.push(...leaves(x, new Set(seen)));
+              else out.push({name:x.name, source:x.source, url:x.url, range:x.range, severity:x.severity});
+            }
+            return out;
           }
+          const rows = [];
+          for (const [name,v] of Object.entries(all)) {
+            if (!['high','critical'].includes(v.severity)) continue;
+            rows.push({name, severity:v.severity, direct:v.isDirect, range:v.range, fix:v.fixAvailable, leaves:leaves(name)});
+          }
+          console.log('AUDIT_SUMMARY=' + JSON.stringify(rows));
+          console.log('COUNTS=' + JSON.stringify(a.metadata?.vulnerabilities || {}));
           NODE
+
+          echo 'EXPLAINS_BEGIN'
+          for p in fast-uri js-yaml nanoid image-size ws react-native react-native-reanimated; do
+            echo "### $p"
+            npm explain "$p" 2>/dev/null | grep -E '^(fast-uri|js-yaml|nanoid|image-size|ws|react-native|react-native-reanimated)@|^node_modules/|^  |from ' | head -n 80 || true
+          done
+          echo 'EXPLAINS_END'
+
+          echo 'REGISTRY='$(node - <<'NODE'
+          const {execFileSync}=require('node:child_process');
+          const names=['hono','ws','fast-uri','js-yaml','nanoid','@modelcontextprotocol/sdk','react-native-reanimated','expo','react-native'];
+          const out={};
+          for (const name of names) {
+            try { out[name]=JSON.parse(execFileSync('npm',['view',name,'version','--json'],{encoding:'utf8'})); } catch { out[name]=null; }
+          }
+          process.stdout.write(JSON.stringify(out));
+          NODE
+          )
+
+          echo 'INSTALLED='$(node - <<'NODE'
+          const names=['hono','ws','fast-uri','js-yaml','nanoid','image-size','@modelcontextprotocol/sdk','react-native-reanimated','expo','react-native'];
+          const out={};
+          for(const name of names){try{out[name]=require(`${name}/package.json`).version}catch{out[name]=null}}
+          process.stdout.write(JSON.stringify(out));
+          NODE
+          )
