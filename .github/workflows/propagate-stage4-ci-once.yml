@@ -1,0 +1,51 @@
+name: Propagate Stage4 CI Once
+
+on:
+  push:
+    branches:
+      - arch/08-native-project-goal-ui
+    paths:
+      - .github/workflows/propagate-stage4-ci-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  propagate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout stage 8 control branch
+        uses: actions/checkout@v5
+        with:
+          ref: arch/08-native-project-goal-ui
+          fetch-depth: 0
+
+      - name: Merge validated CI fix through stacked branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin '+refs/heads/arch/*:refs/remotes/origin/arch/*'
+
+          merge_forward() {
+            parent="$1"
+            child="$2"
+            echo "=== ${parent} -> ${child} ==="
+            git checkout -B "$child" "origin/$child"
+            git merge --no-ff --no-edit "origin/$parent"
+            git push origin "HEAD:$child"
+          }
+
+          merge_forward arch/04-project-goal-application-core arch/05-hono-project-goal-transport
+          git fetch origin arch/05-hono-project-goal-transport:refs/remotes/origin/arch/05-hono-project-goal-transport
+          merge_forward arch/05-hono-project-goal-transport arch/06-api-client
+          git fetch origin arch/06-api-client:refs/remotes/origin/arch/06-api-client
+          merge_forward arch/06-api-client arch/07-web-app-workspace
+          git fetch origin arch/07-web-app-workspace:refs/remotes/origin/arch/07-web-app-workspace
+          merge_forward arch/07-web-app-workspace arch/08-native-project-goal-ui
+
+          git rm .github/workflows/propagate-stage4-ci-once.yml
+          git commit -m "ci: remove one-shot stack propagation workflow"
+          git push origin HEAD:arch/08-native-project-goal-ui
