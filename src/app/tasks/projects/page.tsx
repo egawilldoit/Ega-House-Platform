@@ -2,6 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import {
+  createAuthenticatedActor,
+  getProjectsReadModel,
+  type ProjectCardReadModel,
+} from "@ega/application";
+import { SupabaseProjectsRepository } from "@ega/data-access";
+
+import {
   archiveProjectAction,
   unarchiveProjectAction,
   updateProjectStatusAction,
@@ -13,39 +20,13 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   type ProjectViewFilter,
-  PROJECT_ARCHIVE_STATUS,
   isProjectArchivedStatus,
   normalizeProjectViewFilter,
 } from "@/lib/project-archive";
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
-import type { Tables } from "@/lib/supabase/database.types";
 import { cn } from "@/lib/utils";
-
-type ProjectRow = Pick<
-  Tables<"projects">,
-  "id" | "name" | "slug" | "description" | "status" | "created_at" | "updated_at"
->;
-
-type TaskRow = Pick<
-  Tables<"tasks">,
-  "id" | "project_id" | "title" | "status" | "priority" | "updated_at"
->;
-
-type ProjectCardData = ProjectRow & {
-  taskCount: number;
-  completedTaskCount: number;
-  progressPercent: number;
-  statusCounts: Array<{ status: string; count: number }>;
-  recentTasks: TaskRow[];
-};
-
-type ProjectSummary = {
-  total: number;
-  active: number;
-  completed: number;
-  archived: number;
-};
 
 export const metadata: Metadata = {
   title: "Projects | Tasks",
@@ -68,7 +49,7 @@ function getStatusTone(status: string) {
   return getTaskStatusTone(status);
 }
 
-function getProjectProgressTone(project: ProjectCardData) {
+function getProjectProgressTone(project: ProjectCardReadModel) {
   if (project.status === "done") {
     return "bg-[var(--signal-live)] text-signal-live";
   }
@@ -86,89 +67,17 @@ function getProjectProgressTone(project: ProjectCardData) {
 
 async function getProjectsWithTaskContext(view: ProjectViewFilter) {
   const supabase = await createClient();
-  const projectsQuery = supabase
-    .from("projects")
-    .select("id, name, slug, description, status, created_at, updated_at")
-    .order("updated_at", { ascending: false });
+  const user = await requireAuthenticatedUser({ supabase });
+  const actor = createAuthenticatedActor(user.id);
+  const repository = new SupabaseProjectsRepository(supabase);
 
-  if (view === "active") {
-    projectsQuery.neq("status", PROJECT_ARCHIVE_STATUS);
-  } else if (view === "archived") {
-    projectsQuery.eq("status", PROJECT_ARCHIVE_STATUS);
+  const result = await getProjectsReadModel(actor, repository, view);
+
+  if (!result.ok) {
+    throw new Error(result.errorMessage);
   }
 
-  const [{ data: projects, error: projectsError }, { data: projectSummaryRows, error: projectSummaryError }] =
-    await Promise.all([projectsQuery, supabase.from("projects").select("status")]);
-
-  if (projectsError) {
-    throw new Error(`Failed to load projects: ${projectsError.message}`);
-  }
-
-  if (projectSummaryError) {
-    throw new Error(`Failed to load project summary: ${projectSummaryError.message}`);
-  }
-
-  const summary: ProjectSummary = {
-    total: projectSummaryRows.length,
-    active: projectSummaryRows.filter((project) => project.status === "active").length,
-    completed: projectSummaryRows.filter((project) => project.status === "done").length,
-    archived: projectSummaryRows.filter((project) => isProjectArchivedStatus(project.status)).length,
-  };
-
-  if (!projects.length) {
-    return { projects: [], summary };
-  }
-
-  const projectIds = projects.map((project) => project.id);
-  const { data: tasks, error: tasksError } = await supabase
-    .from("tasks")
-    .select("id, project_id, title, status, priority, updated_at")
-    .in("project_id", projectIds)
-    .order("updated_at", { ascending: false });
-
-  if (tasksError) {
-    throw new Error(`Failed to load task context: ${tasksError.message}`);
-  }
-
-  const tasksByProject = new Map<string, TaskRow[]>();
-
-  for (const task of tasks) {
-    const projectTasks = tasksByProject.get(task.project_id) ?? [];
-    projectTasks.push(task);
-    tasksByProject.set(task.project_id, projectTasks);
-  }
-
-  return {
-    projects: projects.map((project) => {
-      const projectTasks = tasksByProject.get(project.id) ?? [];
-      const statusCountMap = new Map<string, number>();
-
-      for (const task of projectTasks) {
-        statusCountMap.set(task.status, (statusCountMap.get(task.status) ?? 0) + 1);
-      }
-
-      const completedTaskCount = projectTasks.filter((task) => task.status === "done").length;
-      const progressPercent =
-        projectTasks.length > 0
-          ? Math.round((completedTaskCount / projectTasks.length) * 100)
-          : 0;
-
-      const statusCounts = Array.from(statusCountMap.entries())
-        .map(([status, count]) => ({ status, count }))
-        .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
-        .slice(0, 3);
-
-      return {
-        ...project,
-        taskCount: projectTasks.length,
-        completedTaskCount,
-        progressPercent,
-        statusCounts,
-        recentTasks: projectTasks.slice(0, 2),
-      } satisfies ProjectCardData;
-    }),
-    summary,
-  };
+  return result.data;
 }
 
 function EmptyState({ hasArchivedProjects }: { hasArchivedProjects: boolean }) {
@@ -210,7 +119,7 @@ function ProjectCard({
   archiveError,
   activeView,
 }: {
-  project: ProjectCardData;
+  project: ProjectCardReadModel;
   returnTo: string;
   inlineError?: string | null;
   archiveError?: string | null;

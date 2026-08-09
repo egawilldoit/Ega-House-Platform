@@ -3,11 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { toGoalHealthWriteValue } from "@/lib/goal-health";
-import { toGoalNextStepWriteValue } from "@/lib/goal-next-step";
-import { GOAL_ARCHIVE_STATUS } from "@/lib/goal-archive";
+import {
+  archiveGoal,
+  createAuthenticatedActor,
+  createGoal,
+  unarchiveGoal,
+  updateGoalHealth,
+  updateGoalNextStep,
+  updateGoalStatus,
+} from "@ega/application";
+import { SupabaseGoalsRepository } from "@ega/data-access";
+
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
-import { GOAL_STATUS_VALUES, isGoalStatus } from "@/lib/task-domain";
 
 export type CreateGoalFormState = {
   error: string | null;
@@ -21,15 +29,6 @@ export type CreateGoalFormState = {
     slug: string;
   };
 };
-
-function normalizeSlug(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 function createErrorState(
   message: string,
@@ -62,69 +61,44 @@ function redirectWithGoalsError(
   redirect(`${target.pathname}${target.search}${goalId ? `#goal-${goalId}` : ""}`);
 }
 
+async function resolveGoalContext() {
+  const supabase = await createClient();
+  const user = await requireAuthenticatedUser({ supabase });
+
+  return {
+    actor: createAuthenticatedActor(user.id),
+    repository: new SupabaseGoalsRepository(supabase),
+  };
+}
+
 export async function createGoalAction(
   _previous: CreateGoalFormState,
   formData: FormData,
 ): Promise<CreateGoalFormState> {
-  const title = String(formData.get("title") ?? "").trim();
-  const projectId = String(formData.get("projectId") ?? "").trim();
-  const description = String(formData.get("description") ?? "").trim();
-  const nextStepResult = toGoalNextStepWriteValue(formData);
-  const goalHealthResult = toGoalHealthWriteValue(formData);
-  const status = String(formData.get("status") ?? "draft").trim();
-  const rawSlug = String(formData.get("slug") ?? "");
-  const slug = normalizeSlug(rawSlug);
+  const { actor, repository } = await resolveGoalContext();
 
-  const values = {
-    title,
-    projectId,
-    description,
-    nextStep: nextStepResult.value ?? "",
-    health: goalHealthResult.value ?? "",
-    status,
-    slug,
-  };
-
-  if (!title) {
-    return createErrorState("Goal title is required.", values);
-  }
-
-  if (!projectId) {
-    return createErrorState("Project is required.", values);
-  }
-
-  if (!status) {
-    return createErrorState("Status is required.", values);
-  }
-
-  if (!isGoalStatus(status)) {
-    return createErrorState(
-      `Status must be one of: ${GOAL_STATUS_VALUES.join(", ")}.`,
-      values,
-    );
-  }
-
-  if (nextStepResult.error) {
-    return createErrorState(nextStepResult.error, values);
-  }
-
-  if (goalHealthResult.error) {
-    return createErrorState(goalHealthResult.error, values);
-  }
-
-  const supabase = await createClient();
-  const { error } = await supabase.from("goals").insert({
-    title,
-    project_id: projectId,
-    description: description || null,
-    next_step: nextStepResult.value,
-    health: goalHealthResult.value,
-    status,
-    slug: slug || null,
+  const result = await createGoal(actor, repository, {
+    title: formData.get("title"),
+    projectId: formData.get("projectId"),
+    description: formData.get("description"),
+    nextStep: formData.get("next_step") ?? formData.get("nextStep"),
+    health: formData.get("health") ?? formData.get("goal_health"),
+    status: formData.get("status"),
+    slug: formData.get("slug"),
   });
 
-  if (error) {
-    return createErrorState("Unable to create goal right now.", values);
+  const values = {
+    title: result.values.title,
+    projectId: result.values.projectId,
+    description: result.values.description,
+    nextStep: result.values.nextStep,
+    health: result.values.health,
+    status: result.values.status,
+    slug: result.values.slug,
+  };
+
+  if (!result.ok) {
+    return createErrorState(result.errorMessage, values);
   }
 
   revalidatePath("/goals");
@@ -134,11 +108,11 @@ export async function createGoalAction(
     error: null,
     values: {
       title: "",
-      projectId,
+      projectId: values.projectId,
       description: "",
       nextStep: "",
       health: "",
-      status,
+      status: values.status,
       slug: "",
     },
   };
@@ -149,22 +123,11 @@ export async function updateGoalStatusAction(formData: FormData) {
   const goalId = String(formData.get("goalId") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
 
-  if (!goalId || !isGoalStatus(status)) {
-    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "status");
-  }
+  const { actor, repository } = await resolveGoalContext();
+  const result = await updateGoalStatus(actor, repository, { goalId, status });
 
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("goals")
-    .update({
-      status,
-      updated_at: updatedAt,
-    })
-    .eq("id", goalId);
-
-  if (error) {
-    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "status");
+  if (!result.ok) {
+    redirectWithGoalsError(returnPath, result.errorMessage, goalId, "status");
   }
 
   revalidatePath("/goals");
@@ -176,28 +139,15 @@ export async function updateGoalStatusAction(formData: FormData) {
 export async function updateGoalHealthAction(formData: FormData) {
   const returnPath = getGoalsReturnPath(formData.get("returnTo"));
   const goalId = String(formData.get("goalId") ?? "").trim();
-  const goalHealthResult = toGoalHealthWriteValue(formData);
 
-  if (!goalId) {
-    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "health");
-  }
+  const { actor, repository } = await resolveGoalContext();
+  const result = await updateGoalHealth(actor, repository, {
+    goalId,
+    health: formData.get("health") ?? formData.get("goal_health"),
+  });
 
-  if (goalHealthResult.error) {
-    redirectWithGoalsError(returnPath, goalHealthResult.error, goalId, "health");
-  }
-
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("goals")
-    .update({
-      health: goalHealthResult.value,
-      updated_at: updatedAt,
-    })
-    .eq("id", goalId);
-
-  if (error) {
-    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "health");
+  if (!result.ok) {
+    redirectWithGoalsError(returnPath, result.errorMessage, goalId, "health");
   }
 
   revalidatePath("/goals");
@@ -208,28 +158,15 @@ export async function updateGoalHealthAction(formData: FormData) {
 export async function updateGoalNextStepAction(formData: FormData) {
   const returnPath = getGoalsReturnPath(formData.get("returnTo"));
   const goalId = String(formData.get("goalId") ?? "").trim();
-  const nextStepResult = toGoalNextStepWriteValue(formData);
 
-  if (!goalId) {
-    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "next_step");
-  }
+  const { actor, repository } = await resolveGoalContext();
+  const result = await updateGoalNextStep(actor, repository, {
+    goalId,
+    nextStep: formData.get("next_step") ?? formData.get("nextStep"),
+  });
 
-  if (nextStepResult.error) {
-    redirectWithGoalsError(returnPath, nextStepResult.error, goalId, "next_step");
-  }
-
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("goals")
-    .update({
-      next_step: nextStepResult.value,
-      updated_at: updatedAt,
-    })
-    .eq("id", goalId);
-
-  if (error) {
-    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "next_step");
+  if (!result.ok) {
+    redirectWithGoalsError(returnPath, result.errorMessage, goalId, "next_step");
   }
 
   revalidatePath("/goals");
@@ -237,26 +174,18 @@ export async function updateGoalNextStepAction(formData: FormData) {
   redirect(`${returnPath}#goal-${goalId}`);
 }
 
-async function updateGoalArchiveState(formData: FormData, status: string) {
+async function updateGoalArchiveState(formData: FormData, status: "archived" | "active") {
   const returnPath = getGoalsReturnPath(formData.get("returnTo"));
   const goalId = String(formData.get("goalId") ?? "").trim();
 
-  if (!goalId) {
-    redirectWithGoalsError(returnPath, "Goal update request is invalid.", goalId, "archive");
-  }
+  const { actor, repository } = await resolveGoalContext();
+  const result =
+    status === "archived"
+      ? await archiveGoal(actor, repository, { goalId })
+      : await unarchiveGoal(actor, repository, { goalId });
 
-  const updatedAt = new Date().toISOString();
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("goals")
-    .update({
-      status,
-      updated_at: updatedAt,
-    })
-    .eq("id", goalId);
-
-  if (error) {
-    redirectWithGoalsError(returnPath, "Unable to update goal right now.", goalId, "archive");
+  if (!result.ok) {
+    redirectWithGoalsError(returnPath, result.errorMessage, goalId, "archive");
   }
 
   revalidatePath("/goals");
@@ -267,7 +196,7 @@ async function updateGoalArchiveState(formData: FormData, status: string) {
 }
 
 export async function archiveGoalAction(formData: FormData) {
-  await updateGoalArchiveState(formData, GOAL_ARCHIVE_STATUS);
+  await updateGoalArchiveState(formData, "archived");
 }
 
 export async function unarchiveGoalAction(formData: FormData) {
