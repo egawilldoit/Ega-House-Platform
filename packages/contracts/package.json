@@ -1,0 +1,19 @@
+{
+  "name": "@ega/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mobile": "./src/mobile.ts",
+    "./agent": "./src/agent.ts",
+    "./common/task-list": "./src/common/task-list.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ega/domain": "0.1.0"
+  }
+}

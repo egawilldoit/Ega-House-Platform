@@ -29,6 +29,10 @@
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs",
     "test:architecture": "node --test scripts/architecture/check-boundaries.test.mjs",
     "check:architecture": "node scripts/architecture/check-boundaries.mjs",
+    "contracts:typecheck": "npm run typecheck --workspace @ega/contracts",
+    "contracts:test": "npm run test --workspace @ega/contracts",
+    "domain:typecheck": "npm run typecheck --workspace @ega/domain",
+    "domain:test": "npm run test --workspace @ega/domain",
     "mobile:doctor": "npm run doctor --workspace @ega/mobile",
     "mobile:typecheck": "npm run typecheck --workspace @ega/mobile",
     "mobile:test": "npm run test --workspace @ega/mobile",
@@ -36,6 +40,8 @@
     "mobile:prebuild:android": "npm run prebuild:android --workspace @ega/mobile"
   },
   "dependencies": {
+    "@ega/contracts": "0.1.0",
+    "@ega/domain": "0.1.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@sentry/nextjs": "10.68.0",
     "@supabase/ssr": "^0.10.2",
