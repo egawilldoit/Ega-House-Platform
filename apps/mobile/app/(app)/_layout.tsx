@@ -29,6 +29,29 @@ export default function ProtectedLayout() {
           title: 'Create Task',
         }}
       />
+      <Stack.Screen
+        name="projects/create"
+        options={{
+          headerShown: true,
+          presentation: 'modal',
+          title: 'Create Project',
+        }}
+      />
+      <Stack.Screen
+        name="projects/[slug]"
+        options={{
+          headerShown: true,
+          title: 'Project',
+        }}
+      />
+      <Stack.Screen
+        name="goals/create"
+        options={{
+          headerShown: true,
+          presentation: 'modal',
+          title: 'Create Goal',
+        }}
+      />
     </Stack>
   );
 }

@@ -5,18 +5,26 @@ import { describe, expect, it } from "vitest";
 
 const foundationMigrationPath = resolve(
   process.cwd(),
+  "..",
+  "..",
   "drizzle/0037_mcp_oauth_foundation.sql",
 );
 const rlsMigrationPath = resolve(
   process.cwd(),
+  "..",
+  "..",
   "drizzle/0038_mcp_read_only_rls.sql",
 );
 const hardeningMigrationPath = resolve(
   process.cwd(),
+  "..",
+  "..",
   "drizzle/0041_mcp_security_performance_hardening.sql",
 );
 const productionOwnerReconciliationMigrationPath = resolve(
   process.cwd(),
+  "..",
+  "..",
   "drizzle/0043_mcp_production_owner_reconciliation.sql",
 );
 

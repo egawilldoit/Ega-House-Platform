@@ -1,0 +1,53 @@
+{
+  "name": "@ega/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "test:session": "tsx --test src/lib/supabase/cookie-options.test.ts",
+    "test:timer-recovery": "tsx --test src/app/timer/session-recovery.test.ts",
+    "test:auth-session:e2e": "playwright test tests/auth-session.e2e.spec.ts"
+  },
+  "dependencies": {
+    "@ega/application": "0.1.0",
+    "@ega/contracts": "0.1.0",
+    "@ega/data-access": "0.1.0",
+    "@ega/domain": "0.1.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "@sentry/nextjs": "10.68.0",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.103.0",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "lucide-react": "^1.8.0",
+    "motion": "12.42.2",
+    "next": "16.2.12",
+    "posthog-js": "1.407.2",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "resend": "^6.12.2",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.2",
+    "@tailwindcss/postcss": "^4",
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "^4.0.7",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.12",
+    "jsdom": "^26.1.0",
+    "tailwindcss": "^4",
+    "tsx": "^4.21.0",
+    "typescript": "^5",
+    "vitest": "^4.0.7"
+  }
+}

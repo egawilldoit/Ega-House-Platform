@@ -12,10 +12,12 @@
 
 # testing
 /coverage
+/apps/web/coverage
 
-# next.js
-/.next/
-/out/
+# next.js (web workspace)
+/apps/web/.next/
+/apps/web/out/
+/apps/web/test-results/
 
 # production
 /build
