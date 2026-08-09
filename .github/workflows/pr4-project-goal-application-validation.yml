@@ -1,0 +1,279 @@
+name: PR4 Project Goal Application Core Validation
+
+on:
+  push:
+    branches:
+      - arch/04-project-goal-application-core
+  pull_request:
+    branches:
+      - arch/03-contracts-domain
+
+permissions:
+  contents: read
+
+env:
+  PR4_BASE_SHA: 9dcf207137d21372a2d70b48723c89e0842eb24d
+
+jobs:
+  project-goal-application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify PR3 exact merge base and diff hygiene
+        shell: bash
+        run: |
+          test "$(git merge-base "$PR4_BASE_SHA" HEAD)" = "$PR4_BASE_SHA"
+          git diff --check "$PR4_BASE_SHA"...HEAD
+          test -z "$(git status --porcelain)"
+
+      - name: Guard PR4 scope
+        shell: bash
+        run: |
+          changed="$(git diff --name-only "$PR4_BASE_SHA"...HEAD)"
+          printf '%s\n' "$changed"
+
+          if printf '%s\n' "$changed" | grep -Eq '^(src/db/|drizzle/|src/db/schema\.ts$|src/db/mcp-schema\.ts$)'; then
+            echo "PR4 must not modify DB schema or migrations." >&2
+            exit 1
+          fi
+
+          if printf '%s\n' "$changed" | grep -Eq '^(src/lib/mcp/|src/lib/http/agent-|src/lib/services/agent-)'; then
+            echo "PR4 must not modify Agent/MCP behavior files." >&2
+            exit 1
+          fi
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Prove workspace manifests and lock ownership
+        run: |
+          test -f package-lock.json
+          test ! -f apps/mobile/package-lock.json
+          test ! -f scripts/ega-runner/package-lock.json || true
+          node - <<'NODE'
+          const root = require('./package.json');
+          const application = require('./packages/application/package.json');
+          const dataAccess = require('./packages/data-access/package.json');
+          const contracts = require('./packages/contracts/package.json');
+          const domain = require('./packages/domain/package.json');
+          const lock = require('./package-lock.json');
+
+          if (application.name !== '@ega/application' || application.version !== '0.1.0') throw new Error('invalid application workspace identity');
+          if (dataAccess.name !== '@ega/data-access' || dataAccess.version !== '0.1.0') throw new Error('invalid data-access workspace identity');
+          if (JSON.stringify(application.dependencies || {}) !== JSON.stringify({ '@ega/domain': '0.1.0' })) throw new Error('application may depend only on @ega/domain');
+          if (Object.keys(dataAccess.dependencies || {}).some((dep) => dep.startsWith('next'))) throw new Error('data-access must not depend on next');
+          if (dataAccess.dependencies?.['@ega/application'] !== '0.1.0') throw new Error('data-access must depend on @ega/application');
+          if (contracts.name !== '@ega/contracts' || domain.name !== '@ega/domain') throw new Error('existing workspace identities drifted');
+          if (root.dependencies?.['@ega/application'] !== '0.1.0' || root.dependencies?.['@ega/data-access'] !== '0.1.0') throw new Error('root shared workspace dependencies missing');
+          if (root.dependencies?.['@ega/contracts'] !== '0.1.0' || root.dependencies?.['@ega/domain'] !== '0.1.0') throw new Error('root existing shared workspace dependencies missing');
+          if (lock.packages?.['packages/application']?.name !== '@ega/application') throw new Error('lock missing application workspace');
+          if (lock.packages?.['packages/application']?.dependencies?.['@ega/domain'] !== '0.1.0') throw new Error('lock missing application -> domain edge');
+          if (lock.packages?.['packages/data-access']?.name !== '@ega/data-access') throw new Error('lock missing data-access workspace');
+          if (lock.packages?.['packages/data-access']?.dependencies?.['@ega/application'] !== '0.1.0') throw new Error('lock missing data-access -> application edge');
+          NODE
+
+      - name: Install exact workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Prove installed workspace resolution
+        run: |
+          node - <<'NODE'
+          const path = require('node:path');
+          const rootApplication = require.resolve('@ega/application');
+          const rootDataAccess = require.resolve('@ega/data-access');
+          const rootDomain = require.resolve('@ega/domain');
+
+          if (!rootApplication.endsWith('/packages/application/src/index.ts')) throw new Error(`unexpected application entry: ${rootApplication}`);
+          if (!rootDataAccess.endsWith('/packages/data-access/src/index.ts')) throw new Error(`unexpected data-access entry: ${rootDataAccess}`);
+          if (!rootDomain.endsWith('/packages/domain/src/index.ts')) throw new Error(`unexpected domain entry: ${rootDomain}`);
+          NODE
+
+      - name: Prove application package purity
+        run: |
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+
+          const files = execFileSync('git', ['ls-files', 'packages/application/src/**/*.ts'], { encoding: 'utf8' })
+            .split(/\r?\n/)
+            .filter(Boolean);
+          const forbidden = [
+            /from\s+["']next(?:["'/])/,
+            /from\s+["']react(?:["'/])/,
+            /from\s+["']react-native(?:["'/])/,
+            /from\s+["']expo(?:["'/])/,
+            /@supabase\//,
+            /drizzle/,
+            /src\/db/,
+            /@\/lib\/supabase/,
+          ];
+
+          for (const file of files) {
+            const source = fs.readFileSync(file, 'utf8');
+            for (const pattern of forbidden) {
+              if (pattern.test(source)) throw new Error(`${file}: forbidden application dependency matched ${pattern}`);
+            }
+          }
+          NODE
+
+      - name: Prove data-access has no Next dependency
+        run: |
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+
+          const files = execFileSync('git', ['ls-files', 'packages/data-access/src/**/*.ts'], { encoding: 'utf8' })
+            .split(/\r?\n/)
+            .filter(Boolean);
+          const forbidden = [
+            /from\s+["']next(?:["'/])/,
+            /@\/lib\/supabase/,
+            /src\/db/,
+          ];
+
+          for (const file of files) {
+            const source = fs.readFileSync(file, 'utf8');
+            for (const pattern of forbidden) {
+              if (pattern.test(source)) throw new Error(`${file}: forbidden data-access dependency matched ${pattern}`);
+            }
+          }
+          NODE
+
+      - name: Prove actor identity cannot be chosen by request data
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+
+          const files = execFileSync('git', ['ls-files', 'src/app/tasks/projects/**/*.ts', 'src/app/tasks/projects/**/*.tsx', 'src/app/goals/**/*.ts', 'src/app/goals/**/*.tsx'], { encoding: 'utf8' })
+            .split(/\r?\n/)
+            .filter(Boolean);
+
+          for (const file of files) {
+            const source = fs.readFileSync(file, 'utf8');
+            const occurrences = source.match(/createAuthenticatedActor\(/g) ?? [];
+            if (occurrences.length === 0) continue;
+
+            if (!source.includes('requireAuthenticatedUser')) {
+              throw new Error(`${file}: constructs an AuthenticatedActor without requireAuthenticatedUser`);
+            }
+            const lines = source.split(/\r?\n/);
+            lines.forEach((line, index) => {
+              if (line.includes('createAuthenticatedActor(') && !line.includes('user.id')) {
+                throw new Error(`${file}:${index + 1}: actor identity must come from the verified session user, never request data`);
+              }
+            });
+          }
+
+          const allTracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
+          for (const file of allTracked) {
+            if (!/\.(ts|tsx)$/.test(file)) continue;
+            const source = fs.readFileSync(file, 'utf8');
+            for (const line of source.split(/\r?\n/)) {
+              if (/createAuthenticatedActor\(\s*formData/.test(line) || /createAuthenticatedActor\(\s*body/.test(line) || /createAuthenticatedActor\(\s*request/.test(line)) {
+                throw new Error(`${file}: actor identity derived from request/body data`);
+              }
+            }
+          }
+          NODE
+
+      - name: Prove repositories use trusted actor and request-scoped client
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const fs = require('node:fs');
+
+          for (const file of ['packages/data-access/src/projects/repository.ts', 'packages/data-access/src/goals/repository.ts']) {
+            const source = fs.readFileSync(file, 'utf8');
+            if (!source.includes('owner_user_id')) throw new Error(`${file}: must scope reads/writes by owner_user_id`);
+            if (!source.includes('actor.userId')) throw new Error(`${file}: must scope by the trusted actor userId`);
+            if (!source.includes('constructor(private readonly supabase: SupabaseClient)')) throw new Error(`${file}: must consume a request-scoped Supabase client`);
+            if (source.includes('getSupabaseServiceClient') || source.includes('SERVICE_ROLE')) throw new Error(`${file}: must not use a service-role client`);
+          }
+
+          const tracked = execFileSync('git', ['ls-files'], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
+          for (const file of tracked) {
+            if (!/\.(ts|tsx)$/.test(file) || !file.startsWith('src/')) continue;
+            const source = fs.readFileSync(file, 'utf8');
+            if (!source.includes('new SupabaseProjectsRepository(') && !source.includes('new SupabaseGoalsRepository(')) continue;
+            if (!source.includes('requireAuthenticatedUser')) throw new Error(`${file}: repository constructed without requireAuthenticatedUser`);
+            if (source.includes('getSupabaseServiceClient') || source.includes('SERVICE_ROLE')) throw new Error(`${file}: service-role authorization path introduced`);
+          }
+          NODE
+
+      - name: Application typecheck
+        run: npm run application:typecheck
+
+      - name: Application tests
+        run: npm run application:test
+
+      - name: Data-access typecheck
+        run: npm run data-access:typecheck
+
+      - name: Data-access tests
+        run: npm run data-access:test
+
+      - name: Architecture fixture tests
+        run: npm run test:architecture
+
+      - name: Architecture current-tree check
+        run: npm run check:architecture
+
+      - name: Mobile doctor
+        run: npm run mobile:doctor
+
+      - name: Mobile typecheck
+        run: npm run mobile:typecheck
+
+      - name: Mobile tests
+        run: npm run mobile:test
+
+      - name: Mobile Android bundle
+        run: npm run mobile:bundle
+
+      - name: Agent context regression
+        run: npm run validate:agent-context
+
+      - name: Runner typecheck regression
+        run: npm run typecheck:ega-runner
+
+      - name: Runner PR-loop regression
+        run: npm run test:ega-runner-pr-loop
+
+      - name: Root typecheck
+        run: npm run typecheck
+
+      - name: Root tests
+        run: npm test
+
+      - name: Root production build
+        env:
+          DATABASE_URL: "postgresql://postgres:***@127.0.0.1:5432/postgres"
+          MCP_ENABLED: "false"
+          MCP_WRITES_ENABLED: "false"
+          NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+          NEXT_PUBLIC_SITE_URL: "https://example.com"
+        run: npm run build
+
+      - name: Prove generated outputs remain untracked
+        shell: bash
+        run: |
+          test -z "$(git ls-files 'apps/mobile/android/**' 'apps/mobile/ios/**' 'apps/mobile/.expo/ci-export/**' 'apps/mobile/artifacts/**' '.next/**')"
+
+      - name: Report validation workspace mutations
+        if: ${{ always() }}
+        run: git status --short
