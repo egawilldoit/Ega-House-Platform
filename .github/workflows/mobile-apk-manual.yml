@@ -25,10 +25,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
-    defaults:
-      run:
-        working-directory: apps/mobile
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -38,22 +34,22 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      - name: Install mobile dependencies
+      - name: Install workspace dependencies
         run: npm ci
 
       - name: Expo doctor
-        run: npm run doctor
+        run: npm run mobile:doctor
 
       - name: TypeScript check
-        run: npm run typecheck
+        run: npm run mobile:typecheck
 
       - name: Unit tests
-        run: npm test
+        run: npm run mobile:test
 
       - name: Android bundle validation
-        run: npm run validate:bundle
+        run: npm run mobile:bundle
 
   build-apk:
     name: Build Android APK locally
@@ -61,10 +57,6 @@ jobs:
     timeout-minutes: 60
     needs: checks
 
-    defaults:
-      run:
-        working-directory: apps/mobile
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -74,7 +66,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -85,28 +77,33 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install mobile dependencies
+      - name: Install workspace dependencies
         run: npm ci
 
       - name: Generate native Android project
+        working-directory: apps/mobile
         run: npm run prebuild:android
 
       - name: Make Gradle executable
+        working-directory: apps/mobile
         run: chmod +x android/gradlew
 
       - name: Build debug APK
         if: ${{ inputs.build_type == 'debug' }}
+        working-directory: apps/mobile
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Build release APK
         if: ${{ inputs.build_type == 'release' }}
+        working-directory: apps/mobile
         run: |
           cd android
           ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Collect APK artifact
+        working-directory: apps/mobile
         run: |
           mkdir -p artifacts
 

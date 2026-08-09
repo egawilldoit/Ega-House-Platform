@@ -1,0 +1,79 @@
+name: PR2 Workspace Lock Refresh
+
+on:
+  push:
+    branches:
+      - arch/02-npm-workspace-foundation
+    paths:
+      - package.json
+      - apps/mobile/package.json
+      - .github/workflows/pr2-workspace-lock-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@v5
+        with:
+          ref: arch/02-npm-workspace-foundation
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Generate root workspace lockfile with npm
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Prove mobile workspace discovery
+        run: |
+          node - <<'NODE'
+          const root = require('./package.json');
+          const mobileManifest = require('./apps/mobile/package.json');
+          const lock = require('./package-lock.json');
+          if (!root.workspaces?.includes('apps/*') || !root.workspaces?.includes('packages/*')) {
+            throw new Error('root workspace patterns are missing');
+          }
+          if (mobileManifest.name !== '@ega/mobile') {
+            throw new Error('mobile workspace name is not @ega/mobile');
+          }
+          const mobile = lock.packages?.['apps/mobile'];
+          if (!mobile || mobile.name !== '@ega/mobile') {
+            throw new Error('root package-lock.json does not contain @ega/mobile workspace metadata');
+          }
+          if (mobile.dependencies?.expo !== '~54.0.34' || mobile.dependencies?.react !== '19.1.0' || mobile.dependencies?.['react-native'] !== '0.81.5') {
+            throw new Error('mobile framework versions changed during workspace lock generation');
+          }
+          NODE
+
+      - name: Remove nested mobile lock only after root proof
+        run: rm -f apps/mobile/package-lock.json
+
+      - name: Audit generated lock diff
+        run: |
+          git diff --check
+          git status --short
+          git diff -- package-lock.json apps/mobile/package-lock.json
+
+      - name: Commit npm-generated lockfile
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git rm -f --ignore-unmatch apps/mobile/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Workspace lockfile already authoritative."
+            exit 0
+          fi
+          git commit -m "build: generate authoritative workspace lockfile"
+          git push origin HEAD:arch/02-npm-workspace-foundation
