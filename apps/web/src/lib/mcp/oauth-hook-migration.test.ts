@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 
 const migrationPath = resolve(
   process.cwd(),
+  "..",
+  "..",
   "drizzle/0042_fix_mcp_oauth_hook_variable_ambiguity.sql",
 );
 
