@@ -1,3 +1,0 @@
-drizzle/meta/_journal.json
-src/db/schema.ts
-src/lib/services/agent-task-service.ts
