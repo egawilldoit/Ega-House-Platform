@@ -5,16 +5,16 @@ on:
     branches: [main]
     paths:
       - "apps/web/src/lib/mcp/**"
-      - "apps/web/src/db/mcp-schema.ts"
+      - "src/db/mcp-schema.ts"
       - "apps/web/src/app/api/mcp/**"
       - "apps/web/src/app/.well-known/**"
       - "apps/web/src/app/oauth/**"
-      - "apps/web/drizzle/0037_mcp_oauth_foundation.sql"
-      - "apps/web/drizzle/0038_mcp_read_only_rls.sql"
-      - "apps/web/drizzle/0039_mcp_grant_permission_consistency.sql"
-      - "apps/web/drizzle/0040_mcp_distributed_rate_limit.sql"
-      - "apps/web/drizzle/meta/_journal.json"
-      - "apps/web/drizzle.config.ts"
+      - "drizzle/0037_mcp_oauth_foundation.sql"
+      - "drizzle/0038_mcp_read_only_rls.sql"
+      - "drizzle/0039_mcp_grant_permission_consistency.sql"
+      - "drizzle/0040_mcp_distributed_rate_limit.sql"
+      - "drizzle/meta/_journal.json"
+      - "drizzle.config.ts"
       - "apps/web/eslint.config.mjs"
       - "package.json"
       - "package-lock.json"
@@ -54,7 +54,7 @@ jobs:
         run: >-
           npx eslint
           apps/web/src/lib/mcp
-          apps/web/src/db/mcp-schema.ts
+          src/db/mcp-schema.ts
           apps/web/src/app/api/mcp
           apps/web/src/app/.well-known
 
