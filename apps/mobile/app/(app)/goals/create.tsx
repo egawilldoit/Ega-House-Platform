@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { GoalHealth, GoalStatus } from '@ega/api-client';
@@ -50,18 +50,14 @@ export default function CreateGoalScreen() {
   const [status, setStatus] = useState<GoalStatus>('active');
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (projectId && projects.some((project) => project.id === projectId)) {
-      return;
-    }
-
-    if (projects.length === 1) {
-      setProjectId(projects[0].id);
-    }
-  }, [projectId, projects]);
+  const selectedProjectId = projects.some((project) => project.id === projectId)
+    ? projectId
+    : projects.length === 1
+      ? projects[0].id
+      : '';
 
   const isSubmitting = createGoalMutation.isPending;
-  const canSubmit = title.trim().length > 0 && projectId.length > 0 && !isSubmitting;
+  const canSubmit = title.trim().length > 0 && selectedProjectId.length > 0 && !isSubmitting;
 
   const onSubmit = () => {
     if (!canSubmit) {
@@ -72,7 +68,7 @@ export default function CreateGoalScreen() {
     createGoalMutation.mutate(
       {
         title: title.trim(),
-        projectId,
+        projectId: selectedProjectId,
         description: description.trim() || null,
         nextStep: nextStep.trim() || null,
         health,
@@ -138,7 +134,7 @@ export default function CreateGoalScreen() {
                     key={project.id}
                     label={project.name}
                     onPress={() => setProjectId(project.id)}
-                    selected={projectId === project.id}
+                    selected={selectedProjectId === project.id}
                   />
                 ))}
               </View>
