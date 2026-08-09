@@ -1,6 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import {
+  createAuthenticatedActor,
+  getGoalsReadModel,
+} from "@ega/application";
+import { SupabaseGoalsRepository } from "@ega/data-access";
+
 import { InlineGoalHealthForm } from "@/components/goals/inline-goal-health-form";
 import { AppShell } from "@/components/layout/app-shell";
 import { InlineGoalNextStepForm } from "@/components/goals/inline-goal-next-step-form";
@@ -14,7 +20,6 @@ import {
   toGoalHealthOrNull,
 } from "@/lib/goal-health";
 import {
-  GOAL_ARCHIVE_STATUS,
   type GoalViewFilter,
   isGoalArchivedStatus,
   normalizeGoalViewFilter,
@@ -28,6 +33,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
 import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
@@ -56,107 +62,19 @@ type GoalsPageProps = {
   }>;
 };
 
-type GoalTaskRow = {
-  id: string;
-  title: string;
-  status: string;
-};
-
-type GoalView = {
-  id: string;
-  title: string;
-  description: string | null;
-  nextStep: string | null;
-  health: GoalHealth | null;
-  status: string;
-  updatedAt: string;
-  projectName: string | null;
-  linkedTasks: GoalTaskRow[];
-  progressPercent: number;
-};
-
-type GoalSummary = {
-  total: number;
-  active: number;
-  completed: number;
-  archived: number;
-};
-
 async function getGoalsData(view: GoalViewFilter) {
   const supabase = await createClient();
-  const goalsQuery = supabase
-    .from("goals")
-    .select("id, title, description, next_step, health, status, updated_at, projects(name)")
-    .order("updated_at", { ascending: false });
+  const user = await requireAuthenticatedUser({ supabase });
+  const actor = createAuthenticatedActor(user.id);
+  const repository = new SupabaseGoalsRepository(supabase);
 
-  if (view === "active") {
-    goalsQuery.neq("status", GOAL_ARCHIVE_STATUS);
-  } else if (view === "archived") {
-    goalsQuery.eq("status", GOAL_ARCHIVE_STATUS);
+  const result = await getGoalsReadModel(actor, repository, view);
+
+  if (!result.ok) {
+    throw new Error(result.errorMessage);
   }
 
-  const [projectsResult, goalsResult, tasksResult, goalSummaryResult] = await Promise.all([
-    supabase.from("projects").select("id, name").order("name", { ascending: true }),
-    goalsQuery,
-    supabase
-      .from("tasks")
-      .select("id, title, status, goal_id")
-      .not("goal_id", "is", null)
-      .order("updated_at", { ascending: false }),
-    supabase.from("goals").select("status"),
-  ]);
-  if (projectsResult.error) {
-    throw new Error(`Failed to load projects: ${projectsResult.error.message}`);
-  }
-  if (goalsResult.error) {
-    throw new Error(`Failed to load goals: ${goalsResult.error.message}`);
-  }
-  if (tasksResult.error) {
-    throw new Error(`Failed to load goal tasks: ${tasksResult.error.message}`);
-  }
-  if (goalSummaryResult.error) {
-    throw new Error(`Failed to load goals summary: ${goalSummaryResult.error.message}`);
-  }
-
-  const tasksByGoal = new Map<string, GoalTaskRow[]>();
-  for (const task of tasksResult.data) {
-    if (!task.goal_id) {
-      continue;
-    }
-    const bucket = tasksByGoal.get(task.goal_id) ?? [];
-    bucket.push({ id: task.id, title: task.title, status: task.status });
-    tasksByGoal.set(task.goal_id, bucket);
-  }
-
-  const goals = goalsResult.data.map((goal) => {
-    const linkedTasks = tasksByGoal.get(goal.id) ?? [];
-    const completedTasks = linkedTasks.filter((task) => task.status === "done").length;
-    const progressPercent =
-      linkedTasks.length > 0 ? Math.round((completedTasks / linkedTasks.length) * 100) : 0;
-
-    return {
-      id: goal.id,
-      title: goal.title,
-      description: goal.description,
-      nextStep: goal.next_step,
-      health: toGoalHealthOrNull(goal.health),
-      status: goal.status,
-      updatedAt: goal.updated_at,
-      projectName: goal.projects?.name ?? null,
-      linkedTasks,
-      progressPercent,
-    } satisfies GoalView;
-  });
-
-  const goalSummaryRows = goalSummaryResult.data ?? [];
-  const summary: GoalSummary = {
-    total: goalSummaryRows.length,
-    active: goalSummaryRows.filter((goal) => goal.status === "active").length,
-    completed: goalSummaryRows.filter((goal) => goal.status === "done").length,
-    archived: goalSummaryRows.filter((goal) => isGoalArchivedStatus(goal.status)).length,
-  };
-
-  return { projects: projectsResult.data, goals, summary };
+  return result.data;
 }
 
 function MetricCard({
