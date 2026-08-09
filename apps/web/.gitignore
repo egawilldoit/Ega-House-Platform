@@ -1,0 +1,18 @@
+# dependencies (hoisted to the monorepo root; local cache dirs are build junk)
+node_modules/
+
+# next.js build output
+.next/
+out/
+
+# production
+build/
+
+# vitest / test artifacts
+coverage/
+test-results/
+.vite/
+
+# misc
+*.tsbuildinfo
+next-env.d.ts
