@@ -1,0 +1,19 @@
+{
+  "name": "@ega/data-access",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./projects": "./src/projects/repository.ts",
+    "./goals": "./src/goals/repository.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ega/application": "0.1.0",
+    "@supabase/supabase-js": "^2.103.0"
+  }
+}

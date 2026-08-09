@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@ega/contracts", "@ega/domain"],
+  transpilePackages: ["@ega/application", "@ega/contracts", "@ega/data-access", "@ega/domain"],
   turbopack: {
     root: __dirname,
   },
