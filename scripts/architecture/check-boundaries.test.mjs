@@ -21,6 +21,43 @@ test("mobile may import shared api client", () => {
   );
 });
 
+test("api client may import shared contracts", () => {
+  assert.deepEqual(
+    diagnostics("packages/api-client/src/client.ts", 'import type { MobileApiErrorCode } from "@ega/contracts";'),
+    [],
+  );
+});
+
+test("api client may not import Supabase", () => {
+  assert.deepEqual(
+    diagnostics("packages/api-client/src/http.ts", 'import { createClient } from "@supabase/supabase-js";'),
+    ['packages/api-client/src/http.ts: forbidden import "@supabase/supabase-js" [api-client-platform-neutral]'],
+  );
+});
+
+test("api client may not import application or data access", () => {
+  assert.deepEqual(
+    diagnostics(
+      "packages/api-client/src/projects.ts",
+      'import { createProject } from "@ega/application";\nimport { SupabaseProjectsRepository } from "@ega/data-access";',
+    ),
+    [
+      'packages/api-client/src/projects.ts: forbidden import "@ega/application" [api-client-platform-neutral]',
+      'packages/api-client/src/projects.ts: forbidden import "@ega/data-access" [api-client-platform-neutral]',
+    ],
+  );
+});
+
+test("api client may not import app internals through repo paths", () => {
+  assert.deepEqual(
+    diagnostics(
+      "packages/api-client/src/goals.ts",
+      'import { readJsonBody } from "../../../apps/server/src/app";',
+    ),
+    ['packages/api-client/src/goals.ts: forbidden import "../../../apps/server/src/app" [api-client-platform-neutral]'],
+  );
+});
+
 test("mobile workspace alias remains mobile-local", () => {
   assert.deepEqual(
     diagnostics("apps/mobile/features/tasks/query.ts", 'import { api } from "@/lib/api/tasks";'),

@@ -35,6 +35,8 @@
     "domain:test": "npm run test --workspace @ega/domain",
     "application:typecheck": "npm run typecheck --workspace @ega/application",
     "application:test": "npm run test --workspace @ega/application",
+    "api-client:typecheck": "npm run typecheck --workspace @ega/api-client",
+    "api-client:test": "npm run test --workspace @ega/api-client",
     "data-access:typecheck": "npm run typecheck --workspace @ega/data-access",
     "data-access:test": "npm run test --workspace @ega/data-access",
     "server:typecheck": "npm run typecheck --workspace @ega/server",
@@ -46,6 +48,7 @@
     "mobile:prebuild:android": "npm run prebuild:android --workspace @ega/mobile"
   },
   "dependencies": {
+    "@ega/api-client": "0.1.0",
     "@ega/application": "0.1.0",
     "@ega/contracts": "0.1.0",
     "@ega/data-access": "0.1.0",
