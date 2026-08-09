@@ -4,15 +4,10 @@ import { act, create } from 'react-test-renderer';
 import type { ProjectCardReadModel } from '@ega/api-client';
 import { ProjectCard } from '../mobile/ProjectCard';
 
-jest.mock('@expo/vector-icons/Ionicons', () => {
-  const React = require('react');
-  const { Text } = require('react-native');
-  return {
-    __esModule: true,
-    default: (props: Record<string, unknown>) =>
-      React.createElement(Text, props, 'icon'),
-  };
-});
+jest.mock('@expo/vector-icons/Ionicons', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 
 const PROJECT: ProjectCardReadModel = {
   id: 'p-1',
