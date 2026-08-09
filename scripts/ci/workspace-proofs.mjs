@@ -157,8 +157,16 @@ assert(mobile.dependencies?.['react-native'] === '0.81.5', 'React Native pin 0.8
 assert(mobile.dependencies?.['expo-router'] === '~6.0.23', 'mobile Expo Router pin ~6.0.23');
 assert(mobile.dependencies?.['@react-navigation/bottom-tabs'] === '^7.4.0', 'mobile bottom-tabs direct dependency');
 assert(mobile.devDependencies?.['babel-preset-expo'] === '~54.0.12', 'mobile Expo Babel preset ownership');
-assert(root.dependencies?.next === '16.2.12', 'Next pin 16.2.12');
-assert(root.dependencies?.react === '19.1.0' && root.dependencies?.['react-dom'] === '19.1.0', 'root React/ReactDOM 19.1.0');
+// The web app owns next/react/react-dom on the post-PR7 topology; pre-PR7
+// branches declare them at the root. Accept whichever manifest owns the web
+// app so the proof stays valid across the stack.
+const webOwnerManifest = root.dependencies?.next ? root : readJson('apps/web/package.json');
+assert(webOwnerManifest.dependencies?.next === '16.2.12', 'Next pin 16.2.12');
+assert(
+  webOwnerManifest.dependencies?.react === '19.1.0' &&
+    webOwnerManifest.dependencies?.['react-dom'] === '19.1.0',
+  'web React/ReactDOM 19.1.0',
+);
 assert(root.devDependencies?.['expo-router'] === '~6.0.23', 'root Expo Router tooling range ~6.0.23');
 
 // ---------------------------------------------------------------------------
@@ -191,8 +199,11 @@ assert(lockMobile?.dependencies?.['@ega/contracts'] === '0.1.0', 'lock records m
 assert(lockMobile?.dependencies?.['@ega/domain'] === '0.1.0', 'lock records mobile -> @ega/domain');
 assert(lockMobile?.dependencies?.['@react-navigation/bottom-tabs'] === '^7.4.0', 'lock records mobile bottom-tabs');
 assert(lockMobile?.devDependencies?.['babel-preset-expo'] === '~54.0.12', 'lock records mobile babel-preset-expo');
-assert(lock.packages?.['']?.dependencies?.react === '19.1.0', 'lock records root React 19.1.0');
-assert(lock.packages?.['']?.dependencies?.['react-dom'] === '19.1.0', 'lock records root ReactDOM 19.1.0');
+const lockWebOwner = lock.packages?.['']?.dependencies?.react
+  ? lock.packages?.['']
+  : lock.packages?.['apps/web'];
+assert(lockWebOwner?.dependencies?.react === '19.1.0', 'lock records web React 19.1.0');
+assert(lockWebOwner?.dependencies?.['react-dom'] === '19.1.0', 'lock records web ReactDOM 19.1.0');
 assert(lock.packages?.['']?.devDependencies?.['expo-router'] === '~6.0.23', 'lock records root Expo Router tooling');
 assert(lock.packages?.['node_modules/expo-router']?.version === '6.0.24', 'Expo Router hoisted at root 6.0.24');
 assert(!lock.packages?.['apps/mobile/node_modules/expo-router'], 'no nested Expo Router under mobile');

@@ -105,6 +105,8 @@ jobs:
             web:
               - 'apps/web/**'
               - 'src/**'
+              - 'drizzle/**'
+              - 'drizzle.config.ts'
               - 'packages/**'
               - 'apps/server/**'
               - 'package.json'

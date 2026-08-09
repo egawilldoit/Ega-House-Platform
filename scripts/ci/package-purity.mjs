@@ -123,6 +123,13 @@ assert(dataAccessChecked === dataAccessFiles.length, `scanned ${dataAccessChecke
 // 4. Compat-file duplicate-authority proof
 // ---------------------------------------------------------------------------
 console.log('\n[4] compat files re-export, not redefine');
+// PR7 moved the web app to apps/web/src/lib/**; the compat files live there
+// on the converged topology and at src/lib/** on pre-PR7 branches. The
+// architecture checker already resolves both topologies; the proof accepts
+// whichever location exists.
+function resolveCompatPath(candidates) {
+  return candidates.find((file) => fs.existsSync(file));
+}
 const requiredImports = new Map([
   ['src/lib/contracts/mobile.ts', '@ega/contracts/mobile'],
   ['src/lib/contracts/agent.ts', '@ega/contracts/agent'],
@@ -132,13 +139,23 @@ const requiredImports = new Map([
   ['src/lib/task-domain.ts', '@ega/domain'],
   ['src/lib/task-recurrence.ts', '@ega/domain'],
 ]);
-for (const [file, expected] of requiredImports) {
-  if (!fs.existsSync(file)) {
-    assert(false, `${file}: compat file missing`);
+const compatLocation = new Map([
+  ['src/lib/contracts/mobile.ts', ['apps/web/src/lib/contracts/mobile.ts', 'src/lib/contracts/mobile.ts']],
+  ['src/lib/contracts/agent.ts', ['apps/web/src/lib/contracts/agent.ts', 'src/lib/contracts/agent.ts']],
+  ['apps/mobile/types/auth.ts', ['apps/mobile/types/auth.ts']],
+  ['apps/mobile/types/tasks.ts', ['apps/mobile/types/tasks.ts']],
+  ['apps/mobile/types/today.ts', ['apps/mobile/types/today.ts']],
+  ['src/lib/task-domain.ts', ['apps/web/src/lib/task-domain.ts', 'src/lib/task-domain.ts']],
+  ['src/lib/task-recurrence.ts', ['apps/web/src/lib/task-recurrence.ts', 'src/lib/task-recurrence.ts']],
+]);
+for (const [logicalPath, expected] of requiredImports) {
+  const file = resolveCompatPath(compatLocation.get(logicalPath));
+  if (!file) {
+    assert(false, `${logicalPath}: compat file missing`);
     continue;
   }
   const source = fs.readFileSync(file, 'utf8');
-  assert(source.includes(expected), `${file}: contains compatibility link to ${expected}`);
+  assert(source.includes(expected), `${logicalPath}: contains compatibility link to ${expected}`);
 }
 
 const legacyDtoFiles = [
@@ -149,9 +166,11 @@ const legacyDtoFiles = [
   'apps/mobile/types/today.ts',
 ];
 const duplicate = /^export\s+type\s+(MobileTaskListItem|MobileTodayResponse|AgentTaskResponse|AgentTokenScopes)\s*=\s*\{/m;
-for (const file of legacyDtoFiles) {
+for (const logicalPath of legacyDtoFiles) {
+  const file = resolveCompatPath(compatLocation.get(logicalPath));
+  assert(file, `${logicalPath}: compat file missing`);
   const source = fs.readFileSync(file, 'utf8');
-  assert(!duplicate.test(source), `${file}: no legacy DTO definition competing with shared contracts`);
+  assert(!duplicate.test(source), `${logicalPath}: no legacy DTO definition competing with shared contracts`);
 }
 
 console.log('\n' + (failures === 0 ? 'package-purity: ALL CHECKS PASSED' : `package-purity: ${failures} CHECK(S) FAILED`));
