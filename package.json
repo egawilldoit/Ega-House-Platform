@@ -2,6 +2,10 @@
   "name": "ega-house",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -24,7 +28,12 @@
     "typecheck:ega-runner": "tsc --noEmit -p scripts/ega-runner/tsconfig.json",
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs",
     "test:architecture": "node --test scripts/architecture/check-boundaries.test.mjs",
-    "check:architecture": "node scripts/architecture/check-boundaries.mjs"
+    "check:architecture": "node scripts/architecture/check-boundaries.mjs",
+    "mobile:doctor": "npm run doctor --workspace @ega/mobile",
+    "mobile:typecheck": "npm run typecheck --workspace @ega/mobile",
+    "mobile:test": "npm run test --workspace @ega/mobile",
+    "mobile:bundle": "npm run validate:bundle --workspace @ega/mobile",
+    "mobile:prebuild:android": "npm run prebuild:android --workspace @ega/mobile"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
@@ -38,8 +47,8 @@
     "next": "16.2.12",
     "postgres": "^3.4.9",
     "posthog-js": "1.407.2",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
     "resend": "^6.12.2",
     "zod": "^3.25.0"
   },
@@ -54,6 +63,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
+    "expo-router": "~6.0.23",
     "jsdom": "^26.1.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
