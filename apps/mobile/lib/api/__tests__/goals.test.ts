@@ -10,7 +10,6 @@ import type {
   GoalFormValues,
   GoalHealth,
   GoalStatus,
-  GoalViewFilter,
   GoalsReadModel,
 } from '@ega/api-client';
 import { setMobileEgaApiClientForTesting } from '@/lib/api/ega';
@@ -55,7 +54,7 @@ const GOAL_FORM_VALUES: GoalFormValues = {
 
 function makeFakeGoalsApi() {
   return {
-    list: jest.fn(async (view?: GoalViewFilter): Promise<ApiResult<GoalsReadModel>> => ({ ok: true as const, data: GOALS_READ_MODEL })),
+    list: jest.fn(async (): Promise<ApiResult<GoalsReadModel>> => ({ ok: true as const, data: GOALS_READ_MODEL })),
     create: jest.fn(async (): Promise<ApiResult<{ values: GoalFormValues }>> => ({ ok: true as const, data: { values: GOAL_FORM_VALUES } })),
     updateStatus: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
     updateHealth: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
