@@ -276,7 +276,7 @@ PR10 may delete a workflow only when **all** of these hold, documented in the PR
 
 ### 6.7 Disabled files
 
-- `sonarcloud.yml.disabled`: **PR10 delete** (evidence: `.disabled` suffix = ignored for N releases; no sonar-scanner config in repo; `sonar:export-reliability` script is the only survivor and is harmless). 
+- `sonarcloud.yml.disabled`: **PR10 delete** (evidence: `.disabled` suffix = ignored for N releases; no sonar-scanner config in repo; `sonar:export-reliability` script is the only survivor and is harmless).
 - `ega-daily-emails.yml.disabled` / `ega-task-reminders.yml.disabled`: operational crons, disabled intentionally; **keep** unless the owner confirms they are dead (then PR10 delete with a note). Out of PR9 scope.
 
 ### 6.8 Removal sequence (PR10, single cleanup PR)
