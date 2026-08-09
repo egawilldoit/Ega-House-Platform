@@ -1,10 +1,10 @@
 {
-  "capturedAt": "2026-08-09T19:36:47.301Z",
-  "sha": "6a1dbccb6f67c1847882be18894449eca824f8a6",
-  "note": "Inherited lint debt baseline re-captured on the converged PR9 topology (post-PR7 web relocation). Updates only via deliberate PRs that also fix counted problems (design \u00a78).",
+  "capturedAt": "2026-08-09T22:19:17.749Z",
+  "sha": "b5e59ee66bcbda0012286133a8ad157cc1ccd78d",
+  "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.",
   "totals": {
-    "errors": 44,
-    "warnings": 56
+    "errors": 39,
+    "warnings": 53
   },
   "perFile": {
     ".opencode/plugins/graphify.js": {
@@ -48,7 +48,7 @@
       "warnings": 0
     },
     "apps/mobile/app/(app)/goals/create.tsx": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/app/(app)/projects/[slug].tsx": {
@@ -116,11 +116,11 @@
       "warnings": 0
     },
     "apps/mobile/components/__tests__/GoalCard-test.tsx": {
-      "errors": 2,
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/components/__tests__/ProjectCard-test.tsx": {
-      "errors": 2,
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/components/__tests__/StyledText-test.js": {
@@ -257,11 +257,11 @@
     },
     "apps/mobile/lib/api/__tests__/goals.test.ts": {
       "errors": 0,
-      "warnings": 1
+      "warnings": 0
     },
     "apps/mobile/lib/api/__tests__/projects.test.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/mobile/lib/api/auth.ts": {
       "errors": 0,
@@ -2523,6 +2523,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "scripts/ci/audit-production.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
     "scripts/ci/lint-regression.mjs": {
       "errors": 0,
       "warnings": 0
@@ -2532,6 +2536,10 @@
       "warnings": 0
     },
     "scripts/ci/security-proofs.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/verify-platform-optionals.mjs": {
       "errors": 0,
       "warnings": 0
     },
