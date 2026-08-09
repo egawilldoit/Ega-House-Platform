@@ -2,6 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import {
+  createAuthenticatedActor,
+  getProjectIdentityReadModel,
+  type ProjectGoalRecord,
+  type ProjectRecord,
+} from "@ega/application";
+import { SupabaseProjectsRepository } from "@ega/data-access";
+
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
 import {
   cancelTaskReminderAction,
@@ -33,6 +41,7 @@ import {
   isProjectArchivedStatus,
   normalizeProjectViewFilter,
 } from "@/lib/project-archive";
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
 import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
@@ -65,8 +74,6 @@ import {
 } from "@/lib/task-domain";
 import type { Tables } from "@/lib/supabase/database.types";
 
-type ProjectRow = Pick<Tables<"projects">, "id" | "name" | "slug" | "description" | "status">;
-type GoalRow = Pick<Tables<"goals">, "id" | "title" | "project_id">;
 type TaskRow = Pick<
   Tables<"tasks">,
   | "id"
@@ -109,39 +116,32 @@ type ProjectDetailPageProps = {
 
 async function getProjectDetail(slug: string) {
   const supabase = await createClient();
+  const user = await requireAuthenticatedUser({ supabase });
+  const actor = createAuthenticatedActor(user.id);
+  const repository = new SupabaseProjectsRepository(supabase);
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .select("id, name, slug, description, status")
-    .eq("slug", slug)
-    .maybeSingle();
+  const identityResult = await getProjectIdentityReadModel(actor, repository, slug);
 
-  if (projectError) {
-    throw new Error(`Failed to load project: ${projectError.message}`);
+  if (!identityResult.ok) {
+    throw new Error(identityResult.errorMessage);
   }
 
-  if (!project) {
+  const projectIdentity = identityResult.data;
+
+  if (!projectIdentity) {
     return null;
   }
 
-  const [goalsResult, tasksResult] = await Promise.all([
-    supabase
-      .from("goals")
-      .select("id, title, project_id")
-      .eq("project_id", project.id)
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("tasks")
-      .select(
-        "id, title, description, blocked_reason, status, priority, due_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
-      )
-      .eq("project_id", project.id)
-      .order("updated_at", { ascending: false }),
-  ]);
+  const project = projectIdentity.project;
+  const goals = projectIdentity.goals;
 
-  if (goalsResult.error) {
-    throw new Error(`Failed to load project goals: ${goalsResult.error.message}`);
-  }
+  const tasksResult = await supabase
+    .from("tasks")
+    .select(
+      "id, title, description, blocked_reason, status, priority, due_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, goal_id, focus_rank, goals(title)",
+    )
+    .eq("project_id", project.id)
+    .order("updated_at", { ascending: false });
 
   if (tasksResult.error) {
     throw new Error(`Failed to load project tasks: ${tasksResult.error.message}`);
@@ -172,8 +172,8 @@ async function getProjectDetail(slug: string) {
   );
 
   return {
-    project: project as ProjectRow,
-    goals: goalsResult.data as GoalRow[],
+    project: project as ProjectRecord,
+    goals: goals as ProjectGoalRecord[],
     tasks: allTasks,
     statusCounts,
     taskTotalDurations,
@@ -809,7 +809,11 @@ export default async function ProjectDetailPage({
                 ) : (
                   <CreateTaskForm
                     projects={[{ id: project.id, name: project.name }]}
-                    goals={goals}
+                    goals={goals.map((goal) => ({
+                      id: goal.id,
+                      title: goal.title,
+                      project_id: goal.projectId,
+                    }))}
                     projectId={project.id}
                     returnTo={returnTo}
                     calendarDefaults={calendarFormDefaults}

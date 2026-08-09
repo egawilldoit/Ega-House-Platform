@@ -1,0 +1,23 @@
+{
+  "name": "@ega/application",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./auth/actor": "./src/auth/actor.ts",
+    "./projects/ports": "./src/projects/ports.ts",
+    "./projects/service": "./src/projects/service.ts",
+    "./projects/read-model": "./src/projects/read-model.ts",
+    "./goals/ports": "./src/goals/ports.ts",
+    "./goals/service": "./src/goals/service.ts",
+    "./goals/read-model": "./src/goals/read-model.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ega/domain": "0.1.0"
+  }
+}
