@@ -111,6 +111,26 @@ async function fetchMobileApi(endpoint: string, init: RequestInit) {
   }
 }
 
+/**
+ * Accessor for the current mobile session access token, or null when no
+ * session has been configured yet (auth context still bootstrapping).
+ * Used by the @ega/api-client binding (`lib/api/ega.ts`) so the
+ * platform-neutral client never touches storage itself.
+ */
+export async function getMobileSessionAccessToken(): Promise<string | null> {
+  if (!sessionHandlers) {
+    return null;
+  }
+
+  const bundle = await sessionHandlers.getSession();
+  return bundle?.session.accessToken ?? null;
+}
+
+/** Best-effort refresh through the configured session handlers. */
+export function refreshMobileSessionIfConfigured(): Promise<boolean> {
+  return performRefresh();
+}
+
 async function performRefresh() {
   if (!sessionHandlers) {
     return false;
