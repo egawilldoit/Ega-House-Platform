@@ -55,6 +55,15 @@ export const BOUNDARY_RULES = [
     ],
   },
   {
+    id: "server-platform",
+    from: ["apps/server/"],
+    forbidden: [
+      REPO_PATH("apps/mobile/"),
+      REPO_PATH("apps/web/"),
+      REPO_PATH("src/"),
+    ],
+  },
+  {
     id: "contracts-platform-neutral",
     from: ["packages/contracts/"],
     forbidden: [
