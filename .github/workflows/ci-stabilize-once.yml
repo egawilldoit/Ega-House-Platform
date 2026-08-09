@@ -30,9 +30,8 @@ jobs:
 
           source = Path('.github/workflows/unified-platform-validation.yml')
           text = source.read_text()
-          expr = '$' + '{{ github.event.pull_request.head.sha || github.sha }}'
+          expr = '$' + '{' + '{ github.event.pull_request.head.sha || github.sha ' + '}' + '}'
 
-          # Upgrade all anonymous checkout steps to explicit exact-head checkout.
           text = text.replace(
               '      - uses: actions/checkout@v5\n',
               '      - name: Checkout exact head\n'
@@ -40,8 +39,6 @@ jobs:
               '        with:\n'
               f'          ref: {expr}\n'
           )
-
-          # Existing named exact-head jobs that only had fetch-depth get the ref too.
           text = text.replace(
               '      - name: Checkout exact head\n'
               '        uses: actions/checkout@v5\n'
@@ -53,7 +50,6 @@ jobs:
               f'          ref: {expr}\n'
               '          fetch-depth: 0\n'
           )
-
           text = text.replace(
               '      - name: Dependency audit (prod, high+)\n'
               '        run: npm audit --omit=dev --audit-level=high\n',
@@ -70,7 +66,6 @@ jobs:
           )
           text = text.replace(marker, verify)
 
-          # The workspace install step has a descriptive name rather than the anonymous marker.
           workspace_install = (
               '      - name: Install exact workspace dependencies\n'
               '        run: npm ci --no-audit --no-fund\n'
@@ -86,8 +81,12 @@ jobs:
           Path('.ci/unified-platform-validation.generated.yml').write_text(text)
           PY
 
-          grep -c 'ref: ${{ github.event.pull_request.head.sha || github.sha }}' .ci/unified-platform-validation.generated.yml
-          grep -c 'Verify Linux x64 optional native bindings' .ci/unified-platform-validation.generated.yml
+          exact_count="$(grep -c 'github.event.pull_request.head.sha || github.sha' .ci/unified-platform-validation.generated.yml)"
+          native_count="$(grep -c 'Verify Linux x64 optional native bindings' .ci/unified-platform-validation.generated.yml)"
+          echo "exact-head checkout expressions: ${exact_count}"
+          echo "native verifiers: ${native_count}"
+          test "$exact_count" -ge 12
+          test "$native_count" -ge 11
           grep -F 'run: node scripts/ci/audit-production.mjs' .ci/unified-platform-validation.generated.yml
 
       - name: Commit generated candidate
