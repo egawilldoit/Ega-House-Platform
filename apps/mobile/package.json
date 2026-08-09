@@ -14,6 +14,7 @@
     "prebuild:android": "node -e \"process.env.EXPO_NO_TELEMETRY='1'; const r=require('child_process').spawnSync('npx',['expo','prebuild','--platform','android','--clean','--no-install'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1)\""
   },
   "dependencies": {
+    "@ega/api-client": "0.1.0",
     "@ega/contracts": "0.1.0",
     "@ega/domain": "0.1.0",
     "@expo/metro-runtime": "~6.1.2",
