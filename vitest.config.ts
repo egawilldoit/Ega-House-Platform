@@ -37,6 +37,9 @@ export default defineConfig({
       "tests/**",
       // Mobile Expo tests run under apps/mobile Jest config, not root Vitest.
       "apps/mobile/__tests__/smoke.test.ts",
+      // Server transport tests run under node --test via server:test
+      // (package convention, like packages/application and packages/data-access).
+      "apps/server/test/**",
       "src/app/tasks/create-task-form.test.ts",
       "src/components/layout/shell-signals.test.tsx",
       "src/components/layout/top-bar.test.tsx",

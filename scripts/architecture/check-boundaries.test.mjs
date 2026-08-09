@@ -63,6 +63,36 @@ test("server may import application", () => {
   );
 });
 
+test("server may import data access and domain", () => {
+  assert.deepEqual(
+    diagnostics(
+      "apps/server/src/routes/goals.ts",
+      'import { SupabaseGoalsRepository } from "@ega/data-access";\nimport { normalizeGoalViewFilter } from "@ega/domain";',
+    ),
+    [],
+  );
+});
+
+test("server may not import web internals", () => {
+  assert.deepEqual(
+    diagnostics(
+      "apps/server/src/auth.ts",
+      'import { createClient } from "@/lib/supabase/server";',
+    ),
+    ['apps/server/src/auth.ts: forbidden import "@/lib/supabase/server" [server-platform]'],
+  );
+});
+
+test("server may not import mobile", () => {
+  assert.deepEqual(
+    diagnostics(
+      "apps/server/src/routes/projects.ts",
+      'import { session } from "../../../mobile/lib/auth/auth-context";',
+    ),
+    ['apps/server/src/routes/projects.ts: forbidden import "../../../mobile/lib/auth/auth-context" [server-platform]'],
+  );
+});
+
 test("application may import domain", () => {
   assert.deepEqual(
     diagnostics("packages/application/src/projects/service.ts", 'import { PROJECT_STATUS_VALUES } from "@ega/domain";'),
