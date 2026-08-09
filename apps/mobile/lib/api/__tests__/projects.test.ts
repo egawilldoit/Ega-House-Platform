@@ -9,7 +9,6 @@ import type {
   ProjectFormValues,
   ProjectIdentityReadModel,
   ProjectStatus,
-  ProjectViewFilter,
   ProjectsReadModel,
 } from '@ega/api-client';
 import { setMobileEgaApiClientForTesting } from '@/lib/api/ega';
@@ -63,8 +62,8 @@ const PROJECT_FORM_VALUES: ProjectFormValues = {
 
 function makeFakeProjectsApi() {
   return {
-    list: jest.fn(async (view?: ProjectViewFilter): Promise<ApiResult<ProjectsReadModel>> => ({ ok: true as const, data: PROJECTS_READ_MODEL })),
-    getBySlug: jest.fn(async (slug: string): Promise<ApiResult<ProjectIdentityReadModel>> => ({ ok: true as const, data: PROJECT_IDENTITY })),
+    list: jest.fn(async (): Promise<ApiResult<ProjectsReadModel>> => ({ ok: true as const, data: PROJECTS_READ_MODEL })),
+    getBySlug: jest.fn(async (): Promise<ApiResult<ProjectIdentityReadModel>> => ({ ok: true as const, data: PROJECT_IDENTITY })),
     create: jest.fn(async (): Promise<ApiResult<{ values: ProjectFormValues }>> => ({ ok: true as const, data: { values: PROJECT_FORM_VALUES } })),
     updateStatus: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
     archive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
