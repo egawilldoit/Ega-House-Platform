@@ -36,7 +36,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Apply deterministic dependency and CI policy
+      - name: Materialize verified dependency policy
         shell: bash
         run: |
           mkdir -p scripts/ci docs/architecture
@@ -57,10 +57,7 @@ jobs:
             ...(manifest.optionalDependencies ?? {}),
             ...Object.fromEntries(Object.entries(native).sort(([a], [b]) => a.localeCompare(b))),
           };
-          manifest.overrides = {
-            ...(manifest.overrides ?? {}),
-            ws: '8.21.3',
-          };
+          manifest.overrides = { ...(manifest.overrides ?? {}), ws: '8.21.3' };
           fs.writeFileSync('package.json', JSON.stringify(manifest, null, 2) + '\n');
           console.log('Pinned Linux x64 native optionals:', native);
           NODE
@@ -73,16 +70,10 @@ jobs:
             console.log(`platform-optionals: no Linux x64 verification needed on ${process.platform}/${process.arch}`);
             process.exit(0);
           }
-
           const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          const wanted = Object.entries(manifest.optionalDependencies ?? {}).filter(([name]) =>
-            /linux-x64-(?:gnu|glibc)/.test(name)
-          );
+          const wanted = Object.entries(manifest.optionalDependencies ?? {}).filter(([name]) => /linux-x64-(?:gnu|glibc)/.test(name));
           if (wanted.length === 0) throw new Error('platform-optionals: no Linux x64 native pins declared');
-
-          const missing = wanted.filter(([name]) =>
-            !fs.existsSync(path.join('node_modules', ...name.split('/'), 'package.json'))
-          );
+          const missing = wanted.filter(([name]) => !fs.existsSync(path.join('node_modules', ...name.split('/'), 'package.json')));
           if (missing.length > 0) {
             throw new Error(`platform-optionals: npm ci omitted required Linux x64 native packages: ${missing.map(([n, v]) => `${n}@${v}`).join(', ')}`);
           }
@@ -102,16 +93,12 @@ jobs:
             [1138809, 'image-size via Metro/Expo toolchain'],
           ]);
           const REVIEW_BY = '2026-09-09';
-
           if (new Date().toISOString().slice(0, 10) > REVIEW_BY) {
             throw new Error(`dependency-audit: exception review deadline ${REVIEW_BY} has passed`);
           }
 
           const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-          const result = spawnSync(npm, ['audit', '--omit=dev', '--json'], {
-            encoding: 'utf8',
-            maxBuffer: 20 * 1024 * 1024,
-          });
+          const result = spawnSync(npm, ['audit', '--omit=dev', '--json'], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
           if (!result.stdout?.trim()) {
             process.stderr.write(result.stderr || 'dependency-audit: npm audit returned no JSON\n');
             process.exit(1);
@@ -155,13 +142,7 @@ jobs:
 
           const ws = JSON.parse(fs.readFileSync('node_modules/ws/package.json', 'utf8')).version;
           if (ws !== '8.21.3') blocking.push({ name: 'ws', reason: `expected remediated ws@8.21.3, got ${ws}` });
-
-          console.log(JSON.stringify({
-            counts: report.metadata?.vulnerabilities,
-            reviewBy: REVIEW_BY,
-            allowedHighCritical: allowed,
-            blockingHighCritical: blocking,
-          }, null, 2));
+          console.log(JSON.stringify({ counts: report.metadata?.vulnerabilities, reviewBy: REVIEW_BY, allowedHighCritical: allowed, blockingHighCritical: blocking }, null, 2));
           if (blocking.length > 0) process.exit(1);
           NODE
 
@@ -184,56 +165,14 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
-
-          design = Path('UNIFIED-CI-DESIGN.md')
-          design.write_text('\n'.join(line.rstrip() for line in design.read_text().splitlines()) + '\n')
-
-          workflow = Path('.github/workflows/unified-platform-validation.yml')
-          text = workflow.read_text()
-          expr = '$' + '{{ github.event.pull_request.head.sha || github.sha }}'
-
-          text = text.replace(
-              '      - uses: actions/checkout@v5\n',
-              '      - name: Checkout exact head\n'
-              '        uses: actions/checkout@v5\n'
-              '        with:\n'
-              f'          ref: {expr}\n'
-          )
-          text = text.replace(
-              '      - name: Checkout exact head\n'
-              '        uses: actions/checkout@v5\n'
-              '        with:\n'
-              '          fetch-depth: 0\n',
-              '      - name: Checkout exact head\n'
-              '        uses: actions/checkout@v5\n'
-              '        with:\n'
-              f'          ref: {expr}\n'
-              '          fetch-depth: 0\n'
-          )
-          text = text.replace(
-              '      - name: Dependency audit (prod, high+)\n'
-              '        run: npm audit --omit=dev --audit-level=high\n',
-              '      - name: Dependency audit (prod, high+)\n'
-              '        run: node scripts/ci/audit-production.mjs\n'
-          )
-
-          marker = '      - run: npm ci --no-audit --no-fund\n'
-          verify = (
-              marker
-              + '      - name: Verify Linux x64 optional native bindings\n'
-              + "        if: runner.os == 'Linux'\n"
-              + '        run: node scripts/ci/verify-platform-optionals.mjs\n'
-          )
-          # Put the deterministic native verification after every install. It is a no-op on non-Linux-x64.
-          text = text.replace(marker, verify)
-          workflow.write_text(text)
+          p = Path('UNIFIED-CI-DESIGN.md')
+          p.write_text('\n'.join(line.rstrip() for line in p.read_text().splitlines()) + '\n')
           PY
 
-      - name: Regenerate complete lockfile with optional platform packages
-        shell: bash
+      - name: Regenerate complete lockfile
         run: npm install --package-lock-only --include=optional --no-audit --no-fund
 
-      - name: Verify clean install and dependency policy
+      - name: Verify generated state
         shell: bash
         run: |
           rm -rf node_modules apps/*/node_modules packages/*/node_modules
@@ -258,13 +197,12 @@ jobs:
           npm run test:ega-runner-pr-loop
           git diff --check
 
-      - name: Commit verified stabilization and remove one-shot workflow
+      - name: Commit verified non-workflow state
         shell: bash
         run: |
-          git rm .github/workflows/ci-stabilize-once.yml
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add package.json package-lock.json UNIFIED-CI-DESIGN.md .github/workflows/unified-platform-validation.yml scripts/ci/verify-platform-optionals.mjs scripts/ci/audit-production.mjs docs/architecture/dependency-audit-exceptions.md
+          git add package.json package-lock.json UNIFIED-CI-DESIGN.md scripts/ci/verify-platform-optionals.mjs scripts/ci/audit-production.mjs docs/architecture/dependency-audit-exceptions.md
           git diff --cached --check
-          git commit -m "ci: stabilize unified platform validation"
+          git commit -m "ci: stabilize dependency and audit inputs"
           git push origin HEAD:arch/09-unified-ci
