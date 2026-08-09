@@ -21,7 +21,6 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "sonar:export-reliability": "node scripts/export-sonar-reliability-issues.mjs",
     "test:agent-context": "node --test scripts/agent/validate-agent-context.test.mjs",
     "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
     "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
