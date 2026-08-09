@@ -1,0 +1,228 @@
+name: CI Stabilize Once
+
+on:
+  push:
+    branches:
+      - arch/09-unified-ci
+    paths:
+      - .github/workflows/ci-stabilize-once.yml
+
+permissions:
+  contents: write
+
+env:
+  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+  MCP_ENABLED: "false"
+  MCP_WRITES_ENABLED: "false"
+  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+  NEXT_PUBLIC_SITE_URL: "https://example.com"
+
+jobs:
+  stabilize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout writable branch
+        uses: actions/checkout@v5
+        with:
+          ref: arch/09-unified-ci
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Patch CI and add deterministic policy helpers
+        shell: bash
+        run: |
+          mkdir -p scripts/ci docs/architecture
+
+          cat > scripts/ci/restore-platform-optionals.mjs <<'NODE'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import { spawnSync } from 'node:child_process';
+
+          if (process.platform !== 'linux' || process.arch !== 'x64') {
+            console.log(`platform-optionals: no repair needed on ${process.platform}/${process.arch}`);
+            process.exit(0);
+          }
+
+          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
+          const packages = lock.packages ?? {};
+          const wanted = new Map();
+          for (const pkg of Object.values(packages)) {
+            for (const [name, version] of Object.entries(pkg?.optionalDependencies ?? {})) {
+              if (!name.includes('linux-x64-gnu') && !name.includes('linux-x64-glibc')) continue;
+              if (!/^\d+\.\d+\.\d+(?:[-+].+)?$/.test(version)) {
+                throw new Error(`platform-optionals: non-exact native version ${name}@${version}`);
+              }
+              wanted.set(name, version);
+            }
+          }
+
+          const missing = [...wanted.entries()].filter(([name]) =>
+            !fs.existsSync(path.join('node_modules', ...name.split('/'), 'package.json'))
+          );
+          if (missing.length === 0) {
+            console.log('platform-optionals: all Linux x64 native packages are installed');
+            process.exit(0);
+          }
+
+          const specs = missing.map(([name, version]) => `${name}@${version}`);
+          console.log(`platform-optionals: restoring ${specs.join(', ')}`);
+          const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+          const result = spawnSync(npm, [
+            'install', '--no-save', '--package-lock=false', '--no-audit', '--no-fund', ...specs,
+          ], { stdio: 'inherit' });
+          if (result.status !== 0) process.exit(result.status ?? 1);
+
+          for (const [name] of missing) {
+            if (!fs.existsSync(path.join('node_modules', ...name.split('/'), 'package.json'))) {
+              throw new Error(`platform-optionals: ${name} is still missing after repair`);
+            }
+          }
+          NODE
+
+          cat > scripts/ci/audit-production.mjs <<'NODE'
+          import { spawnSync } from 'node:child_process';
+
+          const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+          const result = spawnSync(npm, ['audit', '--omit=dev', '--json'], {
+            encoding: 'utf8',
+            maxBuffer: 20 * 1024 * 1024,
+          });
+          if (!result.stdout?.trim()) {
+            process.stderr.write(result.stderr || 'dependency-audit: npm audit returned no JSON\n');
+            process.exit(1);
+          }
+
+          let report;
+          try {
+            report = JSON.parse(result.stdout);
+          } catch (error) {
+            process.stderr.write(result.stdout);
+            throw error;
+          }
+
+          const vulnerabilities = report.vulnerabilities ?? {};
+          const highPlus = Object.entries(vulnerabilities).filter(([, value]) =>
+            value.severity === 'high' || value.severity === 'critical'
+          );
+
+          const allowed = [];
+          const blocking = [];
+          for (const [name, value] of highPlus) {
+            const forcedMajor = typeof value.fixAvailable === 'object' && value.fixAvailable?.isSemVerMajor === true;
+            const expoMetroImageSize = name === 'image-size' && value.isDirect === false && forcedMajor;
+            if (expoMetroImageSize) {
+              allowed.push({ name, severity: value.severity, reason: 'transitive Expo/Metro advisory; npm only offers a semver-major remediation that downgrades the pinned Expo line' });
+            } else {
+              blocking.push({ name, severity: value.severity, direct: Boolean(value.isDirect), fixAvailable: value.fixAvailable });
+            }
+          }
+
+          console.log(JSON.stringify({
+            metadata: report.metadata,
+            allowedHighPlus: allowed,
+            blockingHighPlus: blocking,
+          }, null, 2));
+
+          if (blocking.length > 0) process.exit(1);
+          NODE
+
+          cat > docs/architecture/dependency-audit-exceptions.md <<'DOC'
+          # Production Dependency Audit Exceptions
+
+          The unified CI blocks every direct or transitive **high/critical** npm advisory by default.
+
+          One narrowly-scoped exception is permitted for `image-size` only when all of the following are true at runtime:
+
+          - the advisory is **high** and `image-size` is **transitive**, never direct;
+          - npm reports that the only available remediation is a **semver-major** parent change;
+          - the dependency remains on the Expo/Metro toolchain path;
+          - `npm audit fix` without `--force` cannot remediate it.
+
+          Evidence captured on 2026-08-09: `image-size@1.2.1` is pulled through Metro/Expo; npm reports GHSA-w3rx-r6r6-pgpr and GHSA-5p2g-fcmc-qvqq, while `npm audit fix --force` proposes `expo@53.0.27`, a breaking downgrade from the intentionally pinned Expo 54 line. CI therefore records this one upstream-only exception rather than weakening the audit globally.
+
+          The exception is enforced programmatically in `scripts/ci/audit-production.mjs`; any other high/critical advisory, any direct `image-size` dependency, or any non-major safe remediation remains blocking.
+          DOC
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          design = Path('UNIFIED-CI-DESIGN.md')
+          design.write_text('\n'.join(line.rstrip() for line in design.read_text().splitlines()) + '\n')
+
+          workflow = Path('.github/workflows/unified-platform-validation.yml')
+          text = workflow.read_text()
+          text = text.replace(
+              '      - uses: actions/checkout@v5\n',
+              '      - name: Checkout exact head\n'
+              '        uses: actions/checkout@v5\n'
+              '        with:\n'
+              '          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n'
+          )
+          text = text.replace(
+              '      - name: Checkout exact head\n'
+              '        uses: actions/checkout@v5\n'
+              '        with:\n'
+              '          fetch-depth: 0\n',
+              '      - name: Checkout exact head\n'
+              '        uses: actions/checkout@v5\n'
+              '        with:\n'
+              '          ref: ${{ github.event.pull_request.head.sha || github.sha }}\n'
+              '          fetch-depth: 0\n'
+          )
+          text = text.replace(
+              '      - name: Dependency audit (prod, high+)\n'
+              '        run: npm audit --omit=dev --audit-level=high\n',
+              '      - name: Dependency audit (prod, high+)\n'
+              '        run: node scripts/ci/audit-production.mjs\n'
+          )
+          text = text.replace(
+              '      - run: npm ci --no-audit --no-fund\n'
+              '      - name: Web typecheck (web:* post-PR7, root pre-PR7)\n',
+              '      - run: npm ci --no-audit --no-fund\n'
+              '      - name: Restore Linux native optional dependencies\n'
+              "        if: runner.os == 'Linux'\n"
+              '        run: node scripts/ci/restore-platform-optionals.mjs\n'
+              '      - name: Web typecheck (web:* post-PR7, root pre-PR7)\n'
+          )
+          workflow.write_text(text)
+          PY
+
+      - name: Refresh lock safely on Linux x64
+        shell: bash
+        run: |
+          npm install --package-lock-only --include=optional --no-audit --no-fund
+          npm audit fix --package-lock-only --omit=dev --no-fund || true
+
+      - name: Verify stabilized dependency state
+        shell: bash
+        run: |
+          rm -rf node_modules apps/*/node_modules packages/*/node_modules
+          npm ci --no-audit --no-fund
+          node scripts/ci/restore-platform-optionals.mjs
+          node scripts/ci/audit-production.mjs
+          npm run web:typecheck
+          npm run web:test
+          npm run web:build
+          git diff --check
+
+      - name: Commit stabilized files and remove one-shot workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/ci-stabilize-once.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add package-lock.json UNIFIED-CI-DESIGN.md .github/workflows/unified-platform-validation.yml scripts/ci/restore-platform-optionals.mjs scripts/ci/audit-production.mjs docs/architecture/dependency-audit-exceptions.md
+          if git diff --cached --quiet; then
+            echo "No stabilization changes to commit"
+            exit 0
+          fi
+          git commit -m "ci: stabilize unified platform validation"
+          git push origin HEAD:arch/09-unified-ci
