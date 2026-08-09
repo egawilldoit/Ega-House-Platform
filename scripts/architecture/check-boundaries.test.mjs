@@ -83,3 +83,24 @@ test("import equals is checked", () => {
     ['packages/domain/src/tasks/status.ts: forbidden import "drizzle-orm" [domain-platform-neutral]'],
   );
 });
+
+test("web workspace alias resolves to apps/web/src", () => {
+  assert.deepEqual(
+    diagnostics("apps/web/src/app/tasks/projects/page.tsx", 'import { ProjectService } from "@/features/projects/service";'),
+    [],
+  );
+});
+
+test("web files never fall back to the root src alias", () => {
+  assert.deepEqual(
+    diagnostics("apps/web/src/lib/supabase/server.ts", 'import { createClient } from "@/lib/supabase/client";'),
+    [],
+  );
+});
+
+test("mobile may not import web source through a web workspace alias", () => {
+  assert.deepEqual(
+    diagnostics("apps/mobile/features/tasks/api.ts", 'import { rewrite } from "@/app/tasks/projects/route";'),
+    [],
+  );
+});
