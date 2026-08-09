@@ -48,3 +48,6 @@ reports/*.json
 
 # graphify generated output (regenerable with `graphify update .`)
 graphify-out/
+
+# playwright runtime artifact (regenerated every run; never commit)
+**/test-results/.last-run.json
