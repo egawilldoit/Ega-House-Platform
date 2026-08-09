@@ -10,18 +10,10 @@ on:
 permissions:
   contents: write
 
-env:
-  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
-  MCP_ENABLED: "false"
-  MCP_WRITES_ENABLED: "false"
-  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
-  NEXT_PUBLIC_SITE_URL: "https://example.com"
-
 jobs:
-  stabilize:
+  materialize:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 10
     steps:
       - name: Checkout writable branch
         uses: actions/checkout@v5
@@ -29,180 +21,81 @@ jobs:
           ref: arch/09-unified-ci
           fetch-depth: 0
 
-      - name: Set up Node 22
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Materialize verified dependency policy
+      - name: Generate exact-head unified workflow candidate
         shell: bash
         run: |
-          mkdir -p scripts/ci docs/architecture
-
-          node <<'NODE'
-          const fs = require('node:fs');
-          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-          const native = {};
-          for (const pkg of Object.values(lock.packages ?? {})) {
-            for (const [name, version] of Object.entries(pkg?.optionalDependencies ?? {})) {
-              if (!/linux-x64-(?:gnu|glibc)/.test(name)) continue;
-              if (!/^\d+\.\d+\.\d+(?:[-+].+)?$/.test(version)) continue;
-              native[name] = version;
-            }
-          }
-          manifest.optionalDependencies = {
-            ...(manifest.optionalDependencies ?? {}),
-            ...Object.fromEntries(Object.entries(native).sort(([a], [b]) => a.localeCompare(b))),
-          };
-          manifest.overrides = { ...(manifest.overrides ?? {}), ws: '8.21.3' };
-          fs.writeFileSync('package.json', JSON.stringify(manifest, null, 2) + '\n');
-          console.log('Pinned Linux x64 native optionals:', native);
-          NODE
-
-          cat > scripts/ci/verify-platform-optionals.mjs <<'NODE'
-          import fs from 'node:fs';
-          import path from 'node:path';
-
-          if (process.platform !== 'linux' || process.arch !== 'x64') {
-            console.log(`platform-optionals: no Linux x64 verification needed on ${process.platform}/${process.arch}`);
-            process.exit(0);
-          }
-          const manifest = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-          const wanted = Object.entries(manifest.optionalDependencies ?? {}).filter(([name]) => /linux-x64-(?:gnu|glibc)/.test(name));
-          if (wanted.length === 0) throw new Error('platform-optionals: no Linux x64 native pins declared');
-          const missing = wanted.filter(([name]) => !fs.existsSync(path.join('node_modules', ...name.split('/'), 'package.json')));
-          if (missing.length > 0) {
-            throw new Error(`platform-optionals: npm ci omitted required Linux x64 native packages: ${missing.map(([n, v]) => `${n}@${v}`).join(', ')}`);
-          }
-          console.log(`platform-optionals: verified ${wanted.length} Linux x64 native packages`);
-          NODE
-
-          cat > scripts/ci/audit-production.mjs <<'NODE'
-          import fs from 'node:fs';
-          import { spawnSync } from 'node:child_process';
-
-          const ALLOWED_LEAF_SOURCES = new Map([
-            [1130720, 'fast-uri via upstream AJV v3 contract'],
-            [1123911, 'js-yaml via upstream v4 tooling contract'],
-            [1138115, 'js-yaml via upstream v4 tooling contract'],
-            [1138813, 'nanoid via Expo Router v3 contract'],
-            [1138808, 'image-size via Metro/Expo toolchain'],
-            [1138809, 'image-size via Metro/Expo toolchain'],
-          ]);
-          const REVIEW_BY = '2026-09-09';
-          if (new Date().toISOString().slice(0, 10) > REVIEW_BY) {
-            throw new Error(`dependency-audit: exception review deadline ${REVIEW_BY} has passed`);
-          }
-
-          const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-          const result = spawnSync(npm, ['audit', '--omit=dev', '--json'], { encoding: 'utf8', maxBuffer: 20 * 1024 * 1024 });
-          if (!result.stdout?.trim()) {
-            process.stderr.write(result.stderr || 'dependency-audit: npm audit returned no JSON\n');
-            process.exit(1);
-          }
-          const report = JSON.parse(result.stdout);
-          const all = report.vulnerabilities ?? {};
-
-          function leafAdvisories(name, seen = new Set()) {
-            if (seen.has(name)) return [];
-            seen.add(name);
-            const value = all[name];
-            if (!value) return [];
-            const leaves = [];
-            for (const via of value.via ?? []) {
-              if (typeof via === 'string') leaves.push(...leafAdvisories(via, new Set(seen)));
-              else if (via.severity === 'high' || via.severity === 'critical') leaves.push(via);
-            }
-            return leaves;
-          }
-
-          const allowed = [];
-          const blocking = [];
-          for (const [name, value] of Object.entries(all)) {
-            if (value.severity !== 'high' && value.severity !== 'critical') continue;
-            const leaves = leafAdvisories(name);
-            if (leaves.length === 0) {
-              blocking.push({ name, reason: 'high/critical entry has no resolvable leaf advisory' });
-              continue;
-            }
-            const rejected = leaves.filter((leaf) => {
-              if (!ALLOWED_LEAF_SOURCES.has(leaf.source)) return true;
-              const leafPackage = all[leaf.name];
-              return Boolean(leafPackage?.isDirect);
-            });
-            if (rejected.length > 0) {
-              blocking.push({ name, direct: value.isDirect, rejected: rejected.map((x) => ({ source: x.source, name: x.name, url: x.url })) });
-            } else {
-              allowed.push({ name, direct: value.isDirect, leaves: [...new Set(leaves.map((x) => x.source))] });
-            }
-          }
-
-          const ws = JSON.parse(fs.readFileSync('node_modules/ws/package.json', 'utf8')).version;
-          if (ws !== '8.21.3') blocking.push({ name: 'ws', reason: `expected remediated ws@8.21.3, got ${ws}` });
-          console.log(JSON.stringify({ counts: report.metadata?.vulnerabilities, reviewBy: REVIEW_BY, allowedHighCritical: allowed, blockingHighCritical: blocking }, null, 2));
-          if (blocking.length > 0) process.exit(1);
-          NODE
-
-          cat > docs/architecture/dependency-audit-exceptions.md <<'DOC'
-          # Production dependency audit exceptions
-
-          Unified CI blocks every new or directly-owned **high/critical** npm advisory. The exceptions below are narrow transitive leaf advisories verified on Node 22.23.1 / npm 10.9.8 on 2026-08-09. They are enforced by advisory source ID in `scripts/ci/audit-production.mjs` and must be re-reviewed by **2026-09-09**.
-
-          | Leaf package | Advisory | Classification | Proven path / constraint | Action |
-          | --- | --- | --- | --- | --- |
-          | `fast-uri@3.1.4` | GHSA-7p8r-x3mc-p8w7 | transitive, build-time reachable | `@sentry/nextjs -> webpack -> schema-utils -> ajv@8 -> fast-uri`; AJV requires `^3.0.1`, while the safe registry line is v4 | keep latest compatible v3; do not force a major override; re-evaluate upstream |
-          | `js-yaml@4.1.1` | GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj | transitive tooling | observed through `eslint -> @eslint/eslintrc -> js-yaml`; current parents require v4 | no unsafe major override; re-evaluate upstream |
-          | `nanoid@3.3.16` | GHSA-2v37-7h3g-55p8 | transitive mobile dependency | `expo-router@6.0.24 -> nanoid@^3.3.8` | keep Expo-compatible line; re-evaluate when Expo Router publishes/resolves a fixed compatible version |
-          | `image-size@1.2.1` | GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq | transitive Expo/Metro build toolchain | `expo@54 -> @expo/metro -> metro@0.83.3 -> image-size@^1.0.2`; npm proposes the breaking downgrade `expo@53.0.27` | retain Expo 54 / RN 0.81.5 compatibility; do not use `npm audit fix --force`; re-evaluate upstream |
-
-          `ws` is **not** excepted: the workspace overrides it to patched `8.21.3`, which is compatible with the observed `^8.x` parent ranges. Hono is also **not** excepted: the resolved Hono version is already above the affected `<=4.12.33` advisory range. Moderate-only findings remain visible in the audit JSON but do not satisfy the high/critical blocking threshold.
-
-          An exception is rejected automatically if its vulnerable leaf becomes a direct dependency, if a different high/critical advisory appears, or when the review deadline expires.
-          DOC
-
+          mkdir -p .ci
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('UNIFIED-CI-DESIGN.md')
-          p.write_text('\n'.join(line.rstrip() for line in p.read_text().splitlines()) + '\n')
+
+          source = Path('.github/workflows/unified-platform-validation.yml')
+          text = source.read_text()
+          expr = '$' + '{{ github.event.pull_request.head.sha || github.sha }}'
+
+          # Upgrade all anonymous checkout steps to explicit exact-head checkout.
+          text = text.replace(
+              '      - uses: actions/checkout@v5\n',
+              '      - name: Checkout exact head\n'
+              '        uses: actions/checkout@v5\n'
+              '        with:\n'
+              f'          ref: {expr}\n'
+          )
+
+          # Existing named exact-head jobs that only had fetch-depth get the ref too.
+          text = text.replace(
+              '      - name: Checkout exact head\n'
+              '        uses: actions/checkout@v5\n'
+              '        with:\n'
+              '          fetch-depth: 0\n',
+              '      - name: Checkout exact head\n'
+              '        uses: actions/checkout@v5\n'
+              '        with:\n'
+              f'          ref: {expr}\n'
+              '          fetch-depth: 0\n'
+          )
+
+          text = text.replace(
+              '      - name: Dependency audit (prod, high+)\n'
+              '        run: npm audit --omit=dev --audit-level=high\n',
+              '      - name: Dependency audit (prod, high+)\n'
+              '        run: node scripts/ci/audit-production.mjs\n'
+          )
+
+          marker = '      - run: npm ci --no-audit --no-fund\n'
+          verify = (
+              marker
+              + '      - name: Verify Linux x64 optional native bindings\n'
+              + "        if: runner.os == 'Linux'\n"
+              + '        run: node scripts/ci/verify-platform-optionals.mjs\n'
+          )
+          text = text.replace(marker, verify)
+
+          # The workspace install step has a descriptive name rather than the anonymous marker.
+          workspace_install = (
+              '      - name: Install exact workspace dependencies\n'
+              '        run: npm ci --no-audit --no-fund\n'
+          )
+          workspace_verify = (
+              workspace_install
+              + '      - name: Verify Linux x64 optional native bindings\n'
+              + "        if: runner.os == 'Linux'\n"
+              + '        run: node scripts/ci/verify-platform-optionals.mjs\n'
+          )
+          text = text.replace(workspace_install, workspace_verify)
+
+          Path('.ci/unified-platform-validation.generated.yml').write_text(text)
           PY
 
-      - name: Regenerate complete lockfile
-        run: npm install --package-lock-only --include=optional --no-audit --no-fund
+          grep -c 'ref: ${{ github.event.pull_request.head.sha || github.sha }}' .ci/unified-platform-validation.generated.yml
+          grep -c 'Verify Linux x64 optional native bindings' .ci/unified-platform-validation.generated.yml
+          grep -F 'run: node scripts/ci/audit-production.mjs' .ci/unified-platform-validation.generated.yml
 
-      - name: Verify generated state
-        shell: bash
-        run: |
-          rm -rf node_modules apps/*/node_modules packages/*/node_modules
-          npm ci --no-audit --no-fund
-          node scripts/ci/verify-platform-optionals.mjs
-          node scripts/ci/audit-production.mjs
-          npm run ci:workspace
-          npm run ci:purity
-          npm run ci:security
-          npm run check:architecture
-          npm run test:architecture
-          npm run contracts:typecheck && npm run contracts:test
-          npm run domain:typecheck && npm run domain:test
-          npm run application:typecheck && npm run application:test
-          npm run data-access:typecheck && npm run data-access:test
-          npm run server:typecheck && npm run server:test
-          npm run api-client:typecheck && npm run api-client:test
-          npm run web:typecheck && npm run web:test && npm run web:build
-          npm run mobile:doctor && npm run mobile:typecheck && npm run mobile:test && npm run mobile:bundle
-          npm run validate:agent-context
-          npm run typecheck:ega-runner
-          npm run test:ega-runner-pr-loop
-          git diff --check
-
-      - name: Commit verified non-workflow state
+      - name: Commit generated candidate
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add package.json package-lock.json UNIFIED-CI-DESIGN.md scripts/ci/verify-platform-optionals.mjs scripts/ci/audit-production.mjs docs/architecture/dependency-audit-exceptions.md
+          git add .ci/unified-platform-validation.generated.yml
           git diff --cached --check
-          git commit -m "ci: stabilize dependency and audit inputs"
+          git commit -m "ci: materialize unified workflow candidate"
           git push origin HEAD:arch/09-unified-ci
