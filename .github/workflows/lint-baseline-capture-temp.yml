@@ -1,0 +1,52 @@
+name: Temporary Lint Baseline Capture
+
+on:
+  push:
+    branches:
+      - arch/09-unified-ci
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node 22.23.1
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22.23.1
+          cache: npm
+
+      - name: Pin npm 10.9.8
+        run: npm install --global npm@10.9.8
+
+      - name: Install exact workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify Linux optional bindings
+        run: node scripts/ci/verify-platform-optionals.mjs
+
+      - name: Capture corrected lint baseline
+        run: |
+          node scripts/ci/lint-regression.mjs capture
+          node -e "const b=require('./scripts/ci/lint-baseline.json'); console.log(JSON.stringify(b.totals))"
+
+      - name: Commit only baseline if changed
+        run: |
+          if git diff --quiet -- scripts/ci/lint-baseline.json; then
+            echo "Baseline already current."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/ci/lint-baseline.json
+          git commit -m "ci: refresh lint baseline after stage 8 lint fixes"
+          git push origin HEAD:arch/09-unified-ci
