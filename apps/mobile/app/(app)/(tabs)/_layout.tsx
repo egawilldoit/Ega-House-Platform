@@ -49,6 +49,28 @@ export default function AppTabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="projects"
+        options={{
+          title: 'Projects',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon
+              name={focused ? 'folder' : 'folder-outline'}
+              color={color}
+              focused={focused}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="goals"
+        options={{
+          title: 'Goals',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name={focused ? 'flag' : 'flag-outline'} color={color} focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="timer"
         options={{
           title: 'Timer',
