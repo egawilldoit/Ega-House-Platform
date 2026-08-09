@@ -38,7 +38,6 @@
         "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
         "server:test": "npm run test --workspace @ega/server",
         "server:typecheck": "npm run typecheck --workspace @ega/server",
-        "sonar:export-reliability": "node scripts/export-sonar-reliability-issues.mjs",
         "start": "npm run start --workspace @ega/web",
         "test": "npm run test --workspace @ega/web",
         "test:agent-context": "node --test scripts/agent/validate-agent-context.test.mjs",
@@ -50,7 +49,10 @@
         "test:timer-recovery": "npm run test:timer-recovery --workspace @ega/web",
         "typecheck": "npm run typecheck --workspace @ega/web",
         "typecheck:ega-runner": "tsc --noEmit -p scripts/ega-runner/tsconfig.json",
-        "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs"
+        "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
+        "web:build": "npm run build --workspace @ega/web",
+        "web:test": "npm run test --workspace @ega/web",
+        "web:typecheck": "npm run typecheck --workspace @ega/web"
     },
     "dependencies": {
         "@ega/api-client": "0.1.0",
