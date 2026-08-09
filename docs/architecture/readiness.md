@@ -1,21 +1,23 @@
 # EGA House Platform — Deployment & Migration Readiness
 
 **Branch:** `arch/10-compat-cleanup-readiness` (Stage 10 of the architecture migration)
-**Base:** `arch/09-unified-ci` @ `55a559cb2d544cd2ddcbecf334de08a76cbd8e6c`
+**Base:** `arch/09-unified-ci` @ `da2cd2953aa216dc6807474f19963296380ef8a0` (converged via merge commit `668312d`)
 **Date:** 2026-08-09
-**Status:** factual snapshot of this branch head. Everything below is evidence-based
-(run IDs, SHAs, and file paths are verifiable on the head).
+**Status:** factual snapshot of the converged stack head (PR4→PR10 canonical
+ancestry). Everything below is evidence-based (run IDs, SHAs, and file paths are
+verifiable on the head).
 
 ---
 
-## 1. Deployment topology (current vs post-PR7)
+## 1. Deployment topology (converged)
 
-| Surface | On this base | After PR7 merges |
-|---|---|---|
-| Web (Next.js) | **Repository root** (`src/**`, root `package.json` scripts `build`/`start`/`typecheck`/`test`) | `apps/web` (moved by PR7; unified `web` job then uses `web:*` scripts) |
-| Standalone server (Hono) | `apps/server` (PR5) | unchanged |
-| Mobile (Expo) | `apps/mobile` (unchanged since PR2) | unchanged |
-| Shared packages | `packages/{contracts,domain,application,data-access,api-client}` | unchanged |
+| Surface | Location |
+|---|---|
+| Web (Next.js) | `apps/web` (relocated by PR7); root `web:typecheck`/`web:test`/`web:build` scripts delegate to the workspace |
+| Standalone server (Hono) | `apps/server` (PR5) |
+| Mobile (Expo) | `apps/mobile` |
+| Shared packages | `packages/{contracts,domain,application,data-access,api-client}` |
+| DB authority (canonical, single) | `src/db/schema.ts`, `src/db/mcp-schema.ts`, `drizzle/`, `drizzle.config.ts` — restored to root by the PR7 relocation fix; `apps/web` consumes via `@/db/*` alias wiring, zero duplication |
 
 ### Standalone server environment
 
@@ -74,16 +76,17 @@ Deleted by PR10 (all previously disabled or folded — no validation vacuum):
 - `sonarcloud.yml.disabled` — dead disabled artifact; its only orphan
   (`sonar:export-reliability` + `scripts/export-sonar-reliability-issues.mjs`)
   deleted with it
-- `mcp-integration-ci.yml` + `public-signup-ci.yml` — folded: mcp and
-  signup/auth paths are all under the unified `web` scope (`src/**`), the
-  always-on `lint-changed` gate replaces scoped eslint, the always-on
-  `workspace` audit replaces mcp-only audit, and full `npm test` in the `web`
-  job is a superset of both focused test lists.
+- `mcp-integration-ci.yml` + `public-signup-ci.yml` — **deleted in PR10**: mcp and
+  signup/auth paths are all under the unified `web` scope (`apps/web/**`,
+  `src/**`, `drizzle/**`, `drizzle.config.ts`), the always-on `lint-changed`
+  gate replaces scoped eslint, the always-on `workspace` audit replaces
+  mcp-only audit, and full `npm test` in the `web` job is a superset of both
+  focused test lists (verified locally on the PR10 head: web suite 977/977
+  includes the MCP migration and signup tests).
 
-Recorded fold residuals (accepted, documented in PR10 body): drizzle-only or
-`eslint.config.mjs`-only PRs skip the unified `web` job (workspace/lint jobs
-still run); pushes to the five merged `feat/*` branches (PRs #112, #115–#118)
-no longer trigger CI (branches are inert post-merge).
+Recorded fold residual (accepted, documented in PR10 body): pushes to the five
+merged `feat/*` branches (PRs #112, #115–#118) no longer trigger CI (branches
+are inert post-merge).
 
 ### Known non-blocking CI observations on this head
 
@@ -91,10 +94,13 @@ no longer trigger CI (branches are inert post-merge).
   prod dependency findings, `npm audit fix` available) — inherited dependency
   debt, same cause as the old `mcp-integration-ci` failures. Tracked as
   follow-up; PR10 does not change dependencies.
-- Inherited lint baseline: **39 errors / 53 warnings** (captured 2026-08-09,
-  `scripts/ci/lint-baseline.json`). Full lint is informational (`lint-report`);
-  changed-path lint (`lint-changed`) is the blocking gate. When the baseline
-  reaches 0/0 (or owner approves), `lint-report` flips to blocking.
+- Inherited lint baseline: **44 errors / 56 warnings** (re-captured on the
+  converged PR9 head `6a1dbcc`, `scripts/ci/lint-baseline.json` — the earlier
+  39/53 capture predated the PR7 `src/**` → `apps/web/src/**` relocation and is
+  superseded per the design §8 re-capture contract). Full lint is informational
+  (`lint-report`); changed-path lint (`lint-changed`) is the blocking gate.
+  When the baseline reaches 0/0 (or owner approves), `lint-report` flips to
+  blocking.
 - `ega-weekly-reviews.yml` (operational cron POSTing `/api/cron/sendWeeklyReviews`)
   fails on schedule — operational issue, not validation; flagged to owner, fix
   separately.
@@ -105,11 +111,10 @@ no longer trigger CI (branches are inert post-merge).
   `web` (typecheck/test/build), `server`, `api-client`, `mobile`, all package
   jobs, `lint-changed`, `lint-report`, `regressions`, `hygiene` green; `workspace`
   failed only at the audit step (see §3).
-- PR10 validation executed locally on `arch/10-compat-cleanup-readiness` head
-  (commit `55a559cb` + PR10 changes, 2026-08-09): `npm run test:architecture`
-  (18/18 pass), `npm run check:architecture` (exit 0), `npm run typecheck`
-  (exit 0), `npm test` (root vitest: 134 files / 977 tests passed), and the
-  unified CI scripts
-  `node scripts/ci/workspace-proofs.mjs`, `node scripts/ci/package-purity.mjs`,
-  `node scripts/ci/security-proofs.mjs` — all "ALL CHECKS PASSED". Exact
-  outputs are recorded in the PR10 body.
+- PR10 local validation on the converged head (`668312d` merge + PR10 changes):
+  `npm run ci:workspace` / `ci:purity` / `ci:security` — all "ALL CHECKS
+  PASSED"; `npm run test:architecture` 21/21 pass; `npm run check:architecture`
+  exit 0; `npm run web:typecheck` exit 0; `npm run web:test` — 134 files /
+  977 tests passed (superset incl. MCP + signup suites); `npm run lint:changed`
+  vs `arch/09` base — 0 regressions; `lint:report` — no drift vs re-captured
+  baseline. Exact outputs are recorded in the PR10 body.

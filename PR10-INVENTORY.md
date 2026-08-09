@@ -1,6 +1,9 @@
-# PR10 — Compatibility Cleanup & Readiness: Read-Only Inventory + Evidence Plan
+# PR10 — Compatibility Cleanup & Readiness: Inventory + Execution Record
 
-**Status:** Inventory phase (read-only). No repo file was modified, deleted, or committed to produce this document — this file is the single deliverable of the inventory phase.
+**Status:** COMPLETED — inventory executed on the converged stack head
+(`668312d` merge of `arch/09-unified-ci` + PR10 changes). This file records
+the evidence for every deletion; the final topology narrative lives in
+`docs/architecture/readiness.md`.
 **Branch:** `arch/10-compat-cleanup-readiness` (scratch, NOT pushed)
 **Base:** `origin/arch/04-project-goal-application-core` @ `3ef94abad841b9c39417c77ad45fa574679b7dd9`
 **Date:** 2026-08-09
