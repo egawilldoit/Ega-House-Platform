@@ -22,7 +22,9 @@
     "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
     "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
     "typecheck:ega-runner": "tsc --noEmit -p scripts/ega-runner/tsconfig.json",
-    "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs"
+    "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs",
+    "test:architecture": "node --test scripts/architecture/check-boundaries.test.mjs",
+    "check:architecture": "node scripts/architecture/check-boundaries.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
