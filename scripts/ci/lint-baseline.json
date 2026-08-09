@@ -631,10 +631,6 @@
       "errors": 0,
       "warnings": 1
     },
-    "scripts/export-sonar-reliability-issues.mjs": {
-      "errors": 0,
-      "warnings": 0
-    },
     "scripts/generate-agent-token.ts": {
       "errors": 0,
       "warnings": 0
