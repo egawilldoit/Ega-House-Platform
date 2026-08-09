@@ -185,6 +185,39 @@ Their behavior must remain stable while Projects/Goals establish the new package
 9. Enforce all boundaries and validation in unified CI.
 10. Remove only proven-dead compatibility artifacts and document deployment readiness.
 
+## Migration status (2026-08-09, arch/10-compat-cleanup-readiness head)
+
+The stack is delivered as sequential `arch/0x` branches; each branch's PR targets
+the previous branch's head. Merging happens when the stack lands — branches being
+open is the designed state, not a stall.
+
+| Step | State | Evidence |
+|---|---|---|
+| 1 Guardrails + architecture checks | done, pushed | `arch/01-baseline-guardrails` @ `d71d689`; PR #119 (→ main) open |
+| 2 npm workspace foundation | done, pushed | `arch/02-npm-workspace-foundation` @ `cf6ec0a`; PR #120 (→ arch/01) open |
+| 3 Contracts + domain packages | done, pushed | `arch/03-contracts-domain` @ `9dcf207`; PR #121 (→ arch/02) open |
+| 4 Application + data-access packages | done, pushed | `arch/04-project-goal-application-core` @ `3ef94ab` |
+| 5 Standalone Hono server | done, pushed | `arch/05-hono-project-goal-transport` @ `be190ca` — `apps/server` present on this base; `server:typecheck\|test` wired |
+| 6 API client | done, pushed | `arch/06-api-client` @ `8c86013` — `packages/api-client` present on this base; `api-client:typecheck\|test` wired |
+| 7 Web app move to `apps/web` | in progress, parallel | `arch/07-web-app-workspace` @ `70e1204` pushed but **not merged into this base** — web still lives at the repository root here; `src/lib/**` shims remain at root and are still consumed (retirement candidates post-PR7 merge) |
+| 8 Native Projects/Goals UI | in progress, parallel | `arch/08-native-project-goal-ui` @ `603db1f` pushed, not merged into this base |
+| 9 Unified validation CI | done, pushed | `arch/09-unified-ci` @ `55a559c` — `unified-platform-validation.yml` + `scripts/ci/*` live on this base; per-stage validators disabled (PR9) and deleted (PR10) |
+| 10 Compatibility cleanup + readiness | this branch | `arch/10-compat-cleanup-readiness` — base `55a559c`; see `docs/architecture/readiness.md` |
+
+Open PRs in the stack: #119 (arch/01 → main), #120 (arch/02 → arch/01), #121
+(arch/03 → arch/02). Branches arch/04+ are pushed and validated by the unified
+workflow on every push/PR; PRs for them are opened as the stack advances.
+
+**Lockfile regeneration (replaces the deleted `pr2-workspace-lock-refresh`
+workflow — a documented local act, never automated):**
+
+```bash
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+```
+
+The unified CI `workspace` job proves lock↔manifest consistency on every run, so
+an uncommitted lock cannot silently pass.
+
 ## Intentional non-goals
 
 This is not a microservices rewrite. It does not introduce pnpm or Turborepo, upgrade Expo, upgrade Next.js, redesign authentication, migrate Agent/MCP/OAuth/Cron, relocate database schemas, or authorize production deployment.
