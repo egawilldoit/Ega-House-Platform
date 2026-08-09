@@ -1,12 +1,14 @@
-name: PR2 Workspace Lock Refresh
+name: Workspace Lock Refresh
 
 on:
   push:
     branches:
       - arch/02-npm-workspace-foundation
+      - arch/03-contracts-domain
     paths:
       - package.json
       - apps/mobile/package.json
+      - packages/*/package.json
       - .github/workflows/pr2-workspace-lock-refresh.yml
 
 permissions:
@@ -21,7 +23,7 @@ jobs:
       - name: Checkout exact branch
         uses: actions/checkout@v5
         with:
-          ref: arch/02-npm-workspace-foundation
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Set up Node 22
@@ -34,7 +36,7 @@ jobs:
       - name: Generate root workspace lockfile with npm
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
 
-      - name: Prove mobile workspace discovery
+      - name: Prove workspace discovery
         run: |
           node - <<'NODE'
           const root = require('./package.json');
@@ -52,6 +54,12 @@ jobs:
           }
           if (mobile.dependencies?.expo !== '~54.0.34' || mobile.dependencies?.react !== '19.1.0' || mobile.dependencies?.['react-native'] !== '0.81.5') {
             throw new Error('mobile framework versions changed during workspace lock generation');
+          }
+          for (const [path, name] of [['packages/contracts', '@ega/contracts'], ['packages/domain', '@ega/domain']]) {
+            const manifest = lock.packages?.[path];
+            if (require('node:fs').existsSync(`${path}/package.json`) && manifest?.name !== name) {
+              throw new Error(`root package-lock.json does not contain ${name} workspace metadata`);
+            }
           }
           NODE
 
@@ -76,4 +84,4 @@ jobs:
             exit 0
           fi
           git commit -m "build: generate authoritative workspace lockfile"
-          git push origin HEAD:arch/02-npm-workspace-foundation
+          git push origin "HEAD:${GITHUB_REF_NAME}"
