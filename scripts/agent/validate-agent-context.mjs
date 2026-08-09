@@ -130,7 +130,7 @@ async function validateQueue(root, errors, output) {
 
 async function validateInstructions(root, errors, warnings, output, options) {
   const config = await loadCodexDiscoveryConfig({ repoRoot: root, env: options.env ?? process.env, userHome: options.userHome ?? homedir() });
-  for (const cwd of [".", "apps/mobile", "scripts/ega-runner", "src"]) {
+  for (const cwd of [".", "apps/mobile", "scripts/ega-runner", "apps/web/src"]) {
     const absolute = resolve(root, cwd);
     if (!(await exists(absolute, "directory"))) { output.push(`RUNTIME NOT VERIFIED instruction directory missing: ${cwd}`); continue; }
     const chain = await discoverCodexInstructionChain({ repoRoot: root, workingDirectory: absolute, ...config });
