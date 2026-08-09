@@ -1,0 +1,20 @@
+{
+  "name": "@ega/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./errors": "./src/errors.ts",
+    "./projects": "./src/projects.ts",
+    "./goals": "./src/goals.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@ega/contracts": "0.1.0"
+  }
+}
