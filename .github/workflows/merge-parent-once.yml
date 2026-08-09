@@ -1,0 +1,30 @@
+name: Merge Parent Once
+
+on:
+  push:
+    branches:
+      - arch/10-compat-cleanup-readiness
+    paths:
+      - .github/workflows/merge-parent-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: arch/10-compat-cleanup-readiness
+          fetch-depth: 0
+      - name: Merge final stage 9 parent
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin arch/09-unified-ci:refs/remotes/origin/arch/09-unified-ci
+          git merge --no-ff --no-edit origin/arch/09-unified-ci
+          git push origin HEAD:arch/10-compat-cleanup-readiness
