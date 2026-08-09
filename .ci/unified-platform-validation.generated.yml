@@ -1,0 +1,538 @@
+# Unified Platform Architecture Validation (Stage 9 — UNIFIED-CI-DESIGN.md)
+#
+# The single validation pipeline for the EGA House platform monorepo. It
+# replaces the temporary per-stage validators (pr2-*, pr3-*, pr4-* — disabled
+# in PR9, deleted in PR10) and the live-red architecture-stack-validation
+# (disabled in PR9, deleted in PR10). mcp-integration-ci.yml and
+# public-signup-ci.yml remain active in PR9; PR10 folds and deletes them —
+# their domains are already covered here: mcp paths fall under the `web`
+# scope + `lint-changed` + `npm test`, signup/auth paths under `web` +
+# `lint-changed`.
+#
+# Topology tolerance: jobs for apps/server, apps/web and packages/api-client
+# exist from day one but self-skip until the corresponding topology lands
+# (server/api-client are existence-guarded; web falls back to root scripts
+# pre-PR7 and to web:* scripts post-PR7). The workflow is green on the
+# current stack head and becomes complete as PR5/PR6/PR7 land.
+#
+# Root-script contract (must be honored by later stages or the workflow must
+# be updated in the same PR that breaks it): PR5 adds server:typecheck|test|build,
+# PR6 adds api-client:typecheck|test|build, PR7 adds web:typecheck|test|build
+# (or rewires root typecheck/test/build). Server/api-client builds are
+# additionally guarded with --if-present-style checks because the build
+# scripts are part of the same contract.
+#
+# Lint model (design §8): full-repo lint is informational (lint-report runs
+# with continue-on-error and only detects drift vs the captured baseline in
+# scripts/ci/lint-baseline.json); changed-path lint (lint-changed) is the
+# effective gate — a changed file must not exceed its per-file baseline and
+# new files must be zero-problem.
+
+name: Unified Platform Validation
+
+on:
+  pull_request:
+    branches: [main, "arch/**"]
+  push:
+    branches: [main, "arch/**"]
+  workflow_dispatch:
+
+concurrency:
+  group: unified-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Build placeholders (same pattern as the per-stage validators).
+  DATABASE_URL: "postgresql://postgres:***@127.0.0.1:5432/postgres"
+  MCP_ENABLED: "false"
+  MCP_WRITES_ENABLED: "false"
+  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co"
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_ci_placeholder"
+  NEXT_PUBLIC_SITE_URL: "https://example.com"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # changes — path scoping for the heavy leaf jobs. Always-run jobs
+  # (workspace, packages, regressions, lint-*, hygiene) do not depend on it.
+  # Every filter includes package.json / package-lock.json / .github/workflows/**
+  # so any dependency or workflow change forces the full matrix.
+  # -------------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+      server: ${{ steps.filter.outputs.server }}
+      api-client: ${{ steps.filter.outputs.api-client }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            mobile:
+              - 'apps/mobile/**'
+              - 'packages/contracts/**'
+              - 'packages/domain/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            server:
+              - 'apps/server/**'
+              - 'packages/contracts/**'
+              - 'packages/domain/**'
+              - 'packages/application/**'
+              - 'packages/data-access/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            api-client:
+              - 'packages/api-client/**'
+              - 'packages/contracts/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+            web:
+              - 'apps/web/**'
+              - 'src/**'
+              - 'drizzle/**'
+              - 'drizzle.config.ts'
+              - 'packages/**'
+              - 'apps/server/**'
+              - 'package.json'
+              - 'package-lock.json'
+              - '.github/workflows/**'
+
+  # -------------------------------------------------------------------------
+  # workspace — always runs: diff hygiene, lockfile authority, framework pins,
+  # manifest↔lock edges, installed resolution, dependency audit, purity
+  # scans, security proofs, architecture fixtures + current-tree check.
+  # -------------------------------------------------------------------------
+  workspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Diff hygiene pre-install
+        shell: bash
+        run: |
+          BASE=""
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          elif [ -n "$GITHUB_EVENT_BEFORE" ] && [ "$GITHUB_EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            BASE="$GITHUB_EVENT_BEFORE"
+          else
+            BASE="HEAD~1"
+          fi
+          echo "validating diff hygiene against base ${BASE}"
+          git diff --check "$BASE"...HEAD
+          test -z "$(git status --porcelain)"
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install exact workspace dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Prove workspace + lockfile integrity (workspace-proofs)
+        run: npm run ci:workspace
+      - name: Audit React / React Native / Expo resolution
+        run: npm ls react react-dom react-native expo-router
+      - name: Dependency audit (prod, high+)
+        run: node scripts/ci/audit-production.mjs
+      - name: Prove shared-package purity (purity scans + duplicate-authority)
+        run: npm run ci:purity
+      - name: Prove actor identity + repository trust (security proofs)
+        run: npm run ci:security
+      - name: Architecture current-tree check
+        run: npm run check:architecture
+      - name: Architecture fixture tests
+        run: npm run test:architecture
+
+  # -------------------------------------------------------------------------
+  # Per-package gates — always run.
+  # -------------------------------------------------------------------------
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run contracts:typecheck
+      - run: npm run contracts:test
+
+  domain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run domain:typecheck
+      - run: npm run domain:test
+
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run application:typecheck
+      - run: npm run application:test
+
+  data-access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - run: npm run data-access:typecheck
+      - run: npm run data-access:test
+
+  # -------------------------------------------------------------------------
+  # regressions — always run: agent-context + Runner typecheck/PR-loop.
+  # -------------------------------------------------------------------------
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Agent context regression
+        run: npm run validate:agent-context
+      - name: Runner typecheck regression
+        run: npm run typecheck:ega-runner
+      - name: Runner PR-loop regression
+        run: npm run test:ega-runner-pr-loop
+
+  # -------------------------------------------------------------------------
+  # Lint — baseline-aware (design §8): lint-changed is the effective gate;
+  # lint-report is informational with drift detection and never blocks.
+  # -------------------------------------------------------------------------
+  lint-changed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Scoped lint regression vs captured baseline
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE="origin/main"
+          fi
+          npm run lint:changed -- --base "$BASE"
+
+  lint-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Full-repo lint informational report (drift detection)
+        run: npm run lint:report
+
+  # -------------------------------------------------------------------------
+  # Leaf jobs — path-scoped. web falls back to root scripts pre-PR7 and uses
+  # web:* scripts post-PR7; server/api-client are existence-guarded and their
+  # build steps honor the PR5/PR6 build-script contract.
+  # -------------------------------------------------------------------------
+  web:
+    needs: [changes]
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Web typecheck (web:* post-PR7, root pre-PR7)
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['web:typecheck'] ? 0 : 1)"; then
+            npm run web:typecheck
+          else
+            npm run typecheck
+          fi
+      - name: Web tests (web:* post-PR7, root pre-PR7)
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['web:test'] ? 0 : 1)"; then
+            npm run web:test
+          else
+            npm test
+          fi
+      - name: Web production build (web:* post-PR7, root pre-PR7)
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.['web:build'] ? 0 : 1)"; then
+            npm run web:build
+          else
+            npm run build
+          fi
+
+  mobile:
+    needs: [changes]
+    if: needs.changes.outputs.mobile == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Mobile doctor
+        run: npm run mobile:doctor
+      - name: Mobile typecheck
+        run: npm run mobile:typecheck
+      - name: Mobile tests
+        run: npm run mobile:test
+      - name: Mobile Android bundle validation
+        shell: bash
+        run: |
+          set +e
+          log_file="$(mktemp)"
+          npm run mobile:bundle 2>&1 | tee "$log_file"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "### Mobile Android bundle diagnostics"
+              echo '```text'
+              tail -n 120 "$log_file"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+
+            diagnostic="$(node - "$log_file" <<'NODE'
+          const fs = require('node:fs');
+          const path = process.argv[2];
+          const lines = fs.readFileSync(path, 'utf8').split(/\r?\n/).slice(-80);
+          const value = lines.join('\n')
+            .replaceAll('%', '%25')
+            .replaceAll('\r', '%0D')
+            .replaceAll('\n', '%0A');
+          process.stdout.write(value);
+          NODE
+            )"
+            echo "::error title=Mobile bundle diagnostics::$diagnostic"
+          fi
+
+          exit "$status"
+
+  server:
+    needs: [changes]
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Server validation (existence-guarded — activates with PR5 topology)
+        if: hashFiles('apps/server/package.json') != ''
+        run: |
+          npm run server:typecheck
+          npm run server:test
+          if node -e "process.exit(require('./package.json').scripts?.['server:build'] ? 0 : 1)"; then
+            npm run server:build
+          else
+            echo "server:build not defined yet (PR5 build-script contract) — skipping"
+          fi
+
+  api-client:
+    needs: [changes]
+    if: needs.changes.outputs.api-client == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Verify Linux x64 optional native bindings
+        if: runner.os == 'Linux'
+        run: node scripts/ci/verify-platform-optionals.mjs
+      - name: Api-client validation (existence-guarded — activates with PR6 topology)
+        if: hashFiles('packages/api-client/package.json') != ''
+        run: |
+          npm run api-client:typecheck
+          npm run api-client:test
+          if node -e "process.exit(require('./package.json').scripts?.['api-client:build'] ? 0 : 1)"; then
+            npm run api-client:build
+          else
+            echo "api-client:build not defined yet (PR6 build-script contract) — skipping"
+          fi
+
+  # -------------------------------------------------------------------------
+  # hygiene — needs every job, always runs: final diff check + generated-
+  # artifact proofs. Deliberately does NOT ban tracked runner node_modules
+  # (scripts/ega-runner/node_modules/** is a standalone tracked project); it
+  # bans only generated outputs. Untracked-but-ignored build outputs are
+  # reported by the mutation report, never failed.
+  # -------------------------------------------------------------------------
+  hygiene:
+    needs: [workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Diff hygiene final check
+        shell: bash
+        run: |
+          git diff --check
+          test -z "$(git status --porcelain)"
+      - name: Prove generated outputs remain untracked
+        shell: bash
+        run: |
+          test -z "$(git ls-files 'apps/mobile/android/**' 'apps/mobile/ios/**' 'apps/mobile/.expo/**' 'apps/mobile/artifacts/**' '.next/**' 'apps/web/.next/**' 'apps/server/dist/**' 'packages/api-client/dist/**')"
+      - name: Report validation workspace mutations
+        if: ${{ always() }}
+        run: git status --short
