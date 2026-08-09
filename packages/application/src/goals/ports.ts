@@ -1,4 +1,5 @@
 import type { GoalHealth, GoalStatus, GoalViewFilter } from "@ega/domain";
+import { GOAL_ARCHIVE_STATUS } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
@@ -52,7 +53,7 @@ export interface GoalsRepository {
   ): Promise<RepositoryResult<null>>;
   updateGoalStatus(
     actor: AuthenticatedActor,
-    input: { goalId: string; status: GoalStatus; updatedAt: string },
+    input: { goalId: string; status: GoalStatus | typeof GOAL_ARCHIVE_STATUS; updatedAt: string },
   ): Promise<RepositoryResult<null>>;
   updateGoalHealth(
     actor: AuthenticatedActor,
