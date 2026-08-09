@@ -4,15 +4,10 @@ import { act, create } from 'react-test-renderer';
 import type { GoalReadModel } from '@ega/api-client';
 import { GoalCard } from '../mobile/GoalCard';
 
-jest.mock('@expo/vector-icons/Ionicons', () => {
-  const React = require('react');
-  const { Text } = require('react-native');
-  return {
-    __esModule: true,
-    default: (props: Record<string, unknown>) =>
-      React.createElement(Text, props, 'icon'),
-  };
-});
+jest.mock('@expo/vector-icons/Ionicons', () => ({
+  __esModule: true,
+  default: () => null,
+}));
 
 const GOAL: GoalReadModel = {
   id: 'g-1',
