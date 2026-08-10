@@ -199,7 +199,10 @@ test("reminder policy rejects past times and delegates future reminder create/ca
 
 test("task read models preserve actor scoping and missing-task semantics", async () => {
   const repository = new FakeTasksRepository();
-  repository.list = ok([repository.mutation.ok ? repository.mutation.value : never]);
+  const mutation = repository.mutation;
+  assert.equal(mutation.ok, true);
+  if (!mutation.ok) return;
+  repository.list = ok([mutation.value]);
   repository.task = ok(null);
 
   const list = await getTasksReadModel(ACTOR, repository);
