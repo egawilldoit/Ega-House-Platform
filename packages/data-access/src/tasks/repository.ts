@@ -43,6 +43,14 @@ const RECURRENCE_SELECT = "id,task_id,rule,anchor_date,timezone,next_occurrence_
 
 type Row = Record<string, unknown>;
 
+function asRows(value: unknown): Row[] {
+  return (value ?? []) as Row[];
+}
+
+function asRow(value: unknown): Row {
+  return value as Row;
+}
+
 function asNullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
 }
@@ -129,8 +137,8 @@ export class SupabaseTasksRepository implements TasksRepository {
     return {
       ok: true,
       value: {
-        projectIds: ((projects.data ?? []) as Row[]).map((row) => String(row.id)),
-        goals: ((goals.data ?? []) as Row[]).map((row) => ({
+        projectIds: asRows(projects.data).map((row) => String(row.id)),
+        goals: asRows(goals.data).map((row) => ({
           id: String(row.id),
           projectId: String(row.project_id),
         })),
@@ -155,7 +163,7 @@ export class SupabaseTasksRepository implements TasksRepository {
 
     const result = await request;
     if (result.error) return failure(result.error);
-    return this.hydrateTasks(actor, (result.data ?? []) as Row[]);
+    return this.hydrateTasks(actor, asRows(result.data));
   }
 
   async getTask(actor: AuthenticatedActor, taskId: string): Promise<RepositoryResult<TaskRecord | null>> {
@@ -169,7 +177,7 @@ export class SupabaseTasksRepository implements TasksRepository {
     if (result.error) return failure(result.error);
     if (!result.data) return { ok: true, value: null };
 
-    const hydrated = await this.hydrateTasks(actor, [result.data as Row]);
+    const hydrated = await this.hydrateTasks(actor, [asRow(result.data)]);
     if (!hydrated.ok) return hydrated;
     return { ok: true, value: hydrated.value[0] ?? null };
   }
@@ -198,11 +206,12 @@ export class SupabaseTasksRepository implements TasksRepository {
       .single();
 
     if (result.error || !result.data) return failure(result.error);
+    const createdRow = asRow(result.data);
 
     if (input.recurrence) {
       const recurrence = await this.supabase.from("task_recurrences").insert({
         owner_user_id: actor.userId,
-        task_id: String((result.data as Row).id),
+        task_id: String(createdRow.id),
         rule: input.recurrence.rule,
         anchor_date: input.recurrence.anchorDate,
         timezone: input.recurrence.timezone,
@@ -211,7 +220,7 @@ export class SupabaseTasksRepository implements TasksRepository {
       if (recurrence.error) return failure(recurrence.error);
     }
 
-    const hydrated = await this.hydrateTasks(actor, [result.data as Row]);
+    const hydrated = await this.hydrateTasks(actor, [createdRow]);
     if (!hydrated.ok) return hydrated;
     return { ok: true, value: hydrated.value[0] };
   }
@@ -243,7 +252,7 @@ export class SupabaseTasksRepository implements TasksRepository {
       .single();
     if (result.error || !result.data) return failure(result.error);
 
-    const hydrated = await this.hydrateTasks(actor, [result.data as Row]);
+    const hydrated = await this.hydrateTasks(actor, [asRow(result.data)]);
     if (!hydrated.ok) return hydrated;
     return { ok: true, value: hydrated.value[0] };
   }
@@ -265,7 +274,7 @@ export class SupabaseTasksRepository implements TasksRepository {
       .single();
     if (result.error || !result.data) return failure(result.error);
 
-    const hydrated = await this.hydrateTasks(actor, [result.data as Row]);
+    const hydrated = await this.hydrateTasks(actor, [asRow(result.data)]);
     if (!hydrated.ok) return hydrated;
     return { ok: true, value: hydrated.value[0] };
   }
@@ -323,13 +332,13 @@ export class SupabaseTasksRepository implements TasksRepository {
     if (recurrences.error) return failure(recurrences.error);
 
     const reminderMap = new Map<string, TaskReminderRecord[]>();
-    for (const row of (reminders.data ?? []) as Row[]) {
+    for (const row of asRows(reminders.data)) {
       const taskId = String(row.task_id);
       reminderMap.set(taskId, [...(reminderMap.get(taskId) ?? []), mapReminder(row)]);
     }
 
     const recurrenceMap = new Map<string, TaskRecurrenceRecord>();
-    for (const row of (recurrences.data ?? []) as Row[]) {
+    for (const row of asRows(recurrences.data)) {
       recurrenceMap.set(String(row.task_id), mapRecurrence(row));
     }
 
