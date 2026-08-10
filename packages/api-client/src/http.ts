@@ -33,7 +33,7 @@ export type ServerErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "
 export type HttpRequestOptions = {
   /** Relative path under the base URL, e.g. `/api/projects`. */
   path: string;
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   query?: Record<string, string | undefined>;
   body?: unknown;
   /** Requests outside `/api/*` (e.g. `/health`) do not carry a token. */
