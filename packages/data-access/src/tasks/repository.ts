@@ -5,8 +5,10 @@ import type {
   TaskQuery,
   TaskRecord,
   TaskRecurrenceRecord,
+  TaskRecurrenceSchedule,
   TaskReminderRecord,
   TaskScopeRecord,
+  TaskStatus,
   TasksRepository,
   UpdateTaskRecordInput,
 } from "@ega/application";
@@ -310,6 +312,78 @@ export class SupabaseTasksRepository implements TasksRepository {
 
     const task = await this.getTask(actor, input.taskId);
     return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
+  }
+
+  async setRecurrence(
+    actor: AuthenticatedActor,
+    input: Readonly<{ taskId: string; schedule: TaskRecurrenceSchedule | null }>,
+  ): Promise<RepositoryResult<TaskRecord>> {
+    if (input.schedule) {
+      const result = await this.supabase
+        .from("task_recurrences")
+        .upsert(
+          {
+            owner_user_id: actor.userId,
+            task_id: input.taskId,
+            rule: input.schedule.rule,
+            anchor_date: input.schedule.anchorDate,
+            timezone: input.schedule.timezone,
+            next_occurrence_date: input.schedule.nextOccurrenceDate,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "task_id" },
+        );
+      if (result.error) return failure(result.error);
+    } else {
+      const result = await this.supabase
+        .from("task_recurrences")
+        .delete()
+        .eq("task_id", input.taskId)
+        .eq("owner_user_id", actor.userId);
+      if (result.error) return failure(result.error);
+    }
+
+    const task = await this.getTask(actor, input.taskId);
+    return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
+  }
+
+  async setPlannedDate(
+    actor: AuthenticatedActor,
+    input: Readonly<{ taskId: string; plannedForDate: string | null }>,
+  ): Promise<RepositoryResult<TaskRecord>> {
+    return this.updateTask(actor, {
+      taskId: input.taskId,
+      plannedForDate: input.plannedForDate,
+    });
+  }
+
+  async setStatus(
+    actor: AuthenticatedActor,
+    input: Readonly<{ taskId: string; status: TaskStatus; blockedReason: string | null }>,
+  ): Promise<RepositoryResult<TaskRecord>> {
+    return this.updateTask(actor, {
+      taskId: input.taskId,
+      status: input.status,
+      blockedReason: input.blockedReason,
+    });
+  }
+
+  async clearCompletedPlannedDate(
+    actor: AuthenticatedActor,
+    input: Readonly<{ plannedForDate: string }>,
+  ): Promise<RepositoryResult<number>> {
+    const result = await this.supabase
+      .from("tasks")
+      .update(
+        { planned_for_date: null, updated_at: new Date().toISOString() },
+        { count: "exact" },
+      )
+      .eq("owner_user_id", actor.userId)
+      .eq("planned_for_date", input.plannedForDate)
+      .in("status", ["done", "complete", "completed"]);
+
+    if (result.error) return failure(result.error);
+    return { ok: true, value: result.count ?? 0 };
   }
 
   private async hydrateTasks(actor: AuthenticatedActor, rows: Row[]): Promise<RepositoryResult<TaskRecord[]>> {
