@@ -3,10 +3,12 @@ import { Hono } from "hono";
 import {
   archiveTask,
   cancelTaskReminder,
+  clearTaskRecurrence,
   createTask,
   createTaskReminder,
   getTaskReadModel,
   getTasksReadModel,
+  setTaskRecurrence,
   unarchiveTask,
   updateTask,
   type TaskQuery,
@@ -43,42 +45,22 @@ export function createTasksRoutes(
       new SupabaseTasksRepository(client),
       queryFromRequest((name) => c.req.query(name)),
     );
-
-    if (!result.ok) {
-      return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
-    }
-
+    if (!result.ok) return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     return c.json(result.data);
   });
 
   routes.get("/:id", async (c) => {
     const { actor, client } = c.var;
-    const result = await getTaskReadModel(
-      actor,
-      new SupabaseTasksRepository(client),
-      c.req.param("id"),
-    );
-
-    if (!result.ok) {
-      return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
-    }
-    if (!result.data) {
-      return c.json({ error: { code: "NOT_FOUND", message: "Task not found." } }, 404);
-    }
-
+    const result = await getTaskReadModel(actor, new SupabaseTasksRepository(client), c.req.param("id"));
+    if (!result.ok) return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
+    if (!result.data) return c.json({ error: { code: "NOT_FOUND", message: "Task not found." } }, 404);
     return c.json(result.data);
   });
 
   routes.post("/", async (c) => {
     const { actor, client } = c.var;
     const body = await readJsonBody(c);
-    if (!body) {
-      return c.json(
-        { error: { code: "VALIDATION", message: "Request body must be valid JSON." } },
-        400,
-      );
-    }
-
+    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     const result = await createTask(actor, new SupabaseTasksRepository(client), {
       title: body.title,
       projectId: body.projectId,
@@ -90,24 +72,14 @@ export function createTasksRoutes(
       dueDate: body.dueDate,
       estimateMinutes: body.estimateMinutes,
     });
-
-    if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    }
-
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, task: result.data }, 201);
   });
 
   routes.patch("/:id", async (c) => {
     const { actor, client } = c.var;
     const body = await readJsonBody(c);
-    if (!body) {
-      return c.json(
-        { error: { code: "VALIDATION", message: "Request body must be valid JSON." } },
-        400,
-      );
-    }
-
+    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     const result = await updateTask(actor, new SupabaseTasksRepository(client), {
       taskId: c.req.param("id"),
       title: body.title,
@@ -120,79 +92,61 @@ export function createTasksRoutes(
       projectId: body.projectId,
       goalId: body.goalId,
     });
-
-    if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    }
-
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, task: result.data });
   });
 
   routes.post("/:id/archive", async (c) => {
     const { actor, client } = c.var;
-    const result = await archiveTask(actor, new SupabaseTasksRepository(client), {
-      taskId: c.req.param("id"),
-      now: dependencies.now?.(),
-    });
-
-    if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    }
+    const result = await archiveTask(actor, new SupabaseTasksRepository(client), { taskId: c.req.param("id"), now: dependencies.now?.() });
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, task: result.data });
   });
 
   routes.post("/:id/unarchive", async (c) => {
     const { actor, client } = c.var;
-    const result = await unarchiveTask(actor, new SupabaseTasksRepository(client), {
-      taskId: c.req.param("id"),
-    });
-
-    if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    }
+    const result = await unarchiveTask(actor, new SupabaseTasksRepository(client), { taskId: c.req.param("id") });
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, task: result.data });
   });
 
   routes.post("/:id/reminders", async (c) => {
     const { actor, client } = c.var;
     const body = await readJsonBody(c);
-    if (!body) {
-      return c.json(
-        { error: { code: "VALIDATION", message: "Request body must be valid JSON." } },
-        400,
-      );
-    }
-
-    const result = await createTaskReminder(actor, new SupabaseTasksRepository(client), {
-      taskId: c.req.param("id"),
-      remindAt: body.remindAt,
-      now: dependencies.now?.(),
-    });
-
-    if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    }
+    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
+    const result = await createTaskReminder(actor, new SupabaseTasksRepository(client), { taskId: c.req.param("id"), remindAt: body.remindAt, now: dependencies.now?.() });
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, task: result.data }, 201);
   });
 
   routes.patch("/:id/reminders/:reminderId", async (c) => {
     const { actor, client } = c.var;
     const body = await readJsonBody(c);
-    if (!body || body.status !== "cancelled") {
-      return c.json(
-        { error: { code: "VALIDATION", message: "Reminder status must be cancelled." } },
-        400,
-      );
-    }
+    if (!body || body.status !== "cancelled") return c.json({ error: { code: "VALIDATION", message: "Reminder status must be cancelled." } }, 400);
+    const result = await cancelTaskReminder(actor, new SupabaseTasksRepository(client), { taskId: c.req.param("id"), reminderId: c.req.param("reminderId") });
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    return c.json({ ok: true, task: result.data });
+  });
 
-    const result = await cancelTaskReminder(actor, new SupabaseTasksRepository(client), {
+  routes.put("/:id/recurrence", async (c) => {
+    const { actor, client } = c.var;
+    const body = await readJsonBody(c);
+    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
+    const result = await setTaskRecurrence(actor, new SupabaseTasksRepository(client), {
       taskId: c.req.param("id"),
-      reminderId: c.req.param("reminderId"),
+      recurrenceRule: body.recurrenceRule,
+      recurrenceAnchorDate: body.recurrenceAnchorDate,
+      recurrenceTimezone: body.recurrenceTimezone,
+      fallbackAnchorDate: String(body.fallbackAnchorDate ?? "").trim(),
     });
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    return c.json({ ok: true, task: result.data });
+  });
 
-    if (!result.ok) {
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-    }
+  routes.delete("/:id/recurrence", async (c) => {
+    const { actor, client } = c.var;
+    const result = await clearTaskRecurrence(actor, new SupabaseTasksRepository(client), { taskId: c.req.param("id") });
+    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, task: result.data });
   });
 
