@@ -8,7 +8,9 @@
     "./types": "./src/types.ts",
     "./errors": "./src/errors.ts",
     "./projects": "./src/projects.ts",
-    "./goals": "./src/goals.ts"
+    "./goals": "./src/goals.ts",
+    "./tasks": "./src/tasks.ts",
+    "./today": "./src/today.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
