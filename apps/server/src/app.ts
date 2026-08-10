@@ -9,6 +9,8 @@ import { createAuthenticatedClient, extractBearerToken, verifyAccessToken } from
 import { getSupabaseEnv } from "./env";
 import { createGoalsRoutes } from "./routes/goals";
 import { createProjectsRoutes } from "./routes/projects";
+import { createTasksRoutes } from "./routes/tasks";
+import { createTodayRoutes } from "./routes/today";
 
 /**
  * Transport dependencies. Everything the routes need is injected so the
@@ -84,6 +86,8 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
 
   app.route("/api/projects", createProjectsRoutes(dependencies));
   app.route("/api/goals", createGoalsRoutes(dependencies));
+  app.route("/api/tasks", createTasksRoutes(dependencies));
+  app.route("/api/today", createTodayRoutes());
 
   app.notFound((c) =>
     c.json({ error: { code: "NOT_FOUND", message: "Route not found." } }, 404),
