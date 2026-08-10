@@ -15,6 +15,7 @@ export type {
   TaskApiReminder,
   TaskApiRecurrence,
   TaskUpdateInput,
+  SetTaskRecurrenceInput,
 } from "./tasks";
 export type { TodayApi, TodayApiReadModel } from "./today";
 
