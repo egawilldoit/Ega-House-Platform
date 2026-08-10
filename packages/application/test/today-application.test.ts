@@ -36,13 +36,19 @@ const TASK: TaskRecord = {
 
 class TodayRepository implements TasksRepository {
   query: unknown;
-  async getScope(_actor: AuthenticatedActor): Promise<RepositoryResult<TaskScopeRecord>> {
+  actorIds: string[] = [];
+
+  async getScope(actor: AuthenticatedActor): Promise<RepositoryResult<TaskScopeRecord>> {
+    this.actorIds.push(actor.userId);
     return ok({ projectIds: ["project-1"], goals: [] });
   }
-  async listTasks(_actor: AuthenticatedActor, query?: unknown) {
+
+  async listTasks(actor: AuthenticatedActor, query?: unknown) {
+    this.actorIds.push(actor.userId);
     this.query = query;
     return ok([TASK]);
   }
+
   async getTask() { return ok<TaskRecord | null>(null); }
   async createTask() { return ok(TASK); }
   async updateTask() { return ok(TASK); }
@@ -67,4 +73,5 @@ test("Today read model requests the selected local date and summarizes active wo
     plannedForDate: "2026-08-10",
     includeArchived: false,
   });
+  assert.deepEqual(repository.actorIds, ["user-today"]);
 });
