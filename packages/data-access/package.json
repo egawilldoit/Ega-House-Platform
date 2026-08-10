@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./projects": "./src/projects/repository.ts",
-    "./goals": "./src/goals/repository.ts"
+    "./goals": "./src/goals/repository.ts",
+    "./tasks": "./src/tasks/repository.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
