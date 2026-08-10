@@ -68,6 +68,13 @@ export type TaskUpdateInput = UpdateTaskInput & Readonly<{
   goalId?: string | null;
 }>;
 
+export type SetTaskRecurrenceInput = Readonly<{
+  recurrenceRule: string;
+  recurrenceAnchorDate?: string | null;
+  recurrenceTimezone?: string | null;
+  fallbackAnchorDate: string;
+}>;
+
 export type TasksApi = {
   list(query?: TaskListQuery): Promise<ApiResult<{ tasks: TaskApiRecord[] }>>;
   get(taskId: string): Promise<ApiResult<TaskApiRecord>>;
@@ -75,14 +82,10 @@ export type TasksApi = {
   update(taskId: string, input: TaskUpdateInput): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
   archive(taskId: string): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
   unarchive(taskId: string): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
-  createReminder(
-    taskId: string,
-    remindAt: string,
-  ): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
-  cancelReminder(
-    taskId: string,
-    reminderId: string,
-  ): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
+  createReminder(taskId: string, remindAt: string): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
+  cancelReminder(taskId: string, reminderId: string): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
+  setRecurrence(taskId: string, input: SetTaskRecurrenceInput): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
+  clearRecurrence(taskId: string): Promise<ApiResult<{ ok: true; task: TaskApiRecord }>>;
 };
 
 function queryValue(value: string | number | boolean | null | undefined): string | undefined {
@@ -93,69 +96,19 @@ function queryValue(value: string | number | boolean | null | undefined): string
 export function createTasksApi(http: HttpClient): TasksApi {
   return {
     list(query = {}) {
-      return http.request<{ tasks: TaskApiRecord[] }>({
-        path: "/api/tasks",
-        query: {
-          status: queryValue(query.status),
-          projectId: queryValue(query.projectId),
-          goalId: queryValue(query.goalId),
-          plannedForDate: queryValue(query.plannedForDate),
-          includeArchived: queryValue(query.includeArchived),
-          limit: queryValue(query.limit),
-        },
-      });
+      return http.request<{ tasks: TaskApiRecord[] }>({ path: "/api/tasks", query: {
+        status: queryValue(query.status), projectId: queryValue(query.projectId), goalId: queryValue(query.goalId),
+        plannedForDate: queryValue(query.plannedForDate), includeArchived: queryValue(query.includeArchived), limit: queryValue(query.limit),
+      }});
     },
-
-    get(taskId) {
-      return http.request<TaskApiRecord>({
-        path: `/api/tasks/${encodeURIComponent(taskId)}`,
-      });
-    },
-
-    create(input) {
-      return http.request<{ ok: true; task: TaskApiRecord }>({
-        path: "/api/tasks",
-        method: "POST",
-        body: input,
-      });
-    },
-
-    update(taskId, input) {
-      return http.request<{ ok: true; task: TaskApiRecord }>({
-        path: `/api/tasks/${encodeURIComponent(taskId)}`,
-        method: "PATCH",
-        body: input,
-      });
-    },
-
-    archive(taskId) {
-      return http.request<{ ok: true; task: TaskApiRecord }>({
-        path: `/api/tasks/${encodeURIComponent(taskId)}/archive`,
-        method: "POST",
-      });
-    },
-
-    unarchive(taskId) {
-      return http.request<{ ok: true; task: TaskApiRecord }>({
-        path: `/api/tasks/${encodeURIComponent(taskId)}/unarchive`,
-        method: "POST",
-      });
-    },
-
-    createReminder(taskId, remindAt) {
-      return http.request<{ ok: true; task: TaskApiRecord }>({
-        path: `/api/tasks/${encodeURIComponent(taskId)}/reminders`,
-        method: "POST",
-        body: { remindAt },
-      });
-    },
-
-    cancelReminder(taskId, reminderId) {
-      return http.request<{ ok: true; task: TaskApiRecord }>({
-        path: `/api/tasks/${encodeURIComponent(taskId)}/reminders/${encodeURIComponent(reminderId)}`,
-        method: "PATCH",
-        body: { status: "cancelled" },
-      });
-    },
+    get(taskId) { return http.request<TaskApiRecord>({ path: `/api/tasks/${encodeURIComponent(taskId)}` }); },
+    create(input) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: "/api/tasks", method: "POST", body: input }); },
+    update(taskId, input) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}`, method: "PATCH", body: input }); },
+    archive(taskId) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}/archive`, method: "POST" }); },
+    unarchive(taskId) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}/unarchive`, method: "POST" }); },
+    createReminder(taskId, remindAt) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}/reminders`, method: "POST", body: { remindAt } }); },
+    cancelReminder(taskId, reminderId) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}/reminders/${encodeURIComponent(reminderId)}`, method: "PATCH", body: { status: "cancelled" } }); },
+    setRecurrence(taskId, input) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}/recurrence`, method: "PUT", body: input }); },
+    clearRecurrence(taskId) { return http.request<{ ok: true; task: TaskApiRecord }>({ path: `/api/tasks/${encodeURIComponent(taskId)}/recurrence`, method: "DELETE" }); },
   };
 }
