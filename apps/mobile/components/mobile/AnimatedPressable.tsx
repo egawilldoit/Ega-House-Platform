@@ -1,4 +1,4 @@
-import { ReactNode, useRef } from 'react';
+import { ReactNode, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -20,7 +20,7 @@ export function AnimatedPressable({
   disabled?: boolean;
   scaleTo?: number;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
+  const [scale] = useState(() => new Animated.Value(1));
 
   function animateTo(value: number) {
     Animated.spring(scale, {
