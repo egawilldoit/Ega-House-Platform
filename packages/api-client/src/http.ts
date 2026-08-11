@@ -2,14 +2,18 @@
  * HTTP mechanics for @ega/api-client.
  *
  * Pure global-fetch request plumbing: URL building, Authorization header
- * injection from a caller-supplied token callback, JSON body handling, and
- * mapping of the server's `{ error: { code, message } }` envelope to the
- * typed `ApiResult` set. The client owns NO storage, platform SDK, or
- * session state — tokens are acquired per request through the injected
- * `getAccessToken` callback.
+ * injection from caller-supplied token callbacks, JSON body handling, and
+ * mapping of the server's error envelope to typed ApiResult values. The
+ * client owns NO storage, platform SDK, or session state.
  */
 
-import { errorResult, okResult, parseErrorEnvelope, type ApiErrorPayload, type ApiResult } from "./errors";
+import {
+  errorResult,
+  okResult,
+  parseErrorEnvelope,
+  type ApiErrorPayload,
+  type ApiResult,
+} from "./errors";
 
 export type FetchLike = (
   input: string,
@@ -17,12 +21,14 @@ export type FetchLike = (
 ) => Promise<Response>;
 
 export type TokenProvider = () => string | Promise<string | null>;
-
+export type RefreshAccessToken = () => boolean | Promise<boolean>;
 export type AuthErrorHandler = (error: ApiErrorPayload) => void;
 
 export type HttpClientOptions = {
   baseUrl: string;
   getAccessToken: TokenProvider;
+  /** Caller-owned refresh operation. Returns true only when a fresh token is available. */
+  refreshAccessToken?: RefreshAccessToken;
   onAuthError?: AuthErrorHandler;
   fetch?: FetchLike;
 };
@@ -43,17 +49,22 @@ export type HttpRequestOptions = {
 export class HttpClient {
   private readonly baseUrl: string;
   private readonly getAccessToken: TokenProvider;
+  private readonly refreshAccessToken: RefreshAccessToken | undefined;
   private readonly onAuthError: AuthErrorHandler | undefined;
   private readonly fetch: FetchLike;
 
   constructor(options: HttpClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.getAccessToken = options.getAccessToken;
+    this.refreshAccessToken = options.refreshAccessToken;
     this.onAuthError = options.onAuthError;
     this.fetch = options.fetch ?? (globalThis.fetch as FetchLike);
   }
 
-  private buildUrl(path: string, query: Record<string, string | undefined> | undefined): string {
+  private buildUrl(
+    path: string,
+    query: Record<string, string | undefined> | undefined,
+  ): string {
     const url = `${this.baseUrl}${path.startsWith("/") ? path : `/${path}`}`;
     if (!query) return url;
 
@@ -66,6 +77,13 @@ export class HttpClient {
   }
 
   async request<T>(options: HttpRequestOptions): Promise<ApiResult<T>> {
+    return this.requestAttempt<T>(options, true);
+  }
+
+  private async requestAttempt<T>(
+    options: HttpRequestOptions,
+    allowRefresh: boolean,
+  ): Promise<ApiResult<T>> {
     const { path, method = "GET", query, body, authenticated = true } = options;
 
     let token: string | null = null;
@@ -115,9 +133,31 @@ export class HttpClient {
     }
 
     const payload = parseErrorEnvelope(parsed, response.status);
+
+    if (
+      payload.code === "UNAUTHENTICATED" &&
+      authenticated &&
+      allowRefresh &&
+      this.refreshAccessToken
+    ) {
+      let refreshed = false;
+      try {
+        refreshed = await this.refreshAccessToken();
+      } catch {
+        refreshed = false;
+      }
+
+      if (refreshed) {
+        // One retry only. The retry reacquires the token from the caller-owned
+        // provider and cannot refresh recursively.
+        return this.requestAttempt<T>(options, false);
+      }
+    }
+
     if (payload.code === "UNAUTHENTICATED") {
       this.onAuthError?.(payload);
     }
+
     return errorResult(payload);
   }
 }
