@@ -4,6 +4,7 @@ export type AuthenticatedActor = Readonly<{
 
 export type VerifiedIdentity = Readonly<{
   id: string;
+  email?: string | null;
 }>;
 
 export function createAuthenticatedActor(userId: string): AuthenticatedActor {
