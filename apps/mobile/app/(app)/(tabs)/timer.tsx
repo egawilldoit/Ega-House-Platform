@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Animated, Easing, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { GlassButton, GlassCard, GlassSegmentedControl } from '@/components/mobile/glass';
@@ -30,9 +30,10 @@ export default function TimerScreen() {
   const [isRunning, setIsRunning] = useState(false);
   const [completedFocusSessions, setCompletedFocusSessions] = useState(0);
   const [completedFocusMinutes, setCompletedFocusMinutes] = useState(0);
-
-  const pulse = useRef(new Animated.Value(0)).current;
-  const entrance = useRef(new Animated.Value(0)).current;
+  // Animated.Value is mutable by design. Lazy state gives each component
+  // instance one stable animation object without reading a React ref in render.
+  const [pulse] = useState(() => new Animated.Value(0));
+  const [entrance] = useState(() => new Animated.Value(0));
   const totalSeconds = TIMER_MODES[mode].minutes * 60;
   const progress = totalSeconds === 0 ? 0 : 1 - remainingSeconds / totalSeconds;
   const progressPercent = Math.round(progress * 100);
