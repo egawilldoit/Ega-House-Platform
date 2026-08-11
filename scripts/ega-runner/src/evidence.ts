@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -203,7 +204,6 @@ function getUncommittedPatch(repoRoot: string): string {
 }
 
 function execSync(command: string, options: { cwd: string; stdio: "pipe"; encoding: "utf8" }): string {
-  const { spawnSync } = require("node:child_process");
   const result = spawnSync("bash", ["-c", command], {
     cwd: options.cwd,
     stdio: options.stdio,
