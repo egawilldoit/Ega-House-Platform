@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 
 const routeSource = readFileSync(
-  new URL("../../app/api/oauth/decision/route.ts", import.meta.url),
+  resolve(process.cwd(), "src/app/api/oauth/decision/route.ts"),
   "utf8",
 );
 
