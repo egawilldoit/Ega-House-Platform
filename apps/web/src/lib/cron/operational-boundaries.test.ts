@@ -1,10 +1,9 @@
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 function source(relativeToApi: string) {
-  const apiRoot = new URL("../../app/api/", import.meta.url);
-  return readFileSync(fileURLToPath(new URL(relativeToApi, apiRoot)), "utf8");
+  return readFileSync(resolve(process.cwd(), "src/app/api", relativeToApi), "utf8");
 }
 
 describe("operational transport boundaries", () => {
