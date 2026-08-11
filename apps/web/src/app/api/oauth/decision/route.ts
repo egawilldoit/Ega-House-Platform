@@ -11,6 +11,7 @@ import {
   processOAuthConsentDecision,
   type OAuthDecisionClient,
 } from "@/lib/oauth/decision-service";
+import { getCurrentIdentity } from "@/lib/services/auth-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -52,12 +53,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const identity = await getCurrentIdentity({ supabase });
 
-  if (userError || !user) {
+  if (!identity) {
     return NextResponse.redirect(
       new URL(buildConsentLoginPath(authorizationId), request.url),
       303,
@@ -73,7 +71,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const redirectUrl = await processOAuthConsentDecision({
       decision,
       authorizationId,
-      ownerUserId: user.id,
+      ownerUserId: identity.id,
       resourceUri: config?.resource ?? "",
       oauth: supabase.auth.oauth as OAuthDecisionClient,
       admin: config ? createAdminClient() : undefined,
