@@ -2,9 +2,9 @@ name: Unified Platform Validation
 
 on:
   pull_request:
-    branches: [main, "arch/**"]
+    branches: [main, "arch/**", "wave/**"]
   push:
-    branches: [main, "arch/**"]
+    branches: [main, "arch/**", "wave/**"]
   workflow_dispatch:
 
 concurrency:
