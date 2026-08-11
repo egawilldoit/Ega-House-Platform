@@ -63,6 +63,10 @@ for (const file of actorFiles) {
 }
 assert(actorFilesChecked > 0, `scanned current apps/web actor construction sites (${actorFilesChecked} file(s))`);
 
+const webAuthService = fs.readFileSync('apps/web/src/lib/services/auth-service.ts', 'utf8');
+assert(webAuthService.includes('AuthenticatedIdentity'), 'apps/web auth service exposes shared verified identity');
+assert(webAuthService.includes('supabase.auth.getUser()'), 'apps/web shared identity originates from verified Supabase getUser');
+
 let requestDataLeaks = 0;
 for (const file of allTracked) {
   if (!/\.(ts|tsx)$/.test(file)) continue;
@@ -72,7 +76,8 @@ for (const file of allTracked) {
       /createAuthenticatedActor\(\s*formData/.test(line) ||
       /createAuthenticatedActor\(\s*body/.test(line) ||
       /createAuthenticatedActor\(\s*request/.test(line) ||
-      /createAuthenticatedActor\(\s*c\.req/.test(line)
+      /createAuthenticatedActor\(\s*c\.req/.test(line) ||
+      /createAuthenticatedActorFromIdentity\(\s*(formData|body|request|c\.req)/.test(line)
     ) {
       requestDataLeaks += 1;
       assert(false, `${file}: actor identity derived from request/body data`);
@@ -88,9 +93,9 @@ console.log('\n[2] standalone server bearer proof');
 const serverApp = fs.readFileSync('apps/server/src/app.ts', 'utf8');
 assert(serverApp.includes('extractBearerToken'), 'apps/server: extracts bearer token');
 assert(serverApp.includes('dependencies.verifyToken(token)'), 'apps/server: verifies bearer token server-side');
-assert(serverApp.includes('createAuthenticatedActor(userId)'), 'apps/server: actor derives from verified user id');
+assert(serverApp.includes('createAuthenticatedActorFromIdentity({ id: userId })'), 'apps/server: actor derives from verified identity');
 assert(serverApp.includes('dependencies.createRequestClient(token)'), 'apps/server: request-scoped client carries the same bearer token');
-assert(!/createAuthenticatedActor\([^)]*(body|query|param|header)/.test(serverApp), 'apps/server: actor is not selected by payload/query/path/header values');
+assert(!/createAuthenticatedActor(FromIdentity)?\([^)]*(body|query|param|header)/.test(serverApp), 'apps/server: actor is not selected by payload/query/path/header values');
 
 // ---------------------------------------------------------------------------
 // 3. Repository trust
