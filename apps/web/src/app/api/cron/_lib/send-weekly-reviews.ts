@@ -1,5 +1,8 @@
-import { NextResponse } from "next/server";
-
+import {
+  authorizeCronRequest,
+  missingCronEnvResponse,
+  runCronOperation,
+} from "@/lib/cron/route-runtime";
 import { getEmailEnvConfig, getResendClient } from "@/lib/email/resend";
 import {
   createWeeklyReviewEmailSupabaseAdapter,
@@ -9,13 +12,6 @@ import {
   type WeeklyReviewEmailJobResult,
 } from "@/lib/services/weekly-review-email-service";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
-
-function missingEnvResponse(missing: string[]) {
-  return NextResponse.json(
-    { ok: false, error: `Missing required environment variable(s): ${missing.join(", ")}` },
-    { status: 500 },
-  );
-}
 
 function getWeeklyReviewTimeZone() {
   return process.env.WEEKLY_REVIEW_TIMEZONE ?? "America/New_York";
@@ -47,24 +43,17 @@ function skippedScheduleResult(ownerUserIds: string[], timezone: string): Weekly
 }
 
 export async function sendWeeklyReviewsCron(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return missingEnvResponse(["CRON_SECRET"]);
-  }
-
-  const authorization = request.headers.get("authorization");
-  if (authorization !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = authorizeCronRequest(request);
+  if (unauthorized) return unauthorized;
 
   const envResult = getEmailEnvConfig();
   if (!envResult.ok) {
-    return missingEnvResponse(envResult.missing);
+    return missingCronEnvResponse(envResult.missing);
   }
 
   const ownerUserId = process.env.EGA_OWNER_USER_ID;
   if (!ownerUserId) {
-    return missingEnvResponse(["EGA_OWNER_USER_ID"]);
+    return missingCronEnvResponse(["EGA_OWNER_USER_ID"]);
   }
 
   const url = new URL(request.url);
@@ -74,10 +63,10 @@ export async function sendWeeklyReviewsCron(request: Request) {
   const ownerUserIds = [ownerUserId];
 
   if (!force && !shouldSendWeeklyReviewEmailNow({ timeZone, startHour })) {
-    return NextResponse.json(skippedScheduleResult(ownerUserIds, timeZone));
+    return Response.json(skippedScheduleResult(ownerUserIds, timeZone));
   }
 
-  try {
+  return runCronOperation(async () => {
     const supabase = getSupabaseServiceClient();
     const adapter = createWeeklyReviewEmailSupabaseAdapter(supabase as never);
     const targetWeek = getWeeklyReviewEmailTargetWeekForTimeZone(new Date(), timeZone);
@@ -92,18 +81,13 @@ export async function sendWeeklyReviewsCron(request: Request) {
       weekEnd: targetWeek.weekEnd,
     });
 
-    return NextResponse.json({
+    return {
       ...result,
       schedule: {
         timezone: timeZone,
         startHour,
         forced: force,
       },
-    });
-  } catch {
-    return NextResponse.json(
-      { ok: false, error: "Failed to deliver weekly review emails." },
-      { status: 500 },
-    );
-  }
+    };
+  }, "Failed to deliver weekly review emails.");
 }
