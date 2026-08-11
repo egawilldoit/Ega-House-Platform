@@ -1,4 +1,4 @@
-import { ReactNode, useRef } from 'react';
+import { ReactNode, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -20,7 +20,9 @@ export function AnimatedPressable({
   disabled?: boolean;
   scaleTo?: number;
 }) {
-  const scale = useRef(new Animated.Value(1)).current;
+  // Animated.Value is mutable by design. Lazy state keeps one stable value per
+  // component instance without reading a React ref during render.
+  const [scale] = useState(() => new Animated.Value(1));
 
   function animateTo(value: number) {
     Animated.spring(scale, {
