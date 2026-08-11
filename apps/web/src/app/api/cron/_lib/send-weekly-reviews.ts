@@ -10,12 +10,10 @@ import {
 } from "@/lib/services/weekly-review-email-service";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 
-function missingEnvResponse(missing: string[]) {
-  return NextResponse.json(
-    { ok: false, error: `Missing required environment variable(s): ${missing.join(", ")}` },
-    { status: 500 },
-  );
-}
+import {
+  authorizeCronRequest,
+  missingCronEnvResponse,
+} from "./runtime";
 
 function getWeeklyReviewTimeZone() {
   return process.env.WEEKLY_REVIEW_TIMEZONE ?? "America/New_York";
@@ -47,24 +45,19 @@ function skippedScheduleResult(ownerUserIds: string[], timezone: string): Weekly
 }
 
 export async function sendWeeklyReviewsCron(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return missingEnvResponse(["CRON_SECRET"]);
-  }
-
-  const authorization = request.headers.get("authorization");
-  if (authorization !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const authorizationFailure = authorizeCronRequest(request);
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   const envResult = getEmailEnvConfig();
   if (!envResult.ok) {
-    return missingEnvResponse(envResult.missing);
+    return missingCronEnvResponse(envResult.missing);
   }
 
   const ownerUserId = process.env.EGA_OWNER_USER_ID;
   if (!ownerUserId) {
-    return missingEnvResponse(["EGA_OWNER_USER_ID"]);
+    return missingCronEnvResponse(["EGA_OWNER_USER_ID"]);
   }
 
   const url = new URL(request.url);
