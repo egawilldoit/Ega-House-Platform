@@ -144,7 +144,7 @@ describe('mobile session refresh single-flight', () => {
 
   it('clears the session once when concurrent mobileApiFetch retries share a failed refresh', async () => {
     const handlers = makeHandlers();
-    jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+    jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith('/api/mobile/auth/refresh')) {
         return { ok: false, status: 400 } as unknown as Response;
