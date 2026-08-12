@@ -126,9 +126,21 @@ export async function getMobileSessionAccessToken(): Promise<string | null> {
   return bundle?.session.accessToken ?? null;
 }
 
+/**
+ * In-flight refresh promise shared by every caller. Concurrent authenticated
+ * 401s all await the SAME refresh so a rotating refresh token is used by
+ * exactly one request at a time (single-flight).
+ */
+let refreshInFlight: Promise<boolean> | null = null;
+
 /** Best-effort refresh through the configured session handlers. */
 export function refreshMobileSessionIfConfigured(): Promise<boolean> {
-  return performRefresh();
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 async function performRefresh() {
