@@ -29,7 +29,7 @@
     "domain:typecheck": "npm run typecheck --workspace @ega/domain",
     "lint": "eslint",
     "lint:changed": "node scripts/ci/lint-regression.mjs changed",
-    "lint:report": "node scripts/ci/lint-regression.mjs report",
+    "lint:report": "node scripts/ci/lint-regression.mjs report && node scripts/ci/lint-diagnostics.mjs",
     "mobile:bundle": "npm run validate:bundle --workspace @ega/mobile",
     "mobile:doctor": "npm run doctor --workspace @ega/mobile",
     "mobile:prebuild:android": "npm run prebuild:android --workspace @ega/mobile",
