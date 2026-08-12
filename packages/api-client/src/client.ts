@@ -3,18 +3,21 @@
  *
  * Platform-neutral by construction: it depends only on global `fetch` and
  * never imports Expo, React, React Native, Next.js, Supabase, or any
- * application/data-access internals. Token acquisition is injected through
- * `getAccessToken` (the client owns no storage and no session state), and
- * `onAuthError` lets callers react to server-side 401s without the client
- * knowing how sessions are persisted or refreshed.
+ * application/data-access internals. Token acquisition and optional refresh
+ * are injected; the client owns no storage and no session state.
  */
 
 import { createGoalsApi, type GoalsApi } from "./goals";
-import { HttpClient, type AuthErrorHandler, type TokenProvider } from "./http";
+import {
+  HttpClient,
+  type AuthErrorHandler,
+  type RefreshAccessToken,
+  type TokenProvider,
+} from "./http";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
 import { createTodayApi, type TodayApi } from "./today";
-import type { ApiResult, ApiErrorPayload } from "./errors";
+import type { ApiErrorPayload, ApiResult } from "./errors";
 import type { HealthResponse } from "./types";
 
 export type EgaApiClientOptions = {
@@ -22,7 +25,12 @@ export type EgaApiClientOptions = {
   baseUrl: string;
   /** Supplies the bearer access token for authenticated requests. */
   getAccessToken: TokenProvider;
-  /** Invoked on server-side 401; session refresh remains caller-owned. */
+  /**
+   * Caller-owned refresh operation used once after an authenticated 401.
+   * Returns true only when `getAccessToken` can now supply a refreshed token.
+   */
+  refreshAccessToken?: RefreshAccessToken;
+  /** Invoked only for terminal server-side authentication failures. */
   onAuthError?: AuthErrorHandler;
   /** Injectable fetch for tests/platform adapters. */
   fetch?: typeof globalThis.fetch;
@@ -41,6 +49,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
   const http = new HttpClient({
     baseUrl: options.baseUrl,
     getAccessToken: options.getAccessToken,
+    refreshAccessToken: options.refreshAccessToken,
     onAuthError: options.onAuthError,
     fetch: options.fetch,
   });

@@ -1,17 +1,9 @@
 /**
  * Mobile binding for the platform-neutral @ega/api-client transport.
  *
- * The client (packages/api-client) owns no session state: it asks an
- * injected token provider for the Authorization header on every /api/*
- * request. This module supplies that provider from the mobile-owned
- * session layer (the same handlers AuthProvider configures in
- * `lib/api/client.ts`) and exposes a lazily-created singleton so feature
- * wrappers (`lib/api/projects.ts`, `lib/api/goals.ts`) stay thin.
- *
- * Mobile architecture rules (mobile-no-application / mobile-no-data-access
- * / mobile-no-server / mobile-no-db) are respected: this layer only ever
- * talks to the typed HTTP client — never to application, data-access, or
- * database internals.
+ * The client owns no session state: it asks the mobile-owned session layer
+ * for the current access token and, after an authenticated 401, may invoke
+ * the mobile-owned refresh operation exactly once before retrying.
  */
 import {
   createEgaApiClient,
@@ -28,21 +20,14 @@ let mobileEgaClient: EgaApiClient | null = null;
 
 /**
  * Lazily-created singleton client bound to the mobile API base URL and the
- * mobile session token provider.
+ * mobile session token/refresh providers.
  */
 export function getMobileEgaApiClient(): EgaApiClient {
   if (!mobileEgaClient) {
     mobileEgaClient = createEgaApiClient({
       baseUrl: getApiBaseUrl(),
       getAccessToken: () => getMobileSessionAccessToken(),
-      onAuthError: () => {
-        // The mobile session layer owns refresh/expiry handling; trigger a
-        // best-effort refresh so the next request carries a fresh token.
-        // The failed request still surfaces its UNAUTHENTICATED result.
-        refreshMobileSessionIfConfigured().catch(() => {
-          // Best-effort; the query layer reports the error either way.
-        });
-      },
+      refreshAccessToken: () => refreshMobileSessionIfConfigured(),
     });
   }
 
