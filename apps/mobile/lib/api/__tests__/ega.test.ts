@@ -31,6 +31,25 @@ function makeFakeClient(): EgaApiClient {
       archive: jest.fn(),
       unarchive: jest.fn(),
     },
+    tasks: {
+      list: jest.fn(async () => ({ ok: true as const, data: { tasks: [] } })),
+      get: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      archive: jest.fn(),
+      unarchive: jest.fn(),
+      createReminder: jest.fn(),
+      cancelReminder: jest.fn(),
+      setRecurrence: jest.fn(),
+      clearRecurrence: jest.fn(),
+    },
+    today: {
+      get: jest.fn(async () => ({ ok: true as const, data: { date: '2026-08-10', tasks: [], summary: { total: 0, completed: 0, remaining: 0 } } })),
+      plan: jest.fn(),
+      remove: jest.fn(),
+      updateStatus: jest.fn(),
+      clearCompleted: jest.fn(),
+    },
   };
 }
 
@@ -60,13 +79,16 @@ describe('getMobileEgaApiClient', () => {
     expect(getMobileEgaApiClient()).toBe(fake);
   });
 
-  it('rebuilds the real client after a reset', () => {
+  it('rebuilds the real client after a reset with the full Wave 2 surface', () => {
     setMobileEgaApiClientForTesting(makeFakeClient());
     setMobileEgaApiClientForTesting(null);
-    // A real client is created lazily; it must expose the full surface.
     const client = getMobileEgaApiClient();
     expect(typeof client.projects.list).toBe('function');
     expect(typeof client.goals.list).toBe('function');
+    expect(typeof client.tasks.list).toBe('function');
+    expect(typeof client.tasks.setRecurrence).toBe('function');
+    expect(typeof client.today.get).toBe('function');
+    expect(typeof client.today.clearCompleted).toBe('function');
     expect(typeof client.health).toBe('function');
   });
 });
@@ -77,8 +99,6 @@ describe('getMobileSessionAccessToken', () => {
   });
 
   it('returns null before session handlers are configured', async () => {
-    // configureMobileApiClient is idempotent; reconfigure with a null bundle
-    // to simulate the pre-bootstrap state.
     configureMobileApiClient({
       getSession: async () => null,
       setSession: async () => {},

@@ -11,7 +11,14 @@
     "./projects/read-model": "./src/projects/read-model.ts",
     "./goals/ports": "./src/goals/ports.ts",
     "./goals/service": "./src/goals/service.ts",
-    "./goals/read-model": "./src/goals/read-model.ts"
+    "./goals/read-model": "./src/goals/read-model.ts",
+    "./tasks/ports": "./src/tasks/ports.ts",
+    "./tasks/mutations-ports": "./src/tasks/mutations-ports.ts",
+    "./tasks/service": "./src/tasks/service.ts",
+    "./tasks/read-model": "./src/tasks/read-model.ts",
+    "./tasks/recurrence": "./src/tasks/recurrence.ts",
+    "./today/read-model": "./src/today/read-model.ts",
+    "./today/service": "./src/today/service.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

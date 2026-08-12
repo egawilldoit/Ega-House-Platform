@@ -1,7 +1,6 @@
 /**
- * @ega/api-client — cross-platform typed HTTP client for the EGA House
- * transport (@ega/server). Consumes the PR5 Hono contract for projects and
- * goals with injected token acquisition; no platform SDKs, no storage.
+ * @ega/api-client — cross-platform typed HTTP client for EGA House.
+ * Owns transport mechanics only; platform storage/session state stays outside.
  */
 
 export { createEgaApiClient } from "./client";
@@ -9,6 +8,16 @@ export type { EgaApiClient, EgaApiClientOptions } from "./client";
 
 export type { ProjectsApi } from "./projects";
 export type { GoalsApi } from "./goals";
+export type {
+  TasksApi,
+  TaskListQuery,
+  TaskApiRecord,
+  TaskApiReminder,
+  TaskApiRecurrence,
+  TaskUpdateInput,
+  SetTaskRecurrenceInput,
+} from "./tasks";
+export type { TodayApi, TodayApiReadModel } from "./today";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
 
