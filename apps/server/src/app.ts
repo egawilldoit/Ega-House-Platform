@@ -2,7 +2,10 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { createMiddleware } from "hono/factory";
 
-import { createAuthenticatedActor, type AuthenticatedActor } from "@ega/application";
+import {
+  createAuthenticatedActorFromIdentity,
+  type AuthenticatedActor,
+} from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createAuthenticatedClient, extractBearerToken, verifyAccessToken } from "./auth";
@@ -12,12 +15,6 @@ import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
 import { createTodayRoutes } from "./routes/today";
 
-/**
- * Transport dependencies. Everything the routes need is injected so the
- * transport can be exercised with a fake token verifier and a fake/controlled
- * Supabase client in tests. Production wiring is provided by
- * `createProductionApp`.
- */
 export type ServerDependencies = {
   /** Verify a bearer token server-side; resolves to the verified user id or null. */
   verifyToken: (token: string) => Promise<string | null>;
@@ -36,11 +33,6 @@ export const UNAUTHENTICATED_RESPONSE = {
   error: { code: "UNAUTHENTICATED", message: "Authentication required." },
 } as const;
 
-/**
- * Parse the request body strictly as a JSON object. Returns null when the
- * body is absent, not valid JSON, or not a plain object — the transport then
- * answers 400 instead of crashing the handler.
- */
 export async function readJsonBody(
   c: Context,
 ): Promise<Record<string, unknown> | null> {
@@ -73,9 +65,13 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
         return c.json(UNAUTHENTICATED_RESPONSE, 401);
       }
 
-      // The actor identity ALWAYS comes from the verified token — never from
-      // the request body, URL, query string, or a custom user-id header.
-      c.set("actor", createAuthenticatedActor(userId));
+      // The identity object is constructed only after bearer verification.
+      // Request bodies, query parameters, paths and custom headers cannot
+      // select the application actor.
+      c.set(
+        "actor",
+        createAuthenticatedActorFromIdentity({ id: userId }),
+      );
       c.set("client", dependencies.createRequestClient(token));
 
       await next();
@@ -104,11 +100,6 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   return app;
 }
 
-/**
- * Production wiring: read Supabase credentials from the environment, verify
- * bearer tokens server-side with `auth.getUser`, and build the request-scoped
- * client carrying the verified token for PostgREST/RLS.
- */
 export function createProductionApp(
   dependencies: Partial<ServerDependencies> = {},
 ): Hono<{ Variables: ServerVariables }> {
