@@ -219,7 +219,7 @@ export async function mobileApiFetch<T>(
   });
 
   if (response.status === 401 && auth && retryOnUnauthorized && sessionHandlers) {
-    const refreshed = await performRefresh();
+    const refreshed = await refreshMobileSessionIfConfigured();
     if (refreshed) {
       return mobileApiFetch<T>(path, {
         ...options,

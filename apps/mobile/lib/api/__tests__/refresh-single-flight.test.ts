@@ -8,7 +8,11 @@
  * produced 7 refresh calls; on one run the rotation race cleared the session
  * 7 times and only 1 of 8 requests succeeded.
  */
-import { configureMobileApiClient, refreshMobileSessionIfConfigured } from '@/lib/api/client';
+import {
+  configureMobileApiClient,
+  mobileApiFetch,
+  refreshMobileSessionIfConfigured,
+} from '@/lib/api/client';
 
 type SessionBundle = {
   session: { accessToken: string; refreshToken: string; expiresAt: number };
@@ -16,14 +20,19 @@ type SessionBundle = {
 };
 
 function makeHandlers() {
-  const setSession = jest.fn(async () => {});
-  const clearSession = jest.fn(async () => {});
+  let stored: SessionBundle | null = {
+    session: { accessToken: 'expired-access-token', refreshToken: 'refresh-token-1', expiresAt: 0 },
+    user: { id: 'user-1', email: 'user@example.com' },
+  };
+  const setSession = jest.fn(async (value: SessionBundle) => {
+    stored = value;
+  });
+  const clearSession = jest.fn(async () => {
+    stored = null;
+  });
   const onUnauthorized = jest.fn(() => {});
   const handlers = {
-    getSession: jest.fn(async (): Promise<SessionBundle | null> => ({
-      session: { accessToken: 'expired-access-token', refreshToken: 'refresh-token-1', expiresAt: 0 },
-      user: { id: 'user-1', email: 'user@example.com' },
-    })),
+    getSession: jest.fn(async (): Promise<SessionBundle | null> => stored),
     setSession,
     clearSession,
     onUnauthorized,
@@ -86,5 +95,71 @@ describe('mobile session refresh single-flight', () => {
     expect(await first).toBe(true);
     expect(await late).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires exactly one refresh for concurrent mobileApiFetch 401 retries and shares the result', async () => {
+    makeHandlers();
+
+    let refreshCalls = 0;
+    let dataCalls = 0;
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/mobile/auth/refresh')) {
+        refreshCalls += 1;
+        if (refreshCalls > 1) {
+          return { ok: false, status: 400 } as unknown as Response;
+        }
+        return okRefreshResponse();
+      }
+
+      dataCalls += 1;
+      const headers = new Headers((init as RequestInit)?.headers);
+      const token = headers.get('Authorization')?.replace(/^Bearer\s+/, '') ?? '';
+      if (token === 'expired-access-token') {
+        return {
+          ok: false,
+          status: 401,
+          text: async () => '{"error":{"message":"expired"}}',
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+        text: async () => '{"ok":true}',
+      } as unknown as Response;
+    });
+
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        mobileApiFetch<{ ok: boolean }>(`/api/mobile/tasks?i=${index}`),
+      ),
+    );
+
+    expect(refreshCalls).toBe(1);
+    expect(dataCalls).toBe(16);
+    expect(fetchMock).toHaveBeenCalledTimes(17);
+    expect(results.every((result) => result.ok === true)).toBe(true);
+  });
+
+  it('clears the session once when concurrent mobileApiFetch retries share a failed refresh', async () => {
+    const handlers = makeHandlers();
+    jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/api/mobile/auth/refresh')) {
+        return { ok: false, status: 400 } as unknown as Response;
+      }
+      return { ok: false, status: 401 } as unknown as Response;
+    });
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 8 }, (_, index) =>
+        mobileApiFetch<{ ok: boolean }>(`/api/mobile/tasks?i=${index}`),
+      ),
+    );
+
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    expect(handlers.clearSession).toHaveBeenCalledTimes(1);
+    expect(handlers.onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });
