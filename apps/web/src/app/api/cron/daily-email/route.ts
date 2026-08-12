@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import {
+  authorizeCronRequest,
+  missingCronEnvResponse,
+} from "@/lib/cron/route-runtime";
+import {
   buildDailyAssistantEmail,
   isDailyAssistantEmailType,
   type DailyAssistantEmailType,
@@ -8,31 +12,17 @@ import {
 import { getAssistantEmailData } from "@/lib/email/assistant-data";
 import { getEmailEnvConfig, getResendClient } from "@/lib/email/resend";
 
-function missingEnvResponse(missing: string[]) {
-  return NextResponse.json(
-    { ok: false, error: `Missing required environment variable(s): ${missing.join(", ")}` },
-    { status: 500 },
-  );
-}
-
 function errorResponse(type: DailyAssistantEmailType | null, error: unknown, status = 500) {
   return NextResponse.json({ ok: false, type, error }, { status });
 }
 
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return missingEnvResponse(["CRON_SECRET"]);
-  }
-
-  const authorization = request.headers.get("authorization");
-  if (authorization !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  }
+  const unauthorized = authorizeCronRequest(request);
+  if (unauthorized) return unauthorized;
 
   const envResult = getEmailEnvConfig();
   if (!envResult.ok) {
-    return missingEnvResponse(envResult.missing);
+    return missingCronEnvResponse(envResult.missing);
   }
 
   const url = new URL(request.url);
