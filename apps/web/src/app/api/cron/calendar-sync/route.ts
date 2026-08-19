@@ -3,22 +3,12 @@ import { NextResponse } from "next/server";
 import { processPendingCalendarSyncJobs } from "@/lib/services/calendar-sync-service";
 import { getSupabaseServiceClient } from "@/lib/supabase/service";
 
-function missingEnvResponse(missing: string[]) {
-  return NextResponse.json(
-    { ok: false, error: `Missing required environment variable(s): ${missing.join(", ")}` },
-    { status: 500 },
-  );
-}
+import { authorizeCronRequest } from "../_lib/runtime";
 
 export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return missingEnvResponse(["CRON_SECRET"]);
-  }
-
-  const authorization = request.headers.get("authorization");
-  if (authorization !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const authorizationFailure = authorizeCronRequest(request);
+  if (authorizationFailure) {
+    return authorizationFailure;
   }
 
   try {
