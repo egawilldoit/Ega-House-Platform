@@ -20,6 +20,20 @@ let sessionHandlers: ApiClientSessionHandlers | null = null;
 const DEFAULT_PRODUCTION_API_BASE_URL = 'https://www.egawilldoit.online';
 const API_DEBUG_PREFIX = '[mobile-api]';
 
+export type ApiBaseUrlSource = 'env' | 'dev-host' | 'production-default';
+
+export type ResolvedApiBaseUrl = {
+  url: string;
+  source: ApiBaseUrlSource;
+};
+
+type ResolverEnv = { EXPO_PUBLIC_API_BASE_URL?: string };
+
+type ResolverConstants = {
+  expoConfig?: { hostUri?: string } | null;
+  manifest2?: { extra?: { expoClient?: { hostUri?: string } | null } | null } | null;
+};
+
 function trimTrailingSlash(value: string) {
   return value.replace(/\/+$/, '');
 }
@@ -28,23 +42,46 @@ function isExpoDevRuntime() {
   return __DEV__;
 }
 
-function resolveFallbackApiBaseUrl() {
-  const hostUri =
-    Constants.expoConfig?.hostUri ??
-    Constants.manifest2?.extra?.expoClient?.hostUri ??
-    null;
-
-  if (isExpoDevRuntime() && hostUri) {
-    const host = hostUri.split(':')[0];
-    return `http://${host}:3000`;
+export function resolveApiBaseUrl(
+  env: ResolverEnv,
+  constants: ResolverConstants,
+  isDev: boolean,
+): ResolvedApiBaseUrl {
+  const envUrl = env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (envUrl) {
+    return { url: trimTrailingSlash(envUrl), source: 'env' };
   }
 
-  return DEFAULT_PRODUCTION_API_BASE_URL;
+  const hostUri =
+    constants.expoConfig?.hostUri ??
+    constants.manifest2?.extra?.expoClient?.hostUri ??
+    null;
+
+  if (isDev && hostUri) {
+    const host = hostUri.split(':')[0];
+    return { url: trimTrailingSlash(`http://${host}:3000`), source: 'dev-host' };
+  }
+
+  return { url: DEFAULT_PRODUCTION_API_BASE_URL, source: 'production-default' };
+}
+
+let didWarnProductionDefault = false;
+
+function resolveCurrentApiBaseUrl(): ResolvedApiBaseUrl {
+  return resolveApiBaseUrl(process.env, Constants, isExpoDevRuntime());
 }
 
 export function getApiBaseUrl() {
-  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
-  return trimTrailingSlash(envUrl || resolveFallbackApiBaseUrl());
+  const resolved = resolveCurrentApiBaseUrl();
+
+  if (resolved.source === 'production-default' && isExpoDevRuntime() && !didWarnProductionDefault) {
+    didWarnProductionDefault = true;
+    console.warn(
+      `${API_DEBUG_PREFIX} no EXPO_PUBLIC_API_BASE_URL set; falling back to production default ${resolved.url}`,
+    );
+  }
+
+  return resolved.url;
 }
 
 export function configureMobileApiClient(handlers: ApiClientSessionHandlers) {
@@ -95,6 +132,7 @@ async function fetchMobileApi(endpoint: string, init: RequestInit) {
     logApiDiagnostic('network-error', {
       endpoint,
       apiBaseUrl: getApiBaseUrl(),
+      apiBaseUrlSource: resolveCurrentApiBaseUrl().source,
       hasExpoPublicApiBaseUrl: Boolean(process.env.EXPO_PUBLIC_API_BASE_URL?.trim()),
       isDev: isExpoDevRuntime(),
       errorName: error instanceof Error ? error.name : typeof error,
