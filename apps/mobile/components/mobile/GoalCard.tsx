@@ -38,10 +38,12 @@ export function goalStatusTone(status: string) {
 export function GoalCard({
   goal,
   saving,
+  onPress,
   onActions,
 }: {
   goal: GoalReadModel;
   saving?: boolean;
+  onPress?: () => void;
   onActions: () => void;
 }) {
   const healthTone = goalHealthTone(goal.health);
@@ -55,7 +57,7 @@ export function GoalCard({
         <View style={[styles.leftAccent, { backgroundColor: healthTone.color }]} />
         <Pressable
           disabled={saving}
-          onPress={onActions}
+          onPress={onPress ?? onActions}
           style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
         >
           <View style={styles.titleRow}>

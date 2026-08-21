@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tansta
 import type {
   CreateGoalInput,
   GoalHealth,
+  GoalReadModel,
   GoalStatus,
   GoalViewFilter,
+  GoalsReadModel,
 } from '@ega/api-client';
 import {
   archiveMobileGoal,
@@ -20,6 +22,7 @@ export const goalQueryKeys = {
   all: ['goals'] as const,
   lists: () => ['goals', 'list'] as const,
   list: (view: GoalViewFilter = 'active') => ['goals', 'list', view] as const,
+  detail: (goalId: string) => ['goals', 'detail', goalId] as const,
 };
 
 export function useGoalListQuery(view: GoalViewFilter = 'active') {
@@ -29,8 +32,29 @@ export function useGoalListQuery(view: GoalViewFilter = 'active') {
   });
 }
 
+export function useGoalDetailQuery(goalId: string) {
+  const queryClient = useQueryClient();
+
+  return useQuery({
+    queryKey: goalQueryKeys.detail(goalId),
+    queryFn: async (): Promise<GoalReadModel | null> => {
+      const readModel = await listMobileGoals('all');
+      return readModel.goals.find((goal) => goal.id === goalId) ?? null;
+    },
+    initialData: () => {
+      const cached = queryClient.getQueryData<GoalsReadModel>(goalQueryKeys.list('all'));
+      return cached?.goals.find((goal) => goal.id === goalId);
+    },
+    enabled: goalId.length > 0,
+  });
+}
+
 function invalidateGoalLists(queryClient: QueryClient) {
   queryClient.invalidateQueries({ queryKey: goalQueryKeys.lists() }).catch(() => {
+    // Best-effort background refresh.
+  });
+  // Goal detail views derive from the canonical goals list.
+  queryClient.invalidateQueries({ queryKey: ['goals', 'detail'] }).catch(() => {
     // Best-effort background refresh.
   });
   // Goals surface inside project detail views.
