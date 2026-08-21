@@ -1,16 +1,81 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
+import type { ProjectStatus } from '@ega/api-client';
+import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { formatProjectToken, projectStatusTone } from '@/components/mobile/ProjectCard';
 import { EmptyState, MobileScreen, MobileScreenHeader, SkeletonCard } from '@/components/mobile/primitives';
 import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
-import { formatProjectToken, projectStatusTone } from '@/components/mobile/ProjectCard';
-import { useProjectBySlugQuery } from '@/features/projects/query';
+import {
+  useArchiveProjectMutation,
+  useProjectBySlugQuery,
+  useUnarchiveProjectMutation,
+  useUpdateProjectStatusMutation,
+} from '@/features/projects/query';
+
+const PROJECT_STATUS_OPTIONS: ProjectStatus[] = ['planned', 'active', 'done', 'paused'];
 
 export default function ProjectDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const projectQuery = useProjectBySlugQuery(slug);
+  const [sheetVisible, setSheetVisible] = useState(false);
+
+  const updateStatusMutation = useUpdateProjectStatusMutation();
+  const archiveMutation = useArchiveProjectMutation();
+  const unarchiveMutation = useUnarchiveProjectMutation();
+
+  const sheetItems = useMemo((): ActionSheetItem[] => {
+    const project = projectQuery.data?.project;
+    if (!project) {
+      return [];
+    }
+
+    const statusItems: ActionSheetItem[] = PROJECT_STATUS_OPTIONS.map((status) => ({
+      key: `status-${status}`,
+      label: status.replaceAll('_', ' '),
+      disabled: project.status === status,
+      onPress: () => {
+        setSheetVisible(false);
+        if (project.status !== status) {
+          updateStatusMutation.mutate({ projectId: project.id, status });
+        }
+      },
+    }));
+
+    const archiveItems: ActionSheetItem[] =
+      project.status === 'archived'
+        ? [
+            {
+              key: 'unarchive',
+              label: 'Unarchive project',
+              onPress: () => {
+                setSheetVisible(false);
+                unarchiveMutation.mutate(project.id);
+              },
+            },
+          ]
+        : [
+            {
+              key: 'archive',
+              label: 'Archive project',
+              destructive: true,
+              onPress: () => {
+                setSheetVisible(false);
+                archiveMutation.mutate(project.id);
+              },
+            },
+          ];
+
+    return [...statusItems, ...archiveItems];
+  }, [
+    projectQuery.data,
+    updateStatusMutation,
+    archiveMutation,
+    unarchiveMutation,
+  ]);
 
   if (projectQuery.isLoading) {
     return (
@@ -63,6 +128,13 @@ export default function ProjectDetailScreen() {
                 leftIcon={<View style={[styles.pillDot, { backgroundColor: tone.dot }]} />}
                 tone={project.status === 'done' ? 'success' : 'primary'}
               />
+              <View style={styles.actionsSpacer} />
+              <GlassButton
+                size="sm"
+                title="Actions"
+                variant="ghost"
+                onPress={() => setSheetVisible(true)}
+              />
             </View>
           </View>
         }
@@ -86,13 +158,26 @@ export default function ProjectDetailScreen() {
         )}
         showsVerticalScrollIndicator={false}
       />
+
+      <ActionSheet
+        items={sheetItems}
+        onClose={() => setSheetVisible(false)}
+        subtitle={project.name}
+        title="Project actions"
+        visible={sheetVisible}
+      />
     </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  actionsSpacer: {
+    flex: 1,
+  },
   badgeRow: {
+    alignItems: 'center',
     flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
     marginBottom: mobileTheme.spacing.md,
     marginTop: mobileTheme.spacing.sm,
   },
