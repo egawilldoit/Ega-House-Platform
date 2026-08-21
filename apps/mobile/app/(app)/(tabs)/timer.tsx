@@ -5,17 +5,8 @@ import { Animated, Easing, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { GlassButton, GlassCard, GlassSegmentedControl } from '@/components/mobile/glass';
 import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
-
-type TimerMode = 'focus' | 'short_break' | 'long_break';
-
-const TIMER_MODES: Record<
-  TimerMode,
-  { label: string; minutes: number; icon: keyof typeof Ionicons.glyphMap }
-> = {
-  focus: { label: 'Focus', minutes: 25, icon: 'flame-outline' },
-  short_break: { label: 'Short Break', minutes: 5, icon: 'cafe-outline' },
-  long_break: { label: 'Long Break', minutes: 15, icon: 'hourglass-outline' },
-};
+import { TIMER_MODES, type TimerMode } from '@/features/timer/modes';
+import { useTimerRuntime } from '@/features/timer/useTimerRuntime';
 
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
@@ -25,15 +16,20 @@ function formatTime(totalSeconds: number) {
 }
 
 export default function TimerScreen() {
-  const [mode, setMode] = useState<TimerMode>('focus');
-  const [remainingSeconds, setRemainingSeconds] = useState(TIMER_MODES.focus.minutes * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [completedFocusSessions, setCompletedFocusSessions] = useState(0);
-  const [completedFocusMinutes, setCompletedFocusMinutes] = useState(0);
+  const {
+    mode,
+    remainingSeconds,
+    isRunning,
+    totalSeconds,
+    completedFocusSessions,
+    completedFocusMinutes,
+    changeMode,
+    resetTimer,
+    toggleTimer,
+  } = useTimerRuntime();
   const [pulse] = useState(() => new Animated.Value(0));
   const [entrance] = useState(() => new Animated.Value(0));
 
-  const totalSeconds = TIMER_MODES[mode].minutes * 60;
   const progress = totalSeconds === 0 ? 0 : 1 - remainingSeconds / totalSeconds;
   const progressPercent = Math.round(progress * 100);
 
@@ -98,53 +94,6 @@ export default function TimerScreen() {
 
     return () => loop.stop();
   }, [isRunning, pulse]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRemainingSeconds((current) => {
-        if (current <= 1) {
-          clearInterval(interval);
-          setIsRunning(false);
-
-          if (mode === 'focus') {
-            setCompletedFocusSessions((value) => value + 1);
-            setCompletedFocusMinutes((value) => value + TIMER_MODES.focus.minutes);
-          }
-
-          return 0;
-        }
-
-        return current - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isRunning, mode]);
-
-  function changeMode(nextMode: TimerMode) {
-    setMode(nextMode);
-    setIsRunning(false);
-    setRemainingSeconds(TIMER_MODES[nextMode].minutes * 60);
-  }
-
-  function resetTimer() {
-    setIsRunning(false);
-    setRemainingSeconds(totalSeconds);
-  }
-
-  function toggleTimer() {
-    if (remainingSeconds <= 0) {
-      setRemainingSeconds(totalSeconds);
-      setIsRunning(true);
-      return;
-    }
-
-    setIsRunning((current) => !current);
-  }
 
   return (
     <MobileScreen padded={false}>
