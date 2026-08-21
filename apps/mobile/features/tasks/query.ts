@@ -1,11 +1,15 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  archiveMobileTask,
   cancelMobileTaskReminder,
   createMobileTask,
   createMobileTaskReminder,
   getMobileTaskById,
   listMobileTasks,
+  pinMobileTask,
+  unarchiveMobileTask,
+  unpinMobileTask,
   type ListMobileTasksParams,
   updateMobileTask,
 } from '@/lib/api/tasks';
@@ -177,4 +181,37 @@ export function useCancelTaskReminderMutation() {
       });
     },
   });
+}
+
+function useTaskActionMutation(action: (taskId: string) => Promise<{ task: MobileTaskListItem }>) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (taskId: string) => action(taskId),
+    onSuccess: (response) => {
+      applyTaskToTaskCaches(queryClient, response.task);
+      queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists() }).catch(() => {
+        // Best-effort background refresh.
+      });
+      queryClient.invalidateQueries({ queryKey: ['today'] }).catch(() => {
+        // Best-effort background refresh.
+      });
+    },
+  });
+}
+
+export function useArchiveTaskMutation() {
+  return useTaskActionMutation(archiveMobileTask);
+}
+
+export function useUnarchiveTaskMutation() {
+  return useTaskActionMutation(unarchiveMobileTask);
+}
+
+export function usePinTaskMutation() {
+  return useTaskActionMutation(pinMobileTask);
+}
+
+export function useUnpinTaskMutation() {
+  return useTaskActionMutation(unpinMobileTask);
 }
