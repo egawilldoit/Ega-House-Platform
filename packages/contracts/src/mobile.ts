@@ -231,3 +231,17 @@ export type TimerWorkspaceState = {
   } | null;
   summary: TimerSessionSummary;
 };
+
+export type MobileTimerResponse = {
+  ok: true;
+  timer: TimerWorkspaceState;
+};
+
+export type MobileTimerStopResponse = {
+  ok: true;
+  stoppedTaskId: string | null;
+  timer: TimerWorkspaceState;
+};
+
+export type MobileTimerStartInput = { taskId: string };
+export type MobileTimerStopInput = { sessionId?: string | null };
