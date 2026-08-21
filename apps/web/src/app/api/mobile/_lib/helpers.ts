@@ -6,6 +6,11 @@ import type {
   MobileTaskListItem,
 } from "@/lib/contracts/mobile";
 import { captureServerException } from "@/lib/monitoring/capture-server-exception";
+import type { TimerWorkspaceState } from "@/lib/contracts/mobile";
+import {
+  getActiveTimerSession,
+  getTimerSummary,
+} from "@/lib/services/timer-service";
 import {
   getTaskById,
   getTaskRecurrencesForTasks,
@@ -179,4 +184,31 @@ export async function getMobileTaskItemById(
       data: null,
     };
   }
+}
+
+export async function getMobileTimerState(
+  supabase: Parameters<typeof getTaskRemindersForTasks>[0],
+): Promise<{ errorMessage: string | null; data: TimerWorkspaceState | null }> {
+  const [activeSessionResult, summaryResult] = await Promise.all([
+    getActiveTimerSession({ supabase }),
+    getTimerSummary({ supabase }),
+  ]);
+
+  if (activeSessionResult.errorMessage || summaryResult.errorMessage || !summaryResult.data) {
+    return {
+      errorMessage:
+        activeSessionResult.errorMessage ??
+        summaryResult.errorMessage ??
+        "Unable to load the timer workspace right now.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: {
+      activeSession: activeSessionResult.data,
+      summary: summaryResult.data,
+    },
+  };
 }
