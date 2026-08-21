@@ -10,7 +10,6 @@ import type { TaskApiRecord } from '@ega/api-client';
 function makeCanonicalRecord(overrides: Partial<TaskApiRecord> = {}): TaskApiRecord {
   return {
     id: 'task-1',
-    ownerId: 'user-1',
     title: 'Write parity test',
     description: 'Prove adapter parity',
     blockedReason: null,
@@ -26,7 +25,7 @@ function makeCanonicalRecord(overrides: Partial<TaskApiRecord> = {}): TaskApiRec
     scheduledStartAt: null,
     scheduledEndAt: null,
     calendarSyncEnabled: false,
-    calendarReminderMinutes: null,
+    calendarReminderMinutes: 10,
     completedAt: null,
     createdAt: '2026-08-20T10:00:00.000Z',
     updatedAt: '2026-08-21T09:30:00.000Z',
