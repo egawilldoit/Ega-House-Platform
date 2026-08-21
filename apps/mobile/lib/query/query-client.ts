@@ -14,3 +14,17 @@ export function createMobileQueryClient() {
     },
   });
 }
+
+let mobileQueryClient: QueryClient | null = null;
+
+export function getMobileQueryClient(): QueryClient {
+  if (!mobileQueryClient) {
+    mobileQueryClient = createMobileQueryClient();
+  }
+
+  return mobileQueryClient;
+}
+
+export function clearMobileQueryCache() {
+  getMobileQueryClient().clear();
+}

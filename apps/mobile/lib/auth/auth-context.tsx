@@ -14,6 +14,7 @@ import {
   logoutMobileSession as logoutApiSession,
   refreshMobileSession as refreshApiSession,
 } from '@/lib/api/auth';
+import { clearMobileQueryCache } from '@/lib/query/query-client';
 import { mobileSessionStorage } from '@/lib/storage/session';
 import type { MobileAuthSession, MobileAuthUser, StoredMobileSession } from '@/types/auth';
 
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(async () => {
     setSessionBundle(null);
     await mobileSessionStorage.clearSession();
+    clearMobileQueryCache();
   }, []);
 
   const signOut = useCallback(async () => {
@@ -73,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
+      clearMobileQueryCache();
       await persistSession({
         session: response.session,
         user: response.user,
@@ -95,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       onUnauthorized: () => {
         setError('Your session expired. Please sign in again.');
-        setSessionBundle(null);
+        void clearSession();
       },
     });
   }, [clearSession, sessionBundle]);
