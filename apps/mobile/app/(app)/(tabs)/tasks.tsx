@@ -28,7 +28,7 @@ import { mobileTheme } from '@/components/mobile/theme';
 import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
 import type {
   MobileTaskDueFilter,
-  MobileTaskListItem,
+  MobileTaskListItemView,
   MobileTaskPriority,
   MobileTaskStatus,
   UpdateTaskInput,
@@ -36,7 +36,7 @@ import type {
 
 const STATUS_OPTIONS: MobileTaskStatus[] = ['todo', 'in_progress', 'done', 'blocked'];
 const PRIORITY_OPTIONS: MobileTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
-const EMPTY_TASKS: MobileTaskListItem[] = [];
+const EMPTY_TASKS: MobileTaskListItemView[] = [];
 const STATUS_FILTER_OPTIONS: Array<{ label: string; value: MobileTaskStatus | 'all' }> = [
   { label: 'All', value: 'all' },
   { label: 'Todo', value: 'todo' },
@@ -92,7 +92,7 @@ function buildDueDateOptions() {
   ];
 }
 
-function getStatusOptions(task: MobileTaskListItem) {
+function getStatusOptions(task: MobileTaskListItemView) {
   if (task.status === 'blocked') {
     return STATUS_OPTIONS;
   }
@@ -114,7 +114,7 @@ export default function TasksScreen() {
   const [updatingTaskIds, setUpdatingTaskIds] = useState<Record<string, boolean>>({});
   const [taskErrors, setTaskErrors] = useState<Record<string, string | undefined>>({});
 
-  const tasks: MobileTaskListItem[] = tasksQuery.data?.tasks ?? EMPTY_TASKS;
+  const tasks: MobileTaskListItemView[] = tasksQuery.data?.tasks ?? EMPTY_TASKS;
   const totalTaskCount = tasksQuery.data?.counters.total ?? 0;
   const hasFilters = statusFilter !== 'all' || dueFilter !== 'all';
   const taskSummary = useMemo(() => {
@@ -460,7 +460,7 @@ export default function TasksScreen() {
                   router.push({ pathname: '/(app)/tasks/[id]', params: { id: item.id } })
                 }
                 priority={item.priority}
-                project={item.project.name}
+                project={item.project.name ?? ''}
                 saving={isUpdating}
                 status={item.status}
                 title={item.title}
@@ -481,7 +481,7 @@ export default function TasksScreen() {
         onClose={() => setActiveTaskId(null)}
         subtitle={
           activeTask
-            ? `${activeTask.project.name}${activeTask.goal ? ` · ${activeTask.goal.title}` : ''}`
+            ? `${activeTask.project.name ?? ''}${activeTask.goal ? ` · ${activeTask.goal.title ?? ''}` : ''}`
             : undefined
         }
         title={activeTask ? activeTask.title : 'Task actions'}

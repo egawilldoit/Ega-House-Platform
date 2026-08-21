@@ -1,5 +1,7 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { listMobileGoals } from '@/lib/api/goals';
+import { listMobileProjects } from '@/lib/api/projects';
 import {
   cancelMobileTaskReminder,
   createMobileTask,
@@ -11,8 +13,8 @@ import {
 } from '@/lib/api/tasks';
 import type {
   CreateTaskInput,
-  MobileTaskListItem,
-  MobileTaskListResponse,
+  MobileTaskListItemView,
+  MobileTaskListViewResponse,
   UpdateTaskInput,
 } from '@/types/tasks';
 
@@ -49,7 +51,7 @@ export const taskQueryKeys = {
   formOptions: () => ['tasks', 'form-options'] as const,
 };
 
-function upsertTaskInList(task: MobileTaskListItem, list: MobileTaskListItem[]) {
+function upsertTaskInList(task: MobileTaskListItemView, list: MobileTaskListItemView[]) {
   const existingIndex = list.findIndex((item) => item.id === task.id);
   if (existingIndex === -1) {
     return [task, ...list];
@@ -59,9 +61,9 @@ function upsertTaskInList(task: MobileTaskListItem, list: MobileTaskListItem[]) 
 }
 
 function applyTaskToTaskListCaches(
-  previous: MobileTaskListResponse | undefined,
-  task: MobileTaskListItem,
-): MobileTaskListResponse | undefined {
+  previous: MobileTaskListViewResponse | undefined,
+  task: MobileTaskListItemView,
+): MobileTaskListViewResponse | undefined {
   if (!previous) {
     return previous;
   }
@@ -72,8 +74,8 @@ function applyTaskToTaskListCaches(
   };
 }
 
-export function applyTaskToTaskCaches(queryClient: QueryClient, task: MobileTaskListItem) {
-  queryClient.setQueriesData<MobileTaskListResponse | undefined>(
+export function applyTaskToTaskCaches(queryClient: QueryClient, task: MobileTaskListItemView) {
+  queryClient.setQueriesData<MobileTaskListViewResponse | undefined>(
     { queryKey: taskQueryKeys.lists() },
     (previous) => applyTaskToTaskListCaches(previous, task),
   );
@@ -105,10 +107,13 @@ export function useTaskFormOptionsQuery() {
   return useQuery({
     queryKey: taskQueryKeys.formOptions(),
     queryFn: async () => {
-      const response = await listMobileTasks({ limit: 1 });
+      const [projects, goals] = await Promise.all([
+        listMobileProjects(),
+        listMobileGoals(),
+      ]);
       return {
-        projects: response.projects,
-        goals: response.goals,
+        projects: projects.projects.map((project) => ({ id: project.id, name: project.name })),
+        goals: goals.goals.map((goal) => ({ id: goal.id, title: goal.title })),
       };
     },
   });

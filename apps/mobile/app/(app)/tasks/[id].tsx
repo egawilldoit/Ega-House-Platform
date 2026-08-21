@@ -37,10 +37,10 @@ import {
   MOBILE_TASK_PRIORITY_VALUES,
   MOBILE_TASK_RECURRENCE_RULE_VALUES,
   MOBILE_TASK_STATUS_VALUES,
-  type MobileTaskListItem,
+  type MobileTaskListItemView,
   type MobileTaskPriority,
   type MobileTaskRecurrenceRule,
-  type MobileTaskReminder,
+  type MobileTaskReminderView,
   type MobileTaskStatus,
 } from '@/types/tasks';
 
@@ -139,7 +139,7 @@ function formatReminderDraft(value: Date | null) {
   });
 }
 
-function sortReminders(reminders: MobileTaskReminder[]) {
+function sortReminders(reminders: MobileTaskReminderView[]) {
   return [...reminders].sort((a, b) => {
     const aTime = new Date(a.remindAt).getTime();
     const bTime = new Date(b.remindAt).getTime();
@@ -154,7 +154,7 @@ function isoDateAtOffset(daysFromToday: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function createEditableDraft(task: MobileTaskListItem): EditableTaskFields {
+function createEditableDraft(task: MobileTaskListItemView): EditableTaskFields {
   return {
     status: task.status,
     priority: task.priority,
@@ -166,7 +166,7 @@ function createEditableDraft(task: MobileTaskListItem): EditableTaskFields {
   };
 }
 
-function isDraftDirty(task: MobileTaskListItem, draft: EditableTaskFields) {
+function isDraftDirty(task: MobileTaskListItemView, draft: EditableTaskFields) {
   const original = createEditableDraft(task);
 
   return (
@@ -455,8 +455,8 @@ export default function TaskDetailScreen() {
             <GlassCard variant="fake">
               <Text style={styles.taskTitle}>{task.title}</Text>
               <Text style={styles.meta}>
-                {task.project.name}
-                {task.goal ? ` · ${task.goal.title}` : ''}
+                {task.project.name ?? ''}
+                {task.goal ? ` · ${task.goal.title ?? ''}` : ''}
               </Text>
               <Text style={styles.meta}>Updated {formatTimestamp(task.updatedAt)}</Text>
             </GlassCard>
