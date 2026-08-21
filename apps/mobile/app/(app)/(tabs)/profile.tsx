@@ -1,6 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
 import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
@@ -46,30 +47,6 @@ export default function ProfileScreen() {
           </View>
         </GlassCard>
 
-        <GlassCard variant="fake" style={styles.menuCard} contentStyle={styles.menuCardContent}>
-          {[
-            { icon: 'person-outline', label: 'Account Settings' },
-            { icon: 'notifications-outline', label: 'Notifications' },
-            { icon: 'color-palette-outline', label: 'Appearance' },
-            { icon: 'shield-checkmark-outline', label: 'Privacy' },
-          ].map(({ icon, label }, index, arr) => (
-            <View key={label}>
-              <Pressable style={({ pressed }) => [styles.menuRow, pressed ? styles.menuRowPressed : null]}>
-                <View style={styles.menuIconWrap}>
-                  <Ionicons
-                    name={icon as keyof typeof Ionicons.glyphMap}
-                    size={18}
-                    color={mobileTheme.colors.accent}
-                  />
-                </View>
-                <Text style={styles.menuLabel}>{label}</Text>
-                <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
-              </Pressable>
-              {index < arr.length - 1 ? <View style={styles.menuDivider} /> : null}
-            </View>
-          ))}
-        </GlassCard>
-
         <GlassButton
           leftIcon={<Ionicons name="log-out-outline" size={18} color={mobileTheme.colors.textOnAccent} />}
           onPress={onLogout}
@@ -78,7 +55,9 @@ export default function ProfileScreen() {
           variant="danger"
         />
 
-        <Text style={styles.versionText}>EGA House · v1.0.0</Text>
+        <Text style={styles.versionText}>
+          {`EGA House · v${Constants.expoConfig?.version ?? '1.0.0'}`}
+        </Text>
       </ScrollView>
     </MobileScreen>
   );
@@ -117,37 +96,6 @@ const styles = StyleSheet.create({
   },
   logoutBtn: {
     marginBottom: 20,
-  },
-  menuCard: { marginBottom: 14, overflow: 'hidden' },
-  menuCardContent: { padding: 0 },
-  menuDivider: {
-    backgroundColor: mobileTheme.colors.border,
-    height: StyleSheet.hairlineWidth,
-    marginLeft: 62,
-  },
-  menuIconWrap: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderRadius: mobileTheme.radius.sm,
-    height: 32,
-    justifyContent: 'center',
-    width: 32,
-  },
-  menuLabel: {
-    color: mobileTheme.colors.text,
-    flex: 1,
-    fontSize: 15,
-    fontWeight: mobileTheme.font.semibold,
-  },
-  menuRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-  },
-  menuRowPressed: {
-    backgroundColor: mobileTheme.glass.fakeBackground,
   },
   versionText: {
     color: mobileTheme.colors.textSubtle,
