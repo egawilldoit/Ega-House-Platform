@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { configureMobileApiClient } from '@/lib/api/client';
 import {
@@ -14,6 +15,7 @@ import {
   logoutMobileSession as logoutApiSession,
   refreshMobileSession as refreshApiSession,
 } from '@/lib/api/auth';
+import { createResumeRefresh } from '@/lib/lifecycle/resume-refresh';
 import { mobileSessionStorage } from '@/lib/storage/session';
 import type { MobileAuthSession, MobileAuthUser, StoredMobileSession } from '@/types/auth';
 
@@ -153,6 +155,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isCancelled = true;
     };
   }, [clearSession, persistSession]);
+
+  useEffect(() => {
+    const resumeRefresh = createResumeRefresh({
+      getSession: async () => sessionBundle?.session ?? null,
+    });
+
+    const subscription = AppState.addEventListener('change', (status) => {
+      if (status === 'active') {
+        void resumeRefresh();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [sessionBundle]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
