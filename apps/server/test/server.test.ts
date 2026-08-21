@@ -4,6 +4,7 @@ import test from "node:test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createApp, type ServerDependencies } from "../src/index";
+import { resolvePort } from "../src/port";
 
 /**
  * Controlled transport tests. The app receives a fake token verifier and a
@@ -201,6 +202,133 @@ test("health endpoint does not require authentication", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: "ok" });
+});
+
+// ---------------------------------------------------------------------------
+// Port resolution
+// ---------------------------------------------------------------------------
+
+test("resolvePort accepts a valid port string", () => {
+  assert.equal(resolvePort("8080"), 8080);
+  assert.equal(resolvePort("1"), 1);
+  assert.equal(resolvePort("65535"), 65535);
+});
+
+test("resolvePort falls back to the default when PORT is unset or blank", () => {
+  assert.equal(resolvePort(undefined), 3001);
+  assert.equal(resolvePort(""), 3001);
+  assert.equal(resolvePort("   "), 3001);
+});
+
+test("resolvePort falls back on NaN and non-integer values", () => {
+  assert.equal(resolvePort("abc"), 3001);
+  assert.equal(resolvePort("NaN"), 3001);
+  assert.equal(resolvePort("3001.5"), 3001);
+});
+
+test("resolvePort falls back on out-of-range ports", () => {
+  assert.equal(resolvePort("0"), 3001);
+  assert.equal(resolvePort("-1"), 3001);
+  assert.equal(resolvePort("65536"), 3001);
+  assert.equal(resolvePort("99999"), 3001);
+});
+
+test("resolvePort honors an explicit fallback", () => {
+  assert.equal(resolvePort("bogus", 4000), 4000);
+  assert.equal(resolvePort("5150", 4000), 5150);
+});
+
+// ---------------------------------------------------------------------------
+// Readiness
+// ---------------------------------------------------------------------------
+
+test("ready endpoint does not require authentication and reports config-ok without a probe", async () => {
+  const app = makeApp(fakeSupabase());
+
+  const response = await app.request("/ready");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: "ok" });
+});
+
+test("ready endpoint returns 200 when the readiness probe succeeds", async () => {
+  const app = makeApp(fakeSupabase(), {
+    readinessCheck: async () => true,
+  });
+
+  const response = await app.request("/ready");
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: "ok" });
+});
+
+test("ready endpoint returns 503 when the readiness probe fails", async () => {
+  const app = makeApp(fakeSupabase(), {
+    readinessCheck: async () => false,
+  });
+
+  const response = await app.request("/ready");
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { status: "unavailable" });
+});
+
+test("ready endpoint stays liveness-independent from /health", async () => {
+  const app = makeApp(fakeSupabase(), {
+    readinessCheck: async () => false,
+  });
+
+  const health = await app.request("/health");
+  assert.equal(health.status, 200);
+
+  const ready = await app.request("/ready");
+  assert.equal(ready.status, 503);
+});
+
+// ---------------------------------------------------------------------------
+// CORS
+// ---------------------------------------------------------------------------
+
+test("CORS is disabled by default", async () => {
+  const app = makeApp(fakeSupabase());
+
+  const response = await app.request("/api/projects", {
+    headers: { origin: "https://app.example.com", ...AUTH },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("access-control-allow-origin"), null);
+});
+
+test("CORS allowlist echoes allowed origins when configured", async () => {
+  const app = makeApp(fakeSupabase(), {
+    corsOrigins: ["https://app.example.com"],
+  });
+
+  const response = await app.request("/api/projects", {
+    headers: { origin: "https://app.example.com", ...AUTH },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    response.headers.get("access-control-allow-origin"),
+    "https://app.example.com",
+  );
+});
+
+test("CORS allowlist rejects non-allowed origins", async () => {
+  const app = makeApp(fakeSupabase(), {
+    corsOrigins: ["https://app.example.com"],
+  });
+
+  const response = await app.request("/api/projects", {
+    headers: { origin: "https://evil.example.com", ...AUTH },
+  });
+
+  assert.equal(
+    response.headers.get("access-control-allow-origin"),
+    null,
+  );
 });
 
 // ---------------------------------------------------------------------------

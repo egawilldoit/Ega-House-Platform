@@ -1,5 +1,6 @@
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { createMiddleware } from "hono/factory";
 
 import {
@@ -22,6 +23,16 @@ export type ServerDependencies = {
   createRequestClient: (token: string) => SupabaseClient;
   /** Clock injection for deterministic tests; defaults to `new Date()`. */
   now?: () => Date;
+  /**
+   * Readiness probe for GET /ready. Resolves true when the server's
+   * dependencies are reachable. When omitted, /ready reports config-ok.
+   */
+  readinessCheck?: () => Promise<boolean>;
+  /**
+   * Allowed CORS origins for /api/*. Undefined or empty disables CORS
+   * entirely (the default).
+   */
+  corsOrigins?: string[];
 };
 
 export type ServerVariables = {
@@ -49,6 +60,10 @@ export async function readJsonBody(
 
 export function createApp(dependencies: ServerDependencies): Hono<{ Variables: ServerVariables }> {
   const app = new Hono<{ Variables: ServerVariables }>();
+
+  if (dependencies.corsOrigins && dependencies.corsOrigins.length > 0) {
+    app.use("/api/*", cors({ origin: dependencies.corsOrigins }));
+  }
 
   app.use(
     "/api/*",
@@ -80,6 +95,22 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  app.get("/ready", async (c) => {
+    const check = dependencies.readinessCheck;
+
+    if (!check) {
+      return c.json({ status: "ok" });
+    }
+
+    const ready = await check();
+
+    if (!ready) {
+      return c.json({ status: "unavailable" }, 503);
+    }
+
+    return c.json({ status: "ok" });
+  });
+
   app.route("/api/projects", createProjectsRoutes(dependencies));
   app.route("/api/goals", createGoalsRoutes(dependencies));
   app.route("/api/tasks", createTasksRoutes(dependencies));
@@ -100,6 +131,39 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   return app;
 }
 
+const READINESS_TIMEOUT_MS = 3_000;
+
+/**
+ * Cheap Supabase reachability probe for /ready. Hits the auth service
+ * health endpoint with the anon key; no user data is read.
+ */
+async function pingSupabase(url: string, anonKey: string): Promise<boolean> {
+  try {
+    const response = await fetch(`${url}/auth/v1/health`, {
+      headers: { apikey: anonKey },
+      signal: AbortSignal.timeout(READINESS_TIMEOUT_MS),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function resolveCorsOrigins(): string[] | undefined {
+  const raw = process.env.SERVER_CORS_ORIGINS;
+
+  if (!raw) {
+    return undefined;
+  }
+
+  const origins = raw
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter((origin) => origin.length > 0);
+
+  return origins.length > 0 ? origins : undefined;
+}
+
 export function createProductionApp(
   dependencies: Partial<ServerDependencies> = {},
 ): Hono<{ Variables: ServerVariables }> {
@@ -116,5 +180,8 @@ export function createProductionApp(
       dependencies.createRequestClient ??
       ((token) => createAuthenticatedClient(env.url, env.anonKey, token)),
     now: dependencies.now,
+    readinessCheck:
+      dependencies.readinessCheck ?? (() => pingSupabase(env.url, env.anonKey)),
+    corsOrigins: dependencies.corsOrigins ?? resolveCorsOrigins(),
   });
 }
