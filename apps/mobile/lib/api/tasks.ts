@@ -89,6 +89,34 @@ export async function createMobileTaskReminder(taskId: string, input: CreateTask
   });
 }
 
+export async function archiveMobileTask(taskId: string) {
+  return mobileApiFetch<MobileTaskMutationResponse>(`/api/tasks/${taskId}/archive`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function unarchiveMobileTask(taskId: string) {
+  return mobileApiFetch<MobileTaskMutationResponse>(`/api/tasks/${taskId}/unarchive`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function pinMobileTask(taskId: string) {
+  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}/pin`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function unpinMobileTask(taskId: string) {
+  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}/unpin`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
 export async function cancelMobileTaskReminder(taskId: string, input: CancelTaskReminderInput) {
   return mobileApiFetch<MobileTaskMutationResponse>(
     `/api/mobile/tasks/${taskId}/reminders/${input.reminderId}`,

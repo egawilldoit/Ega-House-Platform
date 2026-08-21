@@ -25,7 +25,13 @@ import {
 } from '@/components/mobile/glass';
 import { TaskCard } from '@/components/mobile/TaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
-import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
+import {
+  useArchiveTaskMutation,
+  usePinTaskMutation,
+  useTaskListQuery,
+  useUnpinTaskMutation,
+  useUpdateTaskMutation,
+} from '@/features/tasks/query';
 import type {
   MobileTaskDueFilter,
   MobileTaskListItem,
@@ -108,6 +114,28 @@ export default function TasksScreen() {
     status: statusFilter === 'all' ? null : statusFilter,
   });
   const updateTaskMutation = useUpdateTaskMutation();
+  const archiveTaskMutation = useArchiveTaskMutation();
+  const pinTaskMutation = usePinTaskMutation();
+  const unpinTaskMutation = useUnpinTaskMutation();
+
+  const runTaskAction = useCallback(
+    async (taskId: string, action: (id: string) => Promise<unknown>, errorLabel: string) => {
+      setUpdatingTaskIds((current) => ({ ...current, [taskId]: true }));
+      setTaskErrors((current) => ({ ...current, [taskId]: undefined }));
+
+      try {
+        await action(taskId);
+      } catch (actionError) {
+        const message =
+          actionError instanceof Error ? actionError.message : `Unable to ${errorLabel} right now.`;
+
+        setTaskErrors((current) => ({ ...current, [taskId]: message }));
+      } finally {
+        setUpdatingTaskIds((current) => ({ ...current, [taskId]: false }));
+      }
+    },
+    [],
+  );
   const { refetch } = tasksQuery;
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -213,6 +241,33 @@ export default function TasksScreen() {
       },
     }));
 
+    const isPinned = activeTask.focusRank !== null;
+    const pinItem: ActionSheetItem = {
+      key: 'pin',
+      label: isPinned ? 'Unpin from Today' : 'Pin to Today',
+      description: isPinned ? 'Remove from pinned suggestions' : 'Show in pinned suggestions',
+      onPress: () => {
+        runTaskAction(
+          activeTask.id,
+          isPinned ? unpinTaskMutation.mutateAsync : pinTaskMutation.mutateAsync,
+          isPinned ? 'unpin task' : 'pin task',
+        ).catch(() => {
+          // handled in runTaskAction
+        });
+      },
+    };
+
+    const archiveItem: ActionSheetItem = {
+      key: 'archive',
+      label: 'Archive task',
+      description: 'Hide from active lists',
+      onPress: () => {
+        runTaskAction(activeTask.id, archiveTaskMutation.mutateAsync, 'archive task').catch(() => {
+          // handled in runTaskAction
+        });
+      },
+    };
+
     return [
       {
         key: 'open',
@@ -221,11 +276,21 @@ export default function TasksScreen() {
           router.push({ pathname: '/(app)/tasks/[id]', params: { id: activeTask.id } });
         },
       },
+      pinItem,
       ...statusItems,
       ...priorityItems,
       ...dueItems,
+      archiveItem,
     ];
-  }, [activeTask, dueDateOptions, mutateTask]);
+  }, [
+    activeTask,
+    dueDateOptions,
+    mutateTask,
+    runTaskAction,
+    archiveTaskMutation,
+    pinTaskMutation,
+    unpinTaskMutation,
+  ]);
 
   if (tasksQuery.isPending) {
     return (
