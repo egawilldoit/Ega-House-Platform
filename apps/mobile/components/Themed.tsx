@@ -5,8 +5,24 @@
 
 import { Text as DefaultText, View as DefaultView } from 'react-native';
 
-import Colors from '@/constants/Colors';
 import { useColorScheme } from './useColorScheme';
+
+const Colors = {
+  light: {
+    text: '#000',
+    background: '#fff',
+    tint: '#1d4ed8',
+    tabIconDefault: '#ccc',
+    tabIconSelected: '#1d4ed8',
+  },
+  dark: {
+    text: '#fff',
+    background: '#000',
+    tint: '#fff',
+    tabIconDefault: '#ccc',
+    tabIconSelected: '#fff',
+  },
+} as const;
 
 type ThemeProps = {
   lightColor?: string;
