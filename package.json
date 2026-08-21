@@ -35,6 +35,7 @@
     "mobile:prebuild:android": "npm run prebuild:android --workspace @ega/mobile",
     "mobile:test": "npm run test --workspace @ega/mobile",
     "mobile:typecheck": "npm run typecheck --workspace @ega/mobile",
+    "mobile:verify": "node scripts/mobile/verify.mjs",
     "preflight:hermes-skills": "node scripts/agent/preflight-hermes-skills.mjs",
     "server:test": "npm run test --workspace @ega/server",
     "server:typecheck": "npm run typecheck --workspace @ega/server",
