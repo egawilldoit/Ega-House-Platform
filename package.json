@@ -69,6 +69,7 @@
   "devDependencies": {
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
+    "expo": "~54.0.37",
     "expo-router": "~6.0.23",
     "tsx": "^4.21.0",
     "typescript": "^5",

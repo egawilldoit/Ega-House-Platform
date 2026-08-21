@@ -151,7 +151,7 @@ for (const dep of sharedWorkspaceDeps) {
 console.log('\n[3] framework pins');
 const mobile = readJson('apps/mobile/package.json');
 assert(mobile.name === '@ega/mobile', 'mobile workspace name is @ega/mobile');
-assert(mobile.dependencies?.expo === '~54.0.34', 'Expo pin ~54.0.34');
+assert(mobile.dependencies?.expo === '~54.0.37', 'Expo pin ~54.0.37');
 assert(mobile.dependencies?.react === '19.1.0', 'mobile React pin 19.1.0');
 assert(mobile.dependencies?.['react-native'] === '0.81.5', 'React Native pin 0.81.5');
 assert(mobile.dependencies?.['expo-router'] === '~6.0.23', 'mobile Expo Router pin ~6.0.23');
@@ -168,6 +168,7 @@ assert(
   'web React/ReactDOM 19.1.0',
 );
 assert(root.devDependencies?.['expo-router'] === '~6.0.23', 'root Expo Router tooling range ~6.0.23');
+assert(root.devDependencies?.expo === '~54.0.37', 'root Expo tooling range ~54.0.37 (dedupes the expo-router peer copy)');
 
 // ---------------------------------------------------------------------------
 // 4. Per-workspace identity + dependency expectations
@@ -205,8 +206,12 @@ const lockWebOwner = lock.packages?.['']?.dependencies?.react
 assert(lockWebOwner?.dependencies?.react === '19.1.0', 'lock records web React 19.1.0');
 assert(lockWebOwner?.dependencies?.['react-dom'] === '19.1.0', 'lock records web ReactDOM 19.1.0');
 assert(lock.packages?.['']?.devDependencies?.['expo-router'] === '~6.0.23', 'lock records root Expo Router tooling');
+assert(lock.packages?.['']?.devDependencies?.expo === '~54.0.37', 'lock records root Expo tooling');
 assert(lock.packages?.['node_modules/expo-router']?.version === '6.0.24', 'Expo Router hoisted at root 6.0.24');
 assert(!lock.packages?.['apps/mobile/node_modules/expo-router'], 'no nested Expo Router under mobile');
+assert(lock.packages?.['node_modules/expo']?.version === '54.0.37', 'Expo hoisted at root 54.0.37');
+assert(!lock.packages?.['apps/mobile/node_modules/expo'], 'no nested Expo under mobile (single expo tree)');
+assert(!lock.packages?.['apps/mobile/node_modules/expo-constants'], 'no nested Expo constants under mobile');
 
 // ---------------------------------------------------------------------------
 // 6. Installed-resolution proofs (requires `npm ci`)
