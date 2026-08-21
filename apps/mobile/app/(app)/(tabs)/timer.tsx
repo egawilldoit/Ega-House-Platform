@@ -1,150 +1,120 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { GlassButton, GlassCard, GlassSegmentedControl } from '@/components/mobile/glass';
+import { GlassButton, GlassCard } from '@/components/mobile/glass';
 import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
+import { getMobileTimerState, startMobileTimer, stopMobileTimer } from '@/lib/api/timer';
+import { listMobileTasks } from '@/lib/api/tasks';
+import type { TimerWorkspaceState } from '@ega/contracts';
+import type { MobileTaskListItem } from '@ega/contracts';
 
-type TimerMode = 'focus' | 'short_break' | 'long_break';
-
-const TIMER_MODES: Record<
-  TimerMode,
-  { label: string; minutes: number; icon: keyof typeof Ionicons.glyphMap }
-> = {
-  focus: { label: 'Focus', minutes: 25, icon: 'flame-outline' },
-  short_break: { label: 'Short Break', minutes: 5, icon: 'cafe-outline' },
-  long_break: { label: 'Long Break', minutes: 15, icon: 'hourglass-outline' },
-};
-
-function formatTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
+function formatElapsed(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+  const paddedMinutes = String(minutes).padStart(2, '0');
+  const paddedSeconds = String(seconds).padStart(2, '0');
 
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return hours > 0
+    ? `${hours}:${paddedMinutes}:${paddedSeconds}`
+    : `${paddedMinutes}:${paddedSeconds}`;
+}
+
+function elapsedSecondsSince(startedAt: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
 }
 
 export default function TimerScreen() {
-  const [mode, setMode] = useState<TimerMode>('focus');
-  const [remainingSeconds, setRemainingSeconds] = useState(TIMER_MODES.focus.minutes * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [completedFocusSessions, setCompletedFocusSessions] = useState(0);
-  const [completedFocusMinutes, setCompletedFocusMinutes] = useState(0);
-  const [pulse] = useState(() => new Animated.Value(0));
-  const [entrance] = useState(() => new Animated.Value(0));
+  const [tasks, setTasks] = useState<MobileTaskListItem[]>([]);
+  const [timerState, setTimerState] = useState<TimerWorkspaceState | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isMutating, setIsMutating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
-  const totalSeconds = TIMER_MODES[mode].minutes * 60;
-  const progress = totalSeconds === 0 ? 0 : 1 - remainingSeconds / totalSeconds;
-  const progressPercent = Math.round(progress * 100);
-
-  const entranceStyle = useMemo(
-    () => ({
-      opacity: entrance,
-      transform: [
-        {
-          translateY: entrance.interpolate({
-            inputRange: [0, 1],
-            outputRange: [12, 0],
-          }),
-        },
-      ],
-    }),
-    [entrance],
-  );
-
-  const pulseScale = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.04],
-  });
-  const pulseOpacity = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.25, 0.55],
-  });
+  const activeSession = timerState?.activeSession ?? null;
 
   useEffect(() => {
-    Animated.timing(entrance, {
-      toValue: 1,
-      duration: 420,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [entrance]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      pulse.stopAnimation();
-      pulse.setValue(0);
+    if (!activeSession) {
       return;
     }
 
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-
-    loop.start();
-
-    return () => loop.stop();
-  }, [isRunning, pulse]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRemainingSeconds((current) => {
-        if (current <= 1) {
-          clearInterval(interval);
-          setIsRunning(false);
-
-          if (mode === 'focus') {
-            setCompletedFocusSessions((value) => value + 1);
-            setCompletedFocusMinutes((value) => value + TIMER_MODES.focus.minutes);
-          }
-
-          return 0;
-        }
-
-        return current - 1;
-      });
-    }, 1000);
-
+    const interval = setInterval(() => setTick((value) => value + 1), 1000);
     return () => clearInterval(interval);
-  }, [isRunning, mode]);
+  }, [activeSession]);
 
-  function changeMode(nextMode: TimerMode) {
-    setMode(nextMode);
-    setIsRunning(false);
-    setRemainingSeconds(TIMER_MODES[nextMode].minutes * 60);
+  const refreshTimerState = useCallback(async () => {
+    try {
+      const response = await getMobileTimerState();
+      setTimerState(response.timer);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load the timer.');
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialData() {
+      setIsLoading(true);
+      const [tasksResult] = await Promise.allSettled([
+        listMobileTasks({ limit: 50 }),
+        refreshTimerState(),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (tasksResult.status === 'fulfilled') {
+        setTasks(tasksResult.value.tasks);
+      }
+      setIsLoading(false);
+    }
+
+    void loadInitialData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTimerState]);
+
+  async function handleStart(taskId: string) {
+    setIsMutating(true);
+    try {
+      const response = await startMobileTimer({ taskId });
+      setTimerState(response.timer);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to start the timer.');
+    } finally {
+      setIsMutating(false);
+    }
   }
 
-  function resetTimer() {
-    setIsRunning(false);
-    setRemainingSeconds(totalSeconds);
-  }
-
-  function toggleTimer() {
-    if (remainingSeconds <= 0) {
-      setRemainingSeconds(totalSeconds);
-      setIsRunning(true);
+  async function handleStop() {
+    if (!activeSession) {
       return;
     }
 
-    setIsRunning((current) => !current);
+    setIsMutating(true);
+    try {
+      const response = await stopMobileTimer({ sessionId: activeSession.sessionId });
+      setTimerState(response.timer);
+      setErrorMessage(null);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to stop the timer.');
+    } finally {
+      setIsMutating(false);
+    }
   }
+
+  const elapsedLabel = activeSession
+    ? formatElapsed(elapsedSecondsSince(activeSession.startedAt))
+    : formatElapsed(0);
 
   return (
     <MobileScreen padded={false}>
@@ -152,147 +122,88 @@ export default function TimerScreen() {
         <MobileScreenHeader
           eyebrow="Focus"
           title="Timer"
-          description={isRunning ? 'Session running' : 'Ready when you are'}
+          description={activeSession ? 'Session running' : 'Pick a task to track'}
         />
 
-        <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <GlassSegmentedControl
-            disabled={isRunning}
-            onChange={changeMode}
-            options={(Object.keys(TIMER_MODES) as TimerMode[]).map((item) => ({
-              label: TIMER_MODES[item].label,
-              value: item,
-            }))}
-            value={mode}
-          />
-        </Animated.View>
-
-        <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <GlassCard variant="fake" style={styles.timerCard} contentStyle={styles.timerCardContent}>
-            <View style={styles.clockContainer}>
-              <View style={styles.clockRing}>
-                <Animated.View
-                  style={[
-                    styles.pulseRing,
-                    {
-                      opacity: pulseOpacity,
-                      transform: [{ scale: pulseScale }],
-                    },
-                  ]}
-                />
-                <View style={styles.progressRing}>
-                  <Text style={styles.progressText}>{progressPercent}%</Text>
-                </View>
-                <View style={styles.clockFace}>
-                  <Text style={styles.timeDisplay}>{formatTime(remainingSeconds)}</Text>
-                  <View style={styles.modeLabelRow}>
-                    <Ionicons
-                      color={mobileTheme.colors.accent}
-                      name={TIMER_MODES[mode].icon}
-                      size={14}
-                    />
-                    <Text style={styles.timeLabel}>{TIMER_MODES[mode].label}</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.timerActions}>
-              <GlassButton
-                leftIcon={
-                  <Ionicons
-                    color={mobileTheme.colors.textOnAccent}
-                    name={isRunning ? 'pause' : 'play'}
-                    size={22}
-                  />
-                }
-                onPress={toggleTimer}
-                style={styles.primaryTimerButton}
-                title={
-                  isRunning
-                    ? 'Pause'
-                    : remainingSeconds > 0 && remainingSeconds < totalSeconds
-                      ? 'Resume'
-                      : 'Start'
-                }
-                variant="primary"
-              />
-
-              <GlassButton
-                leftIcon={<Ionicons color={mobileTheme.colors.text} name="refresh" size={18} />}
-                onPress={resetTimer}
-                style={styles.secondaryTimerButton}
-                title="Reset"
-                variant="secondary"
-              />
+        {errorMessage ? (
+          <GlassCard variant="fake" style={styles.errorCard}>
+            <View style={styles.errorRow}>
+              <Ionicons color={mobileTheme.colors.danger} name="warning-outline" size={18} />
+              <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           </GlassCard>
-        </Animated.View>
+        ) : null}
 
-        <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <GlassCard variant="fake" style={styles.statsCard}>
-            <View style={styles.cardTitleRow}>
-              <Ionicons color={mobileTheme.colors.accent} name="timer-outline" size={18} />
-              <Text style={styles.statsTitle}>Current app session</Text>
-            </View>
-            <View style={styles.statsRow}>
-              <View style={styles.statBlock}>
-                <Text style={styles.statValue}>{completedFocusSessions}</Text>
-                <Text style={styles.statLabel}>Sessions</Text>
-              </View>
-              <View style={styles.statBlock}>
-                <Text style={styles.statValue}>{completedFocusMinutes}m</Text>
-                <Text style={styles.statLabel}>Focused</Text>
-              </View>
-              <View style={styles.statBlock}>
-                <Text style={styles.statValue}>{TIMER_MODES[mode].minutes}m</Text>
-                <Text style={styles.statLabel}>{TIMER_MODES[mode].label}</Text>
-              </View>
-            </View>
-          </GlassCard>
-        </Animated.View>
-
-        <GlassCard variant="fake" style={styles.guidanceCard} contentStyle={styles.guidanceContent}>
-          <Ionicons color={mobileTheme.colors.info} name="checkmark-circle-outline" size={18} />
-          <Text style={styles.guidanceText}>
-            Pick one task from Tasks, start a focus session, then update the task when done.
-          </Text>
+        <GlassCard variant="fake" style={styles.activeCard}>
+          {activeSession ? (
+            <>
+              <Text style={styles.activeTaskTitle}>{activeSession.taskTitle}</Text>
+              {/* `tick` re-renders this component every second while a session runs. */}
+              <Text style={styles.elapsedDisplay}>{elapsedLabel}</Text>
+              <GlassButton
+                disabled={isMutating}
+                loading={isMutating}
+                onPress={handleStop}
+                style={styles.actionButton}
+                title="Stop"
+                variant="danger"
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.idleTitle}>No active session</Text>
+              <Text style={styles.idleHint}>
+                {isLoading ? 'Loading tasks…' : 'Choose a task below to start tracking.'}
+              </Text>
+            </>
+          )}
         </GlassCard>
+
+        {!activeSession && !isLoading ? (
+          <View style={styles.taskList}>
+            {tasks.length === 0 ? (
+              <Text style={styles.emptyText}>No active tasks available.</Text>
+            ) : (
+              tasks.map((task) => (
+                <GlassCard key={task.id} variant="fake" style={styles.taskRow}>
+                  <View style={styles.taskInfo}>
+                    <Text style={styles.taskTitle} numberOfLines={1}>
+                      {task.title}
+                    </Text>
+                    <Text style={styles.taskProject}>{task.project.name}</Text>
+                  </View>
+                  <GlassButton
+                    disabled={isMutating}
+                    onPress={() => void handleStart(task.id)}
+                    size="sm"
+                    title="Start"
+                  />
+                </GlassCard>
+              ))
+            )}
+          </View>
+        ) : null}
       </ScrollView>
     </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  animatedSection: {
+  actionButton: {
+    minHeight: 54,
+    marginTop: mobileTheme.spacing.lg,
     width: '100%',
   },
-  cardTitleRow: {
+  activeCard: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  clockContainer: {
-    alignItems: 'center',
-  },
-  clockFace: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.glass.surfaceStrong,
     borderColor: mobileTheme.glass.border,
-    borderWidth: 1,
-    borderRadius: 88,
-    height: 176,
-    justifyContent: 'center',
-    width: 176,
-    ...mobileTheme.shadow.fab,
+    paddingVertical: mobileTheme.spacing.xl,
   },
-  clockRing: {
-    alignItems: 'center',
-    height: 236,
-    justifyContent: 'center',
-    position: 'relative',
-    width: 236,
+  activeTaskTitle: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 14,
+    fontWeight: mobileTheme.font.semibold,
+    textAlign: 'center',
   },
   content: {
     gap: mobileTheme.spacing.md,
@@ -300,114 +211,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
-  guidanceCard: {
-    borderColor: mobileTheme.colors.infoMid,
+  elapsedDisplay: {
+    color: mobileTheme.colors.text,
+    fontSize: 56,
+    fontWeight: mobileTheme.font.black,
+    letterSpacing: -1,
+    marginTop: mobileTheme.spacing.sm,
   },
-  guidanceContent: {
-    alignItems: 'flex-start',
+  emptyText: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  errorCard: {
+    borderColor: mobileTheme.colors.danger,
+  },
+  errorRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     gap: 9,
   },
-  guidanceText: {
-    color: mobileTheme.colors.info,
+  errorText: {
+    color: mobileTheme.colors.danger,
     flex: 1,
     fontSize: 13,
     fontWeight: mobileTheme.font.semibold,
-    lineHeight: 19,
   },
-  modeLabelRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 6,
-  },
-  primaryTimerButton: {
-    flex: 1,
-    minHeight: 54,
-    ...mobileTheme.shadow.fab,
-  },
-  progressRing: {
-    alignItems: 'center',
-    borderColor: mobileTheme.colors.accentSoft,
-    borderRadius: 112,
-    borderWidth: 10,
-    height: 224,
-    justifyContent: 'center',
-    position: 'absolute',
-    width: 224,
-  },
-  progressText: {
-    color: mobileTheme.colors.textSubtle,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    position: 'absolute',
-    top: 18,
-  },
-  pulseRing: {
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderRadius: 118,
-    height: 236,
-    position: 'absolute',
-    width: 236,
-  },
-  secondaryTimerButton: {
-    minHeight: 54,
-    paddingHorizontal: 18,
-  },
-  statBlock: {
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 76,
-  },
-  statLabel: {
+  idleHint: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    marginTop: 3,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-  },
-  statValue: {
-    color: mobileTheme.colors.text,
-    fontSize: 24,
-    fontWeight: mobileTheme.font.black,
-    letterSpacing: -0.5,
-  },
-  statsCard: {
+    fontSize: 13,
     marginTop: mobileTheme.spacing.xs,
   },
-  statsRow: {
-    flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-  },
-  statsTitle: {
+  idleTitle: {
     color: mobileTheme.colors.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: mobileTheme.font.extrabold,
   },
-  timeDisplay: {
-    color: mobileTheme.colors.text,
-    fontSize: 52,
-    fontWeight: mobileTheme.font.black,
-    letterSpacing: -1,
+  taskInfo: {
+    flex: 1,
+    marginRight: mobileTheme.spacing.sm,
   },
-  timeLabel: {
-    color: mobileTheme.colors.accent,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.extrabold,
-    textTransform: 'uppercase',
-  },
-  timerActions: {
-    flexDirection: 'row',
+  taskList: {
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.xl,
-    width: '100%',
   },
-  timerCard: {
-    borderColor: mobileTheme.glass.border,
+  taskProject: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 2,
   },
-  timerCardContent: {
+  taskRow: {
     alignItems: 'center',
-    paddingVertical: mobileTheme.spacing.xl,
+    flexDirection: 'row',
+    padding: mobileTheme.spacing.md,
+  },
+  taskTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 15,
+    fontWeight: mobileTheme.font.bold,
   },
 });
