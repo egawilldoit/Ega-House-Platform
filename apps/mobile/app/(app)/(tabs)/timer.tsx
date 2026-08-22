@@ -40,7 +40,7 @@ export default function TimerScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
+  const [, setTick] = useState(0);
 
   const activeSession = timerState?.activeSession ?? null;
 
