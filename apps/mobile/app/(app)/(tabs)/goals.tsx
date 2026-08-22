@@ -254,6 +254,7 @@ export default function GoalsScreen() {
           <GoalCard
             goal={item}
             saving={isMutating && sheetTargetId === item.id}
+            onPress={() => router.push(`/goals/${item.id}`)}
             onActions={() => setSheetTargetId(item.id)}
           />
         )}
