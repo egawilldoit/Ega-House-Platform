@@ -7,6 +7,7 @@
  * are injected; the client owns no storage and no session state.
  */
 
+import { createAuthApi, type AuthApi } from "./auth";
 import { createGoalsApi, type GoalsApi } from "./goals";
 import {
   HttpClient,
@@ -16,6 +17,7 @@ import {
 } from "./http";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
+import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
 import type { ApiErrorPayload, ApiResult } from "./errors";
 import type { HealthResponse } from "./types";
@@ -43,6 +45,8 @@ export type EgaApiClient = {
   goals: GoalsApi;
   tasks: TasksApi;
   today: TodayApi;
+  timer: TimerApi;
+  auth: AuthApi;
 };
 
 export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
@@ -65,6 +69,8 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     goals: createGoalsApi(http),
     tasks: createTasksApi(http),
     today: createTodayApi(http),
+    timer: createTimerApi(http),
+    auth: createAuthApi(http),
   };
 }
 
