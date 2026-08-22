@@ -42,6 +42,17 @@ function isExpoDevRuntime() {
   return __DEV__;
 }
 
+const VALID_API_BASE_URL_PATTERN = /^https?:\/\/[^\s/]+(\/[^\s]*)?$/i;
+
+export function assertValidApiBaseUrl(value: string): void {
+  if (!VALID_API_BASE_URL_PATTERN.test(value)) {
+    throw new Error(
+      `${API_DEBUG_PREFIX} EXPO_PUBLIC_API_BASE_URL "${value}" is not a usable API base URL. ` +
+        'Set an absolute http(s) origin with a hostname, e.g. https://api.example.com',
+    );
+  }
+}
+
 export function resolveApiBaseUrl(
   env: ResolverEnv,
   constants: ResolverConstants,
@@ -49,6 +60,7 @@ export function resolveApiBaseUrl(
 ): ResolvedApiBaseUrl {
   const envUrl = env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (envUrl) {
+    assertValidApiBaseUrl(envUrl);
     return { url: trimTrailingSlash(envUrl), source: 'env' };
   }
 
@@ -74,14 +86,26 @@ function resolveCurrentApiBaseUrl(): ResolvedApiBaseUrl {
 export function getApiBaseUrl() {
   const resolved = resolveCurrentApiBaseUrl();
 
-  if (resolved.source === 'production-default' && isExpoDevRuntime() && !didWarnProductionDefault) {
+  if (resolved.source === 'production-default' && !didWarnProductionDefault) {
     didWarnProductionDefault = true;
+    const releaseHint = isExpoDevRuntime()
+      ? ''
+      : ' This is a release build; set EXPO_PUBLIC_API_BASE_URL before shipping if this host is not your backend.';
     console.warn(
-      `${API_DEBUG_PREFIX} no EXPO_PUBLIC_API_BASE_URL set; falling back to production default ${resolved.url}`,
+      `${API_DEBUG_PREFIX} no EXPO_PUBLIC_API_BASE_URL set; falling back to production default ${resolved.url}.${releaseHint}`,
     );
   }
 
   return resolved.url;
+}
+
+/**
+ * Test seam: clear the one-time production-default warning so suites start
+ * from a clean diagnostic state. Mirrors setMobileEgaApiClientForTesting
+ * in lib/api/ega.ts.
+ */
+export function resetApiBaseUrlDiagnosticsForTesting() {
+  didWarnProductionDefault = false;
 }
 
 export function configureMobileApiClient(handlers: ApiClientSessionHandlers) {
