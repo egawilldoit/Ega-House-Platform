@@ -31,6 +31,7 @@ import {
   matchTaskViewPreset,
   TASK_VIEW_PRESETS,
   type TaskViewId,
+  type TaskViewPriority,
 } from '@/features/tasks/views';
 import type {
   MobileTaskDueFilter,
@@ -109,11 +110,13 @@ function getStatusOptions(task: MobileTaskListItem) {
 
 export default function TasksScreen() {
   const [statusFilter, setStatusFilter] = useState<MobileTaskStatus | 'all'>('all');
+  const [priorityFilter, setPriorityFilter] = useState<TaskViewPriority>('all');
   const [dueFilter, setDueFilter] = useState<MobileTaskDueFilter>('all');
   const [sortFilter, setSortFilter] = useState<MobileTaskSortValue>('updated_desc');
   const tasksQuery = useTaskListQuery({
     due: dueFilter,
     status: statusFilter === 'all' ? null : statusFilter,
+    priority: priorityFilter === 'all' ? null : priorityFilter,
     sort: sortFilter,
   });
   const updateTaskMutation = useUpdateTaskMutation();
@@ -124,10 +127,13 @@ export default function TasksScreen() {
   const [taskErrors, setTaskErrors] = useState<Record<string, string | undefined>>({});
 
   const tasks: MobileTaskListItem[] = tasksQuery.data?.tasks ?? EMPTY_TASKS;
-  const totalTaskCount = tasksQuery.data?.counters.total ?? 0;
-  const hasFilters = statusFilter !== 'all' || dueFilter !== 'all' || sortFilter !== 'updated_desc';
+  const counters = tasksQuery.data?.counters ?? null;
+  const totalTaskCount = counters?.total ?? 0;
+  const hasFilters =
+    statusFilter !== 'all' || priorityFilter !== 'all' || dueFilter !== 'all' || sortFilter !== 'updated_desc';
   const activeViewId = matchTaskViewPreset({
     status: statusFilter,
+    priority: priorityFilter,
     due: dueFilter,
     sort: sortFilter,
   });
@@ -139,17 +145,21 @@ export default function TasksScreen() {
     }
 
     setStatusFilter(preset.status);
+    setPriorityFilter(preset.priority);
     setDueFilter(preset.due);
     setSortFilter(preset.sort);
   }, []);
-  const taskSummary = useMemo(() => {
-    const visible = tasks.length;
-    const inProgress = tasks.filter((task) => task.status === 'in_progress').length;
-    const blocked = tasks.filter((task) => task.status === 'blocked').length;
-    const urgent = tasks.filter((task) => task.priority === 'urgent').length;
-
-    return { visible, inProgress, blocked, urgent };
-  }, [tasks]);
+  // Server-authoritative counts cover the full filtered scope (not just the
+  // returned page), so summary tiles stay accurate beyond the page cap.
+  const taskSummary = useMemo(
+    () => ({
+      visible: tasks.length,
+      inProgress: counters?.byStatus.in_progress ?? 0,
+      blocked: counters?.byStatus.blocked ?? 0,
+      urgent: counters?.byPriority.urgent ?? 0,
+    }),
+    [counters, tasks.length],
+  );
   const dueDateOptions = useMemo(() => buildDueDateOptions(), []);
   const activeTask = useMemo(
     () => tasks.find((task) => task.id === activeTaskId) ?? null,

@@ -6,6 +6,7 @@ import type {
   MobileTaskDueFilter,
   MobileTaskListResponse,
   MobileTaskMutationResponse,
+  MobileTaskPriority,
   MobileTaskSortValue,
   MobileTaskStatus,
   UpdateTaskInput,
@@ -15,6 +16,7 @@ export type ListMobileTasksParams = {
   status?: MobileTaskStatus | null;
   projectId?: string | null;
   goalId?: string | null;
+  priority?: MobileTaskPriority | null;
   due?: MobileTaskDueFilter;
   sort?: MobileTaskSortValue;
   limit?: number | null;
@@ -33,6 +35,10 @@ function buildTaskListQuery(params: ListMobileTasksParams = {}) {
 
   if (params.goalId) {
     searchParams.set('goalId', params.goalId);
+  }
+
+  if (params.priority) {
+    searchParams.set('priority', params.priority);
   }
 
   if (params.due) {

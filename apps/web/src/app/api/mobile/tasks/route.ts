@@ -43,6 +43,7 @@ export async function GET(request: Request) {
         activeStatus: queryResult.data.status,
         requestedProjectId: queryResult.data.projectId,
         requestedGoalId: queryResult.data.goalId,
+        activePriorityValues: queryResult.data.priority ? [queryResult.data.priority] : undefined,
         activeDueFilter: queryResult.data.due,
         activeSort: queryResult.data.sort,
         activeView: "active",
@@ -50,22 +51,24 @@ export async function GET(request: Request) {
       { supabase: authResult.supabase },
     );
 
-    const limitedTasks = queryResult.data.limit
-      ? workspace.tasks.slice(0, queryResult.data.limit)
-      : workspace.tasks;
-    const items = limitedTasks.map((task) =>
+    const items = workspace.tasks.map((task) =>
       mapTaskRecordToMobileTaskItem(task, workspace.taskTotalDurations[task.id] ?? 0),
     );
+    // Counters describe the full filtered scope (before pagination) so clients
+    // can render totals and truncation state without extra requests.
+    const counters = getMobileTaskCounters(items);
+    const limitedItems = queryResult.data.limit ? items.slice(0, queryResult.data.limit) : items;
 
     return NextResponse.json(
       {
         ok: true,
-        tasks: items,
-        counters: getMobileTaskCounters(items),
+        tasks: limitedItems,
+        counters,
         filters: {
           status: queryResult.data.status,
           projectId: workspace.activeProjectId,
           goalId: workspace.activeGoalId,
+          priority: queryResult.data.priority,
           due: queryResult.data.due,
           sort: queryResult.data.sort,
           limit: queryResult.data.limit,
@@ -73,6 +76,7 @@ export async function GET(request: Request) {
         projects: workspace.projects.map((project) => ({
           id: project.id,
           name: project.name,
+          slug: project.slug ?? null,
         })),
         goals: workspace.goals.map((goal) => ({
           id: goal.id,

@@ -13,7 +13,7 @@ import {
   type TaskRecord,
 } from "@/lib/services/task-service";
 import { isTaskDueToday, isTaskOverdue } from "@/lib/task-due-date";
-import type { TaskStatus } from "@/lib/task-domain";
+import type { TaskPriority, TaskStatus } from "@/lib/task-domain";
 
 export function mobileErrorResponse(
   code: MobileApiErrorCode,
@@ -73,6 +73,7 @@ export function mapTaskRecordToMobileTaskItem(
     project: {
       id: task.project_id,
       name: task.projects?.name ?? "Unknown project",
+      slug: task.projects?.slug ?? null,
     },
     goal: task.goal_id
       ? {
@@ -110,10 +111,17 @@ export function getMobileTaskCounters(tasks: MobileTaskListItem[]) {
     done: 0,
     blocked: 0,
   };
+  const initialPriorityCounts: Record<TaskPriority, number> = {
+    low: 0,
+    medium: 0,
+    high: 0,
+    urgent: 0,
+  };
 
   return tasks.reduce(
     (counters, task) => {
       counters.byStatus[task.status] += 1;
+      counters.byPriority[task.priority] += 1;
       counters.total += 1;
       if (task.focusRank !== null) {
         counters.pinned += 1;
@@ -130,6 +138,7 @@ export function getMobileTaskCounters(tasks: MobileTaskListItem[]) {
     {
       total: 0,
       byStatus: initialStatusCounts,
+      byPriority: initialPriorityCounts,
       pinned: 0,
       overdue: 0,
       dueToday: 0,

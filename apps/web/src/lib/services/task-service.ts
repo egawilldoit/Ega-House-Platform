@@ -137,7 +137,7 @@ export type TasksWorkspaceFilters = {
 };
 
 export type TasksWorkspaceData = {
-  projects: Array<{ id: string; name: string }>;
+  projects: Array<{ id: string; name: string; slug?: string | null }>;
   goals: Array<{ id: string; title: string; project_id: string }>;
   tasks: Array<{
     id: string;
@@ -160,7 +160,7 @@ export type TasksWorkspaceData = {
     focus_rank: number | null;
     archived_at: string | null;
     archived_by: string | null;
-    projects: { name: string } | null;
+    projects: { name: string; slug?: string | null } | null;
     goals: { title: string } | null;
     task_reminders: TaskReminderRecord[];
     task_recurrences: TaskRecurrenceRecord[];
@@ -752,7 +752,7 @@ export async function getTasksWorkspaceData(
   const savedViewSelectLegacy =
     "id, name, status, project_id, goal_id, due_filter, sort_value, updated_at";
   const [projectsResult, goalsResult, initialSavedViewsResult, taskSummaryResult] = await Promise.all([
-    supabase.from("projects").select("id, name").order("name", { ascending: true }),
+    supabase.from("projects").select("id, name, slug").order("name", { ascending: true }),
     supabase
       .from("goals")
       .select("id, title, project_id")
@@ -1843,7 +1843,7 @@ export async function getTaskById(
   let { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+      "id, title, description, blocked_reason, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name, slug), goals(title)",
     )
     .eq("id", normalizedTaskId)
     .maybeSingle();
@@ -1852,7 +1852,7 @@ export async function getTaskById(
     const fallbackResult = await supabase
       .from("tasks")
       .select(
-        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name), goals(title)",
+        "id, title, description, status, priority, due_date, planned_for_date, scheduled_start_at, scheduled_end_at, calendar_sync_enabled, calendar_reminder_minutes, estimate_minutes, updated_at, completed_at, project_id, goal_id, focus_rank, archived_at, archived_by, projects(name, slug), goals(title)",
       )
       .eq("id", normalizedTaskId)
       .maybeSingle();
