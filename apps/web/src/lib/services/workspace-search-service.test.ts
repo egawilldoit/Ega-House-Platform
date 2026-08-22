@@ -5,7 +5,6 @@ import {
   normalizeWorkspaceSearchQuery,
   searchWorkspace,
 } from "./workspace-search-service";
-import { WORKSPACE_SEARCH_MIN_QUERY_LENGTH } from "@/lib/workspace-search";
 
 type TableCall = { table: string; select: string };
 
@@ -33,12 +32,15 @@ function createSearchSupabaseMock(overrides?: {
         calls.push({ table, select: columns });
 
         const builder = {
-          ilike(_column: string, pattern: string) {
+          ilike(column: string, pattern: string) {
+            assert.equal(column, "title");
             state.pattern = pattern;
             queryLog.push({ table, pattern, limit: null });
             return builder;
           },
-          order(_column: string, _options?: { ascending?: boolean }) {
+          order(column: string, options?: { ascending?: boolean }) {
+            assert.ok(column.length > 0);
+            assert.equal(typeof options?.ascending, "boolean");
             return builder;
           },
           limit(count: number) {
