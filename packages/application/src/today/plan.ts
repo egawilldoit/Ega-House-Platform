@@ -1,4 +1,9 @@
-import { isTaskCompletedStatus, isTaskStatus } from "@ega/domain";
+import {
+  isTaskCompletedStatus,
+  isTaskPriority,
+  isTaskStatus,
+  type TaskPriority,
+} from "@ega/domain";
 
 import { formatDurationLabel } from "../shared/duration";
 import type {
@@ -16,7 +21,7 @@ export type TodayPlanTask = Readonly<{
   description: string | null;
   blockedReason: string | null;
   status: ReturnType<typeof normalizeStatus>;
-  priority: string;
+  priority: TaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
   updatedAt: string;
@@ -33,6 +38,10 @@ export type TodayPlanTask = Readonly<{
 
 function normalizeStatus(status: string): "todo" | "in_progress" | "blocked" | "done" {
   return isTaskStatus(status) ? status : "done";
+}
+
+function normalizePriority(priority: string): TaskPriority {
+  return isTaskPriority(priority) ? priority : "medium";
 }
 
 export function getDueBucket(
@@ -69,7 +78,7 @@ function toPlanTask(
     description: row.description,
     blockedReason: row.blockedReason,
     status,
-    priority: row.priority,
+    priority: normalizePriority(row.priority),
     dueDate: row.dueDate,
     estimateMinutes: row.estimateMinutes,
     updatedAt: row.updatedAt,
