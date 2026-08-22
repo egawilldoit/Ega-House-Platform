@@ -5,6 +5,7 @@ import * as goalsApi from '@/lib/api/goals';
 import {
   useArchiveGoalMutation,
   useCreateGoalMutation,
+  useGoalDetailQuery,
   useGoalListQuery,
   useUnarchiveGoalMutation,
   useUpdateGoalHealthMutation,
@@ -129,6 +130,40 @@ describe('goal query hooks', () => {
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['projects', 'detail'] });
   });
 
+  it('useGoalDetailQuery targets the detail cache key and derives from the all-view list', async () => {
+    mock(goalsApi.listMobileGoals).mockResolvedValue(READ_MODEL);
+
+    useGoalDetailQuery('g-1');
+
+    expect(queryCall?.queryKey).toEqual(['goals', 'detail', 'g-1']);
+    await expect(queryCall?.queryFn()).resolves.toEqual(READ_MODEL.goals[0]);
+    expect(goalsApi.listMobileGoals).toHaveBeenCalledWith('all');
+  });
+
+  it('useGoalDetailQuery queryFn resolves null for an unknown goal', async () => {
+    mock(goalsApi.listMobileGoals).mockResolvedValue(READ_MODEL);
+
+    useGoalDetailQuery('missing');
+
+    await expect(queryCall?.queryFn()).resolves.toBeNull();
+  });
+
+  it('useGoalDetailQuery seeds initialData from the cached all-view list', () => {
+    const getQueryData = jest.fn().mockReturnValue(READ_MODEL);
+    (ReactQuery.useQueryClient as unknown as jest.Mock).mockReturnValue({
+      invalidateQueries: jest.fn().mockResolvedValue(undefined),
+      getQueryData,
+    } as never);
+
+    useGoalDetailQuery('g-1');
+
+    const initialData = (queryCall as unknown as {
+      initialData: () => unknown;
+    }).initialData();
+    expect(getQueryData).toHaveBeenCalledWith(['goals', 'list', 'all']);
+    expect(initialData).toEqual(READ_MODEL.goals[0]);
+  });
+
   it('status, health, and next-step mutations invalidate lists', async () => {
     mock(goalsApi.updateMobileGoalStatus).mockResolvedValue(undefined);
     mock(goalsApi.updateMobileGoalHealth).mockResolvedValue(undefined);
@@ -152,6 +187,7 @@ describe('goal query hooks', () => {
     mutationCalls[1].onSuccess?.({});
     mutationCalls[2].onSuccess?.({});
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['goals', 'list'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['goals', 'detail'] });
   });
 
   it('archive and unarchive mutations invalidate lists', async () => {
@@ -171,5 +207,6 @@ describe('goal query hooks', () => {
     mutationCalls[0].onSuccess?.({});
     mutationCalls[1].onSuccess?.({});
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['goals', 'list'] });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['goals', 'detail'] });
   });
 });
