@@ -241,4 +241,19 @@ describe('auth-context query cache isolation', () => {
     await act(async () => {});
     expect(getAuth().session?.accessToken).toBe('token-fresh');
   });
+
+  it('serves a restored cold-start session from getSession without a prior write', async () => {
+    const restored = makeSessionResponse('a@example.com');
+    mockStoredSession = {
+      session: restored.session,
+      user: restored.user,
+    };
+
+    await renderAuth();
+    const config = mockCapturedClientConfig;
+    expect(config).not.toBeNull();
+
+    const observed = await config!.getSession();
+    expect(observed?.session.accessToken).toBe('token-a@example.com');
+  });
 });
