@@ -4,6 +4,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  type AccessibilityState,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -24,6 +25,7 @@ export type GlassPillProps = {
   tone?: GlassPillTone;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  accessibilityState?: AccessibilityState;
 };
 
 const toneColor: Record<GlassPillTone, string> = {
@@ -44,6 +46,7 @@ export function GlassPill({
   tone = 'default',
   style,
   textStyle,
+  accessibilityState,
 }: GlassPillProps) {
   const isPrimarySelected = selected || tone === 'primary';
   const colors: [string, string] = selected
@@ -53,6 +56,11 @@ export function GlassPill({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{
+        selected,
+        disabled,
+        ...accessibilityState,
+      }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
