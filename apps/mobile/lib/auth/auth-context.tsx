@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -14,6 +15,7 @@ import {
   logoutMobileSession as logoutApiSession,
   refreshMobileSession as refreshApiSession,
 } from '@/lib/api/auth';
+import { clearMobileQueryCache } from '@/lib/query/query-client';
 import { mobileSessionStorage } from '@/lib/storage/session';
 import type { MobileAuthSession, MobileAuthUser, StoredMobileSession } from '@/types/auth';
 
@@ -40,34 +42,50 @@ function isSessionNearExpiry(session: MobileAuthSession) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [sessionBundle, setSessionBundle] = useState<StoredMobileSession | null>(null);
+  const sessionBundleRef = useRef<StoredMobileSession | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const persistSession = useCallback(async (value: StoredMobileSession) => {
+  const applySessionBundle = useCallback((value: StoredMobileSession | null) => {
+    sessionBundleRef.current = value;
     setSessionBundle(value);
-    await mobileSessionStorage.setSession(value);
   }, []);
 
+  const persistSession = useCallback(
+    async (value: StoredMobileSession) => {
+      // Update the ref before awaiting storage so authenticated requests issued
+      // in the same turn immediately observe a rotated/restored access token.
+      applySessionBundle(value);
+      await mobileSessionStorage.setSession(value);
+    },
+    [applySessionBundle],
+  );
+
   const clearSession = useCallback(async () => {
-    setSessionBundle(null);
+    // Remove in-memory authority first, then durable storage/cache. This keeps
+    // a second account from observing queries produced by the previous user.
+    applySessionBundle(null);
     await mobileSessionStorage.clearSession();
-  }, []);
+    clearMobileQueryCache();
+  }, [applySessionBundle]);
 
   const signOut = useCallback(async () => {
     try {
-      if (sessionBundle?.session.accessToken) {
+      if (sessionBundleRef.current?.session.accessToken) {
         await logoutApiSession();
       }
     } catch {
-      // Local session is still cleared below.
+      // Local authority must still be removed even when remote sign-out fails.
     }
 
     setError(null);
     await clearSession();
-  }, [clearSession, sessionBundle?.session.accessToken]);
+  }, [clearSession]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
       setError(null);
+      clearMobileQueryCache();
+
       const response = await loginMobile({
         email: email.trim(),
         password,
@@ -85,20 +103,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     configureMobileApiClient({
-      getSession: async () => sessionBundle,
-      setSession: async (value) => {
-        setSessionBundle(value);
-        await mobileSessionStorage.setSession(value);
-      },
-      clearSession: async () => {
-        await clearSession();
-      },
+      getSession: async () => sessionBundleRef.current,
+      setSession: persistSession,
+      clearSession,
       onUnauthorized: () => {
         setError('Your session expired. Please sign in again.');
-        setSessionBundle(null);
+        void clearSession();
       },
     });
-  }, [clearSession, sessionBundle]);
+  }, [clearSession, persistSession]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -110,13 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!restored) {
-        setSessionBundle(null);
+        applySessionBundle(null);
         setIsReady(true);
         return;
       }
 
       if (!isSessionNearExpiry(restored.session)) {
-        setSessionBundle(restored);
+        applySessionBundle(restored);
         setIsReady(true);
         return;
       }
@@ -142,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    bootstrap().catch(async () => {
+    void bootstrap().catch(async () => {
       if (!isCancelled) {
         await clearSession();
         setIsReady(true);
@@ -152,7 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isCancelled = true;
     };
-  }, [clearSession, persistSession]);
+  }, [applySessionBundle, clearSession, persistSession]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
