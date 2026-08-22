@@ -58,3 +58,13 @@ export function createAuthenticatedClient(
     },
   });
 }
+
+export function createStatelessClient(url: string, anonKey: string): SupabaseClient {
+  return createClient(url, anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+}

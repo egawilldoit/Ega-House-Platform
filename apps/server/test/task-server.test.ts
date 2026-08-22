@@ -42,6 +42,9 @@ class FakeBuilder {
   eq(...args: unknown[]) { this.steps.push({ method: "eq", args }); return this; }
   is(...args: unknown[]) { this.steps.push({ method: "is", args }); return this; }
   in(...args: unknown[]) { this.steps.push({ method: "in", args }); return this; }
+  neq(...args: unknown[]) { this.steps.push({ method: "neq", args }); return this; }
+  not(...args: unknown[]) { this.steps.push({ method: "not", args }); return this; }
+  or(...args: unknown[]) { this.steps.push({ method: "or", args }); return this; }
   order(...args: unknown[]) { this.steps.push({ method: "order", args }); return this; }
   limit(...args: unknown[]) { this.steps.push({ method: "limit", args }); return this; }
   insert(...args: unknown[]) { this.steps.push({ method: "insert", args }); return this; }
@@ -142,17 +145,57 @@ test("POST /api/tasks derives owner from the verified bearer identity", async ()
   assert.equal((insert.args[0] as Record<string, unknown>).owner_user_id, "user-123");
 });
 
-test("GET /api/today delegates the date-scoped read model", async () => {
+test("GET /api/today returns the rich mobile read model", async () => {
   const fake = new FakeSupabase();
-  queueHydration(fake, [taskRow()]);
+  fake.push("tasks", { data: [taskRow()], error: null });
+  fake.push("tasks", { data: [], error: null });
+  fake.push("tasks", { data: [], error: null });
+  fake.push("task_sessions", { data: [], error: null });
+  fake.push("task_sessions", { data: [], error: null });
 
   const response = await makeApp(fake).request("/api/today?date=2026-08-10", { headers: AUTH });
 
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.deepEqual(body.summary, { total: 1, completed: 0, remaining: 1 });
+  assert.equal(body.ok, true);
+  assert.equal(body.date, "2026-08-10");
+  assert.deepEqual(body.sections.planned, [{
+    id: "task-1",
+    title: "Wave 2",
+    description: null,
+    blockedReason: null,
+    status: "todo",
+    priority: "medium",
+    dueDate: null,
+    estimateMinutes: null,
+    updatedAt: "2026-08-10T10:00:00.000Z",
+    focusRank: null,
+    plannedForDate: "2026-08-10",
+    projectName: "Unknown project",
+    projectSlug: null,
+    goalTitle: null,
+    hasActiveTimer: false,
+    isDueToday: false,
+    isPlannedForToday: true,
+    dueBucket: "none",
+  }]);
+  assert.deepEqual(body.summary, {
+    plannedCount: 1,
+    inProgressCount: 0,
+    blockedCount: 0,
+    completedCount: 0,
+    selectedCount: 1,
+    clearableCompletedCount: 0,
+    overdueCount: 0,
+    dueTodayCount: 0,
+    totalEstimateMinutes: 0,
+    trackedTodaySeconds: 0,
+    trackedTodayLabel: "0s",
+  });
+  assert.deepEqual(body.suggestions, { pinned: [], inProgress: [] });
+  assert.equal(body.activeTimer, null);
   assert.ok(fake.calls[0]?.steps.some(
-    (step) => step.method === "eq" && step.args[0] === "planned_for_date" && step.args[1] === "2026-08-10",
+    (step) => step.method === "or" && String(step.args[0]).includes("planned_for_date.eq.2026-08-10"),
   ));
 });
 
