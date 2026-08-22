@@ -6,6 +6,7 @@ import {
   getTodayPlan,
   planTaskForToday,
   removeTaskFromToday,
+  toLocalIsoDate,
   updateTodayTaskStatus,
 } from "@ega/application";
 import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
@@ -44,7 +45,7 @@ export function createTodayRoutes(
     if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     const result = await planTaskForToday(actor, new SupabaseTasksRepository(client), {
       taskId: c.req.param("id"),
-      date: body.date ?? dependencies.now?.()?.toISOString().slice(0, 10),
+      date: body.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : undefined),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, taskId: result.data.id });
@@ -76,7 +77,7 @@ export function createTodayRoutes(
     const { actor, client } = c.var;
     const body = (await readJsonBody(c)) ?? {};
     const result = await clearCompletedToday(actor, new SupabaseTasksRepository(client), {
-      date: body.date ?? dependencies.now?.()?.toISOString().slice(0, 10),
+      date: body.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : new Date().toISOString().slice(0, 10)),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true });

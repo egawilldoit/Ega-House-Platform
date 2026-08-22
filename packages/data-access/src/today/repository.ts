@@ -81,6 +81,9 @@ export class SupabaseTodayReadPort implements TodayReadPort {
     actor: AuthenticatedActor,
     input: Readonly<{ today: string }>,
   ): Promise<RepositoryResult<TodaySourceTask[]>> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.today)) {
+      return { ok: false, error: { code: "unknown" } };
+    }
     const dayStart = new Date(`${input.today}T00:00:00`);
     if (Number.isNaN(dayStart.valueOf())) {
       return { ok: false, error: { code: "unknown" } };
