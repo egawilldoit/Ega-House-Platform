@@ -33,7 +33,7 @@ function createSearchSupabaseMock(overrides?: {
 
         const builder = {
           ilike(column: string, pattern: string) {
-            assert.equal(column, "title");
+            assert.equal(column, table === "projects" ? "name" : "title");
             state.pattern = pattern;
             queryLog.push({ table, pattern, limit: null });
             return builder;
