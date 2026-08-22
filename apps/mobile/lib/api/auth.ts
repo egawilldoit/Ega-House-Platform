@@ -12,7 +12,7 @@ export type MobileLoginInput = {
 export async function loginMobile(
   input: MobileLoginInput,
 ): Promise<MobileAuthSessionResponse> {
-  return mobileApiFetch<MobileAuthSessionResponse>('/api/mobile/auth/session', {
+  return mobileApiFetch<MobileAuthSessionResponse>('/api/auth/session', {
     method: 'POST',
     auth: false,
     body: JSON.stringify(input),
@@ -22,7 +22,7 @@ export async function loginMobile(
 export async function refreshMobileSession(
   refreshToken: string,
 ): Promise<MobileAuthRefreshResponse> {
-  return mobileApiFetch<MobileAuthRefreshResponse>('/api/mobile/auth/refresh', {
+  return mobileApiFetch<MobileAuthRefreshResponse>('/api/auth/refresh', {
     method: 'POST',
     auth: false,
     body: JSON.stringify({ refreshToken }),
@@ -30,7 +30,7 @@ export async function refreshMobileSession(
 }
 
 export async function logoutMobileSession() {
-  return mobileApiFetch('/api/mobile/auth/logout', {
+  return mobileApiFetch('/api/auth/logout', {
     method: 'POST',
     auth: true,
     retryOnUnauthorized: false,
