@@ -26,6 +26,7 @@ const mockRefreshMobileSession = jest.fn<
 let mockStoredSession: StoredMobileSession | null = null;
 let mockCapturedOnUnauthorized: (() => void) | null = null;
 let mockCapturedClientConfig: CapturedClientConfig | null = null;
+const mockClearTimerStorage = jest.fn<Promise<void>, []>();
 
 jest.mock('@/lib/api/auth', () => ({
   loginMobile: (...args: unknown[]) => mockLoginMobile(...(args as [])),
@@ -39,6 +40,12 @@ jest.mock('@/lib/api/client', () => ({
   configureMobileApiClient: (config: CapturedClientConfig) => {
     mockCapturedClientConfig = config;
     mockCapturedOnUnauthorized = config.onUnauthorized ?? null;
+  },
+}));
+
+jest.mock('@/lib/storage/timer', () => ({
+  mobileTimerStorage: {
+    clear: (...args: unknown[]) => mockClearTimerStorage(...(args as [])),
   },
 }));
 
@@ -104,6 +111,7 @@ async function renderAuth(): Promise<() => AuthContextValue> {
 describe('auth-context query cache isolation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockClearTimerStorage.mockResolvedValue(undefined);
     mockStoredSession = null;
     mockCapturedOnUnauthorized = null;
     mockCapturedClientConfig = null;
@@ -132,6 +140,7 @@ describe('auth-context query cache isolation', () => {
 
     expect(getAuth().isAuthenticated).toBe(false);
     expect(getMobileQueryClient().getQueryData(['tasks'])).toBeUndefined();
+    expect(mockClearTimerStorage).toHaveBeenCalled();
 
     mockLoginMobile.mockResolvedValueOnce(makeSessionResponse('b@example.com'));
     await act(async () => {
@@ -190,6 +199,7 @@ describe('auth-context query cache isolation', () => {
 
     expect(getAuth().isAuthenticated).toBe(false);
     expect(getMobileQueryClient().getQueryData(['goals'])).toBeUndefined();
+    expect(mockClearTimerStorage).toHaveBeenCalled();
     expect(getMobileQueryClient().getQueryCache().getAll()).toHaveLength(0);
   });
 
