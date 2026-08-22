@@ -1,298 +1,336 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useEffect, useMemo, useState } from 'react';
-import { Animated, Easing, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 
-import { GlassButton, GlassCard, GlassSegmentedControl } from '@/components/mobile/glass';
-import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
+import { GlassButton, GlassCard } from '@/components/mobile/glass';
+import {
+  EmptyState,
+  MobileScreen,
+  MobileScreenHeader,
+  SkeletonCard,
+} from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
+import { useTaskListQuery } from '@/features/tasks/query';
+import {
+  useStartTimerMutation,
+  useStopTimerMutation,
+  useTimerWorkspaceQuery,
+} from '@/features/timer/query';
+import { formatElapsedClock, projectElapsedSeconds } from '@/features/timer/runtime';
 
-type TimerMode = 'focus' | 'short_break' | 'long_break';
+const MAX_PICKER_TASKS = 12;
 
-const TIMER_MODES: Record<
-  TimerMode,
-  { label: string; minutes: number; icon: keyof typeof Ionicons.glyphMap }
-> = {
-  focus: { label: 'Focus', minutes: 25, icon: 'flame-outline' },
-  short_break: { label: 'Short Break', minutes: 5, icon: 'cafe-outline' },
-  long_break: { label: 'Long Break', minutes: 15, icon: 'hourglass-outline' },
-};
+function formatMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
 
-function formatTime(totalSeconds: number) {
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return fallback;
 }
 
 export default function TimerScreen() {
-  const [mode, setMode] = useState<TimerMode>('focus');
-  const [remainingSeconds, setRemainingSeconds] = useState(TIMER_MODES.focus.minutes * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [completedFocusSessions, setCompletedFocusSessions] = useState(0);
-  const [completedFocusMinutes, setCompletedFocusMinutes] = useState(0);
-  const [pulse] = useState(() => new Animated.Value(0));
-  const [entrance] = useState(() => new Animated.Value(0));
+  const workspaceQuery = useTimerWorkspaceQuery();
+  const startMutation = useStartTimerMutation();
+  const stopMutation = useStopTimerMutation();
+  const tasksQuery = useTaskListQuery({ limit: 50 });
 
-  const totalSeconds = TIMER_MODES[mode].minutes * 60;
-  const progress = totalSeconds === 0 ? 0 : 1 - remainingSeconds / totalSeconds;
-  const progressPercent = Math.round(progress * 100);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
-  const entranceStyle = useMemo(
-    () => ({
-      opacity: entrance,
-      transform: [
-        {
-          translateY: entrance.interpolate({
-            inputRange: [0, 1],
-            outputRange: [12, 0],
-          }),
-        },
-      ],
-    }),
-    [entrance],
+  const workspace = workspaceQuery.data ?? null;
+  const activeSession = workspace?.activeSession ?? null;
+
+  const candidateTasks = useMemo(
+    () =>
+      (tasksQuery.data?.tasks ?? [])
+        .filter((task) => task.status !== 'done')
+        .slice(0, MAX_PICKER_TASKS),
+    [tasksQuery.data],
   );
 
-  const pulseScale = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [1, 1.04],
-  });
-  const pulseOpacity = pulse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.25, 0.55],
-  });
-
   useEffect(() => {
-    Animated.timing(entrance, {
-      toValue: 1,
-      duration: 420,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [entrance]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      pulse.stopAnimation();
-      pulse.setValue(0);
+    if (!activeSession) {
       return;
     }
 
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
+    const immediate = setTimeout(() => setNowMs(Date.now()), 0);
+    const interval = setInterval(() => setNowMs(Date.now()), 1000);
+
+    return () => {
+      clearTimeout(immediate);
+      clearInterval(interval);
+    };
+  }, [activeSession]);
+
+  const projectedSeconds = activeSession
+    ? projectElapsedSeconds(activeSession.startedAt, nowMs)
+    : null;
+  const elapsedLabel = activeSession
+    ? projectedSeconds === null
+      ? activeSession.elapsedLabel
+      : formatElapsedClock(projectedSeconds)
+    : formatElapsedClock(0);
+  const startedAtLabel = activeSession
+    ? new Date(activeSession.startedAt).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : null;
+
+  async function handleStart() {
+    if (!selectedTaskId || activeSession) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await startMutation.mutateAsync(selectedTaskId);
+    } catch (error) {
+      setActionError(formatMessage(error, 'Unable to start the timer.'));
+    }
+  }
+
+  async function handleStop() {
+    if (!activeSession) {
+      return;
+    }
+
+    setActionError(null);
+
+    try {
+      await stopMutation.mutateAsync(activeSession.sessionId);
+    } catch (error) {
+      setActionError(formatMessage(error, 'Unable to stop the timer.'));
+    }
+  }
+
+  const summary = workspace?.summary ?? null;
+
+  if (workspaceQuery.isPending && !workspace) {
+    return (
+      <MobileScreen>
+        <MobileScreenHeader description="Loading your timer..." eyebrow="Focus" title="Timer" />
+        <View style={styles.skeletonWrap}>
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      </MobileScreen>
     );
-
-    loop.start();
-
-    return () => loop.stop();
-  }, [isRunning, pulse]);
-
-  useEffect(() => {
-    if (!isRunning) {
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setRemainingSeconds((current) => {
-        if (current <= 1) {
-          clearInterval(interval);
-          setIsRunning(false);
-
-          if (mode === 'focus') {
-            setCompletedFocusSessions((value) => value + 1);
-            setCompletedFocusMinutes((value) => value + TIMER_MODES.focus.minutes);
-          }
-
-          return 0;
-        }
-
-        return current - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isRunning, mode]);
-
-  function changeMode(nextMode: TimerMode) {
-    setMode(nextMode);
-    setIsRunning(false);
-    setRemainingSeconds(TIMER_MODES[nextMode].minutes * 60);
   }
 
-  function resetTimer() {
-    setIsRunning(false);
-    setRemainingSeconds(totalSeconds);
+  if (workspaceQuery.isError && !workspace) {
+    const loadError =
+      workspaceQuery.error instanceof Error
+        ? workspaceQuery.error.message
+        : 'Unable to load the timer right now.';
+
+    return (
+      <MobileScreen>
+        <MobileScreenHeader
+          description="Server unavailable"
+          eyebrow="Focus"
+          title="Timer"
+        />
+        <GlassCard variant="fake" style={styles.offlineCard} contentStyle={styles.offlineContent}>
+          <Ionicons color={mobileTheme.colors.danger} name="cloud-offline-outline" size={20} />
+          <Text style={styles.offlineText}>{loadError}</Text>
+          <Text style={styles.offlineHint}>
+            Nothing is running locally. The timer only runs on the server, so reconnect and retry.
+          </Text>
+          <GlassButton
+            onPress={() => {
+              workspaceQuery.refetch().catch(() => {
+                // handled by query error state
+              });
+            }}
+            title="Retry"
+            variant="secondary"
+          />
+        </GlassCard>
+      </MobileScreen>
+    );
   }
 
-  function toggleTimer() {
-    if (remainingSeconds <= 0) {
-      setRemainingSeconds(totalSeconds);
-      setIsRunning(true);
-      return;
-    }
-
-    setIsRunning((current) => !current);
-  }
+  const showStaleBanner = workspaceQuery.isError && !workspaceQuery.isFetching;
 
   return (
     <MobileScreen padded={false}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={workspaceQuery.isRefetching}
+            onRefresh={() => {
+              workspaceQuery.refetch().catch(() => {
+                // handled by query error state
+              });
+            }}
+          />
+        }
+        showsVerticalScrollIndicator={false}
+      >
         <MobileScreenHeader
+          description={
+            activeSession ? 'Session running' : showStaleBanner ? 'Offline' : 'Ready when you are'
+          }
           eyebrow="Focus"
           title="Timer"
-          description={isRunning ? 'Session running' : 'Ready when you are'}
         />
 
-        <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <GlassSegmentedControl
-            disabled={isRunning}
-            onChange={changeMode}
-            options={(Object.keys(TIMER_MODES) as TimerMode[]).map((item) => ({
-              label: TIMER_MODES[item].label,
-              value: item,
-            }))}
-            value={mode}
-          />
-        </Animated.View>
+        {showStaleBanner ? (
+          <View style={styles.staleBanner}>
+            <Ionicons color={mobileTheme.colors.textMuted} name="cloud-offline-outline" size={14} />
+            <Text style={styles.staleBannerText}>
+              Can&apos;t reach the server — showing the last synced state.
+            </Text>
+          </View>
+        ) : null}
 
-        <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <GlassCard variant="fake" style={styles.timerCard} contentStyle={styles.timerCardContent}>
-            <View style={styles.clockContainer}>
-              <View style={styles.clockRing}>
-                <Animated.View
-                  style={[
-                    styles.pulseRing,
-                    {
-                      opacity: pulseOpacity,
-                      transform: [{ scale: pulseScale }],
-                    },
-                  ]}
-                />
-                <View style={styles.progressRing}>
-                  <Text style={styles.progressText}>{progressPercent}%</Text>
-                </View>
-                <View style={styles.clockFace}>
-                  <Text style={styles.timeDisplay}>{formatTime(remainingSeconds)}</Text>
-                  <View style={styles.modeLabelRow}>
-                    <Ionicons
-                      color={mobileTheme.colors.accent}
-                      name={TIMER_MODES[mode].icon}
-                      size={14}
-                    />
-                    <Text style={styles.timeLabel}>{TIMER_MODES[mode].label}</Text>
-                  </View>
-                </View>
-              </View>
+        {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
+
+        {activeSession ? (
+          <GlassCard variant="fake" style={styles.activeCard} contentStyle={styles.activeContent}>
+            <View style={styles.runningRow}>
+              <View style={styles.runningDot} />
+              <Text style={styles.runningLabel}>Running</Text>
             </View>
-
-            <View style={styles.timerActions}>
-              <GlassButton
-                leftIcon={
-                  <Ionicons
-                    color={mobileTheme.colors.textOnAccent}
-                    name={isRunning ? 'pause' : 'play'}
-                    size={22}
-                  />
-                }
-                onPress={toggleTimer}
-                style={styles.primaryTimerButton}
-                title={
-                  isRunning
-                    ? 'Pause'
-                    : remainingSeconds > 0 && remainingSeconds < totalSeconds
-                      ? 'Resume'
-                      : 'Start'
-                }
-                variant="primary"
-              />
-
-              <GlassButton
-                leftIcon={<Ionicons color={mobileTheme.colors.text} name="refresh" size={18} />}
-                onPress={resetTimer}
-                style={styles.secondaryTimerButton}
-                title="Reset"
-                variant="secondary"
-              />
-            </View>
+            <Text style={styles.taskTitle} numberOfLines={2}>
+              {activeSession.taskTitle}
+            </Text>
+            <Text style={styles.clock}>{elapsedLabel}</Text>
+            {startedAtLabel ? (
+              <Text style={styles.startedAt}>Started at {startedAtLabel}</Text>
+            ) : null}
+            <GlassButton
+              disabled={stopMutation.isPending}
+              leftIcon={
+                <Ionicons color={mobileTheme.colors.textOnAccent} name="stop" size={22} />
+              }
+              loading={stopMutation.isPending}
+              onPress={() => {
+                handleStop().catch(() => {
+                  // handled in handleStop state
+                });
+              }}
+              style={styles.stopButton}
+              title="Stop timer"
+              variant="danger"
+            />
           </GlassCard>
-        </Animated.View>
+        ) : (
+          <GlassCard variant="fake" style={styles.pickCard} contentStyle={styles.pickContent}>
+            {candidateTasks.length === 0 ? (
+              <EmptyState
+                icon="list-outline"
+                title="No open tasks"
+                description="Add a task first, then start timing it here."
+              />
+            ) : (
+              <>
+                <Text style={styles.pickTitle}>Pick a task to time</Text>
+                {candidateTasks.map((task) => {
+                  const isSelected = task.id === selectedTaskId;
 
-        <Animated.View style={[styles.animatedSection, entranceStyle]}>
-          <GlassCard variant="fake" style={styles.statsCard}>
-            <View style={styles.cardTitleRow}>
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      key={task.id}
+                      onPress={() => setSelectedTaskId(task.id)}
+                      style={[styles.taskRow, isSelected ? styles.taskRowSelected : null]}
+                    >
+                      <View style={styles.taskRowCopy}>
+                        <Text style={styles.taskRowTitle} numberOfLines={1}>
+                          {task.title}
+                        </Text>
+                        <Text style={styles.taskRowMeta}>
+                          {task.project.name} · {task.status.replace('_', ' ')}
+                        </Text>
+                      </View>
+                      {isSelected ? (
+                        <Ionicons
+                          color={mobileTheme.colors.accent}
+                          name="checkmark-circle"
+                          size={20}
+                        />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+                <GlassButton
+                  disabled={!selectedTaskId || startMutation.isPending}
+                  leftIcon={
+                    <Ionicons color={mobileTheme.colors.textOnAccent} name="play" size={20} />
+                  }
+                  loading={startMutation.isPending}
+                  onPress={() => {
+                    handleStart().catch(() => {
+                      // handled in handleStart state
+                    });
+                  }}
+                  style={styles.startButton}
+                  title="Start timer"
+                />
+              </>
+            )}
+          </GlassCard>
+        )}
+
+        {summary ? (
+          <GlassCard variant="fake" style={styles.summaryCard}>
+            <View style={styles.summaryTitleRow}>
               <Ionicons color={mobileTheme.colors.accent} name="timer-outline" size={18} />
-              <Text style={styles.statsTitle}>Current app session</Text>
+              <Text style={styles.summaryTitle}>Tracked time</Text>
             </View>
             <View style={styles.statsRow}>
               <View style={styles.statBlock}>
-                <Text style={styles.statValue}>{completedFocusSessions}</Text>
+                <Text style={styles.statValue}>{summary.trackedTodayLabel}</Text>
+                <Text style={styles.statLabel}>Today</Text>
+              </View>
+              <View style={styles.statBlock}>
+                <Text style={styles.statValue}>{summary.sessionsTodayCount}</Text>
                 <Text style={styles.statLabel}>Sessions</Text>
               </View>
               <View style={styles.statBlock}>
-                <Text style={styles.statValue}>{completedFocusMinutes}m</Text>
-                <Text style={styles.statLabel}>Focused</Text>
-              </View>
-              <View style={styles.statBlock}>
-                <Text style={styles.statValue}>{TIMER_MODES[mode].minutes}m</Text>
-                <Text style={styles.statLabel}>{TIMER_MODES[mode].label}</Text>
+                <Text style={styles.statValue}>{summary.longestSessionLabel ?? '—'}</Text>
+                <Text style={styles.statLabel}>Longest</Text>
               </View>
             </View>
+            <Text style={styles.totalMeta}>All time · {summary.trackedTotalLabel}</Text>
           </GlassCard>
-        </Animated.View>
+        ) : null}
 
-        <GlassCard variant="fake" style={styles.guidanceCard} contentStyle={styles.guidanceContent}>
-          <Ionicons color={mobileTheme.colors.info} name="checkmark-circle-outline" size={18} />
-          <Text style={styles.guidanceText}>
-            Pick one task from Tasks, start a focus session, then update the task when done.
-          </Text>
-        </GlassCard>
+        {tasksQuery.isFetching && !tasksQuery.data ? (
+          <ActivityIndicator color={mobileTheme.colors.accent} style={styles.tasksLoading} />
+        ) : null}
       </ScrollView>
     </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  animatedSection: {
-    width: '100%',
-  },
-  cardTitleRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 14,
-  },
-  clockContainer: {
-    alignItems: 'center',
-  },
-  clockFace: {
-    alignItems: 'center',
-    backgroundColor: mobileTheme.glass.surfaceStrong,
+  activeCard: {
     borderColor: mobileTheme.glass.border,
-    borderWidth: 1,
-    borderRadius: 88,
-    height: 176,
-    justifyContent: 'center',
-    width: 176,
-    ...mobileTheme.shadow.fab,
   },
-  clockRing: {
+  activeContent: {
     alignItems: 'center',
-    height: 236,
-    justifyContent: 'center',
-    position: 'relative',
-    width: 236,
+    paddingVertical: mobileTheme.spacing.xl,
+  },
+  clock: {
+    color: mobileTheme.colors.text,
+    fontSize: 52,
+    fontWeight: mobileTheme.font.black,
+    letterSpacing: -1,
+    marginTop: mobileTheme.spacing.sm,
   },
   content: {
     gap: mobileTheme.spacing.md,
@@ -300,114 +338,165 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
-  guidanceCard: {
-    borderColor: mobileTheme.colors.infoMid,
+  errorText: {
+    color: mobileTheme.colors.danger,
+    textAlign: 'center',
   },
-  guidanceContent: {
+  offlineCard: {
+    borderColor: mobileTheme.colors.danger,
+  },
+  offlineContent: {
     alignItems: 'flex-start',
-    flexDirection: 'row',
-    gap: 9,
+    gap: mobileTheme.spacing.sm,
   },
-  guidanceText: {
-    color: mobileTheme.colors.info,
-    flex: 1,
+  offlineHint: {
+    color: mobileTheme.colors.textMuted,
     fontSize: 13,
-    fontWeight: mobileTheme.font.semibold,
     lineHeight: 19,
   },
-  modeLabelRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 6,
+  offlineText: {
+    color: mobileTheme.colors.text,
+    fontSize: 15,
+    fontWeight: mobileTheme.font.semibold,
   },
-  primaryTimerButton: {
-    flex: 1,
-    minHeight: 54,
-    ...mobileTheme.shadow.fab,
+  pickCard: {
+    borderColor: mobileTheme.glass.border,
   },
-  progressRing: {
-    alignItems: 'center',
-    borderColor: mobileTheme.colors.accentSoft,
-    borderRadius: 112,
-    borderWidth: 10,
-    height: 224,
-    justifyContent: 'center',
-    position: 'absolute',
-    width: 224,
+  pickContent: {
+    gap: mobileTheme.spacing.sm,
   },
-  progressText: {
-    color: mobileTheme.colors.textSubtle,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    position: 'absolute',
-    top: 18,
+  pickTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 16,
+    fontWeight: mobileTheme.font.extrabold,
   },
-  pulseRing: {
-    backgroundColor: mobileTheme.colors.accentSoft,
-    borderRadius: 118,
-    height: 236,
-    position: 'absolute',
-    width: 236,
+  runningDot: {
+    backgroundColor: mobileTheme.colors.successMid,
+    borderRadius: 5,
+    height: 10,
+    width: 10,
   },
-  secondaryTimerButton: {
-    minHeight: 54,
-    paddingHorizontal: 18,
-  },
-  statBlock: {
-    alignItems: 'center',
-    flex: 1,
-    minWidth: 76,
-  },
-  statLabel: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    marginTop: 3,
-    textAlign: 'center',
+  runningLabel: {
+    color: mobileTheme.colors.successMid,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: 0.5,
     textTransform: 'uppercase',
   },
-  statValue: {
-    color: mobileTheme.colors.text,
-    fontSize: 24,
-    fontWeight: mobileTheme.font.black,
-    letterSpacing: -0.5,
+  runningRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
-  statsCard: {
+  skeletonWrap: {
+    gap: mobileTheme.spacing.md,
+    marginTop: mobileTheme.spacing.lg,
+  },
+  startButton: {
+    minHeight: 52,
     marginTop: mobileTheme.spacing.xs,
+    width: '100%',
+  },
+  startedAt: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
   },
   statsRow: {
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
   },
-  statsTitle: {
+  statBlock: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statLabel: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.bold,
+    marginTop: 2,
+    textTransform: 'uppercase',
+  },
+  statValue: {
+    color: mobileTheme.colors.text,
+    fontSize: 22,
+    fontWeight: mobileTheme.font.black,
+  },
+  summaryCard: {
+    marginTop: mobileTheme.spacing.xs,
+  },
+  summaryTitle: {
     color: mobileTheme.colors.text,
     fontSize: 16,
     fontWeight: mobileTheme.font.extrabold,
   },
-  timeDisplay: {
-    color: mobileTheme.colors.text,
-    fontSize: 52,
-    fontWeight: mobileTheme.font.black,
-    letterSpacing: -1,
-  },
-  timeLabel: {
-    color: mobileTheme.colors.accent,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.extrabold,
-    textTransform: 'uppercase',
-  },
-  timerActions: {
+  summaryTitleRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.xl,
+    gap: 8,
+    marginBottom: mobileTheme.spacing.sm,
+  },
+  staleBanner: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.md,
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  staleBannerText: {
+    color: mobileTheme.colors.textMuted,
+    flex: 1,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  stopButton: {
+    minHeight: 54,
+    marginTop: mobileTheme.spacing.lg,
     width: '100%',
   },
-  timerCard: {
-    borderColor: mobileTheme.glass.border,
-  },
-  timerCardContent: {
+  taskRow: {
     alignItems: 'center',
-    paddingVertical: mobileTheme.spacing.xl,
+    borderColor: mobileTheme.glass.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
+  taskRowCopy: {
+    flex: 1,
+    marginRight: 8,
+  },
+  taskRowMeta: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  taskRowSelected: {
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderColor: mobileTheme.colors.accentMid,
+  },
+  taskRowTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 14,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  taskTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 17,
+    fontWeight: mobileTheme.font.bold,
+    marginTop: mobileTheme.spacing.sm,
+    textAlign: 'center',
+  },
+  tasksLoading: {
+    marginTop: mobileTheme.spacing.sm,
+  },
+  totalMeta: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    marginTop: mobileTheme.spacing.sm,
+    textAlign: 'center',
   },
 });
