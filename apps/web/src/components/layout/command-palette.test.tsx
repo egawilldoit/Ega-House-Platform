@@ -15,27 +15,6 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush }),
 }));
 
-vi.mock("./command-palette-model", async (importOriginal) => ({
-  ...(await importOriginal<object>()),
-  filterNavigationItems: (query: string) =>
-    query.trim() === ""
-      ? [{ id: "nav-tasks", group: "go-to", label: "Tasks", hint: null, href: "/tasks" }]
-      : [],
-  buildWorkspaceSections: (result: { query: string; tasks: Array<{ id: string }> }) => [
-    {
-      id: "tasks",
-      title: "Tasks",
-      items: result.tasks.map((task) => ({
-        id: `task-${task.id}`,
-        group: "tasks",
-        label: `Task ${task.id}`,
-        hint: null,
-        href: `/tasks#task-${task.id}`,
-      })),
-    },
-  ],
-}));
-
 let container: HTMLDivElement;
 let root: Root;
 
@@ -86,7 +65,8 @@ describe("CommandPalette", () => {
     await openViaShortcut();
 
     const options = document.body.querySelectorAll('[role="option"]');
-    expect(options.length).toBe(1);
+    expect(options.length).toBe(7);
+    expect(options[0].textContent).toContain("Dashboard");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
 
     await act(async () => {
@@ -95,7 +75,24 @@ describe("CommandPalette", () => {
       );
     });
 
-    expect(routerPush).toHaveBeenCalledWith("/tasks");
+    expect(routerPush).toHaveBeenCalledWith("/dashboard");
+    expect(dialog()).toBeNull();
+  });
+
+  it("toggles closed on a repeat shortcut event and closes on Escape anywhere", async () => {
+    await renderPalette();
+    await openViaShortcut();
+    expect(dialog()).not.toBeNull();
+
+    await openViaShortcut();
+    expect(dialog()).toBeNull();
+
+    await openViaShortcut();
+    expect(dialog()).not.toBeNull();
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
     expect(dialog()).toBeNull();
   });
 
@@ -134,7 +131,7 @@ describe("CommandPalette", () => {
 
       const options = document.body.querySelectorAll('[role="option"]');
       expect(options.length).toBe(1);
-      expect(options[0].textContent).toContain("Task t1");
+      expect(options[0].textContent).toContain("Ship landing page");
       expect(options[0].id).toMatch(/option-0$/);
       expect(input()?.getAttribute("aria-activedescendant")).toBe(options[0].id);
     } finally {
