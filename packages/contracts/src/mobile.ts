@@ -50,7 +50,7 @@ export type MobileApiErrorResponse = {
 
 export type MobileAuthErrorResponse = MobileApiErrorResponse;
 
-export type MobileTaskProject = { id: string; name: string };
+export type MobileTaskProject = { id: string; name: string; slug: string | null };
 export type MobileTaskGoal = { id: string; title: string };
 
 export type MobileTaskReminder = {
@@ -94,6 +94,7 @@ export type MobileTaskListItem = {
 export type MobileTaskCounters = {
   total: number;
   byStatus: Record<TaskStatus, number>;
+  byPriority: Record<TaskPriority, number>;
   pinned: number;
   overdue: number;
   dueToday: number;
@@ -103,6 +104,7 @@ export type MobileTaskListFilters = {
   status: TaskStatus | null;
   projectId: string | null;
   goalId: string | null;
+  priority: TaskPriority | null;
   due: TaskDueFilter;
   sort: TaskSortValue;
   limit: number | null;

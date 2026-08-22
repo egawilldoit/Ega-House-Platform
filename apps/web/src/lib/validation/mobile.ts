@@ -140,6 +140,7 @@ export function validateMobileTaskListQuery(searchParams: URLSearchParams): Vali
   status: TaskStatus | null;
   projectId: string | null;
   goalId: string | null;
+  priority: TaskPriority | null;
   due: TaskDueFilter;
   sort: TaskSortValue;
   limit: number | null;
@@ -147,13 +148,19 @@ export function validateMobileTaskListQuery(searchParams: URLSearchParams): Vali
   const statusParam = searchParams.get("status")?.trim() ?? "";
   const projectId = searchParams.get("projectId")?.trim() || null;
   const goalId = searchParams.get("goalId")?.trim() || null;
+  const priorityParam = searchParams.get("priority")?.trim() ?? "";
   const dueParam = searchParams.get("due")?.trim() ?? DEFAULT_TASK_DUE_FILTER;
   const sortParam = searchParams.get("sort")?.trim() ?? DEFAULT_TASK_SORT;
   const limitParam = searchParams.get("limit")?.trim() ?? "";
   const status = statusParam ? parseTaskStatusOrNull(statusParam) : null;
+  const priority = priorityParam ? parseTaskPriorityOrNull(priorityParam) : null;
 
   if (statusParam && !status) {
     return createMobileApiError("VALIDATION_ERROR", "Invalid status filter.");
+  }
+
+  if (priorityParam && !priority) {
+    return createMobileApiError("VALIDATION_ERROR", "Invalid priority filter.");
   }
 
   if (!isTaskDueFilter(dueParam)) {
@@ -179,6 +186,7 @@ export function validateMobileTaskListQuery(searchParams: URLSearchParams): Vali
       status,
       projectId,
       goalId,
+      priority,
       due: dueParam,
       sort: sortParam,
       limit,

@@ -23,6 +23,7 @@ type NormalizedTaskListParams = {
   status: ListMobileTasksParams['status'];
   projectId: ListMobileTasksParams['projectId'];
   goalId: ListMobileTasksParams['goalId'];
+  priority: NonNullable<ListMobileTasksParams['priority']> | null;
   due: NonNullable<ListMobileTasksParams['due']>;
   sort: NonNullable<ListMobileTasksParams['sort']>;
   limit: ListMobileTasksParams['limit'];
@@ -33,6 +34,7 @@ function normalizeTaskListParams(params: ListMobileTasksParams = {}): Normalized
     status: params.status ?? null,
     projectId: params.projectId ?? null,
     goalId: params.goalId ?? null,
+    priority: params.priority ?? null,
     due: params.due ?? DEFAULT_TASK_QUERY_DUE,
     sort: params.sort ?? DEFAULT_TASK_QUERY_SORT,
     limit: params.limit ?? null,

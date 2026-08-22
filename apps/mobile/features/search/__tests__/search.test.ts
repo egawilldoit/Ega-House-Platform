@@ -19,7 +19,7 @@ function makeTask(overrides: Partial<MobileTaskListItem> & { title: string }): M
     updatedAt: new Date().toISOString(),
     focusRank: null,
     trackedDurationSeconds: 0,
-    project: overrides.project ?? { id: 'p1', name: 'Platform' },
+    project: overrides.project ?? { id: 'p1', name: 'Platform', slug: 'platform' },
     goal: overrides.goal ?? null,
     reminders: [],
     recurrence: null,
@@ -81,7 +81,7 @@ describe('tokenizeQuery', () => {
 describe('searchWorkspace', () => {
   const tasks = [
     makeTask({ title: 'Ship mobile search', description: 'Unified search over tasks' }),
-    makeTask({ title: 'Fix timer drift', project: { id: 'p2', name: 'Timer' } }),
+    makeTask({ title: 'Fix timer drift', project: { id: 'p2', name: 'Timer', slug: null } }),
     makeTask({
       title: 'Write docs',
       description: 'Architecture decision for auth',
