@@ -101,6 +101,7 @@ const WORKSPACES = [
     version: '0.1.0',
     dependencies: {
       '@ega/application': '0.1.0',
+      '@ega/contracts': '0.1.0',
       '@ega/data-access': '0.1.0',
       '@ega/domain': '0.1.0',
       '@hono/node-server': '^2.0.11',
