@@ -152,7 +152,7 @@ for (const dep of sharedWorkspaceDeps) {
 console.log('\n[3] framework pins');
 const mobile = readJson('apps/mobile/package.json');
 assert(mobile.name === '@ega/mobile', 'mobile workspace name is @ega/mobile');
-assert(mobile.dependencies?.expo === '~54.0.34', 'Expo pin ~54.0.34');
+assert(mobile.dependencies?.expo === '~54.0.37', 'Expo pin ~54.0.37');
 assert(mobile.dependencies?.react === '19.1.0', 'mobile React pin 19.1.0');
 assert(mobile.dependencies?.['react-native'] === '0.81.5', 'React Native pin 0.81.5');
 assert(mobile.dependencies?.['expo-router'] === '~6.0.23', 'mobile Expo Router pin ~6.0.23');
