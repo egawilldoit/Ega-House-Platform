@@ -207,6 +207,21 @@ export function refreshMobileSessionIfConfigured(): Promise<boolean> {
 
 const TRANSIENT_REFRESH_STATUSES = new Set([500, 502, 503, 504]);
 
+/**
+ * Commit-time identity check for a refresh that started earlier. A logout or
+ * account switch may complete while the refresh request is in flight; in that
+ * case the captured session no longer describes the current authority and its
+ * result must be discarded instead of installed (logout wins) or destructively
+ * cleared (stale failure must not destroy a newer session).
+ */
+function isSameSessionIdentity(a: SessionBundle | null, b: SessionBundle | null) {
+  return (
+    a?.session.accessToken === b?.session.accessToken &&
+    a?.session.refreshToken === b?.session.refreshToken &&
+    a?.user.id === b?.user.id
+  );
+}
+
 async function performRefresh() {
   if (!sessionHandlers) {
     return false;
@@ -241,8 +256,16 @@ async function performRefresh() {
       });
 
       if (!TRANSIENT_REFRESH_STATUSES.has(response.status)) {
-        await sessionHandlers.clearSession();
-        sessionHandlers.onUnauthorized();
+        const latest = await sessionHandlers.getSession();
+        if (isSameSessionIdentity(latest, current)) {
+          await sessionHandlers.clearSession();
+          sessionHandlers.onUnauthorized();
+        } else {
+          logApiDiagnostic('refresh-result-discarded', {
+            endpoint,
+            reason: 'session-changed-during-refresh',
+          });
+        }
       }
 
       return false;
@@ -254,6 +277,15 @@ async function performRefresh() {
       endpoint,
       errorName: error instanceof Error ? error.name : typeof error,
       errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+
+  const latest = await sessionHandlers.getSession();
+  if (!isSameSessionIdentity(latest, current)) {
+    logApiDiagnostic('refresh-result-discarded', {
+      endpoint,
+      reason: 'session-changed-during-refresh',
     });
     return false;
   }
