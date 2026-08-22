@@ -9,11 +9,46 @@ import {
   setMobileEgaApiClientForTesting,
   unwrapApiResult,
 } from '@/lib/api/ega';
-import type { EgaApiClient } from '@ega/api-client';
+import {
+  type ApiResult,
+  type EgaApiClient,
+} from '@ega/api-client';
+import type { MobileTodayResponse } from '@ega/contracts/mobile';
+
+const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
+  ok: true,
+  date: '2026-08-10',
+  sections: { planned: [], inProgress: [], blocked: [], completed: [] },
+  suggestions: { pinned: [], inProgress: [] },
+  summary: {
+    plannedCount: 0,
+    inProgressCount: 0,
+    blockedCount: 0,
+    completedCount: 0,
+    selectedCount: 0,
+    clearableCompletedCount: 0,
+    overdueCount: 0,
+    dueTodayCount: 0,
+    totalEstimateMinutes: 0,
+    trackedTodaySeconds: 0,
+    trackedTodayLabel: '0m',
+  },
+  activeTimer: null,
+};
 
 function makeFakeClient(): EgaApiClient {
   return {
     health: jest.fn(async () => ({ ok: true as const, data: { status: 'ok' as const } })),
+    auth: {
+      login: jest.fn(),
+      refresh: jest.fn(),
+      logout: jest.fn(),
+    },
+    timer: {
+      workspace: jest.fn(),
+      start: jest.fn(),
+      stop: jest.fn(),
+    },
     projects: {
       list: jest.fn(async () => ({ ok: true as const, data: { projects: [], summary: { total: 0, active: 0, completed: 0, archived: 0 } } })),
       getBySlug: jest.fn(),
@@ -44,7 +79,7 @@ function makeFakeClient(): EgaApiClient {
       clearRecurrence: jest.fn(),
     },
     today: {
-      get: jest.fn(async () => ({ ok: true as const, data: { date: '2026-08-10', tasks: [], summary: { total: 0, completed: 0, remaining: 0 } } })),
+      get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
       plan: jest.fn(),
       remove: jest.fn(),
       updateStatus: jest.fn(),
