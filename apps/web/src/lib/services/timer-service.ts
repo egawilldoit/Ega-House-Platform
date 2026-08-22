@@ -445,6 +445,12 @@ export async function startTimerForTask(
   });
 
   if (insertError) {
+    if (insertError.code === "23505") {
+      // The partial unique index task_sessions_owner_open_unique rejected a
+      // concurrent start for this owner; surface the same domain message as
+      // the pre-check above.
+      return { errorMessage: "A timer is already running. Stop it first." };
+    }
     return { errorMessage: "Unable to start timer right now." };
   }
 

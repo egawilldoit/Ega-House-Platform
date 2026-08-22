@@ -1,0 +1,32 @@
+-- Enforce AT MOST ONE OPEN task_session PER OWNER at the database level.
+--
+-- Application start paths (list open sessions -> if none -> insert) are
+-- race-susceptible when one owner starts timers from concurrent devices:
+-- both requests can observe zero open sessions and both inserts commit.
+-- This partial unique index makes the losing insert fail deterministically
+-- with SQLSTATE 23505, which the data-access layer translates into a typed
+-- conflict result ("A timer is already running.").
+--
+-- Closed sessions (ended_at IS NOT NULL) are not covered by the predicate and
+-- remain unrestricted; start-after-stop keeps working.
+--
+-- Concurrency tradeoff: CREATE UNIQUE INDEX ... CONCURRENTLY cannot run
+-- inside a transaction, while drizzle applies these files statement-by-
+-- statement without an explicit transaction wrapper but with no concurrent-
+-- safe ordering guarantees in CI. task_sessions is small and append-mostly
+-- (timer sessions), so a plain non-concurrent build's brief write lock is
+-- acceptable and keeps application deterministic across local/CI/prod runs.
+--
+-- Safety: this migration is up-only and modifies or deletes no rows. If any
+-- owner already has multiple open sessions, creation fails closed (unique
+-- violation during build) instead of silently repairing data. Operator
+-- pre-flight before applying to production:
+--
+--   SELECT owner_user_id, count(*)
+--   FROM task_sessions
+--   WHERE ended_at IS NULL
+--   GROUP BY owner_user_id
+--   HAVING count(*) > 1;
+CREATE UNIQUE INDEX IF NOT EXISTS "task_sessions_owner_open_unique"
+  ON "public"."task_sessions" USING btree ("owner_user_id")
+  WHERE "ended_at" IS NULL;
