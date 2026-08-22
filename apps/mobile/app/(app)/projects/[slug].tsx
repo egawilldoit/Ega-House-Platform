@@ -1,16 +1,95 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { FlatList, StyleSheet, Text, View } from 'react-native';
 
+import type { ProjectStatus } from '@ega/api-client';
+import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
 import { EmptyState, MobileScreen, MobileScreenHeader, SkeletonCard } from '@/components/mobile/primitives';
 import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
 import { formatProjectToken, projectStatusTone } from '@/components/mobile/ProjectCard';
-import { useProjectBySlugQuery } from '@/features/projects/query';
+import {
+  useArchiveProjectMutation,
+  useProjectBySlugQuery,
+  useUnarchiveProjectMutation,
+  useUpdateProjectStatusMutation,
+} from '@/features/projects/query';
+
+const PROJECT_STATUS_OPTIONS: ProjectStatus[] = ['planned', 'active', 'done', 'paused'];
 
 export default function ProjectDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const projectQuery = useProjectBySlugQuery(slug);
+  const updateStatusMutation = useUpdateProjectStatusMutation();
+  const archiveMutation = useArchiveProjectMutation();
+  const unarchiveMutation = useUnarchiveProjectMutation();
+
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const runMutation = useCallback((action: () => Promise<unknown>) => {
+    setActionError(null);
+    action().catch((error: unknown) => {
+      setActionError(
+        error instanceof Error ? error.message : 'Unable to update the project right now.',
+      );
+    });
+  }, []);
+
+  const isMutating =
+    updateStatusMutation.isPending || archiveMutation.isPending || unarchiveMutation.isPending;
+
+  const sheetItems = useMemo((): ActionSheetItem[] => {
+    const project = projectQuery.data?.project;
+    if (!project) {
+      return [];
+    }
+
+    const statusItems: ActionSheetItem[] = PROJECT_STATUS_OPTIONS.map((status) => ({
+      key: `status-${status}`,
+      label: formatProjectToken(status),
+      disabled: isMutating || project.status === status,
+      onPress: () => {
+        if (project.status !== status) {
+          runMutation(() => updateStatusMutation.mutateAsync({ projectId: project.id, status }));
+        }
+      },
+    }));
+
+    const archiveItems: ActionSheetItem[] =
+      project.status === 'archived'
+        ? [
+            {
+              key: 'unarchive',
+              label: 'Unarchive project',
+              disabled: isMutating,
+              onPress: () => {
+                runMutation(() => unarchiveMutation.mutateAsync(project.id));
+              },
+            },
+          ]
+        : [
+            {
+              key: 'archive',
+              label: 'Archive project',
+              destructive: true,
+              disabled: isMutating,
+              onPress: () => {
+                runMutation(() => archiveMutation.mutateAsync(project.id));
+              },
+            },
+          ];
+
+    return [...statusItems, ...archiveItems];
+  }, [
+    archiveMutation,
+    isMutating,
+    projectQuery.data,
+    runMutation,
+    unarchiveMutation,
+    updateStatusMutation,
+  ]);
 
   if (projectQuery.isLoading) {
     return (
@@ -63,7 +142,21 @@ export default function ProjectDetailScreen() {
                 leftIcon={<View style={[styles.pillDot, { backgroundColor: tone.dot }]} />}
                 tone={project.status === 'done' ? 'success' : 'primary'}
               />
+              <View style={styles.actionsSpacer} />
+              <GlassButton
+                disabled={isMutating}
+                size="sm"
+                title="Actions"
+                variant="ghost"
+                onPress={() => setSheetVisible(true)}
+              />
             </View>
+            {actionError ? (
+              <View style={styles.feedbackError}>
+                <Ionicons name="alert-circle" size={16} color={mobileTheme.colors.danger} />
+                <Text style={styles.feedbackErrorText}>{actionError}</Text>
+              </View>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -86,13 +179,26 @@ export default function ProjectDetailScreen() {
         )}
         showsVerticalScrollIndicator={false}
       />
+
+      <ActionSheet
+        items={sheetItems}
+        onClose={() => setSheetVisible(false)}
+        subtitle={project.name}
+        title="Project actions"
+        visible={sheetVisible}
+      />
     </MobileScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  actionsSpacer: {
+    flex: 1,
+  },
   badgeRow: {
+    alignItems: 'center',
     flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
     marginBottom: mobileTheme.spacing.md,
     marginTop: mobileTheme.spacing.sm,
   },
@@ -114,6 +220,21 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     lineHeight: 18,
+  },
+  feedbackError: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.dangerBg,
+    borderRadius: mobileTheme.radius.md,
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: mobileTheme.spacing.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  feedbackErrorText: {
+    color: mobileTheme.colors.danger,
+    flex: 1,
+    fontWeight: mobileTheme.font.semibold,
   },
   goalAccent: {
     bottom: 0,
