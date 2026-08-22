@@ -5,7 +5,11 @@ const ALLOWED_LEAF_SOURCES = new Map([
   [1130720, 'fast-uri via upstream AJV v3 contract'],
   [1123911, 'js-yaml via upstream v4 tooling contract'],
   [1138115, 'js-yaml via upstream v4 tooling contract'],
-  [1138813, 'nanoid via Expo Router v3 contract'],
+  // GitHub's reviewed nanoid advisory kept the same GHSA but npm audit
+  // refreshed its source id on 2026-08-22. The exception remains the
+  // already-approved transitive Expo Router v3 line documented in
+  // docs/architecture/dependency-audit-exceptions.md.
+  [1139427, 'nanoid via Expo Router v3 contract'],
   [1138808, 'image-size via Metro/Expo toolchain'],
   [1138809, 'image-size via Metro/Expo toolchain'],
 ]);
