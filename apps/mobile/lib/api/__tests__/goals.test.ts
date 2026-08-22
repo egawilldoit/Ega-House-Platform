@@ -83,6 +83,16 @@ describe('mobile goal API wrappers', () => {
     fakeGoals = makeFakeGoalsApi();
     setMobileEgaApiClientForTesting({
       health: jest.fn(),
+      auth: {
+        login: jest.fn(),
+        refresh: jest.fn(),
+        logout: jest.fn(),
+      },
+      timer: {
+        workspace: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+      },
       projects: {
         list: jest.fn(),
         getBySlug: jest.fn(),

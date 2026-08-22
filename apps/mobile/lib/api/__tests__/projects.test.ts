@@ -90,6 +90,16 @@ describe('mobile project API wrappers', () => {
     fakeProjects = makeFakeProjectsApi();
     setMobileEgaApiClientForTesting({
       health: jest.fn(),
+      auth: {
+        login: jest.fn(),
+        refresh: jest.fn(),
+        logout: jest.fn(),
+      },
+      timer: {
+        workspace: jest.fn(),
+        start: jest.fn(),
+        stop: jest.fn(),
+      },
       projects: fakeProjects,
       goals: {
         list: jest.fn(),
