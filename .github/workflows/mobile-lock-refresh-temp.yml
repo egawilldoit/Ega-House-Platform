@@ -1,0 +1,44 @@
+name: Temporary Mobile Lock Refresh
+
+on:
+  push:
+    branches:
+      - integration/mobile-stabilization-v2
+    paths:
+      - .github/workflows/mobile-lock-refresh-temp.yml
+      - package.json
+      - apps/mobile/package.json
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout synthesis branch
+        uses: actions/checkout@v5
+        with:
+          ref: integration/mobile-stabilization-v2
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Regenerate lock only
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit reproducible lock update
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo 'package-lock.json already matches manifests'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'build: refresh workspace lock for Expo SDK54 alignment'
+          git push origin HEAD:integration/mobile-stabilization-v2
