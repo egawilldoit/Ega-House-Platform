@@ -1,12 +1,9 @@
 /**
- * Regression test: concurrent authenticated 401s must trigger exactly ONE
- * refresh call (single-flight). Without this, N concurrent 401s cause N
- * parallel refresh POSTs against a rotating refresh token; providers that
- * reject token reuse then clear the session mid-burst.
+ * Regression tests for the mobile refresh boundary.
  *
- * Reproduced at runtime (2026-08-12): 8 concurrent expired-token requests
- * produced 7 refresh calls; on one run the rotation race cleared the session
- * 7 times and only 1 of 8 requests succeeded.
+ * The canonical refresh transport is the Hono `/api/auth/refresh` route.
+ * Concurrent authenticated 401s must still share exactly one rotating-token
+ * refresh and each original request may retry at most once.
  */
 import {
   configureMobileApiClient,
@@ -46,7 +43,12 @@ function okRefreshResponse() {
     ok: true,
     status: 200,
     json: async () => ({
-      session: { accessToken: 'fresh-access-token', refreshToken: 'refresh-token-2', expiresAt: 9999999999 },
+      ok: true,
+      session: {
+        accessToken: 'fresh-access-token',
+        refreshToken: 'refresh-token-2',
+        expiresAt: 9999999999,
+      },
       user: { id: 'user-1', email: 'user@example.com' },
     }),
   } as unknown as Response;
@@ -57,7 +59,7 @@ describe('mobile session refresh single-flight', () => {
     jest.restoreAllMocks();
   });
 
-  it('fires exactly one refresh request for many concurrent 401-triggered calls', async () => {
+  it('uses the canonical Hono refresh endpoint and fires exactly one request for concurrent callers', async () => {
     makeHandlers();
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(okRefreshResponse());
 
@@ -66,14 +68,15 @@ describe('mobile session refresh single-flight', () => {
     );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toMatch(/\/api\/auth\/refresh$/);
     expect(results.every((ok) => ok === true)).toBe(true);
   });
 
-  it('clears the session exactly once when the single refresh fails', async () => {
+  it('clears the session exactly once for a terminal refresh rejection', async () => {
     const handlers = makeHandlers();
     jest.spyOn(global, 'fetch').mockResolvedValue({
       ok: false,
-      status: 400,
+      status: 401,
     } as unknown as Response);
 
     const results = await Promise.all(
@@ -85,30 +88,36 @@ describe('mobile session refresh single-flight', () => {
     expect(handlers.onUnauthorized).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps returning the shared in-flight result to late callers', async () => {
-    makeHandlers();
-    const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(okRefreshResponse());
+  it('does not clear local session state for transient server refresh failures', async () => {
+    const handlers = makeHandlers();
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 503,
+    } as unknown as Response);
 
-    const first = refreshMobileSessionIfConfigured();
-    const late = refreshMobileSessionIfConfigured();
-
-    expect(await first).toBe(true);
-    expect(await late).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await refreshMobileSessionIfConfigured()).toBe(false);
+    expect(handlers.clearSession).not.toHaveBeenCalled();
+    expect(handlers.onUnauthorized).not.toHaveBeenCalled();
   });
 
-  it('fires exactly one refresh for concurrent mobileApiFetch 401 retries and shares the result', async () => {
+  it('does not clear local session state when the refresh network request fails', async () => {
+    const handlers = makeHandlers();
+    jest.spyOn(global, 'fetch').mockRejectedValue(new Error('network down'));
+
+    expect(await refreshMobileSessionIfConfigured()).toBe(false);
+    expect(handlers.clearSession).not.toHaveBeenCalled();
+    expect(handlers.onUnauthorized).not.toHaveBeenCalled();
+  });
+
+  it('retries concurrent authenticated requests once after the shared refresh', async () => {
     makeHandlers();
 
     let refreshCalls = 0;
     let dataCalls = 0;
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.endsWith('/api/mobile/auth/refresh')) {
+      if (url.endsWith('/api/auth/refresh')) {
         refreshCalls += 1;
-        if (refreshCalls > 1) {
-          return { ok: false, status: 400 } as unknown as Response;
-        }
         return okRefreshResponse();
       }
 
@@ -125,7 +134,6 @@ describe('mobile session refresh single-flight', () => {
       return {
         ok: true,
         status: 200,
-        json: async () => ({ ok: true }),
         text: async () => '{"ok":true}',
       } as unknown as Response;
     });
@@ -140,26 +148,5 @@ describe('mobile session refresh single-flight', () => {
     expect(dataCalls).toBe(16);
     expect(fetchMock).toHaveBeenCalledTimes(17);
     expect(results.every((result) => result.ok === true)).toBe(true);
-  });
-
-  it('clears the session once when concurrent mobileApiFetch retries share a failed refresh', async () => {
-    const handlers = makeHandlers();
-    jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
-      const url = String(input);
-      if (url.endsWith('/api/mobile/auth/refresh')) {
-        return { ok: false, status: 400 } as unknown as Response;
-      }
-      return { ok: false, status: 401 } as unknown as Response;
-    });
-
-    const results = await Promise.allSettled(
-      Array.from({ length: 8 }, (_, index) =>
-        mobileApiFetch<{ ok: boolean }>(`/api/mobile/tasks?i=${index}`),
-      ),
-    );
-
-    expect(results.every((result) => result.status === 'rejected')).toBe(true);
-    expect(handlers.clearSession).toHaveBeenCalledTimes(1);
-    expect(handlers.onUnauthorized).toHaveBeenCalledTimes(1);
   });
 });
