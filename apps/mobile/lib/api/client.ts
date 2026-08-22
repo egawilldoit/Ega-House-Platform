@@ -181,6 +181,8 @@ export function refreshMobileSessionIfConfigured(): Promise<boolean> {
   return refreshInFlight;
 }
 
+const TRANSIENT_REFRESH_STATUSES = new Set([500, 502, 503, 504]);
+
 async function performRefresh() {
   if (!sessionHandlers) {
     return false;
@@ -194,27 +196,44 @@ async function performRefresh() {
   }
 
   const endpoint = `${getApiBaseUrl()}/api/mobile/auth/refresh`;
-  const response = await fetchMobileApi(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      refreshToken: current.session.refreshToken,
-    }),
-  });
+  let response: Response;
+  let payload: MobileAuthRefreshResponse;
 
-  if (!response.ok) {
-    logApiDiagnostic('refresh-failed', {
-      endpoint,
-      status: response.status,
+  try {
+    response = await fetchMobileApi(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        refreshToken: current.session.refreshToken,
+      }),
     });
-    await sessionHandlers.clearSession();
-    sessionHandlers.onUnauthorized();
+
+    if (!response.ok) {
+      logApiDiagnostic('refresh-failed', {
+        endpoint,
+        status: response.status,
+      });
+
+      if (!TRANSIENT_REFRESH_STATUSES.has(response.status)) {
+        await sessionHandlers.clearSession();
+        sessionHandlers.onUnauthorized();
+      }
+
+      return false;
+    }
+
+    payload = (await response.json()) as MobileAuthRefreshResponse;
+  } catch (error) {
+    logApiDiagnostic('refresh-network-error', {
+      endpoint,
+      errorName: error instanceof Error ? error.name : typeof error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     return false;
   }
 
-  const payload = (await response.json()) as MobileAuthRefreshResponse;
   await sessionHandlers.setSession({
     session: payload.session,
     user: payload.user ?? current.user,

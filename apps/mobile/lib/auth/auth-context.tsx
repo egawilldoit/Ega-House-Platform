@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -43,22 +44,31 @@ function isSessionNearExpiry(session: MobileAuthSession) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [sessionBundle, setSessionBundle] = useState<StoredMobileSession | null>(null);
+  const sessionBundleRef = useRef<StoredMobileSession | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const persistSession = useCallback(async (value: StoredMobileSession) => {
+  const applySessionBundle = useCallback((value: StoredMobileSession | null) => {
+    sessionBundleRef.current = value;
     setSessionBundle(value);
-    await mobileSessionStorage.setSession(value);
   }, []);
 
+  const persistSession = useCallback(
+    async (value: StoredMobileSession) => {
+      applySessionBundle(value);
+      await mobileSessionStorage.setSession(value);
+    },
+    [applySessionBundle],
+  );
+
   const clearSession = useCallback(async () => {
-    setSessionBundle(null);
+    applySessionBundle(null);
     await mobileSessionStorage.clearSession();
     clearMobileQueryCache();
-  }, []);
+  }, [applySessionBundle]);
 
   const signOut = useCallback(async () => {
     try {
-      if (sessionBundle?.session.accessToken) {
+      if (sessionBundleRef.current?.session.accessToken) {
         await logoutApiSession();
       }
     } catch {
@@ -67,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setError(null);
     await clearSession();
-  }, [clearSession, sessionBundle?.session.accessToken]);
+  }, [clearSession]);
 
   const signIn = useCallback(
     async (email: string, password: string) => {
@@ -90,10 +100,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     configureMobileApiClient({
-      getSession: async () => sessionBundle,
+      getSession: async () => sessionBundleRef.current,
       setSession: async (value) => {
-        setSessionBundle(value);
-        await mobileSessionStorage.setSession(value);
+        await persistSession(value);
       },
       clearSession: async () => {
         await clearSession();
@@ -103,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void clearSession();
       },
     });
-  }, [clearSession, sessionBundle]);
+  }, [clearSession, persistSession]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -161,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const resumeRefresh = createResumeRefresh({
-      getSession: async () => sessionBundle?.session ?? null,
+      getSession: async () => sessionBundleRef.current?.session ?? null,
     });
 
     const subscription = AppState.addEventListener('change', (status) => {
@@ -171,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.remove();
-  }, [sessionBundle]);
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({

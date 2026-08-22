@@ -9,6 +9,13 @@ import type {
 
 type AuthContextValue = ReturnType<typeof useAuth>;
 
+type CapturedClientConfig = {
+  getSession: () => Promise<StoredMobileSession | null>;
+  setSession: (value: StoredMobileSession) => Promise<void>;
+  clearSession: () => Promise<void>;
+  onUnauthorized: () => void;
+};
+
 const mockLoginMobile = jest.fn<Promise<MobileAuthSessionResponse>, []>();
 const mockLogoutMobileSession = jest.fn<Promise<void>, []>();
 const mockRefreshMobileSession = jest.fn<
@@ -18,6 +25,7 @@ const mockRefreshMobileSession = jest.fn<
 
 let mockStoredSession: StoredMobileSession | null = null;
 let mockCapturedOnUnauthorized: (() => void) | null = null;
+let mockCapturedClientConfig: CapturedClientConfig | null = null;
 
 jest.mock('@/lib/api/auth', () => ({
   loginMobile: (...args: unknown[]) => mockLoginMobile(...(args as [])),
@@ -28,7 +36,8 @@ jest.mock('@/lib/api/auth', () => ({
 }));
 
 jest.mock('@/lib/api/client', () => ({
-  configureMobileApiClient: (config: { onUnauthorized?: () => void }) => {
+  configureMobileApiClient: (config: CapturedClientConfig) => {
+    mockCapturedClientConfig = config;
     mockCapturedOnUnauthorized = config.onUnauthorized ?? null;
   },
 }));
@@ -97,6 +106,7 @@ describe('auth-context query cache isolation', () => {
     jest.clearAllMocks();
     mockStoredSession = null;
     mockCapturedOnUnauthorized = null;
+    mockCapturedClientConfig = null;
     getMobileQueryClient().clear();
   });
 
@@ -202,5 +212,33 @@ describe('auth-context query cache isolation', () => {
 
     expect(mockStoredSession).toBeNull();
     expect(getMobileQueryClient().getQueryData(['notes'])).toBeUndefined();
+  });
+
+  it('serves refreshed tokens from getSession immediately after setSession without waiting for re-render', async () => {
+    const getAuth = await renderAuth();
+
+    mockLoginMobile.mockResolvedValueOnce(makeSessionResponse('a@example.com'));
+    await act(async () => {
+      await getAuth().signIn('a@example.com', 'password-a');
+    });
+
+    const config = mockCapturedClientConfig;
+    expect(config).not.toBeNull();
+
+    const refreshedBundle: StoredMobileSession = {
+      session: {
+        accessToken: 'token-fresh',
+        refreshToken: 'refresh-a@example.com',
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+      },
+      user: { id: 'user-a@example.com', email: 'a@example.com' },
+    };
+
+    await config!.setSession(refreshedBundle);
+    const observed = await config!.getSession();
+    expect(observed?.session.accessToken).toBe('token-fresh');
+
+    await act(async () => {});
+    expect(getAuth().session?.accessToken).toBe('token-fresh');
   });
 });
