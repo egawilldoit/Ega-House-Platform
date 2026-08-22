@@ -11,7 +11,6 @@ import {
   useState,
 } from "react";
 import { Menu, X } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
 
 import { QuickTaskSheet } from "@/components/tasks/quick-task-sheet";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
@@ -31,7 +30,6 @@ export function WorkspaceNavigationDrawer({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const previousOverflowRef = useRef("");
-  const reduceMotion = useReducedMotion();
 
   const closeDrawer = useCallback((options?: { restoreFocus?: boolean }) => {
     const restoreFocus = options?.restoreFocus ?? true;
@@ -96,16 +94,13 @@ export function WorkspaceNavigationDrawer({
             aria-label="Close workspace navigation"
             onClick={() => closeDrawer()}
           />
-          <motion.div
+          <div
             ref={panelRef}
             id={panelId}
             role="dialog"
             aria-modal="true"
             aria-label={label}
-            className="workspace-drawer-panel"
-            initial={reduceMotion ? false : { x: "-100%", opacity: 0.72 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ duration: reduceMotion ? 0 : 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="workspace-drawer-panel workspace-drawer-panel-enter"
             onClickCapture={onPanelClick}
           >
             {children}
@@ -118,7 +113,7 @@ export function WorkspaceNavigationDrawer({
               <X aria-hidden="true" />
               Close
             </button>
-          </motion.div>
+          </div>
         </div>
       ) : null}
     </div>
