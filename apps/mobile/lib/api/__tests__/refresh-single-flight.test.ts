@@ -162,4 +162,71 @@ describe('mobile session refresh single-flight', () => {
     expect(handlers.clearSession).toHaveBeenCalledTimes(1);
     expect(handlers.onUnauthorized).toHaveBeenCalledTimes(1);
   });
+
+  it('does not force logout when the refresh request throws a network error', async () => {
+    const handlers = makeHandlers();
+
+    jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/mobile/auth/refresh')) {
+        throw new TypeError('Network request failed');
+      }
+      return {
+        ok: false,
+        status: 401,
+        text: async () => '{"error":{"message":"expired"}}',
+      } as unknown as Response;
+    });
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 4 }, (_, index) =>
+        mobileApiFetch<{ ok: boolean }>(`/api/mobile/tasks?i=${index}`),
+      ),
+    );
+
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        expect((result.reason as Error).message).toBe('expired');
+      }
+    }
+    expect(handlers.clearSession).not.toHaveBeenCalled();
+    expect(handlers.onUnauthorized).not.toHaveBeenCalled();
+    const bundle = await handlers.getSession();
+    expect(bundle?.session.refreshToken).toBe('refresh-token-1');
+  });
+
+  it('does not force logout when the refresh endpoint returns a transient server error', async () => {
+    const handlers = makeHandlers();
+
+    let refreshCalls = 0;
+    jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/mobile/auth/refresh')) {
+        refreshCalls += 1;
+        return { ok: false, status: 503 } as unknown as Response;
+      }
+      return {
+        ok: false,
+        status: 401,
+        text: async () => '{"error":{"message":"expired"}}',
+      } as unknown as Response;
+    });
+
+    const results = await Promise.allSettled(
+      Array.from({ length: 4 }, (_, index) =>
+        mobileApiFetch<{ ok: boolean }>(`/api/mobile/tasks?i=${index}`),
+      ),
+    );
+
+    expect(refreshCalls).toBe(1);
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        expect((result.reason as Error).message).toBe('expired');
+      }
+    }
+    expect(handlers.clearSession).not.toHaveBeenCalled();
+    expect(handlers.onUnauthorized).not.toHaveBeenCalled();
+  });
 });
