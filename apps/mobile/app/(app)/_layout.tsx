@@ -45,6 +45,13 @@ export default function ProtectedLayout() {
         }}
       />
       <Stack.Screen
+        name="goals/[id]"
+        options={{
+          headerShown: true,
+          title: 'Goal',
+        }}
+      />
+      <Stack.Screen
         name="goals/create"
         options={{
           headerShown: true,
