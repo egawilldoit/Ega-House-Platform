@@ -1,34 +1,52 @@
-import { isTaskCompletedStatus } from "@ega/domain";
-
 import type { AuthenticatedActor } from "../auth/actor";
-import { applicationFailure, applicationSuccess } from "../shared/result";
-import type { TasksRepository } from "../tasks/ports";
+import { toLocalIsoDate } from "../shared/duration";
+import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import type { TodayReadPort } from "./ports";
+import { buildTodayPlan, type TodayPlan } from "./plan";
 
-export async function getTodayReadModel(
+export async function getTodayPlan(
   actor: AuthenticatedActor,
-  repository: TasksRepository,
-  localDateInput: unknown,
-) {
-  const localDate = String(localDateInput ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
+  port: TodayReadPort,
+  input: Readonly<{ date?: unknown; now?: Date }> = {},
+): Promise<ApplicationResult<TodayPlan>> {
+  const now = input.now ?? new Date();
+  const rawDate = String(input.date ?? "").trim();
+  const today = rawDate || toLocalIsoDate(now);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
     return applicationFailure("Today date is invalid.");
   }
 
-  const result = await repository.listTasks(actor, {
-    plannedForDate: localDate,
-    includeArchived: false,
-  });
+  const nowIso = now.toISOString();
+  const dayWindowStart = new Date(`${today}T00:00:00`);
+  const windowStartIso = (() => {
+    const dayStart = new Date(dayWindowStart);
+    if (Number.isNaN(dayStart.valueOf())) return nowIso;
+    dayStart.setHours(0, 0, 0, 0);
+    return dayStart.toISOString();
+  })();
 
-  if (!result.ok) return applicationFailure("Unable to load Today right now.");
+  const [selectedResult, pinnedResult, inProgressResult, timerResult] = await Promise.all([
+    port.listSelectedTasks(actor, { today }),
+    port.listPinnedSuggestions(actor, { limit: 80 }),
+    port.listInProgressSuggestions(actor, { limit: 80 }),
+    port.getTodayTimerSnapshot(actor, { nowIso, windowStartIso }),
+  ]);
 
-  const completed = result.value.filter((task) => isTaskCompletedStatus(task.status)).length;
-  return applicationSuccess({
-    date: localDate,
-    tasks: result.value,
-    summary: {
-      total: result.value.length,
-      completed,
-      remaining: result.value.length - completed,
-    },
-  });
+  if (!selectedResult.ok) return applicationFailure("Unable to load Today right now.");
+  if (!pinnedResult.ok || !inProgressResult.ok) {
+    return applicationFailure("Unable to load Today suggestions right now.");
+  }
+  if (!timerResult.ok) return applicationFailure("Unable to load Today timer data right now.");
+
+  return applicationSuccess(
+    buildTodayPlan({
+      today,
+      selectedRows: selectedResult.value,
+      pinnedRows: pinnedResult.value,
+      inProgressRows: inProgressResult.value,
+      activeTimer: timerResult.value.activeTimer,
+      trackedTodaySeconds: timerResult.value.trackedTodaySeconds,
+    }),
+  );
 }

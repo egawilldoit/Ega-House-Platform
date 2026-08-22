@@ -12,7 +12,12 @@ export * from "./tasks/read-model";
 export * from "./tasks/service";
 export * from "./tasks/recurrence";
 export * from "./today/read-model";
+export * from "./today/ports";
+export * from "./today/plan";
 export * from "./today/service";
+export * from "./timer/ports";
+export * from "./timer/service";
+export * from "./shared/duration";
 
 export type {
   GoalHealth,
