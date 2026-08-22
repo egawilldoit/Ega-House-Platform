@@ -728,6 +728,22 @@
   box-shadow: 18px 0 0 rgba(255, 75, 43, 0.18);
 }
 
+.workspace-drawer-panel-enter {
+  animation: workspace-drawer-slide-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes workspace-drawer-slide-in {
+  from {
+    transform: translateX(-100%);
+    opacity: 0.72;
+  }
+
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 .workspace-drawer-brand {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
