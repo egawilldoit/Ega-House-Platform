@@ -25,7 +25,7 @@ const SEARCH_DEBOUNCE_MS = 180;
 type PaletteStatus =
   | { kind: "idle" }
   | { kind: "loading" }
-  | { kind: "error" };
+  | { kind: "error"; query: string };
 
 type PaletteState = {
   query: string;
@@ -42,19 +42,27 @@ export function CommandPalette() {
   const [{ query, result, status }, setPaletteState] = useState<PaletteState>(IDLE_PALETTE_STATE);
   const [requestedActiveIndex, setRequestedActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const openRef = useRef(false);
   const listId = useId();
 
   const closePalette = () => setOpen(false);
 
   useEffect(() => {
-    const openFromShortcut = () => {
+    const toggleFromShortcut = () => {
+      if (openRef.current) {
+        setOpen(false);
+        return;
+      }
+
       setPaletteState(IDLE_PALETTE_STATE);
       setRequestedActiveIndex(0);
       setOpen(true);
     };
 
-    window.addEventListener(COMMAND_PALETTE_EVENT, openFromShortcut);
-    return () => window.removeEventListener(COMMAND_PALETTE_EVENT, openFromShortcut);
+    window.addEventListener(COMMAND_PALETTE_EVENT, toggleFromShortcut);
+    return () => window.removeEventListener(COMMAND_PALETTE_EVENT, toggleFromShortcut);
   }, []);
 
   const trimmedQuery = query.trim();
@@ -65,17 +73,26 @@ export function CommandPalette() {
       return;
     }
 
+    const firedQuery = trimmedQuery;
     const timer = window.setTimeout(() => {
       setPaletteState((current) =>
-        current.query.trim() === trimmedQuery ? { ...current, status: { kind: "loading" } } : current,
+        current.query.trim() === firedQuery ? { ...current, status: { kind: "loading" } } : current,
       );
 
-      searchWorkspaceAction(trimmedQuery)
+      searchWorkspaceAction(firedQuery)
         .then((searchResult) => {
-          setPaletteState({ query: trimmedQuery, result: searchResult, status: { kind: "idle" } });
+          setPaletteState((current) =>
+            current.query.trim() === firedQuery
+              ? { query: firedQuery, result: searchResult, status: { kind: "idle" } }
+              : current,
+          );
         })
         .catch(() => {
-          setPaletteState({ query: trimmedQuery, result: null, status: { kind: "error" } });
+          setPaletteState((current) =>
+            current.query.trim() === firedQuery
+              ? { query: firedQuery, result: null, status: { kind: "error", query: firedQuery } }
+              : current,
+          );
         });
     }, SEARCH_DEBOUNCE_MS);
 
@@ -84,15 +101,55 @@ export function CommandPalette() {
 
   useEffect(() => {
     if (!open) {
+      openRef.current = false;
       return;
     }
+
+    openRef.current = true;
+    previouslyFocusedRef.current = document.activeElement as HTMLElement | null;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     queueMicrotask(() => inputRef.current?.focus());
 
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closePalette();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) {
+        return;
+      }
+
+      const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      );
+
+      if (focusable.length === 0) {
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && (activeElement === first || activeElement === inputRef.current)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
       document.body.style.overflow = previousOverflow;
+      previouslyFocusedRef.current?.focus?.();
     };
   }, [open]);
 
@@ -111,8 +168,8 @@ export function CommandPalette() {
   const clampedRequestedIndex =
     requestedActiveIndex >= itemCount ? Math.max(0, itemCount - 1) : requestedActiveIndex;
   const activeIndex = Math.min(clampedRequestedIndex, itemCount - 1);
-  const hasNoResults =
-    shouldSearch && itemCount === 0 && status.kind !== "loading" && status.kind !== "error";
+  const showingResultForCurrentQuery = result?.query === trimmedQuery;
+  const hasNoResults = shouldSearch && showingResultForCurrentQuery && itemCount === 0 && status.kind === "idle";
 
   const goToItem = (item: (typeof items)[number] | undefined) => {
     if (!item) {
@@ -131,6 +188,10 @@ export function CommandPalette() {
     }
 
     if (event.key === "ArrowDown") {
+      if (itemCount === 0) {
+        return;
+      }
+
       event.preventDefault();
       setRequestedActiveIndex((current) =>
         nextActiveIndex(Math.min(current, itemCount - 1), itemCount, 1),
@@ -139,6 +200,10 @@ export function CommandPalette() {
     }
 
     if (event.key === "ArrowUp") {
+      if (itemCount === 0) {
+        return;
+      }
+
       event.preventDefault();
       setRequestedActiveIndex((current) =>
         nextActiveIndex(Math.min(current, itemCount - 1), itemCount, -1),
@@ -161,6 +226,7 @@ export function CommandPalette() {
         onClick={closePalette}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label="Search tasks, goals, and projects"
@@ -200,7 +266,7 @@ export function CommandPalette() {
             </p>
           ) : null}
 
-          {status.kind === "error" ? (
+          {status.kind === "error" && status.query === trimmedQuery ? (
             <p className="px-3 py-6 text-sm text-[color:var(--muted-foreground)]" role="alert">
               Search is unavailable right now. Try again in a moment.
             </p>
