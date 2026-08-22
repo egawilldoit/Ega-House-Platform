@@ -106,7 +106,16 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
       .single();
 
     if (result.error || !result.data) {
-      return { ok: false, error: sanitizeSupabaseError(result.error) };
+      // A concurrent start by the same owner loses the race against the
+      // partial unique index task_sessions_owner_open_unique; PostgREST
+      // surfaces it as SQLSTATE 23505 (some versions only carry the
+      // constraint name), so map it to the typed conflict failure.
+      return {
+        ok: false,
+        error: sanitizeSupabaseError(result.error, {
+          conflictMessageHint: "task_sessions_owner_open_unique",
+        }),
+      };
     }
     return { ok: true, value: mapSession(asRow(result.data)) };
   }

@@ -297,7 +297,12 @@ export const taskSessions = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("task_sessions_owner_user_id_idx").on(table.ownerUserId)],
+  (table) => [
+    index("task_sessions_owner_user_id_idx").on(table.ownerUserId),
+    uniqueIndex("task_sessions_owner_open_unique")
+      .on(table.ownerUserId)
+      .where(sql`${table.endedAt} is null`),
+  ],
 );
 
 export const taskReminders = pgTable(

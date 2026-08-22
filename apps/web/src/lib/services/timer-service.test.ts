@@ -597,6 +597,7 @@ test("later stop-style requests cannot extend an already stopped session", async
 function createTimerStartSupabaseMock(options: {
   task?: { id: string; status: string; archived_at: string | null } | null;
   openSessions?: MockTimerSession[];
+  insertError?: { code: string; message: string } | null;
 }) {
   const insertedSessions: Array<Record<string, unknown>> = [];
   const openSessions = options.openSessions ?? [];
@@ -632,7 +633,7 @@ function createTimerStartSupabaseMock(options: {
             },
             insert(payload: Record<string, unknown>) {
               insertedSessions.push(payload);
-              return Promise.resolve({ error: null });
+              return Promise.resolve({ error: options.insertError ?? null });
             },
           };
         }
@@ -726,6 +727,41 @@ test("startTimerForTask still starts for todo and in-progress tasks", async () =
       },
     ]);
   }
+});
+
+test("startTimerForTask translates a 23505 insert conflict into the already-running message", async () => {
+  // Simulates the race loss against the task_sessions_owner_open_unique
+  // partial unique index after the open-session pre-check saw none.
+  const mock = createTimerStartSupabaseMock({
+    task: { id: "task-1", status: "todo", archived_at: null },
+    insertError: {
+      code: "23505",
+      message:
+        'duplicate key value violates unique constraint "task_sessions_owner_open_unique"',
+    },
+  });
+
+  const result = await startTimerForTask("task-1", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, "A timer is already running. Stop it first.");
+  assert.equal(mock.insertedSessions.length, 1);
+});
+
+test("startTimerForTask keeps the generic failure for non-conflict insert errors", async () => {
+  const mock = createTimerStartSupabaseMock({
+    task: { id: "task-1", status: "todo", archived_at: null },
+    insertError: { code: "PGRST301", message: "JWT expired" },
+  });
+
+  const result = await startTimerForTask("task-1", {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:00:00.000Z",
+  });
+
+  assert.equal(result.errorMessage, "Unable to start timer right now.");
 });
 
 test("active timer session preserves selected scheduled task context", async () => {

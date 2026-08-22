@@ -31,6 +31,7 @@ jobs:
       server: ${{ steps.filter.outputs.server }}
       api-client: ${{ steps.filter.outputs.api-client }}
       web: ${{ steps.filter.outputs.web }}
+      db: ${{ steps.filter.outputs.db }}
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -74,6 +75,13 @@ jobs:
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/**'
+            db:
+              - 'drizzle/**'
+              - 'src/db/**'
+              - 'scripts/db/**'
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'package-lock.json'
 
   workspace:
     runs-on: ubuntu-latest
@@ -379,8 +387,43 @@ jobs:
           npm run api-client:typecheck
           npm run api-client:test
 
+  db-invariants:
+    needs: [changes]
+    if: needs.changes.outputs.db == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ega_proof
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Prove task_sessions single-open invariant through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/timer-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+
   hygiene:
-    needs: [workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client]
+    needs: [workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -139,7 +139,13 @@ export async function startTaskSession(
   }
 
   const insertResult = await repository.insertOpenSession(actor, { taskId, startedAtIso });
-  if (!insertResult.ok) return applicationFailure("Unable to start the timer right now.");
+  if (!insertResult.ok) {
+    return applicationFailure(
+      insertResult.error.code === "conflict"
+        ? "A timer is already running. Stop it before starting a new one."
+        : "Unable to start the timer right now.",
+    );
+  }
 
   return applicationSuccess(toActiveSession(insertResult.value, startedAtIso));
 }

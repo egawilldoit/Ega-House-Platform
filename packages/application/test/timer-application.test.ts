@@ -23,6 +23,7 @@ class FakeTimerRepository implements TimerSessionRepository {
   finalized: Array<{ sessionId: string; endedAtIso: string; durationSeconds: number }> = [];
   nextId = 1;
   startableOverride: StartableTask | null = null;
+  insertFailure: { code: "conflict" | "unknown" } | null = null;
 
   seed(session: Partial<TimerSessionRecord> & { id: string }) {
     this.sessions.push({
@@ -57,6 +58,7 @@ class FakeTimerRepository implements TimerSessionRepository {
     input: { taskId: string; startedAtIso: string },
   ) {
     void actor;
+    if (this.insertFailure) return { ok: false as const, error: this.insertFailure };
     const session: TimerSessionRecord = {
       id: `session-${this.nextId++}`,
       taskId: input.taskId,
@@ -101,6 +103,32 @@ test("start rejects a second open session (single-active invariant)", async () =
   assert.equal(second.ok, false);
   if (!second.ok) assert.match(second.errorMessage, /already running/);
   assert.equal(repository.sessions.length, 1);
+});
+
+test("start maps a repository insert conflict to the already-running domain message", async () => {
+  const repository = new FakeTimerRepository();
+  repository.insertFailure = { code: "conflict" };
+  const actor = createAuthenticatedActor("user-timer");
+
+  // Simulates the DB-level race loss: pre-check saw no open session, but the
+  // partial unique index rejected the insert with SQLSTATE 23505.
+  const result = await startTaskSession(actor, repository, { taskId: "task-1" }, { now: NOW });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) {
+    assert.equal(result.errorMessage, "A timer is already running. Stop it before starting a new one.");
+  }
+});
+
+test("start keeps the generic failure message for non-conflict insert failures", async () => {
+  const repository = new FakeTimerRepository();
+  repository.insertFailure = { code: "unknown" };
+  const actor = createAuthenticatedActor("user-timer");
+
+  const result = await startTaskSession(actor, repository, { taskId: "task-1" }, { now: NOW });
+
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.errorMessage, "Unable to start the timer right now.");
 });
 
 test("start rejects ineligible tasks and unknown tasks", async () => {
