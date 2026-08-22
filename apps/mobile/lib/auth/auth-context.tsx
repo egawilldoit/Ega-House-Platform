@@ -124,13 +124,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!restored) {
-        setSessionBundle(null);
+        applySessionBundle(null);
         setIsReady(true);
         return;
       }
 
       if (!isSessionNearExpiry(restored.session)) {
-        setSessionBundle(restored);
+        applySessionBundle(restored);
         setIsReady(true);
         return;
       }
@@ -166,7 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isCancelled = true;
     };
-  }, [clearSession, persistSession]);
+  }, [applySessionBundle, clearSession, persistSession]);
 
   useEffect(() => {
     const resumeRefresh = createResumeRefresh({
