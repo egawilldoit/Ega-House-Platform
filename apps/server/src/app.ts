@@ -150,13 +150,17 @@ function mapSessionPayload(session: {
   refresh_token?: string;
   expires_at?: number | null;
   expires_in?: number | null;
-}): { accessToken: string; refreshToken: string; expiresAt: number } {
+}): { accessToken: string; refreshToken: string; expiresAt: number } | null {
+  const accessToken = typeof session.access_token === "string" ? session.access_token : "";
+  const refreshToken = typeof session.refresh_token === "string" ? session.refresh_token : "";
+  if (!accessToken || !refreshToken) return null;
+
   const fallbackExpiresAt =
     Math.floor(Date.now() / 1000) + Math.max(0, session.expires_in ?? 3600);
 
   return {
-    accessToken: String(session.access_token ?? ""),
-    refreshToken: String(session.refresh_token ?? ""),
+    accessToken,
+    refreshToken,
     expiresAt: session.expires_at ?? fallbackExpiresAt,
   };
 }
@@ -181,33 +185,36 @@ export function createProductionApp(
       dependencies.authenticateWithPassword ??
       (async (email, password) => {
         const { data, error } = await stateless.auth.signInWithPassword({ email, password });
-        if (error || !data.session) {
+        const session = data.session ? mapSessionPayload(data.session) : null;
+        if (error || !session) {
           return { ok: false, message: "Email or password is incorrect." };
         }
         return {
           ok: true,
           user: mapAuthUser(data.user),
-          session: mapSessionPayload(data.session),
+          session,
         };
       }),
     refreshAuthSession:
       dependencies.refreshAuthSession ??
       (async (refreshToken) => {
         const { data, error } = await stateless.auth.refreshSession({ refresh_token: refreshToken });
-        if (error || !data.session) {
+        const session = data.session ? mapSessionPayload(data.session) : null;
+        if (error || !session) {
           return { ok: false, message: "Session expired. Sign in again." };
         }
         return {
           ok: true,
           user: data.user ? mapAuthUser(data.user) : undefined,
-          session: mapSessionPayload(data.session),
+          session,
         };
       }),
     signOutToken:
       dependencies.signOutToken ??
       (async (token) => {
         const scoped = createAuthenticatedClient(env.url, env.anonKey, token);
-        await scoped.auth.signOut();
+        const { error } = await scoped.auth.signOut();
+        if (error) throw new Error(`Sign-out failed: ${error.message}`);
       }),
     checkReadiness:
       dependencies.checkReadiness ??

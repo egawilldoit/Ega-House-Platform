@@ -37,7 +37,10 @@ export async function getTodayPlan(
   if (!pinnedResult.ok || !inProgressResult.ok) {
     return applicationFailure("Unable to load Today suggestions right now.");
   }
-  if (!timerResult.ok) return applicationFailure("Unable to load Today timer data right now.");
+
+  const timerSnapshot = timerResult.ok
+    ? timerResult.value
+    : { activeTimer: null, trackedTodaySeconds: 0 };
 
   return applicationSuccess(
     buildTodayPlan({
@@ -45,8 +48,8 @@ export async function getTodayPlan(
       selectedRows: selectedResult.value,
       pinnedRows: pinnedResult.value,
       inProgressRows: inProgressResult.value,
-      activeTimer: timerResult.value.activeTimer,
-      trackedTodaySeconds: timerResult.value.trackedTodaySeconds,
+      activeTimer: timerSnapshot.activeTimer,
+      trackedTodaySeconds: timerSnapshot.trackedTodaySeconds,
     }),
   );
 }

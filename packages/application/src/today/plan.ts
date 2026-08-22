@@ -12,15 +12,15 @@ import type {
 } from "./ports";
 
 export const TODAY_SUGGESTION_LIMIT = 6;
-const OVERDUE_BUCKET = "overdue";
 export type DueBucket = "none" | "overdue" | "today" | "soon" | "scheduled";
+const OVERDUE_BUCKET: DueBucket = "overdue";
 
 export type TodayPlanTask = Readonly<{
   id: string;
   title: string;
   description: string | null;
   blockedReason: string | null;
-  status: ReturnType<typeof normalizeStatus>;
+  status: NormalizedTaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
@@ -36,8 +36,11 @@ export type TodayPlanTask = Readonly<{
   dueBucket: DueBucket;
 }>;
 
-function normalizeStatus(status: string): "todo" | "in_progress" | "blocked" | "done" {
-  return isTaskStatus(status) ? status : "done";
+type NormalizedTaskStatus = "todo" | "in_progress" | "blocked" | "done";
+
+function normalizeStatus(status: string): NormalizedTaskStatus | null {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return isTaskStatus(normalized) ? normalized : null;
 }
 
 function normalizePriority(priority: string): TaskPriority {
@@ -52,7 +55,7 @@ export function getDueBucket(
   if (!dueDate) return "none";
 
   const complete = isTaskCompletedStatus(status);
-  if (!complete && dueDate < today) return OVERDUE_BUCKET as DueBucket;
+  if (!complete && dueDate < today) return OVERDUE_BUCKET;
   if (!complete && dueDate === today) return "today";
   if (complete) return "scheduled";
 
@@ -62,6 +65,7 @@ export function getDueBucket(
 
 function shiftDate(date: string, days: number): string {
   const value = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(value.valueOf())) return date;
   value.setUTCDate(value.getUTCDate() + days);
   return value.toISOString().slice(0, 10);
 }
@@ -70,8 +74,9 @@ function toPlanTask(
   row: TodaySourceTask,
   activeTaskId: string | null,
   today: string,
-): TodayPlanTask {
+): TodayPlanTask | null {
   const status = normalizeStatus(row.status);
+  if (!status) return null;
   return {
     id: row.id,
     title: row.title,
@@ -161,7 +166,11 @@ function dedupeById(tasks: TodayPlanTask[]): Map<string, TodayPlanTask> {
 
 export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const activeTaskId = input.activeTimer?.taskId ?? null;
-  const selected = [...dedupeById(input.selectedRows.map((row) => toPlanTask(row, activeTaskId, input.today))).values()];
+  const selectedRows = input.selectedRows.flatMap((row) => {
+    const task = toPlanTask(row, activeTaskId, input.today);
+    return task ? [task] : [];
+  });
+  const selected = [...dedupeById(selectedRows).values()];
 
   const planned = selected.filter((task) => task.status === "todo").sort(compareSectionTasks);
   const inProgress = selected.filter((task) => task.status === "in_progress").sort(compareSectionTasks);
@@ -172,8 +181,10 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
 
   const selectedIds = new Set(selected.map((task) => task.id));
   const buildSuggestions = (rows: TodaySourceTask[]) =>
-    rows
-      .map((row) => toPlanTask(row, activeTaskId, input.today))
+    rows.flatMap((row) => {
+      const task = toPlanTask(row, activeTaskId, input.today);
+      return task ? [task] : [];
+    })
       .filter((task) => !selectedIds.has(task.id) && !isTaskCompletedStatus(task.status))
       .sort(compareByFocusThenDue)
       .slice(0, TODAY_SUGGESTION_LIMIT);
