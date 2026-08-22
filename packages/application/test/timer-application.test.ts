@@ -36,14 +36,17 @@ class FakeTimerRepository implements TimerSessionRepository {
   }
 
   async listOpenSessions(actor: AuthenticatedActor) {
+    void actor;
     return ok(this.sessions.filter((session) => session.endedAt === null));
   }
 
   async listRecentSessions(actor: AuthenticatedActor, input: { limit: number }) {
+    void actor;
     return ok(this.sessions.slice(0, input.limit));
   }
 
   async getStartableTask(actor: AuthenticatedActor, input: { taskId: string }) {
+    void actor;
     if (this.startableOverride) return ok(this.startableOverride);
     if (input.taskId !== "task-1") return ok(null);
     return ok({ eligible: true, reason: null, taskTitle: "Seeded task" });
@@ -53,6 +56,7 @@ class FakeTimerRepository implements TimerSessionRepository {
     actor: AuthenticatedActor,
     input: { taskId: string; startedAtIso: string },
   ) {
+    void actor;
     const session: TimerSessionRecord = {
       id: `session-${this.nextId++}`,
       taskId: input.taskId,
@@ -69,6 +73,7 @@ class FakeTimerRepository implements TimerSessionRepository {
     actor: AuthenticatedActor,
     input: { sessionId: string; endedAtIso: string; durationSeconds: number },
   ) {
+    void actor;
     const session = this.sessions.find(
       (candidate) => candidate.id === input.sessionId && candidate.endedAt === null,
     );
