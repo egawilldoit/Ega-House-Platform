@@ -52,6 +52,13 @@ export default function ProtectedLayout() {
           title: 'Create Goal',
         }}
       />
+      <Stack.Screen
+        name="search"
+        options={{
+          headerShown: true,
+          title: 'Search',
+        }}
+      />
     </Stack>
   );
 }

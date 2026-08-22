@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -26,10 +27,16 @@ import {
 import { TaskCard } from '@/components/mobile/TaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
+import {
+  matchTaskViewPreset,
+  TASK_VIEW_PRESETS,
+  type TaskViewId,
+} from '@/features/tasks/views';
 import type {
   MobileTaskDueFilter,
   MobileTaskListItem,
   MobileTaskPriority,
+  MobileTaskSortValue,
   MobileTaskStatus,
   UpdateTaskInput,
 } from '@/types/tasks';
@@ -103,9 +110,11 @@ function getStatusOptions(task: MobileTaskListItem) {
 export default function TasksScreen() {
   const [statusFilter, setStatusFilter] = useState<MobileTaskStatus | 'all'>('all');
   const [dueFilter, setDueFilter] = useState<MobileTaskDueFilter>('all');
+  const [sortFilter, setSortFilter] = useState<MobileTaskSortValue>('updated_desc');
   const tasksQuery = useTaskListQuery({
     due: dueFilter,
     status: statusFilter === 'all' ? null : statusFilter,
+    sort: sortFilter,
   });
   const updateTaskMutation = useUpdateTaskMutation();
   const { refetch } = tasksQuery;
@@ -116,7 +125,23 @@ export default function TasksScreen() {
 
   const tasks: MobileTaskListItem[] = tasksQuery.data?.tasks ?? EMPTY_TASKS;
   const totalTaskCount = tasksQuery.data?.counters.total ?? 0;
-  const hasFilters = statusFilter !== 'all' || dueFilter !== 'all';
+  const hasFilters = statusFilter !== 'all' || dueFilter !== 'all' || sortFilter !== 'updated_desc';
+  const activeViewId = matchTaskViewPreset({
+    status: statusFilter,
+    due: dueFilter,
+    sort: sortFilter,
+  });
+
+  const selectTaskView = useCallback((viewId: TaskViewId) => {
+    const preset = TASK_VIEW_PRESETS.find((item) => item.id === viewId);
+    if (!preset) {
+      return;
+    }
+
+    setStatusFilter(preset.status);
+    setDueFilter(preset.due);
+    setSortFilter(preset.sort);
+  }, []);
   const taskSummary = useMemo(() => {
     const visible = tasks.length;
     const inProgress = tasks.filter((task) => task.status === 'in_progress').length;
@@ -295,8 +320,7 @@ export default function TasksScreen() {
                 <View style={styles.emptyActions}>
                   <GlassButton
                     onPress={() => {
-                      setStatusFilter('all');
-                      setDueFilter('all');
+                      selectTaskView('all');
                     }}
                     title="Clear filters"
                     variant="secondary"
@@ -340,16 +364,52 @@ export default function TasksScreen() {
                     }
                     tone="primary"
                   />
-                  <GlassButton
-                    leftIcon={<Ionicons color={mobileTheme.colors.textOnAccent} name="add" size={15} />}
-                    onPress={() => router.push('/(app)/tasks/create')}
-                    size="sm"
-                    style={styles.headerCreateButton}
-                    title="New"
-                  />
+                  <View style={styles.headerButtonsRow}>
+                    <GlassButton
+                      leftIcon={<Ionicons color={mobileTheme.colors.text} name="search" size={15} />}
+                      onPress={() => router.push('/(app)/search')}
+                      size="sm"
+                      style={styles.headerSearchButton}
+                      title="Search"
+                      variant="secondary"
+                    />
+                    <GlassButton
+                      leftIcon={
+                        <Ionicons color={mobileTheme.colors.textOnAccent} name="add" size={15} />
+                      }
+                      onPress={() => router.push('/(app)/tasks/create')}
+                      size="sm"
+                      style={styles.headerCreateButton}
+                      title="New"
+                    />
+                  </View>
                 </View>
               }
             />
+            <View accessibilityLabel="Task views" style={styles.viewRow}>
+              <ScrollView
+                contentContainerStyle={styles.viewRowContent}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+              >
+                {TASK_VIEW_PRESETS.map((preset) => (
+                  <GlassPill
+                    accessibilityState={{ selected: activeViewId === preset.id }}
+                    key={preset.id}
+                    label={preset.label}
+                    onPress={() => {
+                      selectTaskView(preset.id);
+                    }}
+                    selected={activeViewId === preset.id}
+                    style={styles.viewPill}
+                    textStyle={styles.viewPillText}
+                  />
+                ))}
+                {activeViewId === null ? (
+                  <GlassPill label="Custom" selected style={styles.viewPill} textStyle={styles.viewPillText} />
+                ) : null}
+              </ScrollView>
+            </View>
             <View style={styles.summaryGrid}>
               <GlassCard
                 variant="fake"
@@ -413,8 +473,7 @@ export default function TasksScreen() {
                   <GlassPill
                     label="Reset"
                     onPress={() => {
-                      setStatusFilter('all');
-                      setDueFilter('all');
+                      selectTaskView('all');
                     }}
                     tone="primary"
                   />
@@ -495,6 +554,21 @@ const styles = StyleSheet.create({
   cardWrap: {
     marginBottom: mobileTheme.spacing.sm,
   },
+  viewRow: {
+    marginBottom: mobileTheme.spacing.sm,
+  },
+  viewRowContent: {
+    gap: mobileTheme.spacing.sm,
+    paddingRight: 16,
+  },
+  viewPill: {
+    minHeight: 36,
+    paddingHorizontal: 14,
+  },
+  viewPillText: {
+    fontSize: 13,
+    textTransform: 'none',
+  },
   centeredContent: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -551,7 +625,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
   },
+  headerButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
   headerCreateButton: {
+    paddingHorizontal: 12,
+  },
+  headerSearchButton: {
     paddingHorizontal: 12,
   },
   headerWrap: {
