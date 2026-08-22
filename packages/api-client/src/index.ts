@@ -17,7 +17,9 @@ export type {
   TaskUpdateInput,
   SetTaskRecurrenceInput,
 } from "./tasks";
-export type { TodayApi, TodayApiReadModel } from "./today";
+export type { TodayApi } from "./today";
+export type { TimerApi } from "./timer";
+export type { AuthApi } from "./auth";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
 

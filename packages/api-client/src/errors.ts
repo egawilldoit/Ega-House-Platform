@@ -1,11 +1,11 @@
 /**
  * Error envelope and result mapping for the EGA House HTTP transport.
  *
- * Every /api/* route answers errors with
- * `{ error: { code, message } }` where code is one of
- * UNAUTHENTICATED | VALIDATION | NOT_FOUND | INTERNAL.
- * This module maps raw responses to a small typed result set so callers
- * never have to interpret HTTP statuses themselves.
+ * Resource routes answer errors with `{ error: { code, message } }` using the
+ * transport codes below. Auth routes use the mobile contract vocabulary
+ * (INVALID_CREDENTIALS, SESSION_EXPIRED, VALIDATION_ERROR, ...), which this
+ * module maps onto the closest transport code while preserving status and
+ * message.
  */
 
 export type ApiErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "INTERNAL";
@@ -26,6 +26,14 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
   "NOT_FOUND",
   "INTERNAL",
 ]);
+
+/** Mobile contract auth codes mapped onto the closest transport code. */
+const MOBILE_CODE_ALIASES: Readonly<Record<string, ApiErrorCode>> = {
+  INVALID_CREDENTIALS: "UNAUTHENTICATED",
+  SESSION_EXPIRED: "UNAUTHENTICATED",
+  VALIDATION_ERROR: "VALIDATION",
+  INVALID_REQUEST: "VALIDATION",
+};
 
 const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   UNAUTHENTICATED: "Authentication required.",
@@ -60,10 +68,14 @@ export function parseErrorEnvelope(
 ): ApiErrorPayload {
   if (isRecord(body) && isRecord(body.error)) {
     const { code, message } = body.error;
-    const normalizedCode =
-      typeof code === "string" && KNOWN_CODES.has(code)
-        ? (code as ApiErrorCode)
-        : "INTERNAL";
+    let normalizedCode: ApiErrorCode = "INTERNAL";
+    if (typeof code === "string") {
+      if (KNOWN_CODES.has(code)) {
+        normalizedCode = code as ApiErrorCode;
+      } else if (MOBILE_CODE_ALIASES[code]) {
+        normalizedCode = MOBILE_CODE_ALIASES[code];
+      }
+    }
     return {
       code: normalizedCode,
       message:
