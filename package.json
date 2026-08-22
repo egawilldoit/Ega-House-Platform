@@ -82,6 +82,8 @@
     "postcss": "8.5.23",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
     "sharp": "0.35.3",
     "ws": "8.21.3"
   },
