@@ -449,6 +449,15 @@ export default function TodayScreen() {
               })}
               title="Today"
               description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
+              rightAction={
+                <GlassButton
+                  leftIcon={<Ionicons color={mobileTheme.colors.text} name="search" size={15} />}
+                  onPress={() => router.push('/(app)/search')}
+                  size="sm"
+                  title="Search"
+                  variant="secondary"
+                />
+              }
             />
 
             <GlassCard variant="fake" style={styles.summaryCard} contentStyle={styles.summaryContent}>
