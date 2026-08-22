@@ -8,18 +8,41 @@ import {
 } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { createAuthenticatedClient, extractBearerToken, verifyAccessToken } from "./auth";
+import {
+  createAuthenticatedClient,
+  createStatelessClient,
+  extractBearerToken,
+  verifyAccessToken,
+} from "./auth";
 import { getSupabaseEnv } from "./env";
+import { createAuthRoutes } from "./routes/auth";
 import { createGoalsRoutes } from "./routes/goals";
 import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
+import { createTimerRoutes } from "./routes/timer";
 import { createTodayRoutes } from "./routes/today";
+
+export type AuthOutcome =
+  | {
+      ok: true;
+      user?: { id: string; email: string };
+      session: { accessToken: string; refreshToken: string; expiresAt: number };
+    }
+  | { ok: false; message: string };
 
 export type ServerDependencies = {
   /** Verify a bearer token server-side; resolves to the verified user id or null. */
   verifyToken: (token: string) => Promise<string | null>;
   /** Build the request-scoped Supabase client that carries the SAME token. */
   createRequestClient: (token: string) => SupabaseClient;
+  /** Exchange email + password for a mobile session payload. */
+  authenticateWithPassword?: (email: string, password: string) => Promise<AuthOutcome>;
+  /** Exchange a refresh token for a renewed mobile session payload. */
+  refreshAuthSession?: (refreshToken: string) => Promise<AuthOutcome>;
+  /** Revoke the session that owns the given access token. */
+  signOutToken?: (token: string) => Promise<void>;
+  /** Dependency probe used by GET /ready; resolves to true when dependencies respond. */
+  checkReadiness?: () => Promise<boolean>;
   /** Clock injection for deterministic tests; defaults to `new Date()`. */
   now?: () => Date;
 };
@@ -32,6 +55,8 @@ export type ServerVariables = {
 export const UNAUTHENTICATED_RESPONSE = {
   error: { code: "UNAUTHENTICATED", message: "Authentication required." },
 } as const;
+
+const AUTH_PUBLIC_PATHS = new Set(["/api/auth/session", "/api/auth/refresh"]);
 
 export async function readJsonBody(
   c: Context,
@@ -53,6 +78,11 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.use(
     "/api/*",
     createMiddleware<{ Variables: ServerVariables }>(async (c, next) => {
+      if (AUTH_PUBLIC_PATHS.has(c.req.path)) {
+        await next();
+        return;
+      }
+
       const token = extractBearerToken(c.req.header("authorization"));
 
       if (!token) {
@@ -80,10 +110,18 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
+  app.get("/ready", async (c) => {
+    if (!dependencies.checkReadiness) return c.json({ status: "ok" });
+    const ready = await dependencies.checkReadiness();
+    return ready ? c.json({ status: "ok" }) : c.json({ status: "unavailable" }, 503);
+  });
+
   app.route("/api/projects", createProjectsRoutes(dependencies));
   app.route("/api/goals", createGoalsRoutes(dependencies));
   app.route("/api/tasks", createTasksRoutes(dependencies));
-  app.route("/api/today", createTodayRoutes());
+  app.route("/api/today", createTodayRoutes(dependencies));
+  app.route("/api/timer", createTimerRoutes(dependencies));
+  app.route("/api/auth", createAuthRoutes(dependencies));
 
   app.notFound((c) =>
     c.json({ error: { code: "NOT_FOUND", message: "Route not found." } }, 404),
@@ -100,10 +138,38 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   return app;
 }
 
+function mapAuthUser(user: { id?: string | null; email?: string | null }): {
+  id: string;
+  email: string;
+} {
+  return { id: String(user.id ?? ""), email: user.email ?? "" };
+}
+
+function mapSessionPayload(session: {
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number | null;
+  expires_in?: number | null;
+}): { accessToken: string; refreshToken: string; expiresAt: number } | null {
+  const accessToken = typeof session.access_token === "string" ? session.access_token : "";
+  const refreshToken = typeof session.refresh_token === "string" ? session.refresh_token : "";
+  if (!accessToken || !refreshToken) return null;
+
+  const fallbackExpiresAt =
+    Math.floor(Date.now() / 1000) + Math.max(0, session.expires_in ?? 3600);
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresAt: session.expires_at ?? fallbackExpiresAt,
+  };
+}
+
 export function createProductionApp(
   dependencies: Partial<ServerDependencies> = {},
 ): Hono<{ Variables: ServerVariables }> {
   const env = getSupabaseEnv();
+  const stateless = createStatelessClient(env.url, env.anonKey);
 
   return createApp({
     verifyToken:
@@ -115,6 +181,47 @@ export function createProductionApp(
     createRequestClient:
       dependencies.createRequestClient ??
       ((token) => createAuthenticatedClient(env.url, env.anonKey, token)),
+    authenticateWithPassword:
+      dependencies.authenticateWithPassword ??
+      (async (email, password) => {
+        const { data, error } = await stateless.auth.signInWithPassword({ email, password });
+        const session = data.session ? mapSessionPayload(data.session) : null;
+        if (error || !session) {
+          return { ok: false, message: "Email or password is incorrect." };
+        }
+        return {
+          ok: true,
+          user: mapAuthUser(data.user),
+          session,
+        };
+      }),
+    refreshAuthSession:
+      dependencies.refreshAuthSession ??
+      (async (refreshToken) => {
+        const { data, error } = await stateless.auth.refreshSession({ refresh_token: refreshToken });
+        const session = data.session ? mapSessionPayload(data.session) : null;
+        if (error || !session) {
+          return { ok: false, message: "Session expired. Sign in again." };
+        }
+        return {
+          ok: true,
+          user: data.user ? mapAuthUser(data.user) : undefined,
+          session,
+        };
+      }),
+    signOutToken:
+      dependencies.signOutToken ??
+      (async (token) => {
+        const scoped = createAuthenticatedClient(env.url, env.anonKey, token);
+        const { error } = await scoped.auth.signOut();
+        if (error) throw new Error(`Sign-out failed: ${error.message}`);
+      }),
+    checkReadiness:
+      dependencies.checkReadiness ??
+      (async () => {
+        const { error } = await stateless.from("projects").select("id").limit(1);
+        return !error;
+      }),
     now: dependencies.now,
   });
 }
