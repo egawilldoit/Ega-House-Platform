@@ -45,11 +45,13 @@
     "test:auth-session:e2e": "npm run test:auth-session:e2e --workspace @ega/web",
     "test:coverage": "npm run test:coverage --workspace @ega/web",
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs",
+    "test:mobile-ladder": "node --test scripts/ci/mobile-verification-ladder.test.mjs",
     "test:session": "npm run test:session --workspace @ega/web",
     "test:timer-recovery": "npm run test:timer-recovery --workspace @ega/web",
     "typecheck": "npm run typecheck --workspace @ega/web",
     "typecheck:ega-runner": "tsc --noEmit -p scripts/ega-runner/tsconfig.json",
     "validate:agent-context": "npm run test:agent-context && node scripts/agent/validate-agent-context.mjs",
+    "verify:mobile": "node scripts/ci/mobile-verification-ladder.mjs",
     "web:build": "npm run build --workspace @ega/web",
     "web:test": "npm run test --workspace @ega/web",
     "web:typecheck": "npm run typecheck --workspace @ega/web"
