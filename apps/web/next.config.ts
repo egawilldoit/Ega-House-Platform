@@ -5,6 +5,9 @@ import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@ega/application", "@ega/contracts", "@ega/data-access", "@ega/domain"],
+  experimental: {
+    optimizePackageImports: ["lucide-react"],
+  },
   turbopack: {
     // node_modules is hoisted to the npm workspace root; Next must resolve
     // from there, not from apps/web.
