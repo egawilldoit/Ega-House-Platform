@@ -149,4 +149,33 @@ describe('mobile session refresh single-flight', () => {
     expect(fetchMock).toHaveBeenCalledTimes(17);
     expect(results.every((result) => result.ok === true)).toBe(true);
   });
+
+  it('surfaces a terminal second 401 after the single retry without looping or clearing', async () => {
+    const handlers = makeHandlers();
+
+    let refreshCalls = 0;
+    let dataCalls = 0;
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/api/auth/refresh')) {
+        refreshCalls += 1;
+        return okRefreshResponse();
+      }
+
+      dataCalls += 1;
+      return {
+        ok: false,
+        status: 401,
+        text: async () => '{"error":{"message":"expired"}}',
+      } as unknown as Response;
+    });
+
+    await expect(mobileApiFetch<{ ok: boolean }>('/api/mobile/tasks')).rejects.toThrow('expired');
+
+    expect(dataCalls).toBe(2);
+    expect(refreshCalls).toBe(1);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(handlers.clearSession).not.toHaveBeenCalled();
+    expect(handlers.onUnauthorized).not.toHaveBeenCalled();
+  });
 });
