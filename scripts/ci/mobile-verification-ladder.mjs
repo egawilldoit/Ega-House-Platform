@@ -357,9 +357,16 @@ function defaultAdbExec(adbPath, args) {
     cwd: REPO_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
-    timeout: 60_000,
+    // The first chain command is `adb install -r` of a full debug APK; give it
+    // generous room instead of failing an otherwise healthy install.
+    timeout: 300_000,
   });
   return { ok: (result.status ?? 1) === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+/** Bind one resolved adb binary into the exec shape runAppRuntimeChain expects. */
+export function makeAdbExec(adbPath) {
+  return (args) => defaultAdbExec(adbPath, args);
 }
 
 function defaultDelay(ms) {
@@ -543,6 +550,7 @@ async function runAndroidRuntime(kind) {
     packageName: appConfig.packageName,
     apkPath: apks[0],
     uiProbeText: process.env.EGA_MOBILE_UI_PROBE_TEXT || appConfig.packageName,
+    exec: makeAdbExec(adbPath),
   });
   const prefix =
     outcome.status === 'PASS'

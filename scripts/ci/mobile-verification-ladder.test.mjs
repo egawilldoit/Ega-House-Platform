@@ -12,6 +12,7 @@ import {
   discoverApkArtifacts,
   discoverIntegrationSuites,
   findAdb,
+  makeAdbExec,
   formatSummary,
   highestProven,
   parseLevelSpec,
@@ -337,6 +338,17 @@ test('runAppRuntimeChain fails honestly when install or launcher resolution brea
   });
   assert.equal(resolveOutcome.status, 'FAIL');
   assert.match(resolveOutcome.reason, /resolve-launcher: could not resolve a LAUNCHER activity/);
+});
+
+test('makeAdbExec binds the adb binary so the default chain exec receives a string command', async () => {
+  const exec = makeAdbExec('/bin/echo');
+  const result = await Promise.resolve(exec(['hello', 'world']));
+  assert.equal(result.ok, true);
+  assert.equal(result.stdout.trim(), 'hello world');
+
+  const missing = makeAdbExec('/nonexistent/adb-binary-ega');
+  const failed = await Promise.resolve(missing(['devices']));
+  assert.equal(failed.ok, false);
 });
 
 test('summary always names the highest proven level explicitly', () => {
