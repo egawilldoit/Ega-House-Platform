@@ -17,10 +17,10 @@ type ApiClientSessionHandlers = {
 type JsonRecord = Record<string, unknown>;
 
 let sessionHandlers: ApiClientSessionHandlers | null = null;
-const DEFAULT_PRODUCTION_API_BASE_URL = 'https://www.egawilldoit.online';
+const DEV_FALLBACK_API_BASE_URL = 'https://www.egawilldoit.online';
 const API_DEBUG_PREFIX = '[mobile-api]';
 
-export type ApiBaseUrlSource = 'env' | 'dev-host' | 'production-default';
+export type ApiBaseUrlSource = 'env' | 'dev-host' | 'dev-fallback';
 
 export type ResolvedApiBaseUrl = {
   url: string;
@@ -53,6 +53,56 @@ export function assertValidApiBaseUrl(value: string): void {
   }
 }
 
+function isLocalOnlyHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '::1' || host === '[::1]' || host === '0.0.0.0') return true;
+
+  const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4) {
+    const first = Number(ipv4[1]);
+    const second = Number(ipv4[2]);
+    if (first === 127 || first === 10 || first === 0) return true;
+    if (first === 169 && second === 254) return true;
+    if (first === 192 && second === 168) return true;
+    if (first === 172 && second >= 16 && second <= 31) return true;
+  }
+  return false;
+}
+
+function assertUsableReleaseApiBaseUrl(value: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(
+      `${API_DEBUG_PREFIX} EXPO_PUBLIC_API_BASE_URL "${value}" is not a usable API base URL. ` +
+        'Set an absolute https origin with a hostname, e.g. https://api.example.com',
+    );
+  }
+
+  if (isLocalOnlyHostname(parsed.hostname)) {
+    throw new Error(
+      `${API_DEBUG_PREFIX} EXPO_PUBLIC_API_BASE_URL "${value}" targets a local-only host. ` +
+        'Release builds require a reachable public HTTPS API origin.',
+    );
+  }
+
+  if (parsed.protocol !== 'https:') {
+    throw new Error(
+      `${API_DEBUG_PREFIX} EXPO_PUBLIC_API_BASE_URL "${value}" uses HTTP. ` +
+        'Release builds require an HTTPS API origin, e.g. https://api.example.com',
+    );
+  }
+}
+
+function assertUsableEnvApiBaseUrl(value: string, isDev: boolean): void {
+  assertValidApiBaseUrl(value);
+  if (!isDev) {
+    assertUsableReleaseApiBaseUrl(value);
+  }
+}
+
 export function resolveApiBaseUrl(
   env: ResolverEnv,
   constants: ResolverConstants,
@@ -60,8 +110,16 @@ export function resolveApiBaseUrl(
 ): ResolvedApiBaseUrl {
   const envUrl = env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (envUrl) {
-    assertValidApiBaseUrl(envUrl);
+    assertUsableEnvApiBaseUrl(envUrl, isDev);
     return { url: trimTrailingSlash(envUrl), source: 'env' };
+  }
+
+  if (!isDev) {
+    throw new Error(
+      `${API_DEBUG_PREFIX} EXPO_PUBLIC_API_BASE_URL is not set. Release builds must set ` +
+        'EXPO_PUBLIC_API_BASE_URL to an HTTPS API origin (e.g. https://api.example.com) at build time; ' +
+        'there is no production fallback.',
+    );
   }
 
   const hostUri =
@@ -69,12 +127,12 @@ export function resolveApiBaseUrl(
     constants.manifest2?.extra?.expoClient?.hostUri ??
     null;
 
-  if (isDev && hostUri) {
+  if (hostUri) {
     const host = hostUri.split(':')[0];
     return { url: trimTrailingSlash(`http://${host}:3000`), source: 'dev-host' };
   }
 
-  return { url: DEFAULT_PRODUCTION_API_BASE_URL, source: 'production-default' };
+  return { url: DEV_FALLBACK_API_BASE_URL, source: 'dev-fallback' };
 }
 
 let didWarnProductionDefault = false;
@@ -86,13 +144,10 @@ function resolveCurrentApiBaseUrl(): ResolvedApiBaseUrl {
 export function getApiBaseUrl() {
   const resolved = resolveCurrentApiBaseUrl();
 
-  if (resolved.source === 'production-default' && !didWarnProductionDefault) {
+  if (resolved.source === 'dev-fallback' && !didWarnProductionDefault) {
     didWarnProductionDefault = true;
-    const releaseHint = isExpoDevRuntime()
-      ? ''
-      : ' This is a release build; set EXPO_PUBLIC_API_BASE_URL before shipping if this host is not your backend.';
     console.warn(
-      `${API_DEBUG_PREFIX} no EXPO_PUBLIC_API_BASE_URL set; falling back to production default ${resolved.url}.${releaseHint}`,
+      `${API_DEBUG_PREFIX} no EXPO_PUBLIC_API_BASE_URL set; falling back to production default ${resolved.url}.`,
     );
   }
 
@@ -100,7 +155,7 @@ export function getApiBaseUrl() {
 }
 
 /**
- * Test seam: clear the one-time production-default warning so suites start
+ * Test seam: clear the one-time dev fallback warning so suites start
  * from a clean diagnostic state. Mirrors setMobileEgaApiClientForTesting
  * in lib/api/ega.ts.
  */
@@ -133,14 +188,6 @@ function logApiDiagnostic(event: string, details: Record<string, unknown>) {
 function buildNetworkErrorMessage(endpoint: string, error: unknown) {
   const baseUrl = getApiBaseUrl();
   const message = error instanceof Error ? error.message : String(error);
-
-  if (!process.env.EXPO_PUBLIC_API_BASE_URL?.trim() && !isExpoDevRuntime()) {
-    return `Unable to reach ${endpoint}. Release build is using fallback API base URL ${baseUrl}. Set EXPO_PUBLIC_API_BASE_URL if this is not your production backend.`;
-  }
-
-  if (baseUrl.startsWith('http://') && !isExpoDevRuntime()) {
-    return `Unable to reach ${endpoint}. Android release builds require a reachable HTTPS API URL; current base URL is ${baseUrl}.`;
-  }
 
   if (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('10.0.2.2')) {
     return `Unable to reach ${endpoint}. Mobile release builds cannot use local-only API hosts such as ${baseUrl}.`;

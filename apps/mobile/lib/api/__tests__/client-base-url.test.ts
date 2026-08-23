@@ -4,8 +4,13 @@
  * Wrong API configuration must fail LOUDLY:
  *  - an invalid EXPO_PUBLIC_API_BASE_URL throws a precise error before any
  *    request is attempted (dev and release);
- *  - a missing EXPO_PUBLIC_API_BASE_URL falls back to the production default
- *    with a one-time console.warn in dev AND release builds.
+ *  - a release build WITHOUT EXPO_PUBLIC_API_BASE_URL fails deterministically
+ *    with an actionable error instead of silently targeting a default host
+ *    (TASK 2 policy: no unsafe production fallback in release builds);
+ *  - a release build with an HTTP or local-only EXPO_PUBLIC_API_BASE_URL is
+ *    rejected because such origins cannot serve as production API endpoints;
+ *  - a dev build may still fall back to the default host with a one-time
+ *    console.warn so local experimentation stays convenient.
  */
 import {
   getApiBaseUrl,
@@ -55,32 +60,58 @@ describe('resolveApiBaseUrl diagnostic failure guarantee', () => {
     });
   });
 
-  it('falls back to the production default when unset, without throwing', () => {
-    expect(resolveApiBaseUrl({}, {}, false)).toEqual({
-      url: 'https://www.egawilldoit.online',
-      source: 'production-default',
+  it('throws a deterministic error in release when EXPO_PUBLIC_API_BASE_URL is unset', () => {
+    expect(() => resolveApiBaseUrl({}, {}, false)).toThrow(
+      /\[mobile-api\] EXPO_PUBLIC_API_BASE_URL is not set\. Release builds must set EXPO_PUBLIC_API_BASE_URL/,
+    );
+  });
+
+  it('rejects plain HTTP origins in release builds', () => {
+    expect(() =>
+      resolveApiBaseUrl({ EXPO_PUBLIC_API_BASE_URL: 'http://api.example.com' }, {}, false),
+    ).toThrow(
+      /\[mobile-api\] EXPO_PUBLIC_API_BASE_URL "http:\/\/api\.example\.com" uses HTTP\. Release builds require an HTTPS/,
+    );
+  });
+
+  it('rejects localhost origins in release builds', () => {
+    expect(() =>
+      resolveApiBaseUrl({ EXPO_PUBLIC_API_BASE_URL: 'http://localhost:3000' }, {}, false),
+    ).toThrow(/EXPO_PUBLIC_API_BASE_URL "http:\/\/localhost:3000" targets a local-only host/);
+  });
+
+  it('rejects private-network origins in release builds', () => {
+    expect(() =>
+      resolveApiBaseUrl({ EXPO_PUBLIC_API_BASE_URL: 'https://10.0.2.2:3000' }, {}, false),
+    ).toThrow(/EXPO_PUBLIC_API_BASE_URL "https:\/\/10\.0\.2\.2:3000" targets a local-only host/);
+  });
+
+  it('resolves the Expo dev host in dev when no env var is set', () => {
+    expect(
+      resolveApiBaseUrl({}, { expoConfig: { hostUri: '192.168.1.5:8081' } }, true),
+    ).toEqual({
+      url: 'http://192.168.1.5:3000',
+      source: 'dev-host',
     });
   });
 });
 
-describe('getApiBaseUrl fallback diagnostics', () => {
-  it('warns once in release builds (isDev=false) when falling back', () => {
+describe('getApiBaseUrl diagnostics', () => {
+  it('fails deterministically in release builds (isDev=false) when unset', () => {
     setDevMode(false);
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-    getApiBaseUrl();
-    getApiBaseUrl();
-
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(String(warnSpy.mock.calls[0]?.[0])).toMatch(
-      /\[mobile-api\] no EXPO_PUBLIC_API_BASE_URL set; falling back to production default https:\/\/www\.egawilldoit\.online\. This is a release build/,
+    expect(() => getApiBaseUrl()).toThrow(
+      /\[mobile-api\] EXPO_PUBLIC_API_BASE_URL is not set\. Release builds must set EXPO_PUBLIC_API_BASE_URL/,
     );
+    expect(warnSpy).not.toHaveBeenCalled();
   });
 
-  it('still warns in dev builds (isDev=true) without the release hint', () => {
+  it('still falls back with a one-time warn in dev builds (isDev=true)', () => {
     setDevMode(true);
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
+    getApiBaseUrl();
     getApiBaseUrl();
 
     expect(warnSpy).toHaveBeenCalledTimes(1);
