@@ -68,6 +68,14 @@ jobs:
           echo "--- preinstalled system images:"
           ls -d "$ANDROID_HOME"/system-images/*/*/* 2>/dev/null || echo "none preinstalled"
 
+      - name: Upgrade cmdline-tools (bundled one cannot parse SDK repository XML v4)
+        run: |
+          OLD_SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$OLD_SDKM" ] || OLD_SDKM="$ANDROID_HOME/cmdline-tools/bin/sdkmanager"
+          yes | "$OLD_SDKM" --licenses > /dev/null 2>&1 || true
+          "$OLD_SDKM" --install "cmdline-tools;latest" > /dev/null
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
       - name: Ensure newest available google_apis x86_64 system image
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -78,6 +86,7 @@ jobs:
             "$SDKM" --install "system-images;android-34;google_apis;x86_64"
             IMAGE_DIR="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
           fi
+          test -d "$IMAGE_DIR" || { echo "::error::system image missing at $IMAGE_DIR"; exit 1; }
           PKG="${IMAGE_DIR#"$ANDROID_HOME/system-images/"}"
           PKG="${PKG//\//;}"
           echo "AVD image package: $PKG"
@@ -112,7 +121,10 @@ jobs:
       - name: Create AVD
         run: |
           AVDM="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-          echo no | "$AVDM" create avd -n ega-runtime -k "$AVD_IMAGE_PACKAGE" -d pixel_5
+          if ! echo no | "$AVDM" create avd -n ega-runtime -k "$AVD_IMAGE_PACKAGE" -d pixel_5; then
+            echo "pixel_5 profile unavailable; falling back to a generic AVD."
+            echo no | "$AVDM" create avd --force -n ega-runtime -k "$AVD_IMAGE_PACKAGE"
+          fi
           "$AVDM" list avd
 
       - name: Launch emulator and wait for boot
@@ -155,11 +167,17 @@ jobs:
         run: |
           ADB="$ANDROID_HOME/platform-tools/adb"
           mkdir -p ci-artifacts/runtime
-          "$ADB" exec-out screencap -p > ci-artifacts/runtime/screen.png || true
-          if "$ADB" shell uiautomator dump /sdcard/final-window.xml > /dev/null 2>&1; then
-            "$ADB" exec-out cat /sdcard/final-window.xml > ci-artifacts/runtime/ui-dump.xml || true
+          # adb blocks forever ("- waiting for device -") when nothing is
+          # attached; guard every call with a device-state check and a timeout.
+          if [ "$("$ADB" get-state 2>/dev/null | tr -d '\r')" = "device" ]; then
+            timeout 60 "$ADB" exec-out screencap -p > ci-artifacts/runtime/screen.png || true
+            if timeout 60 "$ADB" shell uiautomator dump /sdcard/final-window.xml > /dev/null 2>&1; then
+              timeout 60 "$ADB" exec-out cat /sdcard/final-window.xml > ci-artifacts/runtime/ui-dump.xml || true
+            fi
+            timeout 60 "$ADB" logcat -d -t 500 > ci-artifacts/runtime/logcat-tail.txt || true
+          else
+            echo "no emulator online; runtime evidence unavailable" | tee ci-artifacts/runtime/README.txt
           fi
-          "$ADB" logcat -d -t 500 > ci-artifacts/runtime/logcat-tail.txt || true
           cp emulator.log ci-artifacts/runtime/emulator.log || true
           ls -la ci-artifacts ci-artifacts/runtime
 
