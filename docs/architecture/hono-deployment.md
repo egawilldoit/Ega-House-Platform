@@ -76,8 +76,11 @@ tracked `apps/server/.env.example`; never commit real values.
    (`/(.*)` → `/api/index`) and `maxDuration: 30`.
 2. Set project environment variables (Production + Preview):
    `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
-3. Assign domain `ega-api.egawilldoit.online` to the project. The zone is
-   already on Vercel DNS, so this creates the record without external DNS work.
+3. Assign domain `ega-api.egawilldoit.online` to the project. The zone NS is
+   Cloudflare (`elijah.ns.cloudflare.com`, `sreeni.ns.cloudflare.com`); a
+   DNS-only CNAME `ega-api → cname.vercel-dns.com` was added manually in
+   Cloudflare, so Vercel domain assignment should verify against that record
+   rather than creating one.
 4. First deploy proves or disproves the one unproven step below; then run
    L8: `MOBILE_PRODUCTION_BASE_URL=https://ega-api.egawilldoit.online npm run verify:mobile -- --levels 8`.
 
@@ -109,11 +112,14 @@ release fallback). Production convention decided here:
   since hardening Task 5, mobile calls only canonical Hono paths
   (`/api/auth/*`, `/api/timer/*`, `/api/projects*`, `/api/goals*`,
   `/api/tasks*`, `/api/today*`) via `@ega/api-client`, and the legacy
-  Next.js `/api/mobile/*` routes are deleted from the web app. Set
-  `EXPO_PUBLIC_API_BASE_URL` to the dedicated Hono origin in EAS/release
-  config before shipping.
+  Next.js `/api/mobile/*` routes are deleted from the web app. Release builds
+  get `EXPO_PUBLIC_API_BASE_URL=https://ega-api.egawilldoit.online` from the
+  committed `apps/mobile/.env.production` (the single build-time authority,
+  loaded by Expo CLI during `npx expo export`); do not set it ad hoc in build
+  commands or CI secrets.
 - Misconfiguration keeps failing diagnostically: invalid URLs throw at resolve
-  time, release builds warn once on fallback, and network errors surface
+  time, release builds without the variable throw at startup (no production
+  fallback), and network errors surface
   actionable messages naming `EXPO_PUBLIC_API_BASE_URL`
   (`apps/mobile/lib/api/__tests__/client-base-url.test.ts`).
 
