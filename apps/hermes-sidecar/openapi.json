@@ -1,0 +1,18 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Hermes Mobile Sidecar API",
+    "description": "Secure gateway between the Hermes Agent and mobile Android devices",
+    "version": "0.1.0"
+  },
+  "components": {
+    "schemas": {}
+  },
+  "paths": {},
+  "servers": [
+    {
+      "url": "http://127.0.0.1:18790",
+      "description": "Development"
+    }
+  ]
+}
