@@ -1,0 +1,26 @@
+# Journey 0 — non-authenticated smoke: welcome screen renders, navigation to
+# login works, login form renders. Needs only an installed APK + booted target
+# (no API, no credentials), so it is the one flow CI can prove end-to-end.
+#
+# UI strings verified against apps/mobile/app/(public)/welcome.tsx ("Get
+# started", "Sign in with your EGA House account") and login.tsx ("Login",
+# placeholder texts "Email"/"Password"). Brand text renders as "EGA HOUSE" via
+# textTransform, so it is asserted with a case-insensitive regex.
+appId: com.ega_house.mobile
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "EGA.?HOUSE"
+    timeout: 120000
+- assertVisible: "Your execution"
+- assertVisible: "Get started"
+- assertVisible: "Sign in with your EGA House account"
+- takeScreenshot: welcome-screen
+- tapOn: "Get started"
+- extendedWaitUntil:
+    visible: "Login"
+    timeout: 60000
+- assertVisible: "Email"
+- assertVisible: "Password"
+- takeScreenshot: login-form

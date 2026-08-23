@@ -58,3 +58,24 @@ For each protocol execution collect into one dated directory:
 A protocol run may be cited as APP-runtime evidence only when every claimed
 step's artifacts exist; partial bundles must be reported as partially proven,
 never extrapolated.
+
+## Automated CI status (`.github/workflows/android-runtime.yml`)
+
+The dispatch-only Android Runtime Proof job boots an x86_64+KVM emulator,
+installs the debug APK, runs Metro + `adb reverse`, gates on ladder L6, then
+runs Maestro flow `00-welcome` (steps 1–2 plus welcome→login navigation) and
+gates job success on it.
+
+| Maestro flow | Protocol steps covered | Status | Blocker |
+| --- | --- | --- | --- |
+| `00-welcome.yaml` | 1, 2 + login-form render | PROVEN in CI (job-gated) | none |
+| `01-login.yaml` | 3 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | Production-Hardening Tasks 4/5/7 blocked externally on Vercel credentials; no test account exists |
+| `02-tasks-visible.yaml` | 5 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | same |
+| `03-timer-start-stop.yaml` | 10, 14 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | same |
+| `04-logout.yaml` | 15 | BLOCKED-BY-CREDENTIALS | needs authenticated session from flow 01 |
+| `suite.yaml` | 1–3, 5, 10, 14–15 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | runs flows 01–04 |
+
+Blocked flows are never faked or mocked in CI; each run writes an explicit
+`AUTHENTICATED-FLOWS-NOT-RUN.txt` notice into its artifact bundle. Remaining
+protocol steps (4, 6–9, 11–13, 16–19) stay manual-only under this document
+until the API/credential blockers clear.

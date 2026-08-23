@@ -33,8 +33,11 @@ maestro test -e EMAIL=you@example.test -e PASSWORD='***' apps/mobile/e2e/maestro
 maestro test apps/mobile/e2e/maestro/01-login.yaml
 ```
 
-Nothing in this directory runs in CI today and none of it is imported by app
-code; wiring an emulator job into CI is future work once an x86_64+KVM runner
-is available (see `docs/mobile-verification-ladder.md`, "Current known
-ceiling"). Evidence from a run should capture: serial, package, flow output,
-and screenshots (Maestro writes them on failure by default).
+CI: `.github/workflows/android-runtime.yml` (dispatch-only) boots an x86_64+KVM
+emulator, gates on the ladder L6 chain, then runs **only** `00-welcome.yaml`
+(no API or credentials needed) and gates job success on it. Flows 01–04 and
+`suite.yaml` are NOT run in CI — they are BLOCKED-BY-DEPLOYED-API +
+CREDENTIALS (Production-Hardening Tasks 4/5/7 blocked externally on Vercel
+credentials; no test account). See the CI status table in
+`docs/mobile-e2e-flows.md`. Run evidence captures serial, package, flow
+output, and screenshots under `ci-artifacts/maestro/`.

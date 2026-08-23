@@ -1,4 +1,4 @@
-# Android Runtime Proof (TASK 8, release candidate).
+# Android Runtime Proof (TASKS 8 + 9, release candidate).
 #
 # Builds the real debug APK from the Expo CNG native project and proves APP
 # runtime on a GitHub-hosted x86_64 emulator (local hosts are aarch64 without
@@ -6,6 +6,13 @@
 #   adb install -r -> resolve launcher -> am start -> pidof alive -> UI probe.
 # Exit 0 of `scripts/ci/mobile-verification-ladder.mjs --levels 6` is the only
 # PASS signal; its honest contract never converts NOT PROVEN into PASS.
+#
+# TASK 9 extension: after L6 succeeds, the non-authenticated Maestro flow
+# apps/mobile/e2e/maestro/00-welcome.yaml runs against the same booted
+# emulator and gates job success. Authenticated flows (01-04, suite) are NOT
+# run here — see the "Report authenticated-flow coverage honestly" step and
+# docs/mobile-e2e-flows.md; they stay blocked until a deployed API
+# (Production-Hardening Tasks 4/5/7) and test credentials exist.
 #
 # Dispatch-only on purpose: emulator minutes cost real money and the proof run
 # is triggered explicitly after a green exact-head CI on main.
@@ -24,7 +31,7 @@ permissions:
 
 jobs:
   android-runtime:
-    name: Debug APK build + emulator APP runtime (L6)
+    name: Debug APK build + emulator APP runtime (L6) + Maestro smoke (00-welcome)
     runs-on: ubuntu-latest
     timeout-minutes: 75
 
@@ -210,6 +217,63 @@ jobs:
         run: |
           set -o pipefail
           node scripts/ci/mobile-verification-ladder.mjs --levels 6 | tee ci-artifacts/ladder-l6.txt
+
+      # ---- TASK 9: Maestro device smoke (non-authenticated only) ------------
+
+      - name: Install Maestro CLI (official installer; first run downloads driver jars)
+        if: success()
+        run: |
+          curl -Ls "https://get.maestro.dev/install" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Run Maestro flow 00-welcome (welcome -> login form, no API needed)
+        if: success()
+        working-directory: apps/mobile
+        env:
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -o pipefail
+          mkdir -p ../../ci-artifacts/maestro
+          set +e
+          "$HOME/.maestro/bin/maestro" test \
+            e2e/maestro/00-welcome.yaml \
+            2>&1 | tee ../../ci-artifacts/maestro/maestro-output.txt
+          MAESTRO_EXIT="${PIPESTATUS[0]}"
+          set -e
+          # Maestro keeps per-run reports/screenshots under ~/.maestro/tests;
+          # copy whatever exists so evidence ships even on failure.
+          if [ -d "$HOME/.maestro/tests" ]; then
+            cp -r "$HOME/.maestro/tests"/. ../../ci-artifacts/maestro/runs/ || true
+          fi
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          timeout 60 "$ADB" exec-out screencap -p > ../../ci-artifacts/maestro/final-screen.png || true
+          echo "maestro test exit code: $MAESTRO_EXIT"
+          exit "$MAESTRO_EXIT"
+
+      - name: Report authenticated-flow coverage honestly
+        if: always()
+        run: |
+          mkdir -p ci-artifacts/maestro
+          cat > ci-artifacts/maestro/AUTHENTICATED-FLOWS-NOT-RUN.txt <<'EOF'
+          Maestro flows NOT executed by this job:
+            apps/mobile/e2e/maestro/01-login.yaml
+            apps/mobile/e2e/maestro/02-tasks-visible.yaml
+            apps/mobile/e2e/maestro/03-timer-start-stop.yaml
+            apps/mobile/e2e/maestro/04-logout.yaml
+            apps/mobile/e2e/maestro/suite.yaml
+          Status: BLOCKED-BY-DEPLOYED-API + CREDENTIALS.
+            - No deployed Hono API exists (Production-Hardening Tasks 4/5/7 are
+              blocked externally on Vercel credentials).
+            - No test-account credentials exist in this environment.
+          Per the honest-evidence contract these flows must not be faked,
+          mocked, or counted as proven until both blockers clear. They remain
+          runnable locally once an API and credentials are available:
+            maestro test -e EMAIL=... -e PASSWORD=... suite.yaml
+          EOF
+          cat ci-artifacts/maestro/AUTHENTICATED-FLOWS-NOT-RUN.txt
+
+      # -----------------------------------------------------------------------
 
       - name: Collect runtime evidence (screencap, UI dump, logcat)
         if: always()
