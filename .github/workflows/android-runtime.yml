@@ -223,7 +223,15 @@ jobs:
       - name: Install Maestro CLI (official installer; first run downloads driver jars)
         if: success()
         run: |
-          curl -Ls "https://get.maestro.dev/install" | bash
+          # Canonical installer host is get.maestro.mobile.dev;
+          # get.maestro.dev does not resolve (dispatch run 32664550489:
+          # exit 127, no ~/.maestro/bin/maestro). `set -o pipefail` makes a
+          # curl/DNS failure abort this step instead of being masked by the
+          # pipe; `test -x` catches an installer that ran but produced no
+          # binary.
+          set -euo pipefail
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          test -x "$HOME/.maestro/bin/maestro"
           echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
           "$HOME/.maestro/bin/maestro" --version
 
