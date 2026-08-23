@@ -16,6 +16,8 @@
     "./tasks/mutations-ports": "./src/tasks/mutations-ports.ts",
     "./tasks/service": "./src/tasks/service.ts",
     "./tasks/read-model": "./src/tasks/read-model.ts",
+    "./tasks/list-view": "./src/tasks/list-view.ts",
+    "./tasks/focus-queue": "./src/tasks/focus-queue.ts",
     "./tasks/recurrence": "./src/tasks/recurrence.ts",
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts"
@@ -25,6 +27,7 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@ega/contracts": "0.1.0",
     "@ega/domain": "0.1.0"
   }
 }

@@ -60,6 +60,26 @@ class FakeTasksRepository implements TasksRepository {
     this.calls.push({ method: "listTasks", actor: actor.userId });
     return this.list;
   }
+  async listProjectOptions(actor: AuthenticatedActor) {
+    this.calls.push({ method: "listProjectOptions", actor: actor.userId });
+    return ok([{ id: "project-1", name: "Platform", slug: "platform" }]);
+  }
+  async listGoalOptions(actor: AuthenticatedActor) {
+    this.calls.push({ method: "listGoalOptions", actor: actor.userId });
+    return ok([]);
+  }
+  async getFocusRank(actor: AuthenticatedActor, taskId: string) {
+    this.calls.push({ method: "getFocusRank", actor: actor.userId, input: taskId });
+    return ok({ exists: true, focusRank: null });
+  }
+  async getMaxFocusRank(actor: AuthenticatedActor, input: unknown) {
+    this.calls.push({ method: "getMaxFocusRank", actor: actor.userId, input });
+    return ok(0);
+  }
+  async setFocusRank(actor: AuthenticatedActor, input: unknown) {
+    this.calls.push({ method: "setFocusRank", actor: actor.userId, input });
+    return ok(undefined);
+  }
   async getTask(actor: AuthenticatedActor, taskId: string) {
     this.calls.push({ method: "getTask", actor: actor.userId, input: taskId });
     return this.task;
@@ -212,5 +232,10 @@ test("task read models preserve actor scoping and missing-task semantics", async
   assert.equal(list.ok && list.data.tasks.length, 1);
   assert.equal(missing.ok, true);
   assert.equal(missing.ok && missing.data, null);
-  assert.deepEqual(repository.calls.map((call) => call.actor), ["user-123", "user-123"]);
+  assert.deepEqual(repository.calls.map((call) => call.actor), [
+    "user-123",
+    "user-123",
+    "user-123",
+    "user-123",
+  ]);
 });

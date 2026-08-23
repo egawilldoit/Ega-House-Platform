@@ -67,7 +67,32 @@ function makeFakeClient(): EgaApiClient {
       unarchive: jest.fn(),
     },
     tasks: {
-      list: jest.fn(async () => ({ ok: true as const, data: { tasks: [] } })),
+      list: jest.fn(async () => ({
+        ok: true as const,
+        data: {
+          ok: true as const,
+          tasks: [],
+          counters: {
+            total: 0,
+            byStatus: { todo: 0, in_progress: 0, done: 0, blocked: 0 },
+            byPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
+            pinned: 0,
+            overdue: 0,
+            dueToday: 0,
+          },
+          filters: {
+            status: null,
+            projectId: null,
+            goalId: null,
+            priority: null,
+            due: 'all' as const,
+            sort: 'updated_desc' as const,
+            limit: null,
+          },
+          projects: [],
+          goals: [],
+        },
+      })),
       get: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -77,6 +102,8 @@ function makeFakeClient(): EgaApiClient {
       cancelReminder: jest.fn(),
       setRecurrence: jest.fn(),
       clearRecurrence: jest.fn(),
+      pin: jest.fn(),
+      unpin: jest.fn(),
     },
     today: {
       get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),

@@ -2,6 +2,8 @@ import type {
   AuthenticatedActor,
   CreateTaskRecordInput,
   RepositoryResult,
+  TaskGoalOptionRecord,
+  TaskProjectOptionRecord,
   TaskQuery,
   TaskRecord,
   TaskRecurrenceRecord,
@@ -16,6 +18,9 @@ import type { TaskRecurrenceRule } from "@ega/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sanitizeSupabaseError } from "../supabase/errors";
+
+/** Hard ceiling on task rows fetched per list request; keeps payloads bounded. */
+const TASK_LIST_ROW_CAP = 500;
 
 const TASK_SELECT = [
   "id",
@@ -38,10 +43,14 @@ const TASK_SELECT = [
   "archived_at",
   "created_at",
   "updated_at",
+  "projects(name, slug)",
+  "goals(title)",
 ].join(",");
 
-const REMINDER_SELECT = "id,task_id,remind_at,channel,status,sent_at,failure_reason";
+const REMINDER_SELECT =
+  "id,task_id,remind_at,channel,status,sent_at,failure_reason,created_at,updated_at";
 const RECURRENCE_SELECT = "id,task_id,rule,anchor_date,timezone,next_occurrence_date,last_generated_at";
+const SESSION_TOTAL_SELECT = "task_id,duration_seconds";
 
 type Row = Record<string, unknown>;
 
@@ -70,6 +79,8 @@ function mapReminder(row: Row): TaskReminderRecord {
     status: String(row.status) as TaskReminderRecord["status"],
     sentAt: asNullableString(row.sent_at),
     failureReason: asNullableString(row.failure_reason),
+    createdAt: asNullableString(row.created_at) ?? undefined,
+    updatedAt: asNullableString(row.updated_at) ?? undefined,
   };
 }
 
@@ -89,7 +100,10 @@ function mapTask(
   row: Row,
   reminders: TaskReminderRecord[] = [],
   recurrence: TaskRecurrenceRecord | null = null,
+  totalDurationSeconds = 0,
 ): TaskRecord {
+  const projects = row.projects as { name?: string | null; slug?: string | null } | null | undefined;
+  const goals = row.goals as { title?: string | null } | null | undefined;
   return {
     id: String(row.id),
     title: String(row.title),
@@ -113,6 +127,10 @@ function mapTask(
     calendarReminderMinutes: Number(row.calendar_reminder_minutes ?? 10),
     completedAt: asNullableString(row.completed_at),
     createdAt: asNullableString(row.created_at) ?? undefined,
+    projectName: projects?.name ?? null,
+    projectSlug: projects?.slug ?? null,
+    goalTitle: goals?.title ?? null,
+    totalDurationSeconds,
   };
 }
 
@@ -156,16 +174,58 @@ export class SupabaseTasksRepository implements TasksRepository {
 
     if (!query.includeArchived) request = request.is("archived_at", null);
     if (query.status) request = request.eq("status", query.status);
+    // Priority filtering happens in the database; due-filtering and ordering
+    // happen in the application read model so counters can cover the full
+    // filtered scope before the limit slice.
+    if (query.priority) request = request.in("priority", [query.priority]);
     if (query.projectId) request = request.eq("project_id", query.projectId);
     if (query.goalId) request = request.eq("goal_id", query.goalId);
     if (query.plannedForDate) request = request.eq("planned_for_date", query.plannedForDate);
 
     request = request.order("updated_at", { ascending: false });
-    if (query.limit && query.limit > 0) request = request.limit(query.limit);
+    request = request.limit(TASK_LIST_ROW_CAP);
 
     const result = await request;
     if (result.error) return failure(result.error);
     return this.hydrateTasks(actor, asRows(result.data));
+  }
+
+  async listProjectOptions(
+    actor: AuthenticatedActor,
+  ): Promise<RepositoryResult<TaskProjectOptionRecord[]>> {
+    const result = await this.supabase
+      .from("projects")
+      .select("id, name, slug")
+      .eq("owner_user_id", actor.userId)
+      .order("name", { ascending: true });
+    if (result.error) return failure(result.error);
+    return {
+      ok: true,
+      value: asRows(result.data).map((row) => ({
+        id: String(row.id),
+        name: String(row.name),
+        slug: asNullableString(row.slug),
+      })),
+    };
+  }
+
+  async listGoalOptions(
+    actor: AuthenticatedActor,
+  ): Promise<RepositoryResult<TaskGoalOptionRecord[]>> {
+    const result = await this.supabase
+      .from("goals")
+      .select("id, title, project_id")
+      .eq("owner_user_id", actor.userId)
+      .order("created_at", { ascending: false });
+    if (result.error) return failure(result.error);
+    return {
+      ok: true,
+      value: asRows(result.data).map((row) => ({
+        id: String(row.id),
+        title: String(row.title),
+        projectId: String(row.project_id),
+      })),
+    };
   }
 
   async getTask(actor: AuthenticatedActor, taskId: string): Promise<RepositoryResult<TaskRecord | null>> {
@@ -386,24 +446,86 @@ export class SupabaseTasksRepository implements TasksRepository {
     return { ok: true, value: result.count ?? 0 };
   }
 
+  async getFocusRank(
+    actor: AuthenticatedActor,
+    taskId: string,
+  ): Promise<RepositoryResult<{ exists: boolean; focusRank: number | null }>> {
+    const result = await this.supabase
+      .from("tasks")
+      .select("id, focus_rank")
+      .eq("id", taskId)
+      .eq("owner_user_id", actor.userId)
+      .maybeSingle();
+    if (result.error) return failure(result.error);
+    if (!result.data) return { ok: true, value: { exists: false, focusRank: null } };
+    return { ok: true, value: { exists: true, focusRank: asNullableNumber(asRow(result.data).focus_rank) } };
+  }
+
+  async getMaxFocusRank(
+    actor: AuthenticatedActor,
+    input: Readonly<{ includeArchived: boolean }>,
+  ): Promise<RepositoryResult<number | null>> {
+    let request = this.supabase
+      .from("tasks")
+      .select("focus_rank")
+      .eq("owner_user_id", actor.userId)
+      .not("focus_rank", "is", null)
+      .order("focus_rank", { ascending: false })
+      .limit(1);
+    if (!input.includeArchived) request = request.is("archived_at", null);
+
+    const result = await request;
+    if (result.error) return failure(result.error);
+    const row = asRows(result.data)[0];
+    return { ok: true, value: row ? asNullableNumber(row.focus_rank) : null };
+  }
+
+  async setFocusRank(
+    actor: AuthenticatedActor,
+    input: Readonly<{ taskId: string; focusRank: number | null }>,
+  ): Promise<RepositoryResult<void>> {
+    const result = await this.supabase
+      .from("tasks")
+      .update({ focus_rank: input.focusRank, updated_at: new Date().toISOString() })
+      .eq("id", input.taskId)
+      .eq("owner_user_id", actor.userId);
+    if (result.error) return failure(result.error);
+    return { ok: true, value: undefined };
+  }
+
   private async hydrateTasks(actor: AuthenticatedActor, rows: Row[]): Promise<RepositoryResult<TaskRecord[]>> {
     if (rows.length === 0) return { ok: true, value: [] };
     const taskIds = rows.map((row) => String(row.id));
 
-    const reminders = await this.supabase
-      .from("task_reminders")
-      .select(REMINDER_SELECT)
-      .eq("owner_user_id", actor.userId)
-      .in("task_id", taskIds)
-      .order("remind_at", { ascending: true });
-    if (reminders.error) return failure(reminders.error);
+    const [reminders, recurrences, sessionTotals] = await Promise.all([
+      this.supabase
+        .from("task_reminders")
+        .select(REMINDER_SELECT)
+        .eq("owner_user_id", actor.userId)
+        .in("task_id", taskIds)
+        .order("remind_at", { ascending: true }),
+      this.supabase
+        .from("task_recurrences")
+        .select(RECURRENCE_SELECT)
+        .eq("owner_user_id", actor.userId)
+        .in("task_id", taskIds),
+      this.supabase
+        .from("task_sessions")
+        .select(SESSION_TOTAL_SELECT)
+        .eq("owner_user_id", actor.userId)
+        .in("task_id", taskIds),
+    ]);
 
-    const recurrences = await this.supabase
-      .from("task_recurrences")
-      .select(RECURRENCE_SELECT)
-      .eq("owner_user_id", actor.userId)
-      .in("task_id", taskIds);
+    if (reminders.error) return failure(reminders.error);
     if (recurrences.error) return failure(recurrences.error);
+
+    const durationByTaskId = new Map<string, number>();
+    for (const rawRow of asRows(sessionTotals.data)) {
+      const row = rawRow as Record<string, unknown>;
+      const taskId = String(row.task_id);
+      const seconds = typeof row.duration_seconds === "number" ? row.duration_seconds : Number(row.duration_seconds ?? 0);
+      durationByTaskId.set(taskId, (durationByTaskId.get(taskId) ?? 0) + (Number.isFinite(seconds) ? seconds : 0));
+    }
 
     const reminderMap = new Map<string, TaskReminderRecord[]>();
     for (const row of asRows(reminders.data)) {
@@ -420,7 +542,12 @@ export class SupabaseTasksRepository implements TasksRepository {
       ok: true,
       value: rows.map((row) => {
         const id = String(row.id);
-        return mapTask(row, reminderMap.get(id) ?? [], recurrenceMap.get(id) ?? null);
+        return mapTask(
+          row,
+          reminderMap.get(id) ?? [],
+          recurrenceMap.get(id) ?? null,
+          durationByTaskId.get(id) ?? 0,
+        );
       }),
     };
   }

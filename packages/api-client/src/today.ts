@@ -12,7 +12,7 @@ export type TodayApi = {
   get(date?: string): Promise<ApiResult<MobileTodayResponse>>;
   plan(
     taskId: string,
-    date: string,
+    date?: string,
   ): Promise<ApiResult<MobileTodayTaskMutationResponse>>;
   remove(taskId: string): Promise<ApiResult<MobileTodayTaskMutationResponse>>;
   updateStatus(
@@ -20,7 +20,7 @@ export type TodayApi = {
     status: TaskStatus,
     blockedReason?: string | null,
   ): Promise<ApiResult<MobileTodayTaskStatusMutationResponse>>;
-  clearCompleted(date: string): Promise<ApiResult<MobileTodayClearCompletedResponse>>;
+  clearCompleted(date?: string): Promise<ApiResult<MobileTodayClearCompletedResponse>>;
 };
 
 function encodedId(taskId: string) {
@@ -39,7 +39,7 @@ export function createTodayApi(http: HttpClient): TodayApi {
       return http.request<MobileTodayTaskMutationResponse>({
         path: `/api/today/tasks/${encodedId(taskId)}`,
         method: "POST",
-        body: { date },
+        ...(date ? { body: { date } } : {}),
       });
     },
     remove(taskId) {
@@ -59,7 +59,7 @@ export function createTodayApi(http: HttpClient): TodayApi {
       return http.request<MobileTodayClearCompletedResponse>({
         path: "/api/today/clear-completed",
         method: "POST",
-        body: { date },
+        ...(date ? { body: { date } } : { body: {} }),
       });
     },
   };

@@ -269,7 +269,7 @@ describe('mobile session refresh single-flight', () => {
 
     const results = await Promise.all(
       Array.from({ length: 8 }, (_, index) =>
-        mobileApiFetch<{ ok: boolean }>(`/api/mobile/tasks?i=${index}`),
+        mobileApiFetch<{ ok: boolean }>(`/api/tasks?i=${index}`),
       ),
     );
 
@@ -299,7 +299,7 @@ describe('mobile session refresh single-flight', () => {
       } as unknown as Response;
     });
 
-    await expect(mobileApiFetch<{ ok: boolean }>('/api/mobile/tasks')).rejects.toThrow('expired');
+    await expect(mobileApiFetch<{ ok: boolean }>('/api/tasks')).rejects.toThrow('expired');
 
     expect(dataCalls).toBe(2);
     expect(refreshCalls).toBe(1);

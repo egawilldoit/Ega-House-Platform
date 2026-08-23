@@ -1,107 +1,86 @@
-import { mobileApiFetch } from '@/lib/api/client';
+/**
+ * Mobile task API — typed wrappers over the @ega/api-client tasks surface
+ * (canonical Hono transport), bound to the mobile session token.
+ *
+ *   GET    /api/tasks?status&priority&projectId&goalId&due&sort&limit
+ *   GET    /api/tasks/:id
+ *   POST   /api/tasks
+ *   PATCH  /api/tasks/:id
+ *   POST   /api/tasks/:id/reminders
+ *   PATCH  /api/tasks/:id/reminders/:reminderId
+ *
+ * Responses speak the enriched mobile contract (counters, filters, project/
+ * goal form options, full task items). Errors are thrown as `Error` with the
+ * server envelope message (see `unwrapApiResult` in `lib/api/ega.ts`).
+ */
 import type {
-  CancelTaskReminderInput,
   CreateTaskInput,
-  CreateTaskReminderInput,
-  MobileTaskDueFilter,
   MobileTaskListResponse,
   MobileTaskMutationResponse,
-  MobileTaskPriority,
-  MobileTaskSortValue,
-  MobileTaskStatus,
-  UpdateTaskInput,
-} from '@/types/tasks';
+  TaskDueFilter,
+  TaskPriority,
+  TaskSortValue,
+  TaskStatus,
+} from '@ega/api-client';
+import { getMobileEgaApiClient, unwrapApiResult } from '@/lib/api/ega';
 
 export type ListMobileTasksParams = {
-  status?: MobileTaskStatus | null;
+  status?: TaskStatus | null;
   projectId?: string | null;
   goalId?: string | null;
-  priority?: MobileTaskPriority | null;
-  due?: MobileTaskDueFilter;
-  sort?: MobileTaskSortValue;
+  priority?: TaskPriority | null;
+  due?: TaskDueFilter;
+  sort?: TaskSortValue;
   limit?: number | null;
 };
 
-function buildTaskListQuery(params: ListMobileTasksParams = {}) {
-  const searchParams = new URLSearchParams();
-
-  if (params.status) {
-    searchParams.set('status', params.status);
-  }
-
-  if (params.projectId) {
-    searchParams.set('projectId', params.projectId);
-  }
-
-  if (params.goalId) {
-    searchParams.set('goalId', params.goalId);
-  }
-
-  if (params.priority) {
-    searchParams.set('priority', params.priority);
-  }
-
-  if (params.due) {
-    searchParams.set('due', params.due);
-  }
-
-  if (params.sort) {
-    searchParams.set('sort', params.sort);
-  }
-
-  if (typeof params.limit === 'number') {
-    searchParams.set('limit', String(params.limit));
-  }
-
-  const query = searchParams.toString();
-  return query ? `/api/mobile/tasks?${query}` : '/api/mobile/tasks';
+function listQuery(params: ListMobileTasksParams) {
+  return {
+    status: params.status ?? undefined,
+    projectId: params.projectId ?? undefined,
+    goalId: params.goalId ?? undefined,
+    priority: params.priority ?? undefined,
+    due: params.due ?? undefined,
+    sort: params.sort ?? undefined,
+    limit: typeof params.limit === 'number' ? params.limit : undefined,
+  };
 }
 
-export async function listMobileTasks(params: ListMobileTasksParams = {}) {
-  return mobileApiFetch<MobileTaskListResponse>(buildTaskListQuery(params), {
-    method: 'GET',
-    auth: true,
-  });
+export async function listMobileTasks(
+  params: ListMobileTasksParams = {},
+): Promise<MobileTaskListResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.list(listQuery(params)));
 }
 
-export async function getMobileTaskById(taskId: string) {
-  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {
-    method: 'GET',
-    auth: true,
-  });
+export async function getMobileTaskById(taskId: string): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.get(taskId));
 }
 
-export async function createMobileTask(input: CreateTaskInput) {
-  return mobileApiFetch<MobileTaskMutationResponse>('/api/mobile/tasks', {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify(input),
-  });
+export async function createMobileTask(
+  input: CreateTaskInput,
+): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.create(input));
 }
 
-export async function updateMobileTask(taskId: string, input: UpdateTaskInput) {
-  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}`, {
-    method: 'PATCH',
-    auth: true,
-    body: JSON.stringify(input),
-  });
+export async function updateMobileTask(
+  taskId: string,
+  input: Record<string, unknown>,
+): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.update(taskId, input));
 }
 
-export async function createMobileTaskReminder(taskId: string, input: CreateTaskReminderInput) {
-  return mobileApiFetch<MobileTaskMutationResponse>(`/api/mobile/tasks/${taskId}/reminders`, {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify(input),
-  });
+export async function createMobileTaskReminder(
+  taskId: string,
+  input: { remindAt: string },
+): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.createReminder(taskId, input.remindAt));
 }
 
-export async function cancelMobileTaskReminder(taskId: string, input: CancelTaskReminderInput) {
-  return mobileApiFetch<MobileTaskMutationResponse>(
-    `/api/mobile/tasks/${taskId}/reminders/${input.reminderId}`,
-    {
-      method: 'PATCH',
-      auth: true,
-      body: JSON.stringify({ status: 'cancelled' }),
-    },
+export async function cancelMobileTaskReminder(
+  taskId: string,
+  input: { reminderId: string },
+): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(
+    await getMobileEgaApiClient().tasks.cancelReminder(taskId, input.reminderId),
   );
 }

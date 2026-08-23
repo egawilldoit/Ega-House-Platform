@@ -1,10 +1,13 @@
 /**
- * Unit tests for the mobile task API wrappers (lib/api/tasks.ts).
- * Proves list params — including the canonical priority filter — are
- * serialized onto /api/mobile/tasks exactly as the server validates them,
- * and that mutations target the right paths with auth enabled.
+ * Unit tests for the mobile task API wrappers (lib/api/tasks.ts) after the
+ * canonical Hono cutover. Proves every call delegates to the @ega/api-client
+ * tasks surface on the CANONICAL paths (/api/tasks*) — never /api/mobile/* —
+ * and that errors thrown carry the server envelope message.
  */
-import { mobileApiFetch } from '@/lib/api/client';
+import type { EgaApiClient } from '@ega/api-client';
+import {
+  setMobileEgaApiClientForTesting,
+} from '@/lib/api/ega';
 import {
   cancelMobileTaskReminder,
   createMobileTaskReminder,
@@ -14,27 +17,28 @@ import {
   updateMobileTask,
 } from '@/lib/api/tasks';
 
-jest.mock('@/lib/api/client', () => ({
-  mobileApiFetch: jest.fn(),
-}));
+const list = jest.fn();
+const get = jest.fn();
+const create = jest.fn();
+const update = jest.fn();
+const createReminder = jest.fn();
+const cancelReminder = jest.fn();
 
-const mock = <T extends (...args: never[]) => unknown>(fn: T) => fn as jest.MockedFunction<T>;
+beforeEach(() => {
+  jest.clearAllMocks();
+  setMobileEgaApiClientForTesting({
+    tasks: { list, get, create, update, createReminder, cancelReminder },
+  } as unknown as EgaApiClient);
+});
 
-const mockFetch = mock(mobileApiFetch);
+afterEach(() => {
+  setMobileEgaApiClientForTesting(null);
+});
 
 describe('listMobileTasks', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockFetch.mockResolvedValue({ ok: true });
-  });
+  it('delegates filters onto the canonical /api/tasks surface', async () => {
+    list.mockResolvedValue({ ok: true, data: { ok: true, tasks: [], counters: {}, filters: {}, projects: [], goals: [] } });
 
-  it('requests the enriched canonical task list without filters by default', async () => {
-    await listMobileTasks();
-
-    expect(mockFetch).toHaveBeenCalledWith('/api/mobile/tasks', { method: 'GET', auth: true });
-  });
-
-  it('serializes priority alongside existing filters in a stable order', async () => {
     await listMobileTasks({
       status: 'todo',
       projectId: 'p-1',
@@ -45,26 +49,49 @@ describe('listMobileTasks', () => {
       limit: 50,
     });
 
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/mobile/tasks?status=todo&projectId=p-1&goalId=g-1&priority=urgent&due=overdue&sort=due_date_asc&limit=50',
-      { method: 'GET', auth: true },
-    );
+    expect(list).toHaveBeenCalledWith({
+      status: 'todo',
+      projectId: 'p-1',
+      goalId: 'g-1',
+      priority: 'urgent',
+      due: 'overdue',
+      sort: 'due_date_asc',
+      limit: 50,
+    });
   });
 
-  it('omits null priority instead of sending an empty filter', async () => {
+  it('omits unset filters entirely', async () => {
+    list.mockResolvedValue({ ok: true, data: {} });
+
     await listMobileTasks({ priority: null, due: 'all' });
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/mobile/tasks?due=all', { method: 'GET', auth: true });
+    expect(list).toHaveBeenCalledWith({ due: 'all' });
+  });
+
+  it('throws the server message when the envelope reports failure', async () => {
+    list.mockResolvedValue({
+      ok: false,
+      error: { code: 'VALIDATION', message: 'Invalid due filter.', status: 400 },
+    });
+
+    await expect(listMobileTasks({ due: 'yesterday' as never })).rejects.toThrow(
+      'Invalid due filter.',
+    );
   });
 });
 
-describe('task mutation wrappers', () => {
+describe('task mutation wrappers delegate to the canonical client', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-    mockFetch.mockResolvedValue({ ok: true });
+    const taskResponse = { ok: true as const, data: { ok: true as const, task: { id: 'task-1' } } };
+    get.mockResolvedValue(taskResponse);
+    create.mockResolvedValue(taskResponse);
+    update.mockResolvedValue(taskResponse);
+    createReminder.mockResolvedValue(taskResponse);
+    cancelReminder.mockResolvedValue(taskResponse);
   });
 
-  it('creates tasks against the canonical mobile route', async () => {
+  it('get/create/update/reminders hit their canonical resource methods and unwrap results', async () => {
+    const unwrappedTask = await getMobileTaskById('task-1');
     await createMobileTask({
       title: 'New task',
       projectId: 'p-1',
@@ -76,22 +103,16 @@ describe('task mutation wrappers', () => {
       dueDate: null,
       estimateMinutes: null,
     });
-
-    expect(mockFetch).toHaveBeenCalledWith('/api/mobile/tasks', expect.objectContaining({ method: 'POST' }));
-  });
-
-  it('targets detail, reminder, and update paths per task id', async () => {
-    await getMobileTaskById('task-1');
     await updateMobileTask('task-1', { status: 'done' });
     await createMobileTaskReminder('task-1', { remindAt: '2026-09-01T09:00:00.000Z' });
     await cancelMobileTaskReminder('task-1', { reminderId: 'reminder-1' });
 
-    const paths = mockFetch.mock.calls.map((call) => call[0]);
-    expect(paths).toEqual([
-      '/api/mobile/tasks/task-1',
-      '/api/mobile/tasks/task-1',
-      '/api/mobile/tasks/task-1/reminders',
-      '/api/mobile/tasks/task-1/reminders/reminder-1',
-    ]);
+    expect(get).toHaveBeenCalledWith('task-1');
+    expect(create).toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith('task-1', { status: 'done' });
+    expect(createReminder).toHaveBeenCalledWith('task-1', '2026-09-01T09:00:00.000Z');
+    expect(cancelReminder).toHaveBeenCalledWith('task-1', 'reminder-1');
+
+    expect(unwrappedTask).toEqual({ ok: true, task: { id: 'task-1' } });
   });
 });

@@ -21,6 +21,11 @@ let mobileEgaClient: EgaApiClient | null = null;
 /**
  * Lazily-created singleton client bound to the mobile API base URL and the
  * mobile session token/refresh providers.
+ *
+ * `globalThis.fetch` is resolved PER REQUEST (indirect binding), not
+ * snapshotted at construction: Jest and React Native can replace the global
+ * fetch implementation during the process lifetime (test spies, polyfills),
+ * and a stale snapshot would silently bypass them.
  */
 export function getMobileEgaApiClient(): EgaApiClient {
   if (!mobileEgaClient) {
@@ -28,6 +33,8 @@ export function getMobileEgaApiClient(): EgaApiClient {
       baseUrl: getApiBaseUrl(),
       getAccessToken: () => getMobileSessionAccessToken(),
       refreshAccessToken: () => refreshMobileSessionIfConfigured(),
+      fetch: ((input: string, init: Parameters<typeof globalThis.fetch>[1]) =>
+        globalThis.fetch(input, init)) as unknown as typeof globalThis.fetch,
     });
   }
 

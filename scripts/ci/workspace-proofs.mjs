@@ -78,7 +78,9 @@ const WORKSPACES = [
     dir: 'packages/application',
     name: '@ega/application',
     version: '0.1.0',
-    dependencies: { '@ega/domain': '0.1.0' },
+    // Task 5 (Hono tasks/today cutover): the application read models now
+    // produce the shared @ega/contracts mobile payloads directly.
+    dependencies: { '@ega/contracts': '0.1.0', '@ega/domain': '0.1.0' },
     entry: './src/index.ts',
   },
   {

@@ -8,20 +8,34 @@ export type { EgaApiClient, EgaApiClientOptions } from "./client";
 
 export type { ProjectsApi } from "./projects";
 export type { GoalsApi } from "./goals";
-export type {
-  TasksApi,
-  TaskListQuery,
-  TaskApiRecord,
-  TaskApiReminder,
-  TaskApiRecurrence,
-  TaskUpdateInput,
-  SetTaskRecurrenceInput,
-} from "./tasks";
+export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
 export type { AuthApi } from "./auth";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
+
+export type {
+  CreateTaskInput,
+  UpdateTaskInput,
+  MobileTaskListResponse,
+  MobileTaskListItem,
+  MobileTaskCounters,
+  MobileTaskListFilters,
+  MobileTaskMutationResponse,
+  MobileTaskProject,
+  MobileTaskGoal,
+  MobileTaskReminder,
+  MobileTaskRecurrence,
+  MobileTodayResponse,
+  MobileTodaySummary,
+  MobileTodayTaskItem,
+  MobileTodayTaskMutationResponse,
+  MobileTodayTaskStatusMutationResponse,
+  MobileTodayClearCompletedResponse,
+} from "@ega/contracts/mobile";
+export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
+export type { TaskPriority, TaskStatus } from "@ega/domain";
 
 export type {
   ProjectViewFilter,

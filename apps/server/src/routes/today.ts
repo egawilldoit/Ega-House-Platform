@@ -1,8 +1,9 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 import type { MobileTodayResponse } from "@ega/contracts/mobile";
 import {
   clearCompletedToday,
+  getTaskReadModel,
   getTodayPlan,
   planTaskForToday,
   removeTaskFromToday,
@@ -13,6 +14,29 @@ import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
+
+/**
+ * Legacy mobile transports mapped "task is unavailable" failures to 404 and
+ * infrastructure failures to 500. The canonical application layer reports
+ * both as plain validation-style failures, so mutations probe ownership
+ * first: a missing task answers 404 NOT_FOUND before any write is attempted.
+ * Returns the early error Response, or null when the task is owned.
+ */
+async function resolveOwnedTaskOr404(
+  c: Context<{ Variables: ServerVariables }>,
+  actor: Parameters<typeof getTaskReadModel>[0],
+  repository: SupabaseTasksRepository,
+  taskId: string,
+): Promise<Response | null> {
+  const probe = await getTaskReadModel(actor, repository, taskId);
+  if (!probe.ok) {
+    return c.json({ error: { code: "INTERNAL", message: probe.errorMessage } }, 500);
+  }
+  if (!probe.data) {
+    return c.json({ error: { code: "NOT_FOUND", message: "Task is unavailable." } }, 404);
+  }
+  return null;
+}
 
 export function createTodayRoutes(
   dependencies: ServerDependencies,
@@ -41,11 +65,14 @@ export function createTodayRoutes(
 
   routes.post("/tasks/:id", async (c) => {
     const { actor, client } = c.var;
+    const repository = new SupabaseTasksRepository(client);
     const body = await readJsonBody(c);
-    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
-    const result = await planTaskForToday(actor, new SupabaseTasksRepository(client), {
+    const earlyResponse = await resolveOwnedTaskOr404(c, actor, repository, c.req.param("id"));
+    if (earlyResponse) return earlyResponse;
+
+    const result = await planTaskForToday(actor, repository, {
       taskId: c.req.param("id"),
-      date: body.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : undefined),
+      date: body?.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : undefined),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, taskId: result.data.id });
@@ -53,7 +80,11 @@ export function createTodayRoutes(
 
   routes.delete("/tasks/:id", async (c) => {
     const { actor, client } = c.var;
-    const result = await removeTaskFromToday(actor, new SupabaseTasksRepository(client), {
+    const repository = new SupabaseTasksRepository(client);
+    const earlyResponse = await resolveOwnedTaskOr404(c, actor, repository, c.req.param("id"));
+    if (earlyResponse) return earlyResponse;
+
+    const result = await removeTaskFromToday(actor, repository, {
       taskId: c.req.param("id"),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
@@ -62,9 +93,16 @@ export function createTodayRoutes(
 
   routes.patch("/tasks/:id/status", async (c) => {
     const { actor, client } = c.var;
+    const repository = new SupabaseTasksRepository(client);
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
-    const result = await updateTodayTaskStatus(actor, new SupabaseTasksRepository(client), {
+    if (typeof body.status !== "string") {
+      return c.json({ error: { code: "VALIDATION", message: "Task status is invalid." } }, 400);
+    }
+    const earlyResponse = await resolveOwnedTaskOr404(c, actor, repository, c.req.param("id"));
+    if (earlyResponse) return earlyResponse;
+
+    const result = await updateTodayTaskStatus(actor, repository, {
       taskId: c.req.param("id"),
       status: body.status,
       blockedReason: body.blockedReason,
@@ -79,7 +117,7 @@ export function createTodayRoutes(
     const result = await clearCompletedToday(actor, new SupabaseTasksRepository(client), {
       date: body.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : new Date().toISOString().slice(0, 10)),
     });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     return c.json({ ok: true });
   });
 
