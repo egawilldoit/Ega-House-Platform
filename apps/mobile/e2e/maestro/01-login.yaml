@@ -1,0 +1,17 @@
+# Journey 1 — login. Requires a live target, deployed API, and test account.
+appId: com.ega_house.mobile
+---
+- launchApp:
+    clearState: true
+- assertVisible: "EGA House"
+- tapOn: "Get started"
+- assertVisible: "Login"
+- tapOn:
+    text: "Email"
+- inputText: ${EMAIL}
+- tapOn:
+    text: "Password"
+- inputText: ${PASSWORD}
+- tapOn:
+    text: "Login"
+- assertVisible: "Tasks"

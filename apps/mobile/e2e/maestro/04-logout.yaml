@@ -1,0 +1,6 @@
+# Journey 4 — logout lands back on the public flow.
+appId: com.ega_house.mobile
+---
+- tapOn: "Profile"
+- tapOn: "Sign out"
+- assertVisible: "Get started"

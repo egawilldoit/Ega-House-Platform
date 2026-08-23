@@ -1,0 +1,6 @@
+# Journey 2 — tasks list renders after login. Requires a live target + API.
+appId: com.ega_house.mobile
+---
+- assertVisible: "Tasks"
+- assertVisible: "Today"
+- assertVisible: "Timer"

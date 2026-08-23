@@ -1,0 +1,12 @@
+# Journey 3 — timer start/stop on an open task. Requires a live target, API,
+# and at least one non-done task for the account ("No open tasks" otherwise).
+appId: com.ega_house.mobile
+---
+- tapOn: "Timer"
+- assertVisible: "Start timer"
+- tapOn: "Start timer"
+- assertVisible: "Stop timer"
+- extendedWaitUntil:
+    notVisible: "00:00:00"
+    timeout: 65000
+- tapOn: "Stop timer"
