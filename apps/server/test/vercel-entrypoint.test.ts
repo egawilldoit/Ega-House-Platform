@@ -1,4 +1,3 @@
-import { createServer } from "node:net";
 import { strict as assert } from "node:assert";
 import { execFile } from "node:child_process";
 import path from "node:path";
