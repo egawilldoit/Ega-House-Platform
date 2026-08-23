@@ -543,7 +543,6 @@ export default function TodayScreen() {
                                 // handled in runAddSuggestion state
                               });
                             }}
-                            style={styles.addButton}
                             title={isMutating ? 'Adding...' : 'Add'}
                           />
                         </View>
@@ -624,10 +623,6 @@ export default function TodayScreen() {
 }
 
 const styles = StyleSheet.create({
-  addButton: {
-    minHeight: 32,
-    paddingHorizontal: 14,
-  },
   cardWrap: {
     marginBottom: mobileTheme.spacing.sm,
   },

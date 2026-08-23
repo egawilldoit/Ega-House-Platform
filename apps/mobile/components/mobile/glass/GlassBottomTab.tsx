@@ -17,6 +17,9 @@ import { glassConfig, mobileTheme } from '../theme';
 const TAB_HEIGHT = 72;
 const TAB_MARGIN = 24;
 const PILL_BOTTOM_GAP = 20;
+// Floating chrome with a fixed pill silhouette: labels cap font scaling so the
+// single-line nav stays intact; every other surface scales without a cap.
+const TAB_LABEL_MAX_FONT_SCALE = 1.4;
 
 function getLabel(routeName: string, options: BottomTabBarProps['descriptors'][string]['options']) {
   const label = options.tabBarLabel ?? options.title ?? routeName;
@@ -83,7 +86,11 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
               {options.tabBarIcon
                 ? options.tabBarIcon({ focused, color, size: focused ? 23 : 21 })
                 : null}
-              <Text numberOfLines={1} style={[styles.label, focused ? styles.labelActive : null]}>
+              <Text
+                maxFontSizeMultiplier={TAB_LABEL_MAX_FONT_SCALE}
+                numberOfLines={1}
+                style={[styles.label, focused ? styles.labelActive : null]}
+              >
                 {label}
               </Text>
               {focused ? <View style={styles.activeDot} /> : null}
@@ -141,7 +148,7 @@ const styles = StyleSheet.create({
     borderColor: mobileTheme.nav.shellBorder,
     borderRadius: mobileTheme.radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    height: TAB_HEIGHT,
+    minHeight: TAB_HEIGHT,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -168,8 +175,8 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     flex: 1,
     gap: 3,
-    height: 56,
     justifyContent: 'center',
+    minHeight: mobileTheme.layout.minTouchTarget,
     position: 'relative',
   },
   itemPressed: {

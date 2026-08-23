@@ -142,6 +142,8 @@ export function SegmentedControl<T extends string>({
           const selected = option.value === value;
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected }}
               key={option.value}
               onPress={() => onChange(option.value)}
               style={[styles.segment, selected ? styles.segmentActive : null]}
@@ -359,7 +361,7 @@ const styles = StyleSheet.create({
   segment: {
     borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
-    minHeight: 38,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 14,
   },
   segmentActive: {
@@ -390,7 +392,6 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: mobileTheme.font.black,
     letterSpacing: -0.8,
-    lineHeight: 32,
     marginTop: 2,
   },
 });

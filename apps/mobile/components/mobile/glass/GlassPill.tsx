@@ -25,6 +25,7 @@ export type GlassPillProps = {
   tone?: GlassPillTone;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  accessibilityLabel?: string;
   accessibilityState?: AccessibilityState;
 };
 
@@ -46,22 +47,30 @@ export function GlassPill({
   tone = 'default',
   style,
   textStyle,
+  accessibilityLabel,
   accessibilityState,
 }: GlassPillProps) {
   const isPrimarySelected = selected || tone === 'primary';
+  const interactive = typeof onPress === 'function';
   const colors: [string, string] = selected
     ? [mobileTheme.colors.accent, mobileTheme.colors.accentDark]
     : ['#ffffff', '#f8fafc'];
 
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityState={{
-        selected,
-        disabled,
-        ...accessibilityState,
-      }}
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole={interactive ? 'button' : undefined}
+      accessibilityState={
+        interactive
+          ? {
+              selected,
+              disabled,
+              ...accessibilityState,
+            }
+          : accessibilityState
+      }
       disabled={disabled}
+      hitSlop={interactive ? { top: 7, bottom: 7, left: 4, right: 4 } : undefined}
       onPress={onPress}
       style={({ pressed }) => [
         styles.base,
@@ -74,7 +83,6 @@ export function GlassPill({
       <LinearGradient colors={colors} pointerEvents="none" style={StyleSheet.absoluteFill} />
       {leftIcon}
       <Text
-        numberOfLines={1}
         style={[
           styles.text,
           { color: selected ? mobileTheme.colors.textOnAccent : toneColor[tone] },

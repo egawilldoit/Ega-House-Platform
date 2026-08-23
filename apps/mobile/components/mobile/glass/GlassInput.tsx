@@ -36,6 +36,9 @@ export function GlassInput({
   ...inputProps
 }: GlassInputProps) {
   const supportingText = error ?? helperText;
+  const inputAccessibilityLabel = [inputProps.accessibilityLabel ?? label, error ? `Error: ${error}` : null]
+    .filter(Boolean)
+    .join('. ');
 
   return (
     <View style={[styles.container, containerStyle]}>
@@ -49,6 +52,7 @@ export function GlassInput({
       >
         {leftIcon ? <View style={styles.icon}>{leftIcon}</View> : null}
         <TextInput
+          accessibilityLabel={inputAccessibilityLabel || undefined}
           multiline={multiline}
           placeholderTextColor={placeholderTextColor}
           style={[styles.input, multiline ? styles.inputMultiline : null, style, inputStyle]}
@@ -57,7 +61,10 @@ export function GlassInput({
         {rightIcon ? <View style={styles.icon}>{rightIcon}</View> : null}
       </View>
       {supportingText ? (
-        <Text style={[styles.supportingText, error ? styles.errorText : null]}>
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[styles.supportingText, error ? styles.errorText : null]}
+        >
           {supportingText}
         </Text>
       ) : null}

@@ -27,6 +27,7 @@ export type GlassButtonProps = {
   fullWidth?: boolean;
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
+  accessibilityLabel?: string;
 };
 
 const gradientColors: Record<GlassButtonVariant, [string, string]> = {
@@ -48,6 +49,7 @@ export function GlassButton({
   fullWidth = false,
   style,
   textStyle,
+  accessibilityLabel,
 }: GlassButtonProps) {
   const isDisabled = disabled || loading;
   const textColor =
@@ -57,7 +59,9 @@ export function GlassButton({
 
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel}
       accessibilityRole="button"
+      accessibilityState={{ busy: loading, disabled: isDisabled }}
       disabled={isDisabled}
       onPress={onPress}
       style={({ pressed }) => [
@@ -131,7 +135,7 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   sm: {
-    minHeight: 36,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 12,
   },
   smText: {
