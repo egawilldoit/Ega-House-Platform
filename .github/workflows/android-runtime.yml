@@ -170,10 +170,43 @@ jobs:
           fi
           "$ADB" devices
 
+      - name: Start Metro bundler (debug builds load their JS bundle from Metro)
+        working-directory: apps/mobile
+        run: |
+          mkdir -p ../ci-artifacts
+          nohup npx expo start --port 8081 --offline \
+            > "$GITHUB_WORKSPACE/ci-artifacts/metro.log" 2>&1 &
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:8081/status | grep -q packager-status:running; then
+              echo "Metro running (check #$i)."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::Metro did not report running within 10 minutes"
+          tail -50 "$GITHUB_WORKSPACE/ci-artifacts/metro.log"
+          exit 1
+
+      - name: Forward Metro port into emulator and warm the dev bundle
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          "$ADB" reverse tcp:8081 tcp:8081
+          # Best-effort warm-up: compile the dev bundle before the app asks for
+          # it so the first render lands inside the liveness window.
+          for i in $(seq 1 120); do
+            if curl -sf -o /dev/null "http://localhost:8081/index.bundle?platform=android&dev=true&minify=false"; then
+              echo "Dev bundle compiled (check #$i)."
+              break
+            fi
+            sleep 5
+          done
+          curl -s http://localhost:8081/status || true
+
       - name: Mobile Verification Ladder L6 (install -> launch -> process alive -> UI)
         env:
           EGA_MOBILE_APK: ${{ steps.apk.outputs.apk }}
           EGA_MOBILE_UI_PROBE_TEXT: EGA House
+          EGA_MOBILE_ALIVE_AFTER_SECONDS: "300"
         run: |
           set -o pipefail
           node scripts/ci/mobile-verification-ladder.mjs --levels 6 | tee ci-artifacts/ladder-l6.txt
@@ -195,6 +228,7 @@ jobs:
             echo "no emulator online; runtime evidence unavailable" | tee ci-artifacts/runtime/README.txt
           fi
           cp emulator.log ci-artifacts/runtime/emulator.log || true
+          cp ci-artifacts/metro.log ci-artifacts/runtime/metro.log || true
           ls -la ci-artifacts ci-artifacts/runtime
 
       - name: Upload APK + runtime evidence
