@@ -1,0 +1,8 @@
+# Full smoke suite: login → tasks visible → timer start/stop → logout.
+# Run with: maestro test -e EMAIL=... -e PASSWORD=... apps/mobile/e2e/maestro/suite.yaml
+appId: com.ega_house.mobile
+---
+- runFlow: 01-login.yaml
+- runFlow: 02-tasks-visible.yaml
+- runFlow: 03-timer-start-stop.yaml
+- runFlow: 04-logout.yaml

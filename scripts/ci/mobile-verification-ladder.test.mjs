@@ -8,11 +8,15 @@ import {
   LEVELS,
   checkDeployedHono,
   classifyAdbDevices,
+  classifyRuntimeChain,
+  discoverApkArtifacts,
   discoverIntegrationSuites,
   findAdb,
   formatSummary,
   highestProven,
   parseLevelSpec,
+  resolveAndroidAppConfig,
+  runAppRuntimeChain,
   toJsonSummary,
 } from './mobile-verification-ladder.mjs';
 
@@ -136,6 +140,203 @@ test('checkDeployedHono passes only on HTTP 200 and classifies failures', async 
   );
   assert.equal(networkError.ok, false);
   assert.match(networkError.detail, /failed: ECONNREFUSED/);
+});
+
+test('resolveAndroidAppConfig reads the real package identity from apps/mobile/app.json', () => {
+  const config = resolveAndroidAppConfig();
+  assert.ok(config, 'apps/mobile/app.json must expose expo.android.package');
+  assert.equal(config.packageName, 'com.ega_house.mobile');
+  assert.equal(config.scheme, 'mobile');
+
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-appcfg-'));
+  try {
+    assert.equal(resolveAndroidAppConfig(empty), null);
+    fs.writeFileSync(path.join(empty, 'app.json'), JSON.stringify({ expo: { android: {} } }));
+    assert.equal(resolveAndroidAppConfig(empty), null);
+  } finally {
+    fs.rmSync(empty, { recursive: true, force: true });
+  }
+});
+
+test('discoverApkArtifacts prefers EGA_MOBILE_APK and scans known output dirs honestly', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ladder-apks-'));
+  try {
+    assert.deepEqual(discoverApkArtifacts({}, tmp), []);
+
+    const debugDir = path.join(tmp, 'android', 'app', 'build', 'outputs', 'apk', 'debug');
+    fs.mkdirSync(debugDir, { recursive: true });
+    fs.writeFileSync(path.join(debugDir, 'app-debug.apk'), 'apk');
+    fs.writeFileSync(path.join(debugDir, 'notes.txt'), 'not an apk');
+    const artifactsDir = path.join(tmp, 'artifacts');
+    fs.mkdirSync(artifactsDir);
+    fs.writeFileSync(path.join(artifactsDir, 'ega-house-debug-42.apk'), 'apk');
+
+    const found = discoverApkArtifacts({}, tmp);
+    assert.equal(found.length, 2);
+    assert.match(found[0], /app-debug\.apk$/);
+
+    const explicit = path.join(tmp, 'explicit.apk');
+    fs.writeFileSync(explicit, 'apk');
+    assert.deepEqual(discoverApkArtifacts({ EGA_MOBILE_APK: explicit }, tmp), [explicit]);
+    assert.deepEqual(
+      discoverApkArtifacts({ EGA_MOBILE_APK: path.join(tmp, 'missing.apk') }, tmp),
+      [],
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('classifyRuntimeChain decides in execution order: FAIL beats later steps, missing is NOT PROVEN', () => {
+  const allOk = classifyRuntimeChain([
+    { step: 'install', status: 'ok' },
+    { step: 'launch', status: 'ok' },
+  ]);
+  assert.equal(allOk.status, 'PASS');
+
+  const blocked = classifyRuntimeChain([
+    { step: 'adb', status: 'missing', detail: 'no adb tooling found' },
+    { step: 'install', status: 'ok' },
+  ]);
+  assert.equal(blocked.status, 'NOT PROVEN');
+  assert.match(blocked.reason, /no adb tooling found/);
+
+  const executedFailure = classifyRuntimeChain([
+    { step: 'install', status: 'ok' },
+    { step: 'launch', status: 'failed', detail: 'am start exited 1' },
+    { step: 'process-alive', status: 'missing', detail: 'never reached' },
+  ]);
+  assert.equal(executedFailure.status, 'FAIL');
+  assert.match(executedFailure.reason, /am start exited 1/);
+});
+
+function fakeExec(responses) {
+  const calls = [];
+  const matchers = responses.map((entry) =>
+    Array.isArray(entry) ? (cmd) => (entry[0](cmd) ? entry[1]() : null) : entry,
+  );
+  return {
+    calls,
+    exec(args) {
+      const cmd = args.join(' ');
+      calls.push(cmd);
+      for (const matcher of matchers) {
+        const outcome = matcher(cmd);
+        if (outcome) return outcome;
+      }
+      return { ok: false, stdout: '', stderr: 'unexpected command' };
+    },
+  };
+}
+
+const HAPPY_SERIAL = 'emulator-5554';
+const PKG = 'com.ega_house.mobile';
+
+function baseResponses({ uiText = `<node package="${PKG}"`, fatal = false, pid = '4242' } = {}) {
+  return [
+    [(cmd) => cmd.includes('install -r'), () => ({ ok: true, stdout: 'Success\n', stderr: '' })],
+    [(cmd) => cmd.includes('resolve-activity'), () => ({ ok: true, stdout: `priority=0 preferredOrder=0\n  ${PKG}/.MainActivity\n`, stderr: '' })],
+    [(cmd) => cmd.endsWith('logcat -c'), () => ({ ok: true, stdout: '', stderr: '' })],
+    [(cmd) => cmd.includes('am start'), () => ({ ok: true, stdout: `Starting: Intent { cmp=${PKG}/.MainActivity }\n`, stderr: '' })],
+    [(cmd) => cmd.includes(`pidof ${PKG}`), () => ({ ok: Boolean(pid), stdout: `${pid}\n`, stderr: '' })],
+    [(cmd) => cmd.includes('uiautomator dump'), () => ({ ok: true, stdout: 'UI hierchary dumped to: /sdcard/ega-window-dump.xml\n', stderr: '' })],
+    [(cmd) => cmd.startsWith('-s emulator-5554 exec-out cat'), () => ({ ok: true, stdout: uiText, stderr: '' })],
+    [(cmd) => cmd.endsWith('logcat -d'), () => ({ ok: true, stdout: `${fatal ? 'FATAL EXCEPTION: main\n' : ''}ActivityTaskManager: START u0 {cmp=${PKG}/.MainActivity}\n`, stderr: '' })],
+  ].map(([match, respond]) => (cmd) => (match(cmd) ? respond() : null));
+}
+
+test('runAppRuntimeChain proves install -> launch -> alive -> UI and passes only then', async () => {
+  const delays = [];
+  const fake = fakeExec(baseResponses());
+  const outcome = await runAppRuntimeChain({
+    serial: HAPPY_SERIAL,
+    packageName: PKG,
+    apkPath: '/tmp/ega-house-debug.apk',
+    aliveAfterSeconds: 3,
+    exec: fake.exec,
+    delay: async (ms) => delays.push(ms),
+  });
+  assert.equal(outcome.status, 'PASS');
+  assert.match(outcome.reason, /APP-runtime chain proven/);
+  assert.match(outcome.reason, /uiautomator dump contains "com\.ega_house\.mobile"/);
+  assert.deepEqual(delays, [3000], 'must actually wait before the pidof liveness probe');
+  assert.ok(fake.calls.some((call) => call.endsWith('install -r /tmp/ega-house-debug.apk')));
+  assert.ok(fake.calls.some((call) => call.includes(`am start -n ${PKG}/.MainActivity`)));
+});
+
+test('runAppRuntimeChain fails when the process dies before the liveness window ends', async () => {
+  const fake = fakeExec(baseResponses({ pid: '' }));
+  const outcome = await runAppRuntimeChain({
+    serial: HAPPY_SERIAL,
+    packageName: PKG,
+    apkPath: '/tmp/ega-house-debug.apk',
+    aliveAfterSeconds: 0,
+    exec: fake.exec,
+    delay: async () => {},
+  });
+  assert.equal(outcome.status, 'FAIL');
+  assert.match(outcome.reason, /process-alive: pidof .* no process after 0s/);
+});
+
+test('runAppRuntimeChain falls back to a clean logcat window when the dump lacks probe text', async () => {
+  const fake = fakeExec(baseResponses({ uiText: '<node package="com.android.launcher"' }));
+  const outcome = await runAppRuntimeChain({
+    serial: HAPPY_SERIAL,
+    packageName: PKG,
+    apkPath: '/tmp/ega-house-debug.apk',
+    aliveAfterSeconds: 0,
+    exec: fake.exec,
+    delay: async () => {},
+  });
+  assert.equal(outcome.status, 'PASS');
+  assert.match(outcome.reason, /logcat shows app started without fatal crash/);
+});
+
+test('runAppRuntimeChain reports a fatal crash instead of passing on logcat evidence', async () => {
+  const fake = fakeExec(
+    baseResponses({ uiText: '<node package="com.android.launcher"', fatal: true }),
+  );
+  const outcome = await runAppRuntimeChain({
+    serial: HAPPY_SERIAL,
+    packageName: PKG,
+    apkPath: '/tmp/ega-house-debug.apk',
+    aliveAfterSeconds: 0,
+    exec: fake.exec,
+    delay: async () => {},
+  });
+  assert.equal(outcome.status, 'FAIL');
+  assert.match(outcome.reason, /FATAL EXCEPTION/);
+});
+
+test('runAppRuntimeChain fails honestly when install or launcher resolution breaks', async () => {
+  const installBroken = fakeExec([
+    [(cmd) => cmd.includes('install -r'), () => ({ ok: false, stdout: 'Performing Streamed Install\n', stderr: 'INSTALL_FAILED_UPDATE_INCOMPATIBLE\n' })],
+  ]);
+  const installOutcome = await runAppRuntimeChain({
+    serial: HAPPY_SERIAL,
+    packageName: PKG,
+    apkPath: '/tmp/ega-house-debug.apk',
+    aliveAfterSeconds: 0,
+    exec: installBroken.exec,
+    delay: async () => {},
+  });
+  assert.equal(installOutcome.status, 'FAIL');
+  assert.match(installOutcome.reason, /install: adb -s .* INSTALL_FAILED_UPDATE_INCOMPATIBLE/);
+
+  const resolverBroken = fakeExec([
+    [(cmd) => cmd.includes('install -r'), () => ({ ok: true, stdout: 'Success\n', stderr: '' })],
+    [(cmd) => cmd.includes('resolve-activity'), () => ({ ok: true, stdout: '(no activities)\n', stderr: '' })],
+  ]);
+  const resolveOutcome = await runAppRuntimeChain({
+    serial: HAPPY_SERIAL,
+    packageName: PKG,
+    apkPath: '/tmp/ega-house-debug.apk',
+    aliveAfterSeconds: 0,
+    exec: resolverBroken.exec,
+    delay: async () => {},
+  });
+  assert.equal(resolveOutcome.status, 'FAIL');
+  assert.match(resolveOutcome.reason, /resolve-launcher: could not resolve a LAUNCHER activity/);
 });
 
 test('summary always names the highest proven level explicitly', () => {

@@ -12,15 +12,22 @@
  *   L3  mobile integration tests jest on apps/mobile integration.test.(ts|tsx) suites
  *   L4  expo doctor              npm run mobile:doctor
  *   L5  android bundle export    npm run mobile:bundle (expo export --platform android)
- *   L6  android emulator runtime adb probe: online emulator + boot_completed=1
- *   L7  physical device runtime  adb probe: online non-emulator + boot_completed=1
+ *   L6  android emulator APP     EGA House APP verified ON an emulator: APK found ->
+ *       runtime                 adb install -r -> am start -> pidof <package> alive after
+ *                               N seconds -> initial UI rendered (uiautomator dump contains
+ *                               expected text/node OR logcat shows start without fatal crash)
+ *   L7  physical-device APP      same APP-runtime chain on a non-emulator serial
+ *       runtime
  *   L8  deployed Hono connectivity
  *                                GET ${MOBILE_PRODUCTION_BASE_URL}${MOBILE_PRODUCTION_HEALTH_PATH:-/health}
  *
- Honesty contract:
+ * Honesty contract:
  *   - A level reports PASS only from a command that actually ran and exited 0.
  *   - Levels whose infrastructure is absent print NOT PROVEN with the exact
  *     missing piece. NOT PROVEN is never PASS by assumption.
+ *   - A merely reachable, booted device NEVER passes L6/L7. Device availability
+ *     alone classifies NOT PROVEN; only the completed APP-runtime chain above
+ *     earns PASS. L6/L7 mean APP runtime, not device availability.
  *   - The final line always names the HIGHEST level actually proven by this run.
  *
  * Usage:
@@ -28,6 +35,14 @@
  *     --levels 1-5 | 1,3,5 | 3   subset of levels (default 1-8)
  *     --json                     machine-readable summary instead of prose
  *     --list                     print level definitions and exit
+ *
+ * L6/L7 knobs:
+ *   EGA_MOBILE_APK                 path to the APK to install (else auto-discovered
+ *                                  under apps/mobile/android/app/build/outputs/apk/**
+ *                                  and apps/mobile/artifacts)
+ *   EGA_MOBILE_UI_PROBE_TEXT       text that must appear in the uiautomator dump
+ *                                  (default: the app package name from app.json)
+ *   EGA_MOBILE_ALIVE_AFTER_SECONDS seconds to wait before pidof (default 10)
  *
  * Exit code is 1 only when an executed level FAILS. NOT PROVEN and SKIPPED do
  * not fail the run; they are visible in the summary.
@@ -51,8 +66,8 @@ export const LEVELS = [
   { id: 3, key: 'mobile-integration', title: 'mobile integration tests' },
   { id: 4, key: 'expo-doctor', title: 'expo doctor' },
   { id: 5, key: 'android-bundle-export', title: 'android bundle export' },
-  { id: 6, key: 'android-emulator-runtime', title: 'android emulator runtime' },
-  { id: 7, key: 'android-device-runtime', title: 'physical device runtime' },
+  { id: 6, key: 'android-emulator-runtime', title: 'android emulator APP runtime' },
+  { id: 7, key: 'android-device-runtime', title: 'physical-device APP runtime' },
   { id: 8, key: 'deployed-hono-connectivity', title: 'deployed Hono production connectivity' },
 ];
 
@@ -270,13 +285,219 @@ function booted(serial) {
 }
 
 /**
- * Shared runtime probe for L6/L7: requires an ONLINE (state=device) target of
- * the requested kind and proves only that adb can reach its booted userspace.
+ * Read the Android app identity straight from apps/mobile/app.json so the
+ * runtime chain targets the real package, never a guess.
  */
-function runAndroidRuntime(kind) {
+export function resolveAndroidAppConfig(mobileDir = MOBILE_DIR) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(mobileDir, 'app.json'), 'utf8'));
+    const packageName = parsed?.expo?.android?.package;
+    if (typeof packageName === 'string' && packageName.trim()) {
+      return {
+        packageName: packageName.trim(),
+        scheme: typeof parsed?.expo?.scheme === 'string' ? parsed.expo.scheme : null,
+      };
+    }
+  } catch {
+    // fall through to the honest "config unavailable" classification
+  }
+  return null;
+}
+
+const APK_DISCOVERY_DIRS = [
+  path.join('android', 'app', 'build', 'outputs', 'apk', 'debug'),
+  path.join('android', 'app', 'build', 'outputs', 'apk', 'release'),
+  path.join('artifacts'),
+];
+
+/**
+ * Locate an installable EGA House APK: EGA_MOBILE_APK wins when it exists,
+ * otherwise known build-output directories are scanned. Returns [] when none
+ * is available so the caller can classify NOT PROVEN with the exact gap.
+ */
+export function discoverApkArtifacts(env = process.env, mobileDir = MOBILE_DIR) {
+  const explicit = env.EGA_MOBILE_APK?.trim();
+  if (explicit) {
+    const resolved = path.resolve(REPO_ROOT, explicit);
+    return fs.existsSync(resolved) ? [resolved] : [];
+  }
+  const found = [];
+  for (const dir of APK_DISCOVERY_DIRS) {
+    const fullDir = path.join(mobileDir, dir);
+    if (!fs.existsSync(fullDir)) continue;
+    for (const entry of fs.readdirSync(fullDir, { withFileTypes: true })) {
+      if (entry.isFile() && entry.name.endsWith('.apk')) {
+        found.push(path.join(fullDir, entry.name));
+      }
+    }
+  }
+  return found.sort();
+}
+
+/**
+ * Pure classifier for the ordered APP-runtime chain. The first step that is
+ * not ok decides the outcome in execution order: an executed failure is FAIL,
+ * missing infrastructure is NOT PROVEN, all-ok is PASS.
+ */
+export function classifyRuntimeChain(steps) {
+  for (const step of steps) {
+    if (step.status === 'failed') {
+      return { status: 'FAIL', reason: `${step.step}: ${step.detail}` };
+    }
+    if (step.status === 'missing') {
+      return { status: 'NOT PROVEN', reason: `${step.step}: ${step.detail}` };
+    }
+  }
+  const summary = steps.map((step) => step.okDetail ?? `${step.step} ok`).join('; ');
+  return { status: 'PASS', reason: `APP-runtime chain proven (${summary})` };
+}
+
+function defaultAdbExec(adbPath, args) {
+  const result = spawnSync(adbPath, args, {
+    cwd: REPO_ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8',
+    timeout: 60_000,
+  });
+  return { ok: (result.status ?? 1) === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+}
+
+function defaultDelay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function lastNonEmptyLine(text) {
+  const lines = String(text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.length > 0 ? lines[lines.length - 1] : '';
+}
+
+/**
+ * L6/L7 APP-runtime chain against one booted serial:
+ *   adb install -r -> resolve launcher activity -> am start -> pidof alive
+ *   after N seconds -> initial UI rendered (uiautomator dump probe text OR a
+ *   logcat window showing our package started without any fatal crash).
+ * Every command actually executes; each step records what ran and what it
+ * produced so PASS is never assumed.
+ */
+export async function runAppRuntimeChain({
+  serial,
+  packageName,
+  apkPath,
+  uiProbeText = packageName,
+  aliveAfterSeconds = Number(process.env.EGA_MOBILE_ALIVE_AFTER_SECONDS ?? 10),
+  exec = defaultAdbExec,
+  delay = defaultDelay,
+}) {
+  const steps = [];
+
+  const install = exec(['-s', serial, 'install', '-r', apkPath]);
+  if (!install.ok) {
+    steps.push({
+      step: 'install',
+      status: 'failed',
+      detail: `adb -s ${serial} install -r ${path.basename(apkPath)} failed: ${(install.stderr || install.stdout || '').trim().slice(0, 200)}`,
+    });
+    return classifyRuntimeChain(steps);
+  }
+  steps.push({ step: 'install', status: 'ok', detail: '', okDetail: `adb install -r ${path.basename(apkPath)} exited 0` });
+
+  const resolveOut = exec([
+    '-s', serial, 'shell', 'cmd', 'package', 'resolve-activity',
+    '--brief', '-c', 'android.intent.category.LAUNCHER', packageName,
+  ]);
+  const component = resolveOut.ok ? lastNonEmptyLine(resolveOut.stdout) : '';
+  if (!/^[\w.$~]+\/[\w.$~]+$/.test(component)) {
+    steps.push({
+      step: 'resolve-launcher',
+      status: 'failed',
+      detail: `could not resolve a LAUNCHER activity for ${packageName}: "${component.slice(0, 120)}"`,
+    });
+    return classifyRuntimeChain(steps);
+  }
+  steps.push({ step: 'resolve-launcher', status: 'ok', detail: '', okDetail: `launcher activity ${component}` });
+
+  const clearLog = exec(['-s', serial, 'shell', 'logcat', '-c']);
+  if (!clearLog.ok) {
+    steps.push({
+      step: 'logcat-clear',
+      status: 'missing',
+      detail: 'adb logcat -c failed; fatal-crash evidence would be unreliable',
+    });
+    return classifyRuntimeChain(steps);
+  }
+
+  const start = exec(['-s', serial, 'shell', 'am', 'start', '-n', component]);
+  if (!start.ok) {
+    steps.push({
+      step: 'launch',
+      status: 'failed',
+      detail: `am start -n ${component} failed: ${(start.stderr || start.stdout || '').trim().slice(0, 200)}`,
+    });
+    return classifyRuntimeChain(steps);
+  }
+  steps.push({ step: 'launch', status: 'ok', detail: '', okDetail: `am start -n ${component}` });
+
+  await delay(Math.max(0, aliveAfterSeconds) * 1000);
+
+  const pidof = exec(['-s', serial, 'shell', 'pidof', packageName]);
+  if (!pidof.ok || !pidof.stdout.trim()) {
+    steps.push({
+      step: 'process-alive',
+      status: 'failed',
+      detail: `pidof ${packageName} found no process after ${aliveAfterSeconds}s (app died after launch)`,
+    });
+    return classifyRuntimeChain(steps);
+  }
+  steps.push({ step: 'process-alive', status: 'ok', detail: '', okDetail: `pid ${pidof.stdout.trim()} alive after ${aliveAfterSeconds}s` });
+
+  const dumpWrite = exec(['-s', serial, 'shell', 'uiautomator', 'dump', '/sdcard/ega-window-dump.xml']);
+  const dumpRead = dumpWrite.ok
+    ? exec(['-s', serial, 'exec-out', 'cat', '/sdcard/ega-window-dump.xml'])
+    : { ok: false, stdout: '', stderr: '' };
+  if (dumpRead.ok && dumpRead.stdout.includes(uiProbeText)) {
+    steps.push({
+      step: 'ui-rendered',
+      status: 'ok',
+      detail: '',
+      okDetail: `uiautomator dump contains "${uiProbeText}"`,
+    });
+    return classifyRuntimeChain(steps);
+  }
+
+  const logcat = exec(['-s', serial, 'logcat', '-d']);
+  const logText = logcat.ok ? logcat.stdout : '';
+  const mentionsPackage = logText.includes(packageName);
+  const hasFatal = logText.includes('FATAL EXCEPTION');
+  if (mentionsPackage && !hasFatal) {
+    steps.push({
+      step: 'ui-rendered',
+      status: 'ok',
+      detail: '',
+      okDetail: 'logcat shows app started without fatal crash',
+    });
+    return classifyRuntimeChain(steps);
+  }
+
+  steps.push({
+    step: 'ui-rendered',
+    status: 'failed',
+    detail: hasFatal
+      ? 'logcat recorded FATAL EXCEPTION during launch'
+      : `uiautomator dump lacks "${uiProbeText}" and logcat shows no clean start for ${packageName}`,
+  });
+  return classifyRuntimeChain(steps);
+}
+
+/**
+ * Shared APP-runtime probe for L6/L7. Reaching a booted target proves device
+ * availability only — that classifies NOT PROVEN until the APP-runtime chain
+ * (install -> launch -> alive -> UI) actually completes below.
+ */
+async function runAndroidRuntime(kind) {
   const id = kind === 'emulator' ? 6 : 7;
   const startedAt = Date.now();
-  if (!findAdb()) {
+  const adbPath = findAdb();
+  if (!adbPath) {
     return notProven(id, 'no adb tooling found (set EGA_MOBILE_ADB or ANDROID_HOME, or install adb)', startedAt);
   }
   const listing = adb(['devices']);
@@ -289,17 +510,50 @@ function runAndroidRuntime(kind) {
     const seen = targets.length > 0 ? `found ${targets.map((d) => `${d.serial}(${d.state})`).join(', ')}` : 'none attached';
     return notProven(id, `no ${kind} in state "device": ${seen}`, startedAt);
   }
-  for (const target of online) {
-    if (booted(target.serial)) {
-      return {
-        id,
-        status: 'PASS',
-        reason: `${kind} ${target.serial} reachable over adb and booted (sys.boot_completed=1); app-install automation is future work`,
-        durationMs: Date.now() - startedAt,
-      };
+  let target = null;
+  for (const candidate of online) {
+    if (booted(candidate.serial)) {
+      target = candidate;
+      break;
     }
   }
-  return failed(id, `${kind} attached but never reported sys.boot_completed=1`, startedAt);
+  if (!target) {
+    return failed(id, `${kind} attached but never reported sys.boot_completed=1`, startedAt);
+  }
+
+  const appConfig = resolveAndroidAppConfig();
+  if (!appConfig) {
+    return notProven(id, 'apps/mobile/app.json exposes no expo.android.package; cannot identify the APP under test', startedAt);
+  }
+
+  const apks = discoverApkArtifacts(process.env);
+  if (apks.length === 0) {
+    const hint = process.env.EGA_MOBILE_APK
+      ? `EGA_MOBILE_APK=${process.env.EGA_MOBILE_APK} does not exist`
+      : 'no APK under android/app/build/outputs/apk/** or apps/mobile/artifacts; set EGA_MOBILE_APK';
+    return notProven(
+      id,
+      `${kind} ${target.serial} reachable and booted, but no EGA House APK available to install (${hint}); booted-device availability alone never proves APP runtime`,
+      startedAt,
+    );
+  }
+
+  const outcome = await runAppRuntimeChain({
+    serial: target.serial,
+    packageName: appConfig.packageName,
+    apkPath: apks[0],
+    uiProbeText: process.env.EGA_MOBILE_UI_PROBE_TEXT || appConfig.packageName,
+  });
+  const prefix =
+    outcome.status === 'PASS'
+      ? `EGA House APP verified on ${kind} ${target.serial}`
+      : `EGA House APP runtime unproven on ${kind} ${target.serial}`;
+  return {
+    id,
+    status: outcome.status,
+    reason: `${prefix}; using ${path.basename(apks[0])}${apks.length > 1 ? ` (+${apks.length - 1} more found)` : ''}. ${outcome.reason}`,
+    durationMs: Date.now() - startedAt,
+  };
 }
 
 /**
