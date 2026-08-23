@@ -1,11 +1,24 @@
 name: Unified Platform Validation
 
+# Force-full mode runs EVERY validation job regardless of changed paths.
+# Two activation paths:
+# 1. Manual: workflow_dispatch with input force_full=true
+#    (`gh workflow run unified-platform-validation.yml --ref <ref> -f force_full=true`).
+# 2. Automatic: any pull_request whose head branch starts with `release/full-matrix/`
+#    behaves as force_full=true, giving an auditable exact-head full matrix through
+#    normal PR flow even when API dispatch permissions are unavailable.
+# Normal PR/push path filtering is unchanged.
 on:
   pull_request:
     branches: [main, "arch/**", "wave/**"]
   push:
     branches: [main, "arch/**", "wave/**"]
   workflow_dispatch:
+    inputs:
+      force_full:
+        description: "Run every validation job regardless of changed paths"
+        type: boolean
+        default: false
 
 concurrency:
   group: unified-ci-${{ github.ref }}
@@ -32,7 +45,19 @@ jobs:
       api-client: ${{ steps.filter.outputs.api-client }}
       web: ${{ steps.filter.outputs.web }}
       db: ${{ steps.filter.outputs.db }}
+      force_full: ${{ steps.force_full.outputs.force_full }}
     steps:
+      - name: Resolve force-full mode
+        id: force_full
+        shell: bash
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [ "${{ inputs.force_full }}" = "true" ]; then
+            echo "force_full=true" >> "$GITHUB_OUTPUT"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ] && [[ "${{ github.head_ref }}" == release/full-matrix/* ]]; then
+            echo "force_full=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "force_full=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Checkout exact head
         uses: actions/checkout@v5
         with:
@@ -285,7 +310,7 @@ jobs:
 
   web:
     needs: [changes]
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -311,7 +336,7 @@ jobs:
 
   mobile:
     needs: [changes]
-    if: needs.changes.outputs.mobile == 'true'
+    if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -339,7 +364,7 @@ jobs:
 
   server:
     needs: [changes]
-    if: needs.changes.outputs.server == 'true'
+    if: needs.changes.outputs.server == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -364,7 +389,7 @@ jobs:
 
   api-client:
     needs: [changes]
-    if: needs.changes.outputs.api-client == 'true'
+    if: needs.changes.outputs.api-client == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -389,7 +414,7 @@ jobs:
 
   db-invariants:
     needs: [changes]
-    if: needs.changes.outputs.db == 'true'
+    if: needs.changes.outputs.db == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     services:
@@ -423,7 +448,7 @@ jobs:
         run: node scripts/db/timer-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
-    needs: [workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
+    needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -433,6 +458,43 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+      - name: Guard against concealed dependency failures
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -u
+          status=0
+          check() {
+            local name="$1" result="$2"
+            echo "$name=$result"
+            case "$result" in
+              failure|cancelled)
+                echo "::error::hygiene cannot report success while dependency job '$name' concluded '$result'"
+                status=1
+                ;;
+              skipped)
+                if [ "${{ needs.changes.outputs.force_full }}" = "true" ]; then
+                  echo "::error::force-full mode requires job '$name' to execute, but it was skipped"
+                  status=1
+                fi
+                ;;
+            esac
+          }
+          check changes       "${{ needs.changes.result }}"
+          check workspace     "${{ needs.workspace.result }}"
+          check contracts     "${{ needs.contracts.result }}"
+          check domain        "${{ needs.domain.result }}"
+          check application   "${{ needs.application.result }}"
+          check data-access   "${{ needs.data-access.result }}"
+          check regressions   "${{ needs.regressions.result }}"
+          check lint-changed  "${{ needs.lint-changed.result }}"
+          check lint-report   "${{ needs.lint-report.result }}"
+          check web           "${{ needs.web.result }}"
+          check mobile        "${{ needs.mobile.result }}"
+          check server        "${{ needs.server.result }}"
+          check api-client    "${{ needs.api-client.result }}"
+          check db-invariants "${{ needs.db-invariants.result }}"
+          exit $status
       - name: Diff hygiene final check
         run: |
           git diff --check

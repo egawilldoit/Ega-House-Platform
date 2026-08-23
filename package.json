@@ -43,6 +43,7 @@
     "test:agent-context": "node --test scripts/agent/validate-agent-context.test.mjs",
     "test:architecture": "node --test scripts/architecture/check-boundaries.test.mjs",
     "test:auth-session:e2e": "npm run test:auth-session:e2e --workspace @ega/web",
+    "test:ci-workflow": "node --test scripts/ci/unified-ci-force-full.test.mjs",
     "test:coverage": "npm run test:coverage --workspace @ega/web",
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs",
     "test:mobile-ladder": "node --test scripts/ci/mobile-verification-ladder.test.mjs",
