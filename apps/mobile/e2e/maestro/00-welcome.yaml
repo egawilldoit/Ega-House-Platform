@@ -6,6 +6,12 @@
 # started", "Sign in with your EGA House account") and login.tsx ("Login",
 # placeholder texts "Email"/"Password"). Brand text renders as "EGA HOUSE" via
 # textTransform, so it is asserted with a case-insensitive regex.
+#
+# Maestro compiles every plain-text selector into textRegex and applies
+# FULL-match semantics (dispatch runs 32661945230/32669157471: substrings like
+# "Tasks, focus sessions" fail against "Tasks, focus sessions, and daily
+# momentum - all in one place."). Multi-word/nested assertions therefore use
+# explicit regexes that full-match the rendered text.
 appId: com.ega_house.mobile
 ---
 - launchApp:
@@ -13,10 +19,7 @@ appId: com.ega_house.mobile
 - extendedWaitUntil:
     visible: "EGA.?HOUSE"
     timeout: 120000
-- # The tagline renders as one text node containing a literal newline
-  # ("Your execution\ncommand center"); Maestro did not match a substring
-  # across it (dispatch run 32666913086), so assert the single-line subtitle.
-  assertVisible: "Tasks, focus sessions"
+- assertVisible: "Tasks, focus sessions.*"
 - assertVisible: "Get started"
 - assertVisible: "Sign in with your EGA House account"
 - takeScreenshot: welcome-screen
