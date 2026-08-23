@@ -13,7 +13,10 @@ appId: com.ega_house.mobile
 - extendedWaitUntil:
     visible: "EGA.?HOUSE"
     timeout: 120000
-- assertVisible: "Your execution"
+- # The tagline renders as one text node containing a literal newline
+  # ("Your execution\ncommand center"); Maestro did not match a substring
+  # across it (dispatch run 32666913086), so assert the single-line subtitle.
+  assertVisible: "Tasks, focus sessions"
 - assertVisible: "Get started"
 - assertVisible: "Sign in with your EGA House account"
 - takeScreenshot: welcome-screen
