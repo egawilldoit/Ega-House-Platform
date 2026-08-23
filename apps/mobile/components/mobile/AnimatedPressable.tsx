@@ -7,6 +7,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 
+import { useReducedMotionEnabled } from './use-reduced-motion';
+
 export function AnimatedPressable({
   children,
   onPress,
@@ -21,8 +23,14 @@ export function AnimatedPressable({
   scaleTo?: number;
 }) {
   const [scale] = useState(() => new Animated.Value(1));
+  const reducedMotion = useReducedMotionEnabled();
 
   function animateTo(value: number) {
+    if (reducedMotion) {
+      scale.setValue(1);
+      return;
+    }
+
     Animated.spring(scale, {
       toValue: value,
       useNativeDriver: true,
@@ -33,6 +41,7 @@ export function AnimatedPressable({
 
   return (
     <Pressable
+      accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
       onPressIn={() => animateTo(scaleTo)}

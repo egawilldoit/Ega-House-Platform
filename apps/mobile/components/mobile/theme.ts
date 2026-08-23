@@ -11,7 +11,8 @@ export const mobileTheme = {
     text: '#0d1117',
     textSecondary: '#374151',
     textMuted: '#6b7280',
-    textSubtle: '#9ca3af',
+    // AA-checked on surface/surfaceMuted/background/backgroundDeep (>=4.5:1).
+    textSubtle: '#666b71',
     textOnAccent: '#ffffff',
 
     // Borders

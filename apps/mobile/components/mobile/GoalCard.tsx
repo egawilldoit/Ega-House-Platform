@@ -56,6 +56,7 @@ export function GoalCard({
       <GlassCard variant="fake" style={styles.card} contentStyle={styles.cardContent}>
         <View style={[styles.leftAccent, { backgroundColor: healthTone.color }]} />
         <Pressable
+          accessibilityRole="button"
           disabled={saving}
           onPress={onPress ?? onActions}
           style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
@@ -117,7 +118,6 @@ export function GoalCard({
           accessibilityLabel="Goal actions"
           accessibilityRole="button"
           disabled={saving}
-          hitSlop={8}
           onPress={onActions}
           style={({ pressed }) => [styles.actionsButton, pressed ? styles.pressed : null]}
         >
@@ -131,13 +131,13 @@ export function GoalCard({
 const styles = StyleSheet.create({
   actionsButton: {
     alignItems: 'center',
-    borderRadius: 18,
-    height: 36,
+    borderRadius: mobileTheme.radius.pill,
+    height: mobileTheme.layout.minTouchTarget,
     justifyContent: 'center',
     position: 'absolute',
-    right: 10,
-    top: 10,
-    width: 36,
+    right: 6,
+    top: 6,
+    width: mobileTheme.layout.minTouchTarget,
     zIndex: 2,
   },
   badgeRow: {

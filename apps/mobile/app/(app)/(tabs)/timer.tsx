@@ -27,6 +27,9 @@ import {
 import { formatElapsedClock, projectElapsedSeconds } from '@/features/timer/runtime';
 
 const MAX_PICKER_TASKS = 12;
+// Fixed-format numeric readout: capping scaling keeps the HH:MM:SS token on
+// one line inside the card; the value itself is announced by screen readers.
+const CLOCK_MAX_FONT_SCALE = 1.6;
 
 function formatMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
@@ -207,7 +210,9 @@ export default function TimerScreen() {
             <Text style={styles.taskTitle} numberOfLines={2}>
               {activeSession.taskTitle}
             </Text>
-            <Text style={styles.clock}>{elapsedLabel}</Text>
+            <Text maxFontSizeMultiplier={CLOCK_MAX_FONT_SCALE} style={styles.clock}>
+              {elapsedLabel}
+            </Text>
             {startedAtLabel ? (
               <Text style={styles.startedAt}>Started at {startedAtLabel}</Text>
             ) : null}
@@ -244,6 +249,7 @@ export default function TimerScreen() {
                   return (
                     <Pressable
                       accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
                       key={task.id}
                       onPress={() => setSelectedTaskId(task.id)}
                       style={[styles.taskRow, isSelected ? styles.taskRowSelected : null]}

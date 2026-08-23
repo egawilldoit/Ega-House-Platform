@@ -85,7 +85,12 @@ export function ActionSheet({
       visible={visible}
     >
       <SafeAreaView edges={['bottom']} style={styles.overlay}>
-        <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
+        <Pressable
+          accessibilityLabel="Dismiss"
+          accessibilityRole="button"
+          onPress={onClose}
+          style={StyleSheet.absoluteFill}
+        />
         <GlassBottomSheet style={styles.sheet} contentStyle={styles.sheetContent}>
           <Text style={styles.title}>{title}</Text>
           {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -95,6 +100,7 @@ export function ActionSheet({
                 <Text style={styles.groupLabel}>{group.label}</Text>
                 {group.items.map((item) => (
                   <Pressable
+                    accessibilityRole="button"
                     key={item.key}
                     disabled={item.disabled}
                     onPress={() => {

@@ -43,6 +43,7 @@ export function TaskCard({
       <GlassCard variant="fake" style={styles.card} contentStyle={styles.cardContent}>
         <View style={[styles.leftAccent, { backgroundColor: statusColors.color }]} />
         <Pressable
+          accessibilityRole="button"
           disabled={saving}
           onPress={onOpen}
           style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
@@ -137,6 +138,7 @@ export function TaskCard({
           />
           <Pressable
             accessibilityLabel="Open task actions"
+            accessibilityRole="button"
             disabled={saving}
             onPress={onActions}
             style={({ pressed }) => [

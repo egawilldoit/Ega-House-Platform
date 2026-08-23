@@ -85,7 +85,6 @@ export default function SearchScreen() {
             <Pressable
               accessibilityLabel="Clear search"
               accessibilityRole="button"
-              hitSlop={8}
               onPress={() => setRawQuery('')}
               style={styles.clearButton}
             >
@@ -269,7 +268,10 @@ const styles = StyleSheet.create({
     paddingTop: mobileTheme.spacing.xl,
   },
   clearButton: {
-    padding: 4,
+    alignItems: 'center',
+    height: mobileTheme.layout.minTouchTarget,
+    justifyContent: 'center',
+    width: mobileTheme.layout.minTouchTarget,
   },
   errorCard: {
     alignItems: 'center',

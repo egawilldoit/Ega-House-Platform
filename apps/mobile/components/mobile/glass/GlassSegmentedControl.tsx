@@ -38,6 +38,7 @@ export function GlassSegmentedControl<T extends string = string>({
         return (
           <Pressable
             accessibilityRole="button"
+            accessibilityState={{ selected, disabled }}
             disabled={disabled}
             key={option.value}
             onPress={() => onChange(option.value)}
@@ -47,7 +48,7 @@ export function GlassSegmentedControl<T extends string = string>({
               pressed && !disabled ? styles.segmentPressed : null,
             ]}
           >
-            <Text style={[styles.text, selected ? styles.textActive : null]} numberOfLines={1}>
+            <Text style={[styles.text, selected ? styles.textActive : null]}>
               {option.label}
             </Text>
           </Pressable>
@@ -66,7 +67,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 2,
-    minHeight: 42,
+    minHeight: mobileTheme.layout.minTouchTarget + 6,
     padding: 3,
   },
   disabled: {
@@ -77,7 +78,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     flex: 1,
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 4,
   },
   segmentActive: {

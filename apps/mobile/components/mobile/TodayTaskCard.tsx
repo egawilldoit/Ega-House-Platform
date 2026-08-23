@@ -154,6 +154,7 @@ export function TodayTaskCard({
             variant="secondary"
           />
           <GlassButton
+            accessibilityLabel="Open task actions"
             disabled={busy}
             onPress={onActions}
             size="sm"
@@ -206,8 +207,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
   },
   icon: {
-    height: 38,
-    minHeight: 38,
     paddingHorizontal: 0,
     width: mobileTheme.layout.minTouchTarget,
   },
@@ -239,13 +238,11 @@ const styles = StyleSheet.create({
   },
   primary: {
     flex: 1,
-    minHeight: 38,
   },
   rowSpacer: {
     flex: 1,
   },
   secondary: {
-    minHeight: 38,
     minWidth: 66,
   },
   pill: {
