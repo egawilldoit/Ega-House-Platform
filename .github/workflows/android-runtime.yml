@@ -1,0 +1,173 @@
+# Android Runtime Proof (TASK 8, release candidate).
+#
+# Builds the real debug APK from the Expo CNG native project and proves APP
+# runtime on a GitHub-hosted x86_64 emulator (local hosts are aarch64 without
+# KVM). The Mobile Verification Ladder L6 chain gates this job:
+#   adb install -r -> resolve launcher -> am start -> pidof alive -> UI probe.
+# Exit 0 of `scripts/ci/mobile-verification-ladder.mjs --levels 6` is the only
+# PASS signal; its honest contract never converts NOT PROVEN into PASS.
+#
+# Dispatch-only on purpose: emulator minutes cost real money and the proof run
+# is triggered explicitly after a green exact-head CI on main.
+
+name: Android Runtime Proof
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: android-runtime-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  android-runtime:
+    name: Debug APK build + emulator APP runtime (L6)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Enable KVM access for hardware-accelerated emulation
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node:kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger
+          if [ ! -w /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          ls -l /dev/kvm
+          "$ANDROID_HOME/emulator/emulator" -accel-check || true
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK inventory
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME"
+          echo "--- cmdline-tools:"
+          ls "$ANDROID_HOME/cmdline-tools" || true
+          echo "--- preinstalled system images:"
+          ls -d "$ANDROID_HOME"/system-images/*/*/* 2>/dev/null || echo "none preinstalled"
+
+      - name: Ensure newest available google_apis x86_64 system image
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          IMAGE_DIR="$(ls -d "$ANDROID_HOME"/system-images/android-*/google_apis/x86_64 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$IMAGE_DIR" ]; then
+            echo "No google_apis x86_64 image preinstalled; installing android-34."
+            yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+            "$SDKM" --install "system-images;android-34;google_apis;x86_64"
+            IMAGE_DIR="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+          fi
+          PKG="${IMAGE_DIR#"$ANDROID_HOME/system-images/"}"
+          PKG="${PKG//\//;}"
+          echo "AVD image package: $PKG"
+          echo "AVD_IMAGE_PACKAGE=$PKG" >> "$GITHUB_ENV"
+
+      - name: Expo prebuild (generate native project, never committed)
+        working-directory: apps/mobile
+        env:
+          EXPO_NO_TELEMETRY: "1"
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build debug APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4g
+
+      - name: Locate built APK
+        id: apk
+        run: |
+          APK_PATH="$(find apps/mobile/android/app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          if [ -z "$APK_PATH" ]; then
+            echo "::error::gradle produced no APK under apps/mobile/android/app/build/outputs/apk"
+            find apps/mobile/android/app/build/outputs -type f || true
+            exit 1
+          fi
+          echo "Built APK: $APK_PATH"
+          mkdir -p ci-artifacts
+          cp "$APK_PATH" ci-artifacts/
+          echo "apk=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Create AVD
+        run: |
+          AVDM="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
+          echo no | "$AVDM" create avd -n ega-runtime -k "$AVD_IMAGE_PACKAGE" -d pixel_5
+          "$AVDM" list avd
+
+      - name: Launch emulator and wait for boot
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          EMU="$ANDROID_HOME/emulator/emulator"
+          "$ADB" start-server
+          nohup "$EMU" -avd ega-runtime \
+            -no-window -no-audio -gpu swiftshader_indirect \
+            -no-snapshot -no-boot-anim \
+            > emulator.log 2>&1 &
+          timeout 300 "$ADB" wait-for-device
+          BOOTED=0
+          for i in $(seq 1 90); do
+            STATE="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            if [ "$STATE" = "1" ]; then
+              echo "Emulator booted (check #$i)."
+              BOOTED=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$BOOTED" != "1" ]; then
+            echo "::error::emulator did not report sys.boot_completed=1 within 15 minutes"
+            tail -100 emulator.log || true
+            exit 1
+          fi
+          "$ADB" devices
+
+      - name: Mobile Verification Ladder L6 (install -> launch -> process alive -> UI)
+        env:
+          EGA_MOBILE_APK: ${{ steps.apk.outputs.apk }}
+          EGA_MOBILE_UI_PROBE_TEXT: EGA House
+        run: |
+          set -o pipefail
+          node scripts/ci/mobile-verification-ladder.mjs --levels 6 | tee ci-artifacts/ladder-l6.txt
+
+      - name: Collect runtime evidence (screencap, UI dump, logcat)
+        if: always()
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          mkdir -p ci-artifacts/runtime
+          "$ADB" exec-out screencap -p > ci-artifacts/runtime/screen.png || true
+          if "$ADB" shell uiautomator dump /sdcard/final-window.xml > /dev/null 2>&1; then
+            "$ADB" exec-out cat /sdcard/final-window.xml > ci-artifacts/runtime/ui-dump.xml || true
+          fi
+          "$ADB" logcat -d -t 500 > ci-artifacts/runtime/logcat-tail.txt || true
+          cp emulator.log ci-artifacts/runtime/emulator.log || true
+          ls -la ci-artifacts ci-artifacts/runtime
+
+      - name: Upload APK + runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-runtime-proof-${{ github.run_number }}
+          path: ci-artifacts/**
+          if-no-files-found: warn
+          retention-days: 14
