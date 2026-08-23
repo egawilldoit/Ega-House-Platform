@@ -34,6 +34,7 @@ export const SHORTCUT_HELP_SECTIONS: Array<{
   {
     title: "Actions",
     shortcuts: [
+      { id: "open-search", description: "Search workspace", combo: "Ctrl/Cmd + K", group: "Actions" },
       { id: "open-apps", description: "Open Apps launcher", combo: "Ctrl/Cmd + Shift + A", group: "Actions" },
       { id: "open-quick-task", description: "Open Quick task", combo: "Ctrl/Cmd + Shift + N", group: "Actions" },
       { id: "open-timer", description: "Go to Timer", combo: "Ctrl/Cmd + Shift + T", group: "Actions" },

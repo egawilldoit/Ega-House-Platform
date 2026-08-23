@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/nextjs";
-import posthog from "posthog-js";
 
 declare global {
   interface Window {
@@ -30,12 +29,37 @@ if (
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 
 if (typeof window !== "undefined" && token && host && !window.__egaPostHogInitialized__) {
-  posthog.init(token, {
-    api_host: host,
-    autocapture: true,
-    capture_pageview: true,
-    defaults: "2026-01-30",
-  });
+  const initPostHog = () => {
+    if (window.__egaPostHogInitialized__) {
+      return;
+    }
 
-  window.__egaPostHogInitialized__ = true;
+    window.__egaPostHogInitialized__ = true;
+
+    import("posthog-js")
+      .then((posthog) => {
+        posthog.default.init(token, {
+          api_host: host,
+          autocapture: true,
+          capture_pageview: true,
+          defaults: "2026-01-30",
+        });
+      })
+      .catch(() => {
+        window.__egaPostHogInitialized__ = false;
+      });
+  };
+
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (
+      callback: () => void,
+      options?: { timeout: number },
+    ) => number;
+  };
+
+  if (typeof idleWindow.requestIdleCallback === "function") {
+    idleWindow.requestIdleCallback(initPostHog, { timeout: 3000 });
+  } else {
+    window.setTimeout(initPostHog, 1500);
+  }
 }

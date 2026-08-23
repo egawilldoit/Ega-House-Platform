@@ -14,6 +14,7 @@ import {
 } from "@/lib/keyboard-shortcuts";
 
 import { ShortcutHelpSheet } from "./shortcut-help-sheet";
+import { CommandPalette, COMMAND_PALETTE_EVENT } from "./command-palette";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
 
 const QUICK_TASK_EVENT = "ega:open-quick-task";
@@ -104,6 +105,12 @@ export function WorkspaceKeyboardShortcuts() {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isExactShortcutCombo(event, { key: "k", metaOrCtrl: true })) {
+        event.preventDefault();
+        dispatchShortcutEvent(COMMAND_PALETTE_EVENT);
+        return;
+      }
+
       if (isEditableShortcutTarget(event.target)) {
         return;
       }
@@ -161,7 +168,12 @@ export function WorkspaceKeyboardShortcuts() {
     };
   }, [pathname, router, canonicalUrl]);
 
-  return <ShortcutHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />;
+  return (
+    <>
+      <ShortcutHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <CommandPalette />
+    </>
+  );
 }
 
 export const workspaceShortcutEvents = {
