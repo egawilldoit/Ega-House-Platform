@@ -60,6 +60,8 @@ function makeSessionResponse(email: string): MobileAuthSessionResponse {
   };
 }
 
+const activeRenderers: ReactTestRenderer[] = [];
+
 async function renderAuth(): Promise<() => AuthContextValue> {
   let auth: AuthContextValue | null = null;
   let renderer: ReactTestRenderer | null = null;
@@ -75,7 +77,9 @@ async function renderAuth(): Promise<() => AuthContextValue> {
       </MobileQueryProvider>,
     );
   });
-  void renderer;
+  if (renderer) {
+    activeRenderers.push(renderer);
+  }
 
   return () => {
     if (!auth) throw new Error('auth context did not mount');
@@ -90,6 +94,16 @@ describe('AuthProvider account isolation and session ref synchronization', () =>
     mockCapturedClientConfig = null;
     mockCapturedOnUnauthorized = null;
     getMobileQueryClient().clear();
+  });
+
+  afterEach(async () => {
+    // Unmount between tests so a stale AuthProvider's floating bootstrap
+    // continuation cannot apply a session update outside act in a later test.
+    await act(async () => {
+      while (activeRenderers.length > 0) {
+        activeRenderers.pop()?.unmount();
+      }
+    });
   });
 
   it('clears cached User A data on sign out before User B can authenticate', async () => {
@@ -133,7 +147,9 @@ describe('AuthProvider account isolation and session ref synchronization', () =>
       session: { accessToken: 'fresh', refreshToken: 'refresh', expiresAt: 9999999999 },
       user: { id: 'user-1', email: 'u@example.com' },
     };
-    await config!.setSession(next);
+    await act(async () => {
+      await config!.setSession(next);
+    });
 
     expect((await config!.getSession())?.session.accessToken).toBe('fresh');
   });

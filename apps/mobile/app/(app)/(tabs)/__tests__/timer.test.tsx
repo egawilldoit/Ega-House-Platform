@@ -135,10 +135,14 @@ function runningWorkspace(startedAtIso: string, taskTitle = 'Server task'): Time
 }
 
 const mountedTrees: Array<ReturnType<typeof create>> = [];
+const mountedQueryClients: QueryClient[] = [];
 
 function renderScreen() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false, gcTime: 0 },
+    },
   });
 
   let tree!: ReturnType<typeof create>;
@@ -150,6 +154,7 @@ function renderScreen() {
     );
   });
   mountedTrees.push(tree);
+  mountedQueryClients.push(queryClient);
 
   return { tree, queryClient };
 }
@@ -240,6 +245,12 @@ describe('TimerScreen (canonical server projection)', () => {
       }
       focusManager.setFocused(true);
     });
+    // Unmounting schedules each cached query's default 5-minute gc timer;
+    // clearing the clients destroys the queries and cancels those handles so
+    // Jest can exit without --forceExit.
+    while (mountedQueryClients.length > 0) {
+      mountedQueryClients.pop()?.clear();
+    }
   });
 
   it('cold start with no active session shows the picker without inventing a timer', async () => {
