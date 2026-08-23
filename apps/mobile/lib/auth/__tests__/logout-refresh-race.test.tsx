@@ -134,7 +134,7 @@ describe('AuthProvider vs in-flight refresh races', () => {
       return unauthorizedResponse();
     });
 
-    const backgroundRequest = mobileApiFetch('/api/mobile/tasks').catch(() => 'rejected');
+    const backgroundRequest = mobileApiFetch('/api/tasks').catch(() => 'rejected');
     await flushRefreshStart();
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(/\/api\/auth\/refresh$/),
@@ -172,7 +172,7 @@ describe('AuthProvider vs in-flight refresh races', () => {
       return unauthorizedResponse();
     });
 
-    const backgroundRequest = mobileApiFetch('/api/mobile/tasks').catch(() => 'rejected');
+    const backgroundRequest = mobileApiFetch('/api/tasks').catch(() => 'rejected');
     await flushRefreshStart();
 
     getMobileQueryClient().setQueryData(['tasks'], { secret: 'A_ONLY' });

@@ -3,8 +3,8 @@
  *
  * Only `global.fetch` is stubbed. Everything between the rendered query hook
  * and the network boundary is real: TanStack Query, `useTodayWorkspaceQuery`,
- * `fetchMobileToday`, and `mobileApiFetch` (headers, auth token injection,
- * base-URL resolution, JSON parsing).
+ * `fetchMobileToday`, the @ega/api-client transport, and the session-token
+ * binding in `lib/api/ega.ts` + `lib/api/client.ts`.
  *
  * This suite is what justifies the INTEGRATION TESTED evidence label in
  * scripts/mobile/verify.mjs; unit suites mock at the module boundary instead.
@@ -106,14 +106,14 @@ async function waitForPredicate(
   timeoutMs = 5_000,
 ): Promise<void> {
   const startedAt = Date.now();
-  while (!predicate()) {
-    if (Date.now() - startedAt > timeoutMs) {
-      throw new Error('Timed out waiting for query to settle');
+    while (!predicate()) {
+      if (Date.now() - startedAt > timeoutMs) {
+        throw new Error('Timed out waiting for query to settle');
+      }
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
     }
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    });
-  }
 }
 
 describe('today workspace query over the mobile API seam', () => {
@@ -138,13 +138,14 @@ describe('today workspace query over the mobile API seam', () => {
     jest.restoreAllMocks();
   });
 
-  it('resolves hook data through mobileApiFetch with bearer auth', async () => {
+  it('resolves hook data through the canonical /api/today path with bearer auth', async () => {
     const fetchMock = jest
       .spyOn(global, 'fetch')
       .mockImplementation(async () =>
         ({
           ok: true,
           status: 200,
+          json: async () => TODAY_PAYLOAD,
           text: async () => JSON.stringify(TODAY_PAYLOAD),
         }) as unknown as Response,
       );
@@ -156,9 +157,10 @@ describe('today workspace query over the mobile API seam', () => {
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [endpoint, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-      expect(endpoint).toBe('https://api.integration.test/api/mobile/today');
+      expect(endpoint).toBe('https://api.integration.test/api/today');
       expect(init.method).toBe('GET');
-      expect((init.headers as Headers).get('Authorization')).toBe(
+      const requestHeaders = init.headers as Record<string, string>;
+      expect(requestHeaders.Authorization ?? new Headers(requestHeaders).get('Authorization')).toBe(
         'Bearer integration-access-token',
       );
       expect(getLatestResult()?.data?.date).toBe('2026-08-21');
@@ -175,8 +177,9 @@ describe('today workspace query over the mobile API seam', () => {
         ({
           ok: false,
           status: 500,
+          json: async () => ({ error: { code: 'INTERNAL', message: 'Today workspace unavailable.' } }),
           text: async () =>
-            JSON.stringify({ error: { message: 'Today workspace unavailable.' } }),
+            JSON.stringify({ error: { code: 'INTERNAL', message: 'Today workspace unavailable.' } }),
         }) as unknown as Response,
       );
 

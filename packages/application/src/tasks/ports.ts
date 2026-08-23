@@ -1,4 +1,5 @@
 import type { TaskPriority, TaskRecurrenceRule, TaskStatus } from "@ega/domain";
+import type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "../shared/result";
@@ -11,6 +12,8 @@ export type TaskReminderRecord = Readonly<{
   status: "pending" | "processing" | "sent" | "failed" | "cancelled";
   sentAt: string | null;
   failureReason: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }>;
 
 export type TaskRecurrenceRecord = Readonly<{
@@ -47,8 +50,21 @@ export type TaskRecord = Readonly<{
   completedAt?: string | null;
   createdAt?: string;
   projectName?: string | null;
+  projectSlug?: string | null;
   goalTitle?: string | null;
-  totalDurationMs?: number;
+  totalDurationSeconds?: number;
+}>;
+
+export type TaskProjectOptionRecord = Readonly<{
+  id: string;
+  name: string;
+  slug: string | null;
+}>;
+
+export type TaskGoalOptionRecord = Readonly<{
+  id: string;
+  title: string;
+  projectId: string;
 }>;
 
 export type TaskScopeRecord = Readonly<{
@@ -58,9 +74,12 @@ export type TaskScopeRecord = Readonly<{
 
 export type TaskQuery = Readonly<{
   status?: TaskStatus | null;
+  priority?: TaskPriority | null;
   projectId?: string | null;
   goalId?: string | null;
   plannedForDate?: string | null;
+  due?: TaskDueFilter | null;
+  sort?: TaskSortValue | null;
   includeArchived?: boolean;
   limit?: number | null;
 }>;
@@ -110,6 +129,8 @@ export type UpdateTaskRecordInput = Readonly<{
 export interface TasksRepository {
   getScope(actor: AuthenticatedActor): Promise<RepositoryResult<TaskScopeRecord>>;
   listTasks(actor: AuthenticatedActor, query?: TaskQuery): Promise<RepositoryResult<TaskRecord[]>>;
+  listProjectOptions(actor: AuthenticatedActor): Promise<RepositoryResult<TaskProjectOptionRecord[]>>;
+  listGoalOptions(actor: AuthenticatedActor): Promise<RepositoryResult<TaskGoalOptionRecord[]>>;
   getTask(actor: AuthenticatedActor, taskId: string): Promise<RepositoryResult<TaskRecord | null>>;
   createTask(actor: AuthenticatedActor, input: CreateTaskRecordInput): Promise<RepositoryResult<TaskRecord>>;
   updateTask(actor: AuthenticatedActor, input: UpdateTaskRecordInput): Promise<RepositoryResult<TaskRecord>>;
@@ -125,4 +146,18 @@ export interface TasksRepository {
     actor: AuthenticatedActor,
     input: Readonly<{ taskId: string; reminderId: string; status: "cancelled" }>,
   ): Promise<RepositoryResult<TaskRecord>>;
+  /** Resolves the task's focus rank; `exists` is false when the task is absent. */
+  getFocusRank(
+    actor: AuthenticatedActor,
+    taskId: string,
+  ): Promise<RepositoryResult<{ exists: boolean; focusRank: number | null }>>;
+  /** Highest focus rank currently assigned, or null when no task is pinned. */
+  getMaxFocusRank(
+    actor: AuthenticatedActor,
+    input: Readonly<{ includeArchived: boolean }>,
+  ): Promise<RepositoryResult<number | null>>;
+  setFocusRank(
+    actor: AuthenticatedActor,
+    input: Readonly<{ taskId: string; focusRank: number | null }>,
+  ): Promise<RepositoryResult<void>>;
 }

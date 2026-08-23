@@ -32,7 +32,7 @@ const AUTH = { authorization: "Bearer good" };
 const JSON_HEADERS = { ...AUTH, "content-type": "application/json" };
 function app(fake: FakeSupabase) { return createApp({ verifyToken: async t => t === "good" ? "user-123" : null, createRequestClient: () => fake as unknown as SupabaseClient, now: () => new Date("2026-08-10T12:00:00Z") }); }
 function row() { return { id:"task-1",title:"Task",description:null,blocked_reason:null,status:"todo",priority:"medium",due_date:null,estimate_minutes:null,project_id:"project-1",goal_id:null,planned_for_date:null,focus_rank:null,scheduled_start_at:null,scheduled_end_at:null,calendar_sync_enabled:false,calendar_reminder_minutes:10,completed_at:null,archived_at:null,created_at:"2026-08-10T00:00:00Z",updated_at:"2026-08-10T00:00:00Z" }; }
-function hydrate(fake: FakeSupabase) { fake.push("tasks",{data:row(),error:null}); fake.push("task_reminders",{data:[],error:null}); fake.push("task_recurrences",{data:[],error:null}); }
+function hydrate(fake: FakeSupabase) { fake.push("tasks",{data:row(),error:null}); fake.push("task_reminders",{data:[],error:null}); fake.push("task_recurrences",{data:[],error:null}); fake.push("task_sessions",{data:[],error:null}); }
 
 test("PUT /api/tasks/:id/recurrence sets canonical recurrence for verified actor", async () => {
   const fake = new FakeSupabase(); fake.push("task_recurrences",{data:null,error:null}); hydrate(fake);
@@ -51,7 +51,12 @@ test("DELETE /api/tasks/:id/recurrence clears recurrence with owner scope", asyn
 
 test("Today mutation endpoints plan, remove, update status, and clear completed", async () => {
   const fake = new FakeSupabase();
-  hydrate(fake); hydrate(fake); hydrate(fake); fake.push("tasks",{data:null,error:null,count:2});
+  // Each plan/remove/status mutation performs an ownership probe (select +
+  // hydrate) followed by the write (update + hydrate).
+  hydrate(fake); hydrate(fake);
+  hydrate(fake); hydrate(fake);
+  hydrate(fake); hydrate(fake);
+  fake.push("tasks",{data:null,error:null,count:2});
   const a = app(fake);
   const planned = await a.request("/api/today/tasks/task-1",{method:"POST",headers:JSON_HEADERS,body:JSON.stringify({date:"2026-08-10"})});
   assert.equal(planned.status,200);

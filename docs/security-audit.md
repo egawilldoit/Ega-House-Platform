@@ -71,8 +71,8 @@ No profile/user-owned application table is currently present. Auth users live in
 | Task sessions / timer | `src/app/timer/page.tsx`, `src/app/timer/actions.ts`, `src/lib/services/timer-service.ts`, `src/app/timer/export/route.ts` | Reads/writes use request-scoped Supabase client. Session writes are protected by RLS parent-task policies. Export route is protected by `/timer` middleware and RLS. |
 | Saved task views | `src/app/tasks/saved-views-actions.ts`, `src/lib/task-saved-views.ts` | App validates visible project/goal scope before writes. RLS now also enforces owner and parent-scope checks. |
 | Weekly reviews | `src/app/review/page.tsx`, `src/app/review/[reviewId]/page.tsx`, `src/app/review/actions.ts`, `src/app/review/export/route.ts` | Reads use request-scoped client and RLS. Save explicitly gets authenticated user and writes `owner_user_id`; export route is protected by `/review` middleware and RLS. |
-| Today planner | `src/app/today/actions.ts`, `src/lib/services/today-planner-service.ts`, `src/app/api/mobile/today/**/route.ts` | Web uses request-scoped Supabase client. Mobile now keeps task, active timer, and timer summary reads on the bearer-scoped client. |
-| Mobile tasks API | `src/app/api/mobile/tasks/**/route.ts` | Requires bearer token and passes bearer-scoped Supabase client into task services. RLS protects all reads/writes. |
+| Today planner | `src/app/today/actions.ts`, `src/lib/services/today-planner-service.ts` | Web uses request-scoped Supabase client. Mobile keeps task, active timer, and timer summary reads on the bearer-scoped client. |
+| Mobile tasks API | REMOVED (hardening Task 5): legacy `/api/mobile/tasks*`, `/api/mobile/today*`, `/api/mobile/auth/*` Next.js routes deleted; mobile now uses canonical Hono `/api/tasks*`, `/api/today*` via `@ega/api-client` with bearer auth and RLS unchanged. | Requires bearer token and passes bearer-scoped Supabase client into task services. RLS protects all reads/writes. |
 
 ## Fixes Made
 

@@ -1,5 +1,10 @@
 # Mobile Auth Model Decision
 
+> Status note (2026-08, hardening Task 5): the `/api/mobile/auth/*` Next.js
+> routes described below were removed after the auth cutover to canonical
+> Hono `/api/auth/*`. This document is retained as the historical decision
+> record; current mobile transport is `@ega/api-client` over the Hono origin.
+
 ## Context
 
 - Web app is Next.js at repo root and uses Supabase auth (`@supabase/ssr` + `@supabase/supabase-js`).

@@ -104,11 +104,14 @@ release fallback). Production convention decided here:
 
 - Dedicated Hono origin: `https://ega-api.egawilldoit.online`
   (**REQUIRES DNS/provider setup** — not live until the runbook above is done).
-- Release-build fallback stays `https://www.egawilldoit.online` for now. Do
-  NOT flip release builds to the new origin yet: mobile still calls legacy
-  Next.js paths (`/api/mobile/tasks*`, `/api/mobile/today*`) that exist only
-  on the web origin. Task 5 migrates those into the Hono server; flip
-  `EXPO_PUBLIC_API_BASE_URL` in EAS/release config as part of that cutover.
+- Release-build fallback stays `https://www.egawilldoit.online` as a
+  configuration safety net, but it is NO LONGER a functional mobile backend:
+  since hardening Task 5, mobile calls only canonical Hono paths
+  (`/api/auth/*`, `/api/timer/*`, `/api/projects*`, `/api/goals*`,
+  `/api/tasks*`, `/api/today*`) via `@ega/api-client`, and the legacy
+  Next.js `/api/mobile/*` routes are deleted from the web app. Set
+  `EXPO_PUBLIC_API_BASE_URL` to the dedicated Hono origin in EAS/release
+  config before shipping.
 - Misconfiguration keeps failing diagnostically: invalid URLs throw at resolve
   time, release builds warn once on fallback, and network errors surface
   actionable messages naming `EXPO_PUBLIC_API_BASE_URL`
