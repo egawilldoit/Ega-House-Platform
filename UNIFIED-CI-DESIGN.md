@@ -376,3 +376,21 @@ Root `package.json` additions (PR9): `ci:workspace`, `ci:purity`, `ci:security`,
 - `origin/main` tip == `PINNED_PR1_MAIN_SHA` == `7b997c4`; `origin/main..HEAD` = 91 commits.
 - Repo state: `apps/` = `mobile` only; `packages/` = `application, contracts, data-access, domain`; `scripts/ega-runner/package-lock.json` + `node_modules/**` tracked.
 - Workflow file count: 13 (10 active incl. 1 red, 3 disabled).
+
+---
+
+## 14. Appendix — force-full validation mode (added by RC Task 3)
+
+`unified-platform-validation.yml` supports a force-full mode that runs every
+validation job regardless of changed paths. Two activation paths:
+
+1. **Manual dispatch:** `workflow_dispatch` input `force_full=true`
+   (`gh workflow run unified-platform-validation.yml --ref <ref> -f force_full=true`;
+   requires repository admin/write API access).
+2. **Automatic branch prefix:** any `pull_request` whose head branch starts with
+   `release/full-matrix/` behaves as force-full, giving an auditable exact-head
+   full matrix through the normal PR flow when dispatch permissions are unavailable.
+
+Normal PR/push path filtering is unchanged. The `hygiene` job fails if any needed
+job concluded failure/cancelled, and in force-full mode it also fails on any
+skipped job: hygiene reports, never conceals.
