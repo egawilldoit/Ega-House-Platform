@@ -46,4 +46,8 @@ classification/probe logic: `scripts/ci/mobile-verification-ladder.test.mjs`
   standard dev environment, so they report `NOT PROVEN`. To raise the ceiling,
   install adb (`ANDROID_HOME` or `EGA_MOBILE_ADB`) and attach a booted target.
 - **L8**: reports `NOT PROVEN` until `MOBILE_PRODUCTION_BASE_URL` is exported
-  (optionally `MOBILE_PRODUCTION_HEALTH_PATH`, default `/health`).
+  (optionally `MOBILE_PRODUCTION_HEALTH_PATH`, default `/health`). Point it at
+  the dedicated Hono origin (`https://ega-api.egawilldoit.online` once the
+  deployment in [`docs/architecture/hono-deployment.md`](architecture/hono-deployment.md)
+  exists) — never at the web origin, whose Next.js routes do not serve
+  `/health`.

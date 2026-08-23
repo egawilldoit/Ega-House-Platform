@@ -6,6 +6,7 @@ EGA House is a productivity platform with a Next.js web application, an Expo mob
 
 - Web workspace: tasks, goals, timer, review, analytics, and integrations under `src/`.
 - Mobile client: Expo application under `apps/mobile`.
+- Standalone Hono API server: mobile-facing auth/timer/goals/projects endpoints under `apps/server`; deployment target and environment contract in [`docs/architecture/hono-deployment.md`](docs/architecture/hono-deployment.md).
 - Agent task-control API: scoped project/goal/task endpoints under `src/app/api/agent`.
 - Autonomous Runner: partial Linear/PGMQ/Hermes/GitHub delivery vertical slice under `scripts/ega-runner`.
 
