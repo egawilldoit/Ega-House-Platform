@@ -68,14 +68,6 @@ jobs:
           echo "--- preinstalled system images:"
           ls -d "$ANDROID_HOME"/system-images/*/*/* 2>/dev/null || echo "none preinstalled"
 
-      - name: Upgrade cmdline-tools (bundled one cannot parse SDK repository XML v4)
-        run: |
-          OLD_SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          [ -x "$OLD_SDKM" ] || OLD_SDKM="$ANDROID_HOME/cmdline-tools/bin/sdkmanager"
-          yes | "$OLD_SDKM" --licenses > /dev/null 2>&1 || true
-          "$OLD_SDKM" --install "cmdline-tools;latest" > /dev/null
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-
       - name: Ensure newest available google_apis x86_64 system image
         run: |
           SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -118,14 +110,38 @@ jobs:
           cp "$APK_PATH" ci-artifacts/
           echo "apk=$APK_PATH" >> "$GITHUB_OUTPUT"
 
-      - name: Create AVD
+      - name: Create AVD manually (runner avdmanager cannot parse SDK repository XML v4)
         run: |
-          AVDM="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-          if ! echo no | "$AVDM" create avd -n ega-runtime -k "$AVD_IMAGE_PACKAGE" -d pixel_5; then
-            echo "pixel_5 profile unavailable; falling back to a generic AVD."
-            echo no | "$AVDM" create avd --force -n ega-runtime -k "$AVD_IMAGE_PACKAGE"
-          fi
-          "$AVDM" list avd
+          AVD_HOME="$GITHUB_WORKSPACE/.android/avd"
+          mkdir -p "$AVD_HOME/ega-runtime.avd"
+          cat > "$AVD_HOME/ega-runtime.ini" <<EOF
+          avd.ini.encoding=UTF-8
+          path=$AVD_HOME/ega-runtime.avd
+          path.rel=avd/ega-runtime.avd
+          target=android-34
+          EOF
+          cat > "$AVD_HOME/ega-runtime.avd/config.ini" <<EOF
+          avd.ini.encoding=UTF-8
+          AvdId=ega-runtime
+          image.sysdir.1=system-images/android-34/google_apis/x86_64/
+          tag.id=google_apis
+          tag.display=Google APIs
+          abi.type=x86_64
+          hw.cpu.arch=x86_64
+          hw.cpu.ncore=4
+          hw.ramSize=4096
+          hw.keyboard=yes
+          hw.gpu.enabled=yes
+          hw.gpu.mode=swiftshader_indirect
+          hw.lcd.width=1080
+          hw.lcd.height=2280
+          hw.lcd.density=440
+          disk.dataPartition.size=8G
+          image.androidVersion.api=34
+          EOF
+          echo "ANDROID_AVD_HOME=$AVD_HOME" >> "$GITHUB_ENV"
+          echo "--- ega-runtime.ini:"; cat "$AVD_HOME/ega-runtime.ini"
+          echo "--- config.ini:"; cat "$AVD_HOME/ega-runtime.avd/config.ini"
 
       - name: Launch emulator and wait for boot
         run: |
