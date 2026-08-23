@@ -9,6 +9,7 @@ import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
 import { getShellRouteMeta } from "./shell-route-meta";
 import { TopBarSignalCluster } from "./shell-signals";
+import { COMMAND_PALETTE_EVENT } from "./command-palette";
 import { workspaceShortcutEvents } from "./workspace-keyboard-shortcuts";
 
 type TopBarProps = {
@@ -35,16 +36,19 @@ export function TopBar({ metrics, mobileNavigation }: TopBarProps) {
           </span>
         </div>
 
-        <label className="shell-search workspace-shell-search">
+        <div className="shell-search workspace-shell-search">
           <Search aria-hidden="true" />
-          <span className="sr-only">Search workspace</span>
-          <input
-            type="search"
-            placeholder="Search tasks, goals, projects..."
-            aria-label="Search tasks, goals, and projects"
-          />
+          <button
+            type="button"
+            className="workspace-search-trigger"
+            aria-haspopup="dialog"
+            onClick={() => window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_EVENT))}
+          >
+            <span className="sr-only">Search tasks, goals, and projects</span>
+            <span aria-hidden="true">Search tasks, goals, projects…</span>
+          </button>
           <kbd>Ctrl K</kbd>
-        </label>
+        </div>
 
         <div className="topbar-actions workspace-topbar-actions">
           <TopBarSignalCluster metrics={metrics} />
