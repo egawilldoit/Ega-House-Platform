@@ -126,10 +126,14 @@ async function flushAll(turns = 8) {
 }
 
 const mountedTrees: Array<ReturnType<typeof create>> = [];
+const mountedQueryClients: QueryClient[] = [];
 
 async function renderScreen() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false, gcTime: 0 },
+    },
   });
 
   let tree!: ReturnType<typeof create>;
@@ -141,6 +145,7 @@ async function renderScreen() {
     );
   });
   mountedTrees.push(tree);
+  mountedQueryClients.push(queryClient);
 
   return tree;
 }
@@ -175,6 +180,12 @@ describe('ProjectDetailScreen status actions (ws10 port)', () => {
         mountedTrees.pop()?.unmount();
       }
     });
+    // Unmounting schedules each cached query's default 5-minute gc timer;
+    // clearing the client destroys the queries and cancels those handles so
+    // Jest can exit without --forceExit.
+    while (mountedQueryClients.length > 0) {
+      mountedQueryClients.pop()?.clear();
+    }
   });
 
   it('renders the project summary and linked goals when loaded', async () => {

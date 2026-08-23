@@ -11,7 +11,7 @@
  */
 import * as React from 'react';
 import { act, create } from 'react-test-renderer';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, notifyManager } from '@tanstack/react-query';
 
 import type { MobileTodayResponse } from '@ega/contracts/mobile';
 import { useTodayWorkspaceQuery } from '@/features/today/query';
@@ -114,11 +114,31 @@ async function waitForPredicate(
         await new Promise((resolve) => setTimeout(resolve, 10));
       });
     }
+    // The predicate can resolve while a follow-up query notification is still
+    // queued on the notify manager's macrotask timer. Drain two event-loop
+    // turns inside act so those state updates land inside act instead of
+    // warning after the test body has finished awaiting.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
 }
 
 describe('today workspace query over the mobile API seam', () => {
   const originalFetch = global.fetch;
   const originalBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+  beforeAll(() => {
+    // Flush query notifications synchronously inside the current act window.
+    // The default macrotask scheduler can land a follow-up notification after
+    // the last awaited act closes, which React reports as an update outside
+    // act(...). Restored in afterAll so other suites keep the default.
+    notifyManager.setScheduler((callback) => callback());
+  });
+
+  afterAll(() => {
+    notifyManager.setScheduler((callback) => setTimeout(callback, 0));
+  });
 
   beforeEach(() => {
     process.env.EXPO_PUBLIC_API_BASE_URL = 'https://api.integration.test';
