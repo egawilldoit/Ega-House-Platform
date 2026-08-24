@@ -12,12 +12,23 @@ const execFileAsync = promisify(execFile);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const serverRoot = path.resolve(here, "..");
-const entrypointPath = path.join(serverRoot, "api", "index.ts");
+const entrypointPath = path.join(serverRoot, "index.ts");
+
+// Vercel's native Hono preset is zero-config: the project root (or src/index)
+// default-exports the Hono application. It must not be routed through an
+// api/index generic function rewrite.
+test("native Hono deployment uses the project-root index.ts entrypoint", () => {
+  assert.equal(
+    fs.existsSync(entrypointPath),
+    true,
+    "apps/server/index.ts must exist for the native Hono preset",
+  );
+});
 
 // Production contract: the deployed module refuses to initialize without the
 // Supabase env pair. Proven in a child process because env vars are read at
 // module scope and must be absent there.
-test("api/index.ts fails fast without SUPABASE_URL/SUPABASE_ANON_KEY", async () => {
+test("index.ts fails fast without SUPABASE_URL/SUPABASE_ANON_KEY", async () => {
   const tsxBin = path.join(serverRoot, "..", "..", "node_modules", ".bin", "tsx");
   await assert.rejects(
     () =>
@@ -39,9 +50,7 @@ const SUPABASE_PLACEHOLDER_KEY = "sb_publishable_boot_proof_placeholder";
 let listener: ReturnType<typeof serve> | null = null;
 let baseUrl = "";
 
-test("boot the actual Vercel Hono default export on a local port", async () => {
-  // Set placeholders BEFORE importing; this mirrors Vercel injecting project
-  // environment variables before the function cold-starts.
+test("boot the actual native Hono default export on a local port", async () => {
   process.env.SUPABASE_URL = SUPABASE_PLACEHOLDER_URL;
   process.env.SUPABASE_ANON_KEY = SUPABASE_PLACEHOLDER_KEY;
 
@@ -92,21 +101,22 @@ test("unknown paths answer the JSON 404 shape", async () => {
   assert.equal((await response.json()).error.code, "NOT_FOUND");
 });
 
-test("stop the local boot listener", () => {
-  listener?.close();
-});
-
-test("apps/server/vercel.json routes everything to the single function", () => {
+test("native Hono preset is not mixed with a generic api/index rewrite", () => {
   const configPath = path.join(serverRoot, "vercel.json");
+  if (!fs.existsSync(configPath)) return;
+
   const config = JSON.parse(fs.readFileSync(configPath, "utf8")) as {
-    functions?: Record<string, { maxDuration?: number }>;
-    rewrites?: Array<{ source?: string; destination?: string }>;
+    functions?: Record<string, unknown>;
+    rewrites?: Array<{ destination?: string }>;
   };
 
-  assert.equal(config.rewrites?.[0]?.source, "/(.*)");
-  assert.equal(config.rewrites?.[0]?.destination, "/api/index");
+  assert.equal(config.functions?.["api/index.ts"], undefined);
   assert.equal(
-    config.functions?.["api/index.ts"]?.maxDuration,
-    30,
+    config.rewrites?.some((rewrite) => rewrite.destination === "/api/index"),
+    false,
   );
+});
+
+test("stop the local boot listener", () => {
+  listener?.close();
 });
