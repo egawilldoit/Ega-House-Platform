@@ -1,1 +1,5 @@
-// RED gate: native Hono preset requires this entrypoint to default-export the app.
+import { createProductionApp } from "./src/app";
+
+const app = createProductionApp();
+
+export default app;
