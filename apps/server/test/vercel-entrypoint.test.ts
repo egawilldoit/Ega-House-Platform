@@ -39,20 +39,19 @@ const SUPABASE_PLACEHOLDER_KEY = "sb_publishable_boot_proof_placeholder";
 let listener: ReturnType<typeof serve> | null = null;
 let baseUrl = "";
 
-test("boot the actual Vercel entrypoint module on a local port", async () => {
+test("boot the actual Vercel Hono default export on a local port", async () => {
   // Set placeholders BEFORE importing; this mirrors Vercel injecting project
   // environment variables before the function cold-starts.
   process.env.SUPABASE_URL = SUPABASE_PLACEHOLDER_URL;
   process.env.SUPABASE_ANON_KEY = SUPABASE_PLACEHOLDER_KEY;
 
   const entrypoint = await import(entrypointPath);
+  const app = entrypoint.default;
 
-  assert.equal(typeof entrypoint.GET, "function");
-  assert.equal(typeof entrypoint.POST, "function");
-  assert.equal(typeof entrypoint.DELETE, "function");
-  assert.equal(entrypoint.runtime, "nodejs");
+  assert.ok(app);
+  assert.equal(typeof app.fetch, "function");
 
-  listener = serve({ fetch: entrypoint.GET, port: 0 }, (info) => {
+  listener = serve({ fetch: app.fetch.bind(app), port: 0 }, (info) => {
     baseUrl = `http://127.0.0.1:${info.port}`;
   });
 
