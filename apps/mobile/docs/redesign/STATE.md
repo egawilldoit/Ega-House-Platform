@@ -32,7 +32,7 @@
 - [x] Wave 1 — Today (Daily Momentum ring + progress bar, 4 sections, Suggestions, Card/Chip/ProgressBar parity)
 - [x] Wave 2 — Work / Tasks / Projects (segmented Tasks|Projects, context FAB)
 - [x] Wave 3 — Goals (health vs status Chips, ProgressBar+fraction, +Add next step, placeholderData)
-- [ ] Wave 4 — Timer + Profile (avatar header, timer clock isolation)
+- [x] Wave 4 — Timer + Profile (isolated TimerClock, FocusQueue 12, TrackedTimeSummary, compact Profile)
 - [ ] Wave 5 — Welcome + Login + Search
 - [ ] Wave 6 — Create flows (Task/Project/Goal)
 - [ ] Wave 7 — Detail/Edit flows (Task/Project/Goal)
@@ -40,14 +40,15 @@
 - [ ] Wave 9 — Final independent review
 
 ## Current Wave
-Wave 3 — COMPLETE (awaiting parent commit)
+Wave 4 — COMPLETE (awaiting parent commit)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
 - `refactor(mobile-ui): establish redesign foundation` — 132ab8d (Wave 0)
 - `feat(mobile-ui): redesign today experience` — d51c48a (Wave 1)
 - `feat(mobile-ui): introduce work hub` — 21f0d6d (Wave 2)
-- Wave 3 working tree: Goals parity — Active/Archived/All + health/status Chips + ProgressBar fraction + Add next step (uncommitted, base dca2dceaa, HEAD 21f0d6d)
+- `feat(mobile-ui): redesign goals` — 085a500 (Wave 3)
+- Wave 4 working tree: Timer clock isolation + FocusQueue + TrackedTimeSummary + compact Profile (uncommitted, base dca2dceaa, HEAD 085a500)
 
 ## Tests
 - `npm run typecheck` — exit 0 (2026-08-25, .worktrees/ui-mobile/apps/mobile) — Wave 0
@@ -60,9 +61,13 @@ Wave 3 — COMPLETE (awaiting parent commit)
 - Wave 3: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-25)
 - Wave 3: `npm run mobile:test` (worktree root via `npm --prefix apps/mobile`) — exit 0 (166/166 passed, 29 suites, 6.7s) — updated GoalCard-test to expect `1 / 2 tasks` fraction (bar+fraction, not bar+percent+count triple) to match ProjectCard parity
 - Wave 3: `git diff --check` — exit 0 (no whitespace errors)
-- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3)
+- Wave 4: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-25)
+- Wave 4: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-25)
+- Wave 4: `npm run test` (apps/mobile) — exit 0 (166/166 passed, 29 suites, 6.3s) — timer isolation keeps all 10 timer canonical tests green (server projection, picker 12 cap, start/stop, offline stale banner, retry, foreground reconcile via focusManager)
+- Wave 4: `git diff --check` — exit 0 (no whitespace errors)
+- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3/4)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1/2) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 1/2/3 working tree) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + others also `apps/mobile/**` only ✓
+- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1/2/3) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 4 working tree: 3 modified + 5 untracked) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + others also `apps/mobile/**` only ✓
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -138,20 +143,32 @@ Wave 3 — COMPLETE (awaiting parent commit)
 - Created: `apps/mobile/features/goals/components/GoalsListView.tsx` (FlatList virtualized keyExtractor item.id initialNumToRender 10 windowSize 5 maxToRenderPerBatch 10 removeClippedSubviews false contentContainer paddingBottom floatingTabClearance 160 paddingHorizontal lg 20 paddingTop sm 8; filter Active/Archived/All SegmentedControl driving useGoalListQuery(view) with placeholderData; ListHeader SegmentedControl + counter `X goal(s) · view` + Refreshing hint + FeedbackBanner; ListEmpty Card+EmptyState per view (Active → Create CTA, Archived → archive copy, All → nothing); ActionSheet Status (draft/active/done/paused disabled when equal) + Health (on_track/at_risk/off_track) + Archive/Unarchive + Update next step (general); mutations via useUpdateGoalStatus/Health/NextStep/Archive/Unarchive with invalidateGoalLists; Modal bottom sheet 28r overlay rgba(15,23,42,0.45) handle 5×44 title Next step subtitle goal.title TextInput 96 multiline border lg control shadow + Cancel ghost + Save primary loading; useFocusEffect refetch; preserves all query invalidations; one FAB in parent goals.tsx)
 - Created: `apps/mobile/docs/redesign/research-wave-3.md` (Mobbin goals OKR health, Refero density hierarchy, Screenlane progress fraction, Mobbin+Refero next-step FAB — each SOURCE/PATTERN/WHY/ADOPT/REJECT with Wave3 cross-reference decisions)
 
+## Files Changed (Wave 4)
+- Modified: `apps/mobile/app/(app)/(tabs)/timer.tsx` (migrated MobileScreen/GlassCard/GlassButton → AppScreen/ScreenHeader/Card/Button/FeedbackBanner/Skeleton + TimerScreenContent; removed parent `nowMs` interval — isolation to `TimerClock` only, preserves candidateTasks max 12 `status!==done` slice, selectedTaskId, start/stop mutations with `formatMessage` fallback, `activeSession`/`projectElapsedSeconds`/`formatElapsedClock` via TimerClock, `showStaleBanner = isError && !isFetching` stale View cloud-offline 14 + `Can&apos;t reach the server — showing the last synced state.` , `actionError` as FeedbackBanner danger, `summary` via TrackedTimeSummary, `RefreshControl refreshing=isRefetching`, `floatingTabClearance 160` via ScrollView contentContainer gap md paddingHorizontal lg paddingTop sm, no decorative background loop, no tick >1s, keeps `MAX_PICKER_TASKS 12`, `CLOCK_MAX_FONT_SCALE 1.6` inside TimerClock, `tasksFetching` ActivityIndicator accent)
+- Modified: `apps/mobile/app/(app)/profile.tsx` (canonical stack profile migrated GlassCard/GlassButton/GlassPill → AppScreen + ScreenHeader eyebrow Account title Profile description `Authenticated as {email}` + Card avatarRow 58 accent radius 29 initials 20 black + name `EGA House` 17 extrabold + email 13 muted + identityFooter pillViews `Authenticated` shield-checkmark success on successBg + `Mobile workspace` phone-portrait accent on infoBg (pill 999 6/10) + Card actionRow compact `Sign out` 14 bold + hint `End current session` 12 subtle + `Button variant danger size sm leftIcon log-out-outline 16` compact not full-width; preserves initials `email.substring(0,2).toUpperCase() ?? EG`, `signOut().then(router.replace welcome)`, version `Constants.expoConfig.version ?? 1.0.0` centered 12 subtle, `HeaderActions` avatar everywhere still → `/(app)/profile`)
+- Modified: `apps/mobile/app/(app)/(tabs)/profile.tsx` (compat hidden route `href:null` kept — now re-exports canonical `../profile` so deep link `/(app)/(tabs)/profile` still renders identity card for legacy tests/bookmarks while nav shows 4 tabs only; preserves initials/email/version assertions, no dead settings rows, single source)
+- Created: `apps/mobile/features/timer/components/TimerClock.tsx` (isolated 1s tick — owns `nowMs` state + `setTimeout 0` immediate + `setInterval 1000` per `startedAt` dep, recomputes `projectElapsedSeconds(startedAt, nowMs)` each render fallback `elapsedLabel` when null, renders `Text maxFontSizeMultiplier 1.6 style clock 52/900 -1 centered` with `accessibilityLabel Elapsed {label}`, no parent rerender)
+- Created: `apps/mobile/features/timer/components/FocusQueue.tsx` (Card with `EmptyState icon list-outline title No open tasks` when 0 else `Pick a task to time` 16 extrabold + mapped 12 `Pressable taskRow 44 min border radius md` selected `surfaceMuted+accentMid` + `checkmark-circle accent 20`, taskRow title 14 semibold + meta `project.name · status` 12 subtle, `Button Start timer primary 52h play 20` disabled `!selectedTaskId || isStarting` loading)
+- Created: `apps/mobile/features/timer/components/TrackedTimeSummary.tsx` (Card header `timer-outline 18 accent + Tracked time` 16 extrabold gap 8 + statsRow 3× flex1 centered `statValue 22 black + statLabel 11 uppercase muted` Today `trackedTodayLabel` / Sessions `sessionsTodayCount` / Longest `longestSessionLabel ?? —` + footer `All time · trackedTotalLabel` 12 muted centered)
+- Created: `apps/mobile/features/timer/components/TimerScreenContent.tsx` (composer: `activeSession ? Card activeContent centered + runningRow dot successMid 10 + Running 12 uppercase + taskTitle 17 bold 2-line centered + TimerClock + Started at {toLocaleTimeString 2-digit} 12 muted + Button Stop timer danger 54h stop 22` : `FocusQueue`; plus summary `TrackedTimeSummary` when present; stack gap md)
+- Created: `apps/mobile/docs/redesign/research-wave-4.md` (Mobbin active timer & focus queue, Page Flows queue pick & start, Design Spells tracked summary & offline/loading, Mobbin profile compact — each SOURCE/PATTERN/WHY/ADOPT/REJECT plus Wave4 cross-reference decisions — isolation, 12 cap, server authority, 3+1 stats, skeleton/offline tiers, compact sign-out)
+
 ## Known Issues
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
-- Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback
+- Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback (Wave 0, still green in Wave 4)
 - TodayTaskCard 44 target test fixed via IconButton minHeight/minWidth (Wave 1) — ensures ghost actions button meets 44 without hitSlop
 - TaskCard mainTap test fixed via Pressable borderRadius sm 10 in features/tasks/components/TaskCard.tsx (Wave 2) — satisfies cards-a11y-test
 - GoalCard-test progress asserted `1 / 2 tasks` fraction (Wave 3) to avoid triple bar+percent+count — aligns with ProjectCard `1 / 4 tasks` parity (old `50%` removed)
+- Profile tabs compat now re-exports canonical `../profile` (Wave 4) — keeps legacy `app/(app)/(tabs)/__tests__/profile.test.tsx` green (US initials, email, version) without Redirect mock drift; hidden via `href:null` preserved
 - Bundle export fails in worktree without root node_modules install (not Wave 0/1 regression)
-- Legacy MobileScreen/Glass* remain as compat until respective waves (tasks/projects/goals detail/create screens still glass until Waves 6–7)
+- Legacy MobileScreen/Glass* remain as compat until respective waves (tasks/projects/goals detail/create screens still glass until Waves 6–7; timer/profile now migrated, so remaining glass is welcome/login/search/create/detail)
 - DailyMomentum ring visualizes completion ratio (completed/total) not trackedToday seconds vs estimate — honest math, no fake min
 - Work hub client search is title/project/goal substring (no new endpoint); server filtering remains canonical for status/priority/due/sort
 - Goals progress `completed / total tasks` client-derived from `linkedTasks.filter(done)` — consistent with server `progressPercent = round(completed/total*100)` (see `getGoalsReadModel`)
+- Timer authority preserved via `projectElapsedSeconds` recompute + `fallback elapsedLabel` — no accumulation; clock isolated to TimerClock, sibling stable (verified profiler)
 
 ## Next
-- Wave 4 — Timer clock isolation + avatar header polish
+- Wave 5 — Welcome + Login + Search (dark auth → AppScreen parity, SearchField + debounce preserve)
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` before touching tokens
@@ -159,8 +176,10 @@ Wave 3 — COMPLETE (awaiting parent commit)
 - Do not create second theme authority — Stitch tokens map into `mobileTheme`
 - Today parity preserves SectionList virtualization (keyExtractor item.id) + floatingTabClearance 160 — do not replace with ScrollView+map
 - Work parity preserves FlatList virtualization (keyExtractor item.id, initialNumToRender 10, windowSize 5) + floatingTabClearance 160 — same no ScrollView+map for large collections
-- Goals parity preserves FlatList virtualization (same params) + floatingTabClearance 160 + placeholderData:(prev)=>prev keep-previous — maintain for Timer
+- Goals parity preserves FlatList virtualization (same params) + floatingTabClearance 160 + placeholderData:(prev)=>prev keep-previous — maintain for Timer where ScrollView+map for 12 rows is intentional (no FlatList win), but large lists stay virtualized
 - Chip is single primitive via chipTone(kind,value) — do not reintroduce StatusChip/PriorityChip or InfoBadge/GlassPill; status vs health distinct Chips (two chips) must stay separate, health muted when null with “No health” label and slate dot
 - ProjectCard and GoalCard progress is single primary (ProgressBar flex1 + fraction `completed / total tasks`) — do not reintroduce bar+fraction+percent triple or percent-only; bar width is honest `progressPercent` clamped 0–100, fraction derived from `linkedTasks.filter(done)`
 - Goals `+ Add next step` button affordance (secondary sm + add icon) → bottom sheet 28r with 96h TextInput + Cancel/Save must remain when nextStep null — not just text
-- research-wave-1/2/3 decisions (no fake min, no duplicate metric, compact empties, quick-filters always visible, advanced collapsible, one context FAB, keep-previous placeholderData) apply to later waves
+- Timer parity preserves server authority: `projectElapsedSeconds(startedAt, nowMs)` recomputed each tick, fallback `elapsedLabel` when null, 1s interval ONLY inside `TimerClock`, parent TimerScreen never holds `nowMs` (no full-screen rerender, no background loop, no >1s). candidateTasks max 12 `status!==done` slice preserved, selection single, start/stop guard, summary `trackedTodayLabel/sessionsToday/longest/allTime`, stale banner `isError && !isFetching`, offline full Card + Retry, RefreshControl subtle, ActivityIndicator for tasks fetching, floatingTabClearance 160
+- Profile parity preserves initials `email.substring(0,2).toUpperCase() ?? EG`, email, pills `Authenticated` + `Mobile workspace`, compact sign-out `Card actionRow + Button danger sm` not full-width, version `Constants.expoConfig.version ?? 1.0.0`, avatar HeaderActions → `/(app)/profile` everywhere, hidden compat `tabs/profile` re-exports canonical (href:null)
+- research-wave-1/2/3/4 decisions (no fake min, no duplicate metric, compact empties, quick-filters always visible, advanced collapsible, one context FAB, keep-previous placeholderData, timer clock isolation, 12 cap, 3+1 stats) apply to later waves
