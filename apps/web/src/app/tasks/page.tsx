@@ -37,7 +37,7 @@ type TasksPageProps = {
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const resolvedSearchParams = await searchParams;
-  const model = await getTasksPageModel(resolvedSearchParams as any);
+  const model = await getTasksPageModel(resolvedSearchParams);
 
   return (
     <TasksWorkspaceShell
