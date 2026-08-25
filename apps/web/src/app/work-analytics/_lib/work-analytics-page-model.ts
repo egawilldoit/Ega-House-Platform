@@ -5,12 +5,15 @@ import { buildWorkAnalyticsReport } from "@/lib/services/work-analytics-report-b
 
 export async function getWorkAnalyticsPageModel(searchParams: Record<string, string | undefined>) {
   const user = await getCurrentUser();
-  if (!user) return { user: null, error: "Please log in to view work analytics.", report: null as any };
-  const filters = parseAnalyticsFilters(new URLSearchParams(Object.entries(searchParams).filter(([, v]) => v !== undefined) as any));
+  if (!user) return { user: null, error: "Please log in to view work analytics.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport> };
+  const filters = parseAnalyticsFilters(
+    new URLSearchParams(Object.entries(searchParams).filter(([, v]) => v !== undefined) as [string, string][]),
+  );
   const now = new Date();
   const primaryWindow = computeWindowForRange(filters.range, now);
   const sessionsResult = await getWorkAnalyticsSessionsForWindow({ ownerUserId: user.id, window: primaryWindow });
-  if (sessionsResult.errorMessage || !sessionsResult.data) return { user, error: "Failed to load work analytics data.", report: null as any };
+  if (sessionsResult.errorMessage || !sessionsResult.data)
+    return { user, error: "Failed to load work analytics data.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport> };
   const sessions = sessionsResult.data;
   const taskCountsResult = await getWorkAnalyticsTaskCounts({ ownerUserId: user.id, window: primaryWindow });
   const taskCounts = taskCountsResult.data ?? { completedCount: 0, createdCount: 0, blockedCount: 0 };

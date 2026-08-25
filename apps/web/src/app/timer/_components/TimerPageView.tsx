@@ -33,7 +33,7 @@ function MetricCard({ label, value, detail, tone = "default" }: { label: string;
 }
 
 export function TimerPageView({ model }: { model: TimerPageModel }) {
-  const { actionError, actionSuccess, stoppedTaskId, ownerUserId, tasks, openSessions, todayTaskBreakdown, todayTotalDurationSeconds, sessionHistory, taskTotalDurations, activeSession, trackedTotalSeconds } = model;
+  const { stoppedTaskId, ownerUserId, tasks, openSessions, todayTaskBreakdown, todayTotalDurationSeconds, sessionHistory, activeSession, trackedTotalSeconds } = model;
   const recoveredExtraSessionCount = Math.max(0, openSessions.length - 1);
   const hasSessionConflict = recoveredExtraSessionCount > 0;
   const activeTaskContextHref = getTaskContextHref(activeSession?.task_id, activeSession?.tasks?.projects?.slug);

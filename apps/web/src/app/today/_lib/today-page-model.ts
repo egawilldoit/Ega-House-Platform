@@ -1,6 +1,6 @@
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
-import { getTodayPlannerData } from "@/lib/services/today-planner-service";
+import { getTodayPlannerData, type TodayPlannerData, type TodayPlannerTask } from "@/lib/services/today-planner-service";
 
 export type TodaySearchParams = {
   actionError?: string;
@@ -14,7 +14,20 @@ export async function getTodayPageModel(searchParams: TodaySearchParams) {
   const stoppedTaskId = searchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const [todayResult, user] = await Promise.all([getTodayPlannerData(), getCurrentUser()]);
   if (todayResult.errorMessage || !todayResult.data) {
-    return { error: todayResult.errorMessage ?? "Could not load Today planner", actionError, actionSuccess, stoppedTaskId, user, todayData: null as any };
+    return {
+      error: todayResult.errorMessage ?? "Could not load Today planner",
+      actionError,
+      actionSuccess,
+      stoppedTaskId,
+      stoppedTaskTitle: "this task",
+      showStoppedTaskPrompt: false,
+      todayData: null as unknown as TodayPlannerData,
+      returnTo: "/today",
+      activeTimerSessionId: null as string | null,
+      flexibleTodayActionable: [] as TodayPlannerTask[],
+      allTodayCount: 0,
+      user,
+    };
   }
   const todayData = todayResult.data;
   const returnTo = "/today";

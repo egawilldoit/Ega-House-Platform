@@ -208,4 +208,6 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
   }
 }
 
+// Request-level memoization only — not cross-navigation persistence.
+// See docs/ui-web-v2/SHELL-PERSISTENCE-EVALUATION.md for precise claims.
 export const getWorkspaceShellMetrics = cache(getWorkspaceShellMetricsUncached);
