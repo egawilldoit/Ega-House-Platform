@@ -1,49 +1,71 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Sora:wght@500;600;700;800&display=swap');
+@import "../styles/tokens.css";
+@import "../styles/motion.css";
 @import "tailwindcss";
 
 :root {
-  --background: #f6f7f2;
-  --foreground: #142013;
-  --muted-foreground: #617162;
+  /* ── EGA Command OS — semantic mapping (authoritative tokens in styles/tokens.css) ── */
+  /* Compatibility: old green/glass → new gold/paper */
+  --background: var(--ega-bg);
+  --foreground: var(--ega-text);
+  --muted-foreground: var(--ega-text-secondary);
 
-  --instrument: rgba(255, 255, 255, 0.84);
-  --instrument-raised: #eef2ea;
-  --instrument-border: 1px solid rgba(20, 32, 19, 0.08);
+  --instrument: rgba(255, 255, 255, 0.9);
+  --instrument-raised: var(--ega-surface-subtle);
+  --instrument-border: 1px solid var(--ega-border);
 
-  --border: rgba(20, 32, 19, 0.08);
-  --border-strong: rgba(20, 32, 19, 0.16);
+  --border: var(--ega-border);
+  --border-strong: var(--ega-border-strong);
 
-  --signal-live: #177b52;
-  --signal-warn: #e65100;
-  --signal-error: #c62828;
-  --signal-info: #1565c0;
+  /* Status — mapped to Command OS status */
+  --signal-live: var(--status-healthy);
+  --signal-warn: var(--status-risk);
+  --signal-error: var(--status-overdue);
+  --signal-info: var(--category-meeting);
 
-  --accent: #177b52;
-  --accent-light: #e5f5ee;
-  --accent-lighter: #cbe9db;
+  /* Accent — gold is primary */
+  --accent: var(--ega-gold);
+  --accent-light: var(--ega-gold-soft);
+  --accent-lighter: #FBEFDA;
 
-  --etch: #92a091;
-  --secondary: #e9eee6;
+  --etch: var(--ega-text-tertiary);
+  --secondary: var(--ega-surface-muted);
 
-  --font-display: 'Sora', 'Segoe UI', sans-serif;
-  --font-body: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Fonts — injected by next/font in layout.tsx; fallbacks kept */
+  --font-display: var(--font-display-next, 'Sora'), 'Segoe UI', sans-serif;
+  --font-body: var(--font-body-next, 'Instrument Sans'), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --sidebar-width: 280px;
-  --transition-precise: 180ms cubic-bezier(0.4, 0, 0.2, 1);
-  --radius-card: 0.75rem;
-  --shadow-card: 0 10px 30px rgba(23, 32, 19, 0.06), 0 2px 8px rgba(23, 32, 19, 0.04);
-  --shadow-card-hover: 0 18px 42px rgba(23, 32, 19, 0.09), 0 4px 14px rgba(23, 32, 19, 0.06);
+  --sidebar-width: var(--sidebar-width);
+  --transition-precise: var(--duration-base) var(--ease-default);
+  --radius-card: var(--radius-lg);
+  --shadow-card: var(--ega-shadow-sm);
+  --shadow-card-hover: var(--ega-shadow-md);
 
-  --ega-app-bg: #f5f8f3;
-  --ega-bg: var(--ega-app-bg);
-  --ega-green: #0f8f5f;
-  --ega-green-strong: #08784e;
-  --ega-text: #102017;
-  --ega-muted: #637064;
-  --ega-border-glass: rgba(255, 255, 255, 0.72);
-  --ega-border-subtle: rgba(15, 23, 42, 0.08);
-  --ega-shadow-glass: 0 18px 50px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  /* Legacy green shim — remapped to Command OS */
+  --ega-app-bg: var(--ega-bg);
+  --ega-bg: var(--ega-bg);
+  --ega-green: var(--status-healthy);
+  --ega-green-strong: var(--status-healthy);
+  --ega-text: var(--ega-text);
+  --ega-muted: var(--ega-text-secondary);
+  --ega-border-glass: var(--ega-border);
+  --ega-border-subtle: var(--ega-border-subtle);
+  --ega-shadow-glass: var(--ega-shadow-sm);
+}
+
+[data-workspace-theme="editorial"] {
+  /* Remap editorial citrus/cream to Command OS authority — prevents drift */
+  --workspace-citrus: var(--ega-gold);
+  --workspace-signal: var(--status-overdue);
+  --workspace-cream: var(--ega-bg);
+  --workspace-paper: var(--ega-surface);
+  --workspace-ink: var(--ega-text);
+  --workspace-muted: var(--ega-text-secondary);
+  --workspace-line: var(--ega-divider);
+  --workspace-line-soft: var(--ega-border-subtle);
+  --workspace-black: var(--ega-sidebar);
+  --workspace-sidebar-width: var(--sidebar-width);
+  --workspace-topbar-height: var(--topbar-height);
 }
 
 @theme inline {
@@ -61,10 +83,7 @@
 
 html {
   min-height: 100%;
-  background:
-    radial-gradient(circle at top left, rgba(23, 123, 82, 0.08), transparent 28%),
-    radial-gradient(circle at top right, rgba(21, 101, 192, 0.06), transparent 24%),
-    var(--background);
+  background: var(--ega-bg);
   color: var(--foreground);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -77,8 +96,8 @@ body {
   margin: 0;
   background: transparent;
   color: var(--foreground);
-  font-size: 0.875rem;
-  line-height: 1.6;
+  font-size: var(--text-body);
+  line-height: var(--leading-normal);
   font-family: var(--font-body);
 }
 
@@ -95,8 +114,8 @@ select {
 }
 
 ::selection {
-  background: #c8e6c9;
-  color: var(--foreground);
+  background: var(--ega-gold-soft);
+  color: var(--ega-text);
 }
 
 ::-webkit-scrollbar {
@@ -110,16 +129,17 @@ select {
 
 ::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: #d6d3cb;
+  background: var(--ega-border-strong);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #b0ada5;
+  background: var(--ega-text-tertiary);
 }
 
 :focus-visible {
-  outline: 2px solid rgba(46, 125, 50, 0.35);
+  outline: 2px solid var(--ega-gold);
   outline-offset: 2px;
+  box-shadow: var(--ega-focus-ring);
 }
 
 /* ─── Utility classes ─── */
@@ -237,12 +257,7 @@ select {
 .ega-app-shell,
 .ega-shell {
   min-height: 100dvh;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 22%),
-    radial-gradient(circle at 18% 6%, rgba(16, 185, 129, 0.16), transparent 30%),
-    radial-gradient(circle at 82% 14%, rgba(45, 212, 191, 0.1), transparent 34%),
-    radial-gradient(circle at 50% 100%, rgba(245, 158, 11, 0.06), transparent 28%),
-    var(--ega-app-bg);
+  background: var(--ega-bg);
 }
 
 .ega-app-shell {
@@ -256,15 +271,9 @@ select {
   position: sticky;
   top: 0;
   height: 100dvh;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.64)),
-    rgba(255, 255, 255, 0.52);
-  border-right: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow:
-    12px 0 36px rgba(15, 23, 42, 0.04),
-    inset -1px 0 0 rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(16px) saturate(145%);
-  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  background: var(--ega-sidebar);
+  border-right: 1px solid var(--ega-sidebar-border);
+  box-shadow: var(--ega-shadow-sidebar);
   display: flex;
   flex-direction: column;
   z-index: 40;
@@ -282,14 +291,12 @@ select {
 }
 
 .ega-topbar {
-  min-height: 76px;
+  min-height: var(--topbar-height);
   flex-shrink: 0;
   width: 100%;
-  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
-  background: rgba(245, 248, 243, 0.7);
-  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.04);
-  backdrop-filter: blur(14px) saturate(140%);
-  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-bottom: 1px solid var(--ega-border);
+  background: var(--ega-surface);
+  box-shadow: var(--ega-shadow-sm);
   position: sticky;
   top: 0;
   z-index: 35;
@@ -716,25 +723,25 @@ select {
   gap: 0.5rem;
   min-height: 2.375rem;
   padding: 0.5rem 1.125rem;
-  border: 1px solid rgba(23, 123, 82, 0.94);
-  background: linear-gradient(135deg, #1b8b5d, #177b52);
-  color: #ffffff;
+  border: 1px solid var(--ega-gold);
+  background: var(--ega-gold);
+  color: var(--ega-sidebar);
   font-family: var(--font-display);
   font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0;
   text-transform: none;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-precise);
-  box-shadow: 0 1px 2px rgba(46, 125, 50, 0.15);
+  box-shadow: var(--ega-shadow-sm);
 }
 
 .btn-instrument:hover {
-  background: linear-gradient(135deg, #15724b, #125f3f);
-  border-color: #125f3f;
-  color: #ffffff;
-  box-shadow: 0 2px 6px rgba(46, 125, 50, 0.25);
+  background: var(--ega-gold-strong);
+  border-color: var(--ega-gold-strong);
+  color: var(--ega-sidebar);
+  box-shadow: var(--ega-shadow-md);
 }
 
 .btn-instrument-muted {
@@ -871,33 +878,33 @@ select {
 }
 
 .status-badge-active {
-  color: #1b5e20;
-  border-color: #a5d6a7;
-  background: #e8f5e9;
+  color: var(--status-healthy);
+  border-color: var(--status-healthy-border);
+  background: var(--status-healthy-bg);
 }
 
 .status-badge-muted {
-  color: #52525b;
-  border-color: #e8e5de;
-  background: var(--instrument-raised);
+  color: var(--status-pending);
+  border-color: var(--status-pending-border);
+  background: var(--status-pending-bg);
 }
 
 .status-badge-warn {
-  color: #e65100;
-  border-color: #ffcc80;
-  background: #fff3e0;
+  color: var(--status-risk);
+  border-color: var(--status-risk-border);
+  background: var(--status-risk-bg);
 }
 
 .status-badge-error {
-  color: #c62828;
-  border-color: #ef9a9a;
-  background: #ffebee;
+  color: var(--status-overdue);
+  border-color: var(--status-overdue-border);
+  background: var(--status-overdue-bg);
 }
 
 .status-badge-info {
-  color: #1565c0;
-  border-color: #90caf9;
-  background: #e3f2fd;
+  color: var(--category-meeting);
+  border-color: rgba(91, 111, 204, 0.18);
+  background: rgba(91, 111, 204, 0.08);
 }
 
 /* ─── Surfaces ─── */
@@ -977,10 +984,10 @@ select {
 }
 
 .filter-pill-active {
-  border-color: rgba(20, 32, 19, 0.14);
-  background: linear-gradient(135deg, #1b8b5d, #177b52);
-  color: #ffffff;
-  box-shadow: 0 4px 10px rgba(23, 123, 82, 0.22);
+  border-color: var(--ega-gold);
+  background: var(--ega-gold);
+  color: var(--ega-sidebar);
+  box-shadow: var(--ega-shadow-sm);
 }
 
 .status-badge-app {
