@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { FlatList, Modal, RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import type { GoalHealth, GoalStatus, GoalViewFilter } from '@ega/api-client';
+import type { GoalHealth, GoalReadModel, GoalStatus, GoalViewFilter } from '@ega/api-client';
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
@@ -155,6 +155,19 @@ export function GoalsListView() {
     return [...statusItems, ...healthItems, ...archiveItems];
   }, [sheetTarget, updateStatusMutation, updateHealthMutation, archiveMutation, unarchiveMutation, openNextStepEditor]);
 
+  const renderGoalItem = useCallback(
+    ({ item }: { item: GoalReadModel }) => (
+      <GoalCard
+        goal={item}
+        saving={isMutating && sheetTargetId === item.id}
+        onPress={() => router.push({ pathname: '/(app)/goals/[id]', params: { id: item.id } })}
+        onActions={() => setSheetTargetId(item.id)}
+        onAddNextStep={() => openNextStepEditor(item.id)}
+      />
+    ),
+    [isMutating, sheetTargetId, openNextStepEditor],
+  );
+
   const isPending = goalsQuery.isPending && !goalsQuery.data;
   const isRefetching = goalsQuery.isFetching && !!goalsQuery.data;
   const isError = goalsQuery.isError && !goalsQuery.data;
@@ -252,15 +265,7 @@ export function GoalsListView() {
             </Card>
           </View>
         }
-        renderItem={({ item }) => (
-          <GoalCard
-            goal={item}
-            saving={isMutating && sheetTargetId === item.id}
-            onPress={() => router.push({ pathname: '/(app)/goals/[id]', params: { id: item.id } })}
-            onActions={() => setSheetTargetId(item.id)}
-            onAddNextStep={() => openNextStepEditor(item.id)}
-          />
-        )}
+        renderItem={renderGoalItem}
       />
 
       <ActionSheet

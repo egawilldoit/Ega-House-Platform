@@ -377,6 +377,44 @@ export default function TodayScreen() {
     tomorrowIso,
   ]);
 
+  const renderTodayItem = useCallback(
+    ({ item }: { item: MobileTodayTask }) => {
+      const isMutating = activeTaskId === item.id;
+      const statusActions = getStatusActions(item);
+      const primaryAction = statusActions[0] ?? { label: 'Open', status: item.status };
+
+      return (
+        <View style={styles.pagePadding}>
+          <TodayTaskCard
+            blockedReason={item.status === 'blocked' ? item.blockedReason : null}
+            busy={isMutating}
+            dueLabel={formatDueDate(item)}
+            goal={item.goalTitle}
+            muted={item.status === 'done'}
+            onActions={() => setSelectedTaskId(item.id)}
+            onOpen={() => {
+              router.push({
+                pathname: '/(app)/tasks/[id]',
+                params: { id: item.id },
+              });
+            }}
+            onPrimaryAction={() => {
+              runStatusAction(item, primaryAction.status).catch(() => {
+                // handled in runStatusAction state
+              });
+            }}
+            primaryActionLabel={primaryAction.label}
+            priority={item.priority}
+            project={item.projectName}
+            status={item.status}
+            title={item.title}
+          />
+        </View>
+      );
+    },
+    [activeTaskId, runStatusAction],
+  );
+
   const isLoading = isPending && !today;
 
   if (isLoading) {
@@ -438,6 +476,9 @@ export default function TodayScreen() {
         keyExtractor={(item) => item.id}
         sections={sections}
         stickySectionHeadersEnabled={false}
+        initialNumToRender={10}
+        windowSize={5}
+        maxToRenderPerBatch={10}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <View style={styles.pagePadding}>
@@ -522,40 +563,7 @@ export default function TodayScreen() {
             </View>
           ) : null
         }
-        renderItem={({ item }) => {
-          const isMutating = activeTaskId === item.id;
-          const statusActions = getStatusActions(item);
-          const primaryAction = statusActions[0] ?? { label: 'Open', status: item.status };
-
-          return (
-            <View style={styles.pagePadding}>
-              <TodayTaskCard
-                blockedReason={item.status === 'blocked' ? item.blockedReason : null}
-                busy={isMutating}
-                dueLabel={formatDueDate(item)}
-                goal={item.goalTitle}
-                muted={item.status === 'done'}
-                onActions={() => setSelectedTaskId(item.id)}
-                onOpen={() => {
-                  router.push({
-                    pathname: '/(app)/tasks/[id]',
-                    params: { id: item.id },
-                  });
-                }}
-                onPrimaryAction={() => {
-                  runStatusAction(item, primaryAction.status).catch(() => {
-                    // handled in runStatusAction state
-                  });
-                }}
-                primaryActionLabel={primaryAction.label}
-                priority={item.priority}
-                project={item.projectName}
-                status={item.status}
-                title={item.title}
-              />
-            </View>
-          );
-        }}
+        renderItem={renderTodayItem}
       />
 
       <ActionSheet

@@ -117,6 +117,18 @@ export function ProjectsListView() {
     return [...statusItems, ...archiveItems];
   }, [sheetTarget, updateStatusMutation, archiveMutation, unarchiveMutation]);
 
+  const renderProjectItem = useCallback(
+    ({ item }: { item: (typeof filteredProjects)[number] }) => (
+      <ProjectCard
+        project={item}
+        saving={isMutating && sheetTargetId === item.id}
+        onActions={() => setSheetTargetId(item.id)}
+        onOpen={() => router.push({ pathname: '/(app)/projects/[slug]', params: { slug: item.slug } })}
+      />
+    ),
+    [isMutating, sheetTargetId],
+  );
+
   const isPending = projectsQuery.isPending && !projectsQuery.data;
   const isRefetching = projectsQuery.isFetching && !!projectsQuery.data;
   const isError = projectsQuery.isError && !projectsQuery.data;
@@ -221,14 +233,7 @@ export function ProjectsListView() {
             </Card>
           </View>
         }
-        renderItem={({ item }) => (
-          <ProjectCard
-            project={item}
-            saving={isMutating && sheetTargetId === item.id}
-            onActions={() => setSheetTargetId(item.id)}
-            onOpen={() => router.push({ pathname: '/(app)/projects/[slug]', params: { slug: item.slug } })}
-          />
-        )}
+        renderItem={renderProjectItem}
       />
 
       <ActionSheet

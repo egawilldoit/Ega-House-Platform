@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -40,9 +40,10 @@ export default function SearchScreen() {
   const projects = projectsQuery.data?.projects ?? [];
   const goals = goalsQuery.data?.goals ?? [];
 
-  // The bounded search set is small (<=200 tasks plus project/goal lists), so
-  // direct pure computation is clearer than memoizing unstable fallback arrays.
-  const results = searchWorkspace({ query: debouncedQuery, tasks, projects, goals });
+  const results = useMemo(
+    () => searchWorkspace({ query: debouncedQuery, tasks, projects, goals }),
+    [debouncedQuery, tasks, projects, goals],
+  );
 
   const trimmedQuery = debouncedQuery.trim();
   const hasQuery = trimmedQuery.length > 0;

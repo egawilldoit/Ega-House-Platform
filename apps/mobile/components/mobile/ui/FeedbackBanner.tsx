@@ -21,7 +21,12 @@ const toneMap = {
 export function FeedbackBanner({ message, tone = 'info', style, testID }: FeedbackBannerProps) {
   const t = toneMap[tone];
   return (
-    <View style={[styles.base, { backgroundColor: t.bg, borderColor: t.color }, style]} testID={testID}>
+    <View
+      accessibilityLiveRegion="polite"
+      accessibilityRole={tone === 'danger' ? 'alert' : 'text'}
+      style={[styles.base, { backgroundColor: t.bg, borderColor: t.color }, style]}
+      testID={testID}
+    >
       <Ionicons name={t.icon} size={16} color={t.color} />
       <Text style={[styles.text, { color: t.color }]}>{message}</Text>
     </View>

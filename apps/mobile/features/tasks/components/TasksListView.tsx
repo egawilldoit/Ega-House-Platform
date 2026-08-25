@@ -217,6 +217,32 @@ export function TasksListView() {
     ];
   }, [activeTask, dueDateOptions, mutateTask]);
 
+  const renderTaskItem = useCallback(
+    ({ item }: { item: MobileTaskListItem }) => {
+      const isUpdating = Boolean(updatingTaskIds[item.id]);
+      const itemError = taskErrors[item.id];
+      return (
+        <View style={styles.cardWrap}>
+          <TaskCard
+            blockedReason={item.status === 'blocked' ? item.blockedReason : null}
+            dueLabel={formatDueDate(item.dueDate)}
+            estimateLabel={item.estimateMinutes !== null ? `${item.estimateMinutes}m est` : undefined}
+            goal={item.goal?.title}
+            onActions={() => setActiveTaskId(item.id)}
+            onOpen={() => router.push({ pathname: '/(app)/tasks/[id]', params: { id: item.id } })}
+            priority={item.priority}
+            project={item.project.name}
+            saving={isUpdating}
+            status={item.status}
+            title={item.title}
+          />
+          {itemError ? <Text style={styles.inlineErrorText}>{itemError}</Text> : null}
+        </View>
+      );
+    },
+    [updatingTaskIds, taskErrors],
+  );
+
   const isPending = tasksQuery.isPending && !tasksQuery.data;
   const isRefetching = tasksQuery.isRefetching && !!tasksQuery.data;
   const isError = tasksQuery.isError && !tasksQuery.data;
@@ -348,28 +374,7 @@ export function TasksListView() {
             </Card>
           </View>
         }
-        renderItem={({ item }) => {
-          const isUpdating = Boolean(updatingTaskIds[item.id]);
-          const itemError = taskErrors[item.id];
-          return (
-            <View style={styles.cardWrap}>
-              <TaskCard
-                blockedReason={item.status === 'blocked' ? item.blockedReason : null}
-                dueLabel={formatDueDate(item.dueDate)}
-                estimateLabel={item.estimateMinutes !== null ? `${item.estimateMinutes}m est` : undefined}
-                goal={item.goal?.title}
-                onActions={() => setActiveTaskId(item.id)}
-                onOpen={() => router.push({ pathname: '/(app)/tasks/[id]', params: { id: item.id } })}
-                priority={item.priority}
-                project={item.project.name}
-                saving={isUpdating}
-                status={item.status}
-                title={item.title}
-              />
-              {itemError ? <Text style={styles.inlineErrorText}>{itemError}</Text> : null}
-            </View>
-          );
-        }}
+        renderItem={renderTaskItem}
       />
 
       <ActionSheet
