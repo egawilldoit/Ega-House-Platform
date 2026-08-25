@@ -138,7 +138,13 @@ export function resolveApiBaseUrl(
 let didWarnProductionDefault = false;
 
 function resolveCurrentApiBaseUrl(): ResolvedApiBaseUrl {
-  return resolveApiBaseUrl(process.env, Constants, isExpoDevRuntime());
+  return resolveApiBaseUrl(
+    {
+      EXPO_PUBLIC_API_BASE_URL: process.env.EXPO_PUBLIC_API_BASE_URL,
+    },
+    Constants,
+    isExpoDevRuntime(),
+  );
 }
 
 export function getApiBaseUrl() {

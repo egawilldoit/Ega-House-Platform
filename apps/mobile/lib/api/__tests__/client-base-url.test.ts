@@ -120,3 +120,48 @@ describe('getApiBaseUrl diagnostics', () => {
     expect(message).not.toMatch(/release build/);
   });
 });
+
+describe('getApiBaseUrl consumes process.env.EXPO_PUBLIC_API_BASE_URL (Expo static inlining seam)', () => {
+  it('returns the production API URL in release when the env variable is set', () => {
+    setDevMode(false);
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    process.env.EXPO_PUBLIC_API_BASE_URL = 'https://ega-api.egawilldoit.online';
+
+    expect(getApiBaseUrl()).toBe('https://ega-api.egawilldoit.online');
+    expect(warnSpy).not.toHaveBeenCalled();
+  });
+
+  it('rejects HTTP release URLs through the same runtime path', () => {
+    setDevMode(false);
+    process.env.EXPO_PUBLIC_API_BASE_URL = 'http://ega-api.egawilldoit.online';
+
+    expect(() => getApiBaseUrl()).toThrow(
+      /\[mobile-api\] EXPO_PUBLIC_API_BASE_URL "http:\/\/ega-api\.egawilldoit\.online" uses HTTP\. Release builds require an HTTPS/,
+    );
+  });
+
+  it('rejects local-only release URLs through the same runtime path', () => {
+    setDevMode(false);
+    process.env.EXPO_PUBLIC_API_BASE_URL = 'http://localhost:3000';
+
+    expect(() => getApiBaseUrl()).toThrow(/targets a local-only host/);
+  });
+
+  it('still fails loudly in release when the runtime env is empty after inlining', () => {
+    setDevMode(false);
+    delete process.env.EXPO_PUBLIC_API_BASE_URL;
+
+    expect(() => getApiBaseUrl()).toThrow(
+      /\[mobile-api\] EXPO_PUBLIC_API_BASE_URL is not set\. Release builds must set EXPO_PUBLIC_API_BASE_URL/,
+    );
+  });
+
+  it('keeps dev fallback behavior when the runtime env is unset', () => {
+    setDevMode(true);
+    delete process.env.EXPO_PUBLIC_API_BASE_URL;
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+    expect(getApiBaseUrl()).toBe('https://www.egawilldoit.online');
+    expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+});
