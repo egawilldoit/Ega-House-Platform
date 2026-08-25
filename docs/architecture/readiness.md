@@ -1,15 +1,17 @@
-# EGA House Platform — First-Wave Architecture Readiness (Historical Snapshot)
+# EGA House Platform — First-Wave Architecture Readiness
 
-> **HISTORICAL EVIDENCE — 2026-08-09. NOT CURRENT ARCHITECTURE AUTHORITY.** This document records the Stage-10 pre-merge readiness state of the original monorepo migration. The migration has since landed and evolved. Use [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) and [`platform-monorepo.md`](platform-monorepo.md) for current truth; use GitHub PR/history for exact historical branch/check state.
+> **HISTORICAL SNAPSHOT — 2026-08-09. NOT CURRENT ARCHITECTURE AUTHORITY.** This file preserves the original Stage-10 pre-merge readiness evidence. The migration has since landed and evolved. Use [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) and [`platform-monorepo.md`](platform-monorepo.md) for current architecture; use this document only for the dated branch/evidence state it records.
 
-**Branch at snapshot:** `arch/10-compat-cleanup-readiness` (Stage 10)
-**Base at snapshot:** `arch/09-unified-ci` (PR #127)
-**Snapshot date:** 2026-08-09
-**Snapshot status:** first-wave architecture implementation complete and pre-merge validated at that time. This evidence did **not** authorize merge, production deployment, secrets changes, or database mutation.
+**Branch:** `arch/10-compat-cleanup-readiness` (Stage 10)
+**Base:** `arch/09-unified-ci` (PR #127)
+**Date:** 2026-08-09
+**Status:** first-wave architecture implementation complete and pre-merge validated. This document is evidence for code/integration readiness; it does **not** authorize merge, production deployment, secrets changes, or database mutation.
+
+> The authoritative Stage-10 head SHA and latest successful exact-head Unified Platform Validation run are the current PR #128 metadata/checks. They are intentionally not hard-coded here because editing this file changes the Stage-10 head.
 
 ---
 
-## 1. Snapshot topology
+## 1. Converged topology
 
 ```text
 apps/web
@@ -29,7 +31,7 @@ apps/mobile
   └─> @ega/contracts only
 ```
 
-| Surface | Canonical location / authority at the snapshot |
+| Surface | Canonical location / authority |
 |---|---|
 | Web (Next.js) | `apps/web` |
 | Mobile (Expo) | `apps/mobile` |
@@ -42,11 +44,11 @@ apps/mobile
 | DB schema authority | `src/db/schema.ts`, `src/db/mcp-schema.ts` |
 | Drizzle migration authority | `drizzle/`, `drizzle.config.ts` |
 
-There was one DB/migration authority; `apps/web` consumed root DB modules rather than owning a second tracked schema/migration tree.
+There is one DB/migration authority. `apps/web` consumes the root DB modules through workspace/path wiring; there is no second tracked schema or migration tree under `apps/web`.
 
-## 2. Snapshot security/RLS invariants
+## 2. Security and RLS invariants
 
-The first-wave Projects/Goals transport was designed around:
+Projects/Goals transport preserves this chain:
 
 ```text
 Authorization: Bearer <Supabase access token>
@@ -57,36 +59,105 @@ verified user.id
                 ↓
 AuthenticatedActor { userId }
                 ↓
-request-scoped Supabase client carrying that access token
+request-scoped Supabase client carrying the same token
                 ↓
 PostgREST / RLS
 ```
 
-The snapshot's intended invariants were: actor identity never supplied by request payload/query/custom user-id headers; no service-role shortcut for normal product requests; mobile could not import application/data-access/server/web/DB internals; web used application/data-access directly instead of self-fetching Hono.
+Verified invariants:
 
-## 3. Snapshot CI authority
+- Actor identity is never accepted from a request body, URL/query parameter, FormData field, or custom user-id header.
+- `apps/server` verifies the bearer token before constructing `AuthenticatedActor`.
+- Project/Goal repository adapters use the request-scoped Supabase client; no global privileged client is introduced.
+- No service-role or unrestricted raw-DB authorization shortcut is used by the first-wave Projects/Goals path.
+- Mobile cannot import `@ega/application`, `@ega/data-access`, server internals, web internals, or DB modules.
+- Web Server Components/Actions use application/data-access directly and do not self-fetch the Hono server.
 
-At the Stage-10 snapshot, `unified-platform-validation.yml` was the migration validation authority and covered workspace/lockfile consistency, native bindings, dependency policy, package purity, security/architecture proofs, workspace tests/typechecks, web build, mobile validation, agent/Runner regressions, lint regression policy, and generated-artifact hygiene.
+These properties are enforced by `scripts/ci/security-proofs.mjs` and `scripts/architecture/check-boundaries.mjs` in Unified Platform Validation.
 
-Those statements describe that revision. Current commands and current CI behavior must be read from the current manifests/workflows and [`../agent-context/testing-and-validation.md`](../agent-context/testing-and-validation.md).
+## 3. CI validation authority
 
-## 4. Snapshot dependency/lint evidence
+`unified-platform-validation.yml` is the first-wave platform validation authority after Stage 9. It validates the exact PR head and covers:
 
-At the time of this snapshot, dependency exceptions and a full-repository lint baseline were recorded as migration evidence. They are deliberately **not repeated here as current baselines** because advisory state, dependency graphs, and lint debt change. Review current lockfile, CI policy, and [`dependency-audit-exceptions.md`](dependency-audit-exceptions.md) instead of treating 2026-08-09 counts as permanent truth.
+- workspace/lockfile consistency;
+- Linux x64 optional native bindings required by Next/Vitest/Expo tooling;
+- production dependency high/critical audit policy;
+- package purity and dependency direction;
+- security proofs and architecture current-tree/fixture checks;
+- contracts/domain/application/data-access tests and typechecks;
+- Hono server and API-client validation;
+- web typecheck, full tests, and production build;
+- mobile Doctor, typecheck, tests, and Android bundle validation;
+- Agent context and Runner regressions;
+- baseline-aware changed-file lint plus informational full-repo lint;
+- final diff/generated-artifact hygiene.
 
-## 5. Retained compatibility at the snapshot
+The former migration-stage validation workflows were either superseded or removed only after equivalent/superset coverage was proven by the unified pipeline.
 
-The original first wave deliberately retained Agent API, MCP, OAuth/integrations, cron/background routes, Runner, root schema/migrations, and other compatibility surfaces not yet moved through the new boundary. Current compatibility state must be established from current source; see [`platform-monorepo.md`](platform-monorepo.md).
+## 4. Dependency audit status
 
-## 6. Historical deployment boundary
+The production dependency gate is **PASS under an evidence-gated high/critical policy**.
 
-This readiness artifact did not authorize deployment. It required a fresh post-merge validation/runtime phase before production claims. Production Hono deployment has since received its own living contract in [`hono-deployment.md`](hono-deployment.md); do not use this historical snapshot to infer current deployment state.
+- `ws` is pinned to the safe `8.21.3` resolution.
+- Hono resolves above the previously affected `<=4.12.33` range.
+- CI does not use `npm audit fix --force`; Expo 54 / React Native 0.81.5 compatibility is preserved.
+- Remaining currently constrained high-severity advisories are accepted only by exact advisory ID and expected transitive path for `fast-uri`, `js-yaml`, `nanoid`, and `image-size`.
+- Those exceptions are not blanket suppressions: a new advisory, a changed dependency path, or a direct dependency match fails the gate.
+- Exception review deadline: **2026-09-09**. The gate intentionally fails after that date until the evidence is reviewed/resolved.
 
-## 7. Historical evidence authority
+This is not a claim that the dependency graph has zero advisories; it is a claim that the committed policy rejects unknown/new high or critical production risk and records the currently constrained upstream exceptions explicitly.
 
-For the original migration review, PRs #122–#128 and their then-current heads/checks were the evidence objects. For current decisions:
+## 5. Lint status
 
-1. current runtime/database/external evidence outranks this snapshot;
-2. current code/migrations/tests outrank this snapshot;
-3. living architecture/docs outrank this snapshot;
-4. this file remains useful only to explain what was considered ready on 2026-08-09.
+The final inherited full-repository baseline is:
+
+```text
+39 errors / 53 warnings
+```
+
+During the pre-merge audit, the Stage-9 baseline was found to have absorbed 5 errors and 3 warnings introduced by new Stage-8 mobile files. Those findings were fixed at their source in PR #126, its full lint returned to 39/53, and the Stage-9 baseline was deliberately re-captured at 39/53.
+
+`lint-changed` is the blocking regression gate. `lint-report` remains informational for inherited debt. The baseline is not permission to add new problems.
+
+## 6. Retained compatibility surfaces
+
+The first wave deliberately retains:
+
+- Agent API;
+- MCP API;
+- OAuth and integrations;
+- cron/background routes;
+- legacy Mobile Auth, Tasks, and Today;
+- Runner and its documented standalone dependency/lockfile exception;
+- root Drizzle/schema authority;
+- compatibility/re-export shims that still have consumers or presentation logic;
+- operational or production artifacts that require explicit owner sign-off before removal.
+
+Stage 10 removes only artifacts proven dead or fully superseded. Lack of current imports alone is not sufficient evidence for destructive cleanup of production/operational assets.
+
+## 7. Deployment readiness boundary
+
+Architecture readiness is not deployment authorization.
+
+After the ordered PR stack is merged, the required next proof is a fresh Unified Platform Validation run against `main`, followed by runtime/staging validation of:
+
+- web boot and key web flows;
+- standalone Hono server boot/health;
+- bearer authentication and unauthorized rejection;
+- Projects/Goals CRUD through the real Supabase/RLS path;
+- native Projects/Goals against the deployed server;
+- cross-user/RLS isolation;
+- Agent, MCP, OAuth, cron, integrations, and Runner compatibility.
+
+No production deploy workflow is introduced by this migration.
+
+## 8. Evidence authority
+
+For review and merge decisions, use the live GitHub objects rather than stale copied SHAs:
+
+- PR #122 through PR #128 for the ordered Stage-4→Stage-10 stack;
+- each PR's current base/head SHA;
+- each PR's latest successful exact-head validation run;
+- PR #128's latest successful Unified Platform Validation for the complete converged topology.
+
+This prevents documentation from becoming stale when an evidence-only or audit correction advances a stacked branch head.
