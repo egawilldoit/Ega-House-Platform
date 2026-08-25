@@ -39,7 +39,7 @@ permissions:
 jobs:
   notify:
     name: Notify Slack when PR readiness changes
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Evaluate PR readiness and notify Slack
