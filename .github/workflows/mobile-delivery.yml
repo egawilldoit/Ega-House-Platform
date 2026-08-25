@@ -521,6 +521,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository (for gh release)
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 1
+          fetch-tags: true
+
       - name: Download exact APK artifact
         uses: actions/download-artifact@v4
         with:
