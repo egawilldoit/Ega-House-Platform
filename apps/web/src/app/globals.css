@@ -35,21 +35,17 @@
   --font-body: var(--font-body-next, 'Instrument Sans'), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  --sidebar-width: var(--sidebar-width);
   --transition-precise: var(--duration-base) var(--ease-default);
   --radius-card: var(--radius-lg);
   --shadow-card: var(--ega-shadow-sm);
   --shadow-card-hover: var(--ega-shadow-md);
 
-  /* Legacy green shim — remapped to Command OS */
+  /* Legacy green shim — remapped to Command OS (old -> new only) */
   --ega-app-bg: var(--ega-bg);
-  --ega-bg: var(--ega-bg);
   --ega-green: var(--status-healthy);
   --ega-green-strong: var(--status-healthy);
-  --ega-text: var(--ega-text);
   --ega-muted: var(--ega-text-secondary);
   --ega-border-glass: var(--ega-border);
-  --ega-border-subtle: var(--ega-border-subtle);
   --ega-shadow-glass: var(--ega-shadow-sm);
 }
 

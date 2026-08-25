@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, Clock, Flag, Folder, Timer } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SectionHeader } from "@/components/ui/section-header";
 
