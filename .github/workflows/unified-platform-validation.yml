@@ -72,6 +72,7 @@ jobs:
               - 'apps/mobile/**'
               - 'packages/contracts/**'
               - 'packages/domain/**'
+              - 'packages/api-client/**'
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/**'
@@ -107,6 +108,44 @@ jobs:
               - '.github/workflows/**'
               - 'package.json'
               - 'package-lock.json'
+
+  delivery-map:
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: EGA Feature Delivery Map
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          else
+            BASE="HEAD~1"
+            HEAD="HEAD"
+          fi
+          echo "Base: $BASE"
+          echo "Head: $HEAD"
+          node scripts/ci/feature-delivery-map.mjs --base "$BASE" --head "$HEAD" --summary | tee delivery-map.txt
+          cat delivery-map.txt >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Android binary: NOT BUILT (binaries are generated only by Mobile Delivery)" >> "$GITHUB_STEP_SUMMARY"
 
   workspace:
     runs-on: ubuntu-latest
