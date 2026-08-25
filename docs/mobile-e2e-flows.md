@@ -60,18 +60,14 @@ never extrapolated.
 
 ## Automated CI status (`.github/workflows/mobile-delivery.yml`)
 
-Mobile Delivery is the single orchestrated delivery workflow: GitHub preflight → Blacksmith APK build (one compile) → GitHub emulator runtime proof on that exact binary (ladder L6 + Maestro `00-welcome`). Production API `https://ega-api.egawilldoit.online` is live and probed by preflight (`/health`, `/ready`, unauthenticated `401`). Authenticated flows remain gated on test credentials, not on API deployment.
+Mobile Delivery is the single orchestrated sideload workflow: GitHub preflight (exact-SHA Unified CI gate) → Blacksmith release APK build (arm64-v8a + x86_64, one `assembleRelease`) → GitHub **launch smoke** on that exact binary (`adb install`, resolve launcher, `am start -W`, `pidof` after 10s). No Maestro, no authenticated flows, no UI assertions — see `docs/ci/mobile-delivery.md`. Production API `https://ega-api.egawilldoit.online` remains the embedded `EXPO_PUBLIC_API_BASE_URL` but is **not** probed by preflight.
 
-| Maestro flow | Protocol steps covered | Status | Blocker |
-| --- | --- | --- | --- |
-| `00-welcome.yaml` | 1, 2 + login-form render | PROVEN in CI (job-gated) | none |
-| `01-login.yaml` | 3 | BLOCKED-BY-CREDENTIALS | API is live (`ega-api.egawilldoit.online`); needs `EGA_TEST_EMAIL`/`EGA_TEST_PASSWORD` secrets and `authenticated_e2e=true` |
-| `02-tasks-visible.yaml` | 5 | BLOCKED-BY-CREDENTIALS | same |
-| `03-timer-start-stop.yaml` | 10, 14 | BLOCKED-BY-CREDENTIALS | same |
-| `04-logout.yaml` | 15 | BLOCKED-BY-CREDENTIALS | same |
-| `suite.yaml` | 1–3, 5, 10, 14–15 | BLOCKED-BY-CREDENTIALS | same |
+Maestro flows (`apps/mobile/e2e/maestro/**`) and the `mobile-verification-ladder.mjs` remain in the repository as **separate/manual** verification capabilities and are **not** executed by Mobile Delivery. Each Mobile Delivery run uploads failure-only diagnostics (`launch-failure-logcat.txt` + `emulator.log`, retention 1 day) only when `pidof` is empty.
 
-Blocked flows are never faked or mocked in CI; each run writes an explicit
-`AUTHENTICATED-FLOWS-NOT-REQUESTED.txt` or `AUTHENTICATED-FLOWS-NOT-RUN.txt` notice into its artifact bundle. Remaining
-protocol steps (4, 6–9, 11–13, 16–19) stay manual-only under this document.
-See `docs/ci/mobile-delivery.md` for the full delivery graph.
+| Capability | In Mobile Delivery? | Where? |
+| --- | --- | --- |
+| `adb install` + launch + pidof | Yes | GitHub launch smoke |
+| Ladder L6 / uiautomator / Maestro 00-welcome | No | Manual/local only |
+| Authenticated flows (login/tasks/timer) | No | Manual/local only |
+
+See `docs/ci/mobile-delivery.md` for the full delivery graph and `apps/mobile/e2e/README.md` for Maestro as a separate harness.

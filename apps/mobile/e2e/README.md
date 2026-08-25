@@ -16,7 +16,7 @@ proves install → launch → liveness → UI-rendered; these flows prove the
 ## Requirements
 
 - A live Android device or emulator with the EGA House APK installed
-  (build via `.github/workflows/mobile-apk-manual.yml` or
+  (build via `.github/workflows/mobile-delivery.yml` (artifact `ega-house-apk-<SHA>`) or
   `npm run mobile:prebuild:android` + Gradle).
 - The [Maestro CLI](https://docs.maestro.dev/getting-started/installing-maestro):
   `curl -fsSL "https://get.maestro.dev/cli" | bash` (not committed to this repo).
@@ -33,11 +33,4 @@ maestro test -e EMAIL=you@example.test -e PASSWORD='***' apps/mobile/e2e/maestro
 maestro test apps/mobile/e2e/maestro/01-login.yaml
 ```
 
-CI: `.github/workflows/android-runtime.yml` (dispatch-only) boots an x86_64+KVM
-emulator, gates on the ladder L6 chain, then runs **only** `00-welcome.yaml`
-(no API or credentials needed) and gates job success on it. Flows 01–04 and
-`suite.yaml` are NOT run in CI — they are BLOCKED-BY-DEPLOYED-API +
-CREDENTIALS (API `https://ega-api.egawilldoit.online` is live; authenticated flows are gated on `EGA_TEST_EMAIL`/`EGA_TEST_PASSWORD` secrets
-credentials; no test account). See the CI status table in
-`docs/mobile-e2e-flows.md`. Run evidence captures serial, package, flow
-output, and screenshots under `ci-artifacts/maestro/`.
+CI: Mobile Delivery (`.github/workflows/mobile-delivery.yml`) **does not run Maestro**. It performs only the lean launch smoke (`adb install` → `am start -W` → `pidof` after 10s) on the exact Blacksmith APK. Maestro flows remain a **separate/manual** harness — run locally with `maestro test` against any APK (see `docs/mobile-e2e-flows.md`). Mobile Delivery no longer gates on `00-welcome.yaml` or the ladder; its success is `ANDROID LAUNCH SMOKE = PASS`.
