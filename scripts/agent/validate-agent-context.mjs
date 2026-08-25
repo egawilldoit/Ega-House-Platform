@@ -50,6 +50,7 @@ const required = [
   "docs/architecture/queue-and-leases.md",
   "docs/architecture/runner-and-worktrees.md",
   "docs/architecture/hermes-execution.md",
+  "docs/reports/README.md",
 ];
 const conflicts = [
   [/(?:work|implement|commit)\s+(?:directly\s+)?on\s+main/i, "direct main-branch implementation"],
@@ -70,6 +71,7 @@ const navigationRequirements = new Map([
     "(decision-log.md)",
     "(tooling-map.md)",
     "(../architecture/platform-monorepo.md)",
+    "(../reports/README.md)",
   ]],
   ["HERMES_MASTER_PROMPT.md", [
     "(CONTEXT.md)",
@@ -134,6 +136,7 @@ async function validateLinks(root, errors, output) {
     "scripts/ega-runner/README.md",
     ...(await walk(join(root, "docs", "agent-context"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "architecture"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
+    ...(await walk(join(root, "docs", "reports"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
   ];
   let checked = 0;
   for (const file of docs) {
