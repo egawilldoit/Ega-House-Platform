@@ -64,9 +64,9 @@ export default async function TodayPage({
   if (todayResult.errorMessage || !todayResult.data) {
     return (
       <AppShell
-        eyebrow="Execution Workspace"
+        eyebrow="Execution"
         title="Today"
-        description="Build an intentional plan, then move directly into execution."
+        description="What to do now and what comes next — clear queue, start focus."
       >
         <PlannerErrorState actionError={actionError} />
       </AppShell>

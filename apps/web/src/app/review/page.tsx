@@ -196,9 +196,9 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
 
   return (
     <AppShell
-      eyebrow="Cycle Summary"
-      title="Weekly Review"
-      description="Weekly summary, highlights, blockers, and saved reflection snapshots."
+      eyebrow="Reflection"
+      title="Review"
+      description="What happened and what changes next — evidence, trends, feedback."
       actions={
         <div className="flex flex-col items-end gap-2 text-right">
           <a

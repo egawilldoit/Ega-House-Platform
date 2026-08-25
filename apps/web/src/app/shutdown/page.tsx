@@ -32,9 +32,9 @@ export default async function ShutdownPage({
   if (shutdownResult.errorMessage || !shutdownResult.data) {
     return (
       <AppShell
-        eyebrow="Execution Workspace"
+        eyebrow="Ritual"
         title="Shutdown"
-        description="Close out work, capture blockers, and prep the next day."
+        description="Close the day — completion, carry-over, reflection."
       >
         <Card className="border-[var(--border)] bg-white">
           <CardContent className="p-6">

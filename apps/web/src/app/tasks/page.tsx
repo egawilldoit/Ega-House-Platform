@@ -239,9 +239,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   return (
     <TasksWorkspaceShell
-      eyebrow="Execution Workspace"
+      eyebrow="Work"
       title="Tasks"
-      description="Organize, prioritize, and move work forward from one clear execution queue."
+      description="High-density inventory — filter, sort, move work forward."
       className="ega-glass-workspace"
       actions={
         <Link
