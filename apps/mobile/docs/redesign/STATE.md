@@ -28,8 +28,8 @@
 - `+not-found` — 404
 
 ## Planned Waves
-- [ ] Wave 0 — Design system + navigation (4-tab Work hub, hidden compat routes)
-- [ ] Wave 1 — Today
+- [x] Wave 0 — Design system + navigation (4-tab Work hub, hidden compat routes)
+- [x] Wave 1 — Today (Daily Momentum ring + progress bar, 4 sections, Suggestions, Card/Chip/ProgressBar parity)
 - [ ] Wave 2 — Work / Tasks / Projects (segmented Tasks|Projects, context FAB)
 - [ ] Wave 3 — Goals
 - [ ] Wave 4 — Timer + Profile (avatar header, timer clock isolation)
@@ -40,19 +40,22 @@
 - [ ] Wave 9 — Final independent review
 
 ## Current Wave
-Wave 0 — COMPLETE (awaiting parent commit)
+Wave 1 — COMPLETE (awaiting parent commit)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
-- Wave 0 working tree: DESIGN + theme + ui/motion + navigation + Work hub (uncommitted, base dca2dceaa)
+- `refactor(mobile-ui): establish redesign foundation` — 132ab8d (Wave 0)
+- Wave 1 working tree: Today redesign — DailyMomentum + Sections + TaskCard parity (uncommitted, base dca2dceaa, HEAD 132ab8d)
 
 ## Tests
-- `npm run typecheck` — exit 0 (2026-08-25, .worktrees/ui-mobile/apps/mobile)
-- `npm run test` — exit 0 (166/166 passed, 29 suites, 9.6s) — fixed HeaderActions auth fallback for timer.test
-- `git diff --check` — exit 0 (no whitespace errors)
-- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0)
+- `npm run typecheck` — exit 0 (2026-08-25, .worktrees/ui-mobile/apps/mobile) — Wave 0
+- `npm run test` — exit 0 (166/166 passed, 29 suites, 9.6s) — Wave 0, fixed HeaderActions auth fallback for timer.test
+- Wave 1: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-25)
+- Wave 1: `npm run test` (apps/mobile) — exit 0 (166/166 passed, 29 suites, 7.6s) — fixed IconButton minHeight to satisfy TodayTaskCard 44 target (cards-a11y-test)
+- `git diff --check` — exit 0 (no whitespace errors) — Wave 0 + Wave 1
+- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git diff --name-only dca2dce...HEAD` → 3 docs (all apps/mobile/**); working-tree diff also apps/mobile/** only → awk empty ✓
+- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0) and `git diff --name-only dca2dce` (Wave 1 working tree) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + `ls-files --others --exclude-standard` also `apps/mobile/**` only ✓
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -92,18 +95,33 @@ Wave 0 — COMPLETE (awaiting parent commit)
 - Created: `apps/mobile/components/mobile/motion/ReducedMotion.ts`
 - Created: `apps/mobile/components/mobile/motion/index.ts`
 
+## Files Changed (Wave 1)
+- Modified: `apps/mobile/app/(app)/(tabs)/today.tsx` (migrated MobileScreen/GlassCard/GlassButton → AppScreen/ScreenHeader/Card/Button/FeedbackBanner/Skeleton; SectionList retained with keyExtractor item.id, contentContainer paddingBottom floatingTabClearance 160; header eyebrow weekday + title Today + description trackedTodayLabel·selectedCount + HeaderActions; DailyMomentum + TodaySection + TodayTaskCard decomposition; preserved all mutations runStatusAction/runInlineUpdate/runRemoveFromToday/runAddSuggestion/runClearCompleted/actionError/activeTaskId/activeSuggestionId/selectedTaskId sheet/onRefresh/useFocusEffect refetch; completedRatio=Math.round(completed/total*100) no fake min; placeholderData keeps existing content during refetch, RefreshControl subtle; Suggestions Card with Pinned/Recently active; compact EmptyState per section; motion press 100–140ms via Button/IconButton, no list animation)
+- Modified: `apps/mobile/components/mobile/TodayTaskCard.tsx` (delegates to feature component; ensures Chip via chipTone, not GlassPill/InfoBadge)
+- Modified: `apps/mobile/components/mobile/ui/IconButton.tsx` (adds minHeight/minWidth 44 to satisfy TodayTaskCard 44 target while preserving height/width for TaskCard/ProjectCard/GoalCard)
+- Modified: `apps/mobile/features/today/query.ts` (adds placeholderData: (previousData)=>previousData to keep existing content during refetch rather than spinner)
+- Created: `apps/mobile/features/today/components/DailyMomentum.tsx` (Card with tracked-time ring via react-native-svg, progress Math.round no fake min, shows inProgress/completed/overdue stats, ProgressBar width completedRatio, date toDateString, Clear completed danger Button when clearableCompletedCount>0)
+- Created: `apps/mobile/features/today/components/TodaySection.tsx` (TodaySectionHeader with accent left border + count pill, TodaySectionEmpty Card wrapping compact EmptyState icon list-outline 22 title No tasks)
+- Created: `apps/mobile/features/today/components/TodayTaskCard.tsx` (Card + left accent via statusTone, Chip kind=status/priority via chipTone, due pill with calendar icon, blockedReason dangerBg box, actions Button primary/secondary + IconButton ghost 44h, muted opacity, priority dot, project uppercase)
+- Created: `apps/mobile/docs/redesign/research-wave-1.md` (Mobbin daily planner, Page Flows time-tracking ring, Refero status grouping, Screenlane compact empties, Mobbin task card density — each SOURCE/PATTERN/WHY/ADOPT/REJECT)
+
 ## Known Issues
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
 - Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback
-- Bundle export fails in worktree without root node_modules install (not Wave 0 regression)
-- No design system refactor beyond Wave 0 scope — legacy MobileScreen/Glass* remain as compat
+- TodayTaskCard 44 target test fixed via IconButton minHeight/minWidth (Wave 1) — ensures ghost actions button meets 44 without hitSlop
+- Bundle export fails in worktree without root node_modules install (not Wave 0/1 regression)
+- No design system refactor beyond Wave 1 scope — legacy MobileScreen/Glass* remain as compat until respective waves
+- DailyMomentum ring currently visualizes completion ratio (completed/total) not trackedToday seconds vs estimate (no target data to invent) — honest math, no fake min, no duplicate tracked metric
 
 ## Next
-- Wave 1 — Today parity (migrate to Card/Chip/ProgressBar etc)
-- Wave 2 — Work full tasks/projects parity
+- Wave 2 — Work full tasks/projects parity (segmented Tasks|Projects + TaskCard/ProjectCard using Card/Chip, context FAB, virtualized FlatList, preserve filters/sorts)
 - Wave 3 — Goals, Wave 4 — Timer clock isolation + avatar polish
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` before touching tokens
 - Preserve `glassConfig.useRealBlurOnAndroid = false`
 - Do not create second theme authority — Stitch tokens map into `mobileTheme`
+- Today parity preserves SectionList virtualization (keyExtractor item.id) + floatingTabClearance 160 — do not replace with ScrollView+map
+- Today query uses placeholderData: (prev)=>prev to keep content during refetch — maintain pattern for Work/Goals/Timer
+- Chip is single primitive via chipTone(kind,value) — do not reintroduce StatusChip/PriorityChip or InfoBadge/GlassPill
+- research-wave-1 decisions (no fake min, no duplicate metric, compact empties) apply to later waves
