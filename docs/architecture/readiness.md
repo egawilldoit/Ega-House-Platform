@@ -2,9 +2,9 @@
 
 > **HISTORICAL EVIDENCE — 2026-08-09. NOT CURRENT ARCHITECTURE AUTHORITY.** This document records the Stage-10 pre-merge readiness state of the original monorepo migration. The migration has since landed and evolved. Use [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) and [`platform-monorepo.md`](platform-monorepo.md) for current truth; use GitHub PR/history for exact historical branch/check state.
 
-**Branch at snapshot:** `arch/10-compat-cleanup-readiness` (Stage 10)  
-**Base at snapshot:** `arch/09-unified-ci` (PR #127)  
-**Snapshot date:** 2026-08-09  
+**Branch at snapshot:** `arch/10-compat-cleanup-readiness` (Stage 10)
+**Base at snapshot:** `arch/09-unified-ci` (PR #127)
+**Snapshot date:** 2026-08-09
 **Snapshot status:** first-wave architecture implementation complete and pre-merge validated at that time. This evidence did **not** authorize merge, production deployment, secrets changes, or database mutation.
 
 ---
