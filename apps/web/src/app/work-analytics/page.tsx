@@ -73,9 +73,9 @@ export default async function WorkAnalyticsPage({
 
   return (
     <AppShell
-      eyebrow="Execution"
-      title="Work Analytics"
-      description="Worked time/session signals for today, week, and recent trend."
+      eyebrow="Evidence"
+      title="Analytics"
+      description="Focused time answers — explicit, not decorative."
     >
       {/* Filters row */}
       <div className="mb-6">

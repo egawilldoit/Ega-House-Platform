@@ -145,9 +145,9 @@ export default async function TimerPage({
 
   return (
     <AppShell
-      eyebrow="Team Performance"
-      title="Time Tracking"
-      description="Tracked time, project allocation, and recent session activity."
+      eyebrow="Focus"
+      title="Timer"
+      description="Active session is primary — elapsed, target, pause, stop."
       actions={
         <div className="flex gap-3">
           <span className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">

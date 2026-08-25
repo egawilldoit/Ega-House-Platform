@@ -41,9 +41,9 @@ export default async function StartupPage({
   if (startupResult.errorMessage || !startupResult.data) {
     return (
       <AppShell
-        eyebrow="Weekly Planning"
+        eyebrow="Ritual"
         title="Startup"
-        description="Build your weekly plan, then flow directly into Today."
+        description="Intentional daily start — priorities, attention, focus decision."
       >
         <StartupErrorState actionError={actionError} />
       </AppShell>

@@ -134,11 +134,9 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
 
   return (
     <AppShell
-      eyebrow="Strategic Tracking"
+      eyebrow="Direction"
       title={focusedGoal?.title ?? "Goals"}
-      description={
-        focusedGoal?.description?.trim() || "Track strategic goals attached to projects."
-      }
+      description="Objectives with health, progress, and next step."
     >
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <Link
