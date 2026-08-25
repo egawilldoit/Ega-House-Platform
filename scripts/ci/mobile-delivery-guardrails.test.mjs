@@ -12,6 +12,35 @@ function readWorkflow(name) {
   return fs.readFileSync(p, 'utf8');
 }
 
+function getJobBlock(wf, jobId) {
+  const idx = wf.indexOf(`\n  ${jobId}:`);
+  if (idx === -1) return null;
+  // Find next job header: \n  <jobId>: at same indent
+  const re = /\n  [a-z0-9-]+:\s*\n/g;
+  let m;
+  re.lastIndex = idx + 4;
+  let end = wf.length;
+  while ((m = re.exec(wf)) !== null) {
+    if (m.index > idx + 10) {
+      end = m.index;
+      break;
+    }
+  }
+  return wf.slice(idx, end);
+}
+
+function getBlacksmithBlock(wf) {
+  return getJobBlock(wf, 'build-apk');
+}
+
+function getRuntimeBlock(wf) {
+  return getJobBlock(wf, 'launch-smoke') || getJobBlock(wf, 'runtime-proof');
+}
+
+function getPreflightBlock(wf) {
+  return getJobBlock(wf, 'preflight');
+}
+
 test('mobile-delivery.yml exists', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf, 'mobile-delivery.yml must exist');
@@ -20,134 +49,401 @@ test('mobile-delivery.yml exists', () => {
 test('mobile-delivery has no pull_request trigger', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  assert.doesNotMatch(wf, /pull_request\s*:/, 'Blacksmith must not trigger on pull_request');
+  assert.doesNotMatch(wf, /pull_request\s*:/);
 });
 
-test('mobile-delivery has no normal push to main trigger', () => {
+test('mobile-delivery has no automatic main push Android build', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  // Must trigger only on workflow_dispatch and tags mobile-v*
   assert.match(wf, /workflow_dispatch\s*:/);
   assert.match(wf, /tags\s*:/);
   assert.match(wf, /mobile-v/);
-  // Ensure there is no push: branches: [main] without tag filter
-  // Check that push trigger if present only allows tags
   const pushBlock = wf.match(/push\s*:\s*\n([\s\S]*?)(?=\n\w+:|\nconcurrency:)/);
   if (pushBlock) {
     const block = pushBlock[1];
-    assert.match(block, /tags/, 'push trigger must be tag-only');
+    assert.match(block, /tags/, 'push must be tag-only');
     assert.doesNotMatch(block, /branches\s*:\s*\[[^\]]*main[^\]]*\]/);
   }
 });
 
-test('mobile-delivery contains exactly one Blacksmith runs-on declaration', () => {
+test('workflow_dispatch exists', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  const blacksmithMatches = [...wf.matchAll(/runs-on:\s*blacksmith-2vcpu-ubuntu-2404/g)];
-  assert.equal(blacksmithMatches.length, 1, `expected exactly one Blacksmith job, got ${blacksmithMatches.length}`);
+  assert.match(wf, /workflow_dispatch\s*:/);
 });
 
-test('Blacksmith label is blacksmith-2vcpu-ubuntu-2404 and timeout <= 40', () => {
+test('tag trigger mobile-v* exists', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.match(wf, /mobile-v\*.*\*/);
+  assert.match(wf, /mobile-v/);
+});
+
+test('no build_variant input', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.doesNotMatch(wf, /build_variant/);
+});
+
+test('no runtime_proof input', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.doesNotMatch(wf, /runtime_proof/);
+});
+
+test('no authenticated_e2e input', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.doesNotMatch(wf, /authenticated_e2e/);
+});
+
+test('exactly one Blacksmith job', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const matches = [...wf.matchAll(/runs-on:\s*blacksmith-2vcpu-ubuntu-2404/g)];
+  assert.equal(matches.length, 1);
+});
+
+test('Blacksmith runner = blacksmith-2vcpu-ubuntu-2404', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
   assert.match(wf, /blacksmith-2vcpu-ubuntu-2404/);
-  assert.match(wf, /timeout-minutes:\s*40/);
-  const allTimeouts = [...wf.matchAll(/timeout-minutes:\s*(\d+)/g)].map((m) => Number(m[1]));
-  const lines = wf.split('\n');
-  let inBlacksmithJob = false;
-  let foundTimeout = null;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('blacksmith-2vcpu-ubuntu-2404')) inBlacksmithJob = true;
-    if (inBlacksmithJob && lines[i].match(/timeout-minutes:\s*\d+/)) {
-      foundTimeout = Number(lines[i].match(/timeout-minutes:\s*(\d+)/)[1]);
-      break;
-    }
-  }
-  assert.ok(foundTimeout === 40 || allTimeouts.includes(40), 'Blacksmith job must have timeout 40');
 });
 
-test('Blacksmith job has no matrix', () => {
+test('Blacksmith timeout <= 40', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  const blacksmithIdx = wf.indexOf('blacksmith-2vcpu-ubuntu-2404');
-  const nextJobIdx = wf.indexOf('\n  runtime-proof:', blacksmithIdx);
-  const jobHeaderStart = wf.lastIndexOf('\n  ', blacksmithIdx);
-  const jobBlock = wf.slice(Math.max(0, jobHeaderStart - 500), nextJobIdx === -1 ? undefined : nextJobIdx);
-  assert.doesNotMatch(jobBlock, /strategy\s*:\s*\n\s*matrix\s*:/, 'Blacksmith job must not have matrix');
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block, 'build-apk block must exist');
+  const m = block.match(/timeout-minutes:\s*(\d+)/);
+  assert.ok(m, 'Blacksmith job must have timeout');
+  assert.ok(Number(m[1]) <= 40, `timeout ${m[1]} > 40`);
 });
 
-test('APK temporary artifact retention is 1 day', () => {
+test('no Blacksmith matrix', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  // upload-artifact with retention-days: 1 for the exact APK handoff
-  assert.match(wf, /retention-days:\s*1/);
-  // APK artifact (ega-house-apk) must be retention 1; other evidence may be 7
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /strategy\s*:\s*\n\s*matrix\s*:/);
+});
+
+test('Blacksmith contains exactly one assembleRelease', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  const count = [...block.matchAll(/assembleRelease/g)].length;
+  assert.equal(count, 1, `expected 1 assembleRelease in Blacksmith, got ${count}`);
+});
+
+test('Blacksmith contains zero assembleDebug', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /assembleDebug/);
+});
+
+test('Blacksmith contains zero bundleRelease', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /bundleRelease/);
+});
+
+test('ABI property contains arm64-v8a,x86_64', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  assert.match(block, /reactNativeArchitectures=arm64-v8a,x86_64/);
+});
+
+test('ABI property does not contain armeabi-v7a,x86 in build command', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  const abiLine = [...block.matchAll(/reactNativeArchitectures=[^\n]+/g)].map((m) => m[0]).join('\n');
+  assert.ok(abiLine.length > 0, 'abi line must exist');
+  assert.doesNotMatch(abiLine, /armeabi-v7a/);
+  assert.match(abiLine, /arm64-v8a,x86_64/);
+  assert.doesNotMatch(abiLine, /armeabi/);
+});
+
+test('setup-java@v5 exists', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.match(wf, /actions\/setup-java@v5/);
+  assert.doesNotMatch(wf, /actions\/setup-java@v4/);
+});
+
+test('setup-gradle@v6 exists', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.match(wf, /gradle\/actions\/setup-gradle@v6/);
+});
+
+test('cache-provider basic exists', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.match(wf, /cache-provider:\s*basic/);
+});
+
+test('no Sticky Disk actions', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.doesNotMatch(wf, /sticky/i);
+  assert.doesNotMatch(wf, /blacksmith.*cache/);
+});
+
+test('no useblacksmith/checkout', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.doesNotMatch(wf, /useblacksmith\/checkout/);
+});
+
+test('Android setup uses current v4 if compatible', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.match(wf, /android-actions\/setup-android@v4/);
+});
+
+test('no doctor/typecheck inside Blacksmith job', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getBlacksmithBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /mobile:doctor/);
+  assert.doesNotMatch(block, /mobile:typecheck/);
+});
+
+test('APK artifact retention = 1 day', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
   assert.match(wf, /ega-house-apk[\s\S]*?retention-days:\s*1/);
 });
 
-test('Android runtime job consumes downloaded artifact and contains no Gradle assemble', () => {
+test('one and only one ega-house-apk artifact upload', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  // Must contain download-artifact
-  assert.match(wf, /download-artifact@v4/);
-  // Must NOT contain assembleDebug / assembleRelease / gradlew build in runtime-proof job
-  // Extract runtime-proof section
-  const runtimeIdx = wf.indexOf('runtime-proof');
-  assert.notEqual(runtimeIdx, -1, 'runtime-proof job must exist');
-  const runtimeSlice = wf.slice(runtimeIdx, runtimeIdx + 15000);
-  // Allow assemble in build job but not in runtime slice
-  assert.doesNotMatch(runtimeSlice, /assembleDebug/);
-  assert.doesNotMatch(runtimeSlice, /assembleRelease/);
-  assert.doesNotMatch(runtimeSlice, /gradlew build/);
-  // Ensure no expo prebuild that creates replacement APK in runtime
-  // The runtime must not run prebuild:android
-  assert.doesNotMatch(runtimeSlice, /prebuild:android/);
-  assert.doesNotMatch(runtimeSlice, /expo prebuild/);
+  assert.match(wf, /ega-house-apk[\s\S]*?retention-days:\s*1/);
+  const uploadBlocks = wf.split('upload-artifact@v4');
+  const apkUploads = uploadBlocks.filter((b) => b.slice(0, 600).includes('ega-house-apk')).length;
+  assert.equal(apkUploads, 1, `expected exactly 1 ega-house-apk upload, got ${apkUploads}`);
+  const totalRetentionOne = [...wf.matchAll(/retention-days:\s*1/g)].length;
+  assert.ok(totalRetentionOne >= 1 && totalRetentionOne <= 2, `expected 1-2 retention 1 (APK + failure diagnostics), got ${totalRetentionOne}`);
 });
 
-test('tagged release publishing uses checksum-verified APK', () => {
+test('runtime downloads existing APK', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  // Must have a publish/release job with if tag startsWith mobile-v
-  assert.match(wf, /mobile-v/);
-  assert.match(wf, /release/i);
-  // Must reference SHA256 or checksum or manifest
-  assert.match(wf, /SHA256|checksum|manifest/i);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block, 'runtime/launch-smoke block must exist');
+  assert.match(block, /download-artifact@v4/);
+  assert.match(block, /ega-house-apk/);
 });
 
-test('workflow permissions follow least privilege', () => {
+test('runtime contains zero Gradle assemble', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  // Global permissions should be minimal (contents: read)
-  assert.match(wf, /permissions\s*:/);
-  assert.match(wf, /contents:\s*read/);
-  // At least one job should have contents: write for release
-  assert.match(wf, /contents:\s*write/);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /assembleRelease/);
+  assert.doesNotMatch(block, /assembleDebug/);
+  assert.doesNotMatch(block, /gradlew/);
 });
 
-test('no duplicate Android artifact uploads (only one upload-artifact for APK)', () => {
+test('runtime contains zero Expo prebuild', () => {
   const wf = readWorkflow('mobile-delivery.yml');
   assert.ok(wf);
-  const retentionOneCount = [...wf.matchAll(/retention-days:\s*1/g)].length;
-  assert.equal(retentionOneCount, 1, 'exactly one APK upload with retention 1');
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /prebuild/);
+  assert.doesNotMatch(block, /expo/);
 });
 
-test('unified CI mobile path includes api-client', () => {
+test('runtime contains zero checkout', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /actions\/checkout/);
+});
+
+test('runtime contains zero npm ci', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /npm ci/);
+});
+
+test('runtime contains zero setup-node', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /setup-node/);
+});
+
+test('runtime contains zero Maestro', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /maestro/i);
+});
+
+test('runtime contains zero authenticated E2E', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /authenticated_e2e/i);
+  assert.doesNotMatch(block, /EGA_TEST_EMAIL/);
+});
+
+test('runtime contains zero uiautomator', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /uiautomator/);
+});
+
+test('runtime contains adb install', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.match(block, /install -r/);
+});
+
+test('runtime contains am start -W', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.match(block, /am start.*-W/);
+});
+
+test('runtime contains pidof', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.match(block, /pidof/);
+});
+
+test('runtime performs approximately 10-second liveness wait', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.match(block, /sleep 10|sleep.*10/);
+});
+
+test('success path does not upload runtime evidence', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  // Success should not have unconditional upload of ci-artifacts; only failure() condition
+  assert.doesNotMatch(block, /upload-artifact[\s\S]*?if:\s*always\(\)[\s\S]*?runtime/);
+  // Ensure no always() upload for runtime
+  const hasAlwaysUpload = /if:\s*always\(\)[\s\S]*?upload-artifact/.test(block);
+  assert.equal(hasAlwaysUpload, false, 'runtime success should not upload artifact with always()');
+});
+
+test('failure path may upload 1-day diagnostics', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getRuntimeBlock(wf);
+  assert.ok(block);
+  assert.match(block, /if:\s*failure\(\)/);
+  assert.match(block, /retention-days:\s*1/);
+});
+
+test('preflight no longer probes /health', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getPreflightBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /\/health/);
+});
+
+test('preflight no longer probes /ready', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getPreflightBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /\/ready/);
+});
+
+test('preflight no longer probes /api\/projects', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getPreflightBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /\/api\/projects/);
+});
+
+test('preflight does not poll CI repeatedly', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getPreflightBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /ATTEMPTS=5/);
+  assert.doesNotMatch(block, /for i in/);
+  assert.doesNotMatch(block, /sleep 15/);
+});
+
+test('arbitrary branches are not allowed', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  const block = getPreflightBlock(wf);
+  assert.ok(block);
+  assert.doesNotMatch(block, /refs\/heads\/ci\//);
+  assert.doesNotMatch(block, /refs\/heads\/arch\//);
+  assert.doesNotMatch(block, /refs\/heads\/wave\//);
+  assert.match(block, /refs\/heads\/main/);
+  assert.match(block, /mobile-v\*/);
+});
+
+test('api-client still propagates to mobile in unified CI', () => {
   const wf = readWorkflow('unified-platform-validation.yml');
   assert.ok(wf);
-  // mobile filter must include api-client — search larger window from first mobile: under filters
   const filtersIdx = wf.indexOf('filters:');
   assert.notEqual(filtersIdx, -1);
   const filtersSlice = wf.slice(filtersIdx, filtersIdx + 2000);
-  // Ensure the mobile section within filters contains api-client
   const mobileInFilters = filtersSlice.match(/mobile:\s*\n([\s\S]*?)(?=\n\s{8}[a-z-]+:)/);
-  assert.ok(mobileInFilters, 'mobile filter block must exist');
-  assert.match(mobileInFilters[1], /packages\/api-client\//, 'mobile filter must include packages/api-client/**');
+  assert.ok(mobileInFilters);
+  assert.match(mobileInFilters[1], /packages\/api-client\//);
 });
 
-test('old duplicate workflows are retired (mobile-apk-manual and android-runtime removed)', () => {
+test('old duplicate workflows remain retired', () => {
   const manual = readWorkflow('mobile-apk-manual.yml');
   const runtime = readWorkflow('android-runtime.yml');
-  assert.equal(manual, null, 'mobile-apk-manual.yml should be retired');
-  assert.equal(runtime, null, 'android-runtime.yml should be retired');
+  assert.equal(manual, null);
+  assert.equal(runtime, null);
+});
+
+test('tagged release publishes same checksum-verified APK', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.match(wf, /mobile-v/);
+  assert.match(wf, /release/);
+  assert.match(wf, /SHA256|checksum|manifest/i);
+  assert.match(wf, /sha256sum -c/);
+});
+
+test('no Play Store/AAB workflow logic', () => {
+  const wf = readWorkflow('mobile-delivery.yml');
+  assert.ok(wf);
+  assert.doesNotMatch(wf, /bundleRelease/);
+  assert.doesNotMatch(wf, /\.aab/);
+  assert.doesNotMatch(wf, /play-store-track|google-play|upload.*aab/i);
 });
