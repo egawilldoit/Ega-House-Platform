@@ -28,6 +28,7 @@ export function useTodayWorkspaceQuery() {
   return useQuery({
     queryKey: todayQueryKeys.workspace(),
     queryFn: fetchMobileToday,
+    placeholderData: (previousData) => previousData,
   });
 }
 

@@ -61,6 +61,8 @@ export function IconButton({
           borderColor,
           height: Math.max(size, mobileTheme.layout.minTouchTarget),
           width: Math.max(size, mobileTheme.layout.minTouchTarget),
+          minHeight: Math.max(size, mobileTheme.layout.minTouchTarget),
+          minWidth: Math.max(size, mobileTheme.layout.minTouchTarget),
         },
         variant === 'ghost' ? styles.ghost : styles.bordered,
         disabled ? styles.disabled : null,
