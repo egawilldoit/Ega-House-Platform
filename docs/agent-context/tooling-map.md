@@ -1,6 +1,6 @@
 # Agent Tooling Map
 
-**Status:** living repository-local map  
+**Status:** living repository-local map
 **Last verified:** 2026-08-25
 
 The repository governance contract is `AGENTS.md` plus scoped nested `AGENTS.md` files. Tool configuration should discover or point to that contract; it should not carry an independent copy of repository policy.
