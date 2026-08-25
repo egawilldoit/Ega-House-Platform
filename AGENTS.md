@@ -1,149 +1,182 @@
-# EGA House Agent Instructions
+# EGA House Repository Agent Contract
 
-This file is the stable repository-wide entry point for coding agents. Keep it short enough to load reliably; deeper product, architecture, evidence, tooling, and validation detail belongs in the linked documents.
+This is the repository-wide contract for coding agents. Keep it compact. Rules that only apply to one app or subsystem live in the nearest nested `AGENTS.md` and override this file only inside that directory tree.
 
-## Mission
+## 1. Instruction scope and precedence
 
-Work on EGA House as one product with multiple transports: Next.js web, Expo mobile, the standalone Hono API, shared workspace packages, and the autonomous-delivery Runner. Preserve product semantics, repository authority, security boundaries, and reviewability while making the smallest authorized coherent change.
+Before editing any file, discover the applicable instruction chain from repository root to that file. Read every `AGENTS.md` on that path; the deepest file owns local conventions when it is more specific.
 
-## Read order
+Direct user/system instructions outrank repository guidance. Within repository guidance:
 
-Before non-trivial work, follow this path rather than guessing from filenames:
+1. this root contract defines cross-repository safety and authority;
+2. nested `AGENTS.md` files define local architecture, examples, pitfalls, and validation;
+3. architecture/product documents provide deeper context but do not silently override higher normative authority.
 
-1. [`CONTEXT.md`](CONTEXT.md) — product loop, domain vocabulary, and cross-surface mental model.
-2. [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md) — separate current-behavior evidence from normative product authority.
-3. [`ARCHITECTURE.md`](ARCHITECTURE.md) — current system map and implementation status.
-4. [`docs/architecture/platform-monorepo.md`](docs/architecture/platform-monorepo.md) — application/package boundaries and dependency direction.
-5. The architecture document for the subsystem being changed.
-6. [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md) — prior code-vs-authority conflict classifications; this log records decisions but never outranks product authority.
-7. [`docs/agent-context/tooling-map.md`](docs/agent-context/tooling-map.md) — how Codex, Claude, OpenCode, Hermes, and repository skills consume this guidance.
-8. [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md) — validation matrix and evidence labels.
+Do not create duplicate copies of this contract in tool-specific configuration.
 
-## Evidence model
+## 2. First five minutes
 
-Do not collapse “what the repository does” and “what the product requires” into one precedence list.
+1. Confirm repository, branch, HEAD, worktree, and working-tree state. Never destroy unrelated local work.
+2. Never implement directly on `main`. Use an authorized branch/worktree.
+3. Read [`CONTEXT.md`](CONTEXT.md) for product/domain behavior.
+4. Read the nearest nested `AGENTS.md` for every path you expect to touch.
+5. Read the relevant architecture source from [`docs/architecture/`](docs/architecture/) before moving ownership or crossing a package boundary.
+6. Search [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md) before re-classifying a known code-vs-policy conflict.
+7. Choose the narrowest existing validation that can prove the intended change.
 
-- Determine current behavior from runtime/database/external evidence first, then executable code and migrations, tests, current runbooks, and finally historical plans.
-- Determine required behavior from the current authorized task, approved invariants/ADRs, versioned specifications, current architecture contracts, then existing patterns when they do not conflict.
-- When they disagree, classify the gap as a **defect** or **unresolved product decision**. Do not silently rewrite either side to match the other.
-- Search [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md) before re-classifying a known conflict. Record a new material classification when the task authorizes repository documentation changes; otherwise report the proposed log entry in the handoff.
+## 3. Evidence and authority
 
-## Non-negotiable safety invariants
+Keep **current behavior** separate from **required behavior**.
 
-- Never implement directly on `main`. Use an authorized task branch or a verified Runner-owned worktree.
-- Keep work bounded to the assigned issue/contract and its necessary tests/evidence. Do not opportunistically implement the backlog.
-- Preserve one canonical owner for durable state. UI, Slack, branch names, queue messages, and agent prose are projections/evidence, not competing truth stores.
-- Preserve the Runner queue direction: `pgmq.read()` → lease/claim → durable classification → `pgmq.archive()` only when the message is durably safe to archive. Executable `pgmq.pop()` is forbidden.
-- Stop owned side effects when lease/ownership becomes uncertain.
-- Hermes output, exit code, validation prose, and result JSON are candidate evidence only. Independently verify changed paths, Git state, commit ancestry, pushed SHA, PR/check state, and any required runtime/preview evidence.
-- Do not force-reuse stale worktrees/attempts or mutate unrelated developer work.
-- Slack is reporting-only; delivery state must remain valid when Slack is unavailable.
-- Runner-created PRs require human review/merge unless a separate explicit authorization changes that policy.
-- Never expose or commit secrets, tokens, credentials, private keys, service-role keys, or sensitive environment values.
+### Current behavior evidence, strongest first
 
-## Platform architecture boundaries
+1. source code and checked-in configuration;
+2. schema and migrations;
+3. executable tests and CI guardrails;
+4. observed runtime/configuration evidence;
+5. living architecture/context documentation;
+6. historical plans, audits, inventories, and reports.
 
-The repository is an npm-workspace monorepo:
+### Required behavior authority, strongest first
+
+1. explicit current product/user direction;
+2. [`CONTEXT.md`](CONTEXT.md) and accepted product contracts;
+3. authorized issue/acceptance criteria;
+4. accepted ADRs and architecture policy;
+5. repository guidance.
+
+When the two disagree, do not rewrite one to match the other. Classify the gap as a **defect** or **unresolved product decision** and record a durable classification in [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md) when the task authorizes governance/docs changes.
+
+The decision log records prior reasoning; it never becomes higher authority than the sources above.
+
+## 4. Non-negotiable safety invariants
+
+- Never implement on `main`, force-push `main`, or merge a PR unless the user explicitly authorizes the merge.
+- Preserve Runner queue direction: `pgmq.read()` → lease/claim → classify outcome → `pgmq.archive()` only after the correct terminal condition. Never introduce executable `pgmq.pop()` consumption.
+- Never treat an agent/model/Hermes exit code, text, or JSON as proof that implementation succeeded. Repository and GitHub evidence must independently prove completion.
+- Slack is reporting-only. Slack state is not delivery authority, merge authority, or completion proof.
+- Never expose, commit, log, or copy secrets/tokens/credentials into source, fixtures, prompts, reports, or comments.
+- Do not mutate production databases, deployment state, external accounts, secrets, or irreversible infrastructure without explicit authorization.
+- Schema changes and migrations are separate actions. Do not equate editing schema code with applying a migration.
+- Preserve authenticated identity boundaries. Never accept a caller-selected user id when the canonical path derives identity from verified authentication.
+- Do not weaken tests, architecture checks, authorization, or queue/worktree safety merely to make validation green.
+
+## 5. Current repository map
+
+EGA House is an npm workspace monorepo.
+
+| Area | Canonical responsibility | Local instructions |
+|---|---|---|
+| `apps/web` | Next.js web product, server components/actions, compatibility web APIs | [`apps/web/AGENTS.md`](apps/web/AGENTS.md) |
+| `apps/server` | Hono HTTP transport used by native/API clients | [`apps/server/AGENTS.md`](apps/server/AGENTS.md) |
+| `apps/mobile` | Expo / React Native product | [`apps/mobile/AGENTS.md`](apps/mobile/AGENTS.md) |
+| `packages/*` | shared contracts, domain, use cases, adapters, API client | [`packages/AGENTS.md`](packages/AGENTS.md) |
+| `src/db` + `drizzle/` | root database schema/migration authority | this file + architecture docs |
+| `scripts/ega-runner` | autonomous delivery control plane | [`scripts/ega-runner/AGENTS.md`](scripts/ega-runner/AGENTS.md) |
+| `.agents/skills` | repository skills | [`docs/agent-context/skill-routing-evaluation.md`](docs/agent-context/skill-routing-evaluation.md) |
+
+The living architecture map is [`ARCHITECTURE.md`](ARCHITECTURE.md). The platform dependency model is [`docs/architecture/platform-monorepo.md`](docs/architecture/platform-monorepo.md).
+
+## 6. Dependency direction
+
+The intended product flow is:
 
 ```text
-apps/web       Next.js web transport/rendering + compatibility API routes
-apps/mobile    Expo native client
-apps/server    Hono HTTP API for the canonical mobile API surface
-packages/domain
-packages/contracts
-packages/application
-packages/data-access
-packages/api-client
-src/db         root database/schema authority
-drizzle        root migration authority
-scripts/ega-runner  autonomous delivery subsystem
+web server-side UI ─┐
+                    ├─> application ─> domain/contracts
+server transport ───┘          │
+                               └─> repository ports ─> data-access
+
+mobile ─> api-client ─> contracts ─> apps/server
 ```
 
-The intended dependency direction is enforced by `scripts/architecture/check-boundaries.mjs`:
+Global rules:
 
-```text
-apps/web      -> domain/contracts/application/data-access
-apps/server   -> domain/contracts/application/data-access
-apps/mobile   -> domain/contracts/api-client
-api-client    -> contracts
-application   -> domain/contracts + repository ports
-data-access   -> application ports + request-scoped Supabase
-contracts/domain -> platform-neutral code
-```
+- `domain` contains framework-independent domain rules.
+- `application` owns use cases and ports; it must not become a web/server/mobile framework package.
+- `data-access` implements persistence/integration adapters; it does not own product workflow policy.
+- `contracts` owns shared wire/data contracts, not persistence or UI behavior.
+- `api-client` is a client transport layer over contracts.
+- Mobile must not import `application`, `data-access`, root DB modules, web internals, or server internals.
+- Web server-side code may use application/data-access directly; do not add a self-HTTP hop to the Hono server just to reuse an endpoint.
+- Transport/UI layers parse, authenticate, map, and present; durable workflow rules belong in domain/application modules.
 
-Do not move workflow/business authority into React components, route handlers, Expo screens, Hono handlers, or transport-specific DTO glue. Domain rules belong in `@ega/domain`; use-case orchestration belongs in `@ega/application`; persistence adapters belong in `@ega/data-access`; transport-neutral wire contracts belong in `@ega/contracts`.
+If a proposed change reverses one of these arrows, stop and inspect the platform ADR/architecture before coding.
 
-For authenticated native API requests, identity comes from a verified Supabase bearer token. The server derives the actor and uses a request-scoped Supabase client so RLS remains an enforcement boundary. Never accept actor identity from request payload/query/custom user-id headers and never use a service-role shortcut for normal user-scoped product requests.
+## 7. Working method
 
-Database/schema authority remains at root (`src/db`, `drizzle/`, `drizzle.config.ts`) until a separate explicit ownership decision changes it. Do not create a second schema/migration authority under an app workspace.
+- Prefer the smallest coherent patch that changes the canonical owner once.
+- Find existing callers, tests, exports, persistence, and compatibility surfaces before adding a new abstraction.
+- Reuse established patterns in the same subsystem before inventing a parallel pattern.
+- Do not clean up unrelated debt in the same patch.
+- Do not rename/move public or operational surfaces solely because they appear unused; prove they are dead or explicitly authorize the removal.
+- Update package exports/contracts when introducing a new public shared entry point.
+- Add or update a regression test at the closest reliable seam for behavioral fixes.
+- Treat generated files, lockfiles, migrations, snapshots, and native artifacts as intentional changes that require explanation.
 
-## Approval boundaries
+## 8. Branch, worktree, commit, and PR discipline
 
-Normal authorized implementation may read repository/external evidence, edit in-scope files on a task branch/worktree, add focused tests, and run non-destructive validation.
+- Start from the requested base; if none is specified, inspect repository/issue context rather than guessing.
+- Use one task branch/worktree for one coherent task.
+- Do not discard unrelated changes from an existing worktree.
+- Inspect `git diff --check`, changed files, and status before committing.
+- Use focused commits with descriptive conventional-style messages where practical.
+- Opening/updating a PR is allowed when requested by the task. Merging remains a separate human/user authorization boundary.
+- PR descriptions must distinguish observed evidence from assumptions and list validations actually run.
 
-Require explicit approval before merge, deployment, production data mutation, destructive cleanup, broad migrations, secret/config changes with external impact, force-push, automatic-merge enablement, or weakening governance/security gates. Issue authorization does not imply those permissions.
+## 9. Validation strategy
 
-## Default working method
+Run the **narrowest relevant checks first**, then broader gates when the change crosses boundaries or before declaring a PR ready.
 
-1. Identify the exact task/issue, acceptance criteria, authorized paths, base branch/SHA, and required evidence.
-2. Confirm branch/worktree isolation before editing.
-3. Read the product context, current architecture, relevant ADR/subsystem docs, and existing decision-log entries.
-4. Trace the canonical implementation, callers, persistence, tests, and executable boundary checks.
-5. Separate already-working behavior, defects, unresolved product decisions, and documentation drift.
-6. Make the smallest coherent change through the canonical owner; do not create duplicate authority.
-7. Add/update behavior-focused tests or structural guardrails at the closest reliable seam.
-8. Run the validation matrix for every changed subsystem and record exact results rather than remembered counts.
-9. Inspect the final diff, changed paths, generated/untracked artifacts, secrets, and unrelated changes before handoff.
-10. State what is proven, what is only structurally supported, what was not run, and what still requires human/external action.
-
-## Repository navigation
-
-- Product model: [`CONTEXT.md`](CONTEXT.md)
-- Current system map: [`ARCHITECTURE.md`](ARCHITECTURE.md)
-- Agent start-here index: [`docs/agent-context/index.md`](docs/agent-context/index.md)
-- Evidence/product authority: [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md)
-- Decision log: [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md)
-- Tool loading map: [`docs/agent-context/tooling-map.md`](docs/agent-context/tooling-map.md)
-- Validation matrix: [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md)
-- Platform monorepo: [`docs/architecture/platform-monorepo.md`](docs/architecture/platform-monorepo.md)
-- Platform ADRs: [`docs/architecture/decisions/`](docs/architecture/decisions/)
-- Hono deployment: [`docs/architecture/hono-deployment.md`](docs/architecture/hono-deployment.md)
-- Delivery lifecycle: [`docs/architecture/delivery-lifecycle.md`](docs/architecture/delivery-lifecycle.md)
-- Queue/leases: [`docs/architecture/queue-and-leases.md`](docs/architecture/queue-and-leases.md)
-- Runner/worktrees: [`docs/architecture/runner-and-worktrees.md`](docs/architecture/runner-and-worktrees.md)
-- Hermes execution: [`docs/architecture/hermes-execution.md`](docs/architecture/hermes-execution.md)
-- Web application: `apps/web`
-- Mobile application: `apps/mobile`
-- Standalone API: `apps/server`
-- Shared packages: `packages/*`
-- Database/migrations: `src/db`, `drizzle/`
-- Runner: `scripts/ega-runner`
-
-Historical audit/readiness/planning artifacts are evidence for the date/branch they name. They do not outrank the living documents above or current executable evidence.
-
-## Agent and skill routing
-
-Root `AGENTS.md` is the repository governance source; do not maintain drifted copies per tool. `CLAUDE.md` deliberately delegates to this file. Current OpenCode and Codex repository discovery use `AGENTS.md`; Hermes uses repository skills plus `HERMES_MASTER_PROMPT.md` as a compact fallback/entry contract. See [`docs/agent-context/tooling-map.md`](docs/agent-context/tooling-map.md) before changing tool-specific configuration.
-
-Use specialized EGA House skills when their trigger matches:
-
-- `code-truth-audit` — disputed repository truth, architecture contradictions, or agent-context changes.
-- `issue-implementation` — one authorized bounded implementation issue.
-- `delivery-run-diagnostics` — runtime chronology and failure localization.
-- `database-evidence` — read-only persistence evidence.
-- `code-review` — proposed-diff/PR review.
-- `final-verification` — evidence-based completion/handoff gate.
-
-Do not invoke specialized skills merely because their names exist. Skill routing expectations live in [`docs/agent-context/skill-routing-evaluation.md`](docs/agent-context/skill-routing-evaluation.md).
-
-## Validation
-
-For agent/governance/architecture-context changes, minimum validation is:
+Common root commands:
 
 ```bash
+npm run typecheck
+npm test
+npm run lint
 npm run validate:agent-context
 npm run check:architecture
 npm run test:architecture
+npm run ci:purity
+npm run ci:security
+npm run ci:workspace
+npm run test:runner-loop
 ```
 
-Then run the subsystem commands required by [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md). A declared command, file existence, static pattern, or agent claim is not runtime proof.
+Each nested `AGENTS.md` lists its scoped commands. Prefer package scripts over direct tool-binary invocation so local evidence matches CI behavior.
+
+For docs/governance-only changes, at minimum run agent-context validation and diff hygiene. For ownership/import changes, run architecture/purity checks. For security/auth changes, run security proofs plus affected tests. For Runner changes, run the Runner-specific contract.
+
+Do not claim a command passed unless its output was observed for the exact commit/worktree being described. A parent commit's green CI is useful evidence, not exact-head proof.
+
+## 10. Documentation and historical evidence
+
+Living entry points:
+
+- [`CONTEXT.md`](CONTEXT.md) — product mental model and vocabulary.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — current implementation map.
+- [`docs/agent-context/index.md`](docs/agent-context/index.md) — agent context navigation.
+- [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md) — authority/evidence model.
+- [`docs/agent-context/tooling-map.md`](docs/agent-context/tooling-map.md) — active harness/config discovery map.
+- [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md) — evidence/command matrix.
+- [`docs/reports/README.md`](docs/reports/README.md) — historical report index.
+
+Dated audits, migration inventories, design handoffs, readiness snapshots, and old branch reports are point-in-time evidence unless a living authority document explicitly adopts them.
+
+## 11. Skills and tooling
+
+Repository skills live under `.agents/skills`. Select the smallest skill whose trigger matches the task. Skills guide workflow; they do not outrank product authority or this safety contract.
+
+Tool-specific config should contain hooks/plugins/discovery configuration only when needed. Do not fork repository governance into separate tool copies. See [`docs/agent-context/tooling-map.md`](docs/agent-context/tooling-map.md).
+
+## 12. Completion contract
+
+Before saying work is complete:
+
+1. verify the final changed-file list and diff;
+2. confirm the applicable root→leaf `AGENTS.md` chain was respected;
+3. run and record the required scoped validations;
+4. run broader architecture/security/agent-context gates when the change requires them;
+5. confirm no secret, generated artifact, migration, or unrelated file slipped into the patch;
+6. state what remains unverified;
+7. leave merge/deploy/database execution to the required approval boundary.
