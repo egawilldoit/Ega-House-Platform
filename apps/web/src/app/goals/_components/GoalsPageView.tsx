@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getGoalHealthLabel, getGoalHealthTone, toGoalHealthOrNull } from "@/lib/goal-health";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { getGoalNextStepPreview } from "@/lib/goal-next-step";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
 import { isGoalArchivedStatus } from "@/lib/goal-archive";
 import { archiveGoalAction, unarchiveGoalAction, updateGoalHealthAction, updateGoalNextStepAction, updateGoalStatusAction } from "../actions";

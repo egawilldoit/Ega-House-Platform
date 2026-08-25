@@ -1,6 +1,6 @@
 import { createAuthenticatedActor, getGoalsReadModel } from "@ega/application";
 import { SupabaseGoalsRepository } from "@ega/data-access";
-import { normalizeGoalViewFilter, type GoalViewFilter } from "@/lib/goal-archive";
+import { normalizeGoalViewFilter } from "@/lib/goal-archive";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
 

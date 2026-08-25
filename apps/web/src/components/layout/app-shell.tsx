@@ -23,6 +23,7 @@ type AppShellProps = {
   contentClassName?: string;
 };
 
+// Request-level only — see SHELL-PERSISTENCE-EVALUATION.md
 const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
   try {
     const supabase = await createClient();
@@ -73,6 +74,7 @@ const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
   }
 });
 
+// Request-level only — see SHELL-PERSISTENCE-EVALUATION.md
 const getSidebarGoals = cache(async (): Promise<SidebarGoal[]> => {
   try {
     const supabase = await createClient();

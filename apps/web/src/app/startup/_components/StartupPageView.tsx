@@ -25,7 +25,7 @@ export function StartupPageView({ model }: { model: StartupPageModel }) {
         <p className="text-sm text-[color:var(--muted-foreground)]">{formatIsoDate(startupData.week.weekStart)} · Set priorities for the week, then move to execution.</p>
         <Link href="/today" className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">Open Today</Link>
       </div>
-      <StartupPlanner data={startupData} />
+      <StartupPlanner data={startupData} returnTo="/startup" />
     </>
   );
 }

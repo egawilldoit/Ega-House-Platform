@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
+import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import type { TodayPageModel } from "../_lib/today-page-model";
 
 export function TodayPageView({ model }: { model: TodayPageModel }) {
@@ -45,27 +46,27 @@ export function TodayPageView({ model }: { model: TodayPageModel }) {
             {allTodayCount > 0 ? (
               <>
                 <TodaySection title="Today Timeline" count={todayData.scheduledBlocks.length} tone="muted" emptyState={<EmptyState icon={CircleDashed} title="No scheduled blocks for today" description="Scheduled tasks with time ranges will appear here." />}>
-                  {todayData.scheduledBlocks.map((task) => (
+                  {todayData.scheduledBlocks.map((task: TodayPlannerTask) => (
                     <TodayTaskCard key={task.id} task={task} returnTo={returnTo} isCompleted={isTaskCompletedStatus(task.status)} activeTimerSessionId={activeTimerSessionId} startTimerLabel="Start Focus Session" startTimerReturnTo="/timer" />
                   ))}
                 </TodaySection>
                 <TodaySection title="Flexible Today backlog" count={flexibleTodayActionable.length} tone="muted" emptyState={<EmptyState icon={CircleDashed} title="No flexible tasks planned for today." description="Unscheduled tasks planned for today will appear here." />}>
-                  {flexibleTodayActionable.map((task) => (
+                  {flexibleTodayActionable.map((task: TodayPlannerTask) => (
                     <TodayTaskCard key={task.id} task={task} returnTo={returnTo} activeTimerSessionId={activeTimerSessionId} />
                   ))}
                 </TodaySection>
-                <TodaySection title="Due today / active" count={todayData.planned.filter((t) => !t.isPlannedForToday).length + todayData.inProgress.filter((t) => !t.isPlannedForToday).length} tone="info" emptyState={<EmptyState icon={CirclePlay} title="No due-today carryover" description="Tasks due today but not manually planned will appear here." />}>
-                  {[...todayData.inProgress.filter((t) => !t.isPlannedForToday), ...todayData.planned.filter((t) => !t.isPlannedForToday)].map((task) => (
+                <TodaySection title="Due today / active" count={todayData.planned.filter((t: TodayPlannerTask) => !t.isPlannedForToday).length + todayData.inProgress.filter((t: TodayPlannerTask) => !t.isPlannedForToday).length} tone="info" emptyState={<EmptyState icon={CirclePlay} title="No due-today carryover" description="Tasks due today but not manually planned will appear here." />}>
+                  {[...todayData.inProgress.filter((t: TodayPlannerTask) => !t.isPlannedForToday), ...todayData.planned.filter((t: TodayPlannerTask) => !t.isPlannedForToday)].map((task: TodayPlannerTask) => (
                     <TodayTaskCard key={task.id} task={task} returnTo={returnTo} activeTimerSessionId={activeTimerSessionId} />
                   ))}
                 </TodaySection>
                 <TodaySection title="Blocked" count={todayData.blocked.length} tone="warn" emptyState={<EmptyState icon={CircleOff} title="No blocked tasks" description="Blocked work will surface here when status is set to blocked." />}>
-                  {todayData.blocked.map((task) => (
+                  {todayData.blocked.map((task: TodayPlannerTask) => (
                     <TodayTaskCard key={task.id} task={task} returnTo={returnTo} activeTimerSessionId={activeTimerSessionId} />
                   ))}
                 </TodaySection>
                 <TodaySection title="Completed" count={todayData.completed.length} tone="success" compactWhenEmpty headerActions={todayData.summary.clearableCompletedCount > 0 ? (<form action={clearCompletedFromTodayAction}><input type="hidden" name="returnTo" value={returnTo} /><PendingSubmitButton type="submit" variant="muted" size="sm" className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs" pendingLabel="Clearing...">Clear completed from Today</PendingSubmitButton></form>) : null} emptyState={<EmptyState icon={CircleCheck} title="No completed items yet" description="Completed Today tasks will appear here for quick cleanup." />}>
-                  {todayData.completed.map((task) => (
+                  {todayData.completed.map((task: TodayPlannerTask) => (
                     <TodayTaskCard key={task.id} task={task} returnTo={returnTo} isCompleted activeTimerSessionId={activeTimerSessionId} />
                   ))}
                 </TodaySection>
