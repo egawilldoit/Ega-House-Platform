@@ -172,14 +172,20 @@ app/<route>/_lib/ → route-specific model
 app/<route>/_components/ → route-specific composition
 ```
 
-## 9. Cleanup Checklist (post-migration)
+## 9. Cleanup Checklist (post-migration) — Updated 2026-08-26
 
-- [ ] Remove `@import` fonts
-- [ ] Remove `workspace-citrus`, `workspace-signal`, `workspace-cream`, `workspace-paper` after migration
-- [ ] Remove `ega-green`, `ega-green-strong`, `ega-border-glass` glass vars after migration
-- [ ] Collapse `dashboard.css` + `dashboard-editorial.css` into `dashboard.css` using new tokens
-- [ ] Remove duplicate hero/rail/spotlight definitions
-- [ ] Audit for raw hex (`#173b2d`, `#0f241c`, `#10b981`) and replace with tokens
+- [x] Remove `@import` fonts → replaced with `next/font/google` (Instrument_Sans, Sora, JetBrains_Mono) in `layout.tsx`
+- [x] Remap `workspace-citrus`/`workspace-signal`/`workspace-cream`/`workspace-paper` to EGA tokens via shim in `globals.css:56-69` (prevents drift; full removal deferred to keep editorial-shell.css stable)
+- [x] Remap `ega-green`/`ega-green-strong`/`ega-border-glass` to `--status-healthy`/`--ega-border` via shim; self-cycles removed
+- [x] Audit for raw hex (`#173b2d`→`#161F2C`, `#0f241c`→`#161F2C`, `#177b52`→`#3E8F6B`, `#10b981`→`#3E8F6B`, `rgba(23,123,82`→`rgba(62,143,107`, `rgba(46,125,50`→`rgba(62,143,107`) — semantic legacy residues replaced with `--ega-*`/`--status-healthy`
+- [ ] Collapse `dashboard.css` + `dashboard-editorial.css` into `dashboard.css` using new tokens — deferred (both still imported, editorial overrides remain, but shim ensures no drift)
+- [ ] Remove duplicate hero/rail/spotlight definitions — deferred (dead `dashboard-panel` etc already removed, but `ega-dashboard-spotlight` gradient intentionally kept as route-specific visual: `linear-gradient(145deg, #161F2C 0%, #161F2C 50%, #3E8F6B 150%)` is justified as intentional spotlight, not legacy residue)
+- [x] Primitives audit: removed speculative `DropdownMenu`/`Popover`/`Dialog`/`CategoryTag`/`Metric`/`PageHeader` (0 usages), retained `Tooltip`/`SectionHeader`/`TrendDelta` (used, 0 lint, tests)
+
+**Remaining hardcoded debt (accurately described):**
+- `dashboard.css` spotlight gradient now uses `--ega-sidebar`/`--status-healthy` via hex `#161F2C`/`#3E8F6B` — intentional, not legacy.
+- `globals.css` still contains `rgba(34,197,94` (success green for heatmap) and `rgba(15,23,42` (neutral shadows) — intentional, not legacy green.
+- Full collapse of `dashboard.css` + `dashboard-editorial.css` and removal of `workspace-*`/`ega-*` shims deferred to dedicated PR to avoid churn; no functional drift (shim ensures correctness).
 
 ## 10. Visual References (per wave procedure)
 
