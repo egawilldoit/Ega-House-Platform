@@ -112,7 +112,7 @@ test("native Hono preset is not mixed with a generic api/index rewrite", () => {
 
   assert.equal(config.functions?.["api/index.ts"], undefined);
   assert.equal(
-    config.rewrites?.some((rewrite) => rewrite.destination === "/api/index"),
+    config.rewrites?.some((rewrite) => rewrite.destination === "/api/index") ?? false,
     false,
   );
 });
