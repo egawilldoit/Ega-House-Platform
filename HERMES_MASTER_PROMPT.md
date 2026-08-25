@@ -6,7 +6,7 @@ EGA House is a productivity platform with a monorepo product architecture and a 
 
 1. Read `AGENTS.md` first.
 2. Read `CONTEXT.md` for product/domain work and the architecture documents relevant to the assigned issue; platform-boundary work must include `docs/architecture/platform-monorepo.md`.
-3. Search `docs/agent-context/decision-log.md` for an existing classification of any code-vs-authority conflict encountered.
+3. Search [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md) for an existing classification of any code-vs-authority conflict encountered.
 4. Attempt to load the repository `issue-implementation` skill for bounded implementation work; use the specialized skill whose trigger matches for audit/diagnostic/review work.
 5. When repository skills are unavailable, follow the fallback workflow below and report discovery as unavailable rather than pretending it succeeded.
 6. The Runner/VM profile must verify repository skill visibility with `npm run preflight:hermes-skills` under the same service user and environment.
