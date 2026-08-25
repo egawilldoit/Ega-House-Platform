@@ -37,10 +37,10 @@
 - [x] Wave 6 — Create flows (Task/Project/Goal) with FormSection + sticky primary (120) + keyboard-safe
 - [x] Wave 7 — Detail/Edit flows (Task/Project/Goal) with recurrence/reminder & linked tasks
 - [x] Wave 8 — Performance + accessibility hardening (hardened)
-- [ ] Wave 9 — Final independent review
+- [x] Wave 9 — Final independent review (complete, 2026-08-25)
 
 ## Current Wave
-Wave 8 — COMPLETE (working tree, awaiting commit; base dca2dceaa, HEAD 6702654 after Wave 7)
+Wave 9 — COMPLETE (working tree, awaiting parent commit; base dca2dceaa, HEAD 6018465 after Wave 8, Wave 9 fixes applied 2026-08-25)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -52,7 +52,8 @@ Wave 8 — COMPLETE (working tree, awaiting commit; base dca2dceaa, HEAD 6702654
 - `feat(mobile-ui): redesign auth and search` — 59727e2 (Wave 5)
 - `feat(mobile-ui): redesign create flows` — 416b243 (Wave 6)
 - `feat(mobile-ui): redesign detail and edit flows` — 6702654 (Wave 7)
-- Wave 8 working tree: perf/a11y hardening — renderItem memo, search memo, SectionList windowSize, FeedbackBanner live region, QuickPill 44 (uncommitted, base dca2dceaa, HEAD 6702654)
+- Wave 8: `perf(mobile-ui): harden performance and accessibility` — 6018465 (renderItem memo, search memo, SectionList windowSize, FeedbackBanner liveRegion, QuickPill 44)
+- Wave 9 working tree: final independent review — BLOCKER/HIGH fixes (TaskCreate router.back, NotFound redesign, Button dangerBorder token, FormField 20 reserve, login back 44, ScreenHeader/FAB spacing.lg, GoalDetail health enabled) + SCREEN-PARITY close TBD→YES + STATE finalize + review-wave-9 (uncommitted, base dca2dceaa, HEAD 6018465)
 
 ## Tests
 - `npm run typecheck` — exit 0 (2026-08-25, .worktrees/ui-mobile/apps/mobile) — Wave 0
@@ -84,9 +85,13 @@ Wave 8 — COMPLETE (working tree, awaiting commit; base dca2dceaa, HEAD 6702654
 - Wave 8: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-25)
 - Wave 8: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites, 6.3s) — hardened renderItem memo (Tasks/Projects/Goals/Today SectionList), search useMemo, FeedbackBanner liveRegion, QuickPill 44
 - Wave 8: `git diff --check` — exit 0 (no whitespace errors)
-- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3/4/5/6/7/8)
+- Wave 9: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-25) — after fixing TaskCreate router.back, Button dangerBorder, FormField reserve, login 44, NotFound redesign, GoalDetail health, ScreenHeader/FAB lg
+- Wave 9: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-25)
+- Wave 9: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites, 5.7s) — all 29 suites green after Wave 9 fixes (FormField reserve adds 20 minHeight, no test drift; GoalDetail health enabled; Button token; NotFound theme)
+- Wave 9: `git diff --check` — exit 0 (no whitespace errors)
+- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3/4/5/6/7/8/9)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1/2/3/4/5/6/7 committed 6702654) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 8 working tree: 9 modified mobile files + research-wave-8.md + STATE diff) → all `apps/mobile/**` only → `grep -v ^apps/mobile` empty + `ls-files --others -- apps/mobile` only mobile ✓
+- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0-8 committed 6018465) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 9 working tree: 10 modified mobile files + SCREEN-PARITY + STATE + review-wave-9) → all `apps/mobile/**` only → `grep -v ^apps/mobile` empty + `ls-files --others -- apps/mobile` only mobile ✓
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -218,8 +223,24 @@ Wave 8 — COMPLETE (working tree, awaiting commit; base dca2dceaa, HEAD 6702654
 - Modified: `apps/mobile/features/tasks/detail/TaskScheduleSection.tsx` (QuickPill `minHeight 36 → 44`)
 - Created: `apps/mobile/docs/redesign/research-wave-8.md` (full performance + a11y audit per 14 areas: FlatList/SectionList, timer isolation, memoization, large calculations, BlurView, shadows, keyboard, safe area, query transitions, loading states, mutation loading/double submit, animations, Dynamic Type, screen-reader, contrast, tap targets, reduced motion — with FINDING/SEVERITY/FIX/DEFERRED/EVIDENCE + validation exits + deferred rationale)
 
-## Known Issues
+## Files Changed (Wave 9)
+- Modified: `apps/mobile/components/mobile/theme.ts` (add `dangerBorder #b91c1c` token to replace hard-coded)
+- Modified: `apps/mobile/components/mobile/ui/Button.tsx` (border `#b91c1c` → `mobileTheme.colors.dangerBorder` token)
+- Modified: `apps/mobile/components/mobile/glass/GlassButton.tsx` (danger gradient `#b91c1c` → `dangerBorder` token)
+- Modified: `apps/mobile/features/tasks/create/TaskCreateScreen.tsx` (router.replace('/tasks') invalid → `router.back()` consistent with Project/Goal)
+- Modified: `apps/mobile/app/+not-found.tsx` (redesign from Themed #2e78b7 hard-coded to AppScreen+ScreenHeader+Card+EmptyState+Button via mobileTheme accent/surface/border, minTouchTarget 44, safeArea)
+- Modified: `apps/mobile/features/goals/detail/GoalDetailScreen.tsx` (health SegmentedControl disabled isMutating||!health → disabled isMutating only, allows setting health when null)
+- Modified: `apps/mobile/components/mobile/ui/FormField.tsx` (reserve 20 minHeight supportingWrap + always render ' ' placeholder to prevent layout shift, liveRegion polite)
+- Modified: `apps/mobile/app/(public)/login.tsx` (backButton 40→44 minTouchTarget 44 borderRadius 22)
+- Modified: `apps/mobile/components/mobile/ui/ScreenHeader.tsx` (marginBottom 20 hard-coded → spacing.lg via theme)
+- Modified: `apps/mobile/components/mobile/ui/FloatingActionButton.tsx` (bottom 20→spacing.lg, gap 8→spacing.sm via theme)
+- Modified: `apps/mobile/docs/redesign/SCREEN-PARITY.md` (close all TBD→YES with evidence per screen)
+- Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 9 complete, add Wave 9 tests/files)
+- Created: `apps/mobile/docs/redesign/review-wave-9.md` (full independent review report: methodology, screen-by-screen verdict, defects table, fixes applied, validation exits, remaining MEDIUM/LOW)
+
+## Known Issues (Wave 9 updated)
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
+- Wave 9 fixes applied: TaskCreate nav, NotFound theme, Button token, GoalDetail health enable, FormField 20 reserve, login 44, ScreenHeader/FAB lg — all validated 0/0/166
 - Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback (Wave 0, still green in Wave 6)
 - TodayTaskCard 44 target test fixed via IconButton minHeight/minWidth (Wave 1) — ensures ghost actions button meets 44 without hitSlop
 - TaskCard mainTap test fixed via Pressable borderRadius sm 10 in features/tasks/components/TaskCard.tsx (Wave 2) — satisfies cards-a11y-test
@@ -241,7 +262,7 @@ Wave 8 — COMPLETE (working tree, awaiting commit; base dca2dceaa, HEAD 6702654
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 9 — Final independent review (needs bundle from root-installed worktree; confirm Danger chip contrast token if design reviews 3.95)
+- Wave 10 — (none planned) Mobile redesign FINAL — awaiting parent commit + human review + bundle from root-installed worktree; remaining MEDIUM/LOW documented in review-wave-9.md
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` before touching tokens
