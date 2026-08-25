@@ -33,7 +33,7 @@ export type GlassButtonProps = {
 const gradientColors: Record<GlassButtonVariant, [string, string]> = {
   primary: [mobileTheme.colors.accent, mobileTheme.colors.accentDark],
   secondary: ['#ffffff', '#f8fafc'],
-  danger: [mobileTheme.colors.danger, '#b91c1c'],
+  danger: [mobileTheme.colors.danger, mobileTheme.colors.dangerBorder],
   ghost: ['rgba(255,255,255,0)', 'rgba(255,255,255,0)'],
 };
 

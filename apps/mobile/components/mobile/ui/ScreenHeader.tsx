@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: mobileTheme.spacing.lg,
     marginTop: mobileTheme.spacing.sm,
   },
   rightSlot: {

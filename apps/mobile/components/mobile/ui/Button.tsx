@@ -39,7 +39,7 @@ function variantColors(variant: ButtonVariant) {
     case 'primary':
       return { bg: mobileTheme.colors.accent, text: mobileTheme.colors.textOnAccent, border: mobileTheme.colors.accentDark };
     case 'danger':
-      return { bg: mobileTheme.colors.danger, text: mobileTheme.colors.textOnAccent, border: '#b91c1c' };
+      return { bg: mobileTheme.colors.danger, text: mobileTheme.colors.textOnAccent, border: mobileTheme.colors.dangerBorder };
     case 'ghost':
       return { bg: 'transparent', text: mobileTheme.colors.text, border: 'transparent' };
     case 'secondary':

@@ -38,6 +38,7 @@ export const mobileTheme = {
     danger: '#dc2626',
     dangerBg: '#fee2e2',
     dangerMid: '#fca5a5',
+    dangerBorder: '#b91c1c',
 
     info: '#1d4ed8',
     infoBg: '#dbeafe',

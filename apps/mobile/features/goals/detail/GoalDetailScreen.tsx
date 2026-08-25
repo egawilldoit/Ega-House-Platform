@@ -208,7 +208,7 @@ export function GoalDetailScreen() {
 
                 <Text style={styles.groupLabel}>Health</Text>
                 <SegmentedControl
-                  disabled={isMutating || !goal.health}
+                  disabled={isMutating}
                   onChange={(health) => {
                     if (health !== goal.health) {
                       runMutation(() => updateHealthMutation.mutateAsync({ goalId: goal.id, health: health as GoalHealth }));

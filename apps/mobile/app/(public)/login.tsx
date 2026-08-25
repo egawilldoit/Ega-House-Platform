@@ -159,13 +159,13 @@ const styles = StyleSheet.create({
   backButton: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.overlayLight,
-    borderRadius: 20,
-    height: 40,
+    borderRadius: 22,
+    height: mobileTheme.layout.minTouchTarget,
     justifyContent: 'center',
     left: mobileTheme.spacing.lg,
     position: 'absolute',
     top: 64,
-    width: 40,
+    width: mobileTheme.layout.minTouchTarget,
   },
   bgCircle1: {
     backgroundColor: mobileTheme.colors.authCircleBlue,

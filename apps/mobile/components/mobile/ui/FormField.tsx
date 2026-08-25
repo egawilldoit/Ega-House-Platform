@@ -61,11 +61,11 @@ export function FormField({
           {...inputProps}
         />
       </View>
-      {supportingText ? (
-        <Text accessibilityLiveRegion="polite" style={[styles.supportingText, isError ? styles.errorText : null]}>
-          {supportingText}
+      <View style={styles.supportingWrap} accessibilityLiveRegion="polite">
+        <Text style={[styles.supportingText, isError ? styles.errorText : null]}>
+          {supportingText ?? ' '}
         </Text>
-      ) : null}
+      </View>
     </View>
   );
 }
@@ -115,6 +115,10 @@ const styles = StyleSheet.create({
   },
   required: {
     color: mobileTheme.colors.danger,
+  },
+  supportingWrap: {
+    minHeight: 20,
+    justifyContent: 'center',
   },
   supportingText: {
     color: mobileTheme.colors.textSubtle,

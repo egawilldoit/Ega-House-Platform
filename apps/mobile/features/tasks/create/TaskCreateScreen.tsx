@@ -198,7 +198,7 @@ export function TaskCreateScreen() {
 
     try {
       await createTaskMutation.mutateAsync(payload);
-      router.replace('/tasks');
+      router.back();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to create task right now.';
       setSubmitError(message);
