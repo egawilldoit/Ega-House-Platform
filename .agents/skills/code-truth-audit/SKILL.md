@@ -16,19 +16,19 @@ Read [`../../../docs/agent-context/product-authority.md`](../../../docs/agent-co
 
 ## Workflow
 
-1. Record branch, commit, status, worktrees, and remotes without destructive cleanup.
-2. Pass 1: map topology, entry points, package boundaries, persistence, integrations, tests, and documented claims.
+1. Record branch, commit, status, worktrees, remotes, and the applicable root→leaf `AGENTS.md` chains without destructive cleanup.
+2. Pass 1: map topology, entry points, package boundaries, persistence, integrations, scoped instructions, tests, and documented claims.
 3. Save evidence with `PROVEN`, `SUPPORTED`, `DOCUMENTATION_ONLY`, `INFERRED`, or `UNRESOLVED` confidence.
-4. Pass 2: reopen canonical files and attack every important hypothesis; find bypasses, duplicate owners, stale docs, historical snapshots presented as current, and failure semantics.
-5. Pass 3: resolve contradictions, classify current behavior, compare it with normative authority, and design the smallest correction.
+4. Pass 2: reopen canonical files and attack every important hypothesis; find bypasses, duplicate owners, stale docs, historical snapshots presented as current, instruction-scope drift, and failure semantics.
+5. Pass 3: resolve contradictions, classify current behavior, compare it with normative authority, and design the smallest correction at the canonical owner.
 6. Edit only after Pass 3.
 7. If the task authorizes governance/docs writes, append a material new conflict classification to the decision log; otherwise include the proposed entry in the handoff.
-8. Validate links, commands, skills, architecture boundaries, affected tests, and final diff.
+8. Validate local instruction discovery, links, commands, skills, architecture boundaries, affected tests, and final diff.
 
 ## Forbidden actions
 
-Do not run the evidence passes in parallel, treat plans/audit snapshots as implementation evidence, erase pre-existing work, invent unresolved product decisions, or let the decision log override higher authority.
+Do not run the evidence passes in parallel, treat plans/audit snapshots as implementation evidence, ignore a deeper scoped `AGENTS.md`, erase pre-existing work, invent unresolved product decisions, or let the decision log override higher authority.
 
 ## Output contract
 
-Pass comparison, current-behavior map, normative authority, existing/new decision-log classifications, contradictions, changed files, exact validation results, remaining gaps, and an evidence-based verdict.
+Pass comparison, current-behavior map, normative authority, instruction scopes, existing/new decision-log classifications, contradictions, changed files, exact validation results, remaining gaps, and an evidence-based verdict.

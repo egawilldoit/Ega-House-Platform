@@ -34,6 +34,11 @@ export {
 const ignored = new Set([".git", ".next", ".expo", "node_modules", "coverage", "dist", "build"]);
 const required = [
   "AGENTS.md",
+  "apps/web/AGENTS.md",
+  "apps/server/AGENTS.md",
+  "apps/mobile/AGENTS.md",
+  "packages/AGENTS.md",
+  "scripts/ega-runner/AGENTS.md",
   "CONTEXT.md",
   "ARCHITECTURE.md",
   "HERMES_MASTER_PROMPT.md",
@@ -65,19 +70,37 @@ const navigationRequirements = new Map([
     "(docs/agent-context/decision-log.md)",
     "(docs/agent-context/tooling-map.md)",
     "(docs/architecture/platform-monorepo.md)",
+    "(apps/web/AGENTS.md)",
+    "(apps/server/AGENTS.md)",
+    "(apps/mobile/AGENTS.md)",
+    "(packages/AGENTS.md)",
+    "(scripts/ega-runner/AGENTS.md)",
   ]],
   ["docs/agent-context/index.md", [
     "(../../CONTEXT.md)",
     "(decision-log.md)",
     "(tooling-map.md)",
     "(../architecture/platform-monorepo.md)",
-    "(../reports/README.md)",
+    "(../../apps/web/AGENTS.md)",
+    "(../../apps/server/AGENTS.md)",
+    "(../../apps/mobile/AGENTS.md)",
+    "(../../packages/AGENTS.md)",
+    "(../../scripts/ega-runner/AGENTS.md)",
   ]],
   ["HERMES_MASTER_PROMPT.md", [
     "(CONTEXT.md)",
     "(docs/agent-context/decision-log.md)",
     "docs/architecture/platform-monorepo.md",
   ]],
+]);
+
+const instructionExpectations = new Map([
+  [".", ["AGENTS.md"]],
+  ["apps/web/src", ["AGENTS.md", "apps/web/AGENTS.md"]],
+  ["apps/mobile", ["AGENTS.md", "apps/mobile/AGENTS.md"]],
+  ["apps/server", ["AGENTS.md", "apps/server/AGENTS.md"]],
+  ["packages/application", ["AGENTS.md", "packages/AGENTS.md"]],
+  ["scripts/ega-runner", ["AGENTS.md", "scripts/ega-runner/AGENTS.md"]],
 ]);
 
 const exists = async (file, type = "file") => {
@@ -127,17 +150,19 @@ async function validateSkills(root, errors, output) {
 }
 
 async function validateLinks(root, errors, output) {
-  const docs = [
+  const discoveredInstructions = await walk(root, (file) => ["AGENTS.md", "AGENTS.override.md"].includes(file.split(sep).at(-1)));
+  const docs = [...new Set([
     "README.md",
     "AGENTS.md",
     "CONTEXT.md",
     "ARCHITECTURE.md",
     "HERMES_MASTER_PROMPT.md",
     "scripts/ega-runner/README.md",
+    ...discoveredInstructions.map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "agent-context"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "architecture"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "reports"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
-  ];
+  ])];
   let checked = 0;
   for (const file of docs) {
     if (!(await exists(join(root, file)))) continue;
@@ -162,7 +187,7 @@ async function validateCommands(root, errors, output) {
     ]],
     ["apps/mobile/package.json", ["typecheck", "test", "doctor", "validate:bundle"]],
     ["apps/server/package.json", ["typecheck", "test", "build:vercel"]],
-    ["scripts/ega-runner/package.json", ["start", "typecheck", "smoke"]],
+    ["scripts/ega-runner/package.json", ["start", "typecheck", "smoke", "test:pr-loop"]],
   ]) {
     try {
       const manifest = JSON.parse(await readFile(join(root, file), "utf8"));
@@ -190,16 +215,22 @@ async function validateQueue(root, errors, output) {
 
 async function validateInstructions(root, errors, warnings, output, options) {
   const config = await loadCodexDiscoveryConfig({ repoRoot: root, env: options.env ?? process.env, userHome: options.userHome ?? homedir() });
-  for (const cwd of [".", "apps/web/src", "apps/mobile", "apps/server", "packages/application", "scripts/ega-runner"]) {
+  for (const [cwd, expected] of instructionExpectations) {
     const absolute = resolve(root, cwd);
     if (!(await exists(absolute, "directory"))) { output.push(`RUNTIME NOT VERIFIED instruction directory missing: ${cwd}`); continue; }
     const chain = await discoverCodexInstructionChain({ repoRoot: root, workingDirectory: absolute, ...config });
+    const selected = chain.selectedFiles.map((file) => relative(root, file.path));
     output.push(`Working directory: ${cwd}`);
-    output.push(`Selected instruction files: ${chain.selectedFiles.length ? chain.selectedFiles.map((file) => relative(root, file.path)).join(", ") : "none"}`);
+    output.push(`Selected instruction files: ${selected.length ? selected.join(", ") : "none"}`);
     output.push(`Combined bytes: ${chain.combinedBytes}`);
     output.push(`Configured/default maximum: ${chain.projectDocMaxBytes}`);
     output.push(`Result: ${chain.withinBudget ? "STRUCTURAL PASS" : "STRUCTURAL FAIL"}`);
-    if (!chain.withinBudget) errors.push(`${cwd}: Codex instruction chain is ${chain.combinedBytes} bytes, above ${chain.projectDocMaxBytes}`);
+    if (!chain.withinBudget) errors.push(`${cwd}: instruction chain is ${chain.combinedBytes} bytes, above ${chain.projectDocMaxBytes}`);
+    if (JSON.stringify(selected) !== JSON.stringify(expected)) {
+      errors.push(`${cwd}: instruction chain mismatch; expected [${expected.join(", ")}], got [${selected.join(", ")}]`);
+    } else {
+      output.push(`STRUCTURAL PASS instruction chain matches expected root→leaf scope for ${cwd}`);
+    }
   }
 
   const instructionFiles = await walk(root, (file) => ["AGENTS.md", "AGENTS.override.md"].includes(file.split(sep).at(-1)));

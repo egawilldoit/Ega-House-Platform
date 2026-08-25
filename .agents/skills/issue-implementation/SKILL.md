@@ -16,17 +16,18 @@ Read [`../../../docs/agent-context/product-authority.md`](../../../docs/agent-co
 
 ## Workflow
 
-1. Read `AGENTS.md`, the issue, relevant product context/ADR/architecture documents, and existing related decision-log entries.
-2. Identify current behavior, canonical owner, callers, persistence, package/transport boundary, and tests.
-3. Separate already implemented behavior from missing work, defects, and unresolved authority conflicts.
-4. Create/use an authorized task branch or verified Runner worktree; never `main`.
-5. Make the smallest coherent change through the canonical domain/application/persistence/transport boundary.
-6. Add a behavior-focused test or executable guardrail at the closest reliable seam.
-7. Run the validation matrix for every changed subsystem, including architecture checks when imports/ownership move.
-8. Inspect changed files, diff, generated files, secrets, and unrelated changes.
-9. If the implementation resolves/creates a material code-vs-authority classification and docs writes are authorized, update the decision log/ADR appropriately.
-10. Produce a `final-verification` verdict with observed evidence.
+1. Record repository/branch/HEAD/worktree state and discover the complete applicable root→leaf `AGENTS.md` chain for every intended target path.
+2. Read the issue, relevant product context/ADR/architecture documents, scoped agent instructions, and existing related decision-log entries.
+3. Identify current behavior, canonical owner, callers, persistence, package/transport boundary, public exports, and tests.
+4. Separate already implemented behavior from missing work, defects, and unresolved authority conflicts.
+5. Create/use an authorized task branch or verified Runner worktree; never `main`.
+6. Make the smallest coherent change through the canonical domain/application/persistence/transport boundary. Prefer an existing local pattern documented by the scoped `AGENTS.md` over a parallel abstraction.
+7. Add a behavior-focused test or executable guardrail at the closest reliable seam.
+8. Run the scoped validation in the nearest `AGENTS.md`, plus architecture/security/global gates when the change crosses those boundaries.
+9. Inspect changed files, diff, generated files, secrets, migrations, and unrelated changes.
+10. If the implementation resolves/creates a material code-vs-authority classification and docs writes are authorized, update the decision log/ADR appropriately.
+11. Produce a `final-verification` verdict with exact observed evidence and anything still unverified.
 
 ## Forbidden actions
 
-Do not choose another issue, implement a whole backlog, bypass state/queue/authorization owners, put shared workflow authority into transport/UI convenience code, weaken governance, force-reuse stale attempts, or claim runtime success from static checks.
+Do not choose another issue, implement a whole backlog, bypass state/queue/authorization owners, put shared workflow authority into transport/UI convenience code, ignore a deeper scoped `AGENTS.md`, weaken governance, force-reuse stale attempts, or claim runtime success from static checks.
