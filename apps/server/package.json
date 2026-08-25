@@ -8,6 +8,7 @@
     "./serve": "./src/serve.ts"
   },
   "scripts": {
+    "build:vercel": "esbuild index.ts --bundle --platform=node --format=esm --target=node22 --outfile=index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test test/*.test.ts",
     "dev": "tsx src/serve.ts",
