@@ -63,4 +63,3 @@ Goals redesign: filter Active / Archived / All via SegmentedControl, GoalCard mu
 - Welcome + Login + Search visual parity (Wave 5).
 - Create flows (Task/Project/Goal) form polish (Wave 6) — goal create still glass until Wave 6.
 - Detail/Edit flows recurrence & reminder (Wave 7) — goal detail still glass until Wave 7.
-

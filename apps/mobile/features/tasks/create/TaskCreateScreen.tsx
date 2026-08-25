@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- single-project auto-select is intentional derived state */
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';

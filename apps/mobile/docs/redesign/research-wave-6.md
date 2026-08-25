@@ -73,4 +73,3 @@ Wave 6 polishes `apps/mobile/app/(app)/tasks/create`, `projects/create`, `goals/
 ## Open items for later waves
 - Detail/Edit flows (`tasks/[id]`, `projects/[slug]`, `goals/[id]`) still `Glass*` until Wave 7 — create isolation must not leak detail logic (no reminder/recurrence/linkedTasks in create).
 - Stitch MCP offline spec above needs green-run `refine_screen` + PNG export before Wave 7 review if design auditor requires artifact; code already matches intended MCP output.
-

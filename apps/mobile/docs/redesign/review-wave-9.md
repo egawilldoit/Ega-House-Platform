@@ -1,11 +1,11 @@
 # Review — Wave 9 (Final Independent Review)
 
-**Date:** 2026-08-25  
-**Reviewer:** Wave 9 independent (read-only first, then BLOCKER/HIGH fixes)  
-**Base:** `dca2dceaa3baa72352ef9a6db8c80d29029fc82a` (origin/main at worktree creation)  
-**Branch:** `ui/mobile-redesign` (worktree `.worktrees/ui-mobile`)  
-**HEAD before review:** `6018465` (`perf(mobile-ui): harden performance and accessibility` — Wave 8)  
-**Scope:** `apps/mobile/**` only (enforced via `git diff --name-only dca2dce` + `grep -v ^apps/mobile` empty)  
+**Date:** 2026-08-25
+**Reviewer:** Wave 9 independent (read-only first, then BLOCKER/HIGH fixes)
+**Base:** `dca2dceaa3baa72352ef9a6db8c80d29029fc82a` (origin/main at worktree creation)
+**Branch:** `ui/mobile-redesign` (worktree `.worktrees/ui-mobile`)
+**HEAD before review:** `6018465` (`perf(mobile-ui): harden performance and accessibility` — Wave 8)
+**Scope:** `apps/mobile/**` only (enforced via `git diff --name-only dca2dce` + `grep -v ^apps/mobile` empty)
 **Worktree rule:** No new worktree/branch created; edits applied directly on `ui/mobile-redesign` working tree.
 
 ---
@@ -218,7 +218,7 @@ Checklist per screen: **structure**, **preserved features**, **Stitch reference 
 | `docs/redesign/STATE.md` | Wave8 latest | mark Wave9 complete, add Tests/Files Changed Wave9, update Next | ~30 lines |
 | **Created** `docs/redesign/review-wave-9.md` | — | this file | — |
 
-**Scope guarantee:**  
+**Scope guarantee:**
 `git diff --name-only dca2dce` → 23 files all `apps/mobile/**` (`grep -v ^apps/mobile` empty). `ls-files --others -- apps/mobile` only docs/redesign (expected). No root `package.json`, `*.lock`, `.github`, `apps/server`, `src`, `scripts/ega-runner` touched. Worktree-only.
 
 ---
@@ -275,4 +275,3 @@ These are documented per `STATE.md Known Issues (Wave 9 updated)` and do not blo
 - **Files requiring human review:** `app/+not-found.tsx` (brand new visual hierarchy, verify dark vs light contrast), `FormField.tsx` (20 reserve — check create/detail form spacing on SE 375h vs 14 Pro Max), `GoalDetailScreen.tsx` health enable (verify empty-health goal can now set health via segment).
 
 **Final status:** Wave 9 **COMPLETE** — all screens PASS, 2 BLOCKER + 5 HIGH fixed on branch, validation 0/0/166/166, mobile-only scope PASS, remaining MEDIUM/LOW documented.
-

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- params.mode → local mode sync is intentional; no render cascade */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps -- today renderTodayItem stable; router is stable expo-router singleton */
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
