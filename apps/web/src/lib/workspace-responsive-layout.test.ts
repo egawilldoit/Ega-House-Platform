@@ -5,6 +5,13 @@ import test from "node:test";
 
 const globalsCss = readFileSync(path.join(process.cwd(), "src", "app", "globals.css"), "utf8");
 const tasksPage = readFileSync(path.join(process.cwd(), "src", "app", "tasks", "page.tsx"), "utf8");
+const tasksView = (() => {
+  try {
+    return readFileSync(path.join(process.cwd(), "src", "app", "tasks", "_components", "TasksPageView.tsx"), "utf8");
+  } catch {
+    return "";
+  }
+})();
 const kanbanCard = readFileSync(
   path.join(process.cwd(), "src", "components", "tasks", "task-kanban-card.tsx"),
   "utf8",
@@ -31,8 +38,9 @@ test("shared workspace rail layout prioritizes main content and stacks below des
 });
 
 test("tasks kanban board uses responsive column contract", () => {
-  assert.match(tasksPage, /className="tasks-kanban-board"/);
-  assert.match(tasksPage, /className="tasks-kanban-column/);
+  const tasksSource = tasksPage + tasksView;
+  assert.match(tasksSource, /className="tasks-kanban-board"/);
+  assert.match(tasksSource, /className="tasks-kanban-column/);
   assert.match(
     globalsCss,
     /\.tasks-kanban-board\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/,
