@@ -7,9 +7,19 @@ import {
   parseAnalyticsFilters,
   computeWindowForRange,
 } from "@/lib/services/work-analytics-filters";
+import dynamic from "next/dynamic";
+import { Skeleton } from "@/components/ui/skeleton";
+
 import { buildWorkAnalyticsReport } from "@/lib/services/work-analytics-report-builder";
-import { InteractiveAnalytics } from "./interactive-analytics";
 import { AnalyticsFilters } from "./analytics-filters";
+
+const InteractiveAnalytics = dynamic(
+  () => import("./interactive-analytics").then((m) => m.InteractiveAnalytics),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-[320px] w-full rounded-[var(--radius-lg)]" />,
+  },
+);
 
 export const dynamic = "force-dynamic";
 
