@@ -191,5 +191,6 @@ test("repository validation: the living agent-context set is required", async ()
     assert.match(errors, /missing required agent-context file: docs\/agent-context\/decision-log\.md/);
     assert.match(errors, /missing required agent-context file: docs\/agent-context\/tooling-map\.md/);
     assert.match(errors, /missing required agent-context file: docs\/architecture\/platform-monorepo\.md/);
+    assert.match(errors, /missing required agent-context file: docs\/reports\/README\.md/);
   });
 });
