@@ -1,147 +1,162 @@
-# Mobile Delivery — Build Once, Test That Exact Binary
+# Mobile Delivery — Build Once, Launch Smoke
+
+Lean sideload delivery: **build once → test exact APK → app launches and does not crash**.
 
 ## Architecture
 
 ```text
-PR
-  -> GitHub CI (unified-platform-validation.yml) — ubuntu-latest only
+PR / push to main
+  -> Unified Platform Validation (ubuntu-latest)
+       tests / typecheck / Expo doctor / bundle / delivery map
   -> merge to main
   -> Vercel deploys web + Hono API (unchanged)
 
-Manual / tag Mobile Delivery (mobile-delivery.yml)
-  -> GitHub preflight (ubuntu-latest) — zero Blacksmith cost
-  -> Blacksmith APK build (blacksmith-2vcpu-ubuntu-2404) — one compile
+workflow_dispatch on main  OR  mobile-v* tag
+  -> Preflight (ubuntu-latest) — exact SHA + Unified CI gate
+  -> Blacksmith build (blacksmith-2vcpu-ubuntu-2404) — one release APK
   -> temporary exact APK artifact (retention 1 day)
-  -> GitHub runtime proof (ubuntu-latest) — installs/tests SAME binary
-  -> optional GitHub Release (tagged RC/stable)
+  -> GitHub launch smoke (ubuntu-latest) — install + launch + pidof
+  -> optional GitHub Release (tags only)
   -> delivery summary
 ```
 
-## Why Blacksmith is only used for Gradle/APK compile
+No APK is built during normal PR/main CI.
 
-- Native Android compilation (`./gradlew assemble*`) is the only step that benefits from Blacksmith's cached Android/Gradle acceleration and isolates expensive native minutes.
-- All verification (TypeScript, Expo doctor, unit tests, bundle export, emulator, Maestro) runs on free GitHub-hosted `ubuntu-latest`.
-- Blacksmith transparently redirects `actions/setup-node`, `actions/setup-java`, and upstream caches, so we use official cache actions — no paid forks.
+## Why Blacksmith is only for Gradle
+
+Native Android compilation (`./gradlew assembleRelease`) benefits from Blacksmith's colocated cache and isolates expensive minutes. All other verification (TypeScript, Expo doctor, bundle, emulator boot) runs on free `ubuntu-latest`. Blacksmith transparently redirects `actions/setup-node`, `actions/setup-java`, `gradle/actions/setup-gradle` to its cache — no paid Sticky Disk.
 
 ## Runner policy
 
-| Runner | Label | When it runs | Cost guardrail |
+| Runner | Label | When | Cost guardrail |
 |---|---|---|---|
-| GitHub | `ubuntu-latest` | Every PR / push to main, plus preflight + runtime proof | Free for public repo |
-| Blacksmith | `blacksmith-2vcpu-ubuntu-2404` | Only `workflow_dispatch` or `mobile-v*` tag | 2 vCPU, timeout 40 min, no matrix, no paid add-ons |
+| GitHub | `ubuntu-latest` | every PR/push, plus preflight + launch smoke | free for public repo |
+| Blacksmith | `blacksmith-2vcpu-ubuntu-2404` | only `workflow_dispatch` or `mobile-v*` tag | 2 vCPU, timeout 40, no matrix, no paid add-ons |
 
-Blacksmith free-tier assumptions (2026-08-25): standard plan includes free minutes per month; we do not enable Sticky Disks, Docker layer paid cache, static IPs, or larger runners. See `docs.blacksmith.sh` and `blacksmith.sh/pricing`.
+Do not use larger runners, matrices, scheduled builds, or Sticky Disks.
 
-## How to dispatch an RC / stable
+## How to trigger
 
-### Manual validation (main)
-
-Trigger via GitHub UI or CLI:
+Manual (main):
 
 ```bash
-gh workflow run mobile-delivery.yml --ref main \
-  -f build_variant=release -f runtime_proof=true -f authenticated_e2e=false
+gh workflow run mobile-delivery.yml --ref main
 ```
 
-Default source is the selected workflow ref (prefer `main` for official RC validation).
+No `-f` parameters — manual always builds a **production-connected release APK** and runs launch smoke.
 
-### Tagged release
-
-A human creates the tag intentionally (no automation invents tags):
+Tagged release (human creates tag, no automation invents it):
 
 ```bash
-git tag mobile-v1.0.0-rc.1 a9b43ac
+git tag mobile-v1.0.0-rc.1 20060ca
 git push origin mobile-v1.0.0-rc.1
-# or stable:
-git tag mobile-v1.0.0 a9b43ac
+# stable:
+git tag mobile-v1.0.0 20060ca
 git push origin mobile-v1.0.0
 ```
 
-Tag patterns understood by the workflow:
+Tags: `mobile-vX.Y.Z-rc.N` → prerelease, `mobile-vX.Y.Z` → stable. Each builds the exact immutable tag SHA.
 
-- `mobile-vX.Y.Z-rc.N` → prerelease (e.g. `mobile-v1.0.0-rc.1`)
-- `mobile-vX.Y.Z` → stable release (e.g. `mobile-v1.0.0`)
+## How to find and download the APK
 
-A tagged run builds the exact immutable tag SHA (checked out via `github.sha`), not a moving branch.
+- **Temporary handoff (1 day):** artifact `ega-house-apk-<40-char SHA>` produced by Blacksmith, consumed by launch smoke. Download:
 
-## How to find the APK
+  ```bash
+  gh run download <RUN_ID> -n ega-house-apk-<SHA> -D /tmp/apk
+  ls /tmp/apk/*.apk
+  sha256sum -c /tmp/apk/SHA256SUMS
+  ```
 
-- **Temporary handoff:** GitHub Actions artifact `ega-house-apk-<SHA>` (retention 1 day) — consumed by the runtime proof job. Do not use as permanent storage.
-- **Permanent:** GitHub Release for the tag, containing `ega-house-<version>-<shortsha>-<variant>.apk`, `release-manifest.json`, `SHA256SUMS`.
+  The artifact URL is shown in the Blacksmith job summary and Delivery summary.
 
-## How to read release-manifest.json
+- **Permanent (tags):** GitHub Release for the tag contains `ega-house-<version>-<shortsha>-release.apk`, `release-manifest.json`, `SHA256SUMS`.
+
+## Release manifest
 
 ```json
 {
   "repository": "egawilldoit/Ega-House-Platform",
-  "gitSha": "<40-char SHA>",
-  "gitRef": "refs/tags/mobile-v1.0.0-rc.1",
+  "gitSha": "<40-char>",
+  "gitRef": "refs/tags/mobile-v1.0.0",
   "version": "1.0.0",
   "variant": "release",
+  "androidPackage": "com.ega_house.mobile",
   "apiBaseUrl": "https://ega-api.egawilldoit.online",
-  "builtAt": "2026-08-25T12:00:00Z",
+  "builtAt": "2026-08-25T11:30:24Z",
   "runner": "blacksmith-2vcpu-ubuntu-2404",
+  "architectures": ["arm64-v8a", "x86_64"],
   "apkFile": "ega-house-1.0.0-a9b43ac-release.apk",
   "apkSha256": "<sha256>"
 }
 ```
 
-Deterministic filename `ega-house-<version>-<shortsha>-<variant>.apk`; SHA is authoritative, not `run_number`.
+Deterministic filename `ega-house-<version>-<shortsha>-release.apk`; SHA is authoritative.
 
-## How to know which SHA is installed
+## ABI policy — arm64-v8a + x86_64 only
 
-- Runtime proof verifies checksum before install: `(cd apk-dist && sha256sum -c SHA256SUMS)` and again compares `apkSha256` from the manifest.
-- Installed binary's manifest is archived alongside `SHA256SUMS` in the release.
+React Native guidance normally targets broader ABI compatibility. This sideload APK intentionally builds **only `arm64-v8a` (modern phones) + `x86_64` (GitHub emulator)** via:
 
-## What PASS / BLOCKED means
+```
+-PreactNativeArchitectures=arm64-v8a,x86_64
+```
 
-| Gate | Result | Meaning |
-|---|---|---|
-| Preflight | PASS | Source valid, Unified CI green for exact SHA, production API healthy |
-| Blacksmith build | PASS | One APK compiled, manifest + checksum produced |
-| APK checksum | PASS | SHA match between manifest and file (integrity) |
-| Android install/launch/liveness/UI | PASS | Ladder L6 chain proven on the exact Blacksmith binary |
-| Maestro welcome | PASS | `00-welcome.yaml` passed on the booted emulator |
-| BLOCKED_CI_NOT_GREEN | BLOCKED | Exact SHA has no successful Unified CI — fix CI first |
-| BLOCKED_PRODUCTION_API | BLOCKED | `ega-api.egawilldoit.online` health/ready/401 probes failed |
-| BLOCKED_ANDROID_SIGNING | BLOCKED | Release APK unsigned/uninstallable |
-| FAIL_ARTIFACT_INTEGRITY | FAIL | Checksum mismatch |
-| BLOCKED_EXTERNAL_BLACKSMITH_SETUP | BLOCKED | Blacksmith GitHub integration not installed for `egawilldoit` org |
+This is **not** Play Store universal distribution. No `armeabi-v7a` or `x86` is compiled. If legacy-device coverage becomes a future requirement, this policy can be revisited.
 
-No gate is silently bypassed.
+No AAB, no `bundleRelease`, no Play Store tracks in this workflow.
 
-## Feature delivery mapping
+## Build details
 
-`scripts/ci/feature-delivery-map.mjs` inspects the PR diff and classifies:
+- Checkout exact SHA (`fetch-depth: 1`), Node 22 (`setup-node@v6`), Java 17 (`setup-java@v5`, no Gradle cache there), minimal Android SDK (`setup-android@v4` with `packages: ''` and `log-accepted-licenses: false`), `npm ci`, `expo prebuild --platform android --clean --no-install` with `CI=1 EXPO_NO_TELEMETRY=1 EXPO_NO_GIT_STATUS=1 EXPO_PUBLIC_API_BASE_URL=https://ega-api.egawilldoit.online`.
+- Gradle cache via `gradle/actions/setup-gradle@v6` (`cache-provider: basic`, Blacksmith-redirected). Main builds read/write, tags read-only.
+- One `./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4g`. Zero `assembleDebug`, zero `bundleRelease`. `adb install` later is the installability proof.
 
-WEB, API, DATABASE, CONTRACTS, DOMAIN, APPLICATION, DATA_ACCESS, API_CLIENT, MOBILE
+## Launch smoke contract
 
-as `CHANGED` (direct file match), `AFFECTED` (transitive dependency), or `NO_CHANGE`.
+```
+APK=<downloaded exact APK>  PKG=com.ega_house.mobile
 
-Key propagation (derived from code truth — `apps/mobile` imports `@ega/api-client`, `@ega/contracts`, `@ega/domain`):
+adb install -r "$APK"
+COMPONENT=$(adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" | tail -n 1)
+# COMPONENT must be non-empty
+adb shell am start -W -n "$COMPONENT"   # must exit 0
+sleep 10
+PID=$(adb shell pidof "$PKG")
+# PID non-empty => PASS, else FAIL
+```
 
-- `packages/api-client/**` → `API_CLIENT CHANGED`, `MOBILE AFFECTED`
-- `packages/contracts/**` → `CONTRACTS CHANGED`, `API_CLIENT AFFECTED`, `MOBILE AFFECTED`
-- `packages/domain/**` → `DOMAIN CHANGED`, `CONTRACTS/MOBILE AFFECTED`
-- `apps/web/**` alone → `WEB CHANGED`, `MOBILE NOT AFFECTED`
+- Emulator: API 34, `google_apis`, `x86_64`, lean AVD (2 cores, 2048 MB, 720x1280, 320 dpi, 2G data, headless GPU `swiftshader_indirect`), KVM, bounded 6-minute boot.
+- Checksum verified via `sha256sum -c SHA256SUMS` and manifest fields (`gitSha`, `apkSha256`, `androidPackage`, `apiBaseUrl`, `architectures`) using `jq` — no Node installed in runtime.
+- On **success**: no screenshots, no logcat artifact.
+- On **failure**: `launch-failure-logcat.txt` + `emulator.log` uploaded with `retention-days: 1`.
 
-The Unified CI mobile filter (`unified-platform-validation.yml`) includes `packages/api-client/**`, `packages/contracts/**`, `packages/domain/**` so Mobile JS verification runs when shared packages it consumes change.
+Final status line: `ANDROID LAUNCH SMOKE = PASS` (or `FAIL`).
 
-The `delivery-map` job in unified CI writes this table to `$GITHUB_STEP_SUMMARY` on every PR.
+## Preflight
 
-## Free-usage guardrails (encoded in YAML + tests)
+- Allows only `refs/heads/main` or `refs/tags/mobile-v*`; anything else fails before Blacksmith.
+- Single `gh api` query for a **completed successful** `unified-platform-validation.yml` for the exact source SHA. No polling, no `/health`/`/ready`/`/api/projects` probes. If missing: `BLOCKED_CI_NOT_GREEN`.
 
-- Blacksmith: manual/tag only, no `pull_request`/`push:main`, one job, `2vcpu`, `timeout:40`, no matrix, cancels superseded manual/RC runs, no schedule/nightly/emulator/Maestro/Docker/paid add-ons.
-- GitHub: `ubuntu-latest` only, no larger runners, path-aware unified CI, no Gradle in normal CI, APK artifact retention 1 day, permanent binaries on Releases, no duplicate APK uploads.
+## GitHub Release
 
-Tests: `scripts/ci/feature-delivery-map.test.mjs` and `scripts/ci/mobile-delivery-guardrails.test.mjs` (`node --test`).
+For `mobile-v*` tags, after Blacksmith + launch smoke both PASS, the **same** checksum-verified APK is published to a GitHub Release (prerelease for `-rc.*`). No second build.
 
-## Blacksmith setup (external blocker)
+## Cost guardrails (encoded in YAML + tests)
 
-If the Blacksmith integration is not yet installed:
+- Blacksmith: manual/tag only, 1 job, 2vCPU, ≤40 min, no matrix/emulator/Maestro/Sticky Disk/`useblacksmith/checkout`.
+- GitHub: `ubuntu-latest` only, no larger runners, path-aware unified CI, no Gradle in normal CI, APK retention 1 day, no duplicate APK uploads.
 
-1. Open Blacksmith console → authorize/install GitHub integration for organization `egawilldoit`
-2. Grant repository access to `Ega-House-Platform`
+Tests: `scripts/ci/feature-delivery-map.test.mjs` + `mobile-delivery-guardrails.test.mjs` (`node --test`).
+
+## No Play Store / No AAB
+
+This workflow is sideload production, not Play Store distribution. No `bundleRelease`, no `.aab`, no store tracks. AAB/Play Console would be a separate future workflow if needed.
+
+## Blacksmith setup
+
+If the GitHub integration is not installed:
+
+1. Open Blacksmith console → authorize/install for org `egawilldoit`
+2. Grant access to `Ega-House-Platform`
 3. Rerun Mobile Delivery
 
-Do not change the runner back to `ubuntu-latest`; leave the workflow correct and report `BLOCKED_EXTERNAL_BLACKSMITH_SETUP`.
+Do not change the runner back to `ubuntu-latest`.
