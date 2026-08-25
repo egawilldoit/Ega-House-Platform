@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
@@ -22,7 +23,7 @@ type AppShellProps = {
   contentClassName?: string;
 };
 
-async function getSidebarProjects(): Promise<SidebarProject[]> {
+const getSidebarProjects = cache(async (): Promise<SidebarProject[]> => {
   try {
     const supabase = await createClient();
     const { data: projectRows, error: projectsError } = await supabase
@@ -70,9 +71,9 @@ async function getSidebarProjects(): Promise<SidebarProject[]> {
   } catch {
     return [];
   }
-}
+});
 
-async function getSidebarGoals(): Promise<SidebarGoal[]> {
+const getSidebarGoals = cache(async (): Promise<SidebarGoal[]> => {
   try {
     const supabase = await createClient();
     const { data } = await supabase
@@ -84,7 +85,7 @@ async function getSidebarGoals(): Promise<SidebarGoal[]> {
   } catch {
     return [];
   }
-}
+});
 
 export async function AppShell({
   children,

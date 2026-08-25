@@ -11,7 +11,7 @@ import {
 test("navigation items include the full route set when the query is empty", () => {
   const labels = filterNavigationItems("").map((item) => item.label);
 
-  assert.deepEqual(labels, ["Dashboard", "Today", "Tasks", "Goals", "Timer", "Review", "Apps"]);
+  assert.deepEqual(labels, ["Dashboard", "Today", "Tasks", "Goals", "Timer", "Review", "Analytics", "Ideas", "Startup", "Shutdown", "Apps", "Help", "Settings"]);
 });
 
 test("filters navigation items case-insensitively and drops non-matches", () => {

@@ -1,7 +1,7 @@
 import { SHORTCUT_ROUTE_MAP } from "@/lib/keyboard-shortcuts";
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
 
-export type CommandPaletteGroupId = "go-to" | "tasks" | "projects" | "goals";
+export type CommandPaletteGroupId = "go-to" | "tasks" | "projects" | "goals" | "quick-actions";
 
 export type CommandPaletteItem = {
   id: string;
@@ -22,6 +22,7 @@ const GROUP_TITLES: Record<CommandPaletteGroupId, string> = {
   tasks: "Tasks",
   projects: "Projects",
   goals: "Goals",
+  "quick-actions": "Quick actions",
 };
 
 const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
@@ -31,12 +32,27 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
   { label: "Goals", href: SHORTCUT_ROUTE_MAP.goals },
   { label: "Timer", href: SHORTCUT_ROUTE_MAP.timer },
   { label: "Review", href: SHORTCUT_ROUTE_MAP.review },
+  { label: "Analytics", href: "/work-analytics" },
+  { label: "Ideas", href: "/ideas" },
+  { label: "Startup", href: "/startup" },
+  { label: "Shutdown", href: "/shutdown" },
   { label: "Apps", href: SHORTCUT_ROUTE_MAP.apps },
+  { label: "Help", href: "/help" },
+  { label: "Settings", href: "/settings/account" },
+];
+
+const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint">> = [
+  { label: "Create task", href: "/tasks", hint: "Quick task" },
+  { label: "Create project", href: "/tasks/projects/new", hint: "Project" },
+  { label: "Create goal", href: "/goals", hint: "Goal" },
+  { label: "Start focus", href: "/timer", hint: "Timer" },
+  { label: "Plan today", href: "/today", hint: "Today" },
+  { label: "Open review", href: "/review", hint: "Review" },
 ];
 
 function navigationItems(): CommandPaletteItem[] {
   return NAVIGATION_ITEMS.map((item) => ({
-    id: `nav-${item.label.toLowerCase()}`,
+    id: `nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`,
     group: "go-to",
     label: item.label,
     hint: null,
@@ -52,6 +68,26 @@ export function filterNavigationItems(query: string): CommandPaletteItem[] {
   }
 
   return navigationItems().filter((item) => item.label.toLowerCase().includes(normalizedQuery));
+}
+
+function quickActionItems(): CommandPaletteItem[] {
+  return QUICK_ACTION_ITEMS.map((item) => ({
+    id: `qa-${item.label.toLowerCase().replace(/\s+/g, "-")}`,
+    group: "quick-actions",
+    label: item.label,
+    hint: item.hint ?? null,
+    href: item.href,
+  }));
+}
+
+export function filterQuickActionItems(query: string): CommandPaletteItem[] {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return quickActionItems();
+  }
+
+  return quickActionItems().filter((item) => item.label.toLowerCase().includes(normalizedQuery));
 }
 
 export function buildWorkspaceSections(results: WorkspaceSearchResults): CommandPaletteSection[] {
