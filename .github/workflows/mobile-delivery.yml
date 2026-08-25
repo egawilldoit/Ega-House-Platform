@@ -35,6 +35,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
+          fetch-tags: true
 
       - name: Determine source identity
         id: identity
@@ -78,6 +79,14 @@ jobs:
           - API_BASE_URL: \`$API_BASE_URL\`
           EOF
 
+      - name: Ensure tag is fetched (RC tags)
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin '+refs/tags/*:refs/tags/*' --depth=1 --no-tags --prune 2>&1 | head -n 20 || true
+          git tag --list | head -n 20
+
       - name: Validate source ref is main or mobile-v* tag
         shell: bash
         run: |
@@ -88,7 +97,7 @@ jobs:
           elif [[ "$REF" == refs/tags/mobile-v* ]]; then
             echo "Source is mobile tag — allowed."
             TAG="${REF#refs/tags/}"
-            TAG_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || echo "")"
+            TAG_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || git rev-parse "$TAG^{commit}" 2>/dev/null || echo "")"
             HEAD_SHA="$(git rev-parse HEAD)"
             echo "Tag $TAG points to $TAG_SHA, HEAD is $HEAD_SHA"
             if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
@@ -135,6 +144,7 @@ jobs:
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           fetch-depth: 1
+          fetch-tags: true
 
       - name: Set up Node 22
         uses: actions/setup-node@v6
