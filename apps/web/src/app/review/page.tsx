@@ -13,7 +13,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   const model = await getReviewPageModel(resolvedSearchParams);
   return (
     <AppShell eyebrow="Reflection" title="Review" description="What happened and what changes next — evidence, trends, feedback.">
-      <ReviewPageView model={model} searchParams={resolvedSearchParams} />
+      <ReviewPageView model={model} />
     </AppShell>
   );
 }

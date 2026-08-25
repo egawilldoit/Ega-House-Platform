@@ -36,10 +36,11 @@ describe("EGA Command OS tokens — single authority", () => {
 
   it("keeps only valid legacy aliases", () => {
     const globals = read("src/app/globals.css");
-    // No new token should be defined as var(--itself) in :root
-    const lines = globals.split("\n");
+    // No new token should be defined as var(--itself) in :root (ignore @theme inline which intentionally maps)
     const selfRefPattern = /--([a-z0-9-]+):\s*var\(--\1\)/;
-    const violations = lines.filter((l) => selfRefPattern.test(l));
+    // Only check lines inside :root { ... } before @theme
+    const rootBlock = globals.split("@theme")[0];
+    const violations = rootBlock.split("\n").filter((l) => selfRefPattern.test(l));
     expect(violations, `self-referential lines: ${violations.join("; ")}`).toEqual([]);
   });
 

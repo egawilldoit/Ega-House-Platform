@@ -5,7 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDateTime, formatIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
 import { ReviewForm } from "../review-form";
+import type { ReviewFormValues } from "../review-form-state";
 import { WeekSelector } from "../week-selector";
+import type { DailyTrackedTime } from "@/lib/review-session-heatmap";
 import type { ReviewPageModel } from "../_lib/review-page-model";
 
 function toSummaryPreview(summary: string | null, maxLength = 200) {
@@ -17,15 +19,26 @@ function toSummaryPreview(summary: string | null, maxLength = 200) {
 
 export function ReviewPageView({ model }: { model: ReviewPageModel }) {
   const { data } = model;
-  const { bounds, selectedWeekOf, selectedReview, pastReviews, weekBarData, sessionHeatmap, sparseHeatmap, reviewFormDefaults, generatedDraftHref, shouldUseGeneratedDraft } = data as unknown as {
+  const {
+    bounds,
+    selectedWeekOf,
+    selectedReview,
+    pastReviews,
+    weekBarData,
+    sessionHeatmap,
+    sparseHeatmap,
+    reviewFormDefaults,
+    generatedDraftHref,
+    shouldUseGeneratedDraft,
+  } = data as unknown as {
     bounds: { weekStart: string; weekEnd: string };
     selectedWeekOf: string;
     selectedReview: { id: string; summary: string | null; updated_at: string | null; created_at: string } | null;
     pastReviews: Array<{ id: string; summary: string | null; updated_at: string | null; created_at: string }>;
-    weekBarData: unknown;
-    sessionHeatmap: unknown;
+    weekBarData: DailyTrackedTime[];
+    sessionHeatmap: DailyTrackedTime[];
     sparseHeatmap: boolean;
-    reviewFormDefaults: unknown;
+    reviewFormDefaults: ReviewFormValues;
     generatedDraftHref: string;
     shouldUseGeneratedDraft: boolean;
   };
