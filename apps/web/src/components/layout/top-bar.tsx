@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Keyboard, LogOut, Search, Settings, User } from "lucide-react";
+import { Keyboard, Search } from "lucide-react";
 
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -12,7 +12,6 @@ import { getShellRouteMeta } from "./shell-route-meta";
 import { TopBarSignalCluster } from "./shell-signals";
 import { COMMAND_PALETTE_EVENT } from "./command-palette";
 import { workspaceShortcutEvents } from "./workspace-keyboard-shortcuts";
-import { SidebarLogout } from "./sidebar-logout";
 
 type TopBarProps = {
   metrics: WorkspaceShellMetrics;

@@ -4,6 +4,7 @@ import { getHeroPanelData, getCommandCenterPanelData, getPlannerPanelData, getFo
 import { displayNameForUser } from "../_lib/dashboard-helpers";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { createClient } from "@/lib/supabase/server";
 
 import { CommandCenterSpotlight } from "./CommandCenterSpotlight";
 import { DashboardHeroSection } from "./DashboardHeroSection";
@@ -87,16 +88,24 @@ async function TimerSummaryAsync() {
 
 async function SummaryStripAsync() {
   const user = await getCurrentUser();
-  const [hero, goals, review, metrics] = await Promise.all([
+  const [hero, metrics] = await Promise.all([
     getHeroPanelData(user?.id ?? null, displayNameForUser(user)),
-    getGoalsPanelData(),
-    getReviewPulsePanelData(),
     getWorkspaceShellMetrics(),
   ]);
 
-  const activeGoals = (goals.goals.data ?? []).filter((g) => g.status === "active").length;
-  const goalsTotal = (goals.goals.data ?? []).length;
-  const pendingReviews = review.latestReview.data ? 0 : 1;
+  // Authoritative goal counts — not the 6-row presentation slice
+  let activeGoals = 0;
+  let goalsTotal = 0;
+  try {
+    const client = await createClient();
+    const { data: goalRows } = await client.from("goals").select("id, status").limit(500);
+    goalsTotal = goalRows?.length ?? 0;
+    activeGoals = (goalRows ?? []).filter((g) => g.status === "active").length;
+  } catch {
+    activeGoals = 0;
+    goalsTotal = 0;
+  }
+  const pendingReviews = metrics.reviewMissing ? 1 : 0;
 
   return (
     <DashboardSummaryStrip
@@ -113,14 +122,16 @@ async function SummaryStripAsync() {
 }
 
 async function AttentionQueueAsync() {
-  const [metrics, goals, projects] = await Promise.all([
+  const [metrics, goals] = await Promise.all([
     getWorkspaceShellMetrics(),
     getGoalsPanelData(),
-    getProjectsPanelData(),
   ]);
 
-  const atRiskGoals = (goals.goals.data ?? []).filter((g) => g.health === "at_risk" || g.health === "off_track").map((g) => ({ id: g.id, title: g.title }));
-  const dueProjects = (projects.projectStatuses.data ?? []).slice(0, 3).map((p) => ({ id: p.id, name: p.name, slug: p.slug }));
+  const atRiskGoals = (goals.goals.data ?? [])
+    .filter((g) => g.health === "at_risk" || g.health === "off_track")
+    .map((g) => ({ id: g.id, title: g.title }));
+  // No canonical project deadline/target-date in current schema; do not fabricate "due soon" from updated_at
+  const dueProjects: Array<{ id: string; name: string; slug: string }> = [];
 
   const items = buildAttentionItems({
     blockedCount: metrics.blockedTaskCount,

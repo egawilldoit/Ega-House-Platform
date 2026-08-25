@@ -42,12 +42,12 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
 ];
 
 const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint">> = [
-  { label: "Create task", href: "/tasks", hint: "Quick task" },
-  { label: "Create project", href: "/tasks/projects/new", hint: "Project" },
-  { label: "Create goal", href: "/goals", hint: "Goal" },
-  { label: "Start focus", href: "/timer", hint: "Timer" },
-  { label: "Plan today", href: "/today", hint: "Today" },
-  { label: "Open review", href: "/review", hint: "Review" },
+  { label: "Open Tasks", href: "/tasks", hint: "Tasks" },
+  { label: "New Project", href: "/tasks/projects/new", hint: "Project" },
+  { label: "Open Goals", href: "/goals", hint: "Goals" },
+  { label: "Open Timer", href: "/timer", hint: "Timer" },
+  { label: "Open Today", href: "/today", hint: "Today" },
+  { label: "Open Review", href: "/review", hint: "Review" },
 ];
 
 function navigationItems(): CommandPaletteItem[] {
