@@ -26,6 +26,7 @@ export function useProjectListQuery(view: ProjectViewFilter = 'active') {
   return useQuery({
     queryKey: projectQueryKeys.list(view),
     queryFn: () => listMobileProjects(view),
+    placeholderData: (previousData) => previousData,
   });
 }
 

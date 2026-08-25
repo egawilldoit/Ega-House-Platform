@@ -89,6 +89,7 @@ export function useTaskListQuery(params: ListMobileTasksParams = {}) {
   return useQuery({
     queryKey: taskQueryKeys.list(normalized),
     queryFn: () => listMobileTasks(normalized),
+    placeholderData: (previousData) => previousData,
   });
 }
 
