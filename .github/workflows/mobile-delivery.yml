@@ -1,0 +1,795 @@
+name: Mobile Delivery (Blacksmith build + GitHub runtime proof)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_variant:
+        description: "Android APK build variant"
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+      runtime_proof:
+        description: "Run Android emulator runtime proof on the exact APK"
+        type: boolean
+        default: true
+      authenticated_e2e:
+        description: "Run authenticated Maestro flows (requires secrets)"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "mobile-v*.*.*"
+      - "mobile-v*.*.*-rc.*"
+
+# Cost guardrails: manual/tag only, cancel superseded RC/manual runs on same ref.
+# Stable tagged releases have unique refs so they never cancel each other.
+concurrency:
+  group: mobile-delivery-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PRODUCTION_API: https://ega-api.egawilldoit.online
+
+jobs:
+  preflight:
+    name: Preflight (GitHub)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      source_ref: ${{ steps.identity.outputs.source_ref }}
+      app_version: ${{ steps.identity.outputs.app_version }}
+      build_variant: ${{ steps.identity.outputs.build_variant }}
+      api_base_url: ${{ steps.identity.outputs.api_base_url }}
+      is_tag: ${{ steps.identity.outputs.is_tag }}
+      is_rc: ${{ steps.identity.outputs.is_rc }}
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Determine source identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          SOURCE_REF="${{ github.ref }}"
+          echo "repository=egawilldoit/Ega-House-Platform"
+          echo "source_sha=$SOURCE_SHA"
+          echo "source_ref=$SOURCE_REF"
+          echo "event_name=${{ github.event_name }}"
+
+          # Determine build variant: tag builds are always release, dispatch uses input
+          if [[ "$SOURCE_REF" == refs/tags/mobile-v* ]]; then
+            BUILD_VARIANT="release"
+          else
+            BUILD_VARIANT="${{ inputs.build_variant || 'release' }}"
+          fi
+
+          # App version from apps/mobile/package.json or app.json
+          APP_VERSION="$(node -p "require('./apps/mobile/package.json').version" 2>/dev/null || node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || echo "0.0.0")"
+          # If tag contains version, use it
+          if [[ "$SOURCE_REF" =~ refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+            APP_VERSION="${BASH_REMATCH[1]}"
+          fi
+
+          API_BASE_URL="https://ega-api.egawilldoit.online"
+          IS_TAG="false"
+          IS_RC="false"
+          if [[ "$SOURCE_REF" == refs/tags/mobile-v* ]]; then
+            IS_TAG="true"
+            if [[ "$SOURCE_REF" == *"-rc."* ]]; then
+              IS_RC="true"
+            fi
+          fi
+
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_variant=$BUILD_VARIANT" >> "$GITHUB_OUTPUT"
+          echo "api_base_url=$API_BASE_URL" >> "$GITHUB_OUTPUT"
+          echo "is_tag=$IS_TAG" >> "$GITHUB_OUTPUT"
+          echo "is_rc=$IS_RC" >> "$GITHUB_OUTPUT"
+
+          echo "SOURCE_SHA=$SOURCE_SHA" >> "$GITHUB_ENV"
+          echo "SOURCE_REF=$SOURCE_REF" >> "$GITHUB_ENV"
+          echo "BUILD_VARIANT=$BUILD_VARIANT" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## Mobile Delivery Preflight
+          - Repository: egawilldoit/Ega-House-Platform
+          - SOURCE_SHA: \`$SOURCE_SHA\`
+          - SOURCE_REF: \`$SOURCE_REF\`
+          - APP_VERSION: \`$APP_VERSION\`
+          - BUILD_VARIANT: \`$BUILD_VARIANT\`
+          - API_BASE_URL: \`$API_BASE_URL\`
+          EOF
+
+      - name: Validate source ref is main or mobile-v* tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          REF="${{ steps.identity.outputs.source_ref }}"
+          if [[ "$REF" == "refs/heads/main" ]]; then
+            echo "Source is main — allowed."
+          elif [[ "$REF" == refs/tags/mobile-v* ]]; then
+            echo "Source is mobile tag — allowed."
+            # Verify tag points to exact HEAD
+            TAG="${REF#refs/tags/}"
+            TAG_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || echo "")"
+            HEAD_SHA="$(git rev-parse HEAD)"
+            echo "Tag $TAG points to $TAG_SHA, HEAD is $HEAD_SHA"
+            if [ "$TAG_SHA" != "$HEAD_SHA" ]; then
+              echo "::error::Tag $TAG does not point to HEAD $HEAD_SHA (points to $TAG_SHA)"
+              exit 1
+            fi
+          elif [[ "$REF" == refs/heads/ci/* ]] || [[ "$REF" == refs/heads/arch/* ]] || [[ "$REF" == refs/heads/wave/* ]]; then
+            echo "Source is integration branch $REF — allowed for testing."
+          else
+            # For workflow_dispatch on arbitrary branch, allow but warn
+            echo "::warning::Source $REF is not main nor a mobile-v* tag; allowing for manual validation. Production delivery should use main or a mobile-v* tag."
+          fi
+
+      - name: Verify Unified Platform Validation is green for exact SOURCE_SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="${{ steps.identity.outputs.source_sha }}"
+          echo "Checking Unified Platform Validation for SHA $SHA"
+          # Bounded polling: check up to 5 times with delay
+          ATTEMPTS=5
+          for i in $(seq 1 $ATTEMPTS); do
+            # Query workflow runs for unified-platform-validation.yml on this SHA
+            RUNS_JSON="$(gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=20" --jq ".workflow_runs[] | select(.head_sha==\"$SHA\") | {id: .id, status: .status, conclusion: .conclusion, head_sha: .head_sha}" 2>&1 || echo "")"
+            echo "Attempt $i: $RUNS_JSON"
+            # Look for a completed successful run
+            SUCCESS="$(gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=20" --jq "[.workflow_runs[] | select(.head_sha==\"$SHA\" and .conclusion==\"success\" and .status==\"completed\")] | length" 2>/dev/null || echo "0")"
+            if [ "$SUCCESS" -gt 0 ]; then
+              echo "Unified CI is green for $SHA"
+              exit 0
+            fi
+            # Check if any run failed/cancelled for this SHA -> fail fast
+            FAILURE="$(gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=20" --jq "[.workflow_runs[] | select(.head_sha==\"$SHA\" and (.conclusion==\"failure\" or .conclusion==\"cancelled\"))] | length" 2>/dev/null || echo "0")"
+            if [ "$FAILURE" -gt 0 ]; then
+              echo "::error::BLOCKED_CI_NOT_GREEN: Unified Platform Validation has failure/cancelled for SHA $SHA"
+              exit 1
+            fi
+            if [ "$i" -lt "$ATTEMPTS" ]; then
+              echo "No completed run yet for $SHA, waiting 15s..."
+              sleep 15
+            fi
+          done
+          echo "::error::BLOCKED_CI_NOT_GREEN: No successful Unified Platform Validation found for exact SOURCE_SHA $SHA after $ATTEMPTS checks. Ensure the PR/main CI for this SHA is green before requesting Mobile Delivery."
+          # List recent runs for debugging
+          gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=5" --jq ".workflow_runs[] | \"\(.head_sha) \(.status) \(.conclusion) \(.name)\"" || true
+          exit 1
+
+      - name: Probe production API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Probing $PRODUCTION_API/health ..."
+          HEALTH_CODE="$(curl -s -o /tmp/health.json -w "%{http_code}" "$PRODUCTION_API/health" || echo "000")"
+          cat /tmp/health.json || true
+          echo "Health HTTP $HEALTH_CODE"
+          if [ "$HEALTH_CODE" != "200" ]; then
+            echo "::error::BLOCKED_PRODUCTION_API: $PRODUCTION_API/health returned HTTP $HEALTH_CODE, expected 200"
+            exit 1
+          fi
+          echo "Probing $PRODUCTION_API/ready ..."
+          READY_CODE="$(curl -s -o /tmp/ready.json -w "%{http_code}" "$PRODUCTION_API/ready" || echo "000")"
+          cat /tmp/ready.json || true
+          echo "Ready HTTP $READY_CODE"
+          if [ "$READY_CODE" != "200" ]; then
+            echo "::error::BLOCKED_PRODUCTION_API: $PRODUCTION_API/ready returned HTTP $READY_CODE, expected 200"
+            exit 1
+          fi
+          echo "Probing unauthenticated $PRODUCTION_API/api/projects (expect 401) ..."
+          PROJECTS_CODE="$(curl -s -o /tmp/projects.json -w "%{http_code}" "$PRODUCTION_API/api/projects" || echo "000")"
+          cat /tmp/projects.json || true
+          echo "Projects HTTP $PROJECTS_CODE"
+          if [ "$PROJECTS_CODE" != "401" ]; then
+            echo "::error::BLOCKED_PRODUCTION_API: $PRODUCTION_API/api/projects without auth returned HTTP $PROJECTS_CODE, expected 401 UNAUTHENTICATED"
+            exit 1
+          fi
+          # Check UNAUTHENTICATED contract in body
+          if ! grep -q "UNAUTHENTICATED" /tmp/projects.json; then
+            echo "::warning::Response does not contain UNAUTHENTICATED contract marker, but HTTP 401 is correct"
+          fi
+
+      - name: Write preflight metadata artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p preflight-meta
+          cat > preflight-meta/preflight.json <<EOF
+          {
+            "repository": "egawilldoit/Ega-House-Platform",
+            "sourceSha": "${{ steps.identity.outputs.source_sha }}",
+            "sourceRef": "${{ steps.identity.outputs.source_ref }}",
+            "appVersion": "${{ steps.identity.outputs.app_version }}",
+            "buildVariant": "${{ steps.identity.outputs.build_variant }}",
+            "apiBaseUrl": "${{ steps.identity.outputs.api_base_url }}",
+            "isTag": ${{ steps.identity.outputs.is_tag }},
+            "isRc": ${{ steps.identity.outputs.is_rc }},
+            "preflightAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cat preflight-meta/preflight.json
+
+      - name: Upload preflight metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-meta-${{ steps.identity.outputs.source_sha }}
+          path: preflight-meta/**
+          retention-days: 7
+          if-no-files-found: error
+
+  build-apk:
+    name: Build APK (Blacksmith)
+    needs: [preflight]
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    timeout-minutes: 40
+    outputs:
+      apk_filename: ${{ steps.manifest.outputs.apk_filename }}
+      apk_sha256: ${{ steps.manifest.outputs.apk_sha256 }}
+      app_version: ${{ needs.preflight.outputs.app_version }}
+      source_sha: ${{ needs.preflight.outputs.source_sha }}
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Print source identity
+        shell: bash
+        run: |
+          echo "SOURCE_SHA=${{ needs.preflight.outputs.source_sha }}"
+          echo "SOURCE_REF=${{ needs.preflight.outputs.source_ref }}"
+          echo "APP_VERSION=${{ needs.preflight.outputs.app_version }}"
+          echo "BUILD_VARIANT=${{ needs.preflight.outputs.build_variant }}"
+          echo "API_BASE_URL=${{ needs.preflight.outputs.api_base_url }}"
+          git rev-parse HEAD
+          git log --oneline -3
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Validate mobile toolchain (doctor + typecheck)
+        run: |
+          npm run mobile:doctor
+          npm run mobile:typecheck
+
+      - name: Generate Android native project (Expo prebuild)
+        working-directory: apps/mobile
+        env:
+          EXPO_NO_TELEMETRY: "1"
+          EXPO_PUBLIC_API_BASE_URL: ${{ needs.preflight.outputs.api_base_url }}
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Inspect Android signing configuration
+        working-directory: apps/mobile/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Inspecting signingConfigs..."
+          if grep -q "signingConfig" app/build.gradle 2>/dev/null; then
+            grep -n "signingConfig" app/build.gradle | head -20
+          fi
+          if grep -q "signingConfigs" app/build.gradle 2>/dev/null; then
+            grep -n "signingConfigs" app/build.gradle | head -20
+          fi
+          # Check gradle.properties for signing
+          cat gradle.properties 2>/dev/null | grep -i signing || echo "No signing props in gradle.properties"
+          # For release build, check if signing is debug fallback or unsigned
+          if [ "${{ needs.preflight.outputs.build_variant }}" = "release" ]; then
+            if grep -q "debug" app/build.gradle | grep -i signing; then
+              echo "::warning::Release build may use debug signing"
+            fi
+          fi
+
+      - name: Build APK (single)
+        working-directory: apps/mobile/android
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          VARIANT="${{ needs.preflight.outputs.build_variant }}"
+          if [ "$VARIANT" = "release" ]; then
+            echo "Building release APK (JS bundle embedded, no Metro required)"
+            ./gradlew assembleRelease --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4g
+          else
+            echo "Building debug APK"
+            ./gradlew assembleDebug --no-daemon --stacktrace -Dorg.gradle.jvmargs=-Xmx4g
+          fi
+
+      - name: Create APK identity (manifest + checksum)
+        id: manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          VARIANT="${{ needs.preflight.outputs.build_variant }}"
+          VERSION="${{ needs.preflight.outputs.app_version }}"
+          SHORT_SHA="$(echo "${{ needs.preflight.outputs.source_sha }}" | cut -c1-7)"
+          APK_SRC="$(find apps/mobile/android/app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          if [ -z "$APK_SRC" ]; then
+            echo "::error::Gradle produced no APK under apps/mobile/android/app/build/outputs/apk"
+            find apps/mobile/android/app/build/outputs -type f 2>/dev/null || true
+            exit 1
+          fi
+          echo "Found APK: $APK_SRC"
+          ls -lh "$APK_SRC"
+
+          # Try installing check for release: ensure APK is not unsigned debug placeholder
+          if [ "$VARIANT" = "release" ]; then
+            # Check if APK is unsigned (no META-INF/CERT)
+            if ! unzip -l "$APK_SRC" | grep -q "META-INF"; then
+              echo "::error::BLOCKED_ANDROID_SIGNING: Release APK appears unsigned (no META-INF)"
+              exit 1
+            fi
+          fi
+
+          APK_FILENAME="ega-house-${VERSION}-${SHORT_SHA}-${VARIANT}.apk"
+          mkdir -p dist-apk
+          cp "$APK_SRC" "dist-apk/${APK_FILENAME}"
+          APK_SHA256="$(sha256sum "dist-apk/${APK_FILENAME}" | awk '{print $1}')"
+          echo "APK_SHA256=$APK_SHA256"
+          echo "APK_FILENAME=$APK_FILENAME"
+
+          BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          cat > dist-apk/release-manifest.json <<EOF
+          {
+            "repository": "egawilldoit/Ega-House-Platform",
+            "gitSha": "${{ needs.preflight.outputs.source_sha }}",
+            "gitRef": "${{ needs.preflight.outputs.source_ref }}",
+            "version": "$VERSION",
+            "variant": "$VARIANT",
+            "apiBaseUrl": "${{ needs.preflight.outputs.api_base_url }}",
+            "builtAt": "$BUILT_AT",
+            "runner": "blacksmith-2vcpu-ubuntu-2404",
+            "apkFile": "$APK_FILENAME",
+            "apkSha256": "$APK_SHA256"
+          }
+          EOF
+          cat dist-apk/release-manifest.json
+          echo "$APK_SHA256  $APK_FILENAME" > dist-apk/SHA256SUMS
+          cat dist-apk/SHA256SUMS
+
+          # Verify checksum round-trips
+          (cd dist-apk && sha256sum -c SHA256SUMS)
+
+          echo "apk_filename=$APK_FILENAME" >> "$GITHUB_OUTPUT"
+          echo "apk_sha256=$APK_SHA256" >> "$GITHUB_OUTPUT"
+
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## Blacksmith Build
+          - Runner: blacksmith-2vcpu-ubuntu-2404
+          - APK: \`$APK_FILENAME\`
+          - SHA256: \`$APK_SHA256\`
+          - Variant: \`$VARIANT\`
+          - Source SHA: \`${{ needs.preflight.outputs.source_sha }}\`
+          EOF
+
+      - name: Upload exact APK artifact (temporary, 1 day)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ega-house-apk-${{ needs.preflight.outputs.source_sha }}
+          path: dist-apk/**
+          if-no-files-found: error
+          retention-days: 1
+
+  runtime-proof:
+    name: Android runtime proof (GitHub)
+    needs: [preflight, build-apk]
+    if: ${{ inputs.runtime_proof != false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    outputs:
+      install: ${{ steps.ladder.outputs.install }}
+      maestro: ${{ steps.maestro.outputs.maestro }}
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Download exact APK artifact (Blacksmith)
+        uses: actions/download-artifact@v4
+        with:
+          name: ega-house-apk-${{ needs.preflight.outputs.source_sha }}
+          path: apk-dist
+
+      - name: Verify checksum and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -lh apk-dist/
+          cat apk-dist/release-manifest.json
+          cat apk-dist/SHA256SUMS
+          (cd apk-dist && sha256sum -c SHA256SUMS)
+          MANIFEST_SHA="$(node -p "require('./apk-dist/release-manifest.json').apkSha256")"
+          FILE_SHA="$(sha256sum apk-dist/*.apk | awk '{print $1}')"
+          echo "Manifest SHA256: $MANIFEST_SHA"
+          echo "File SHA256:     $FILE_SHA"
+          if [ "$MANIFEST_SHA" != "$FILE_SHA" ]; then
+            echo "::error::FAIL_ARTIFACT_INTEGRITY: checksum mismatch between manifest and APK file"
+            exit 1
+          fi
+          APK_PATH="$(ls apk-dist/*.apk | head -n 1)"
+          echo "EGA_MOBILE_APK=$APK_PATH" >> "$GITHUB_ENV"
+          # Resolve absolute path for ladder
+          echo "APK_PATH=$APK_PATH" >> "$GITHUB_ENV"
+          echo "MANIFEST_SHA=$MANIFEST_SHA" >> "$GITHUB_ENV"
+          cp "$APK_PATH" /tmp/ega-house-under-test.apk
+          echo "APK ready at $APK_PATH"
+
+      - name: Enable KVM access for hardware-accelerated emulation
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node:kvm"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger
+          if [ ! -w /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm || true
+          fi
+          ls -l /dev/kvm || true
+          "$ANDROID_HOME/emulator/emulator" -accel-check || true
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK inventory
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls "$ANDROID_HOME" || true
+          ls -d "$ANDROID_HOME"/system-images/*/*/* 2>/dev/null || echo "none preinstalled"
+
+      - name: Ensure google_apis x86_64 system image
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          IMAGE_DIR="$(ls -d "$ANDROID_HOME"/system-images/android-*/google_apis/x86_64 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$IMAGE_DIR" ]; then
+            echo "No google_apis x86_64 image preinstalled; installing android-34."
+            yes | "$SDKM" --licenses > /dev/null 2>&1 || true
+            "$SDKM" --install "system-images;android-34;google_apis;x86_64"
+            IMAGE_DIR="$ANDROID_HOME/system-images/android-34/google_apis/x86_64"
+          fi
+          test -d "$IMAGE_DIR" || { echo "::error::system image missing at $IMAGE_DIR"; exit 1; }
+          PKG="${IMAGE_DIR#"$ANDROID_HOME/system-images/"}"
+          PKG="${PKG//\//;}"
+          echo "AVD image package: $PKG"
+          echo "AVD_IMAGE_PACKAGE=$PKG" >> "$GITHUB_ENV"
+
+      - name: Create AVD manually
+        run: |
+          AVD_HOME="$GITHUB_WORKSPACE/.android/avd"
+          mkdir -p "$AVD_HOME/ega-runtime.avd"
+          cat > "$AVD_HOME/ega-runtime.ini" <<EOF
+          avd.ini.encoding=UTF-8
+          path=$AVD_HOME/ega-runtime.avd
+          path.rel=avd/ega-runtime.avd
+          target=android-34
+          EOF
+          cat > "$AVD_HOME/ega-runtime.avd/config.ini" <<EOF
+          avd.ini.encoding=UTF-8
+          AvdId=ega-runtime
+          image.sysdir.1=system-images/android-34/google_apis/x86_64/
+          tag.id=google_apis
+          tag.display=Google APIs
+          abi.type=x86_64
+          hw.cpu.arch=x86_64
+          hw.cpu.ncore=4
+          hw.ramSize=4096
+          hw.keyboard=yes
+          hw.gpu.enabled=yes
+          hw.gpu.mode=swiftshader_indirect
+          hw.lcd.width=1080
+          hw.lcd.height=2280
+          hw.lcd.density=440
+          disk.dataPartition.size=8G
+          image.androidVersion.api=34
+          EOF
+          echo "ANDROID_AVD_HOME=$AVD_HOME" >> "$GITHUB_ENV"
+
+      - name: Launch emulator and wait for boot
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          EMU="$ANDROID_HOME/emulator/emulator"
+          "$ADB" start-server
+          nohup "$EMU" -avd ega-runtime \
+            -no-window -no-audio -gpu swiftshader_indirect \
+            -no-snapshot -no-boot-anim \
+            > emulator.log 2>&1 &
+          timeout 300 "$ADB" wait-for-device
+          BOOTED=0
+          for i in $(seq 1 90); do
+            STATE="$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')"
+            if [ "$STATE" = "1" ]; then
+              echo "Emulator booted (check #$i)."
+              BOOTED=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$BOOTED" != "1" ]; then
+            echo "::error::FAIL_RUNTIME_PROOF: emulator did not report sys.boot_completed=1 within 15 minutes"
+            tail -100 emulator.log || true
+            exit 1
+          fi
+          "$ADB" devices
+
+      - name: Mobile Verification Ladder L6 (install -> launch -> process alive -> UI)
+        id: ladder
+        env:
+          EGA_MOBILE_APK: ${{ env.APK_PATH }}
+          EGA_MOBILE_UI_PROBE_TEXT: EGA House
+          EGA_MOBILE_ALIVE_AFTER_SECONDS: "10"
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p ci-artifacts
+          # For release APK, no Metro needed. For debug with Metro fallback, ladder will still handle but we assert release does not need Metro.
+          if [ "${{ needs.preflight.outputs.build_variant }}" = "release" ]; then
+            echo "Release APK: not starting Metro (JS bundle embedded)"
+          else
+            echo "Debug APK: Metro would be required for JS bundle"
+          fi
+          node scripts/ci/mobile-verification-ladder.mjs --levels 6 | tee ci-artifacts/ladder-l6.txt
+          # Expose install/launch status for summary
+          if grep -q "PASS" ci-artifacts/ladder-l6.txt; then
+            echo "install=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "install=FAIL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Maestro CLI
+        if: success()
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://get.maestro.mobile.dev" | bash
+          test -x "$HOME/.maestro/bin/maestro"
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Run Maestro flow 00-welcome (non-authenticated smoke)
+        id: maestro
+        if: success()
+        working-directory: apps/mobile
+        env:
+          ANDROID_SERIAL: emulator-5554
+        run: |
+          set -o pipefail
+          mkdir -p ../../ci-artifacts/maestro
+          set +e
+          "$HOME/.maestro/bin/maestro" test \
+            e2e/maestro/00-welcome.yaml \
+            2>&1 | tee ../../ci-artifacts/maestro/maestro-output.txt
+          MAESTRO_EXIT="${PIPESTATUS[0]}"
+          set -e
+          if [ -d "$HOME/.maestro/tests" ]; then
+            cp -r "$HOME/.maestro/tests"/. ../../ci-artifacts/maestro/runs/ || true
+          fi
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          timeout 60 "$ADB" exec-out screencap -p > ../../ci-artifacts/maestro/final-screen.png || true
+          echo "maestro test exit code: $MAESTRO_EXIT"
+          if [ "$MAESTRO_EXIT" -eq 0 ]; then
+            echo "maestro=PASS" >> "$GITHUB_OUTPUT"
+          else
+            echo "maestro=FAIL" >> "$GITHUB_OUTPUT"
+          fi
+          exit "$MAESTRO_EXIT"
+
+      - name: Run authenticated Maestro flows (when requested)
+        if: ${{ inputs.authenticated_e2e == true }}
+        working-directory: apps/mobile
+        env:
+          ANDROID_SERIAL: emulator-5554
+          EGA_TEST_EMAIL: ${{ secrets.EGA_TEST_EMAIL }}
+          EGA_TEST_PASSWORD: ${{ secrets.EGA_TEST_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$EGA_TEST_EMAIL" ] || [ -z "$EGA_TEST_PASSWORD" ]; then
+            echo "::error::authenticated_e2e requested but EGA_TEST_EMAIL/EGA_TEST_PASSWORD secrets are unavailable — failing honestly per honest-evidence policy"
+            echo "BLOCKED" > ../../ci-artifacts/maestro/authenticated-status.txt
+            exit 1
+          fi
+          mkdir -p ../../ci-artifacts/maestro
+          "$HOME/.maestro/bin/maestro" test \
+            --env E2E_EMAIL="$EGA_TEST_EMAIL" \
+            --env E2E_PASSWORD="$EGA_TEST_PASSWORD" \
+            e2e/maestro/suite.yaml 2>&1 | tee ../../ci-artifacts/maestro/authenticated-output.txt
+
+      - name: Report authenticated-flow coverage honestly
+        if: always()
+        run: |
+          mkdir -p ci-artifacts/maestro
+          if [ "${{ inputs.authenticated_e2e }}" != "true" ]; then
+            cat > ci-artifacts/maestro/AUTHENTICATED-FLOWS-NOT-REQUESTED.txt <<'EOF'
+          Authenticated flows not requested for this run (authenticated_e2e=false).
+          Baseline flow 00-welcome was executed above.
+          EOF
+            cat ci-artifacts/maestro/AUTHENTICATED-FLOWS-NOT-REQUESTED.txt
+          elif [ "${{ inputs.authenticated_e2e }}" = "true" ] && [ ! -f ci-artifacts/maestro/authenticated-output.txt ]; then
+            cat > ci-artifacts/maestro/AUTHENTICATED-FLOWS-NOT-RUN.txt <<'EOF'
+          Maestro authenticated flows NOT executed: credentials unavailable.
+          Status: BLOCKED_BY_CREDENTIALS per honest-evidence contract.
+          EOF
+            cat ci-artifacts/maestro/AUTHENTICATED-FLOWS-NOT-RUN.txt
+          fi
+
+      - name: Collect runtime evidence
+        if: always()
+        run: |
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          mkdir -p ci-artifacts/runtime
+          if [ "$("$ADB" get-state 2>/dev/null | tr -d '\r')" = "device" ]; then
+            timeout 60 "$ADB" exec-out screencap -p > ci-artifacts/runtime/screen.png || true
+            if timeout 60 "$ADB" shell uiautomator dump /sdcard/final-window.xml > /dev/null 2>&1; then
+              timeout 60 "$ADB" exec-out cat /sdcard/final-window.xml > ci-artifacts/runtime/ui-dump.xml || true
+            fi
+            timeout 60 "$ADB" logcat -d -t 500 > ci-artifacts/runtime/logcat-tail.txt || true
+          else
+            echo "no emulator online; runtime evidence unavailable" | tee ci-artifacts/runtime/README.txt
+          fi
+          cp emulator.log ci-artifacts/runtime/emulator.log 2>/dev/null || true
+          cp -r apk-dist ci-artifacts/apk-dist 2>/dev/null || true
+          ls -la ci-artifacts ci-artifacts/runtime || true
+
+      - name: Upload runtime proof evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-proof-${{ needs.preflight.outputs.source_sha }}
+          path: ci-artifacts/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish-release:
+    name: Publish GitHub Release (tag only)
+    needs: [preflight, build-apk, runtime-proof]
+    # Only publish for mobile-v* tags, and only if runtime proof succeeded or was not required (manual debug without proof shouldn't publish)
+    if: ${{ needs.preflight.outputs.is_tag == 'true' && (needs.runtime-proof.result == 'success' || needs.runtime-proof.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download exact APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ega-house-apk-${{ needs.preflight.outputs.source_sha }}
+          path: apk-dist
+
+      - name: Verify checksum before release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat apk-dist/release-manifest.json
+          cat apk-dist/SHA256SUMS
+          (cd apk-dist && sha256sum -c SHA256SUMS)
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.preflight.outputs.source_ref }}"
+          TAG="${TAG#refs/tags/}"
+          VERSION="${{ needs.preflight.outputs.app_version }}"
+          IS_RC="${{ needs.preflight.outputs.is_rc }}"
+          echo "Publishing release for tag $TAG (is_rc=$IS_RC)"
+
+          PRERELEASE_FLAG=""
+          if [ "$IS_RC" = "true" ]; then
+            PRERELEASE_FLAG="--prerelease"
+            TITLE="EGA House Mobile $TAG (RC)"
+          else
+            TITLE="EGA House Mobile $TAG"
+          fi
+
+          NOTES="EGA House Mobile Delivery — tag $TAG
+          - Source SHA: ${{ needs.preflight.outputs.source_sha }}
+          - Version: $VERSION
+          - Variant: ${{ needs.preflight.outputs.build_variant }}
+          - API: ${{ needs.preflight.outputs.api_base_url }}
+          - APK: $(cat apk-dist/SHA256SUMS)
+          - Runner: blacksmith-2vcpu-ubuntu-2404"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists — uploading assets"
+            gh release upload "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
+            # Update notes
+            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
+          else
+            echo "Creating release $TAG"
+            gh release create "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+              $PRERELEASE_FLAG
+          fi
+          gh release view "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
+
+  delivery-summary:
+    name: Delivery summary
+    needs: [preflight, build-apk, runtime-proof, publish-release]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Write delivery summary
+        shell: bash
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          # EGA ANDROID DELIVERY
+
+          | Field | Value |
+          |---|---|
+          | Source SHA | \`${{ needs.preflight.outputs.source_sha }}\` |
+          | Source ref | \`${{ needs.preflight.outputs.source_ref }}\` |
+          | Version | \`${{ needs.preflight.outputs.app_version }}\` |
+          | Variant | \`${{ needs.preflight.outputs.build_variant }}\` |
+          | Production API | \`${{ needs.preflight.outputs.api_base_url }}\` |
+          | Blacksmith runner | \`blacksmith-2vcpu-ubuntu-2404\` |
+          | APK filename | \`${{ needs.build-apk.outputs.apk_filename }}\` |
+          | APK SHA256 | \`${{ needs.build-apk.outputs.apk_sha256 }}\` |
+
+          | Gate | Result |
+          |---|---|
+          | Preflight | ${{ needs.preflight.result }} |
+          | Unified CI | (see preflight — must be PASS to reach Blacksmith) |
+          | Blacksmith build | ${{ needs.build-apk.result }} |
+          | APK checksum | (verified in build + runtime) |
+          | Android install | ${{ needs.runtime-proof.result }} |
+          | Android launch | ${{ needs.runtime-proof.result }} |
+          | Process liveness | ${{ needs.runtime-proof.result }} |
+          | UI probe | ${{ needs.runtime-proof.result }} |
+          | Maestro welcome | ${{ needs.runtime-proof.result }} |
+          | Authenticated Maestro | ${{ inputs.authenticated_e2e == true && 'REQUESTED' || 'NOT REQUESTED' }} |
+          | GitHub Release | ${{ needs.publish-release.result }} |
+
+          EOF
+          cat "$GITHUB_STEP_SUMMARY"

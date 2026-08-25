@@ -12,8 +12,7 @@ Conventions used by every step:
   physical). Record it in the evidence for every step.
 - `PKG` — `com.ega_house.mobile` (from `apps/mobile/app.json`
   `expo.android.package`; re-read there if app config changes).
-- APK source: build via `.github/workflows/mobile-apk-manual.yml`
-  (workflow_dispatch, artifact download) or locally with
+- APK source: build via `.github/workflows/mobile-delivery.yml` (Mobile Delivery — Blacksmith build, temporary artifact `ega-house-apk-<SHA>`, or GitHub Release for tags) or locally with
   `npm run mobile:prebuild:android`, then `./android/gradlew assembleDebug`.
 - Screenshot evidence: `adb -s $SERIAL exec-out screencap -p > stepNN.png`.
   Logcat window: start from `adb -s $SERIAL logcat -c`, capture with
@@ -59,23 +58,20 @@ A protocol run may be cited as APP-runtime evidence only when every claimed
 step's artifacts exist; partial bundles must be reported as partially proven,
 never extrapolated.
 
-## Automated CI status (`.github/workflows/android-runtime.yml`)
+## Automated CI status (`.github/workflows/mobile-delivery.yml`)
 
-The dispatch-only Android Runtime Proof job boots an x86_64+KVM emulator,
-installs the debug APK, runs Metro + `adb reverse`, gates on ladder L6, then
-runs Maestro flow `00-welcome` (steps 1–2 plus welcome→login navigation) and
-gates job success on it.
+Mobile Delivery is the single orchestrated delivery workflow: GitHub preflight → Blacksmith APK build (one compile) → GitHub emulator runtime proof on that exact binary (ladder L6 + Maestro `00-welcome`). Production API `https://ega-api.egawilldoit.online` is live and probed by preflight (`/health`, `/ready`, unauthenticated `401`). Authenticated flows remain gated on test credentials, not on API deployment.
 
 | Maestro flow | Protocol steps covered | Status | Blocker |
 | --- | --- | --- | --- |
 | `00-welcome.yaml` | 1, 2 + login-form render | PROVEN in CI (job-gated) | none |
-| `01-login.yaml` | 3 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | Production-Hardening Tasks 4/5/7 blocked externally on Vercel credentials; no test account exists |
-| `02-tasks-visible.yaml` | 5 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | same |
-| `03-timer-start-stop.yaml` | 10, 14 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | same |
-| `04-logout.yaml` | 15 | BLOCKED-BY-CREDENTIALS | needs authenticated session from flow 01 |
-| `suite.yaml` | 1–3, 5, 10, 14–15 | BLOCKED-BY-DEPLOYED-API + CREDENTIALS | runs flows 01–04 |
+| `01-login.yaml` | 3 | BLOCKED-BY-CREDENTIALS | API is live (`ega-api.egawilldoit.online`); needs `EGA_TEST_EMAIL`/`EGA_TEST_PASSWORD` secrets and `authenticated_e2e=true` |
+| `02-tasks-visible.yaml` | 5 | BLOCKED-BY-CREDENTIALS | same |
+| `03-timer-start-stop.yaml` | 10, 14 | BLOCKED-BY-CREDENTIALS | same |
+| `04-logout.yaml` | 15 | BLOCKED-BY-CREDENTIALS | same |
+| `suite.yaml` | 1–3, 5, 10, 14–15 | BLOCKED-BY-CREDENTIALS | same |
 
 Blocked flows are never faked or mocked in CI; each run writes an explicit
-`AUTHENTICATED-FLOWS-NOT-RUN.txt` notice into its artifact bundle. Remaining
-protocol steps (4, 6–9, 11–13, 16–19) stay manual-only under this document
-until the API/credential blockers clear.
+`AUTHENTICATED-FLOWS-NOT-REQUESTED.txt` or `AUTHENTICATED-FLOWS-NOT-RUN.txt` notice into its artifact bundle. Remaining
+protocol steps (4, 6–9, 11–13, 16–19) stay manual-only under this document.
+See `docs/ci/mobile-delivery.md` for the full delivery graph.
