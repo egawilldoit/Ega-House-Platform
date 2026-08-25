@@ -1,7 +1,6 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import React from 'react';
 import {
   Platform,
   Pressable,
@@ -12,31 +11,30 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { glassConfig, mobileTheme } from '../theme';
+import { glassConfig, mobileTheme } from '@/components/mobile/theme';
 
 const TAB_HEIGHT = 72;
 const TAB_MARGIN = 24;
 const PILL_BOTTOM_GAP = 20;
-// Floating chrome with a fixed pill silhouette: labels cap font scaling so the
-// single-line nav stays intact; every other surface scales without a cap.
 const TAB_LABEL_MAX_FONT_SCALE = 1.4;
 
 function getLabel(routeName: string, options: BottomTabBarProps['descriptors'][string]['options']) {
   const label = options.tabBarLabel ?? options.title ?? routeName;
-
   return typeof label === 'string' ? label : routeName;
 }
 
-function isHidden(descriptor: BottomTabBarProps['descriptors'][string]) {
+function isHiddenRoute(descriptor: BottomTabBarProps['descriptors'][string]) {
   return (descriptor.options as { href?: unknown }).href === null;
 }
 
-export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarProps) {
+export function BottomNavigation({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const useRealBlur = Platform.OS !== 'android' || glassConfig.useRealBlurOnAndroid;
   const bottomOffset = Math.max(insets.bottom, 12) + PILL_BOTTOM_GAP;
   const pillWidth = Math.max(Math.min(width - TAB_MARGIN * 2, 560), 280);
+
+  const visibleRoutes = state.routes.filter((route) => !isHiddenRoute(descriptors[route.key]));
 
   const content = (
     <>
@@ -47,13 +45,11 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
       />
       <View pointerEvents="none" style={styles.highlight} />
       <View style={styles.items}>
-        {state.routes
-          .filter((route) => !isHidden(descriptors[route.key]))
-          .map((route) => {
-            const descriptor = descriptors[route.key];
-            const options = descriptor.options;
-            const originalIndex = state.routes.findIndex((r) => r.key === route.key);
-            const focused = state.index === originalIndex;
+        {visibleRoutes.map((route) => {
+          const descriptor = descriptors[route.key];
+          const options = descriptor.options;
+          const index = state.routes.findIndex((r) => r.key === route.key);
+          const focused = state.index === index;
           const color = focused ? mobileTheme.nav.active : 'rgba(255,255,255,0.62)';
           const label = getLabel(route.name, options);
 
@@ -63,9 +59,11 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
               target: route.key,
               canPreventDefault: true,
             });
-
             if (!focused && !event.defaultPrevented) {
-              navigation.navigate(route.name, route.params);
+              (navigation.navigate as unknown as (name: string, params?: object) => void)(
+                route.name,
+                route.params as object | undefined,
+              );
             }
           };
 
@@ -78,26 +76,17 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
 
           return (
             <Pressable
+              key={route.key}
               accessibilityRole="button"
               accessibilityState={focused ? { selected: true } : {}}
               accessibilityLabel={options.tabBarAccessibilityLabel}
-              key={route.key}
-              onLongPress={onLongPress}
-              onPress={onPress}
               testID={options.tabBarButtonTestID}
-              style={({ pressed }) => [
-                styles.item,
-                pressed ? styles.itemPressed : null,
-              ]}
+              onPress={onPress}
+              onLongPress={onLongPress}
+              style={({ pressed }) => [styles.item, pressed ? styles.itemPressed : null]}
             >
-              {options.tabBarIcon
-                ? options.tabBarIcon({ focused, color, size: focused ? 23 : 21 })
-                : null}
-              <Text
-                maxFontSizeMultiplier={TAB_LABEL_MAX_FONT_SCALE}
-                numberOfLines={1}
-                style={[styles.label, focused ? styles.labelActive : null]}
-              >
+              {options.tabBarIcon ? options.tabBarIcon({ focused, color, size: focused ? 23 : 21 }) : null}
+              <Text maxFontSizeMultiplier={TAB_LABEL_MAX_FONT_SCALE} numberOfLines={1} style={[styles.label, focused ? styles.labelActive : null]}>
                 {label}
               </Text>
               {focused ? <View style={styles.activeDot} /> : null}
@@ -113,16 +102,8 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
   if (useRealBlur) {
     return (
       <View pointerEvents="box-none" style={wrapperStyle}>
-        <LinearGradient
-          colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']}
-          pointerEvents="none"
-          style={styles.navFade}
-        />
-        <BlurView
-          intensity={mobileTheme.glass.blurIntensity.medium}
-          tint="dark"
-          style={[styles.container, { width: pillWidth }]}
-        >
+        <LinearGradient colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']} pointerEvents="none" style={styles.navFade} />
+        <BlurView intensity={mobileTheme.glass.blurIntensity.medium} tint="dark" style={[styles.container, { width: pillWidth }]}>
           {content}
         </BlurView>
       </View>
@@ -131,11 +112,7 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
 
   return (
     <View pointerEvents="box-none" style={wrapperStyle}>
-      <LinearGradient
-        colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']}
-        pointerEvents="none"
-        style={styles.navFade}
-      />
+      <LinearGradient colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']} pointerEvents="none" style={styles.navFade} />
       <View style={[styles.container, styles.fake, { width: pillWidth }]}>{content}</View>
     </View>
   );

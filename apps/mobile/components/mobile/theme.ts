@@ -43,9 +43,9 @@ export const mobileTheme = {
     infoBg: '#dbeafe',
     infoMid: '#93c5fd',
 
-    // Status-specific
-    blocked: '#7c3aed',
-    blockedBg: '#ede9fe',
+    // Status-specific (blocked now maps to danger red; legacy purple removed)
+    blocked: '#dc2626',
+    blockedBg: '#fee2e2',
 
     // Overlay
     overlay: 'rgba(10, 15, 30, 0.45)',
@@ -189,23 +189,45 @@ export const glassConfig = {
   useRealBlurForLists: false,
 };
 
-export type MobileStatusTone = 'todo' | 'in_progress' | 'done' | 'blocked';
+export type MobileStatusTone =
+  | 'todo'
+  | 'planned'
+  | 'in_progress'
+  | 'active'
+  | 'done'
+  | 'blocked'
+  | 'paused'
+  | 'archived'
+  | 'draft';
 export type MobilePriorityTone = 'low' | 'medium' | 'high' | 'urgent';
+export type MobileHealthTone = 'on_track' | 'at_risk' | 'off_track' | null;
 
-export function statusTone(status: MobileStatusTone) {
+export type ChipTone = { background: string; color: string; dot: string };
+export type ChipKind = 'status' | 'priority' | 'health';
+
+export function statusTone(status: MobileStatusTone): ChipTone {
   switch (status) {
     case 'done':
       return { background: '#dcfce7', color: '#15803d', dot: '#22c55e' };
     case 'in_progress':
+      return { background: '#fef3c7', color: '#b45309', dot: '#f59e0b' };
+    case 'active':
       return { background: '#dbeafe', color: '#1d4ed8', dot: '#3b82f6' };
     case 'blocked':
-      return { background: '#ede9fe', color: '#7c3aed', dot: '#8b5cf6' };
+      return { background: '#fee2e2', color: '#dc2626', dot: '#ef4444' };
+    case 'paused':
+      return { background: '#fef9c3', color: '#92400e', dot: '#eab308' };
+    case 'archived':
+      return { background: '#f1f5f9', color: '#64748b', dot: '#94a3b8' };
+    case 'planned':
+    case 'draft':
+    case 'todo':
     default:
       return { background: '#f1f5f9', color: '#475569', dot: '#94a3b8' };
   }
 }
 
-export function priorityTone(priority: MobilePriorityTone) {
+export function priorityTone(priority: MobilePriorityTone): ChipTone {
   switch (priority) {
     case 'urgent':
       return { background: '#fee2e2', color: '#dc2626', dot: '#ef4444' };
@@ -216,4 +238,40 @@ export function priorityTone(priority: MobilePriorityTone) {
     default:
       return { background: '#f0fdf4', color: '#166534', dot: '#4ade80' };
   }
+}
+
+export function healthTone(health: MobileHealthTone): ChipTone {
+  switch (health) {
+    case 'on_track':
+      return { background: '#dcfce7', color: '#15803d', dot: '#22c55e' };
+    case 'at_risk':
+      return { background: '#fef9c3', color: '#92400e', dot: '#eab308' };
+    case 'off_track':
+      return { background: '#fee2e2', color: '#dc2626', dot: '#ef4444' };
+    default:
+      return { background: '#f1f5f9', color: '#64748b', dot: '#94a3b8' };
+  }
+}
+
+export function chipTone(kind: ChipKind, value: string | null): ChipTone {
+  if (kind === 'priority') {
+    return priorityTone((value as MobilePriorityTone) ?? 'low');
+  }
+  if (kind === 'health') {
+    return healthTone((value as MobileHealthTone) ?? null);
+  }
+  return statusTone((value as MobileStatusTone) ?? 'todo');
+}
+
+// Legacy project/goal helpers now delegate to central resolver
+export function projectStatusTone(status: string): ChipTone {
+  return statusTone(status as MobileStatusTone);
+}
+
+export function goalHealthTone(health: string | null): ChipTone {
+  return healthTone(health as MobileHealthTone);
+}
+
+export function goalStatusTone(status: string): ChipTone {
+  return statusTone(status as MobileStatusTone);
 }

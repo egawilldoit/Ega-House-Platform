@@ -17,6 +17,7 @@ import {
   MobileScreenHeader,
   SkeletonCard,
 } from '@/components/mobile/primitives';
+import { HeaderActions } from '@/components/mobile/ui/HeaderActions';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useTaskListQuery } from '@/features/tasks/query';
 import {
@@ -122,7 +123,7 @@ export default function TimerScreen() {
   if (workspaceQuery.isPending && !workspace) {
     return (
       <MobileScreen>
-        <MobileScreenHeader description="Loading your timer..." eyebrow="Focus" title="Timer" />
+        <MobileScreenHeader description="Loading your timer..." eyebrow="Focus" title="Timer" rightAction={<HeaderActions />} />
         <View style={styles.skeletonWrap}>
           <SkeletonCard />
           <SkeletonCard />
@@ -143,6 +144,7 @@ export default function TimerScreen() {
           description="Server unavailable"
           eyebrow="Focus"
           title="Timer"
+          rightAction={<HeaderActions />}
         />
         <GlassCard variant="fake" style={styles.offlineCard} contentStyle={styles.offlineContent}>
           <Ionicons color={mobileTheme.colors.danger} name="cloud-offline-outline" size={20} />
@@ -188,6 +190,7 @@ export default function TimerScreen() {
           }
           eyebrow="Focus"
           title="Timer"
+          rightAction={<HeaderActions />}
         />
 
         {showStaleBanner ? (

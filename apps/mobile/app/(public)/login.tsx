@@ -35,7 +35,7 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       await signIn(trimmedEmail, password);
-      router.replace('/(app)/(tabs)/tasks');
+      router.replace('/(app)/(tabs)/today');
     } catch (signInError) {
       const message =
         signInError instanceof Error ? signInError.message : 'Login failed. Try again.';
