@@ -33,11 +33,23 @@ export {
 
 const ignored = new Set([".git", ".next", ".expo", "node_modules", "coverage", "dist", "build"]);
 const required = [
-  "AGENTS.md", "ARCHITECTURE.md", "HERMES_MASTER_PROMPT.md",
-  "docs/agent-context/index.md", "docs/agent-context/product-authority.md",
-  "docs/agent-context/testing-and-validation.md", "docs/agent-context/skill-routing-evaluation.md",
-  "docs/architecture/delivery-lifecycle.md", "docs/architecture/queue-and-leases.md",
-  "docs/architecture/runner-and-worktrees.md", "docs/architecture/hermes-execution.md",
+  "AGENTS.md",
+  "CONTEXT.md",
+  "ARCHITECTURE.md",
+  "HERMES_MASTER_PROMPT.md",
+  "docs/agent-context/index.md",
+  "docs/agent-context/product-authority.md",
+  "docs/agent-context/decision-log.md",
+  "docs/agent-context/tooling-map.md",
+  "docs/agent-context/testing-and-validation.md",
+  "docs/agent-context/skill-routing-evaluation.md",
+  "docs/architecture/platform-monorepo.md",
+  "docs/architecture/decisions/001-platform-monorepo.md",
+  "docs/architecture/hono-deployment.md",
+  "docs/architecture/delivery-lifecycle.md",
+  "docs/architecture/queue-and-leases.md",
+  "docs/architecture/runner-and-worktrees.md",
+  "docs/architecture/hermes-execution.md",
 ];
 const conflicts = [
   [/(?:work|implement|commit)\s+(?:directly\s+)?on\s+main/i, "direct main-branch implementation"],
@@ -45,6 +57,26 @@ const conflicts = [
   [/(?:Hermes|agent).{0,40}(?:output|exit code|result JSON).{0,30}(?:is|as)\s+(?:proof|success)/i, "agent self-certification"],
   [/pgmq\s*\.\s*pop\s*\([^)]*\).{0,40}(?:canonical|recommended|required)/i, "unsafe queue consumption"],
 ];
+
+const navigationRequirements = new Map([
+  ["AGENTS.md", [
+    "(CONTEXT.md)",
+    "(docs/agent-context/decision-log.md)",
+    "(docs/agent-context/tooling-map.md)",
+    "(docs/architecture/platform-monorepo.md)",
+  ]],
+  ["docs/agent-context/index.md", [
+    "(../../CONTEXT.md)",
+    "(decision-log.md)",
+    "(tooling-map.md)",
+    "(../architecture/platform-monorepo.md)",
+  ]],
+  ["HERMES_MASTER_PROMPT.md", [
+    "(CONTEXT.md)",
+    "(docs/agent-context/decision-log.md)",
+    "docs/architecture/platform-monorepo.md",
+  ]],
+]);
 
 const exists = async (file, type = "file") => {
   try { const value = await stat(file); return type === "directory" ? value.isDirectory() : value.isFile(); }
@@ -70,6 +102,20 @@ async function validateFiles(root, errors, output) {
   }
 }
 
+async function validateNavigation(root, errors, output) {
+  let checked = 0;
+  for (const [file, markers] of navigationRequirements) {
+    const absolute = join(root, file);
+    if (!(await exists(absolute))) continue;
+    const text = await readFile(absolute, "utf8");
+    for (const marker of markers) {
+      checked += 1;
+      if (!text.includes(marker)) errors.push(`${file}: required navigation reference missing '${marker}'`);
+    }
+  }
+  output.push(`STRUCTURAL PASS checked ${checked} required agent-context navigation reference(s)`);
+}
+
 async function validateSkills(root, errors, output) {
   const files = await walk(join(root, ".agents"), (file) => file.endsWith("SKILL.md"));
   const docs = await Promise.all(files.map(async (file) => ({ file: relative(root, file), content: await readFile(file, "utf8") })));
@@ -80,7 +126,12 @@ async function validateSkills(root, errors, output) {
 
 async function validateLinks(root, errors, output) {
   const docs = [
-    "AGENTS.md", "ARCHITECTURE.md", "HERMES_MASTER_PROMPT.md", "scripts/ega-runner/README.md",
+    "README.md",
+    "AGENTS.md",
+    "CONTEXT.md",
+    "ARCHITECTURE.md",
+    "HERMES_MASTER_PROMPT.md",
+    "scripts/ega-runner/README.md",
     ...(await walk(join(root, "docs", "agent-context"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "architecture"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
   ];
@@ -100,8 +151,14 @@ async function validateLinks(root, errors, output) {
 
 async function validateCommands(root, errors, output) {
   for (const [file, commands] of [
-    ["package.json", ["build", "lint", "test", "typecheck", "test:agent-context", "validate:agent-context"]],
+    ["package.json", [
+      "build", "lint", "test", "typecheck",
+      "test:agent-context", "validate:agent-context",
+      "check:architecture", "test:architecture",
+      "ci:purity", "ci:security", "ci:workspace",
+    ]],
     ["apps/mobile/package.json", ["typecheck", "test", "doctor", "validate:bundle"]],
+    ["apps/server/package.json", ["typecheck", "test", "build:vercel"]],
     ["scripts/ega-runner/package.json", ["start", "typecheck", "smoke"]],
   ]) {
     try {
@@ -130,7 +187,7 @@ async function validateQueue(root, errors, output) {
 
 async function validateInstructions(root, errors, warnings, output, options) {
   const config = await loadCodexDiscoveryConfig({ repoRoot: root, env: options.env ?? process.env, userHome: options.userHome ?? homedir() });
-  for (const cwd of [".", "apps/mobile", "scripts/ega-runner", "apps/web/src"]) {
+  for (const cwd of [".", "apps/web/src", "apps/mobile", "apps/server", "packages/application", "scripts/ega-runner"]) {
     const absolute = resolve(root, cwd);
     if (!(await exists(absolute, "directory"))) { output.push(`RUNTIME NOT VERIFIED instruction directory missing: ${cwd}`); continue; }
     const chain = await discoverCodexInstructionChain({ repoRoot: root, workingDirectory: absolute, ...config });
@@ -167,12 +224,13 @@ export async function validateRepository(repoRoot, options = {}) {
   const root = resolve(repoRoot);
   const result = { errors: [], warnings: [], output: [] };
   await validateFiles(root, result.errors, result.output);
+  await validateNavigation(root, result.errors, result.output);
   await validateSkills(root, result.errors, result.output);
   await validateLinks(root, result.errors, result.output);
   await validateCommands(root, result.errors, result.output);
   await validateQueue(root, result.errors, result.output);
   await validateInstructions(root, result.errors, result.warnings, result.output, options);
-  result.output.push("RUNTIME NOT VERIFIED this command does not prove semantic documentation accuracy, command success, Codex skill selection, Hermes discovery, or external systems");
+  result.output.push("RUNTIME NOT VERIFIED this command does not prove semantic documentation accuracy, command success, tool skill selection, deployment, database state, device behavior, or external systems");
   return result;
 }
 

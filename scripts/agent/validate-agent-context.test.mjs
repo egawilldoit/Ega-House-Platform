@@ -84,11 +84,8 @@ for (const [name, source, expected] of [
 
 async function withTempRepo(run) {
   const root = await mkdtemp(join(tmpdir(), "agent-context-test-"));
-  try {
-    await run(root);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+  try { await run(root); }
+  finally { await rm(root, { recursive: true, force: true }); }
 }
 
 test("markdown links: relative file, anchor, external, missing, and root-relative behavior", async () => {
@@ -185,9 +182,14 @@ skills:
   assert.deepEqual(parsed, ["/current/repo/.agents/skills"]);
 });
 
-test("repository validation: missing root AGENTS.md is accumulated instead of thrown", async () => {
+test("repository validation: the living agent-context set is required", async () => {
   await withTempRepo(async (root) => {
     const result = await validateRepository(root, { env: {}, userHome: root });
-    assert.match(result.errors.join("\n"), /missing required agent-context file: AGENTS\.md/);
+    const errors = result.errors.join("\n");
+    assert.match(errors, /missing required agent-context file: AGENTS\.md/);
+    assert.match(errors, /missing required agent-context file: CONTEXT\.md/);
+    assert.match(errors, /missing required agent-context file: docs\/agent-context\/decision-log\.md/);
+    assert.match(errors, /missing required agent-context file: docs\/agent-context\/tooling-map\.md/);
+    assert.match(errors, /missing required agent-context file: docs\/architecture\/platform-monorepo\.md/);
   });
 });
