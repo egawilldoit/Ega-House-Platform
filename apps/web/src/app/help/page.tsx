@@ -55,7 +55,7 @@ export default async function HelpPage() {
   return (
     <AppShell
       eyebrow="Support"
-      title="Help"
+      title="Help Center"
       description="Workflow guide — Projects → Goals → Tasks → Timer → Review."
       actions={
         <Link
