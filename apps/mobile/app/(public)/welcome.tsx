@@ -1,37 +1,48 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Link } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { mobileTheme } from '@/components/mobile/theme';
 
 export default function WelcomeScreen() {
   return (
-    <View style={styles.container}>
-      <View style={styles.bgCircle1} />
-      <View style={styles.bgCircle2} />
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+      <View style={styles.container}>
+        <View pointerEvents="none" style={styles.bgCircle1} />
+        <View pointerEvents="none" style={styles.bgCircle2} />
 
-      <View style={styles.content}>
-        <View style={styles.logoMark}>
-          <Ionicons name="flash" size={32} color={mobileTheme.colors.textOnAccent} />
+        <View style={styles.content}>
+          <View accessibilityRole="image" style={styles.logoMark}>
+            <Ionicons name="flash" size={32} color={mobileTheme.colors.textOnAccent} />
+          </View>
+
+          <Text accessibilityRole="text" style={styles.brand}>
+            EGA House
+          </Text>
+          <Text accessibilityRole="header" style={styles.tagline}>
+            {`Your execution\ncommand center`}
+          </Text>
+          <Text style={styles.subtitle}>
+            Tasks, focus sessions, and daily momentum - all in one place.
+          </Text>
         </View>
 
-        <Text style={styles.brand}>EGA House</Text>
-        <Text style={styles.tagline}>{`Your execution\ncommand center`}</Text>
-        <Text style={styles.subtitle}>
-          Tasks, focus sessions, and daily momentum - all in one place.
-        </Text>
+        <View style={styles.footer}>
+          <Link href="/(public)/login" asChild>
+            <Pressable
+              accessibilityLabel="Get started"
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.primaryBtn, pressed ? styles.primaryBtnPressed : null]}
+            >
+              <Text style={styles.primaryBtnText}>Get started</Text>
+              <Ionicons name="arrow-forward" size={18} color={mobileTheme.colors.textOnAccent} />
+            </Pressable>
+          </Link>
+          <Text style={styles.legalText}>Sign in with your EGA House account</Text>
+        </View>
       </View>
-
-      <View style={styles.footer}>
-        <Link href="/(public)/login" asChild>
-          <Pressable style={styles.primaryBtn}>
-            <Text style={styles.primaryBtnText}>Get started</Text>
-            <Ionicons name="arrow-forward" size={18} color={mobileTheme.colors.textOnAccent} />
-          </Pressable>
-        </Link>
-        <Text style={styles.legalText}>Sign in with your EGA House account</Text>
-      </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -100,13 +111,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'center',
+    minHeight: 52,
     paddingVertical: 18,
     ...mobileTheme.shadow.fab,
+  },
+  primaryBtnPressed: {
+    opacity: 0.88,
   },
   primaryBtnText: {
     color: mobileTheme.colors.textOnAccent,
     fontSize: 17,
     fontWeight: mobileTheme.font.black,
+  },
+  safeArea: {
+    backgroundColor: mobileTheme.colors.authBackground,
+    flex: 1,
   },
   subtitle: {
     color: mobileTheme.colors.authTextMuted,

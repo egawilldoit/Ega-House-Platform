@@ -10,8 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { EmptyState, MobileScreen } from '@/components/mobile/primitives';
-import { GlassButton, GlassCard, GlassInput, GlassPill } from '@/components/mobile/glass';
+import { AppScreen, Button, Card, EmptyState, FeedbackBanner, SearchField } from '@/components/mobile/ui';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useGoalListQuery } from '@/features/goals/query';
 import { useProjectListQuery } from '@/features/projects/query';
@@ -68,42 +67,21 @@ export default function SearchScreen() {
   };
 
   return (
-    <MobileScreen>
-      <GlassInput
-        accessibilityLabel="Search tasks, projects, and goals"
-        autoCapitalize="none"
-        autoCorrect={false}
+    <AppScreen>
+      <SearchField
         autoFocus
-        clearButtonMode="while-editing"
         onChangeText={setRawQuery}
         placeholder="Search tasks, projects, goals"
-        returnKeyType="search"
         value={rawQuery}
-        leftIcon={<Ionicons color={mobileTheme.colors.textSubtle} name="search" size={16} />}
-        rightIcon={
-          rawQuery.length > 0 ? (
-            <Pressable
-              accessibilityLabel="Clear search"
-              accessibilityRole="button"
-              onPress={() => setRawQuery('')}
-              style={styles.clearButton}
-            >
-              <Ionicons color={mobileTheme.colors.textMuted} name="close-circle" size={18} />
-            </Pressable>
-          ) : undefined
-        }
       />
 
       {isTruncated ? (
-        <GlassCard variant="fake" style={styles.noticeCard}>
-          <View style={styles.noticeRow}>
-            <Ionicons color={mobileTheme.colors.warning} name="warning-outline" size={16} />
-            <Text style={styles.noticeText}>
-              Showing first {tasks.length} of {totalTaskCount} tasks. Refine your query for more
-              results.
-            </Text>
-          </View>
-        </GlassCard>
+        <View style={styles.noticeWrap}>
+          <FeedbackBanner
+            message={`Showing first ${tasks.length} of ${totalTaskCount} tasks. Refine your query for more results.`}
+            tone="warning"
+          />
+        </View>
       ) : null}
 
       {isLoading ? (
@@ -114,11 +92,13 @@ export default function SearchScreen() {
       ) : null}
 
       {isError && !isLoading && tasks.length === 0 && projects.length === 0 && goals.length === 0 ? (
-        <GlassCard variant="fake" style={styles.errorCard}>
-          <Ionicons color={mobileTheme.colors.danger} name="alert-circle-outline" size={20} />
-          <Text style={styles.errorText}>Unable to load search data. Check your connection.</Text>
-          <GlassButton onPress={handleRetry} size="sm" title="Retry" />
-        </GlassCard>
+        <Card style={styles.errorCard}>
+          <View style={styles.errorCardContent}>
+            <Ionicons color={mobileTheme.colors.danger} name="alert-circle-outline" size={20} />
+            <Text style={styles.errorText}>Unable to load search data. Check your connection.</Text>
+            <Button onPress={handleRetry} size="sm" title="Retry" />
+          </View>
+        </Card>
       ) : null}
 
       {!isLoading && !hasQuery ? (
@@ -161,7 +141,9 @@ export default function SearchScreen() {
               <View style={styles.sectionHeader}>
                 <Ionicons color={mobileTheme.colors.accent} name="checkbox-outline" size={16} />
                 <Text style={styles.sectionTitle}>Tasks</Text>
-                <GlassPill label={`${results.tasks.length}`} tone="primary" />
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{results.tasks.length}</Text>
+                </View>
               </View>
               {results.tasks.map((task) => (
                 <Pressable
@@ -198,7 +180,9 @@ export default function SearchScreen() {
               <View style={styles.sectionHeader}>
                 <Ionicons color={mobileTheme.colors.info} name="folder-outline" size={16} />
                 <Text style={styles.sectionTitle}>Projects</Text>
-                <GlassPill label={`${results.projects.length}`} tone="primary" />
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{results.projects.length}</Text>
+                </View>
               </View>
               {results.projects.map((project) => (
                 <Pressable
@@ -229,15 +213,17 @@ export default function SearchScreen() {
               <View style={styles.sectionHeader}>
                 <Ionicons color={mobileTheme.colors.success} name="trophy-outline" size={16} />
                 <Text style={styles.sectionTitle}>Goals</Text>
-                <GlassPill label={`${results.goals.length}`} tone="primary" />
+                <View style={styles.countPill}>
+                  <Text style={styles.countPillText}>{results.goals.length}</Text>
+                </View>
               </View>
               {results.goals.map((goal) => (
                 <Pressable
-                  accessibilityLabel={`Open goals tab for ${goal.title}`}
+                  accessibilityLabel={`Open goal ${goal.title}`}
                   accessibilityRole="button"
                   key={goal.id}
                   onPress={() => {
-                    router.push('/(app)/(tabs)/goals');
+                    router.push({ pathname: '/(app)/goals/[id]', params: { id: goal.id } });
                   }}
                   style={({ pressed }) => [styles.resultRow, pressed ? styles.resultRowPressed : null]}
                 >
@@ -257,7 +243,7 @@ export default function SearchScreen() {
           ) : null}
         </ScrollView>
       ) : null}
-    </MobileScreen>
+    </AppScreen>
   );
 }
 
@@ -267,16 +253,26 @@ const styles = StyleSheet.create({
     gap: mobileTheme.spacing.sm,
     paddingTop: mobileTheme.spacing.xl,
   },
-  clearButton: {
+  countPill: {
     alignItems: 'center',
-    height: mobileTheme.layout.minTouchTarget,
+    backgroundColor: mobileTheme.colors.accentSoft,
+    borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
-    width: mobileTheme.layout.minTouchTarget,
+    minWidth: 22,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  countPillText: {
+    color: mobileTheme.colors.accentDark,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.bold,
   },
   errorCard: {
+    marginTop: mobileTheme.spacing.md,
+  },
+  errorCardContent: {
     alignItems: 'center',
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.md,
   },
   errorText: {
     color: mobileTheme.colors.danger,
@@ -287,19 +283,8 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
   },
-  noticeCard: {
+  noticeWrap: {
     marginTop: mobileTheme.spacing.sm,
-  },
-  noticeRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 8,
-  },
-  noticeText: {
-    color: mobileTheme.colors.textMuted,
-    flex: 1,
-    fontSize: 12,
-    lineHeight: 16,
   },
   partialErrorText: {
     color: mobileTheme.colors.danger,
@@ -321,7 +306,7 @@ const styles = StyleSheet.create({
   resultRow: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.surface,
-    borderColor: mobileTheme.glass.border,
+    borderColor: mobileTheme.colors.border,
     borderRadius: mobileTheme.radius.md,
     borderWidth: 1,
     flexDirection: 'row',
@@ -330,6 +315,7 @@ const styles = StyleSheet.create({
     minHeight: 56,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    ...mobileTheme.shadow.card,
   },
   resultRowPressed: {
     opacity: 0.7,

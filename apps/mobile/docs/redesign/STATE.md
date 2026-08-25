@@ -33,14 +33,14 @@
 - [x] Wave 2 — Work / Tasks / Projects (segmented Tasks|Projects, context FAB)
 - [x] Wave 3 — Goals (health vs status Chips, ProgressBar+fraction, +Add next step, placeholderData)
 - [x] Wave 4 — Timer + Profile (isolated TimerClock, FocusQueue 12, TrackedTimeSummary, compact Profile)
-- [ ] Wave 5 — Welcome + Login + Search
+- [x] Wave 5 — Welcome + Login + Search (dark auth polish, SearchField immediacy, Card/FeedbackBanner parity)
 - [ ] Wave 6 — Create flows (Task/Project/Goal)
 - [ ] Wave 7 — Detail/Edit flows (Task/Project/Goal)
 - [ ] Wave 8 — Performance + accessibility hardening
 - [ ] Wave 9 — Final independent review
 
 ## Current Wave
-Wave 4 — COMPLETE (awaiting parent commit)
+Wave 5 — COMPLETE (working tree, awaiting commit; base dca2dceaa, HEAD bb8597a after Wave 4)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -48,7 +48,8 @@ Wave 4 — COMPLETE (awaiting parent commit)
 - `feat(mobile-ui): redesign today experience` — d51c48a (Wave 1)
 - `feat(mobile-ui): introduce work hub` — 21f0d6d (Wave 2)
 - `feat(mobile-ui): redesign goals` — 085a500 (Wave 3)
-- Wave 4 working tree: Timer clock isolation + FocusQueue + TrackedTimeSummary + compact Profile (uncommitted, base dca2dceaa, HEAD 085a500)
+- `feat(mobile-ui): redesign timer and profile` — bb8597a (Wave 4)
+- Wave 5 working tree: Welcome SafeArea + Login KeyboardAvoiding + Search AppScreen/SearchField/Card/FeedbackBanner (uncommitted, base dca2dceaa, HEAD bb8597a)
 
 ## Tests
 - `npm run typecheck` — exit 0 (2026-08-25, .worktrees/ui-mobile/apps/mobile) — Wave 0
@@ -65,9 +66,12 @@ Wave 4 — COMPLETE (awaiting parent commit)
 - Wave 4: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-25)
 - Wave 4: `npm run test` (apps/mobile) — exit 0 (166/166 passed, 29 suites, 6.3s) — timer isolation keeps all 10 timer canonical tests green (server projection, picker 12 cap, start/stop, offline stale banner, retry, foreground reconcile via focusManager)
 - Wave 4: `git diff --check` — exit 0 (no whitespace errors)
-- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3/4)
+- Wave 5: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-25)
+- Wave 5: `npm run test` (apps/mobile) — exit 0 (166/166 passed, 29 suites, 5.6s) — welcome/login dark auth tokens preserved, search debounce 250/limit 200/truncation warning intact, all 10 timer + goals + today regressions green
+- Wave 5: `git diff --check` — exit 0 (no whitespace errors)
+- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3/4/5)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1/2/3) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 4 working tree: 3 modified + 5 untracked) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + others also `apps/mobile/**` only ✓
+- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1/2/3/4) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 5 working tree: 3 modified + 1 created research + STATE diff) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + others also `apps/mobile/**` only ✓
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -153,22 +157,31 @@ Wave 4 — COMPLETE (awaiting parent commit)
 - Created: `apps/mobile/features/timer/components/TimerScreenContent.tsx` (composer: `activeSession ? Card activeContent centered + runningRow dot successMid 10 + Running 12 uppercase + taskTitle 17 bold 2-line centered + TimerClock + Started at {toLocaleTimeString 2-digit} 12 muted + Button Stop timer danger 54h stop 22` : `FocusQueue`; plus summary `TrackedTimeSummary` when present; stack gap md)
 - Created: `apps/mobile/docs/redesign/research-wave-4.md` (Mobbin active timer & focus queue, Page Flows queue pick & start, Design Spells tracked summary & offline/loading, Mobbin profile compact — each SOURCE/PATTERN/WHY/ADOPT/REJECT plus Wave4 cross-reference decisions — isolation, 12 cap, server authority, 3+1 stats, skeleton/offline tiers, compact sign-out)
 
+## Files Changed (Wave 5)
+- Modified: `apps/mobile/app/(public)/welcome.tsx` (polished dark auth: wrapped `SafeAreaView edges top,bottom bg authBackground flex1` + container `bg authBackground flex1 space-between padding xl 28`; circles absolute `pointerEvents none` `authCircleBlue 320/160r top-right` `authCirclePurple 200/100r bottom-left`; logoMark 68 accent card 20 fab + flash 32 white; brand EGA House 16/700 tracking 2 upper 0.7; tagline `Your execution\ncommand center` 44/900 -1.5 line 50 marginBottom 18 preserved; subtitle 16/24 authTextMuted 0.55 maxWidth 280; footer gap 14 paddingBottom 12 legal 12 authTextSubtle centered; CTA `Link /(public)/login asChild Pressable pill accent radius pill minHeight 52 paddingVertical 18 gap 10 centered row fab + pressed 0.88 + accessibilityLabel Get started + arrow-forward 18 white` 17/900 white; no animation (`FadeSlide` or `Animated.loop` forbidden), keeps single CTA)
+- Modified: `apps/mobile/app/(public)/login.tsx` (preserves `isValidEmail /^[^\s@]+@[^\s@]+\.[^\s@]+$/` exact, trimmedEmail, password≥6, `clearError()` first, `signIn(trimmed,password)` → `router.replace('/(app)/(tabs)/today')` exact, catch `Login failed. Try again.`, finally false, `error||authError||' '` single Text `minHeight 20` `dangerMid #fca5a5 13` always rendered (no conditional → no layout shift), back `Pressable router.replace('/(public)/welcome') 40 circle overlayLight top 64 left lg = chevron-back 22 white accessibilityLabel Back to welcome`; adds `KeyboardAvoidingView behavior padding|height style root bg authBackground flex1 > ScrollView contentContainer flexGrow1 justify center keyboardShouldPersistTaps handled > container bg authBackground flex1 justify center minHeight 520 padding xl 28` → keyboard-safe without new dep; card `authSurface #161c28 border authBorderSoft 0.08 radius 24 padding lg 20` title Login 28/900 -0.8 centered white; inputRows `authSurfaceMuted 0.07 border authBorder 0.12 radius md 14 gap 10 paddingHorizontal 14 marginBottom sm 8` + icons mail/lock 18 authTextSubtle + TextInputs 15 white placeholder authTextSubtle `autoCapitalize none email keyboardType email-address autoComplete email returnKey next / done` `secureTextEntry` `editable {!isSubmitting}` `onChangeText` clears local error, `onSubmitEditing` done triggers onLogin; CTA `Pressable pill accent minHeight 52 fab pressed 0.88 + ActivityIndicator white vs Login 16/900 white` disabled busy)
+- Modified: `apps/mobile/app/(app)/search.tsx` (migrated `MobileScreen/GlassInput/GlassCard/GlassPill/GlassButton` → `AppScreen + SearchField + Card + FeedbackBanner + EmptyState + Button`; preserves `SEARCH_DEBOUNCE_MS=250` `SEARCH_TASK_LIMIT=200` constants exact, `useEffect setTimeout 250 → setDebouncedQuery` cleanup, queries `useTaskListQuery({limit:200}) + useProjectListQuery('active') + useGoalListQuery('active')` cached (placeholderData keep-previous from Waves2-3, no per-keypress fetch), `searchWorkspace({query:debouncedQuery, tasks, projects, goals})` pure token AND ranking prefix>substring, derived `trimmedQuery/hasQuery/isLoading/isError/totalTaskCount/isTruncated/totalResults`, `isTruncated = totalTaskCount > tasks.length` → `FeedbackBanner warning "Showing first X of Y tasks. Refine …"` noticeWrap marginTop sm, `isLoading → ActivityIndicator accent + muted 13 Loading workspace…`, `isError && no data → Card gap sm + alert-circle 20 danger + errorText + Button Retry sm invoking refetch per isError branch`, `!hasQuery → EmptyState search-outline Find anything`, `hasQuery && 0 → EmptyState No matches with trimmed interpolation`, `hasQuery && >0 → ScrollView resultsContent paddingBottom floatingTabClearance 160 paddingTop md 14 keyboardShouldPersistTaps handled + resultsHeader count 12/700 upper muted "{total} result(s) for "{trim}" + partialError 11 danger when isError + 3 sections Tasks/Projects/Goals each header icon 16 accent/info/success + sectionTitle 14/800 flex1 + countPill accentSoft radius pill 11/700 accentDark + mapped Pressables resultRow 56 bg surface border #e4e7ec radius md 14 marginTop sm 8 gap sm 8 padding 12 shadow card pressed 0.7 + resultCopy flex1 gap 2 title 14/600 1-line + meta 12 muted + description 12 subtle trailing chevron 16 subtle`; navigations `tasks → router.push("/(app)/tasks/[id]",{id})`, `projects → "/(app)/projects/[slug]",{slug}`, `goals → "/(app)/goals/[id]",{id}` (spec goals/[id] detail, prior tab route migrated; preserves slug/id typing), `SearchField autoFocus placeholder "Search tasks, projects, goals" value rawQuery` → left search 16 subtle + right 44 clear close-circle auto; AppScreen padded default lg 20 hosts SearchField; all spacing via `mobileTheme.spacing/radius/shadow/layout.floatingTabClearance`)
+- Created: `apps/mobile/docs/redesign/research-wave-5.md` (Mobbin dark auth welcome/login, Page Flows validation/error reserve & keyboard, Screenlane search immediacy debounce/group/limits/truncation, Minimal Gallery hero typography — each SOURCE/PATTERN/WHY/ADOPT/REJECT plus Wave5 cross-reference — dark auth separation, headline/CTA stability, login invariants, search data flow & tiers)
+
 ## Known Issues
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
-- Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback (Wave 0, still green in Wave 4)
+- Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback (Wave 0, still green in Wave 5)
 - TodayTaskCard 44 target test fixed via IconButton minHeight/minWidth (Wave 1) — ensures ghost actions button meets 44 without hitSlop
 - TaskCard mainTap test fixed via Pressable borderRadius sm 10 in features/tasks/components/TaskCard.tsx (Wave 2) — satisfies cards-a11y-test
 - GoalCard-test progress asserted `1 / 2 tasks` fraction (Wave 3) to avoid triple bar+percent+count — aligns with ProjectCard `1 / 4 tasks` parity (old `50%` removed)
 - Profile tabs compat now re-exports canonical `../profile` (Wave 4) — keeps legacy `app/(app)/(tabs)/__tests__/profile.test.tsx` green (US initials, email, version) without Redirect mock drift; hidden via `href:null` preserved
 - Bundle export fails in worktree without root node_modules install (not Wave 0/1 regression)
-- Legacy MobileScreen/Glass* remain as compat until respective waves (tasks/projects/goals detail/create screens still glass until Waves 6–7; timer/profile now migrated, so remaining glass is welcome/login/search/create/detail)
+- Legacy MobileScreen/Glass* remain as compat until respective waves (tasks/projects/goals detail/create screens still glass until Waves 6–7; welcome/login/search now migrated to AppScreen/Card/SearchField/FeedbackBanner/Button, so remaining glass is create/detail only)
 - DailyMomentum ring visualizes completion ratio (completed/total) not trackedToday seconds vs estimate — honest math, no fake min
 - Work hub client search is title/project/goal substring (no new endpoint); server filtering remains canonical for status/priority/due/sort
 - Goals progress `completed / total tasks` client-derived from `linkedTasks.filter(done)` — consistent with server `progressPercent = round(completed/total*100)` (see `getGoalsReadModel`)
 - Timer authority preserved via `projectElapsedSeconds` recompute + `fallback elapsedLabel` — no accumulation; clock isolated to TimerClock, sibling stable (verified profiler)
+- Search goal navigation migrated from `/(app)/(tabs)/goals` tab to `/(app)/goals/[id]` detail per Wave 5 spec `goals/[id]`; tab route still exists for compat, detail now canonical for search result
+- Welcome/Login dark auth tokens isolated (`authBackground/authSurface/...`) — never white `surface #fff` forced; error reserve `minHeight 20` prevents CTA shift verified via layout inspection
 
 ## Next
-- Wave 5 — Welcome + Login + Search (dark auth → AppScreen parity, SearchField + debounce preserve)
+- Wave 6 — Create flows (Task/Project/Goal) form polish
+- Wave 7 — Detail/Edit flows (Task/Project/Goal) with recurrence/reminder & linked tasks (detail screens still glass until Wave 7)
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` before touching tokens
@@ -182,4 +195,7 @@ Wave 4 — COMPLETE (awaiting parent commit)
 - Goals `+ Add next step` button affordance (secondary sm + add icon) → bottom sheet 28r with 96h TextInput + Cancel/Save must remain when nextStep null — not just text
 - Timer parity preserves server authority: `projectElapsedSeconds(startedAt, nowMs)` recomputed each tick, fallback `elapsedLabel` when null, 1s interval ONLY inside `TimerClock`, parent TimerScreen never holds `nowMs` (no full-screen rerender, no background loop, no >1s). candidateTasks max 12 `status!==done` slice preserved, selection single, start/stop guard, summary `trackedTodayLabel/sessionsToday/longest/allTime`, stale banner `isError && !isFetching`, offline full Card + Retry, RefreshControl subtle, ActivityIndicator for tasks fetching, floatingTabClearance 160
 - Profile parity preserves initials `email.substring(0,2).toUpperCase() ?? EG`, email, pills `Authenticated` + `Mobile workspace`, compact sign-out `Card actionRow + Button danger sm` not full-width, version `Constants.expoConfig.version ?? 1.0.0`, avatar HeaderActions → `/(app)/profile` everywhere, hidden compat `tabs/profile` re-exports canonical (href:null)
-- research-wave-1/2/3/4 decisions (no fake min, no duplicate metric, compact empties, quick-filters always visible, advanced collapsible, one context FAB, keep-previous placeholderData, timer clock isolation, 12 cap, 3+1 stats) apply to later waves
+- Auth parity (Wave 5) preserves dark tokens `authBackground #0d1117 / authSurface #161c28 / authSurfaceMuted 0.07 / authBorder 0.12 / authBorderSoft 0.08 / authTextMuted 0.55 / authTextSubtle 0.35 / authCircleBlue 0.18 320 / authCirclePurple 0.12 200 / overlayLight 0.12 / textOnAccent #fff / accent #2563eb + shadow fab`; headline `Your execution\ncommand center` 44/900 -1.5 line 50 + subtitle 16/24 maxWidth 280 + CTA pill accent minHeight 52 fab + legal 12 subtle static; `SafeAreaView top,bottom` + circles `pointerEvents none`; no `Animated`/`FadeSlide`/`Lottie` loop (spec forbids heavy startup animation)
+- Login parity preserves `isValidEmail /^[^\s@]+@[^\s@]+\.[^\s@]+$/` byte-identical, trimmed, length≥6, `clearError()` first, `signIn(trimmed,password)` → `router.replace("/(app)/(tabs)/today")`, catch fallback, `error||authError||' '` single Text `minHeight 20` `dangerMid` (no conditional → no shift), back `replace welcome` 40 overlayLight, `editable {!isSubmitting}` guard, `KeyboardAvoidingView padding|height + ScrollView flexGrow1 keyboardShouldPersistTaps handled` without new dep, `autoCapitalize none / email-address / secureTextEntry / placeholder authTextSubtle`
+- Search parity preserves `SEARCH_DEBOUNCE_MS 250` `SEARCH_TASK_LIMIT 200` exact, `useEffect setTimeout 250 → debounced` pattern, queries `TaskList limit 200 + Project active + Goal active` cached keep-previous, `searchWorkspace` pure AND tokens + prefix>substring scoring, `totalTaskCount > tasks.length` truncation warning `FeedbackBanner warning`, tiers `isLoading ActivityIndicator` / `isError+no data Card + Retry` / `!hasQuery EmptyState Find anything` / `hasQuery zero EmptyState No matches` / `hasQuery>0 ScrollView resultsContent 160 + header count upper + partialError + Tasks/Projects/Goals groups` each `Pressable resultRow 56 border radius md 14 12 pad shadow card` + countPill `accentSoft pill 11 accentDark`; nav `tasks/[id] {id}` `projects/[slug] {slug}` `goals/[id] {id}`; `SearchField autoFocus placeholder "Search tasks, projects, goals"` (clear 44 internally), `AppScreen` pads lg 20 hosts SearchField, result truncation meta `project.name · goal? · status` etc
+- research-wave-1/2/3/4/5 decisions (no fake min, no duplicate metric, compact empties, quick-filters always visible, advanced collapsible, one context FAB, keep-previous placeholderData, timer clock isolation 12 cap 3+1 stats, auth dark separation, 250ms debounce immediate, 200 limit + truncation warning) apply to later waves
