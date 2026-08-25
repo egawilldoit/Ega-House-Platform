@@ -8,6 +8,7 @@ import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionShe
 import { GoalCard } from '@/components/mobile/GoalCard';
 import { EmptyState, MobileScreen, MobileScreenHeader, PrimaryFab, SkeletonCard } from '@/components/mobile/primitives';
 import { GlassBottomSheet, GlassButton, GlassCard, GlassInput, GlassSegmentedControl } from '@/components/mobile/glass';
+import { HeaderActions } from '@/components/mobile/ui/HeaderActions';
 import { mobileTheme } from '@/components/mobile/theme';
 import {
   useArchiveGoalMutation,
@@ -168,6 +169,7 @@ export default function GoalsScreen() {
           eyebrow="Planning"
           title="Goals"
           description="Outcomes with a health signal and a next step"
+          rightAction={<HeaderActions />}
         />
         <View style={styles.controlsWrap}>
           <GlassSegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} />
@@ -188,6 +190,7 @@ export default function GoalsScreen() {
           eyebrow="Planning"
           title="Goals"
           description="Outcomes with a health signal and a next step"
+          rightAction={<HeaderActions />}
         />
         <GlassCard variant="fake" style={styles.errorCard} contentStyle={styles.errorCardContent}>
           <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
@@ -210,6 +213,7 @@ export default function GoalsScreen() {
           eyebrow="Planning"
           title="Goals"
           description="Outcomes with a health signal and a next step"
+          rightAction={<HeaderActions />}
         />
         <View style={styles.controlsWrap}>
           <GlassSegmentedControl options={VIEW_OPTIONS} value={view} onChange={setView} />
@@ -346,7 +350,7 @@ const styles = StyleSheet.create({
     paddingTop: mobileTheme.spacing.md,
   },
   listContent: {
-    paddingBottom: 120,
+    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.md,
   },

@@ -66,6 +66,20 @@ export default function ProtectedLayout() {
           title: 'Search',
         }}
       />
+      <Stack.Screen
+        name="profile"
+        options={{
+          headerShown: true,
+          title: 'Profile',
+        }}
+      />
+      <Stack.Screen
+        name="tasks/[id]"
+        options={{
+          headerShown: true,
+          title: 'Task',
+        }}
+      />
     </Stack>
   );
 }

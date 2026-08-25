@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     paddingTop: mobileTheme.spacing.md,
   },
   listContent: {
-    paddingBottom: 120,
+    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.md,
   },

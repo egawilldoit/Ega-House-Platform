@@ -27,6 +27,10 @@ function getLabel(routeName: string, options: BottomTabBarProps['descriptors'][s
   return typeof label === 'string' ? label : routeName;
 }
 
+function isHidden(descriptor: BottomTabBarProps['descriptors'][string]) {
+  return (descriptor.options as { href?: unknown }).href === null;
+}
+
 export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -43,10 +47,13 @@ export function GlassBottomTab({ state, descriptors, navigation }: BottomTabBarP
       />
       <View pointerEvents="none" style={styles.highlight} />
       <View style={styles.items}>
-        {state.routes.map((route, index) => {
-          const descriptor = descriptors[route.key];
-          const options = descriptor.options;
-          const focused = state.index === index;
+        {state.routes
+          .filter((route) => !isHidden(descriptors[route.key]))
+          .map((route) => {
+            const descriptor = descriptors[route.key];
+            const options = descriptor.options;
+            const originalIndex = state.routes.findIndex((r) => r.key === route.key);
+            const focused = state.index === originalIndex;
           const color = focused ? mobileTheme.nav.active : 'rgba(255,255,255,0.62)';
           const label = getLabel(route.name, options);
 
