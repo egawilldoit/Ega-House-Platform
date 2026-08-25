@@ -37,7 +37,7 @@ CI: `.github/workflows/android-runtime.yml` (dispatch-only) boots an x86_64+KVM
 emulator, gates on the ladder L6 chain, then runs **only** `00-welcome.yaml`
 (no API or credentials needed) and gates job success on it. Flows 01–04 and
 `suite.yaml` are NOT run in CI — they are BLOCKED-BY-DEPLOYED-API +
-CREDENTIALS (Production-Hardening Tasks 4/5/7 blocked externally on Vercel
+CREDENTIALS (API `https://ega-api.egawilldoit.online` is live; authenticated flows are gated on `EGA_TEST_EMAIL`/`EGA_TEST_PASSWORD` secrets
 credentials; no test account). See the CI status table in
 `docs/mobile-e2e-flows.md`. Run evidence captures serial, package, flow
 output, and screenshots under `ci-artifacts/maestro/`.
