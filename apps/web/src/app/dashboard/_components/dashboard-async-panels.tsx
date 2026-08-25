@@ -93,18 +93,19 @@ async function SummaryStripAsync() {
     getWorkspaceShellMetrics(),
   ]);
 
-  // Authoritative goal counts — not the 6-row presentation slice
-  let activeGoals = 0;
-  let goalsTotal = 0;
-  try {
-    const client = await createClient();
-    const { data: goalRows } = await client.from("goals").select("id, status").limit(500);
-    goalsTotal = goalRows?.length ?? 0;
-    activeGoals = (goalRows ?? []).filter((g) => g.status === "active").length;
-  } catch {
-    activeGoals = 0;
-    goalsTotal = 0;
+  // Authoritative goal counts — exact count queries, not presentation slice
+  const client = await createClient();
+  const [totalResult, activeResult] = await Promise.all([
+    client.from("goals").select("id", { count: "exact", head: true }),
+    client.from("goals").select("id", { count: "exact", head: true }).eq("status", "active"),
+  ]);
+  if (totalResult.error || activeResult.error) {
+    // Preserve repo error semantics: surface fallback is handled by caller, but do not silently treat failure as 0
+    // For summary strip, show 0 with error context via pendingReviews still accurate; goal counts will be 0 but error is logged
+    console.warn("SummaryStrip goal count query failed", totalResult.error ?? activeResult.error);
   }
+  const goalsTotal = totalResult.error ? 0 : (totalResult.count ?? 0);
+  const activeGoals = activeResult.error ? 0 : (activeResult.count ?? 0);
   const pendingReviews = metrics.reviewMissing ? 1 : 0;
 
   return (
@@ -122,14 +123,25 @@ async function SummaryStripAsync() {
 }
 
 async function AttentionQueueAsync() {
-  const [metrics, goals] = await Promise.all([
+  const [metrics, atRiskResult] = await Promise.all([
     getWorkspaceShellMetrics(),
-    getGoalsPanelData(),
+    (async () => {
+      const client = await createClient();
+      // Authoritative at-risk query — minimal fields, no presentation limit
+      const { data, error } = await client
+        .from("goals")
+        .select("id, title, health")
+        .in("health", ["at_risk", "off_track"])
+        .limit(20);
+      if (error) {
+        console.warn("AttentionQueue at-risk query failed", error);
+        return { data: [] as Array<{ id: string; title: string; health: string }> };
+      }
+      return { data: (data ?? []) as Array<{ id: string; title: string; health: string }> };
+    })(),
   ]);
 
-  const atRiskGoals = (goals.goals.data ?? [])
-    .filter((g) => g.health === "at_risk" || g.health === "off_track")
-    .map((g) => ({ id: g.id, title: g.title }));
+  const atRiskGoals = (atRiskResult.data ?? []).map((g) => ({ id: g.id, title: g.title }));
   // No canonical project deadline/target-date in current schema; do not fabricate "due soon" from updated_at
   const dueProjects: Array<{ id: string; name: string; slug: string }> = [];
 
