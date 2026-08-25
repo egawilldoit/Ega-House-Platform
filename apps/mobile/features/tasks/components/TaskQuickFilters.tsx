@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 14,
     borderWidth: 1,
   },

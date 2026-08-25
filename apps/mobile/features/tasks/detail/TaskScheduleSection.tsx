@@ -206,7 +206,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     borderWidth: 1,
     justifyContent: 'center',
-    minHeight: 36,
+    minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 14,
     paddingVertical: 7,
   },
