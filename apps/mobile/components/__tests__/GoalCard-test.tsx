@@ -62,8 +62,7 @@ describe('GoalCard', () => {
   it('shows the linked task count and progress', () => {
     const component = renderCard();
 
-    expect(findText(component, '50%')).toBe(true);
-    expect(findText(component, '2 tasks')).toBe(true);
+    expect(findText(component, '1 / 2 tasks')).toBe(true);
   });
 
   it('omits the next step row when absent', () => {
