@@ -29,6 +29,7 @@ export function useGoalListQuery(view: GoalViewFilter = 'active') {
   return useQuery({
     queryKey: goalQueryKeys.list(view),
     queryFn: () => listMobileGoals(view),
+    placeholderData: (previousData) => previousData,
   });
 }
 

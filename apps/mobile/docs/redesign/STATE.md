@@ -31,7 +31,7 @@
 - [x] Wave 0 — Design system + navigation (4-tab Work hub, hidden compat routes)
 - [x] Wave 1 — Today (Daily Momentum ring + progress bar, 4 sections, Suggestions, Card/Chip/ProgressBar parity)
 - [x] Wave 2 — Work / Tasks / Projects (segmented Tasks|Projects, context FAB)
-- [ ] Wave 3 — Goals
+- [x] Wave 3 — Goals (health vs status Chips, ProgressBar+fraction, +Add next step, placeholderData)
 - [ ] Wave 4 — Timer + Profile (avatar header, timer clock isolation)
 - [ ] Wave 5 — Welcome + Login + Search
 - [ ] Wave 6 — Create flows (Task/Project/Goal)
@@ -40,13 +40,14 @@
 - [ ] Wave 9 — Final independent review
 
 ## Current Wave
-Wave 2 — COMPLETE (awaiting parent commit)
+Wave 3 — COMPLETE (awaiting parent commit)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
 - `refactor(mobile-ui): establish redesign foundation` — 132ab8d (Wave 0)
 - `feat(mobile-ui): redesign today experience` — d51c48a (Wave 1)
-- Wave 2 working tree: Work hub Tasks|Projects parity (uncommitted, base dca2dceaa, HEAD d51c48a)
+- `feat(mobile-ui): introduce work hub` — 21f0d6d (Wave 2)
+- Wave 3 working tree: Goals parity — Active/Archived/All + health/status Chips + ProgressBar fraction + Add next step (uncommitted, base dca2dceaa, HEAD 21f0d6d)
 
 ## Tests
 - `npm run typecheck` — exit 0 (2026-08-25, .worktrees/ui-mobile/apps/mobile) — Wave 0
@@ -55,10 +56,13 @@ Wave 2 — COMPLETE (awaiting parent commit)
 - Wave 1: `npm run test` (apps/mobile) — exit 0 (166/166 passed, 29 suites, 7.6s) — fixed IconButton minHeight to satisfy TodayTaskCard 44 target (cards-a11y-test)
 - Wave 2: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-25)
 - Wave 2: `npm run test` (apps/mobile) — exit 0 (166/166 passed, 29 suites, 6.4s) — fixed TaskCard mainTap borderRadius 10 to satisfy cards-a11y-test
-- `git diff --check` — exit 0 (no whitespace errors) — Wave 0 + Wave 1 + Wave 2
-- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2)
+- Wave 3: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-25)
+- Wave 3: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-25)
+- Wave 3: `npm run mobile:test` (worktree root via `npm --prefix apps/mobile`) — exit 0 (166/166 passed, 29 suites, 6.7s) — updated GoalCard-test to expect `1 / 2 tasks` fraction (bar+fraction, not bar+percent+count triple) to match ProjectCard parity
+- Wave 3: `git diff --check` — exit 0 (no whitespace errors)
+- `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0/1/2/3)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 1/2 working tree) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + others also `apps/mobile/**` only ✓
+- Mobile-only diff — `git diff --name-only dca2dce...HEAD` (Wave 0/1/2) and `git diff --name-only dca2dce` + `ls-files --others` (Wave 1/2/3 working tree) → all `apps/mobile/**` only → `awk '!/^apps\/mobile\//'` empty + others also `apps/mobile/**` only ✓
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -125,18 +129,28 @@ Wave 2 — COMPLETE (awaiting parent commit)
 - Created: `apps/mobile/features/projects/components/ProjectsListView.tsx` (FlatList virtualized same params; filter view Active/Archived/All via SegmentedControl + client SearchField; server ProjectsReadModel; counters filtered length + view hint; FeedbackBanner subtle; ActionSheet status→planned/active/done/paused + archive/unarchive; mutations pending; empty per view/copy; skeleton; retry)
 - Created: `apps/mobile/docs/redesign/research-wave-2.md` (Mobbin tasks list/filter bar, Page Flows work switcher, Refero card density, Screenlane project progress, Mobbin FAB & empties — each SOURCE/PATTERN/WHY/ADOPT/REJECT with Wave2 cross-reference decisions)
 
+## Files Changed (Wave 3)
+- Modified: `apps/mobile/features/goals/query.ts` (adds `placeholderData:(prev)=>prev` to keep stale goals during view switching / refetch; keys unchanged; invalidations preserved for lists/detail/projects detail)
+- Modified: `apps/mobile/components/mobile/GoalCard.tsx` (now alias to canonical `features/goals/components/GoalCard.tsx` + `goalHealthTone`/`goalStatusTone` delegate to central `healthTone`/`statusTone`; no GlassPill)
+- Modified: `apps/mobile/components/__tests__/GoalCard-test.tsx` (progress assertion now `1 / 2 tasks` fraction via bar+fraction, not `50%` — aligns with ProjectCard `1 / 4 tasks` parity and removes triple bar+percent+count)
+- Modified: `apps/mobile/app/(app)/(tabs)/goals.tsx` (migrated MobileScreen/GlassCard/GlassButton/GlassSegmentedControl → AppScreen/ScreenHeader/FloatingActionButton + GoalsListView; header eyebrow Planning + title Goals + description outcomes health + next step + HeaderActions; body flex1 GoalsListView; single FloatingActionButton New Goal → `/(app)/goals/create`; floatingTabClearance 160 via FlatList contentContainer)
+- Created: `apps/mobile/features/goals/components/GoalCard.tsx` (canonical Card+Chip×2+ProgressBar+nextStep; title 16/700 2-line, project uppercase 11/600 0.6 muted, badgeRow two Chips kind=status/health via chipTone central (health null muted slate “No health” dot #94a3b8, status via statusTone), left accent via healthTone or statusTone, nextStep row icon arrow-forward-circle 14 accent + muted 13 text 2-line or Button `+ Add next step` secondary sm leftIcon add 44h when missing → opens sheet, progressRow ProgressBar flex1 value clamped progressPercent + fraction `${completed}/${total} tasks` honest where completed=linkedTasks.filter(done).length, not triple bar+percent+count; Pressable mainTap focusable borderRadius sm 10 opacity 0.72 pressed, overflow IconButton ghost 44 absolute top 6 right 6; muted done title textSubtle)
+- Created: `apps/mobile/features/goals/components/GoalsListView.tsx` (FlatList virtualized keyExtractor item.id initialNumToRender 10 windowSize 5 maxToRenderPerBatch 10 removeClippedSubviews false contentContainer paddingBottom floatingTabClearance 160 paddingHorizontal lg 20 paddingTop sm 8; filter Active/Archived/All SegmentedControl driving useGoalListQuery(view) with placeholderData; ListHeader SegmentedControl + counter `X goal(s) · view` + Refreshing hint + FeedbackBanner; ListEmpty Card+EmptyState per view (Active → Create CTA, Archived → archive copy, All → nothing); ActionSheet Status (draft/active/done/paused disabled when equal) + Health (on_track/at_risk/off_track) + Archive/Unarchive + Update next step (general); mutations via useUpdateGoalStatus/Health/NextStep/Archive/Unarchive with invalidateGoalLists; Modal bottom sheet 28r overlay rgba(15,23,42,0.45) handle 5×44 title Next step subtitle goal.title TextInput 96 multiline border lg control shadow + Cancel ghost + Save primary loading; useFocusEffect refetch; preserves all query invalidations; one FAB in parent goals.tsx)
+- Created: `apps/mobile/docs/redesign/research-wave-3.md` (Mobbin goals OKR health, Refero density hierarchy, Screenlane progress fraction, Mobbin+Refero next-step FAB — each SOURCE/PATTERN/WHY/ADOPT/REJECT with Wave3 cross-reference decisions)
+
 ## Known Issues
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
 - Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback
 - TodayTaskCard 44 target test fixed via IconButton minHeight/minWidth (Wave 1) — ensures ghost actions button meets 44 without hitSlop
 - TaskCard mainTap test fixed via Pressable borderRadius sm 10 in features/tasks/components/TaskCard.tsx (Wave 2) — satisfies cards-a11y-test
+- GoalCard-test progress asserted `1 / 2 tasks` fraction (Wave 3) to avoid triple bar+percent+count — aligns with ProjectCard `1 / 4 tasks` parity (old `50%` removed)
 - Bundle export fails in worktree without root node_modules install (not Wave 0/1 regression)
-- Legacy MobileScreen/Glass* remain as compat until respective waves (tasks/projects now partially migrated but detail screens still glass)
+- Legacy MobileScreen/Glass* remain as compat until respective waves (tasks/projects/goals detail/create screens still glass until Waves 6–7)
 - DailyMomentum ring visualizes completion ratio (completed/total) not trackedToday seconds vs estimate — honest math, no fake min
 - Work hub client search is title/project/goal substring (no new endpoint); server filtering remains canonical for status/priority/due/sort
+- Goals progress `completed / total tasks` client-derived from `linkedTasks.filter(done)` — consistent with server `progressPercent = round(completed/total*100)` (see `getGoalsReadModel`)
 
 ## Next
-- Wave 3 — Goals (health vs status distinct Chip, progress, task counts, next-step modal, archived filter)
 - Wave 4 — Timer clock isolation + avatar header polish
 
 ## Handoff Notes for Next Wave Agent
@@ -145,7 +159,8 @@ Wave 2 — COMPLETE (awaiting parent commit)
 - Do not create second theme authority — Stitch tokens map into `mobileTheme`
 - Today parity preserves SectionList virtualization (keyExtractor item.id) + floatingTabClearance 160 — do not replace with ScrollView+map
 - Work parity preserves FlatList virtualization (keyExtractor item.id, initialNumToRender 10, windowSize 5) + floatingTabClearance 160 — same no ScrollView+map for large collections
-- Today and Work queries use placeholderData:(prev)=>prev to keep content during refetch — maintain pattern for Goals/Timer; show subtle refreshing not spinner overlay
-- Chip is single primitive via chipTone(kind,value) — do not reintroduce StatusChip/PriorityChip or InfoBadge/GlassPill
-- ProjectCard progress is single primary (ProgressBar + fraction count) — do not reintroduce bar+fraction+percent triple
-- research-wave-1/2 decisions (no fake min, no duplicate metric, compact empties, quick-filters always visible, advanced collapsible, one context FAB) apply to later waves
+- Goals parity preserves FlatList virtualization (same params) + floatingTabClearance 160 + placeholderData:(prev)=>prev keep-previous — maintain for Timer
+- Chip is single primitive via chipTone(kind,value) — do not reintroduce StatusChip/PriorityChip or InfoBadge/GlassPill; status vs health distinct Chips (two chips) must stay separate, health muted when null with “No health” label and slate dot
+- ProjectCard and GoalCard progress is single primary (ProgressBar flex1 + fraction `completed / total tasks`) — do not reintroduce bar+fraction+percent triple or percent-only; bar width is honest `progressPercent` clamped 0–100, fraction derived from `linkedTasks.filter(done)`
+- Goals `+ Add next step` button affordance (secondary sm + add icon) → bottom sheet 28r with 96h TextInput + Cancel/Save must remain when nextStep null — not just text
+- research-wave-1/2/3 decisions (no fake min, no duplicate metric, compact empties, quick-filters always visible, advanced collapsible, one context FAB, keep-previous placeholderData) apply to later waves
