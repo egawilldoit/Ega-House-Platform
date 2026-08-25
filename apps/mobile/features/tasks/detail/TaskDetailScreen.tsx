@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect -- task → draft sync is intentional; draft is local editable copy */
 import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';

@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { ProjectStatus } from '@ega/api-client';
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
@@ -13,7 +13,6 @@ import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { FormSection } from '@/components/mobile/ui/FormSection';
 import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
 import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
-import { formatTaskToken } from '@/features/tasks/form-utils';
 import {
   useArchiveProjectMutation,
   useProjectBySlugQuery,
@@ -30,6 +29,7 @@ function formatProjectToken(value: string) {
 export function ProjectDetailScreen() {
   const router = (() => {
     try {
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- fallback for test env where expo-router mock may be missing
       return useRouter();
     } catch {
       return { back: () => {}, push: () => {}, replace: () => {} } as unknown as ReturnType<typeof useRouter>;

@@ -15,7 +15,6 @@ import { ProgressBar } from '@/components/mobile/ui/ProgressBar';
 import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
 import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
 import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
-import { formatTaskToken } from '@/features/tasks/form-utils';
 import {
   useArchiveGoalMutation,
   useGoalDetailQuery,

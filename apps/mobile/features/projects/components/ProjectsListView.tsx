@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps -- rawProjects fallback array identity is stable via query; filtered memo is intentional */
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';

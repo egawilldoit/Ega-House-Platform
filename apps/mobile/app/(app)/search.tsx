@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps -- tasks/projects/goals derived from query data with stable identity via query; false positive logical expression */
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
