@@ -27,6 +27,10 @@ Use this directory for current repository-local agent guidance. Keep `AGENTS.md`
 - [`../architecture/runner-and-worktrees.md`](../architecture/runner-and-worktrees.md)
 - [`../architecture/hermes-execution.md`](../architecture/hermes-execution.md)
 
+## Historical evidence
+
+- [`../reports/README.md`](../reports/README.md) — index/classification for dated audits, design handoffs, PR inventories, and readiness snapshots that remain useful evidence but are not current authority.
+
 ## Skill design
 
 Repository EGA skills are small and composable. Their frontmatter descriptions carry inclusion/exclusion triggers because skill selection may happen before the body is loaded. Product authority remains in versioned documents rather than being duplicated in each skill.
