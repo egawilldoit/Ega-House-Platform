@@ -1,18 +1,31 @@
 # Agent Context Index
 
-Use this directory for current repository-local agent guidance. Keep `AGENTS.md` as the compact map and follow links to the narrow source of truth needed for the task. Current behavior and normative requirements remain separate hierarchies in [`product-authority.md`](product-authority.md).
+Use this directory for current repository-local agent guidance. `AGENTS.md` is the compact repository contract; scoped `AGENTS.md` files add local rules next to the code they govern. Current behavior and normative requirements remain separate hierarchies in [`product-authority.md`](product-authority.md).
 
 ## Start here
 
-1. [`../../AGENTS.md`](../../AGENTS.md) — stable repository-wide safety, scope, approval, and navigation.
-2. [`../../CONTEXT.md`](../../CONTEXT.md) — product loop, vocabulary, and cross-surface mental model.
-3. [`product-authority.md`](product-authority.md) — current-behavior evidence vs normative product authority.
-4. [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — living current-system map and implementation status.
-5. [`../architecture/platform-monorepo.md`](../architecture/platform-monorepo.md) — application/package boundaries and dependency direction.
-6. [`decision-log.md`](decision-log.md) — persisted defect vs unresolved-product-decision classifications; never an authority override.
-7. [`tooling-map.md`](tooling-map.md) — agent harness/config loading and drift status.
-8. [`testing-and-validation.md`](testing-and-validation.md) — command matrix and evidence labels.
-9. [`skill-routing-evaluation.md`](skill-routing-evaluation.md) — expected specialized-skill routing and observed/unexecuted semantic checks.
+1. [`../../AGENTS.md`](../../AGENTS.md) — repository-wide safety, authority, topology, workflow, and validation routing.
+2. Read the nearest scoped `AGENTS.md` for the path you will touch:
+   - [`../../apps/web/AGENTS.md`](../../apps/web/AGENTS.md)
+   - [`../../apps/server/AGENTS.md`](../../apps/server/AGENTS.md)
+   - [`../../apps/mobile/AGENTS.md`](../../apps/mobile/AGENTS.md)
+   - [`../../packages/AGENTS.md`](../../packages/AGENTS.md)
+   - [`../../scripts/ega-runner/AGENTS.md`](../../scripts/ega-runner/AGENTS.md)
+3. [`../../CONTEXT.md`](../../CONTEXT.md) — product loop, vocabulary, and cross-surface mental model.
+4. [`product-authority.md`](product-authority.md) — current-behavior evidence vs normative product authority.
+5. [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — living current-system map and implementation status.
+6. [`../architecture/platform-monorepo.md`](../architecture/platform-monorepo.md) — application/package boundaries and dependency direction.
+7. [`decision-log.md`](decision-log.md) — persisted defect vs unresolved-product-decision classifications; never an authority override.
+8. [`tooling-map.md`](tooling-map.md) — harness/config loading and drift status.
+9. [`testing-and-validation.md`](testing-and-validation.md) — command matrix and evidence labels.
+10. [`skill-routing-evaluation.md`](skill-routing-evaluation.md) — expected specialized-skill routing and observed/unexecuted semantic checks.
+11. [`../reports/README.md`](../reports/README.md) — historical audits/design/readiness evidence index.
+
+## Why scoped instructions
+
+Agents do better when global rules stay short and local implementation constraints live next to the affected subsystem. A web-only agent should not spend instruction budget on Runner queue internals; a Runner agent should receive those invariants automatically when its working directory is inside `scripts/ega-runner`.
+
+The expected discovery order is root → leaf. A deeper `AGENTS.md` may specialize local conventions, but it must not weaken root safety, authority, or approval boundaries.
 
 ## Platform architecture
 
@@ -26,10 +39,6 @@ Use this directory for current repository-local agent guidance. Keep `AGENTS.md`
 - [`../architecture/queue-and-leases.md`](../architecture/queue-and-leases.md)
 - [`../architecture/runner-and-worktrees.md`](../architecture/runner-and-worktrees.md)
 - [`../architecture/hermes-execution.md`](../architecture/hermes-execution.md)
-
-## Historical evidence
-
-- [`../reports/README.md`](../reports/README.md) — index/classification for dated audits, design handoffs, PR inventories, and readiness snapshots that remain useful evidence but are not current authority.
 
 ## Skill design
 
