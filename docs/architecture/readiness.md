@@ -1,5 +1,7 @@
 # EGA House Platform — First-Wave Architecture Readiness
 
+> **HISTORICAL SNAPSHOT — 2026-08-09. NOT CURRENT ARCHITECTURE AUTHORITY.** This file preserves the original Stage-10 pre-merge readiness evidence. The migration has since landed and evolved. Use [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) and [`platform-monorepo.md`](platform-monorepo.md) for current architecture; use this document only for the dated branch/evidence state it records.
+
 **Branch:** `arch/10-compat-cleanup-readiness` (Stage 10)
 **Base:** `arch/09-unified-ci` (PR #127)
 **Date:** 2026-08-09

@@ -31,13 +31,62 @@ export {
   validateSkillDocuments,
 };
 
+export function extractDocumentedNpmCommands(text) {
+  const commands = [];
+  const seen = new Set();
+
+  const add = (kind, script, target = null) => {
+    const key = `${kind}\0${target ?? ""}\0${script}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    commands.push({ kind, script, target });
+  };
+
+  for (const match of text.matchAll(/\bnpm\s+--prefix\s+([^\s`;&|]+)\s+run\s+([A-Za-z0-9:._-]+)/g)) {
+    add("prefix", match[2], match[1]);
+  }
+
+  for (const match of text.matchAll(/\bnpm\s+--workspace\s+([^\s`;&|]+)\s+run\s+([A-Za-z0-9:._-]+)/g)) {
+    add("workspace", match[2], match[1]);
+  }
+
+  for (const match of text.matchAll(/\bnpm\s+run\s+([A-Za-z0-9:._-]+)(?:\s+--workspace\s+([^\s`;&|]+))?/g)) {
+    if (match[2]) add("workspace", match[1], match[2]);
+    else add("root", match[1]);
+  }
+
+  for (const match of text.matchAll(/\bnpm\s+(test|start)\b/g)) {
+    add("root", match[1]);
+  }
+
+  return commands;
+}
+
 const ignored = new Set([".git", ".next", ".expo", "node_modules", "coverage", "dist", "build"]);
 const required = [
-  "AGENTS.md", "ARCHITECTURE.md", "HERMES_MASTER_PROMPT.md",
-  "docs/agent-context/index.md", "docs/agent-context/product-authority.md",
-  "docs/agent-context/testing-and-validation.md", "docs/agent-context/skill-routing-evaluation.md",
-  "docs/architecture/delivery-lifecycle.md", "docs/architecture/queue-and-leases.md",
-  "docs/architecture/runner-and-worktrees.md", "docs/architecture/hermes-execution.md",
+  "AGENTS.md",
+  "apps/web/AGENTS.md",
+  "apps/server/AGENTS.md",
+  "apps/mobile/AGENTS.md",
+  "packages/AGENTS.md",
+  "scripts/ega-runner/AGENTS.md",
+  "CONTEXT.md",
+  "ARCHITECTURE.md",
+  "HERMES_MASTER_PROMPT.md",
+  "docs/agent-context/index.md",
+  "docs/agent-context/product-authority.md",
+  "docs/agent-context/decision-log.md",
+  "docs/agent-context/tooling-map.md",
+  "docs/agent-context/testing-and-validation.md",
+  "docs/agent-context/skill-routing-evaluation.md",
+  "docs/architecture/platform-monorepo.md",
+  "docs/architecture/decisions/001-platform-monorepo.md",
+  "docs/architecture/hono-deployment.md",
+  "docs/architecture/delivery-lifecycle.md",
+  "docs/architecture/queue-and-leases.md",
+  "docs/architecture/runner-and-worktrees.md",
+  "docs/architecture/hermes-execution.md",
+  "docs/reports/README.md",
 ];
 const conflicts = [
   [/(?:work|implement|commit)\s+(?:directly\s+)?on\s+main/i, "direct main-branch implementation"],
@@ -45,6 +94,49 @@ const conflicts = [
   [/(?:Hermes|agent).{0,40}(?:output|exit code|result JSON).{0,30}(?:is|as)\s+(?:proof|success)/i, "agent self-certification"],
   [/pgmq\s*\.\s*pop\s*\([^)]*\).{0,40}(?:canonical|recommended|required)/i, "unsafe queue consumption"],
 ];
+
+const navigationRequirements = new Map([
+  ["AGENTS.md", [
+    "(CONTEXT.md)",
+    "(docs/agent-context/decision-log.md)",
+    "(docs/agent-context/tooling-map.md)",
+    "(docs/architecture/platform-monorepo.md)",
+    "(apps/web/AGENTS.md)",
+    "(apps/server/AGENTS.md)",
+    "(apps/mobile/AGENTS.md)",
+    "(packages/AGENTS.md)",
+    "(scripts/ega-runner/AGENTS.md)",
+  ]],
+  ["docs/agent-context/index.md", [
+    "(../../CONTEXT.md)",
+    "(decision-log.md)",
+    "(tooling-map.md)",
+    "(../architecture/platform-monorepo.md)",
+    "(../../apps/web/AGENTS.md)",
+    "(../../apps/server/AGENTS.md)",
+    "(../../apps/mobile/AGENTS.md)",
+    "(../../packages/AGENTS.md)",
+    "(../../scripts/ega-runner/AGENTS.md)",
+  ]],
+  ["HERMES_MASTER_PROMPT.md", [
+    "(CONTEXT.md)",
+    "(docs/agent-context/decision-log.md)",
+    "docs/architecture/platform-monorepo.md",
+  ]],
+]);
+
+const instructionExpectations = new Map([
+  [".", ["AGENTS.md"]],
+  ["apps/web/src", ["AGENTS.md", "apps/web/AGENTS.md"]],
+  ["apps/mobile/app", ["AGENTS.md", "apps/mobile/AGENTS.md"]],
+  ["apps/server/src", ["AGENTS.md", "apps/server/AGENTS.md"]],
+  ["packages/contracts/src", ["AGENTS.md", "packages/AGENTS.md"]],
+  ["packages/domain/src", ["AGENTS.md", "packages/AGENTS.md"]],
+  ["packages/application/src", ["AGENTS.md", "packages/AGENTS.md"]],
+  ["packages/data-access/src", ["AGENTS.md", "packages/AGENTS.md"]],
+  ["packages/api-client/src", ["AGENTS.md", "packages/AGENTS.md"]],
+  ["scripts/ega-runner/src", ["AGENTS.md", "scripts/ega-runner/AGENTS.md"]],
+]);
 
 const exists = async (file, type = "file") => {
   try { const value = await stat(file); return type === "directory" ? value.isDirectory() : value.isFile(); }
@@ -70,6 +162,20 @@ async function validateFiles(root, errors, output) {
   }
 }
 
+async function validateNavigation(root, errors, output) {
+  let checked = 0;
+  for (const [file, markers] of navigationRequirements) {
+    const absolute = join(root, file);
+    if (!(await exists(absolute))) continue;
+    const text = await readFile(absolute, "utf8");
+    for (const marker of markers) {
+      checked += 1;
+      if (!text.includes(marker)) errors.push(`${file}: required navigation reference missing '${marker}'`);
+    }
+  }
+  output.push(`STRUCTURAL PASS checked ${checked} required agent-context navigation reference(s)`);
+}
+
 async function validateSkills(root, errors, output) {
   const files = await walk(join(root, ".agents"), (file) => file.endsWith("SKILL.md"));
   const docs = await Promise.all(files.map(async (file) => ({ file: relative(root, file), content: await readFile(file, "utf8") })));
@@ -79,11 +185,19 @@ async function validateSkills(root, errors, output) {
 }
 
 async function validateLinks(root, errors, output) {
-  const docs = [
-    "AGENTS.md", "ARCHITECTURE.md", "HERMES_MASTER_PROMPT.md", "scripts/ega-runner/README.md",
+  const discoveredInstructions = await walk(root, (file) => ["AGENTS.md", "AGENTS.override.md"].includes(file.split(sep).at(-1)));
+  const docs = [...new Set([
+    "README.md",
+    "AGENTS.md",
+    "CONTEXT.md",
+    "ARCHITECTURE.md",
+    "HERMES_MASTER_PROMPT.md",
+    "scripts/ega-runner/README.md",
+    ...discoveredInstructions.map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "agent-context"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "architecture"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
-  ];
+    ...(await walk(join(root, "docs", "reports"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
+  ])];
   let checked = 0;
   for (const file of docs) {
     if (!(await exists(join(root, file)))) continue;
@@ -100,9 +214,26 @@ async function validateLinks(root, errors, output) {
 
 async function validateCommands(root, errors, output) {
   for (const [file, commands] of [
-    ["package.json", ["build", "lint", "test", "typecheck", "test:agent-context", "validate:agent-context"]],
+    ["package.json", [
+      "api-client:test", "api-client:typecheck",
+      "application:test", "application:typecheck",
+      "build", "check:architecture",
+      "ci:purity", "ci:security", "ci:workspace",
+      "contracts:test", "contracts:typecheck",
+      "data-access:test", "data-access:typecheck",
+      "domain:test", "domain:typecheck",
+      "lint", "lint:changed",
+      "mobile:bundle", "mobile:doctor", "mobile:test", "mobile:typecheck",
+      "preflight:hermes-skills",
+      "server:test", "server:typecheck",
+      "test", "test:agent-context", "test:architecture", "test:ega-runner-pr-loop",
+      "typecheck", "typecheck:ega-runner",
+      "validate:agent-context", "verify:mobile",
+      "web:build", "web:test", "web:typecheck",
+    ]],
     ["apps/mobile/package.json", ["typecheck", "test", "doctor", "validate:bundle"]],
-    ["scripts/ega-runner/package.json", ["start", "typecheck", "smoke"]],
+    ["apps/server/package.json", ["typecheck", "test", "build:vercel"]],
+    ["scripts/ega-runner/package.json", ["start", "typecheck", "smoke", "test:pr-loop"]],
   ]) {
     try {
       const manifest = JSON.parse(await readFile(join(root, file), "utf8"));
@@ -115,6 +246,72 @@ async function validateCommands(root, errors, output) {
     if (await exists(join(root, file))) output.push(`FILE EXISTS ${file}`);
     else errors.push(`documented Runner validation file does not exist: ${file}`);
   }
+}
+
+async function validateDocumentedNpmCommands(root, errors, output) {
+  const instructionFiles = await walk(root, (file) => ["AGENTS.md", "AGENTS.override.md"].includes(file.split(sep).at(-1)));
+  let rootManifest;
+  try {
+    rootManifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+  } catch (error) {
+    errors.push(`package.json: unable to validate AGENTS.md npm commands (${error.message})`);
+    return;
+  }
+
+  const workspaceManifests = new Map();
+  for (const workspaceRoot of ["apps", "packages"]) {
+    for (const manifestPath of await walk(join(root, workspaceRoot), (file) => file.split(sep).at(-1) === "package.json")) {
+      try {
+        const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+        if (typeof manifest.name === "string" && manifest.name) workspaceManifests.set(manifest.name, { manifest, manifestPath });
+      } catch (error) {
+        errors.push(`${relative(root, manifestPath)}: invalid JSON while validating documented npm commands (${error.message})`);
+      }
+    }
+  }
+
+  const prefixCache = new Map();
+  let checked = 0;
+  for (const instruction of instructionFiles) {
+    const file = relative(root, instruction);
+    const text = await readFile(instruction, "utf8");
+    for (const command of extractDocumentedNpmCommands(text)) {
+      checked += 1;
+
+      if (command.kind === "root") {
+        if (!rootManifest.scripts?.[command.script]) errors.push(`${file}: documented root npm script '${command.script}' does not exist`);
+        continue;
+      }
+
+      if (command.kind === "workspace") {
+        const entry = workspaceManifests.get(command.target);
+        if (!entry) errors.push(`${file}: documented npm workspace '${command.target}' does not exist for script '${command.script}'`);
+        else if (!entry.manifest.scripts?.[command.script]) errors.push(`${file}: documented workspace npm script '${command.target}#${command.script}' does not exist`);
+        continue;
+      }
+
+      const prefixRoot = resolve(root, command.target);
+      if (prefixRoot !== root && !prefixRoot.startsWith(`${root}${sep}`)) {
+        errors.push(`${file}: documented npm --prefix target '${command.target}' escapes the repository`);
+        continue;
+      }
+
+      let entry = prefixCache.get(prefixRoot);
+      if (!entry) {
+        const manifestPath = join(prefixRoot, "package.json");
+        try {
+          entry = { manifest: JSON.parse(await readFile(manifestPath, "utf8")), manifestPath };
+          prefixCache.set(prefixRoot, entry);
+        } catch (error) {
+          errors.push(`${file}: documented npm --prefix target '${command.target}' has no readable package.json (${error.message})`);
+          continue;
+        }
+      }
+      if (!entry.manifest.scripts?.[command.script]) errors.push(`${file}: documented prefixed npm script '${command.target}#${command.script}' does not exist`);
+    }
+  }
+
+  output.push(`STRUCTURAL PASS checked ${checked} npm command reference(s) in ${instructionFiles.length} instruction file(s)`);
 }
 
 async function validateQueue(root, errors, output) {
@@ -130,16 +327,25 @@ async function validateQueue(root, errors, output) {
 
 async function validateInstructions(root, errors, warnings, output, options) {
   const config = await loadCodexDiscoveryConfig({ repoRoot: root, env: options.env ?? process.env, userHome: options.userHome ?? homedir() });
-  for (const cwd of [".", "apps/mobile", "scripts/ega-runner", "apps/web/src"]) {
+  for (const [cwd, expected] of instructionExpectations) {
     const absolute = resolve(root, cwd);
-    if (!(await exists(absolute, "directory"))) { output.push(`RUNTIME NOT VERIFIED instruction directory missing: ${cwd}`); continue; }
+    if (!(await exists(absolute, "directory"))) {
+      errors.push(`${cwd}: expected instruction target directory is missing`);
+      continue;
+    }
     const chain = await discoverCodexInstructionChain({ repoRoot: root, workingDirectory: absolute, ...config });
+    const selected = chain.selectedFiles.map((file) => relative(root, file.path));
     output.push(`Working directory: ${cwd}`);
-    output.push(`Selected instruction files: ${chain.selectedFiles.length ? chain.selectedFiles.map((file) => relative(root, file.path)).join(", ") : "none"}`);
+    output.push(`Selected instruction files: ${selected.length ? selected.join(", ") : "none"}`);
     output.push(`Combined bytes: ${chain.combinedBytes}`);
     output.push(`Configured/default maximum: ${chain.projectDocMaxBytes}`);
     output.push(`Result: ${chain.withinBudget ? "STRUCTURAL PASS" : "STRUCTURAL FAIL"}`);
-    if (!chain.withinBudget) errors.push(`${cwd}: Codex instruction chain is ${chain.combinedBytes} bytes, above ${chain.projectDocMaxBytes}`);
+    if (!chain.withinBudget) errors.push(`${cwd}: instruction chain is ${chain.combinedBytes} bytes, above ${chain.projectDocMaxBytes}`);
+    if (JSON.stringify(selected) !== JSON.stringify(expected)) {
+      errors.push(`${cwd}: instruction chain mismatch; expected [${expected.join(", ")}], got [${selected.join(", ")}]`);
+    } else {
+      output.push(`STRUCTURAL PASS instruction chain matches expected root→leaf scope for ${cwd}`);
+    }
   }
 
   const instructionFiles = await walk(root, (file) => ["AGENTS.md", "AGENTS.override.md"].includes(file.split(sep).at(-1)));
@@ -167,12 +373,14 @@ export async function validateRepository(repoRoot, options = {}) {
   const root = resolve(repoRoot);
   const result = { errors: [], warnings: [], output: [] };
   await validateFiles(root, result.errors, result.output);
+  await validateNavigation(root, result.errors, result.output);
   await validateSkills(root, result.errors, result.output);
   await validateLinks(root, result.errors, result.output);
   await validateCommands(root, result.errors, result.output);
+  await validateDocumentedNpmCommands(root, result.errors, result.output);
   await validateQueue(root, result.errors, result.output);
   await validateInstructions(root, result.errors, result.warnings, result.output, options);
-  result.output.push("RUNTIME NOT VERIFIED this command does not prove semantic documentation accuracy, command success, Codex skill selection, Hermes discovery, or external systems");
+  result.output.push("RUNTIME NOT VERIFIED this command does not prove semantic documentation accuracy, command success, tool skill selection, deployment, database state, device behavior, or external systems");
   return result;
 }
 
