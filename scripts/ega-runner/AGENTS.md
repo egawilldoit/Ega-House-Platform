@@ -38,9 +38,8 @@ Never place credentials, token values, raw environment secrets, or authenticated
 From repository root:
 
 ```bash
-npm --prefix scripts/ega-runner run typecheck
-npm --prefix scripts/ega-runner run test:pr-loop
-npm run test:runner-loop
+npm run typecheck:ega-runner
+npm run test:ega-runner-pr-loop
 npm run validate:agent-context
 ```
 
