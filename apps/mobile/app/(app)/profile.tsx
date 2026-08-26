@@ -26,30 +26,48 @@ export default function ProfileStackScreen() {
   return (
     <AppScreen padded={false} testID="profile-screen">
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPaddingNoFab }]} showsVerticalScrollIndicator={false}>
-        <ScreenHeader
-          eyebrow="Account"
-          title="Profile"
-          description={email ? `Authenticated as ${email}` : 'Authenticated'}
-        />
+        <ScreenHeader eyebrow="Account" title="Profile" />
 
-        <Card style={styles.avatarCard} testID="profile-identity-card">
+        <Card style={styles.identityCard} testID="profile-identity-card">
           <View style={styles.avatarRow}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initials}</Text>
             </View>
             <View style={styles.avatarInfo}>
               <Text style={styles.avatarName}>EGA House</Text>
-              <Text style={styles.avatarEmail}>{email ?? 'Authenticated'}</Text>
+              <Text style={styles.avatarEmail} numberOfLines={1}>
+                {email ?? '—'}
+              </Text>
             </View>
           </View>
-          <View style={styles.identityFooter}>
-            <View style={[styles.pill, styles.pillSuccess]}>
-              <Ionicons color={mobileTheme.colors.success} name="shield-checkmark-outline" size={13} />
-              <Text style={[styles.pillText, { color: mobileTheme.colors.success }]}>Authenticated</Text>
+
+          <View style={styles.divider} />
+
+          <View style={styles.detailsList}>
+            <View style={styles.detailRow}>
+              <Ionicons color={mobileTheme.colors.textSubtle} name="mail-outline" size={16} />
+              <View style={styles.detailCopy}>
+                <Text style={styles.detailLabel}>Email</Text>
+                <Text style={styles.detailValue} numberOfLines={1}>
+                  {email ?? 'Not signed in'}
+                </Text>
+              </View>
             </View>
-            <View style={[styles.pill, styles.pillPrimary]}>
-              <Ionicons color={mobileTheme.colors.accent} name="phone-portrait-outline" size={13} />
-              <Text style={[styles.pillText, { color: mobileTheme.colors.accent }]}>Mobile workspace</Text>
+
+            <View style={[styles.detailRow, styles.detailRowBorder]}>
+              <Ionicons color={mobileTheme.colors.success} name="shield-checkmark-outline" size={16} />
+              <View style={styles.detailCopy}>
+                <Text style={styles.detailLabel}>Session</Text>
+                <Text style={styles.detailValue}>Authenticated session</Text>
+              </View>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Ionicons color={mobileTheme.colors.accent} name="phone-portrait-outline" size={16} />
+              <View style={styles.detailCopy}>
+                <Text style={styles.detailLabel}>Workspace</Text>
+                <Text style={styles.detailValue}>Mobile</Text>
+              </View>
             </View>
           </View>
         </Card>
@@ -108,9 +126,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 58,
   },
-  avatarCard: {
-    marginTop: mobileTheme.spacing.sm,
-  },
   avatarEmail: {
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
@@ -141,29 +156,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
-  identityFooter: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.md,
+  detailCopy: {
+    flex: 1,
+    gap: 1,
   },
-  pill: {
-    alignItems: 'center',
-    borderRadius: mobileTheme.radius.pill,
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  pillPrimary: {
-    backgroundColor: mobileTheme.colors.infoBg,
-  },
-  pillSuccess: {
-    backgroundColor: mobileTheme.colors.successBg,
-  },
-  pillText: {
-    fontSize: 12,
+  detailLabel: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 11,
     fontWeight: mobileTheme.font.bold,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  detailValue: {
+    color: mobileTheme.colors.text,
+    fontSize: 13,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  detailRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  detailRowBorder: {
+    borderBottomColor: mobileTheme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderTopColor: mobileTheme.colors.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  detailsList: {
+    gap: 0,
+  },
+  divider: {
+    backgroundColor: mobileTheme.colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginVertical: mobileTheme.spacing.md,
+  },
+  identityCard: {
+    marginTop: mobileTheme.spacing.sm,
   },
   versionText: {
     color: mobileTheme.colors.textSubtle,
