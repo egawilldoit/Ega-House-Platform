@@ -93,7 +93,8 @@ describe('card accessibility', () => {
     const mainTap = nodes.find(
       (node) =>
         node.props.accessibilityRole === 'button' &&
-        node.props.accessibilityLabel === undefined &&
+        node.props.accessibilityLabel === 'Write audit report' &&
+        node.props.accessibilityHint === 'Open details' &&
         Number(flattenStyle(node.props.style).borderRadius) === 10,
     );
     expect(mainTap).toBeDefined();
