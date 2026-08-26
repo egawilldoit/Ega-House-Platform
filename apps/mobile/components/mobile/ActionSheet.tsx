@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { GlassBottomSheet } from '@/components/mobile/glass';
 import { mobileTheme } from '@/components/mobile/theme';
+import { useReducedMotion } from '@/components/mobile/motion/ReducedMotion';
 
 export type ActionSheetItem = {
   key: string;
@@ -75,10 +76,11 @@ export function ActionSheet({
   onClose: () => void;
 }) {
   const groupedItems = useMemo(() => groupItems(items), [items]);
+  const reducedMotion = useReducedMotion();
 
   return (
     <Modal
-      animationType="slide"
+      animationType={reducedMotion ? 'fade' : 'slide'}
       onRequestClose={onClose}
       presentationStyle="overFullScreen"
       transparent
@@ -101,6 +103,7 @@ export function ActionSheet({
                 {group.items.map((item) => (
                   <Pressable
                     accessibilityRole="button"
+                    accessibilityState={{ disabled: !!item.disabled }}
                     key={item.key}
                     disabled={item.disabled}
                     onPress={() => {

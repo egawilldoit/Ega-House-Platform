@@ -381,7 +381,13 @@ export function TasksListView() {
                 {searchQuery.trim() ? <Text style={styles.summaryMuted}> · filtered</Text> : null}
               </View>
               {hasFilters ? (
-                <Pressable onPress={clearFilters} hitSlop={8} style={styles.summaryClearWrap}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear filters"
+                  hitSlop={16}
+                  onPress={clearFilters}
+                  style={styles.summaryClearWrap}
+                >
                   <Text style={styles.summaryClear}>Clear</Text>
                 </Pressable>
               ) : null}
@@ -566,6 +572,10 @@ const styles = StyleSheet.create({
     fontWeight: mobileTheme.font.bold,
   },
   summaryClearWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 44,
     paddingLeft: mobileTheme.spacing.sm,
   },
   summaryLeft: {
