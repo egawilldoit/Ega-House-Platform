@@ -284,7 +284,7 @@ describe('TimerScreen (canonical server projection)', () => {
 
     expect(textIncludes(tree, 'Server task')).toBe(true);
     expect(textIncludes(tree, '01:05')).toBe(true);
-    expect(textIncludes(tree, 'Stop timer')).toBe(true);
+    expect(textIncludes(tree, 'Stop session')).toBe(true);
     expect(textIncludes(tree, 'Pick a task to time')).toBe(false);
   });
 
@@ -326,7 +326,7 @@ describe('TimerScreen (canonical server projection)', () => {
     });
     await flushAll(2);
 
-    const startButton = findPressableByText(tree, 'Start timer');
+    const startButton = findPressableByText(tree, 'Start session');
     expect(startButton).not.toBeNull();
 
     await act(async () => {
@@ -336,7 +336,7 @@ describe('TimerScreen (canonical server projection)', () => {
 
     expect(startTimerForTask).toHaveBeenCalledWith('task-1');
     expect(textIncludes(tree, 'Started task')).toBe(true);
-    expect(textIncludes(tree, 'Stop timer')).toBe(true);
+    expect(textIncludes(tree, 'Stop session')).toBe(true);
   });
 
   it('a duplicate-start conflict surfaces the server message and reconciles to one session', async () => {
@@ -357,7 +357,7 @@ describe('TimerScreen (canonical server projection)', () => {
     });
     await flushAll(2);
 
-    const startButton = findPressableByText(tree, 'Start timer');
+    const startButton = findPressableByText(tree, 'Start session');
     await act(async () => {
       startButton!.onPress?.();
     });
@@ -368,7 +368,7 @@ describe('TimerScreen (canonical server projection)', () => {
 
     const texts: string[] = [];
     collectText(tree.toJSON() as RenderNode, texts);
-    expect(texts.filter((line) => line === 'Stop timer')).toHaveLength(1);
+    expect(texts.filter((line) => line === 'Stop session')).toHaveLength(1);
   });
 
   it('stop success clears to the empty picker via server truth', async () => {
@@ -380,7 +380,7 @@ describe('TimerScreen (canonical server projection)', () => {
     const { tree } = renderScreen();
     await flushAll();
 
-    const stopButton = findPressableByText(tree, 'Stop timer');
+    const stopButton = findPressableByText(tree, 'Stop session');
     await act(async () => {
       stopButton!.onPress?.();
     });
@@ -399,7 +399,7 @@ describe('TimerScreen (canonical server projection)', () => {
     const { tree } = renderScreen();
     await flushAll();
 
-    const stopButton = findPressableByText(tree, 'Stop timer');
+    const stopButton = findPressableByText(tree, 'Stop session');
     await act(async () => {
       stopButton!.onPress?.();
     });
