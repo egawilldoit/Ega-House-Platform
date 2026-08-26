@@ -60,12 +60,12 @@ export function GoalsListView() {
 
   const onRefresh = useCallback(() => {
     goalsQuery.refetch().catch(() => {});
-  }, [goalsQuery]);
+  }, [goalsQuery.refetch]);
 
   useFocusEffect(
     useCallback(() => {
       goalsQuery.refetch().catch(() => {});
-    }, [goalsQuery]),
+    }, [goalsQuery.refetch]),
   );
 
   const sheetTarget = useMemo(
@@ -238,33 +238,31 @@ export function GoalsListView() {
         }
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Card contentStyle={styles.emptyCardContent}>
-              <EmptyState
-                icon={view === 'archived' ? 'archive-outline' : 'flag-outline'}
-                iconSize={36}
-                title={
-                  goals.length === 0
-                    ? view === 'archived'
-                      ? 'No archived goals'
-                      : view === 'active'
-                        ? 'No goals here yet'
-                        : 'No goals'
-                    : 'No goals match this view'
-                }
-                description={
-                  view === 'active'
-                    ? 'Define an outcome, keep its health honest, and name the next step.'
-                    : view === 'archived'
-                      ? 'Archived goals live here until you need them again.'
-                      : 'Nothing to show in this view yet.'
-                }
-                action={
-                  view === 'active' ? (
-                    <Button title="Create your first goal" onPress={() => router.push('/(app)/goals/create')} />
-                  ) : undefined
-                }
-              />
-            </Card>
+            <EmptyState
+              icon={view === 'archived' ? 'archive-outline' : 'flag-outline'}
+              iconSize={36}
+              title={
+                goals.length === 0
+                  ? view === 'archived'
+                    ? 'No archived goals'
+                    : view === 'active'
+                      ? 'No goals here yet'
+                      : 'No goals'
+                  : 'No goals match this view'
+              }
+              description={
+                view === 'active'
+                  ? 'Define an outcome, keep its health honest, and name the next step.'
+                  : view === 'archived'
+                    ? 'Archived goals live here until you need them again.'
+                    : 'Nothing to show in this view yet.'
+              }
+              action={
+                view === 'active' ? (
+                  <Button title="Create your first goal" onPress={() => router.push('/(app)/goals/create')} />
+                ) : undefined
+              }
+            />
           </View>
         }
         renderItem={renderGoalItem}
@@ -343,11 +341,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: mobileTheme.font.semibold,
   },
-  emptyCardContent: {
-    padding: 0,
-  },
   emptyWrap: {
-    marginTop: mobileTheme.spacing.sm,
+    marginTop: mobileTheme.spacing.md,
+    alignItems: 'center',
+    paddingVertical: mobileTheme.spacing.lg,
   },
   errorCard: {
     marginTop: mobileTheme.spacing.sm,

@@ -4,8 +4,6 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 
 import { mobileTheme } from '@/components/mobile/theme';
 
-import { Card } from './Card';
-
 export type FormSectionProps = {
   title: string;
   description?: string;
@@ -15,29 +13,40 @@ export type FormSectionProps = {
   testID?: string;
 };
 
+/**
+ * FormSection — tonal separation + divider, not card-in-card.
+ * Header row (icon + title + description) + hairline divider + content gap.
+ * Inner rows use tonal Views (surfaceLow/muted) with hairline + divider, not nested Cards.
+ */
 export function FormSection({ title, description, icon, children, style, testID }: FormSectionProps) {
   return (
-    <Card style={[styles.section, style]} testID={testID}>
+    <View style={[styles.section, style]} testID={testID}>
       <View style={styles.headerRow}>
         {icon ? <Ionicons name={icon} size={16} color={mobileTheme.colors.textMuted} /> : null}
         <Text style={styles.title}>{title}</Text>
       </View>
       {description ? <Text style={styles.description}>{description}</Text> : null}
+      <View style={styles.divider} />
       <View style={styles.content}>{children}</View>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   content: {
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.sm,
   },
   description: {
     color: mobileTheme.colors.textSubtle,
     fontSize: 12,
     lineHeight: 16,
     marginTop: 4,
+  },
+  divider: {
+    backgroundColor: mobileTheme.colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginTop: mobileTheme.spacing.sm,
+    opacity: 0.9,
   },
   headerRow: {
     alignItems: 'center',
@@ -46,6 +55,7 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: mobileTheme.spacing.md,
+    // tonal separation — no Card wrapper, no shadow, just heading + divider
   },
   title: {
     color: mobileTheme.colors.text,

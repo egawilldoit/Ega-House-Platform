@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import type { GoalHealth, GoalStatus } from '@ega/api-client';
-import { mobileTheme } from '@/components/mobile/theme';
+import { healthTone, mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
 import { Card } from '@/components/mobile/ui/Card';
@@ -23,7 +23,6 @@ import {
   useUpdateGoalNextStepMutation,
   useUpdateGoalStatusMutation,
 } from '@/features/goals/query';
-import { healthTone, statusTone } from '@/components/mobile/theme';
 
 const GOAL_STATUS_OPTIONS: GoalStatus[] = ['draft', 'active', 'done', 'paused'];
 const GOAL_HEALTH_OPTIONS: GoalHealth[] = ['on_track', 'at_risk', 'off_track'];
@@ -145,8 +144,9 @@ export function GoalDetailScreen() {
   }
 
   const hTone = healthTone((goal.health as never) ?? null);
-  const sTone = statusTone((goal.status as never) ?? 'draft');
   const progress = Math.max(0, Math.min(100, goal.progressPercent ?? 0));
+  const completed = goal.linkedTasks.filter((t) => t.status === 'done').length;
+  const total = goal.linkedTasks.length;
   const isMutating =
     updateStatusMutation.isPending ||
     updateHealthMutation.isPending ||
@@ -168,7 +168,7 @@ export function GoalDetailScreen() {
             description={isArchived ? 'Archived goal' : 'Outcome, health signal, and next step'}
           />
 
-          <Card style={styles.headerCard}>
+          <Card style={styles.headerCard} variant="plain">
             <Text style={styles.goalTitle}>{goal.title}</Text>
             {goal.projectName ? <Text style={styles.projectName}>{goal.projectName.toUpperCase()}</Text> : null}
             {goal.description ? (
@@ -176,35 +176,17 @@ export function GoalDetailScreen() {
             ) : (
               <Text style={styles.noDescription}>No description yet.</Text>
             )}
+            {/* health primary, status secondary — single badgeRow, no meta duplication */}
             <View style={styles.badgeRow}>
-              <Chip kind="status" value={goal.status} />
-              <Chip kind="health" value={goal.health} label={goal.health ? formatGoalToken(goal.health) : 'No health set'} />
-            </View>
-            <View style={styles.metaAccentRow}>
-              <View style={[styles.metaDot, { backgroundColor: sTone.dot }]} />
-              <Text style={styles.metaText}>{formatGoalToken(goal.status)}</Text>
-              <View style={[styles.metaDot, { backgroundColor: hTone.dot, marginLeft: 10 }]} />
-              <Text style={styles.metaText}>{goal.health ? formatGoalToken(goal.health) : 'No health'}</Text>
+              <Chip kind="health" value={goal.health} label={goal.health ? formatGoalToken(goal.health) : 'No health set'} testID="goal-detail-health-chip" />
+              <Chip kind="status" value={goal.status} label={formatGoalToken(goal.status)} style={styles.statusChipSecondary} testID="goal-detail-status-chip" />
             </View>
           </Card>
 
           {!isArchived ? (
             <>
               <FormSection icon="pulse-outline" title="Status" description="Lifecycle stage">
-                <SegmentedControl
-                  disabled={isMutating}
-                  onChange={(status) => {
-                    if (status !== goal.status) {
-                      runMutation(() => updateStatusMutation.mutateAsync({ goalId: goal.id, status: status as GoalStatus }));
-                    }
-                  }}
-                  options={GOAL_STATUS_OPTIONS.map((option) => ({
-                    label: formatGoalToken(option),
-                    value: option,
-                  }))}
-                  value={(goal.status as GoalStatus) ?? 'draft'}
-                />
-
+                {/* Health primary per spec — health before status, health hierarchy on_track/at_risk/off_track */}
                 <Text style={styles.groupLabel}>Health</Text>
                 <SegmentedControl
                   disabled={isMutating}
@@ -222,6 +204,21 @@ export function GoalDetailScreen() {
                 {!goal.health ? (
                   <Text style={styles.helperText}>No health signal has been recorded yet.</Text>
                 ) : null}
+
+                <Text style={styles.groupLabel}>State</Text>
+                <SegmentedControl
+                  disabled={isMutating}
+                  onChange={(status) => {
+                    if (status !== goal.status) {
+                      runMutation(() => updateStatusMutation.mutateAsync({ goalId: goal.id, status: status as GoalStatus }));
+                    }
+                  }}
+                  options={GOAL_STATUS_OPTIONS.map((option) => ({
+                    label: formatGoalToken(option),
+                    value: option,
+                  }))}
+                  value={(goal.status as GoalStatus) ?? 'draft'}
+                />
               </FormSection>
 
               <FormSection icon="arrow-forward-circle-outline" title="Next step" description="What is the next action?">
@@ -243,19 +240,19 @@ export function GoalDetailScreen() {
           ) : null}
 
           <FormSection icon="stats-chart-outline" title="Progress" description="Completion signal">
+            {/* Dedup: bar + fraction only (no percent duplication) */}
             <View style={styles.progressRow}>
-              <ProgressBar value={progress} max={100} color={hTone.color} style={styles.progressBar} />
-              <Text style={styles.progressLabel}>{`${Math.round(progress)}%`}</Text>
+              <ProgressBar value={progress} max={100} color={hTone.color} trackColor={mobileTheme.colors.surfaceMid} style={styles.progressBar} testID="goal-detail-progress-bar" />
+              <Text style={styles.progressLabel}>{`${completed} / ${total} tasks`}</Text>
             </View>
-            <Text style={styles.helperText}>
-              {goal.linkedTasks.filter((t) => t.status === 'done').length} / {goal.linkedTasks.length} tasks
-            </Text>
+          </FormSection>
 
-            <Text style={styles.groupLabel}>{`Linked tasks (${goal.linkedTasks.length})`}</Text>
-            {goal.linkedTasks.length > 0 ? (
+          <FormSection icon="list-outline" title={`Linked tasks (${total})`} description={total > 0 ? 'Tasks tied to this outcome' : 'No tasks are linked yet'}>
+            {total > 0 ? (
               <View style={styles.taskList}>
                 {goal.linkedTasks.map((task) => (
                   <View key={task.id} style={styles.taskRow}>
+                    <View style={[styles.taskAccent, { backgroundColor: hTone.color }]} />
                     <Text numberOfLines={1} style={styles.taskTitle}>
                       {task.title}
                     </Text>
@@ -270,7 +267,8 @@ export function GoalDetailScreen() {
 
           {actionError ? <FeedbackBanner message={actionError} tone="danger" style={styles.inlineError} /> : null}
 
-          <Card style={styles.actionsCard}>
+          <View style={styles.actionsWrap}>
+            <View style={styles.actionsDivider} />
             {isArchived ? (
               <Button
                 disabled={isMutating}
@@ -298,7 +296,7 @@ export function GoalDetailScreen() {
               variant="ghost"
               style={styles.backButton}
             />
-          </Card>
+          </View>
         </View>
       </ScrollView>
     </AppScreen>
@@ -306,7 +304,12 @@ export function GoalDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  actionsCard: {
+  actionsDivider: {
+    backgroundColor: mobileTheme.colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginBottom: mobileTheme.spacing.md,
+  },
+  actionsWrap: {
     gap: 10,
     marginTop: mobileTheme.spacing.md,
   },
@@ -368,23 +371,6 @@ const styles = StyleSheet.create({
   inlineError: {
     marginTop: mobileTheme.spacing.md,
   },
-  metaAccentRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    marginTop: 8,
-  },
-  metaDot: {
-    borderRadius: 3,
-    height: 6,
-    width: 6,
-  },
-  metaText: {
-    color: mobileTheme.colors.textSubtle,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    marginLeft: 5,
-    textTransform: 'capitalize',
-  },
   noDescription: {
     color: mobileTheme.colors.textSubtle,
     fontSize: 13,
@@ -416,16 +402,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   progressLabel: {
-    color: mobileTheme.colors.textSubtle,
+    color: mobileTheme.colors.textMuted,
     fontSize: 12,
-    minWidth: 36,
+    fontWeight: mobileTheme.font.semibold,
+    minWidth: 72,
     textAlign: 'right',
   },
   progressRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 10,
-    marginTop: 8,
+    marginTop: mobileTheme.spacing.sm,
   },
   projectName: {
     color: mobileTheme.colors.textSubtle,
@@ -447,21 +434,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: 10,
   },
+  statusChipSecondary: {
+    opacity: 0.88,
+  },
+  taskAccent: {
+    alignSelf: 'stretch',
+    borderRadius: 2,
+    width: 3,
+  },
   taskList: {
-    gap: 8,
-    marginTop: 6,
+    gap: 0,
+    marginTop: mobileTheme.spacing.sm,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    backgroundColor: mobileTheme.colors.surface,
   },
   taskRow: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.md,
-    borderWidth: 1,
+    backgroundColor: mobileTheme.colors.surface,
+    borderBottomColor: mobileTheme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingHorizontal: mobileTheme.spacing.md,
+    paddingVertical: 12,
   },
   taskTitle: {
     color: mobileTheme.colors.text,

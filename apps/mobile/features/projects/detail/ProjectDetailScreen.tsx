@@ -164,9 +164,9 @@ export function ProjectDetailScreen() {
             description={project.description ?? 'No description yet'}
           />
 
-          <Card style={styles.headerCard}>
+          <Card style={styles.headerCard} variant="plain">
             <View style={styles.badgeRow}>
-              <Chip kind="status" value={project.status} />
+              <Chip kind="status" value={project.status} label={formatProjectToken(project.status)} testID="project-detail-status-chip" />
               <View style={styles.spacer} />
               <Text style={styles.metaCount}>{goals.length} linked goal{goals.length === 1 ? '' : 's'}</Text>
               <Button
@@ -184,8 +184,8 @@ export function ProjectDetailScreen() {
           </Card>
 
           <FormSection icon="pulse-outline" title="Status" description="Lifecycle stage">
-            <View style={styles.badgeRow}>
-              <Chip kind="status" value={project.status} label={formatProjectToken(project.status)} />
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>{formatProjectToken(project.status)}</Text>
               <View style={styles.spacer} />
               <Button
                 disabled={isMutating}
@@ -211,14 +211,15 @@ export function ProjectDetailScreen() {
                 ))}
               </View>
             ) : (
-              <Card style={styles.emptyCard}>
+              <View style={styles.emptyView}>
                 <Text style={styles.emptyTitle}>No goals linked</Text>
                 <Text style={styles.emptyDesc}>Create a goal from the Goals tab and link it to this project.</Text>
-              </Card>
+              </View>
             )}
           </FormSection>
 
-          <Card style={styles.actionsCard}>
+          <View style={styles.actionsWrap}>
+            <View style={styles.actionsDivider} />
             {isArchived ? (
               <Button
                 disabled={isMutating}
@@ -246,7 +247,7 @@ export function ProjectDetailScreen() {
               fullWidth
               style={styles.backButton}
             />
-          </Card>
+          </View>
         </View>
       </ScrollView>
 
@@ -262,7 +263,12 @@ export function ProjectDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  actionsCard: {
+  actionsDivider: {
+    backgroundColor: mobileTheme.colors.border,
+    height: StyleSheet.hairlineWidth,
+    marginBottom: mobileTheme.spacing.md,
+  },
+  actionsWrap: {
     gap: 10,
     marginTop: mobileTheme.spacing.md,
   },
@@ -291,10 +297,15 @@ const styles = StyleSheet.create({
     paddingBottom: mobileTheme.layout.stickyActionClearance,
     paddingTop: 14,
   },
-  emptyCard: {
+  emptyView: {
     alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceLow,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: 6,
     paddingVertical: 20,
+    paddingHorizontal: mobileTheme.spacing.md,
   },
   emptyDesc: {
     color: mobileTheme.colors.textMuted,
@@ -305,6 +316,17 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 15,
     fontWeight: mobileTheme.font.extrabold,
+  },
+  statusLabel: {
+    color: mobileTheme.colors.text,
+    fontSize: 13,
+    fontWeight: mobileTheme.font.semibold,
+    textTransform: 'capitalize',
+  },
+  statusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
   },
   errorActions: {
     flexDirection: 'row',
@@ -318,14 +340,17 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   goalList: {
-    gap: 8,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+    backgroundColor: mobileTheme.colors.surface,
   },
   goalRow: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.md,
-    borderWidth: 1,
+    backgroundColor: mobileTheme.colors.surface,
+    borderBottomColor: mobileTheme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: 10,
     overflow: 'hidden',
