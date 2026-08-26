@@ -40,9 +40,10 @@
 - [x] Wave 9 — Final independent review (complete, 2026-08-25)
 - [x] Wave 10.1 — Nav architecture (4-tab-only, stack compat, setParams, bottomChrome metrics, FAB inset-aware, GlassBottomTab remove)
 - [x] Wave 10.2 — Tonal system (surfaces + containers + darker foregrounds + spacing rhythm 4/8/12/20/24/32 + contrast >=4.5)
+- [x] Wave 10.3 — Primitives (Card variants plain/tonal/elevated/semantic, shape pill→control, typography roles, spacing md, shadow tier) — 2026-08-26
 
 ## Current Wave
-Wave 10.2 — COMPLETE (working tree, awaiting parent commit; base 7c72d97 after 10.1, HEAD uncommitted tonal system, 2026-08-26)
+Wave 10.3 — COMPLETE (working tree, awaiting parent commit; base b39f77b after 10.2, HEAD uncommitted primitives, 2026-08-26)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -97,9 +98,12 @@ Wave 10.2 — COMPLETE (working tree, awaiting parent commit; base 7c72d97 after
 - Wave 10.2: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after tonal system: canvas #F7F8FC, surfaceLow #F3F6FB, surfaceMid #EDF2F8, surfaceHigh #E6ECF5, primaryContainer #DBEAFE on #1D4ED8, secondary #5B21B6, tertiary #92400E, success #166534, danger #991B1B, neutral #475569, spacing 4/8/12/20/24/32, contrast >=4.5 (see theme.ts header), chip tones updated, literals 12/14 → spacing.md
 - Wave 10.2: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including a11y cards
 - Wave 10.2: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.3: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after primitives: radius card 16 (was 20) xs 8/hero 20/control 12/pill 999, Card variants plain/tonal/elevated/semantic + tone (plain hairline no shadow default, tonal surfaceLow/mid/high, semantic container, elevated shadow.card), Button/IconButton/GlassButton pill→control 12 (FAB/nav/thumb pill kept), typography roles 13 in theme.typography (screenEyebrow/title/subtitle/heroNumber/Label/sectionTitle/cardTitle/body/metadata/chip/button) system font (SpaceMono only, Hanken not bundled), spacing.md 12 in SearchField/SelectionRow + primitives header/fab token, shadow.cardHover removed (tier plain no shadow, reserved for nav/FAB/sheet/elevated), list shells Task/Project/Goal/Today plain no shadow, search resultRow control 12 hairline no shadow
+- Wave 10.3: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including cards-a11y (borderRadius 10 still present) and glass-a11y
+- Wave 10.3: `git diff --check` — exit 0 (no whitespace errors)
 - `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0-9/10.1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2)
+- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3)
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -294,8 +298,9 @@ Wave 10.2 — COMPLETE (working tree, awaiting parent commit; base 7c72d97 after
 - Modified: `apps/mobile/features/timer/components/FocusQueue.tsx` (taskRow 12 → spacing.md)
 - Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.2 complete, add tests/files)
 
-## Known Issues (Wave 10.2 updated)
+## Known Issues (Wave 10.3 updated)
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
+- Wave 10.3 fixes applied: shape card 16 (was 20) xs 8 hero 20 control 12 pill 999 only Chip/quick/nav/FAB/thumb, Card variants plain( surface hairline)/tonal(surfaceLow/mid)/elevated(shadow)/semantic(container) default plain no shadow (shells Task/Project/Goal/Today plain), Button/IconButton/GlassButton pill→control 12, typography 13 roles system font (Chip/ScreenHeader/Button use token), spacing.md 12 in SearchField/SelectionRow + header/fab, shadow.cardHover removed tier plain vs elevated vs nav/FAB/sheet — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 10.2 fixes applied: tonal surfaces canvas 15.9-17.8, containers primary 5.49 secondary 7.57 tertiary 6.37 success 6.49 danger 6.80 neutral 6.92, spacing 12/24/32 rhythm, chip archived 6.92 (was 4.34) danger 6.80 (was 3.95), literals 12/14→md token — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 10.1 fixes applied: 4-tab-only (7→4), stack compat redirects, Work router.setParams source of truth (no useEffect), bottomChrome canonical metrics (NAV_HEIGHT 72 24 20 16 16 + hook inset-aware navBottom/fabBottom/contentBottomPadding), FAB inset-aware bottom fabBottom, list paddingBottom runtime (FAB vs no-FAB), GlassBottomTab delete, NAVIGATION/STATE updated — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 9 fixes applied: TaskCreate nav, NotFound theme, Button token, GoalDetail health enable, FormField 20 reserve, login 44, ScreenHeader/FAB lg — all validated 0/0/166
@@ -321,8 +326,8 @@ Wave 10.2 — COMPLETE (working tree, awaiting parent commit; base 7c72d97 after
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 10.3 — Primitives (Card variants plain/tonal/elevated, Button control radius, Chip contrast, SegmentedControl pill thumb, FormSection View) — per WAVE-10-PLAN H-5/10.3
-- Wave 10.4+ — Work/Today/Goals/Projects/Timer/Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.4–10.13
+- Wave 10.4 — Work chrome budget + TaskCard + TaskFilters (per WAVE-10-PLAN H-1/H-2/10.4)
+- Wave 10.5+ — Today/Timer/Goals/Projects/Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.5–10.13
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` and `components/mobile/navigation/bottomChrome.ts` before touching tokens — bottomChrome is canonical for NAV_HEIGHT 72 HORIZONTAL_MARGIN 24 BOTTOM_GAP 20 FAB_GAP 16 CONTENT_GAP 16 + useBottomChromeMetrics (navBottom = max(insets.bottom,12)+20, fabBottom=navBottom+72+16, contentBottomPadding=fabBottom+16, contentBottomPaddingNoFab=navBottom+72+16)

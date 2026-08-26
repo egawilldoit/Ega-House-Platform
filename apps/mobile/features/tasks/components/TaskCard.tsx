@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
   },
   shell: {
     borderRadius: mobileTheme.radius.card,
-    ...mobileTheme.shadow.card,
+    // plain — no shadow (tonal separation + hairline via Card)
   },
   shellComplete: {
     opacity: 0.72,

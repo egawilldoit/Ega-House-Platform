@@ -107,7 +107,7 @@ const styles = StyleSheet.create({
   primaryBtn: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
+    borderRadius: mobileTheme.radius.control,
     flexDirection: 'row',
     gap: 10,
     justifyContent: 'center',

@@ -311,15 +311,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.surface,
     borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.md,
-    borderWidth: 1,
+    borderRadius: mobileTheme.radius.control,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
     marginTop: mobileTheme.spacing.sm,
     minHeight: 56,
     paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
-    ...mobileTheme.shadow.card,
+    // plain — no shadow (hairline + surface)
   },
   resultRowPressed: {
     opacity: 0.7,

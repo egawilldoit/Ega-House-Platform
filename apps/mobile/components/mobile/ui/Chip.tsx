@@ -58,9 +58,7 @@ const styles = StyleSheet.create({
     opacity: 0.55,
   },
   text: {
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    letterSpacing: 0.2,
+    ...mobileTheme.typography.chip,
     textTransform: 'capitalize',
   },
 });

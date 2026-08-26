@@ -103,10 +103,10 @@ export function Button({
 const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
-    borderRadius: mobileTheme.radius.pill,
+    borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 8,
+    gap: mobileTheme.spacing.sm,
     justifyContent: 'center',
     overflow: 'hidden',
   },
@@ -149,6 +149,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   text: {
-    fontWeight: mobileTheme.font.extrabold,
+    ...mobileTheme.typography.button,
   },
 });

@@ -97,7 +97,7 @@ export function GlassButton({
 const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
-    borderRadius: mobileTheme.radius.pill,
+    borderRadius: mobileTheme.radius.control,
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
     justifyContent: 'center',
