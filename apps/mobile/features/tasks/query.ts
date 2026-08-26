@@ -89,6 +89,10 @@ export function useTaskListQuery(params: ListMobileTasksParams = {}) {
   return useQuery({
     queryKey: taskQueryKeys.list(normalized),
     queryFn: () => listMobileTasks(normalized),
+    // Placeholder keeps stale visible during filter/sort/due switch (perceived performance: no blank flash).
+    // Caveat (Wave 10.11): TanStack keeps status=success while placeholder shown → isPending false, data=previous.
+    // Benefit is clear here: server filtering is fast, stale list + “Refreshing…” banner is better than skeleton.
+    // Real error/refetch feedback remains via `isFetching && data` banner and `isError && data` FeedbackBanner.
     placeholderData: (previousData) => previousData,
   });
 }

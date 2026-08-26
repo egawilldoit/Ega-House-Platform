@@ -131,6 +131,7 @@ export function ProjectsListView() {
     [isMutating, sheetTargetId],
   );
 
+  // Perceived performance: skeleton only on cold start; stale list + “Refreshing…” banner on background fetch.
   const isPending = projectsQuery.isPending && !projectsQuery.data;
   const isRefetching = projectsQuery.isFetching && !!projectsQuery.data;
   const isError = projectsQuery.isError && !projectsQuery.data;
@@ -164,12 +165,15 @@ export function ProjectsListView() {
   return (
     <View style={styles.container} testID="projects-list-view">
       <FlatList
+        // FlatList tuning (Wave 10.11): use RN defaults as safer baseline — same rationale as TasksListView.
+        // `initialNumToRender={10}` default 10; `maxToRenderPerBatch={10}` default 10; `windowSize` omitted → default 21
+        // (vs 5: 5 caused blank on fast fling in audit; 21’s extra offscreen window cheap for typical 10-40 projects).
+        // No `getItemLayout` — ProjectCard height variable (description 2 lines). `removeClippedSubviews` omitted
+        // → default recycling (true Android) — `false` was O(N) mounts, not needed (plain Card, no external transform).
         data={filteredProjects}
         keyExtractor={(item) => item.id}
         initialNumToRender={10}
-        windowSize={5}
         maxToRenderPerBatch={10}
-        removeClippedSubviews={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={

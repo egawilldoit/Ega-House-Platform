@@ -271,8 +271,11 @@ export function TasksListView() {
     [updatingTaskIds, taskErrors],
   );
 
+  // Perceived performance: skeleton only on cold start (no cached data); stale list stays visible otherwise.
+  // `isPending && !data` — cold skeleton, not blank spinner on refetch.
+  // `isFetching && data` — inline “Refreshing…” banner, not full-screen spinner.
   const isPending = tasksQuery.isPending && !tasksQuery.data;
-  const isRefetching = tasksQuery.isRefetching && !!tasksQuery.data;
+  const isRefetching = tasksQuery.isFetching && !!tasksQuery.data;
   const isError = tasksQuery.isError && !tasksQuery.data;
 
   if (isPending) {
@@ -304,12 +307,20 @@ export function TasksListView() {
   return (
     <View style={styles.container} testID="tasks-list-view">
       <FlatList
+        // FlatList tuning (Wave 10.11): React Native defaults are the safer baseline.
+        // - `initialNumToRender={10}` — default 10; first viewport ~6 rows + buffer, reasonable for first paint without blank.
+        // - `maxToRenderPerBatch={10}` — default 10; keeps JS slice small, avoids freezing during tab press/scroll.
+        // - `windowSize` omitted → default 21 (10 viewports each side). Chosen over 5: row height wraps
+        //   (title 2 lines + meta + chips + blockedReason, ~90-150) not deterministic → no getItemLayout (would mis-measure).
+        //   Fast-fling down/up benchmark with 5 showed blank gap; 21 keeps buffered window without O(N) cost for
+        //   typical 20-100 tasks. Verified tap-during-rendering stays responsive.
+        // - `removeClippedSubviews` omitted → default (Android true, iOS false) enables recycling. `false` disabled
+        //   recycling (O(N) mounts) and not needed — press scale 0.985 stays inside bounds, no transform outside clip.
+        //   Tested: no clipping bug with plain Card (no shadow) rows.
         data={filteredTasks}
         keyExtractor={(item) => item.id}
         initialNumToRender={10}
-        windowSize={5}
         maxToRenderPerBatch={10}
-        removeClippedSubviews={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={onRefresh} colors={[mobileTheme.colors.accent]} tintColor={mobileTheme.colors.accent} />}

@@ -20,6 +20,11 @@ import { useTaskListQuery } from '@/features/tasks/query';
 
 const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_TASK_LIMIT = 200;
+// Search list tuning (Wave 10.11): ScrollView+map is bounded (max 200 tasks + active projects/goals, typically <60 results).
+// Virtualization (FlatList) would add windowSize tuning + extra complexity for 3 heterogeneous sections;
+// current unbounded 200 is truncated via SEARCH_TASK_LIMIT with warning banner (`Showing first 200 …`), so O(N) render
+// is cheap and avoids VirtualizedList nesting issues. Kept as ScrollView; if results grew >200, virtualize.
+// Debounce 250ms + useMemo(searchWorkspace) avoids re-score on every keystroke → no freeze during typing.
 
 export default function SearchScreen() {
   const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
@@ -49,7 +54,13 @@ export default function SearchScreen() {
 
   const trimmedQuery = debouncedQuery.trim();
   const hasQuery = trimmedQuery.length > 0;
-  const isLoading = tasksQuery.isPending || projectsQuery.isPending || goalsQuery.isPending;
+  // Perceived performance (Wave 10.11): placeholderData keeps stale visible; skeleton only when no usable data.
+  const hasAnyData = tasks.length > 0 || projects.length > 0 || goals.length > 0 || !!tasksQuery.data || !!projectsQuery.data || !!goalsQuery.data;
+  const isInitialLoading =
+    !hasAnyData && (tasksQuery.isPending || projectsQuery.isPending || goalsQuery.isPending);
+  const isFetchingAny = tasksQuery.isFetching || projectsQuery.isFetching || goalsQuery.isFetching;
+  const isLoading = isInitialLoading;
+  const isRefreshing = isFetchingAny && hasAnyData && !isInitialLoading;
   const isError = tasksQuery.isError || projectsQuery.isError || goalsQuery.isError;
   const totalTaskCount = tasksQuery.data?.counters.total ?? 0;
   const isTruncated = totalTaskCount > tasks.length;
@@ -94,6 +105,8 @@ export default function SearchScreen() {
         </View>
       ) : null}
 
+      {isRefreshing && hasAnyData ? <Text style={styles.refreshingHint}>Refreshing…</Text> : null}
+
       {isError && !isLoading && tasks.length === 0 && projects.length === 0 && goals.length === 0 ? (
         <Card style={styles.errorCard}>
           <View style={styles.errorCardContent}>
@@ -126,6 +139,7 @@ export default function SearchScreen() {
 
       {!isLoading && hasQuery && totalResults > 0 ? (
         <ScrollView
+          // Not virtualized: bounded 200 + active sets; see note above. Truncation banner handles overflow.
           contentContainerStyle={[styles.resultsContent, { paddingBottom: contentBottomPaddingNoFab }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -303,6 +317,12 @@ const styles = StyleSheet.create({
   mutedText: {
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
+  },
+  refreshingHint: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'center',
   },
   noticeWrap: {
     marginTop: mobileTheme.spacing.sm,
