@@ -1,22 +1,14 @@
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { glassConfig, mobileTheme } from '@/components/mobile/theme';
-
-const TAB_HEIGHT = 72;
-const TAB_MARGIN = 24;
-const PILL_BOTTOM_GAP = 20;
-const TAB_LABEL_MAX_FONT_SCALE = 1.4;
+import {
+  NAV_HEIGHT,
+  TAB_LABEL_MAX_FONT_SCALE,
+  useBottomChromeMetrics,
+} from '@/components/mobile/navigation/bottomChrome';
 
 function getLabel(routeName: string, options: BottomTabBarProps['descriptors'][string]['options']) {
   const label = options.tabBarLabel ?? options.title ?? routeName;
@@ -28,11 +20,9 @@ function isHiddenRoute(descriptor: BottomTabBarProps['descriptors'][string]) {
 }
 
 export function BottomNavigation({ state, descriptors, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const { navBottom, pillWidth } = useBottomChromeMetrics();
   const useRealBlur = Platform.OS !== 'android' || glassConfig.useRealBlurOnAndroid;
-  const bottomOffset = Math.max(insets.bottom, 12) + PILL_BOTTOM_GAP;
-  const pillWidth = Math.max(Math.min(width - TAB_MARGIN * 2, 560), 280);
+  const bottomOffset = navBottom;
 
   const visibleRoutes = state.routes.filter((route) => !isHiddenRoute(descriptors[route.key]));
 
@@ -101,7 +91,7 @@ export function BottomNavigation({ state, descriptors, navigation }: BottomTabBa
 
   if (useRealBlur) {
     return (
-      <View pointerEvents="box-none" style={wrapperStyle}>
+      <View pointerEvents="box-none" style={wrapperStyle} testID="bottom-navigation">
         <LinearGradient colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']} pointerEvents="none" style={styles.navFade} />
         <BlurView intensity={mobileTheme.glass.blurIntensity.medium} tint="dark" style={[styles.container, { width: pillWidth }]}>
           {content}
@@ -111,7 +101,7 @@ export function BottomNavigation({ state, descriptors, navigation }: BottomTabBa
   }
 
   return (
-    <View pointerEvents="box-none" style={wrapperStyle}>
+    <View pointerEvents="box-none" style={wrapperStyle} testID="bottom-navigation">
       <LinearGradient colors={['rgba(246,247,249,0)', 'rgba(246,247,249,0.86)']} pointerEvents="none" style={styles.navFade} />
       <View style={[styles.container, styles.fake, { width: pillWidth }]}>{content}</View>
     </View>
@@ -132,7 +122,7 @@ const styles = StyleSheet.create({
     borderColor: mobileTheme.nav.shellBorder,
     borderRadius: mobileTheme.radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    minHeight: TAB_HEIGHT,
+    minHeight: NAV_HEIGHT,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
@@ -186,7 +176,7 @@ const styles = StyleSheet.create({
     fontWeight: mobileTheme.font.extrabold,
   },
   navFade: {
-    bottom: TAB_HEIGHT - 10,
+    bottom: NAV_HEIGHT - 10,
     height: 62,
     left: 0,
     position: 'absolute',

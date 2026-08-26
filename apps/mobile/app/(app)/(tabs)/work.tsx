@@ -1,6 +1,4 @@
-/* eslint-disable react-hooks/set-state-in-effect -- params.mode → local mode sync is intentional; no render cascade */
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { HeaderActions } from '@/components/mobile/ui/HeaderActions';
@@ -14,14 +12,8 @@ import { WorkModeSelector, type WorkMode } from '@/features/work/WorkModeSelecto
 
 export default function WorkScreen() {
   const params = useLocalSearchParams<{ mode?: string }>();
-  const initialMode: WorkMode = params.mode === 'projects' ? 'projects' : 'tasks';
-  const [mode, setMode] = useState<WorkMode>(initialMode);
-
-  useEffect(() => {
-    if (params.mode === 'projects' || params.mode === 'tasks') {
-      setMode(params.mode);
-    }
-  }, [params.mode]);
+  const mode: WorkMode = params.mode === 'projects' ? 'projects' : 'tasks';
+  const setMode = (next: WorkMode) => router.setParams({ mode: next });
 
   return (
     <AppScreen padded={false} testID="work-screen">

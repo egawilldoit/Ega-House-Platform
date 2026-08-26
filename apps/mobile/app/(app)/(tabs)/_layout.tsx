@@ -66,28 +66,6 @@ export default function AppTabsLayout() {
           ),
         }}
       />
-      {/* Compat hidden routes — keep files, no tab item, preserve deep links */}
-      <Tabs.Screen
-        name="tasks"
-        options={{
-          href: null,
-          title: 'Tasks',
-        }}
-      />
-      <Tabs.Screen
-        name="projects"
-        options={{
-          href: null,
-          title: 'Projects',
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          href: null,
-          title: 'Profile',
-        }}
-      />
     </Tabs>
   );
 }

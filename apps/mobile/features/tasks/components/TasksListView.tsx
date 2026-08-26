@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
 import { Card } from '@/components/mobile/ui/Card';
@@ -65,6 +66,7 @@ function getStatusOptions(task: MobileTaskListItem) {
 }
 
 export function TasksListView() {
+  const { contentBottomPadding } = useBottomChromeMetrics();
   const [statusFilter, setStatusFilter] = useState<MobileTaskStatus | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<TaskViewPriority>('all');
   const [dueFilter, setDueFilter] = useState<MobileTaskDueFilter>('all');
@@ -282,7 +284,7 @@ export function TasksListView() {
         windowSize={5}
         maxToRenderPerBatch={10}
         removeClippedSubviews={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={onRefresh} colors={[mobileTheme.colors.accent]} tintColor={mobileTheme.colors.accent} />}
         ListHeaderComponent={

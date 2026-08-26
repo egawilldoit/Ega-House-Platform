@@ -7,6 +7,7 @@ import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import type { ProjectStatus, ProjectViewFilter } from '@ega/api-client';
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Card } from '@/components/mobile/ui/Card';
 import { Button } from '@/components/mobile/ui/Button';
@@ -33,6 +34,7 @@ const VIEW_OPTIONS: Array<{ label: string; value: ProjectViewFilter }> = [
 const PROJECT_STATUS_OPTIONS: ProjectStatus[] = ['planned', 'active', 'done', 'paused'];
 
 export function ProjectsListView() {
+  const { contentBottomPadding } = useBottomChromeMetrics();
   const [view, setView] = useState<ProjectViewFilter>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [sheetTargetId, setSheetTargetId] = useState<string | null>(null);
@@ -169,7 +171,7 @@ export function ProjectsListView() {
         windowSize={5}
         maxToRenderPerBatch={10}
         removeClippedSubviews={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
