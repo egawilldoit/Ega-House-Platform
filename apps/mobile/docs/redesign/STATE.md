@@ -42,9 +42,10 @@
 - [x] Wave 10.2 — Tonal system (surfaces + containers + darker foregrounds + spacing rhythm 4/8/12/20/24/32 + contrast >=4.5)
 - [x] Wave 10.3 — Primitives (Card variants plain/tonal/elevated/semantic, shape pill→control, typography roles, spacing md, shadow tier) — 2026-08-26
 - [x] Wave 10.4 — Work chrome budget + TaskCard + TaskFilters (task-first hierarchy, compact summary, search+filter inline, 44h quick, scale press, no metric grid, no Edit) — 2026-08-26
+- [x] Wave 10.5 — Today focus hierarchy (tracked time heroNumber 42 black -1 + heroLabel 11 uppercase muted, meta Planned/Doing/Blocked 12 muted, completion 1 of 4 + ProgressBar 6 track surfaceMid primary/success, no dominant ring, empty plain 64) — 2026-08-26
 
 ## Current Wave
-Wave 10.4 — COMPLETE (working tree, awaiting parent commit; base ee65d30 after 10.3, HEAD uncommitted work task-first, 2026-08-26)
+Wave 10.5 — COMPLETE (working tree, awaiting parent commit; base 72301c5, HEAD uncommitted today hero, 2026-08-26)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -105,9 +106,12 @@ Wave 10.4 — COMPLETE (working tree, awaiting parent commit; base ee65d30 after
 - Wave 10.4: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after work task-first: chrome budget ~180px (headerWrap gap sm 8 + ScreenHeader md→sm, TasksListView searchRow inline [Search flex1 + Filter trigger 44 control border] + quickWrap mt sm 8 + filterBody FadeSlide 200ms reduced instant + compact summary 12 muted with urgent/blocked danger, metric 4-card grid removed, TaskCard Edit removed + press scale 0.985 + estimate hide 0 + IconButton 44 overflow retained, ScreenHeader style prop + marginBottom md→sm)
 - Wave 10.4: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including cards-a11y TaskCard mainTap 10 + IconButton 44 still passes without Edit button, views.test 6 presets green, search/task query unchanged
 - Wave 10.4: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.5: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after today hero: trackedTodayLabel heroNumber 42 black -1 + heroLabel 11 uppercase muted tracked today left-aligned + meta Planned/Doing/Blocked 12 muted + completion 1 of 4 12 + ProgressBar 6 track surfaceMid primary/success no ring dominant, empty plain View 64 icon + two lines no Card, ScreenHeader style compact 6 + listContent 4 to fit hero + Planned in ~280px
+- Wave 10.5: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including integration today workspace query + no ring dependency, cards-a11y still green
+- Wave 10.5: `git diff --check` — exit 0 (no whitespace errors)
 - `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0-9/10.1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git diff --name-only ee65d30...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4)
+- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git diff --name-only ee65d30...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only 72301c5...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5)
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -323,6 +327,12 @@ Wave 10.4 — COMPLETE (working tree, awaiting parent commit; base ee65d30 after
 - Modified: `apps/mobile/features/tasks/components/TasksListView.tsx` (searchRow inline flex SearchField flex1 + Filter trigger control 44 border 1 pill 12 with filter-outline + badge •{activeCount} + chevron, quickWrap mt sm 8 (was md12), TaskQuickFilters pills 44 retained, expanded filters FadeSlide 200ms instant reduced + SegmentedControls FILTER_*_OPTIONS, compact summaryRow flex row 12 muted showing visible tasks + · active muted when >0 + · urgent danger #991B1B when >0 else hidden + · blocked danger when >0 else hidden + · filtered when searching, right Clear 12 bold accent when hasFilters, removed 4-card summaryGrid (76px) + counterRow + activeHint, estimateLabel only when >0, listContent paddingHorizontal lg 20 paddingTop sm 8, contentBottomPadding via useBottomChromeMetrics fabBottom, skeleton/error unchanged, ActionSheet preserve)
 - Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.4 complete)
 
+## Files Changed (Wave 10.5)
+- Modified: `apps/mobile/features/today/components/DailyMomentum.tsx` (hero restructuring: remove dominant ring ProgressRing 58 + statsRow 24 black 3-col In progress/Completed/Overdue + 13 muted date; replace with heroNumber 42 black -1 trackedTodayLabel left + heroLabel 11 uppercase muted tracked today + metaRow 12 muted Planned {plannedCount} · Doing {inProgressCount} · Blocked {blockedCount} gap 8 + completionWrap 12 1 of 4 completed + ProgressBar 6 track surfaceMid #EDF2F8 fill primary #2563eb or success #166534 when 100% clamped Math.max 0-1 max todayCount>0?todayCount:1 no fake 100, clearButton danger retained; Card contentStyle padding md 12 compact for 280px viewport, uses theme.typography.heroNumber/heroLabel)
+- Modified: `apps/mobile/features/today/components/TodaySection.tsx` (empty restructuring: remove Card + EmptyState wrapper; replace with plain View 64 width/height iconWrap surfaceMuted radius xl + Ionicons list-outline 20 textSubtle + emptyTitle 14 extrabold No tasks + emptyDescription 13 semibold muted emptyText, no card, paddingVertical md 12 centered; header unchanged borderLeft 3 accent + count pill 12 bold)
+- Modified: `apps/mobile/app/(app)/(tabs)/today.tsx` (hero density: remove ScreenHeader description `${trackedTodayLabel} tracked · ${selectedCount} selected` duplicate (now hero primary), add style screenHeader marginBottom 6 marginTop 0 like Work to fit hero + Planned in ~280px, listContent paddingTop 8→4, keep SectionList 10/5/10 virtualization + placeholderData + useTodayWorkspaceQuery + HeaderActions + DailyMomentum props + TodayTaskCard tonal with getStatusActions primaryAction Start/Done blocked handling)
+- Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.5 complete)
+
 ## Known Issues (Wave 10.4 updated)
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
 - Wave 10.4 fixes applied: chrome budget ~180px (Work headerWrap gap 8 + ScreenHeader sm 8 + searchRow 44 inline Search flex1 + Filter 44 + quick 44 mt 8 + filterBody fade 200ms + summary 12 single-line compact visible + active muted + urgent/blocked danger #991B1B + filtered + Clear, 4-card metric grid deleted (Visible/Active/Blocked/Urgent), TaskCard Edit flex:1 deleted + scale 0.985 110ms + estimate hidden 0 + IconButton 44 retained, TaskFilters header single row Filters + badge •2 no All + chevron + fade+translateY 180-220ms reduced instant, TaskQuickFilters 44 already — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
@@ -352,8 +362,8 @@ Wave 10.4 — COMPLETE (working tree, awaiting parent commit; base ee65d30 after
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 10.5 — Today hero (tracked time 42-48, completion secondary) per WAVE-10-PLAN H-3/10.5
-- Wave 10.6+ — Goals/Projects dedup, Timer tonal, Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.6–10.13
+- Wave 10.6 — Goals/Projects dedup (bar+fraction only, health vs status) per WAVE-10-PLAN H-?
+- Wave 10.7+ — Timer tonal, Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.6–10.13
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` and `components/mobile/navigation/bottomChrome.ts` before touching tokens — bottomChrome is canonical for NAV_HEIGHT 72 HORIZONTAL_MARGIN 24 BOTTOM_GAP 20 FAB_GAP 16 CONTENT_GAP 16 + useBottomChromeMetrics (navBottom = max(insets.bottom,12)+20, fabBottom=navBottom+72+16, contentBottomPadding=fabBottom+16, contentBottomPaddingNoFab=navBottom+72+16)

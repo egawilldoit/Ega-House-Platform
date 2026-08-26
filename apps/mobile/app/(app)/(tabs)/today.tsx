@@ -488,8 +488,8 @@ export default function TodayScreen() {
             <ScreenHeader
               eyebrow={weekday}
               title="Today"
-              description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
               rightSlot={<HeaderActions />}
+              style={styles.screenHeader}
             />
 
             <DailyMomentum
@@ -602,7 +602,11 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: mobileTheme.layout.floatingTabClearance,
-    paddingTop: mobileTheme.spacing.sm,
+    paddingTop: 4,
+  },
+  screenHeader: {
+    marginBottom: 6,
+    marginTop: 0,
   },
   loadingWrap: {
     alignItems: 'center',
