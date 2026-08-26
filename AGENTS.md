@@ -140,7 +140,7 @@ npm run test:architecture
 npm run ci:purity
 npm run ci:security
 npm run ci:workspace
-npm run test:runner-loop
+npm run test:ega-runner-pr-loop
 ```
 
 Each nested `AGENTS.md` lists its scoped commands. Prefer package scripts over direct tool-binary invocation so local evidence matches CI behavior.
