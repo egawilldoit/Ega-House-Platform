@@ -50,10 +50,9 @@ export function TimerClock({ startedAt, fallbackLabel, style, testID }: TimerClo
 const styles = StyleSheet.create({
   clock: {
     color: mobileTheme.colors.text,
-    fontSize: 52,
+    fontSize: 56,
     fontWeight: mobileTheme.font.black,
-    letterSpacing: -1,
-    marginTop: mobileTheme.spacing.sm,
+    letterSpacing: -1.4,
     textAlign: 'center',
   },
 });

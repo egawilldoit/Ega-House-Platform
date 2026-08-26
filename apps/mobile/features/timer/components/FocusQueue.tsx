@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { MobileTaskListItem } from '@/types/tasks';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
-import { Card } from '@/components/mobile/ui/Card';
 import { EmptyState } from '@/components/mobile/ui/EmptyState';
 
 export type FocusQueueProps = {
@@ -26,18 +25,18 @@ export function FocusQueue({
 }: FocusQueueProps) {
   if (tasks.length === 0) {
     return (
-      <Card testID={testID ?? 'focus-queue-empty'}>
+      <View style={styles.emptyWrap} testID={testID ?? 'focus-queue-empty'}>
         <EmptyState
           icon="list-outline"
           title="No open tasks"
           description="Add a task first, then start timing it here."
         />
-      </Card>
+      </View>
     );
   }
 
   return (
-    <Card testID={testID ?? 'focus-queue'}>
+    <View style={styles.container} testID={testID ?? 'focus-queue'}>
       <View style={styles.header}>
         <Text style={styles.pickTitle}>Pick a task to time</Text>
       </View>
@@ -72,7 +71,7 @@ export function FocusQueue({
       </View>
 
       <Button
-        title="Start timer"
+        title="Start session"
         leftIcon={<Ionicons color={mobileTheme.colors.textOnAccent} name="play" size={20} />}
         onPress={onStart}
         disabled={!selectedTaskId || isStarting}
@@ -80,13 +79,23 @@ export function FocusQueue({
         style={styles.startButton}
         testID="focus-start-button"
       />
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    gap: mobileTheme.spacing.sm,
+  },
+  emptyWrap: {
+    backgroundColor: mobileTheme.colors.surfaceLow,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
   header: {
-    marginBottom: mobileTheme.spacing.sm,
+    marginBottom: 2,
   },
   list: {
     gap: mobileTheme.spacing.sm,
@@ -98,14 +107,15 @@ const styles = StyleSheet.create({
   },
   startButton: {
     marginTop: mobileTheme.spacing.md,
-    minHeight: 52,
+    minHeight: 54,
     width: '100%',
   },
   taskRow: {
     alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceLow,
     borderColor: mobileTheme.colors.border,
     borderRadius: mobileTheme.radius.md,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: 'row',
     minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: mobileTheme.spacing.md,
@@ -121,7 +131,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   taskRowSelected: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
+    backgroundColor: mobileTheme.colors.primaryContainer,
     borderColor: mobileTheme.colors.accentMid,
   },
   taskRowTitle: {
