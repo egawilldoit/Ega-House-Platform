@@ -33,13 +33,7 @@ function formatGoalToken(value: string) {
 }
 
 export function GoalDetailScreen() {
-  const insets = (() => {
-    try {
-      return useSafeAreaInsets();
-    } catch {
-      return { top: 0, bottom: 0, left: 0, right: 0 } as ReturnType<typeof useSafeAreaInsets>;
-    }
-  })();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const goalId = useMemo(() => String(id ?? '').trim(), [id]);

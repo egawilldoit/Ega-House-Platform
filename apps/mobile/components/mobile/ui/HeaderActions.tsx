@@ -18,17 +18,9 @@ function getInitials(email: string | undefined) {
   return email.substring(0, 2).toUpperCase();
 }
 
-function useAuthSafe() {
-  try {
-    return useAuth();
-  } catch {
-    return { user: null as { email?: string } | null };
-  }
-}
-
 export function HeaderActions({ showSearch = true, showAvatar = true, onSearchPress }: HeaderActionsProps) {
   const router = useRouter();
-  const { user } = useAuthSafe() as { user: { email?: string } | null };
+  const { user } = useAuth();
   const initials = getInitials(user?.email);
 
   return (

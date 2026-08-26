@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps -- rawProjects fallback array identity is stable via query; filtered memo is intentional */
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
@@ -50,7 +49,7 @@ export function ProjectsListView() {
   const loadError =
     projectsQuery.error instanceof Error ? projectsQuery.error.message : 'Unable to load projects right now.';
 
-  const rawProjects = projectsQuery.data?.projects ?? [];
+  const rawProjects = useMemo(() => projectsQuery.data?.projects ?? [], [projectsQuery.data?.projects]);
 
   const filteredProjects = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();

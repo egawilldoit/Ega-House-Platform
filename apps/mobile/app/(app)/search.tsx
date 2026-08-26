@@ -1,4 +1,3 @@
-/* eslint-disable react-hooks/exhaustive-deps -- tasks/projects/goals derived from query data with stable identity via query; false positive logical expression */
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
@@ -39,9 +38,9 @@ export default function SearchScreen() {
   const projectsQuery = useProjectListQuery('active');
   const goalsQuery = useGoalListQuery('active');
 
-  const tasks = tasksQuery.data?.tasks ?? [];
-  const projects = projectsQuery.data?.projects ?? [];
-  const goals = goalsQuery.data?.goals ?? [];
+  const tasks = useMemo(() => tasksQuery.data?.tasks ?? [], [tasksQuery.data?.tasks]);
+  const projects = useMemo(() => projectsQuery.data?.projects ?? [], [projectsQuery.data?.projects]);
+  const goals = useMemo(() => goalsQuery.data?.goals ?? [], [goalsQuery.data?.goals]);
 
   const results = useMemo(
     () => searchWorkspace({ query: debouncedQuery, tasks, projects, goals }),

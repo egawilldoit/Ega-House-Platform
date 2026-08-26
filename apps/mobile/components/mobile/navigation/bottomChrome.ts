@@ -1,5 +1,6 @@
+import { useContext } from 'react';
 import { useWindowDimensions } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaInsetsContext } from 'react-native-safe-area-context';
 
 export const NAV_HEIGHT = 72;
 export const HORIZONTAL_MARGIN = 24;
@@ -26,18 +27,9 @@ export type BottomChromeMetrics = {
 };
 
 export function useBottomChromeMetrics(): BottomChromeMetrics {
-  let bottomInset = 0;
-  let width = 390;
-  try {
-    bottomInset = useSafeAreaInsets().bottom;
-  } catch {
-    bottomInset = 0;
-  }
-  try {
-    width = useWindowDimensions().width;
-  } catch {
-    width = 390;
-  }
+  const insets = useContext(SafeAreaInsetsContext);
+  const bottomInset = insets?.bottom ?? 0;
+  const { width } = useWindowDimensions();
   const navBottom = Math.max(bottomInset, 12) + BOTTOM_GAP;
   const fabBottom = navBottom + NAV_HEIGHT + FAB_GAP;
   const contentBottomPadding = fabBottom + CONTENT_GAP;
