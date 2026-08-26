@@ -1,7 +1,6 @@
-/* eslint-disable react-hooks/set-state-in-effect -- single-project auto-select is intentional derived state */
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -79,8 +78,8 @@ export function TaskCreateScreen() {
   const optionsQuery = useTaskFormOptionsQuery();
   const createTaskMutation = useCreateTaskMutation();
 
-  const projects = optionsQuery.data?.projects ?? EMPTY_PROJECTS;
-  const goals = optionsQuery.data?.goals ?? EMPTY_GOALS;
+  const projects = useMemo(() => optionsQuery.data?.projects ?? EMPTY_PROJECTS, [optionsQuery.data?.projects]);
+  const goals = useMemo(() => optionsQuery.data?.goals ?? EMPTY_GOALS, [optionsQuery.data?.goals]);
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -97,14 +96,14 @@ export function TaskCreateScreen() {
 
   const isSubmitting = createTaskMutation.isPending;
 
-  useEffect(() => {
+  const effectiveProjectId = useMemo(() => {
     if (projectId && projects.some((project) => project.id === projectId)) {
-      return;
+      return projectId;
     }
-
     if (projects.length === 1) {
-      setProjectId(projects[0].id);
+      return projects[0].id;
     }
+    return projectId;
   }, [projectId, projects]);
 
   const todayDateValue = useMemo(() => {
@@ -165,7 +164,7 @@ export function TaskCreateScreen() {
       return;
     }
 
-    if (!projectId) {
+    if (!effectiveProjectId) {
       setSubmitError('projectId is required.');
       return;
     }
@@ -187,7 +186,7 @@ export function TaskCreateScreen() {
 
     const payload: CreateTaskInput = {
       title: trimmedTitle,
-      projectId,
+      projectId: effectiveProjectId,
       goalId,
       description: normalizedDescription,
       blockedReason: normalizedBlockedReason,
@@ -282,7 +281,7 @@ export function TaskCreateScreen() {
                     <SelectionRow
                       key={project.id}
                       label={project.name}
-                      selected={project.id === projectId}
+                      selected={project.id === effectiveProjectId}
                       onPress={() => {
                         setProjectId(project.id);
                         if (submitError) {

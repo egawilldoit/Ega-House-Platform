@@ -1,8 +1,7 @@
-/* eslint-disable react-hooks/set-state-in-effect -- task → draft sync is intentional; draft is local editable copy */
 import type { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -59,6 +58,7 @@ export function TaskDetailScreen() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditableTaskFields | null>(null);
+  const [prevTaskId, setPrevTaskId] = useState<string | null>(null);
   const [reminderDate, setReminderDate] = useState<Date | null>(createDefaultReminderDate);
   const [reminderError, setReminderError] = useState<string | null>(null);
   const [reminderSuccess, setReminderSuccess] = useState<string | null>(null);
@@ -92,14 +92,12 @@ export function TaskDetailScreen() {
     }, [taskId, refetch]),
   );
 
-  useEffect(() => {
-    if (!task) {
-      return;
-    }
-
+  if (task && task.id !== prevTaskId) {
+    setPrevTaskId(task.id);
     setDraft(createEditableDraft(task));
     setSubmitError(null);
-  }, [task]);
+    setSuccessMessage(null);
+  }
 
   const onRetry = useCallback(() => {
     refetch().catch(() => {

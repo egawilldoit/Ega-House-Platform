@@ -47,9 +47,10 @@
 - [x] Wave 10.7 — Timer expressive tonal (idle surfaceLow rows no Card per row, running primaryContainer hero 56 RUNNING dot 10, whitespace 28, fade+scale 200) — 2026-08-26
 - [x] Wave 10.8 — Search/Profile/Auth refine (search rows tonal grouping surfaceLow hairline #e4e7ec dividers not card soup, profile compact identity/email/session/workspace/sign out/version single Authenticated session, auth dark entry preserved) — 2026-08-26
 - [x] Wave 10.9 — Create/Detail simplify (FormSection View heading+divider gap 16 not Card tonal only Context project/goal surfaceLow 8 group, Task create TASK title CONTEXT project goal PLANNING status priority SCHEDULE due estimate DETAILS description blocked 16 spacing no nested cards, sticky bar insets.bottom aware + clearance + insets fallback 26/14 not 120 static, Task detail identity top State/Schedule middle Details before Reminder lower progressive disclosure history collapsed muted + concise recurrence More/Less + tonal picker View not Card, 13+ fields preserved) — 2026-08-26
+- [x] Wave 10.10 — Hooks correctness (remove conditional Hooks: ProjectDetailScreen useRouter/useSafeAreaInsets unconditional, HeaderActions useAuth direct no try/catch, bottomChrome useContext fallback no try, search tasks/projects/goals useMemo stable, today renderTodayItem include router, ProjectsListView rawProjects useMemo, TaskCreate effectiveProjectId useMemo no set-state-in-effect, TaskDetail draft sync via render-phase prevTaskId no effect, remove 5 eslint-disable react-hooks, keep only Reanimated immutability, update project-detail.test to mock expo-router) — 2026-08-26
 
 ## Current Wave
-Wave 10.9 — COMPLETE (working tree, awaiting parent commit; base 2e6d8ea, HEAD uncommitted create/detail simplify, 2026-08-26)
+Wave 10.10 — COMPLETE (working tree, awaiting parent commit; base 26c8325, HEAD uncommitted hook correctness, 2026-08-26)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -126,9 +127,14 @@ Wave 10.9 — COMPLETE (working tree, awaiting parent commit; base 2e6d8ea, HEAD
 - Wave 10.9: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after create/detail simplify: FormSection spacing 16, Task create 5 sections TASK/CONTEXT/PLANNING/SCHEDULE/DETAILS tonal Context surfaceLow group, sticky insets.bottom aware +120 clearance + 26/14 fallback, Task detail identity top State/Schedule/Details/Reminder progressive history collapsed + concise recurrence More/Less + picker View not Card, 13+ fields preserved
 - Wave 10.9: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including a11y cards + goal-detail/project-detail insets mock
 - Wave 10.9: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.10: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after hooks: unconditional useRouter/useSafeAreaInsets, header useAuth direct, bottomChrome useContext fallback, search memo tasks/projects/goals, today router deps, ProjectsListView memo rawProjects, TaskCreate effectiveProjectId no effect, TaskDetail prevTaskId render-phase, no eslint-disable react-hooks (only immutability), project-detail.test expo-router mock
+- Wave 10.10: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-26)
+- Wave 10.10: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including timer canonical 10, goal-detail health, project-detail status, auth header, cards-a11y, views.test
+- Wave 10.10: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.10: `grep -rn "eslint-disable.*react-hooks" apps/mobile` → 1 only immutability ✓; `grep -rn "useAuthSafe\|try.*useAuth\|try.*useRouter" apps/mobile` → 0 ✓
 - `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0-9/10.1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git diff --name-only ee65d30...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only 72301c5...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only fa1cb4d...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.6) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.6) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.7) and `git diff --name-only 3d787e2...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.7) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.8) and `git diff --name-only 7f6696c...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.8) and `git diff --name-only 2e6d8ea...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.9)
+- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git diff --name-only ee65d30...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only 72301c5...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only fa1cb4d...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.6) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.6) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.7) and `git diff --name-only 3d787e2...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.7) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.8) and `git diff --name-only 7f6696c...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.8) and `git diff --name-only 2e6d8ea...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.9) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.10) and `git diff --name-only 26c8325...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.10)
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -415,13 +421,15 @@ Wave 10.9 — COMPLETE (working tree, awaiting parent commit; base 2e6d8ea, HEAD
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 10.10 — Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.10–10.13
+- Wave 10.11 — Perf tuning + obsolete removal per WAVE-10-PLAN 10.11–10.13
 
-## Mobile-only diff (Wave 10.9 verify)
-- `git diff --name-only HEAD` → 10 files all `apps/mobile/**` ✓ (FormSection, TaskCreate, ProjectCreate, GoalCreate, TaskDetail+SaveBar+Schedule+Reminder, ProjectDetail, GoalDetail, STATE)
+## Mobile-only diff (Wave 10.10 verify)
+- `git diff --name-only HEAD` → 12 files all `apps/mobile/**` ✓ (ProjectDetailScreen, GoalDetailScreen, bottomChrome, HeaderActions, today, search, ProjectsListView, TaskCreateScreen, TaskDetailScreen, project-detail.test, timer.test, STATE)
 - `git diff --check` — exit 0
-- `npx tsc --noEmit` — exit 0
+- `npx tsc --noEmit` — exit 0 (apps/mobile + worktree root)
 - `npm run mobile:test` — 166/166
+- `grep -rn "eslint-disable.*react-hooks" apps/mobile` → 1 only Reanimated immutability ✓
+- `grep -rn "useAuthSafe\|try.*useAuth\|try.*useRouter" apps/mobile` → 0 ✓
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` and `components/mobile/navigation/bottomChrome.ts` before touching tokens — bottomChrome is canonical for NAV_HEIGHT 72 HORIZONTAL_MARGIN 24 BOTTOM_GAP 20 FAB_GAP 16 CONTENT_GAP 16 + useBottomChromeMetrics (navBottom = max(insets.bottom,12)+20, fabBottom=navBottom+72+16, contentBottomPadding=fabBottom+16, contentBottomPaddingNoFab=navBottom+72+16)

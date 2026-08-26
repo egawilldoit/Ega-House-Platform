@@ -9,6 +9,16 @@ jest.mock('@expo/vector-icons/Ionicons', () => ({
   default: () => null,
 }));
 
+jest.mock('expo-router', () => ({
+  useRouter: jest.fn(() => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), setParams: jest.fn() })),
+  useLocalSearchParams: jest.fn(() => ({})),
+  router: { push: jest.fn(), back: jest.fn(), replace: jest.fn(), setParams: jest.fn() },
+}));
+
+jest.mock('@/lib/auth/auth-context', () => ({
+  useAuth: () => ({ user: { id: 'u-1', email: 'test@example.com' } }),
+}));
+
 jest.mock('expo-blur', () => ({
   BlurView: ({ children }: { children?: React.ReactNode }) => children ?? null,
 }));
