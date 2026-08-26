@@ -34,6 +34,8 @@ export function ProjectCard({ project, saving, onOpen, onActions }: ProjectCardP
       >
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={project.name}
+          accessibilityHint="Open project details"
           disabled={saving}
           onPress={onOpen}
           style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}

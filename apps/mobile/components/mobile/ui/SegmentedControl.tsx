@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   text: {
-    color: mobileTheme.colors.textMuted,
+    color: mobileTheme.colors.textSubtle,
     fontSize: 13,
     fontWeight: mobileTheme.font.semibold,
     textTransform: 'capitalize',

@@ -48,6 +48,8 @@ export function GoalCard({ goal, saving, onPress, onActions, onAddNextStep }: Go
       >
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={goal.title}
+          accessibilityHint="Open goal details"
           focusable
           disabled={saving}
           onPress={onPress}

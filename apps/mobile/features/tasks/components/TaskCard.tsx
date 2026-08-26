@@ -51,6 +51,8 @@ export function TaskCard({
       >
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={title}
+          accessibilityHint="Open details"
           disabled={saving}
           onPress={onOpen}
           style={({ pressed }) => [
