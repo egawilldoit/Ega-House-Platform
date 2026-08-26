@@ -17,17 +17,16 @@ export type ProjectCardProps = {
   onOpen: () => void;
   onActions: () => void;
 };
-
 export function ProjectCard({ project, saving, onOpen, onActions }: ProjectCardProps) {
   const isDone = project.status === 'done';
   const progress = Math.max(0, Math.min(100, project.progressPercent ?? 0));
 
-  // Derive tone for progress fill from status
   const statusValue = project.status;
 
   return (
     <View style={styles.shell}>
       <Card
+        variant="plain"
         style={styles.card}
         contentStyle={styles.cardContent}
         accentColor={mobileTheme.colors.border}
@@ -39,11 +38,12 @@ export function ProjectCard({ project, saving, onOpen, onActions }: ProjectCardP
           onPress={onOpen}
           style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
         >
+          {/* name + status */}
           <View style={styles.titleRow}>
             <Text numberOfLines={2} style={[styles.title, isDone ? styles.titleMuted : null]}>
               {project.name}
             </Text>
-            <Chip kind="status" value={statusValue} label={formatProjectStatus(project.status)} style={styles.statusChip} />
+            <Chip kind="status" value={statusValue} label={formatProjectStatus(project.status)} style={styles.statusChip} testID="project-status-chip" />
           </View>
 
           {project.description ? (
@@ -52,8 +52,9 @@ export function ProjectCard({ project, saving, onOpen, onActions }: ProjectCardP
             </Text>
           ) : null}
 
+          {/* progress bar + fraction only (6/7 not 86%) */}
           <View style={styles.progressRow}>
-            <ProgressBar value={progress} max={100} style={styles.progressTrack} testID="project-progress-bar" />
+            <ProgressBar value={progress} max={100} trackColor={mobileTheme.colors.surfaceMid} style={styles.progressTrack} testID="project-progress-bar" />
             <Text style={styles.progressLabel}>{`${project.completedTaskCount} / ${project.taskCount} tasks`}</Text>
           </View>
         </Pressable>

@@ -30,14 +30,17 @@ export function GoalCard({ goal, saving, onPress, onActions, onAddNextStep }: Go
   const health = goal.health;
   const hasNextStep = Boolean(goal.nextStep && goal.nextStep.trim().length > 0);
 
-  // Left accent: health color when health present, else status color.
+  // Left accent: health hierarchy primary (on_track success, at_risk warning, off_track danger, null neutral)
   const accentColor = health
     ? healthTone(health).color
     : statusTone(goal.status as never).color;
 
+  const healthToneResolved = healthTone(health);
+
   return (
     <View style={styles.shell}>
       <Card
+        variant="plain"
         style={styles.card}
         contentStyle={styles.cardContent}
         accentColor={accentColor}
@@ -50,6 +53,7 @@ export function GoalCard({ goal, saving, onPress, onActions, onAddNextStep }: Go
           onPress={onPress}
           style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
         >
+          {/* 1 — What outcome? Title 16/800 */}
           <Text numberOfLines={2} style={[styles.title, isDone ? styles.titleMuted : null]}>
             {goal.title}
           </Text>
@@ -60,14 +64,8 @@ export function GoalCard({ goal, saving, onPress, onActions, onAddNextStep }: Go
             </Text>
           ) : null}
 
+          {/* 2 — Is it healthy? Health primary, status secondary */}
           <View style={styles.badgeRow}>
-            <Chip
-              kind="status"
-              value={goal.status}
-              label={formatToken(goal.status)}
-              style={styles.chip}
-              testID="goal-status-chip"
-            />
             <Chip
               kind="health"
               value={health}
@@ -76,8 +74,16 @@ export function GoalCard({ goal, saving, onPress, onActions, onAddNextStep }: Go
               style={styles.chip}
               testID="goal-health-chip"
             />
+            <Chip
+              kind="status"
+              value={goal.status}
+              label={formatToken(goal.status)}
+              style={styles.chipSecondary}
+              testID="goal-status-chip"
+            />
           </View>
 
+          {/* 3 — What is next move? */}
           {hasNextStep ? (
             <View style={styles.nextStepRow}>
               <Ionicons color={mobileTheme.colors.accent} name="arrow-forward-circle-outline" size={14} />
@@ -99,10 +105,13 @@ export function GoalCard({ goal, saving, onPress, onActions, onAddNextStep }: Go
             </View>
           )}
 
+          {/* 4 — Progress: bar + fraction only (no percent duplication) */}
           <View style={styles.progressRow}>
             <ProgressBar
               value={progress}
               max={100}
+              color={healthToneResolved.color}
+              trackColor={mobileTheme.colors.surfaceMid}
               style={styles.progressTrack}
               testID="goal-progress-bar"
             />
@@ -157,6 +166,11 @@ const styles = StyleSheet.create({
   chip: {
     minHeight: 26,
     paddingHorizontal: 7,
+  },
+  chipSecondary: {
+    minHeight: 26,
+    paddingHorizontal: 7,
+    opacity: 0.9,
   },
   mainTapArea: {
     borderRadius: mobileTheme.radius.sm,

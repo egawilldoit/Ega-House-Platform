@@ -65,12 +65,12 @@ export function ProjectsListView() {
 
   const onRefresh = useCallback(() => {
     projectsQuery.refetch().catch(() => {});
-  }, [projectsQuery]);
+  }, [projectsQuery.refetch]);
 
   useFocusEffect(
     useCallback(() => {
       projectsQuery.refetch().catch(() => {});
-    }, [projectsQuery]),
+    }, [projectsQuery.refetch]),
   );
 
   const sheetTarget = useMemo(
@@ -209,31 +209,29 @@ export function ProjectsListView() {
         }
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
-            <Card contentStyle={styles.emptyCardContent}>
-              <EmptyState
-                icon={view === 'archived' ? 'archive-outline' : 'folder-open-outline'}
-                iconSize={36}
-                title={
-                  hasSearch ? 'No projects match search' : filteredProjects.length === 0 && rawProjects.length === 0 ? (view === 'archived' ? 'No archived projects' : view === 'active' ? 'No projects here yet' : 'No projects') : 'No projects match this view'
-                }
-                description={
-                  hasSearch
-                    ? `No results for “${searchQuery.trim()}”.`
-                    : view === 'active'
-                      ? 'Group goals and tasks under a shared outcome.'
-                      : view === 'archived'
-                        ? 'Archived projects live here until you need them again.'
-                        : 'Nothing to show in this view yet.'
-                }
-                action={
-                  view === 'active' && !hasSearch ? (
-                    <Button title="Create your first project" onPress={() => router.push('/(app)/projects/create')} />
-                  ) : hasSearch ? (
-                    <Button title="Clear search" variant="secondary" onPress={() => setSearchQuery('')} />
-                  ) : undefined
-                }
-              />
-            </Card>
+            <EmptyState
+              icon={view === 'archived' ? 'archive-outline' : 'folder-open-outline'}
+              iconSize={36}
+              title={
+                hasSearch ? 'No projects match search' : filteredProjects.length === 0 && rawProjects.length === 0 ? (view === 'archived' ? 'No archived projects' : view === 'active' ? 'No projects here yet' : 'No projects') : 'No projects match this view'
+              }
+              description={
+                hasSearch
+                  ? `No results for “${searchQuery.trim()}”.`
+                  : view === 'active'
+                    ? 'Group goals and tasks under a shared outcome.'
+                    : view === 'archived'
+                      ? 'Archived projects live here until you need them again.'
+                      : 'Nothing to show in this view yet.'
+              }
+              action={
+                view === 'active' && !hasSearch ? (
+                  <Button title="Create your first project" onPress={() => router.push('/(app)/projects/create')} />
+                ) : hasSearch ? (
+                  <Button title="Clear search" variant="secondary" onPress={() => setSearchQuery('')} />
+                ) : undefined
+              }
+            />
           </View>
         }
         renderItem={renderProjectItem}
@@ -277,11 +275,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: mobileTheme.font.semibold,
   },
-  emptyCardContent: {
-    padding: 0,
-  },
   emptyWrap: {
-    marginTop: mobileTheme.spacing.sm,
+    marginTop: mobileTheme.spacing.md,
+    alignItems: 'center',
+    paddingVertical: mobileTheme.spacing.lg,
   },
   errorCard: {
     marginTop: mobileTheme.spacing.sm,
