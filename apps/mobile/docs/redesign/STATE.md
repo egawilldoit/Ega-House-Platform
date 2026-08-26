@@ -49,9 +49,10 @@
 - [x] Wave 10.9 — Create/Detail simplify (FormSection View heading+divider gap 16 not Card tonal only Context project/goal surfaceLow 8 group, Task create TASK title CONTEXT project goal PLANNING status priority SCHEDULE due estimate DETAILS description blocked 16 spacing no nested cards, sticky bar insets.bottom aware + clearance + insets fallback 26/14 not 120 static, Task detail identity top State/Schedule middle Details before Reminder lower progressive disclosure history collapsed muted + concise recurrence More/Less + tonal picker View not Card, 13+ fields preserved) — 2026-08-26
 - [x] Wave 10.10 — Hooks correctness (remove conditional Hooks: ProjectDetailScreen useRouter/useSafeAreaInsets unconditional, HeaderActions useAuth direct no try/catch, bottomChrome useContext fallback no try, search tasks/projects/goals useMemo stable, today renderTodayItem include router, ProjectsListView rawProjects useMemo, TaskCreate effectiveProjectId useMemo no set-state-in-effect, TaskDetail draft sync via render-phase prevTaskId no effect, remove 5 eslint-disable react-hooks, keep only Reanimated immutability, update project-detail.test to mock expo-router) — 2026-08-26
 - [x] Wave 10.11 — Perf tuning (list tuning justify windowSize default 21, remove removeClippedSubviews false, no getItemLayout tasks variable, initialNumToRender 10 + maxToRenderPerBatch 10 default, placeholderData audit active→archived Refreshing banner, isPending && !data skeleton isFetching && data Refreshing, search ScrollView bounded 200 truncation + useMemo no freeze, focus refetch audit Today [refetch] Timer none via focus-manager, console audit no log hot flows, motion reduced+non-layout, release bundle not Metro) — 2026-08-26
+- [x] Wave 10.12 — Remove obsolete (GlassCard, GlassButton, GlassPill, GlassInput, GlassSegmentedControl deleted; GlassBottomSheet kept for ActionSheet; primitives deleted (MobileScreen/SurfaceCard/InfoBadge/SegmentedControl/PrimaryFab/SkeletonCard/EmptyState legacy); legacy TaskCard/GoalCard/ProjectCard/TodayTaskCard deleted; legacy AnimatedPressable/use-reduced-motion deleted — canonical motion/* kept) — 2026-08-26
 
 ## Current Wave
-Wave 10.11 — COMPLETE (working tree, awaiting parent commit; base 7c58196, HEAD uncommitted perf tuning, 2026-08-26)
+Wave 10.12 — COMPLETE (working tree, awaiting parent commit; base 823b6e0, HEAD uncommitted remove obsolete, 2026-08-26)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -137,6 +138,10 @@ Wave 10.11 — COMPLETE (working tree, awaiting parent commit; base 7c58196, HEA
 - Wave 10.11: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-26)
 - Wave 10.11: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all suites green after tuning (no windowSize 5, default 21, no clipped false, placeholderData kept, Tasks isFetching && data, search Refreshing banner)
 - Wave 10.11: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.12: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after remove obsolete: GlassCard/Button/Pill/Input/SegmentedControl 0 imports deleted (GlassBottomSheet kept), primitives deleted, legacy TaskCard/GoalCard/ProjectCard/TodayTaskCard aliases deleted, legacy AnimatedPressable/use-reduced-motion deleted, tests migrated to canonical features/* and Button/Chip/SegmentedControl/motion
+- Wave 10.12: `npx tsc --noEmit` (worktree root) — exit 0 (2026-08-26)
+- Wave 10.12: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — after obsolete removal: cards-a11y 4 still green via features/*, glass-a11y 9 now canonical Button/Chip/SegmentedControl + motion, GoalCard/ProjectCard 3 suites still green, all 29 suites green
+- Wave 10.12: `git diff --check` — exit 0 (no whitespace errors)
 - `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0-9/10.1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
 - Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git diff --name-only ee65d30...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only 72301c5...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.5) and `git diff --name-only fa1cb4d...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.6) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.6) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.7) and `git diff --name-only 3d787e2...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.7) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.8) and `git diff --name-only 7f6696c...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.8) and `git diff --name-only 2e6d8ea...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.9) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.10) and `git diff --name-only 26c8325...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.10) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.11) and `git diff --name-only 7c58196...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.11)
@@ -410,6 +415,26 @@ Wave 10.11 — COMPLETE (working tree, awaiting parent commit; base 7c58196, HEA
 - Modified: `apps/mobile/app/(app)/search.tsx` (bounded ScrollView 200 documentation: truncation warning, not virtualized due to <60 typical, memo searchWorkspace debounce 250 no freeze, fix perceived: hasAnyData + isInitialLoading=isPending&&!data skeleton only, isRefreshing=isFetching&&hasData Refreshing banner not spinner)
 - Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.11 complete, add tests/files)
 
+## Files Changed (Wave 10.12)
+- Deleted: `apps/mobile/components/mobile/glass/GlassCard.tsx` (0 real imports — only definition + barrel, no route uses Card vs GlassCard; Card plain/tonal canonical)
+- Deleted: `apps/mobile/components/mobile/glass/GlassButton.tsx` (0 real imports — only test glass-a11y-test 3 Button tests; canonical Button control 12 primary/secondary/danger/ghost)
+- Deleted: `apps/mobile/components/mobile/glass/GlassPill.tsx` (0 real imports — only test GlassPill 2 tests; canonical Chip kind status/priority/health)
+- Deleted: `apps/mobile/components/mobile/glass/GlassInput.tsx` (0 real imports — only definition + barrel; canonical FormField/SearchField)
+- Deleted: `apps/mobile/components/mobile/glass/GlassSegmentedControl.tsx` (0 real imports — only test GlassSegmentedControl 2 tests; canonical SegmentedControl pill thumb)
+- Modified: `apps/mobile/components/mobile/glass/index.ts` (now only `export * from './GlassBottomSheet'`; GlassBottomSheet kept 1 real import ActionSheet.tsx:5 — sheet for ActionSheet)
+- Deleted: `apps/mobile/components/mobile/primitives.tsx` (0 real imports — exports MobileScreen, MobileScreenHeader, MobileSectionHeader, SurfaceCard, InfoBadge, SegmentedControl, PrimaryFab, SkeletonCard, EmptyState all unused; routes use AppScreen/ScreenHeader/Card/Button/etc; no file imports from primitives)
+- Deleted: `apps/mobile/components/mobile/AnimatedPressable.tsx` (0 real imports — only test legacy; canonical motion/AnimatedPressable with Reanimated 4 + ReducedMotion)
+- Deleted: `apps/mobile/components/mobile/use-reduced-motion.ts` (0 real imports — only test + legacy AnimatedPressable; canonical motion/ReducedMotion useReducedMotion + alias)
+- Deleted: `apps/mobile/components/mobile/TaskCard.tsx` (0 real imports — re-export alias to features/tasks/components/TaskCard; only tests cards-a11y-test + GoalCard/ProjectCard suites)
+- Deleted: `apps/mobile/components/mobile/GoalCard.tsx` (0 real imports — alias + helpers formatGoalToken/goalHealthTone/goalStatusTone 0; canonical features/goals/components/GoalCard + theme.ts healthTone/statusTone)
+- Deleted: `apps/mobile/components/mobile/ProjectCard.tsx` (0 real imports — re-export alias + helpers formatProjectToken/projectStatusTone 0; canonical features/projects/components/ProjectCard)
+- Deleted: `apps/mobile/components/mobile/TodayTaskCard.tsx` (0 real imports — wrapper to features/today/components/TodayTaskCard; only cards-a11y-test)
+- Modified: `apps/mobile/components/__tests__/cards-a11y-test.tsx` (imports '@/features/goals/components/GoalCard' '@/features/projects/components/ProjectCard' '@/features/tasks/components/TaskCard' '@/features/today/components/TodayTaskCard'; GoalCard now requires onPress + onActions)
+- Modified: `apps/mobile/components/__tests__/GoalCard-test.tsx` (import '@/features/goals/components/GoalCard'; render now onPress + onActions)
+- Modified: `apps/mobile/components/__tests__/ProjectCard-test.tsx` (import '@/features/projects/components/ProjectCard')
+- Modified: `apps/mobile/components/__tests__/glass-a11y-test.tsx` (imports canonical Button/Chip/SegmentedControl/motion AnimatedPressable/useReducedMotionEnabled; Button sm 44, loading busy, disabled; Chip static 26 not button no hitSlop muted; SegmentedControl selected + 44 + container 50; reduced motion hook + AnimatedPressable button)
+- Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.12 complete, add tests/files)
+
 ## Known Issues (Wave 10.4 updated)
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
 - Wave 10.4 fixes applied: chrome budget ~180px (Work headerWrap gap 8 + ScreenHeader sm 8 + searchRow 44 inline Search flex1 + Filter 44 + quick 44 mt 8 + filterBody fade 200ms + summary 12 single-line compact visible + active muted + urgent/blocked danger #991B1B + filtered + Clear, 4-card metric grid deleted (Visible/Active/Blocked/Urgent), TaskCard Edit flex:1 deleted + scale 0.985 110ms + estimate hidden 0 + IconButton 44 retained, TaskFilters header single row Filters + badge •2 no All + chevron + fade+translateY 180-220ms reduced instant, TaskQuickFilters 44 already — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
@@ -424,7 +449,7 @@ Wave 10.11 — COMPLETE (working tree, awaiting parent commit; base 7c58196, HEA
 - Profile tabs compat (Wave 4) previously re-exported canonical `../profile` with href:null — now removed in Wave 10.1; test `app/(app)/(tabs)/__tests__/profile.test.tsx` updated import to `../../profile` canonical to keep 166/166 green (US initials, email, version) without Redirect mock drift; hidden compat no longer needed (state.routes 4)
 - Previous profile hidden compat `tabs/profile` kept via href:null filtering — now deleted; deep link now canonical `/(app)/profile` only (HeaderActions already correct)
 - Bundle export fails in worktree without root node_modules install (not Wave 0/1 regression)
-- Legacy MobileScreen/Glass* remain as compat until Wave 7 detail screens done; create (Wave6) + detail (Wave7) migrated to AppScreen/Card/FormSection/FormField/Button/SelectionRow/SegmentedControl/Chip/ProgressBar/FeedbackBanner/Skeleton — remaining glass is `ActionSheet GlassBottomSheet` + `primitives MobileScreen/SkeletonCard` compat for tabs/profile only
+- Wave 10.12 cleanup: GlassCard/GlassButton/GlassPill/GlassInput/GlassSegmentedControl (0 imports) + primitives MobileScreen/SurfaceCard/InfoBadge/SegmentedControl/PrimaryFab/SkeletonCard/EmptyState legacy (0 imports, routes use AppScreen/Card/SegmentedControl/Skeleton/EmptyState canonical) + legacy TaskCard/GoalCard/ProjectCard/TodayTaskCard aliases (0 real imports, only tests updated to canonical features/*) + legacy AnimatedPressable/use-reduced-motion (0 imports, canonical motion/*) deleted; GlassBottomSheet kept (1 import ActionSheet); all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - DailyMomentum ring visualizes completion ratio (completed/total) not trackedToday seconds vs estimate — honest math, no fake min
 - Work hub client search is title/project/goal substring (no new endpoint); server filtering remains canonical for status/priority/due/sort
 - Goals progress `completed / total tasks` client-derived from `linkedTasks.filter(done)` — consistent with server `progressPercent = round(completed/total*100)` (see `getGoalsReadModel`)
@@ -439,7 +464,7 @@ Wave 10.11 — COMPLETE (working tree, awaiting parent commit; base 7c58196, HEA
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 10.12 — Remove obsolete per WAVE-10-PLAN 10.12–10.13
+- Wave 10.13 — Final review per WAVE-10-PLAN 10.13
 
 ## Mobile-only diff (Wave 10.10 verify)
 - `git diff --name-only HEAD` → 12 files all `apps/mobile/**` ✓ (ProjectDetailScreen, GoalDetailScreen, bottomChrome, HeaderActions, today, search, ProjectsListView, TaskCreateScreen, TaskDetailScreen, project-detail.test, timer.test, STATE)
@@ -456,6 +481,16 @@ Wave 10.11 — COMPLETE (working tree, awaiting parent commit; base 7c58196, HEA
 - `npm run mobile:test` — 166/166
 - `grep -rn "windowSize.*5\|removeClippedSubviews.*false" apps/mobile` → 0 (only comments mentioning prior 5) ✓
 - `grep -rn "console\.log\|console\.debug\|console\.table" apps/mobile` → 0 ✓ (only client.go diagnostics warn/info not hot flow)
+
+## Mobile-only diff (Wave 10.12 verify)
+- `git diff --name-only HEAD` → 17 files all `apps/mobile/**` ✓ (glass 5 deletions + index, primitives, AnimatedPressable, use-reduced-motion, 4 legacy cards, 4 test updates, STATE)
+- `git diff --check` — exit 0
+- `npx tsc --noEmit` — exit 0 (apps/mobile + worktree root)
+- `npm run mobile:test` — 166/166
+- `grep -rn "GlassCard\|GlassButton\|GlassPill\|GlassInput\|GlassSegmentedControl" apps/mobile --include="*.tsx" --include="*.ts"` → 0 (only comment alias in ReducedMotion.ts and ActionSheet GlassBottomSheet) ✓
+- `grep -rn "from.*primitives" apps/mobile` → 0 ✓ (primitives deleted)
+- `grep -rn "from.*components/mobile/(TaskCard|GoalCard|ProjectCard|TodayTaskCard)" apps/mobile` → 0 (only canonical features/*) ✓
+- `grep -rn "from.*AnimatedPressable.*mobile/Animated\|from.*use-reduced-motion" apps/mobile` → 0 (only canonical motion/*) ✓
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` and `components/mobile/navigation/bottomChrome.ts` before touching tokens — bottomChrome is canonical for NAV_HEIGHT 72 HORIZONTAL_MARGIN 24 BOTTOM_GAP 20 FAB_GAP 16 CONTENT_GAP 16 + useBottomChromeMetrics (navBottom = max(insets.bottom,12)+20, fabBottom=navBottom+72+16, contentBottomPadding=fabBottom+16, contentBottomPaddingNoFab=navBottom+72+16)

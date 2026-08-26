@@ -3,10 +3,10 @@ import { StyleSheet, type StyleProp } from 'react-native';
 import { act, create, type ReactTestRendererJSON } from 'react-test-renderer';
 
 import type { GoalReadModel, ProjectCardReadModel } from '@ega/api-client';
-import { GoalCard } from '../mobile/GoalCard';
-import { ProjectCard } from '../mobile/ProjectCard';
-import { TaskCard } from '../mobile/TaskCard';
-import { TodayTaskCard } from '../mobile/TodayTaskCard';
+import { GoalCard } from '@/features/goals/components/GoalCard';
+import { ProjectCard } from '@/features/projects/components/ProjectCard';
+import { TaskCard } from '@/features/tasks/components/TaskCard';
+import { TodayTaskCard } from '@/features/today/components/TodayTaskCard';
 
 jest.mock('@expo/vector-icons/Ionicons', () => ({
   __esModule: true,
@@ -107,7 +107,7 @@ describe('card accessibility', () => {
   });
 
   it('GoalCard main tap is a button and action target meets 44 without hit slop', () => {
-    const nodes = renderTree(<GoalCard goal={GOAL} onActions={() => undefined} />);
+    const nodes = renderTree(<GoalCard goal={GOAL} onPress={() => undefined} onActions={() => undefined} />);
 
     const mainTap = nodes.find((node) => node.props.accessibilityRole === 'button');
     expect(mainTap?.props.focusable).toBe(true);
