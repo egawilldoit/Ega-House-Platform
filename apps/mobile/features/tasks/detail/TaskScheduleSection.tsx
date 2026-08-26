@@ -1,10 +1,8 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
-import { Card } from '@/components/mobile/ui/Card';
 import { FormField } from '@/components/mobile/ui/FormField';
 import { FormSection } from '@/components/mobile/ui/FormSection';
 import { formatTaskToken } from '@/features/tasks/form-utils';
@@ -31,6 +29,7 @@ export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, o
   );
   const displayTimezone = taskRecurrenceTimezone ?? deviceTimezone;
   const [isDuePickerVisible, setIsDuePickerVisible] = useState(false);
+  const [isRecurrenceExpanded, setIsRecurrenceExpanded] = useState(false);
 
   const duePickerValue = useMemo(() => {
     if (!draft.dueDate) return new Date();
@@ -105,24 +104,26 @@ export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, o
       </Pressable>
 
       {isDuePickerVisible ? (
-        <Card style={styles.pickerCard} contentStyle={styles.pickerContent}>
-          <DateTimePicker
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            mode="date"
-            onChange={onDueDateChange}
-            value={duePickerValue}
-          />
-          {Platform.OS === 'ios' ? (
-            <View style={styles.pickerActions}>
-              <Button
-                onPress={() => setIsDuePickerVisible(false)}
-                size="sm"
-                title="Done"
-                variant="secondary"
-              />
-            </View>
-          ) : null}
-        </Card>
+        <View style={styles.pickerCard}>
+          <View style={styles.pickerContent}>
+            <DateTimePicker
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              mode="date"
+              onChange={onDueDateChange}
+              value={duePickerValue}
+            />
+            {Platform.OS === 'ios' ? (
+              <View style={styles.pickerActions}>
+                <Button
+                  onPress={() => setIsDuePickerVisible(false)}
+                  size="sm"
+                  title="Done"
+                  variant="secondary"
+                />
+              </View>
+            ) : null}
+          </View>
+        </View>
       ) : null}
 
       <Text style={styles.helperText}>Picker selection still submits as YYYY-MM-DD.</Text>
@@ -149,25 +150,41 @@ export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, o
           }}
           selected={draft.recurrenceRule === null}
         />
-        {MOBILE_TASK_RECURRENCE_RULE_VALUES.map((rule) => (
-          <QuickPill
-            key={rule}
-            label={formatRecurrenceRule(rule as never)}
-            onPress={() => {
-              onChange({ ...draft, recurrenceRule: rule });
-              onClearMessages();
-            }}
-            selected={draft.recurrenceRule === rule}
-          />
-        ))}
+        {(() => {
+          const baseRules = ['daily', 'weekdays', 'monthly:day-of-month'] as const;
+          const visible = isRecurrenceExpanded
+            ? MOBILE_TASK_RECURRENCE_RULE_VALUES
+            : Array.from(
+                new Set([
+                  ...baseRules,
+                  ...(draft.recurrenceRule && !(baseRules as readonly string[]).includes(draft.recurrenceRule)
+                    ? [draft.recurrenceRule]
+                    : []),
+                ]),
+              ) as readonly string[];
+          return visible.map((rule) => (
+            <QuickPill
+              key={rule}
+              label={formatRecurrenceRule(rule as never)}
+              onPress={() => {
+                onChange({ ...draft, recurrenceRule: rule as never });
+                onClearMessages();
+              }}
+              selected={draft.recurrenceRule === rule}
+            />
+          ));
+        })()}
+        <QuickPill
+          label={isRecurrenceExpanded ? 'Less' : 'More'}
+          onPress={() => setIsRecurrenceExpanded((v) => !v)}
+          selected={false}
+        />
       </View>
 
-      <Text style={styles.timezoneText}>
-        Timezone: {displayTimezone}
-        {taskRecurrenceTimezone ? '' : ' · device · updates on save'}
-      </Text>
-      <Text style={styles.helperText}>
-        {draft.recurrenceRule ? `Saves as ${formatTaskToken(displayTimezone)} · next occurrence derived server-side.` : 'Recurrence saves device timezone on next save.'}
+      <Text style={styles.timezoneText} numberOfLines={1}>
+        {displayTimezone}
+        {taskRecurrenceTimezone ? '' : ' · device on save'}
+        {draft.recurrenceRule ? ` · ${formatRecurrenceRule(draft.recurrenceRule as never)}` : ' · no repeat'}
       </Text>
     </FormSection>
   );
@@ -282,7 +299,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   pickerCard: {
+    backgroundColor: mobileTheme.colors.surface,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
     marginTop: 8,
+    overflow: 'hidden',
   },
   pickerContent: {
     padding: 8,

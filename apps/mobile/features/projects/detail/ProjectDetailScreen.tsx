@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { ProjectStatus } from '@ega/api-client';
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
@@ -27,6 +28,13 @@ function formatProjectToken(value: string) {
 }
 
 export function ProjectDetailScreen() {
+  const insets = (() => {
+    try {
+      return useSafeAreaInsets();
+    } catch {
+      return { top: 0, bottom: 0, left: 0, right: 0 } as ReturnType<typeof useSafeAreaInsets>;
+    }
+  })();
   const router = (() => {
     try {
       // eslint-disable-next-line react-hooks/rules-of-hooks -- fallback for test env where expo-router mock may be missing
@@ -153,7 +161,7 @@ export function ProjectDetailScreen() {
   return (
     <AppScreen padded={false} testID="project-detail-screen">
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: mobileTheme.layout.stickyActionClearance + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

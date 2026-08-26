@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { GoalHealth, GoalStatus } from '@ega/api-client';
 import { mobileTheme } from '@/components/mobile/theme';
@@ -32,6 +33,7 @@ const STATUS_OPTIONS: Array<{ label: string; value: GoalStatus }> = [
 const EMPTY_PROJECTS: { id: string; name: string }[] = [];
 
 export function GoalCreateScreen() {
+  const insets = useSafeAreaInsets();
   const goalsQuery = useGoalListQuery('all');
   const createGoalMutation = useCreateGoalMutation();
 
@@ -102,7 +104,7 @@ export function GoalCreateScreen() {
         style={styles.screen}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: mobileTheme.layout.stickyActionClearance + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -141,7 +143,7 @@ export function GoalCreateScreen() {
                   description="Create a project first, then link this goal to it."
                 />
               ) : (
-                <View style={styles.selectionList}>
+                <View style={styles.tonalGroup}>
                   {projects.map((project) => (
                     <SelectionRow
                       key={project.id}
@@ -232,7 +234,7 @@ export function GoalCreateScreen() {
         </ScrollView>
 
         <View style={styles.stickyBar}>
-          <View style={styles.stickyContent}>
+          <View style={[styles.stickyContent, { paddingBottom: insets.bottom ? insets.bottom + 10 : (Platform.OS === 'ios' ? 26 : 14) }]}>
             <Button
               disabled={isSubmitting}
               onPress={() => router.back()}
@@ -311,5 +313,14 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 26 : 14,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: 10,
+  },
+  tonalGroup: {
+    backgroundColor: mobileTheme.colors.surfaceLow,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+    overflow: 'hidden',
+    padding: 8,
   },
 });

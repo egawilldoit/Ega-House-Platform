@@ -12,6 +12,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
@@ -44,6 +45,7 @@ import { TaskScheduleSection } from './TaskScheduleSection';
 import { TaskStateSection } from './TaskStateSection';
 
 export function TaskDetailScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const taskId = useMemo(() => String(id ?? '').trim(), [id]);
@@ -310,7 +312,7 @@ export function TaskDetailScreen() {
     <AppScreen padded={false} testID="task-detail-screen">
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.flex}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: mobileTheme.layout.stickyActionClearance + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -332,6 +334,8 @@ export function TaskDetailScreen() {
               onClearMessages={clearMessages}
             />
 
+            <TaskDetailsSection draft={draft} onChange={setDraft} onClearMessages={clearMessages} />
+
             <TaskReminderSection
               reminderDate={reminderDate}
               reminderPickerVisible={isReminderPickerVisible}
@@ -350,8 +354,6 @@ export function TaskDetailScreen() {
               onCancelReminder={onCancelReminder}
               onClearDate={onClearReminderDate}
             />
-
-            <TaskDetailsSection draft={draft} onChange={setDraft} onClearMessages={clearMessages} />
           </View>
         </ScrollView>
 

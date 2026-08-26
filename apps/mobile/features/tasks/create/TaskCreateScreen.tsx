@@ -13,10 +13,11 @@ import {
   View,
 } from 'react-native';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
-import { Card } from '@/components/mobile/ui/Card';
 import { Button } from '@/components/mobile/ui/Button';
 import { SelectionRow } from '@/components/mobile/ui/SelectionRow';
 import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
@@ -74,6 +75,7 @@ function QuickPill({
 }
 
 export function TaskCreateScreen() {
+  const insets = useSafeAreaInsets();
   const optionsQuery = useTaskFormOptionsQuery();
   const createTaskMutation = useCreateTaskMutation();
 
@@ -240,7 +242,7 @@ export function TaskCreateScreen() {
         style={styles.screen}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: mobileTheme.layout.stickyActionClearance + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -275,7 +277,7 @@ export function TaskCreateScreen() {
                   tone="warning"
                 />
               ) : (
-                <View style={styles.selectionList}>
+                <View style={styles.tonalGroup}>
                   {projects.map((project) => (
                     <SelectionRow
                       key={project.id}
@@ -294,7 +296,7 @@ export function TaskCreateScreen() {
               )}
 
               <Text style={styles.groupLabel}>Goal</Text>
-              <View style={styles.selectionList}>
+              <View style={styles.tonalGroup}>
                 <SelectionRow
                   label="No goal"
                   selected={goalId === null}
@@ -385,20 +387,22 @@ export function TaskCreateScreen() {
                 <Text style={styles.dateFieldMeta}>Optional</Text>
               </Pressable>
               {isDueDatePickerVisible ? (
-                <Card style={styles.datePickerCard} contentStyle={styles.datePickerContent}>
-                  <DateTimePicker
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    mode="date"
-                    onChange={onDueDateChange}
-                    value={dueDatePickerValue}
-                  />
-                  {Platform.OS === 'ios' ? (
-                    <View style={styles.datePickerActions}>
-                      <Button onPress={clearDueDate} size="sm" title="Clear" variant="secondary" />
-                      <Button onPress={() => setIsDueDatePickerVisible(false)} size="sm" title="Done" />
-                    </View>
-                  ) : null}
-                </Card>
+                <View style={styles.datePickerCard}>
+                  <View style={styles.datePickerContent}>
+                    <DateTimePicker
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      mode="date"
+                      onChange={onDueDateChange}
+                      value={dueDatePickerValue}
+                    />
+                    {Platform.OS === 'ios' ? (
+                      <View style={styles.datePickerActions}>
+                        <Button onPress={clearDueDate} size="sm" title="Clear" variant="secondary" />
+                        <Button onPress={() => setIsDueDatePickerVisible(false)} size="sm" title="Done" />
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
               ) : null}
               <Text style={styles.helperText}>Picker selection still submits as YYYY-MM-DD.</Text>
 
@@ -459,7 +463,7 @@ export function TaskCreateScreen() {
         </ScrollView>
 
         <View style={styles.stickyBar}>
-          <View style={styles.stickyContent}>
+          <View style={[styles.stickyContent, { paddingBottom: insets.bottom ? insets.bottom + 10 : (Platform.OS === 'ios' ? 26 : 14) }]}>
             <Button
               disabled={isSubmitting}
               onPress={() => router.back()}
@@ -573,7 +577,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   datePickerCard: {
+    backgroundColor: mobileTheme.colors.surface,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
     marginTop: 10,
+    overflow: 'hidden',
   },
   datePickerContent: {
     padding: 8,
@@ -617,5 +626,14 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 26 : 14,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: 10,
+  },
+  tonalGroup: {
+    backgroundColor: mobileTheme.colors.surfaceLow,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: 8,
+    overflow: 'hidden',
+    padding: 8,
   },
 });

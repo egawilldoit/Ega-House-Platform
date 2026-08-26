@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
@@ -13,6 +14,7 @@ import { normalizeMobileProjectSlug } from '@/features/projects/form-utils';
 import { useCreateProjectMutation } from '@/features/projects/query';
 
 export function ProjectCreateScreen() {
+  const insets = useSafeAreaInsets();
   const createProjectMutation = useCreateProjectMutation();
 
   const [name, setName] = useState('');
@@ -49,7 +51,7 @@ export function ProjectCreateScreen() {
         style={styles.screen}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: mobileTheme.layout.stickyActionClearance + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -112,7 +114,7 @@ export function ProjectCreateScreen() {
         </ScrollView>
 
         <View style={styles.stickyBar}>
-          <View style={styles.stickyContent}>
+          <View style={[styles.stickyContent, { paddingBottom: insets.bottom ? insets.bottom + 10 : (Platform.OS === 'ios' ? 26 : 14) }]}>
             <Button
               disabled={isSubmitting}
               onPress={() => router.back()}

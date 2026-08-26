@@ -34,7 +34,7 @@ export function FormSection({ title, description, icon, children, style, testID 
 
 const styles = StyleSheet.create({
   content: {
-    gap: mobileTheme.spacing.sm,
+    gap: 12,
   },
   description: {
     color: mobileTheme.colors.textSubtle,
@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
   divider: {
     backgroundColor: mobileTheme.colors.border,
     height: StyleSheet.hairlineWidth,
-    marginTop: mobileTheme.spacing.sm,
+    marginTop: 12,
     opacity: 0.9,
   },
   headerRow: {
@@ -54,8 +54,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   section: {
-    marginTop: mobileTheme.spacing.md,
-    // tonal separation — no Card wrapper, no shadow, just heading + divider
+    marginTop: 16,
+    // tonal separation — no Card wrapper, no shadow, just heading + divider (Wave 10.9: spacing 16)
   },
   title: {
     color: mobileTheme.colors.text,
