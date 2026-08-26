@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     overflow: 'hidden',
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 12,
   },
   goalTitle: {

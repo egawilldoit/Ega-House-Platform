@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
   },
   sm: {
     minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
   },
   smText: {
     fontSize: 13,

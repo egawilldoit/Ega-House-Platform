@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     justifyContent: 'center',
     minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
     borderWidth: 1,
   },
   pillIdle: {

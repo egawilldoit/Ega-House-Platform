@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 11,
   },
   taskRowCopy: {

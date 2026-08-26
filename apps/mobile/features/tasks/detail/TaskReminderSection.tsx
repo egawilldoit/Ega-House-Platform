@@ -182,7 +182,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     marginTop: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
   },
   dateFieldLabel: {

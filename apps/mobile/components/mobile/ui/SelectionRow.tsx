@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 12,
     backgroundColor: mobileTheme.colors.surface,
   },

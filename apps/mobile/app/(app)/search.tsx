@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     gap: mobileTheme.spacing.sm,
     marginTop: mobileTheme.spacing.sm,
     minHeight: 56,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
     ...mobileTheme.shadow.card,
   },
