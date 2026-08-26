@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   DEFAULT_PROJECT_DOC_MAX_BYTES,
   discoverCodexInstructionChain,
+  extractDocumentedNpmCommands,
   findExecutablePgmqPopCalls,
   parseCodexConfig,
   parseHermesExternalDirs,
@@ -101,6 +102,24 @@ test("markdown links: relative file, anchor, external, missing, and root-relativ
   });
 });
 
+test("documented npm commands: root, workspace, prefix, and npm test forms are classified", () => {
+  const result = extractDocumentedNpmCommands(`
+    npm run web:test
+    npm --workspace @ega/web run lint
+    npm run build --workspace @ega/web
+    npm --prefix scripts/ega-runner run test:pr-loop
+    npm test
+    npm run web:test
+  `);
+  assert.deepEqual(result, [
+    { kind: "prefix", script: "test:pr-loop", target: "scripts/ega-runner" },
+    { kind: "workspace", script: "lint", target: "@ega/web" },
+    { kind: "root", script: "web:test", target: null },
+    { kind: "workspace", script: "build", target: "@ega/web" },
+    { kind: "root", script: "test", target: null },
+  ]);
+});
+
 test("Codex discovery: root and nested AGENTS files are selected root-to-leaf", async () => {
   await withTempRepo(async (root) => {
     await mkdir(join(root, "apps", "mobile"), { recursive: true });
@@ -180,6 +199,15 @@ skills:
     - /current/repo/.agents/skills
 `);
   assert.deepEqual(parsed, ["/current/repo/.agents/skills"]);
+});
+
+test("repository validation: AGENTS npm commands must resolve to manifests", async () => {
+  await withTempRepo(async (root) => {
+    await writeFile(join(root, "AGENTS.md"), "Run `npm run missing:agent-command`.\n");
+    await writeFile(join(root, "package.json"), JSON.stringify({ scripts: { test: "echo ok" } }));
+    const result = await validateRepository(root, { env: {}, userHome: root });
+    assert.match(result.errors.join("\n"), /AGENTS\.md: documented root npm script 'missing:agent-command' does not exist/);
+  });
 });
 
 test("repository validation: the living agent-context set is required", async () => {
