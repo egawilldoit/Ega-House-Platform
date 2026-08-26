@@ -149,33 +149,39 @@ export default function SearchScreen() {
                   <Text style={styles.countPillText}>{results.tasks.length}</Text>
                 </View>
               </View>
-              {results.tasks.map((task) => (
-                <Pressable
-                  accessibilityLabel={`Open task ${task.title}`}
-                  accessibilityRole="button"
-                  key={task.id}
-                  onPress={() => {
-                    router.push({ pathname: '/(app)/tasks/[id]', params: { id: task.id } });
-                  }}
-                  style={({ pressed }) => [styles.resultRow, pressed ? styles.resultRowPressed : null]}
-                >
-                  <View style={styles.resultCopy}>
-                    <Text numberOfLines={1} style={styles.resultTitle}>
-                      {task.title}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.resultMeta}>
-                      {task.project.name}
-                      {task.goal ? ` · ${task.goal.title}` : ''} · {task.status}
-                    </Text>
-                    {task.description ? (
-                      <Text numberOfLines={1} style={styles.resultDescription}>
-                        {task.description}
+              <View style={styles.sectionGroup}>
+                {results.tasks.map((task, idx) => (
+                  <Pressable
+                    accessibilityLabel={`Open task ${task.title}`}
+                    accessibilityRole="button"
+                    key={task.id}
+                    onPress={() => {
+                      router.push({ pathname: '/(app)/tasks/[id]', params: { id: task.id } });
+                    }}
+                    style={({ pressed }) => [
+                      styles.resultRow,
+                      idx < results.tasks.length - 1 ? styles.resultRowBorder : null,
+                      pressed ? styles.resultRowPressed : null,
+                    ]}
+                  >
+                    <View style={styles.resultCopy}>
+                      <Text numberOfLines={1} style={styles.resultTitle}>
+                        {task.title}
                       </Text>
-                    ) : null}
-                  </View>
-                  <Ionicons color={mobileTheme.colors.textSubtle} name="chevron-forward" size={16} />
-                </Pressable>
-              ))}
+                      <Text numberOfLines={1} style={styles.resultMeta}>
+                        {task.project.name}
+                        {task.goal ? ` · ${task.goal.title}` : ''} · {task.status}
+                      </Text>
+                      {task.description ? (
+                        <Text numberOfLines={1} style={styles.resultDescription}>
+                          {task.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Ionicons color={mobileTheme.colors.textSubtle} name="chevron-forward" size={16} />
+                  </Pressable>
+                ))}
+              </View>
             </View>
           ) : null}
 
@@ -188,27 +194,33 @@ export default function SearchScreen() {
                   <Text style={styles.countPillText}>{results.projects.length}</Text>
                 </View>
               </View>
-              {results.projects.map((project) => (
-                <Pressable
-                  accessibilityLabel={`Open project ${project.name}`}
-                  accessibilityRole="button"
-                  key={project.id}
-                  onPress={() => {
-                    router.push({ pathname: '/(app)/projects/[slug]', params: { slug: project.slug } });
-                  }}
-                  style={({ pressed }) => [styles.resultRow, pressed ? styles.resultRowPressed : null]}
-                >
-                  <View style={styles.resultCopy}>
-                    <Text numberOfLines={1} style={styles.resultTitle}>
-                      {project.name}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.resultMeta}>
-                      {project.slug} · {project.status}
-                    </Text>
-                  </View>
-                  <Ionicons color={mobileTheme.colors.textSubtle} name="chevron-forward" size={16} />
-                </Pressable>
-              ))}
+              <View style={styles.sectionGroup}>
+                {results.projects.map((project, idx) => (
+                  <Pressable
+                    accessibilityLabel={`Open project ${project.name}`}
+                    accessibilityRole="button"
+                    key={project.id}
+                    onPress={() => {
+                      router.push({ pathname: '/(app)/projects/[slug]', params: { slug: project.slug } });
+                    }}
+                    style={({ pressed }) => [
+                      styles.resultRow,
+                      idx < results.projects.length - 1 ? styles.resultRowBorder : null,
+                      pressed ? styles.resultRowPressed : null,
+                    ]}
+                  >
+                    <View style={styles.resultCopy}>
+                      <Text numberOfLines={1} style={styles.resultTitle}>
+                        {project.name}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.resultMeta}>
+                        {project.slug} · {project.status}
+                      </Text>
+                    </View>
+                    <Ionicons color={mobileTheme.colors.textSubtle} name="chevron-forward" size={16} />
+                  </Pressable>
+                ))}
+              </View>
             </View>
           ) : null}
 
@@ -221,28 +233,34 @@ export default function SearchScreen() {
                   <Text style={styles.countPillText}>{results.goals.length}</Text>
                 </View>
               </View>
-              {results.goals.map((goal) => (
-                <Pressable
-                  accessibilityLabel={`Open goal ${goal.title}`}
-                  accessibilityRole="button"
-                  key={goal.id}
-                  onPress={() => {
-                    router.push({ pathname: '/(app)/goals/[id]', params: { id: goal.id } });
-                  }}
-                  style={({ pressed }) => [styles.resultRow, pressed ? styles.resultRowPressed : null]}
-                >
-                  <View style={styles.resultCopy}>
-                    <Text numberOfLines={1} style={styles.resultTitle}>
-                      {goal.title}
-                    </Text>
-                    <Text numberOfLines={1} style={styles.resultMeta}>
-                      {goal.projectName ? `${goal.projectName} · ` : ''}
-                      {goal.status}
-                    </Text>
-                  </View>
-                  <Ionicons color={mobileTheme.colors.textSubtle} name="chevron-forward" size={16} />
-                </Pressable>
-              ))}
+              <View style={styles.sectionGroup}>
+                {results.goals.map((goal, idx) => (
+                  <Pressable
+                    accessibilityLabel={`Open goal ${goal.title}`}
+                    accessibilityRole="button"
+                    key={goal.id}
+                    onPress={() => {
+                      router.push({ pathname: '/(app)/goals/[id]', params: { id: goal.id } });
+                    }}
+                    style={({ pressed }) => [
+                      styles.resultRow,
+                      idx < results.goals.length - 1 ? styles.resultRowBorder : null,
+                      pressed ? styles.resultRowPressed : null,
+                    ]}
+                  >
+                    <View style={styles.resultCopy}>
+                      <Text numberOfLines={1} style={styles.resultTitle}>
+                        {goal.title}
+                      </Text>
+                      <Text numberOfLines={1} style={styles.resultMeta}>
+                        {goal.projectName ? `${goal.projectName} · ` : ''}
+                        {goal.status}
+                      </Text>
+                    </View>
+                    <Ionicons color={mobileTheme.colors.textSubtle} name="chevron-forward" size={16} />
+                  </Pressable>
+                ))}
+              </View>
             </View>
           ) : null}
         </ScrollView>
@@ -309,20 +327,19 @@ const styles = StyleSheet.create({
   },
   resultRow: {
     alignItems: 'center',
-    backgroundColor: mobileTheme.colors.surface,
-    borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.control,
-    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: mobileTheme.colors.surfaceLow,
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.sm,
     minHeight: 56,
     paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
-    // plain — no shadow (hairline + surface)
+  },
+  resultRowBorder: {
+    borderBottomColor: mobileTheme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   resultRowPressed: {
-    opacity: 0.7,
+    backgroundColor: mobileTheme.colors.surfaceMid,
   },
   resultTitle: {
     color: mobileTheme.colors.text,
@@ -344,6 +361,14 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: mobileTheme.spacing.md,
+  },
+  sectionGroup: {
+    backgroundColor: mobileTheme.colors.surfaceLow,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    marginTop: mobileTheme.spacing.sm,
+    overflow: 'hidden',
   },
   sectionHeader: {
     alignItems: 'center',
