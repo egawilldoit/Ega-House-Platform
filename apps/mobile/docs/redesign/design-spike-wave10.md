@@ -57,4 +57,3 @@
 - **Navigation consistency:** 4 tabs, header avatar→profile, search→search, `router.setParams` for Work mode
 
 **Chosen direction:** A for Work, hero tracked time for Today, tonal running for Timer. All other screens inherit this system.
-
