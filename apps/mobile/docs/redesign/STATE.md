@@ -41,9 +41,10 @@
 - [x] Wave 10.1 — Nav architecture (4-tab-only, stack compat, setParams, bottomChrome metrics, FAB inset-aware, GlassBottomTab remove)
 - [x] Wave 10.2 — Tonal system (surfaces + containers + darker foregrounds + spacing rhythm 4/8/12/20/24/32 + contrast >=4.5)
 - [x] Wave 10.3 — Primitives (Card variants plain/tonal/elevated/semantic, shape pill→control, typography roles, spacing md, shadow tier) — 2026-08-26
+- [x] Wave 10.4 — Work chrome budget + TaskCard + TaskFilters (task-first hierarchy, compact summary, search+filter inline, 44h quick, scale press, no metric grid, no Edit) — 2026-08-26
 
 ## Current Wave
-Wave 10.3 — COMPLETE (working tree, awaiting parent commit; base b39f77b after 10.2, HEAD uncommitted primitives, 2026-08-26)
+Wave 10.4 — COMPLETE (working tree, awaiting parent commit; base ee65d30 after 10.3, HEAD uncommitted work task-first, 2026-08-26)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -101,9 +102,12 @@ Wave 10.3 — COMPLETE (working tree, awaiting parent commit; base b39f77b after
 - Wave 10.3: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after primitives: radius card 16 (was 20) xs 8/hero 20/control 12/pill 999, Card variants plain/tonal/elevated/semantic + tone (plain hairline no shadow default, tonal surfaceLow/mid/high, semantic container, elevated shadow.card), Button/IconButton/GlassButton pill→control 12 (FAB/nav/thumb pill kept), typography roles 13 in theme.typography (screenEyebrow/title/subtitle/heroNumber/Label/sectionTitle/cardTitle/body/metadata/chip/button) system font (SpaceMono only, Hanken not bundled), spacing.md 12 in SearchField/SelectionRow + primitives header/fab token, shadow.cardHover removed (tier plain no shadow, reserved for nav/FAB/sheet/elevated), list shells Task/Project/Goal/Today plain no shadow, search resultRow control 12 hairline no shadow
 - Wave 10.3: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including cards-a11y (borderRadius 10 still present) and glass-a11y
 - Wave 10.3: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.4: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after work task-first: chrome budget ~180px (headerWrap gap sm 8 + ScreenHeader md→sm, TasksListView searchRow inline [Search flex1 + Filter trigger 44 control border] + quickWrap mt sm 8 + filterBody FadeSlide 200ms reduced instant + compact summary 12 muted with urgent/blocked danger, metric 4-card grid removed, TaskCard Edit removed + press scale 0.985 + estimate hide 0 + IconButton 44 overflow retained, ScreenHeader style prop + marginBottom md→sm)
+- Wave 10.4: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including cards-a11y TaskCard mainTap 10 + IconButton 44 still passes without Edit button, views.test 6 presets green, search/task query unchanged
+- Wave 10.4: `git diff --check` — exit 0 (no whitespace errors)
 - `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0-9/10.1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3)
+- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2) and `git diff --name-only b39f77b...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.3) and `git -C .worktrees/ui-mobile diff --name-only HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4) and `git diff --name-only ee65d30...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.4)
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -298,8 +302,30 @@ Wave 10.3 — COMPLETE (working tree, awaiting parent commit; base b39f77b after
 - Modified: `apps/mobile/features/timer/components/FocusQueue.tsx` (taskRow 12 → spacing.md)
 - Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.2 complete, add tests/files)
 
-## Known Issues (Wave 10.3 updated)
+## Files Changed (Wave 10.3)
+- Modified: `apps/mobile/components/mobile/theme.ts` (radius card 16→16 kept xs 8 hero 20 control 12 pill 999 only Chip/quick/nav/FAB/thumb + Card plain/tonal/elevated/semantic, typography roles, shadow tier split, spacing md 12 reuse — see WAVE-10-PLAN 10.3)
+- Modified: `apps/mobile/components/mobile/ui/Card.tsx` (variants plain/tonal/elevated/semantic, plain surface hairline no shadow default, tonal surfaceLow/mid, semantic container, elevated shadow.card; accentColor borderLeft 3)
+- Modified: `apps/mobile/components/mobile/ui/Button.tsx` (pill→control 12, sm/md/lg tokens, variant primary/secondary/ghost/danger)
+- Modified: `apps/mobile/components/mobile/ui/IconButton.tsx` (control 12, ghost vs bordered, min 44)
+- Modified: `apps/mobile/components/mobile/ui/SegmentedControl.tsx` (thumb pill retained, track surfaceHigh, segment 44)
+- Modified: `apps/mobile/components/mobile/ui/SearchField.tsx` (control 12, surface border, shadow control, clear 44)
+- Modified: `apps/mobile/components/mobile/ui/ScreenHeader.tsx` (spacing.lg via theme)
+- Modified: `apps/mobile/components/mobile/ui/FloatingActionButton.tsx` (bottom spacing.lg via theme)
+- Modified: `apps/mobile/components/mobile/ui/Skeleton.tsx` (skeleton tokens)
+- Modified: `apps/mobile/DESIGN.md` (shape/typography/shadow spec)
+- Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.3 complete)
+
+## Files Changed (Wave 10.4)
+- Modified: `apps/mobile/app/(app)/(tabs)/work.tsx` (headerWrap gap sm 8 + ScreenHeader style sm marginBottom sm 8 marginTop 0, WorkModeSelector Tasks|Projects via router.setParams, body flex1, FAB fabBottom via bottomChrome)
+- Modified: `apps/mobile/components/mobile/ui/ScreenHeader.tsx` (add style?:StyleProp<ViewStyle> prop, header marginBottom lg→md 12 default, allow work.tsx override to sm 8 for chrome budget ~180px, header marginTop sm preserved, eyebrow/title/description unchanged)
+- Modified: `apps/mobile/features/tasks/components/TaskCard.tsx` (remove giant Edit Button secondary flex:1 + editBtn style, keep Pressable mainTapArea scale 0.985 110ms via pressed transform scale 0.985 + opacity 0.78, IconButton 44 overflow retained alone in actionsRow justify-end, hide estimateLabel when 0m est or undefined, keep title 14/800 2-line, project upper 11 muted, goal ·, Chip status/priority via chipTone, due pill calendar 13, blockedBox dangerBg)
+- Modified: `apps/mobile/features/tasks/components/TaskFilters.tsx` (collapsed single row trigger Filter outline 16 + Filters 14 extrabold + badge •{activeCount} accentSoft pill 11 bold when >0 else hidden, no "All" pill, chevron 16, header styled control 12 surface border minHeight 44, expand FadeSlide visible 200ms offsetY 8 reducedMotion 0 instant, body SegmentedControls Status/Priority/Due with labels 11 uppercase muted)
+- Modified: `apps/mobile/features/tasks/components/TasksListView.tsx` (searchRow inline flex SearchField flex1 + Filter trigger control 44 border 1 pill 12 with filter-outline + badge •{activeCount} + chevron, quickWrap mt sm 8 (was md12), TaskQuickFilters pills 44 retained, expanded filters FadeSlide 200ms instant reduced + SegmentedControls FILTER_*_OPTIONS, compact summaryRow flex row 12 muted showing visible tasks + · active muted when >0 + · urgent danger #991B1B when >0 else hidden + · blocked danger when >0 else hidden + · filtered when searching, right Clear 12 bold accent when hasFilters, removed 4-card summaryGrid (76px) + counterRow + activeHint, estimateLabel only when >0, listContent paddingHorizontal lg 20 paddingTop sm 8, contentBottomPadding via useBottomChromeMetrics fabBottom, skeleton/error unchanged, ActionSheet preserve)
+- Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.4 complete)
+
+## Known Issues (Wave 10.4 updated)
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
+- Wave 10.4 fixes applied: chrome budget ~180px (Work headerWrap gap 8 + ScreenHeader sm 8 + searchRow 44 inline Search flex1 + Filter 44 + quick 44 mt 8 + filterBody fade 200ms + summary 12 single-line compact visible + active muted + urgent/blocked danger #991B1B + filtered + Clear, 4-card metric grid deleted (Visible/Active/Blocked/Urgent), TaskCard Edit flex:1 deleted + scale 0.985 110ms + estimate hidden 0 + IconButton 44 retained, TaskFilters header single row Filters + badge •2 no All + chevron + fade+translateY 180-220ms reduced instant, TaskQuickFilters 44 already — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 10.3 fixes applied: shape card 16 (was 20) xs 8 hero 20 control 12 pill 999 only Chip/quick/nav/FAB/thumb, Card variants plain( surface hairline)/tonal(surfaceLow/mid)/elevated(shadow)/semantic(container) default plain no shadow (shells Task/Project/Goal/Today plain), Button/IconButton/GlassButton pill→control 12, typography 13 roles system font (Chip/ScreenHeader/Button use token), spacing.md 12 in SearchField/SelectionRow + header/fab, shadow.cardHover removed tier plain vs elevated vs nav/FAB/sheet — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 10.2 fixes applied: tonal surfaces canvas 15.9-17.8, containers primary 5.49 secondary 7.57 tertiary 6.37 success 6.49 danger 6.80 neutral 6.92, spacing 12/24/32 rhythm, chip archived 6.92 (was 4.34) danger 6.80 (was 3.95), literals 12/14→md token — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 10.1 fixes applied: 4-tab-only (7→4), stack compat redirects, Work router.setParams source of truth (no useEffect), bottomChrome canonical metrics (NAV_HEIGHT 72 24 20 16 16 + hook inset-aware navBottom/fabBottom/contentBottomPadding), FAB inset-aware bottom fabBottom, list paddingBottom runtime (FAB vs no-FAB), GlassBottomTab delete, NAVIGATION/STATE updated — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
@@ -326,8 +352,8 @@ Wave 10.3 — COMPLETE (working tree, awaiting parent commit; base b39f77b after
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 10.4 — Work chrome budget + TaskCard + TaskFilters (per WAVE-10-PLAN H-1/H-2/10.4)
-- Wave 10.5+ — Today/Timer/Goals/Projects/Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.5–10.13
+- Wave 10.5 — Today hero (tracked time 42-48, completion secondary) per WAVE-10-PLAN H-3/10.5
+- Wave 10.6+ — Goals/Projects dedup, Timer tonal, Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.6–10.13
 
 ## Handoff Notes for Next Wave Agent
 - Read `apps/mobile/components/mobile/theme.ts` and `components/mobile/navigation/bottomChrome.ts` before touching tokens — bottomChrome is canonical for NAV_HEIGHT 72 HORIZONTAL_MARGIN 24 BOTTOM_GAP 20 FAB_GAP 16 CONTENT_GAP 16 + useBottomChromeMetrics (navBottom = max(insets.bottom,12)+20, fabBottom=navBottom+72+16, contentBottomPadding=fabBottom+16, contentBottomPaddingNoFab=navBottom+72+16)

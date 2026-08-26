@@ -2,7 +2,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
-import { Card } from '@/components/mobile/ui/Card';
+import { FadeSlide } from '@/components/mobile/motion/FadeSlide';
+import { useReducedMotion } from '@/components/mobile/motion/ReducedMotion';
 import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
 import type { MobileTaskDueFilter, MobileTaskPriority, MobileTaskStatus } from '@/types/tasks';
 
@@ -50,17 +51,16 @@ export function TaskFilters({
   priorityFilter,
   dueFilter,
   activeCount,
-  hasFilters,
   collapsed,
   onToggleCollapsed,
   onChangeStatus,
   onChangePriority,
   onChangeDue,
-  onClear,
   testID,
 }: TaskFiltersProps) {
+  const reducedMotion = useReducedMotion();
   return (
-    <Card style={styles.card} contentStyle={styles.content} testID={testID}>
+    <View style={styles.container} testID={testID}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={collapsed ? 'Expand filters' : 'Collapse filters'}
@@ -71,108 +71,78 @@ export function TaskFilters({
           <Ionicons color={mobileTheme.colors.textMuted} name="filter-outline" size={16} />
           <Text style={styles.headerTitle}>Filters</Text>
           {activeCount > 0 ? (
-            <View style={[styles.countPill, styles.countPillActive]}>
-              <Text style={[styles.countText, styles.countTextActive]}>{activeCount} active</Text>
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>•{activeCount}</Text>
             </View>
-          ) : (
-            <View style={styles.countPill}>
-              <Text style={styles.countText}>All</Text>
-            </View>
-          )}
-        </View>
-        <View style={styles.headerRight}>
-          {hasFilters ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Clear task filters"
-              hitSlop={8}
-              onPress={onClear}
-              style={({ pressed }) => [styles.clearPill, pressed ? styles.clearPressed : null]}
-            >
-              <Text style={styles.clearText}>Clear</Text>
-            </Pressable>
           ) : null}
-          <Ionicons
-            color={mobileTheme.colors.textSubtle}
-            name={collapsed ? 'chevron-down' : 'chevron-up'}
-            size={16}
-            style={styles.chevron}
-          />
         </View>
+        <Ionicons
+          color={mobileTheme.colors.textSubtle}
+          name={collapsed ? 'chevron-down' : 'chevron-up'}
+          size={16}
+        />
       </Pressable>
 
-      {collapsed ? null : (
-        <View style={styles.body}>
-          <Text style={styles.label}>Status</Text>
-          <SegmentedControl value={statusFilter} options={STATUS_OPTIONS} onChange={onChangeStatus} testID="task-status-filter" />
+      {!collapsed ? (
+        <FadeSlide
+          visible={!collapsed}
+          durationMs={reducedMotion ? 0 : 200}
+          offsetY={reducedMotion ? 0 : 8}
+          style={styles.fadeWrap}
+        >
+          <View style={styles.body}>
+            <Text style={styles.label}>Status</Text>
+            <SegmentedControl value={statusFilter} options={STATUS_OPTIONS} onChange={onChangeStatus} testID="task-status-filter" />
 
-          <Text style={styles.label}>Priority</Text>
-          <SegmentedControl
-            value={priorityFilter}
-            options={PRIORITY_OPTIONS}
-            onChange={onChangePriority}
-            testID="task-priority-filter"
-          />
+            <Text style={styles.label}>Priority</Text>
+            <SegmentedControl
+              value={priorityFilter}
+              options={PRIORITY_OPTIONS}
+              onChange={onChangePriority}
+              testID="task-priority-filter"
+            />
 
-          <Text style={styles.label}>Due date</Text>
-          <SegmentedControl value={dueFilter} options={DUE_OPTIONS} onChange={onChangeDue} testID="task-due-filter" />
-        </View>
-      )}
-    </Card>
+            <Text style={styles.label}>Due date</Text>
+            <SegmentedControl value={dueFilter} options={DUE_OPTIONS} onChange={onChangeDue} testID="task-due-filter" />
+          </View>
+        </FadeSlide>
+      ) : null}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: {
-    marginTop: mobileTheme.spacing.sm,
-    gap: 0,
-  },
-  card: {
-    marginTop: mobileTheme.spacing.sm,
-  },
-  chevron: {
-    marginLeft: 6,
-  },
-  clearPill: {
+  badge: {
     backgroundColor: mobileTheme.colors.accentSoft,
-    borderColor: mobileTheme.colors.accentMid,
-    borderRadius: mobileTheme.radius.pill,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  clearPressed: {
-    opacity: 0.78,
-  },
-  clearText: {
-    color: mobileTheme.colors.accentDark,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.bold,
-  },
-  content: {
-    padding: 12,
-  },
-  countPill: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
     borderRadius: mobileTheme.radius.pill,
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  countPillActive: {
-    backgroundColor: mobileTheme.colors.accentSoft,
-  },
-  countText: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 11,
+  badgeText: {
+    color: mobileTheme.colors.accentDark,
+    fontSize: 12,
     fontWeight: mobileTheme.font.bold,
   },
-  countTextActive: {
-    color: mobileTheme.colors.accentDark,
+  body: {
+    gap: 0,
+    marginTop: mobileTheme.spacing.sm,
+  },
+  container: {
+    marginTop: mobileTheme.spacing.sm,
+  },
+  fadeWrap: {
+    // fade+translateY 180-220ms via FadeSlide, reducedMotion instant
   },
   header: {
     alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surface,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.control,
+    borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    minHeight: mobileTheme.layout.minTouchTarget,
+    paddingHorizontal: mobileTheme.spacing.md,
   },
   headerLeft: {
     alignItems: 'center',
@@ -182,10 +152,6 @@ const styles = StyleSheet.create({
   },
   headerPressed: {
     opacity: 0.78,
-  },
-  headerRight: {
-    alignItems: 'center',
-    flexDirection: 'row',
   },
   headerTitle: {
     color: mobileTheme.colors.text,

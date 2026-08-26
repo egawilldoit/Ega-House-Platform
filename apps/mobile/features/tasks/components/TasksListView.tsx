@@ -2,9 +2,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { FadeSlide } from '@/components/mobile/motion/FadeSlide';
+import { useReducedMotion } from '@/components/mobile/motion/ReducedMotion';
 import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
@@ -12,17 +14,41 @@ import { Card } from '@/components/mobile/ui/Card';
 import { EmptyState } from '@/components/mobile/ui/EmptyState';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { SearchField } from '@/components/mobile/ui/SearchField';
+import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
 import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
 import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
 import { matchTaskViewPreset, TASK_VIEW_PRESETS, type TaskViewId, type TaskViewPriority } from '@/features/tasks/views';
 import type { MobileTaskDueFilter, MobileTaskListItem, MobileTaskPriority, MobileTaskSortValue, MobileTaskStatus, UpdateTaskInput } from '@/types/tasks';
 
 import { TaskCard } from './TaskCard';
-import { TaskFilters } from './TaskFilters';
 import { TaskQuickFilters } from './TaskQuickFilters';
 
 const STATUS_OPTIONS: MobileTaskStatus[] = ['todo', 'in_progress', 'done', 'blocked'];
 const PRIORITY_OPTIONS: MobileTaskPriority[] = ['low', 'medium', 'high', 'urgent'];
+
+const FILTER_STATUS_OPTIONS: Array<{ label: string; value: MobileTaskStatus | 'all' }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Todo', value: 'todo' },
+  { label: 'Doing', value: 'in_progress' },
+  { label: 'Blocked', value: 'blocked' },
+  { label: 'Done', value: 'done' },
+];
+
+const FILTER_PRIORITY_OPTIONS: Array<{ label: string; value: MobileTaskPriority | 'all' }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Low', value: 'low' },
+  { label: 'Medium', value: 'medium' },
+  { label: 'High', value: 'high' },
+  { label: 'Urgent', value: 'urgent' },
+];
+
+const FILTER_DUE_OPTIONS: Array<{ label: string; value: MobileTaskDueFilter }> = [
+  { label: 'All', value: 'all' },
+  { label: 'Overdue', value: 'overdue' },
+  { label: 'Today', value: 'due_today' },
+  { label: 'Soon', value: 'due_soon' },
+  { label: 'None', value: 'no_due_date' },
+];
 
 const EMPTY_TASKS: MobileTaskListItem[] = [];
 
@@ -67,6 +93,7 @@ function getStatusOptions(task: MobileTaskListItem) {
 
 export function TasksListView() {
   const { contentBottomPadding } = useBottomChromeMetrics();
+  const reducedMotion = useReducedMotion();
   const [statusFilter, setStatusFilter] = useState<MobileTaskStatus | 'all'>('all');
   const [priorityFilter, setPriorityFilter] = useState<TaskViewPriority>('all');
   const [dueFilter, setDueFilter] = useState<MobileTaskDueFilter>('all');
@@ -90,7 +117,6 @@ export function TasksListView() {
 
   const rawTasks: MobileTaskListItem[] = tasksQuery.data?.tasks ?? EMPTY_TASKS;
   const counters = tasksQuery.data?.counters ?? null;
-  const totalTaskCount = counters?.total ?? 0;
 
   const filteredTasks = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -228,7 +254,7 @@ export function TasksListView() {
           <TaskCard
             blockedReason={item.status === 'blocked' ? item.blockedReason : null}
             dueLabel={formatDueDate(item.dueDate)}
-            estimateLabel={item.estimateMinutes !== null ? `${item.estimateMinutes}m est` : undefined}
+            estimateLabel={item.estimateMinutes !== null && item.estimateMinutes > 0 ? `${item.estimateMinutes}m est` : undefined}
             goal={item.goal?.title}
             onActions={() => setActiveTaskId(item.id)}
             onOpen={() => router.push({ pathname: '/(app)/tasks/[id]', params: { id: item.id } })}
@@ -289,65 +315,65 @@ export function TasksListView() {
         refreshControl={<RefreshControl refreshing={!!isRefetching} onRefresh={onRefresh} colors={[mobileTheme.colors.accent]} tintColor={mobileTheme.colors.accent} />}
         ListHeaderComponent={
           <View style={styles.headerWrap}>
-            <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder="Search tasks" testID="tasks-search-field" />
+            <View style={styles.searchRow}>
+              <SearchField value={searchQuery} onChangeText={setSearchQuery} placeholder="Search tasks" testID="tasks-search-field" style={styles.searchField} />
+              <Pressable
+                accessibilityLabel={collapsed ? 'Expand filters' : 'Collapse filters'}
+                accessibilityRole="button"
+                onPress={() => setCollapsed((v) => !v)}
+                style={({ pressed }) => [styles.filterTrigger, pressed ? styles.filterTriggerPressed : null]}
+                testID="tasks-filter-trigger"
+              >
+                <Ionicons color={mobileTheme.colors.textMuted} name="filter-outline" size={16} />
+                <Text style={styles.filterTriggerText}>Filters</Text>
+                {activeCount > 0 ? (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>•{activeCount}</Text>
+                  </View>
+                ) : null}
+                <Ionicons color={mobileTheme.colors.textSubtle} name={collapsed ? 'chevron-down' : 'chevron-up'} size={14} />
+              </Pressable>
+            </View>
 
             <View style={styles.quickWrap}>
               <TaskQuickFilters activeViewId={activeViewId} onSelect={selectTaskView} />
             </View>
 
-            <TaskFilters
-              statusFilter={statusFilter}
-              priorityFilter={priorityFilter}
-              dueFilter={dueFilter}
-              activeCount={activeCount}
-              hasFilters={hasFilters}
-              collapsed={collapsed}
-              onToggleCollapsed={() => setCollapsed((v) => !v)}
-              onChangeStatus={setStatusFilter}
-              onChangePriority={setPriorityFilter}
-              onChangeDue={setDueFilter}
-              onClear={clearFilters}
-            />
+            {!collapsed ? (
+              <FadeSlide visible={!collapsed} durationMs={reducedMotion ? 0 : 200} offsetY={reducedMotion ? 0 : 8} style={styles.filterExpandedWrap}>
+                <View style={styles.filterBody}>
+                  <Text style={styles.filterLabel}>Status</Text>
+                  <SegmentedControl value={statusFilter} options={FILTER_STATUS_OPTIONS} onChange={setStatusFilter} testID="task-status-filter" />
 
-            <View style={styles.counterRow}>
-              <Text style={styles.counterText}>
-                Showing {filteredTasks.length} of {totalTaskCount} task{totalTaskCount === 1 ? '' : 's'}
-                {searchQuery.trim() ? ` · filtered` : ''}
-              </Text>
-              {hasFilters ? (
-                <Text style={styles.counterHint} onPress={clearFilters}>
-                  Clear
-                </Text>
-              ) : null}
-            </View>
+                  <Text style={styles.filterLabel}>Priority</Text>
+                  <SegmentedControl
+                    value={priorityFilter}
+                    options={FILTER_PRIORITY_OPTIONS}
+                    onChange={setPriorityFilter}
+                    testID="task-priority-filter"
+                  />
 
-            {activeCount > 0 && collapsed ? (
-              <Text style={styles.activeHint}>
-                {activeCount} filter{activeCount === 1 ? '' : 's'} active · tap Filters to edit
-              </Text>
+                  <Text style={styles.filterLabel}>Due date</Text>
+                  <SegmentedControl value={dueFilter} options={FILTER_DUE_OPTIONS} onChange={setDueFilter} testID="task-due-filter" />
+                </View>
+              </FadeSlide>
             ) : null}
 
-            <View style={styles.summaryGrid}>
-              <Card style={styles.summaryCard} contentStyle={styles.summaryContent}>
-                <Ionicons name="list-outline" size={16} color={mobileTheme.colors.accent} />
-                <Text style={styles.summaryValue}>{taskSummary.visible}</Text>
-                <Text style={styles.summaryLabel}>Visible</Text>
-              </Card>
-              <Card style={styles.summaryCard} contentStyle={styles.summaryContent}>
-                <Ionicons name="flash-outline" size={16} color={mobileTheme.colors.info} />
-                <Text style={styles.summaryValue}>{taskSummary.inProgress}</Text>
-                <Text style={styles.summaryLabel}>Active</Text>
-              </Card>
-              <Card style={styles.summaryCard} contentStyle={styles.summaryContent}>
-                <Ionicons name="alert-circle-outline" size={16} color={mobileTheme.colors.blocked} />
-                <Text style={styles.summaryValue}>{taskSummary.blocked}</Text>
-                <Text style={styles.summaryLabel}>Blocked</Text>
-              </Card>
-              <Card style={styles.summaryCard} contentStyle={styles.summaryContent}>
-                <Ionicons name="flame-outline" size={16} color={mobileTheme.colors.danger} />
-                <Text style={styles.summaryValue}>{taskSummary.urgent}</Text>
-                <Text style={styles.summaryLabel}>Urgent</Text>
-              </Card>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryLeft}>
+                <Text style={styles.summaryText}>
+                  {taskSummary.visible} {taskSummary.visible === 1 ? 'task' : 'tasks'}
+                </Text>
+                {taskSummary.inProgress > 0 ? <Text style={styles.summaryMuted}> · {taskSummary.inProgress} active</Text> : null}
+                {taskSummary.urgent > 0 ? <Text style={styles.summaryUrgent}> · {taskSummary.urgent} urgent</Text> : null}
+                {taskSummary.blocked > 0 ? <Text style={styles.summaryBlocked}> · {taskSummary.blocked} blocked</Text> : null}
+                {searchQuery.trim() ? <Text style={styles.summaryMuted}> · filtered</Text> : null}
+              </View>
+              {hasFilters ? (
+                <Pressable onPress={clearFilters} hitSlop={8} style={styles.summaryClearWrap}>
+                  <Text style={styles.summaryClear}>Clear</Text>
+                </Pressable>
+              ) : null}
             </View>
 
             {isRefetching ? <Text style={styles.refreshingHint}>Refreshing…</Text> : null}
@@ -392,11 +418,6 @@ export function TasksListView() {
 }
 
 const styles = StyleSheet.create({
-  activeHint: {
-    color: mobileTheme.colors.textSubtle,
-    fontSize: 11,
-    marginTop: mobileTheme.spacing.sm,
-  },
   cardWrap: {
     marginBottom: mobileTheme.spacing.sm,
   },
@@ -406,22 +427,6 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-  },
-  counterHint: {
-    color: mobileTheme.colors.accent,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.bold,
-  },
-  counterRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: mobileTheme.spacing.sm,
-  },
-  counterText: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 12,
-    fontWeight: mobileTheme.font.semibold,
   },
   emptyActions: {
     flexDirection: 'row',
@@ -451,8 +456,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
+  filterBadge: {
+    backgroundColor: mobileTheme.colors.accentSoft,
+    borderRadius: mobileTheme.radius.pill,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  filterBadgeText: {
+    color: mobileTheme.colors.accentDark,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.bold,
+  },
+  filterBody: {
+    gap: 0,
+  },
+  filterExpandedWrap: {
+    marginTop: 6,
+  },
+  filterLabel: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.bold,
+    letterSpacing: 0.4,
+    marginBottom: 6,
+    marginTop: mobileTheme.spacing.sm,
+    textTransform: 'uppercase',
+  },
+  filterTrigger: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surface,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.control,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 6,
+    minHeight: mobileTheme.layout.minTouchTarget,
+    paddingHorizontal: mobileTheme.spacing.md,
+  },
+  filterTriggerPressed: {
+    opacity: 0.78,
+  },
+  filterTriggerText: {
+    color: mobileTheme.colors.text,
+    fontSize: 13,
+    fontWeight: mobileTheme.font.bold,
+  },
   headerWrap: {
-    marginBottom: mobileTheme.spacing.sm,
+    marginBottom: 4,
   },
   inlineErrorBanner: {
     marginTop: mobileTheme.spacing.sm,
@@ -466,15 +516,23 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: mobileTheme.spacing.lg,
-    paddingTop: mobileTheme.spacing.sm,
+    paddingTop: 4,
   },
   quickWrap: {
-    marginTop: mobileTheme.spacing.md,
+    marginTop: 6,
   },
   refreshingHint: {
     color: mobileTheme.colors.textSubtle,
     fontSize: 11,
     marginTop: 6,
+  },
+  searchField: {
+    flex: 1,
+  },
+  searchRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: mobileTheme.spacing.sm,
   },
   sheetMessage: {
     color: mobileTheme.colors.textMuted,
@@ -486,29 +544,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.md,
   },
-  summaryCard: {
-    flex: 1,
+  summaryBlocked: {
+    color: mobileTheme.colors.danger,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
   },
-  summaryContent: {
-    alignItems: 'flex-start',
-    gap: 2,
-    minHeight: 76,
-    padding: 10,
-  },
-  summaryGrid: {
-    flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-    marginTop: mobileTheme.spacing.md,
-  },
-  summaryLabel: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 10,
+  summaryClear: {
+    color: mobileTheme.colors.accent,
+    fontSize: 12,
     fontWeight: mobileTheme.font.bold,
-    textTransform: 'uppercase',
   },
-  summaryValue: {
-    color: mobileTheme.colors.text,
-    fontSize: 18,
-    fontWeight: mobileTheme.font.black,
+  summaryClearWrap: {
+    paddingLeft: mobileTheme.spacing.sm,
+  },
+  summaryLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  summaryMuted: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  summaryRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  summaryText: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  summaryUrgent: {
+    color: mobileTheme.colors.danger,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
   },
 });

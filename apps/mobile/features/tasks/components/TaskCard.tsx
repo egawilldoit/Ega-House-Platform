@@ -4,7 +4,6 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { mobileTheme, statusTone } from '@/components/mobile/theme';
 import { Card } from '@/components/mobile/ui/Card';
 import { Chip } from '@/components/mobile/ui/Chip';
-import { Button } from '@/components/mobile/ui/Button';
 import { IconButton } from '@/components/mobile/ui/IconButton';
 
 export type TaskCardProps = {
@@ -54,7 +53,11 @@ export function TaskCard({
           accessibilityRole="button"
           disabled={saving}
           onPress={onOpen}
-          style={({ pressed }) => [styles.mainTapArea, pressed && !saving ? styles.pressed : null]}
+          style={({ pressed }) => [
+            styles.mainTapArea,
+            pressed && !saving ? styles.pressed : null,
+            pressed && !saving ? { transform: [{ scale: 0.985 }] } : null,
+          ]}
         >
           <Text numberOfLines={2} style={[styles.title, completed ? styles.titleComplete : null]}>
             {title}
@@ -76,7 +79,7 @@ export function TaskCard({
               />
               <Text style={[styles.dueText, hasDueDate ? styles.dueTextHasDue : null]}>{dueLabel}</Text>
             </View>
-            {estimateLabel ? (
+            {estimateLabel && estimateLabel !== '0m est' ? (
               <View style={styles.metaPill}>
                 <Ionicons color={mobileTheme.colors.textSubtle} name="timer-outline" size={13} />
                 <Text style={styles.metaPillText}>{estimateLabel}</Text>
@@ -95,16 +98,6 @@ export function TaskCard({
         </Pressable>
 
         <View style={styles.actionsRow}>
-          <Button
-            title="Edit"
-            variant="secondary"
-            size="sm"
-            disabled={saving}
-            loading={saving}
-            onPress={onOpen}
-            style={styles.editBtn}
-            testID="task-card-edit"
-          />
           <IconButton
             icon="ellipsis-horizontal"
             accessibilityLabel="Open task actions"
@@ -123,8 +116,9 @@ export function TaskCard({
 
 const styles = StyleSheet.create({
   actionsRow: {
+    alignItems: 'center',
     flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
+    justifyContent: 'flex-end',
     marginTop: 10,
   },
   blockedBox: {
@@ -188,9 +182,6 @@ const styles = StyleSheet.create({
   dueTextHasDue: {
     color: mobileTheme.colors.info,
   },
-  editBtn: {
-    flex: 1,
-  },
   meta: {
     color: mobileTheme.colors.textMuted,
     fontSize: 11,
@@ -226,6 +217,7 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.78,
+    // scale handled inline 0.985 for 100-140ms press
   },
   spacer: {
     flex: 1,
