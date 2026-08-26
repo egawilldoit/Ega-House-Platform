@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { ProjectCardReadModel } from '@ega/api-client';
-import { mobileTheme } from '@/components/mobile/theme';
+import { mobileTheme, statusTone } from '@/components/mobile/theme';
 import { Card } from '@/components/mobile/ui/Card';
 import { Chip } from '@/components/mobile/ui/Chip';
 import { ProgressBar } from '@/components/mobile/ui/ProgressBar';
@@ -22,6 +22,7 @@ export function ProjectCard({ project, saving, onOpen, onActions }: ProjectCardP
   const progress = Math.max(0, Math.min(100, project.progressPercent ?? 0));
 
   const statusValue = project.status;
+  const statusColors = statusTone(statusValue as never);
 
   return (
     <View style={styles.shell}>
@@ -29,7 +30,7 @@ export function ProjectCard({ project, saving, onOpen, onActions }: ProjectCardP
         variant="plain"
         style={styles.card}
         contentStyle={styles.cardContent}
-        accentColor={mobileTheme.colors.border}
+        accentColor={statusColors.color}
         testID="project-card"
       >
         <Pressable
