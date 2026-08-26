@@ -32,7 +32,7 @@ From repository root:
 npm run mobile:typecheck
 npm run mobile:test
 npm run mobile:doctor
-npm run mobile:validate:bundle
+npm run mobile:bundle
 ```
 
 Use typecheck + affected tests during iteration. Run Doctor after dependency/native-config changes. Run bundle validation for routing, native dependency, Metro/config, or release-boundary changes.
