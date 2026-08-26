@@ -1,8 +1,7 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
-import { Card } from '@/components/mobile/ui/Card';
-import { EmptyState } from '@/components/mobile/ui/EmptyState';
 
 export type TodaySectionHeaderProps = {
   title: string;
@@ -28,14 +27,13 @@ export type TodaySectionEmptyProps = {
 
 export function TodaySectionEmpty({ emptyText, testID }: TodaySectionEmptyProps) {
   return (
-    <Card style={styles.emptyCard} contentStyle={styles.emptyContent} testID={testID}>
-      <EmptyState
-        icon="list-outline"
-        iconSize={22}
-        title="No tasks"
-        description={emptyText}
-      />
-    </Card>
+    <View style={styles.emptyWrap} testID={testID}>
+      <View style={styles.iconWrap}>
+        <Ionicons name="list-outline" size={20} color={mobileTheme.colors.textSubtle} />
+      </View>
+      <Text style={styles.emptyTitle}>No tasks</Text>
+      <Text style={styles.emptyDescription}>{emptyText}</Text>
+    </View>
   );
 }
 
@@ -51,11 +49,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  emptyCard: {
-    marginBottom: mobileTheme.spacing.sm,
+  emptyDescription: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 13,
+    fontWeight: mobileTheme.font.semibold,
+    lineHeight: 18,
+    marginTop: 4,
+    textAlign: 'center',
   },
-  emptyContent: {
-    padding: 0,
+  emptyTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 14,
+    fontWeight: mobileTheme.font.extrabold,
+    letterSpacing: 0,
+  },
+  emptyWrap: {
+    alignItems: 'center',
+    paddingHorizontal: mobileTheme.spacing.lg,
+    paddingVertical: mobileTheme.spacing.md,
   },
   header: {
     alignItems: 'center',
@@ -66,6 +77,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 14,
     paddingLeft: 8,
+  },
+  iconWrap: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.xl,
+    height: 64,
+    justifyContent: 'center',
+    marginBottom: 10,
+    width: 64,
   },
   title: {
     color: mobileTheme.colors.text,
