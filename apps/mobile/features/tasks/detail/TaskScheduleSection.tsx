@@ -5,7 +5,6 @@ import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
 import { FormField } from '@/components/mobile/ui/FormField';
 import { FormSection } from '@/components/mobile/ui/FormSection';
-import { formatTaskToken } from '@/features/tasks/form-utils';
 import { MOBILE_TASK_RECURRENCE_RULE_VALUES } from '@/types/tasks';
 
 import {

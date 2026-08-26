@@ -17,6 +17,7 @@ export type DailyMomentumProps = {
 };
 
 export function DailyMomentum({
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- date kept for API compat, not rendered (hero uses trackedTodayLabel)
   date: _date,
   summary,
   todayCount,
