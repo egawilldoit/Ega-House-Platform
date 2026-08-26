@@ -1,6 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import type { GoalHealth, GoalStatus } from '@ega/api-client';
 import { healthTone, mobileTheme } from '@/components/mobile/theme';
@@ -32,6 +33,13 @@ function formatGoalToken(value: string) {
 }
 
 export function GoalDetailScreen() {
+  const insets = (() => {
+    try {
+      return useSafeAreaInsets();
+    } catch {
+      return { top: 0, bottom: 0, left: 0, right: 0 } as ReturnType<typeof useSafeAreaInsets>;
+    }
+  })();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const goalId = useMemo(() => String(id ?? '').trim(), [id]);
@@ -157,7 +165,7 @@ export function GoalDetailScreen() {
   return (
     <AppScreen padded={false} testID="goal-detail-screen">
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: mobileTheme.layout.stickyActionClearance + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >

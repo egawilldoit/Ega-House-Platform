@@ -1,9 +1,10 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
-import { Card } from '@/components/mobile/ui/Card';
 import { Chip } from '@/components/mobile/ui/Chip';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { FormSection } from '@/components/mobile/ui/FormSection';
@@ -51,6 +52,7 @@ export function TaskReminderSection({
   onCancelReminder,
   onClearDate,
 }: Props) {
+  const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
   return (
     <FormSection icon="notifications-outline" title="Reminder" description="Email reminder scheduling">
       <Pressable
@@ -91,20 +93,22 @@ export function TaskReminderSection({
       </View>
 
       {reminderPickerVisible ? (
-        <Card style={styles.pickerCard} contentStyle={styles.pickerContent}>
-          <DateTimePicker
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            minimumDate={reminderPickerMode === 'date' ? new Date() : undefined}
-            mode={reminderPickerMode}
-            onChange={onReminderDateChange}
-            value={reminderDate ?? createDefaultReminderDate()}
-          />
-          {Platform.OS === 'ios' ? (
-            <View style={styles.pickerActions}>
-              <Button onPress={onHidePicker} size="sm" title="Done" />
-            </View>
-          ) : null}
-        </Card>
+        <View style={styles.pickerCard}>
+          <View style={styles.pickerContent}>
+            <DateTimePicker
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              minimumDate={reminderPickerMode === 'date' ? new Date() : undefined}
+              mode={reminderPickerMode}
+              onChange={onReminderDateChange}
+              value={reminderDate ?? createDefaultReminderDate()}
+            />
+            {Platform.OS === 'ios' ? (
+              <View style={styles.pickerActions}>
+                <Button onPress={onHidePicker} size="sm" title="Done" />
+              </View>
+            ) : null}
+          </View>
+        </View>
       ) : null}
 
       <Button
@@ -144,25 +148,35 @@ export function TaskReminderSection({
 
       {completedReminders.length > 0 ? (
         <>
-          <Text style={styles.groupLabel}>History</Text>
-          <View style={styles.list}>
-            {completedReminders.map((reminder) => (
-              <View key={reminder.id} style={styles.row}>
-                <View style={styles.rowText}>
-                  <Text style={styles.reminderTime}>{formatReminderTimestamp(reminder.remindAt)}</Text>
-                  <Text style={styles.reminderMeta}>Email · {formatTaskToken(reminder.status)}</Text>
-                  {reminder.failureReason ? (
-                    <Text style={styles.failureText}>{reminder.failureReason}</Text>
-                  ) : null}
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setIsHistoryExpanded((v) => !v)}
+            style={styles.historyHeader}
+          >
+            <Text style={styles.historyLabel}>History · {completedReminders.length}</Text>
+            <Ionicons
+              name={isHistoryExpanded ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={mobileTheme.colors.textMuted}
+            />
+            <Text style={styles.historyToggle}>{isHistoryExpanded ? 'Hide' : 'Show'}</Text>
+          </Pressable>
+          {isHistoryExpanded ? (
+            <View style={styles.list}>
+              {completedReminders.map((reminder) => (
+                <View key={reminder.id} style={[styles.row, styles.historyRow]}>
+                  <View style={styles.rowText}>
+                    <Text style={styles.reminderTimeMuted}>{formatReminderTimestamp(reminder.remindAt)}</Text>
+                    <Text style={styles.reminderMeta}>Email · {formatTaskToken(reminder.status)}</Text>
+                    {reminder.failureReason ? (
+                      <Text style={styles.failureText}>{reminder.failureReason}</Text>
+                    ) : null}
+                  </View>
+                  <Chip kind="status" value={reminder.status} style={styles.historyChip} />
                 </View>
-                <Chip
-                  kind="status"
-                  value={reminder.status}
-                  style={styles.historyChip}
-                />
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : null}
         </>
       ) : null}
 
@@ -215,13 +229,34 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
   groupLabel: {
-    color: mobileTheme.colors.text,
-    fontSize: 13,
-    fontWeight: mobileTheme.font.extrabold,
-    marginTop: 14,
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
+    marginTop: 8,
   },
   historyChip: {
     alignSelf: 'center',
+  },
+  historyHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+    paddingVertical: 4,
+  },
+  historyLabel: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
+  },
+  historyRow: {
+    opacity: 0.92,
+  },
+  historyToggle: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.semibold,
+    marginLeft: 'auto',
   },
   list: {
     gap: 8,
@@ -233,7 +268,12 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   pickerCard: {
+    backgroundColor: mobileTheme.colors.surface,
+    borderColor: mobileTheme.colors.border,
+    borderRadius: mobileTheme.radius.card,
+    borderWidth: StyleSheet.hairlineWidth,
     marginTop: 8,
+    overflow: 'hidden',
   },
   pickerContent: {
     padding: 8,
@@ -256,6 +296,11 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 13,
     fontWeight: mobileTheme.font.bold,
+  },
+  reminderTimeMuted: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
   },
   row: {
     alignItems: 'center',

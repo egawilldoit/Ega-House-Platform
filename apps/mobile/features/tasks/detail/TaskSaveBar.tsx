@@ -1,4 +1,5 @@
 import { Platform, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
@@ -14,11 +15,12 @@ type Props = {
 };
 
 export function TaskSaveBar({ dirty, isSaving, submitError, successMessage, onBack, onSave }: Props) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.stickyBar}>
       {submitError ? <FeedbackBanner message={submitError} tone="danger" style={styles.banner} /> : null}
       {successMessage ? <FeedbackBanner message={successMessage} tone="success" style={styles.banner} /> : null}
-      <View style={styles.stickyContent}>
+      <View style={[styles.stickyContent, { paddingBottom: insets.bottom ? insets.bottom + 10 : (Platform.OS === 'ios' ? 26 : 14) }]}>
         <Button
           disabled={isSaving}
           onPress={onBack}
