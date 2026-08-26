@@ -170,6 +170,7 @@ export function GoalsListView() {
     [isMutating, sheetTargetId, openNextStepEditor],
   );
 
+  // Perceived performance: skeleton only on cold start; stale list + “Refreshing…” banner on background fetch.
   const isPending = goalsQuery.isPending && !goalsQuery.data;
   const isRefetching = goalsQuery.isFetching && !!goalsQuery.data;
   const isError = goalsQuery.isError && !goalsQuery.data;
@@ -205,12 +206,14 @@ export function GoalsListView() {
   return (
     <View style={styles.container} testID="goals-list-view">
       <FlatList
+        // FlatList tuning (Wave 10.11): RN defaults baseline — same as ProjectsListView.
+        // `initialNumToRender={10}` default; `maxToRenderPerBatch={10}` default; `windowSize` omitted → default 21
+        // (vs 5: 5 caused blank on fast fling; 21 cheap for 10-40 goals). No `getItemLayout` (GoalCard height variable:
+        // next-step 1-2 lines, progress row). `removeClippedSubviews` omitted → default recycling.
         data={goals}
         keyExtractor={(item) => item.id}
         initialNumToRender={10}
-        windowSize={5}
         maxToRenderPerBatch={10}
-        removeClippedSubviews={false}
         contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={

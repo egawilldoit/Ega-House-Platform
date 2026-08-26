@@ -152,6 +152,9 @@ export default function TodayScreen() {
   const todayIso = useMemo(() => getLocalIsoDate(new Date()), []);
   const tomorrowIso = useMemo(() => getLocalIsoDate(addLocalDays(new Date(), 1)), []);
 
+  // Focus refetch (Wave 10.11 audit): useFocusEffect with [refetch] (not [query]) to avoid storm;
+  // Timer intentionally has none — stale until pull/invalidation via focus-manager (refetchOnWindowFocus true).
+  // Today keeps stale via placeholderData + isFetched guard to avoid refetch before cold load.
   useFocusEffect(
     useCallback(() => {
       if (!isFetched) {
@@ -417,6 +420,7 @@ export default function TodayScreen() {
     [activeTaskId, router, runStatusAction],
   );
 
+  // Perceived performance: `isPending && !data` → skeleton; `isFetching && data` → Refreshing banner (placeholderData keeps stale visible).
   const isLoading = isPending && !today;
 
   if (isLoading) {
@@ -474,12 +478,16 @@ export default function TodayScreen() {
   return (
     <AppScreen padded={false} testID="today-screen">
       <SectionList
+        // SectionList tuning (Wave 10.11): RN defaults as baseline.
+        // `initialNumToRender={10}` default 10 — covers first Planned + In Progress in <400px; `maxToRenderPerBatch={10}` default.
+        // `windowSize` omitted → default 21 vs prior 5: 5 showed blank on fast fling across 4 sections (TodayTaskCard variable
+        // height ~110 wraps, no getItemLayout); 21 keeps offscreen sections buffered cheaply (typical 10-30 total tasks).
+        // `removeClippedSubviews` omitted → default recycling (Android true). Tested: plain Card rows, no clipping bug.
         contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPaddingNoFab }]}
         keyExtractor={(item) => item.id}
         sections={sections}
         stickySectionHeadersEnabled={false}
         initialNumToRender={10}
-        windowSize={5}
         maxToRenderPerBatch={10}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
