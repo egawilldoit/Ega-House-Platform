@@ -157,15 +157,16 @@ export const mobileTheme = {
   },
 
   radius: {
-    xs: 6,
-    sm: 10,
-    md: 14,
-    lg: 18,
-    xl: 22,
-    card: 20, // future 16 per H-5, keep 20 until 10.3 primitives
-    control: 12,
-    pill: 999,
-    sheet: 28,
+    xs: 8, // small 8 — was 6, align to 8-10 small per H-5
+    sm: 10, // small 10 — upper small
+    md: 14, // control upper 14
+    lg: 18, // card upper 18
+    xl: 22, // hero 20-24 range (22)
+    card: 16, // list cards 16 — was 20, now 16 per H-5 10.3
+    hero: 20, // hero 20-24
+    control: 12, // controls 12 — use for Button/IconButton/Input
+    pill: 999, // only Chip/quick filters/nav capsule/FAB/thumb
+    sheet: 28, // sheets 24-28
   },
 
   spacing: {
@@ -184,19 +185,14 @@ export const mobileTheme = {
   },
 
   shadow: {
+    // card — reserved for elevated variant only; plain/tonal list cards use no shadow (tonal separation + hairline)
+    // cardHover removed — unused (10.3); elevated uses card shadow, not hover.
     card: {
       shadowColor: '#101828',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.04,
       shadowRadius: 7,
       elevation: 1,
-    },
-    cardHover: {
-      shadowColor: '#1a2540',
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.08,
-      shadowRadius: 10,
-      elevation: 3,
     },
     control: {
       shadowColor: '#101828',
@@ -258,6 +254,87 @@ export const mobileTheme = {
     bold: '700' as const,
     extrabold: '800' as const,
     black: '900' as const,
+  },
+
+  // Typography roles — system font (Hanken Grotesk not bundled; only SpaceMono present). Scale/weight/lineHeight/tracking hierarchy.
+  typography: {
+    screenEyebrow: {
+      fontSize: 11,
+      fontWeight: '700' as const,
+      letterSpacing: 1.2,
+      lineHeight: 14,
+      textTransform: 'uppercase' as const,
+    },
+    screenTitle: {
+      fontSize: 28,
+      fontWeight: '900' as const,
+      letterSpacing: -0.8,
+      lineHeight: 34,
+    },
+    screenSubtitle: {
+      fontSize: 14,
+      fontWeight: '500' as const,
+      lineHeight: 20,
+    },
+    heroNumber: {
+      fontSize: 42,
+      fontWeight: '900' as const,
+      letterSpacing: -1,
+      lineHeight: 44,
+    },
+    heroLabel: {
+      fontSize: 11,
+      fontWeight: '700' as const,
+      letterSpacing: 0.8,
+      lineHeight: 14,
+      textTransform: 'uppercase' as const,
+    },
+    sectionTitle: {
+      fontSize: 15,
+      fontWeight: '800' as const,
+      letterSpacing: 0.1,
+      lineHeight: 20,
+    },
+    cardTitle: {
+      fontSize: 16,
+      fontWeight: '800' as const,
+      letterSpacing: 0,
+      lineHeight: 22,
+    },
+    cardTitleCompact: {
+      fontSize: 14,
+      fontWeight: '800' as const,
+      letterSpacing: 0,
+      lineHeight: 19,
+    },
+    body: {
+      fontSize: 14,
+      fontWeight: '600' as const,
+      lineHeight: 20,
+    },
+    bodySmall: {
+      fontSize: 13,
+      fontWeight: '600' as const,
+      lineHeight: 18,
+    },
+    metadata: {
+      fontSize: 11,
+      fontWeight: '600' as const,
+      letterSpacing: 0.4,
+      lineHeight: 14,
+    },
+    chip: {
+      fontSize: 11,
+      fontWeight: '700' as const,
+      letterSpacing: 0.2,
+      lineHeight: 14,
+    },
+    button: {
+      fontSize: 14,
+      fontWeight: '800' as const,
+      letterSpacing: 0.2,
+      lineHeight: 16,
+    },
   },
 };
 

@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
+    borderRadius: mobileTheme.radius.control,
     marginTop: 4,
     minHeight: 52,
     justifyContent: 'center',

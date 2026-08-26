@@ -77,13 +77,13 @@ const styles = StyleSheet.create({
   row: {
     alignItems: 'center',
     borderColor: mobileTheme.colors.border,
-    borderRadius: mobileTheme.radius.md,
+    borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     flexDirection: 'row',
-    gap: 12,
+    gap: mobileTheme.spacing.md,
     minHeight: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: mobileTheme.spacing.md,
-    paddingVertical: 12,
+    paddingVertical: mobileTheme.spacing.md,
     backgroundColor: mobileTheme.colors.surface,
   },
   rowSelected: {

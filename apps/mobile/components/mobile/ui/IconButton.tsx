@@ -78,7 +78,7 @@ export function IconButton({
 const styles = StyleSheet.create({
   base: {
     alignItems: 'center',
-    borderRadius: mobileTheme.radius.pill,
+    borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     justifyContent: 'center',
     overflow: 'hidden',

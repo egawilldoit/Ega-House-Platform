@@ -218,8 +218,8 @@ const styles = StyleSheet.create({
   },
   shell: {
     borderRadius: mobileTheme.radius.card,
-    ...mobileTheme.shadow.card,
     marginBottom: mobileTheme.spacing.sm,
+    // plain — no shadow
   },
   title: {
     color: mobileTheme.colors.text,

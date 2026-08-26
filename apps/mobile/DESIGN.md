@@ -69,20 +69,28 @@ Contrast all measured via luminance `(L+0.05)/(max)` — see `theme.ts` header a
 
 ## TYPOGRAPHY
 
-System fonts (no custom download in Wave 0). Weight tokens: `regular 400` · `medium 500` · `semibold 600` · `bold 700` · `extrabold 800` · `black 900`.
+System font (Hanken Grotesk not bundled — only `SpaceMono` present; system sans is canonical). Weight tokens: `regular 400` · `medium 500` · `semibold 600` · `bold 700` · `extrabold 800` · `black 900`.
 
-| Level | Size | Weight | LineHeight | Tracking | Sample |
+Named roles in `mobileTheme.typography` (hierarchy, not new font):
+
+| Role | Size | Weight | LineHeight | Tracking | Usage |
 |---|---|---|---|---|---|
-| Display / Title | 28 | 900 | 34 | -0.8 | Screen titles (Today, Work) |
-| Section title | 17–15 | 800 | 22–20 | 0 / -0.2 | Daily momentum, card titles |
-| Body | 14 | 500–600 | 20 | 0 | Descriptions, meta |
-| Body small | 13 | 600 | 18 | 0 | Card copy |
-| Caption | 12–11 | 700–800 | 16 | 0.2–0.4 | Pill labels, stat labels, eyebrow |
-| Eyebrow | 11 | 700 | 14 | 1.2 upper | EYEBROW |
-| Chip | 11 | 700 | 14 | 0.2 capital | Chip labels |
+| `screenEyebrow` | 11 | 700 | 14 | 1.2 upper | EYEBROW — ScreenHeader eyebrow |
+| `screenTitle` | 28 | 900 | 34 | -0.8 | Screen titles (Today, Work) |
+| `screenSubtitle` | 14 | 500 | 20 | 0 | ScreenHeader description |
+| `heroNumber` | 42 | 900 | 44 | -1 | Hero stat (tracked today) |
+| `heroLabel` | 11 | 700 | 14 | 0.8 upper | Hero label (tracked today) |
+| `sectionTitle` | 15 | 800 | 20 | 0.1 | Section headers, Daily momentum |
+| `cardTitle` | 16 | 800 | 22 | 0 | Goal/Project card title |
+| `cardTitleCompact` | 14 | 800 | 19 | 0 | Task/Today task title (compact) |
+| `body` | 14 | 600 | 20 | 0 | Descriptions, meta |
+| `bodySmall` | 13 | 600 | 18 | 0 | Card copy, detail text |
+| `metadata` | 11 | 600 | 14 | 0.4 | Metadata, due pill, count |
+| `chip` | 11 | 700 | 14 | 0.2 capital | Chip labels |
+| `button` | 14 | 800 | 16 | 0.2 | Button labels |
 | Clock (timer) | 52 | 900 | 52 | -1 | Timer readout (fixed format) |
 
-Tab labels: 10/700, active 10/800. Timer clock caps `maxFontSizeMultiplier 1.6` to keep HH:MM:SS on one line; tab labels cap `1.4`; all other text scales uncapped.
+Tab labels: 10/700, active 10/800. Timer clock caps `maxFontSizeMultiplier 1.6` to keep HH:MM:SS on one line; tab labels cap `1.4`; all other text scales uncapped. Roles use `mobileTheme.typography.*` spread, not hardcoded sizes.
 
 ---
 
@@ -106,10 +114,11 @@ Common compositions:
 
 ## RADII
 
-`xs 6` · `sm 10` · `md 14` · `lg 18` · `xl 22`
-Semantic: `card 20` (future 16 per H-5, keep 20 until 10.3 primitives) · `control 12` · `pill 999` · `sheet 28` · `navigation pill 999` (same as chip)
+`xs 8` · `sm 10` · `md 14` · `lg 18` · `xl 22`
+Semantic: `card 16` (was 20 → 16 per H-5 10.3) · `hero 20` · `control 12` · `pill 999` · `sheet 28` · `navigation pill 999` (same as chip)
 
-Pill/chip 999, segmented track 999, tab item 999, FAB 999, sheet top 28, card 20.
+Scale: small 8-10 (`xs`/`sm`), controls 12-14 (`control`/`md`), list cards 16-18 (`card`/`lg`), hero 20-24 (`hero`/`xl`), sheets 24-28 (`sheet`).
+Pill only for `Chip`, quick filters, nav capsule, FAB, segmented thumb. Buttons (`Button`/`IconButton`/`GlassButton`) use `control 12`, not pill. `SelectionRow`/`SearchField`/`FormField` also `control 12`. List cards `card 16`, not pill.
 
 ---
 
@@ -117,8 +126,7 @@ Pill/chip 999, segmented track 999, tab item 999, FAB 999, sheet top 28, card 20
 
 | Level | Props |
 |---|---|
-| `card` | `shadowColor #101828` `y1` `radius 7` `opacity 0.04` `elevation 1` |
-| `cardHover` | `#1a2540` `y3` `10` `0.08` `3` |
+| `card` | `shadowColor #101828` `y1` `radius 7` `opacity 0.04` `elevation 1` — **reserved for `Card variant=elevated` only** |
 | `control` | `#101828` `y1` `2` `0.05` `1` |
 | `fab` | `#2563eb` `y4` `10` `0.22` `5` |
 | `sheet` | `#0d1117` `y-4` `24` `0.12` `12` |
@@ -127,7 +135,9 @@ Pill/chip 999, segmented track 999, tab item 999, FAB 999, sheet top 28, card 20
 
 Glass specifics: `blurIntensity soft 24 / medium 35 / strong 45`, `surface #fff`, `border rgba(208,213,221,0.9)`, `highlight rgba(255,255,255,0.65)`, `fakeBackground #fff`.
 
-> **Shadow occupancy:** shadow only for nav/FAB/sheet; cards use tonal surface or subtle card shadow. Avoid card soup.
+> **Shadow occupancy:** shadow only for `nav`/`FAB`/`sheet` and rare `elevated` cards. Most list cards use `plain` (surface hairline, no shadow) or `tonal` (surfaceLow/mid hairline, no shadow). `semantic` also hairline. Avoid card soup. `cardHover` removed (unused, 10.3).
+
+Tier: `Card plain` default (surface hairline no shadow) — most lists; `tonal` (surfaceLow/mid) — groups/idle; `elevated` (surface + `shadow.card`) — floating modal; `semantic` (container tint hairline) — status tint; `GlassCard` (blur + glass.shadow) — nav/sheet; `Skeleton` (plain skeleton color hairline) — loading.
 
 ---
 

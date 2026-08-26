@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     minHeight: mobileTheme.layout.minTouchTarget,
-    paddingLeft: 12,
+    paddingLeft: mobileTheme.spacing.md,
     ...mobileTheme.shadow.control,
   },
   input: {
@@ -74,6 +74,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   leftIcon: {
-    marginRight: 8,
+    marginRight: mobileTheme.spacing.sm,
   },
 });

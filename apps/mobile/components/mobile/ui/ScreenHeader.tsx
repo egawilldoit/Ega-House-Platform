@@ -33,16 +33,12 @@ const styles = StyleSheet.create({
   },
   description: {
     color: mobileTheme.colors.textMuted,
-    fontSize: 14,
-    lineHeight: 20,
+    ...mobileTheme.typography.screenSubtitle,
     marginTop: 6,
   },
   eyebrow: {
     color: mobileTheme.colors.accent,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
+    ...mobileTheme.typography.screenEyebrow,
   },
   header: {
     alignItems: 'flex-start',
@@ -57,9 +53,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: mobileTheme.colors.text,
-    fontSize: 28,
-    fontWeight: mobileTheme.font.black,
-    letterSpacing: -0.8,
+    ...mobileTheme.typography.screenTitle,
     marginTop: 2,
   },
 });

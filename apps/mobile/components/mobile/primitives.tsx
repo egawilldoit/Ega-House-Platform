@@ -13,6 +13,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { mobileTheme } from '@/components/mobile/theme';
 
+/**
+ * Legacy primitives — tier clarified Wave 10.3
+ * Canonical tiers:
+ *   Card plain/tonal: surface/surfaceLow hairline, no shadow (most list cards)
+ *   Card elevated: surface + shadow.card (rare, modal/sheet needing lift)
+ *   GlassCard: blur + glass.shadow (floating nav, sheet)
+ *   Skeleton: plain + skeleton color (no shadow)
+ * SurfaceCard below is alias to Card plain (hairline, no shadow) for compat.
+ * shadow.cardHover removed (unused).
+ */
+
 export function MobileScreen({
   children,
   padded = true,
@@ -257,9 +268,9 @@ const styles = StyleSheet.create({
     backgroundColor: mobileTheme.colors.surface,
     borderColor: mobileTheme.colors.border,
     borderRadius: mobileTheme.radius.card,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: mobileTheme.spacing.lg,
-    ...mobileTheme.shadow.card,
+    // plain — no shadow (elevated uses shadow.card explicitly)
   },
   content: {
     flex: 1,
@@ -292,9 +303,9 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.pill,
     bottom: 20,
     flexDirection: 'row',
-    gap: 8,
+    gap: mobileTheme.spacing.sm,
     overflow: 'hidden',
-    paddingHorizontal: 20,
+    paddingHorizontal: mobileTheme.spacing.lg,
     paddingVertical: 14,
     position: 'absolute',
     right: 18,
@@ -322,7 +333,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 20,
+    marginBottom: mobileTheme.spacing.lg,
     marginTop: mobileTheme.spacing.sm,
   },
   headerCopy: {
