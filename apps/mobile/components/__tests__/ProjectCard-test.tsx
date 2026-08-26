@@ -2,7 +2,7 @@ import * as React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import type { ProjectCardReadModel } from '@ega/api-client';
-import { ProjectCard } from '../mobile/ProjectCard';
+import { ProjectCard } from '@/features/projects/components/ProjectCard';
 
 jest.mock('@expo/vector-icons/Ionicons', () => ({
   __esModule: true,
