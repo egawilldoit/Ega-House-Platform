@@ -40,7 +40,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
   },
   text: {

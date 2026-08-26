@@ -655,7 +655,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: mobileTheme.spacing.sm,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 12,
   },
   suggestionsCard: {

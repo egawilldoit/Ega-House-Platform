@@ -503,7 +503,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     minHeight: mobileTheme.layout.minTouchTarget,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 7,
   },
   chipDisabled: {
@@ -541,7 +541,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.control,
     borderWidth: 1,
     marginTop: 4,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
   },
   dateFieldLabel: {

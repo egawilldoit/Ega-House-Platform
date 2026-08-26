@@ -228,7 +228,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileTheme.radius.md,
     flexDirection: 'row',
     gap: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 10,
   },
   staleBannerText: {

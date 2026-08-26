@@ -39,9 +39,10 @@
 - [x] Wave 8 — Performance + accessibility hardening (hardened)
 - [x] Wave 9 — Final independent review (complete, 2026-08-25)
 - [x] Wave 10.1 — Nav architecture (4-tab-only, stack compat, setParams, bottomChrome metrics, FAB inset-aware, GlassBottomTab remove)
+- [x] Wave 10.2 — Tonal system (surfaces + containers + darker foregrounds + spacing rhythm 4/8/12/20/24/32 + contrast >=4.5)
 
 ## Current Wave
-Wave 10.1 — COMPLETE (working tree, awaiting parent commit; base 57aa429 after 10.0, HEAD uncommitted Wave 10.1 nav architecture, 2026-08-26)
+Wave 10.2 — COMPLETE (working tree, awaiting parent commit; base 7c72d97 after 10.1, HEAD uncommitted tonal system, 2026-08-26)
 
 ## Commits
 - `chore(mobile-ui): initialize redesign tracking` — c251851
@@ -93,9 +94,12 @@ Wave 10.1 — COMPLETE (working tree, awaiting parent commit; base 57aa429 after
 - Wave 10.1: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after nav architecture: 4-tab-only, stack compat redirects, router.setParams, bottomChrome metrics, FAB inset-aware, GlassBottomTab remove
 - Wave 10.1: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — profile.test import updated to ../../profile canonical; work mode setParams no local state
 - Wave 10.1: `git diff --check` — exit 0 (no whitespace errors)
+- Wave 10.2: `npx tsc --noEmit` (apps/mobile) — exit 0 (2026-08-26) — after tonal system: canvas #F7F8FC, surfaceLow #F3F6FB, surfaceMid #EDF2F8, surfaceHigh #E6ECF5, primaryContainer #DBEAFE on #1D4ED8, secondary #5B21B6, tertiary #92400E, success #166534, danger #991B1B, neutral #475569, spacing 4/8/12/20/24/32, contrast >=4.5 (see theme.ts header), chip tones updated, literals 12/14 → spacing.md
+- Wave 10.2: `npm run mobile:test` — exit 0 (166/166 passed, 29 suites) — all 29 suites green including a11y cards
+- Wave 10.2: `git diff --check` — exit 0 (no whitespace errors)
 - `npm run doctor` — exit 1 (only @types/react minor mismatch ~19.1.10 vs 19.2.14, unrelated to Wave 0-9/10.1)
 - `npm run validate:bundle` — exit 1 (ENOENT /worktree/node_modules — worktree lacks root node_modules, not code defect)
-- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1)
+- Mobile-only diff — `git -C .worktrees/ui-mobile diff --name-only origin/main...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty ✓ (Wave 9) and `git diff --name-only 57aa429...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.1) and `git diff --name-only 7c72d97...HEAD | awk '!/^apps\\/mobile\\// {print}'` empty (Wave 10.2)
 
 ## Files Changed (Wave 0)
 - Modified: `apps/mobile/components/mobile/theme.ts` (blocked→danger red, in_progress→amber, active→blue, added healthTone/chipTone, preserved glassConfig)
@@ -268,8 +272,31 @@ Wave 10.1 — COMPLETE (working tree, awaiting parent commit; base 57aa429 after
 - Modified: `apps/mobile/docs/redesign/NAVIGATION.md` (Wave 10.1 final 4-tab-only structure, stack compat redirects, Work setParams, bottomChrome canonical tokens/hook, FAB inset-aware, floatingTabClearance fallback note, typedRoutes verification)
 - Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.1 complete)
 
-## Known Issues (Wave 10.1 updated)
+## Files Changed (Wave 10.2)
+- Modified: `apps/mobile/components/mobile/theme.ts` (expressive tonal — canvas #F7F8FC, surfaceLow #F3F6FB, surfaceMid #EDF2F8, surfaceHigh #E6ECF5/BgDeep, primaryContainer #DBEAFE on #1D4ED8 5.49, secondary #5B21B6 container #EDE9FE 7.57, tertiary #92400E container #FEF3C7 6.37, success #166534 container #DCFCE7 6.49, danger #991B1B container #FEE2E2 6.80, neutral #475569 container #F1F5F9 6.92, dangerBorder #991B1B, overlay restored, spacing 4/8/12/20/24/32 md 12 xl 24 xxl 32, contrast header + luminance()/contrastRatio() dev utility, chip tones done #166534, in_progress #92400E, blocked #991B1B, archived #475569, urgent #991B1B etc, color occupancy comment)
+- Modified: `apps/mobile/DESIGN.md` (new tonal ladder, canvas/surfaceLow/Mid/High, brand container/secondary/tertiary, semantic containers+onContainer with ratios, spacing 4/8/12/20/24/32, chip tables updated to new foregrounds, occupancy note, Stitch→theme mapping expanded, NAVIGATION 4-tab + bottomChrome)
+- Modified: `apps/mobile/app/(public)/login.tsx` (paddingHorizontal 14 → spacing.md)
+- Modified: `apps/mobile/app/(app)/(tabs)/timer.tsx` (paddingHorizontal 12 → spacing.md for staleBanner)
+- Modified: `apps/mobile/app/(app)/(tabs)/today.tsx` (paddingHorizontal 14 → spacing.md for suggestionRow)
+- Modified: `apps/mobile/app/(app)/search.tsx` (paddingHorizontal 12 → spacing.md for resultRow)
+- Modified: `apps/mobile/components/mobile/glass/GlassButton.tsx` (sm 12 → spacing.md)
+- Modified: `apps/mobile/components/mobile/primitives.tsx` (segment 14 → spacing.md)
+- Modified: `apps/mobile/components/mobile/ui/Button.tsx` (sm 12 → spacing.md)
+- Modified: `apps/mobile/components/mobile/ui/FeedbackBanner.tsx` (12 → spacing.md)
+- Modified: `apps/mobile/components/mobile/ui/SegmentedControl.tsx` (14 → spacing.md)
+- Modified: `apps/mobile/components/mobile/ui/SelectionRow.tsx` (14 → spacing.md)
+- Modified: `apps/mobile/features/projects/create/ProjectCreateScreen.tsx` (slugRow 12 → spacing.md)
+- Modified: `apps/mobile/features/projects/detail/ProjectDetailScreen.tsx` (goalRow 12 → spacing.md)
+- Modified: `apps/mobile/features/tasks/components/TaskQuickFilters.tsx` (pill 14 → spacing.md)
+- Modified: `apps/mobile/features/tasks/create/TaskCreateScreen.tsx` (chip 14 → spacing.md, dateField 12 → spacing.md)
+- Modified: `apps/mobile/features/tasks/detail/TaskReminderSection.tsx` (dateField 12 → spacing.md)
+- Modified: `apps/mobile/features/tasks/detail/TaskScheduleSection.tsx` (chip 14 → spacing.md, dateField 12 → spacing.md)
+- Modified: `apps/mobile/features/timer/components/FocusQueue.tsx` (taskRow 12 → spacing.md)
+- Modified: `apps/mobile/docs/redesign/STATE.md` (mark Wave 10.2 complete, add tests/files)
+
+## Known Issues (Wave 10.2 updated)
 - `.worktrees` now git-ignored via `.git/info/exclude` (not tracking root `.gitignore` per mobile-only scope)
+- Wave 10.2 fixes applied: tonal surfaces canvas 15.9-17.8, containers primary 5.49 secondary 7.57 tertiary 6.37 success 6.49 danger 6.80 neutral 6.92, spacing 12/24/32 rhythm, chip archived 6.92 (was 4.34) danger 6.80 (was 3.95), literals 12/14→md token — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 10.1 fixes applied: 4-tab-only (7→4), stack compat redirects, Work router.setParams source of truth (no useEffect), bottomChrome canonical metrics (NAV_HEIGHT 72 24 20 16 16 + hook inset-aware navBottom/fabBottom/contentBottomPadding), FAB inset-aware bottom fabBottom, list paddingBottom runtime (FAB vs no-FAB), GlassBottomTab delete, NAVIGATION/STATE updated — all validated tsc 0, tests 166/166, diff --check 0, mobile-only diff empty
 - Wave 9 fixes applied: TaskCreate nav, NotFound theme, Button token, GoalDetail health enable, FormField 20 reserve, login 44, ScreenHeader/FAB lg — all validated 0/0/166
 - Timer test previously failed due to HeaderActions requiring AuthProvider — fixed via useAuthSafe fallback (Wave 0, still green in Wave 6)
@@ -294,8 +321,7 @@ Wave 10.1 — COMPLETE (working tree, awaiting parent commit; base 57aa429 after
 - Stitch MCP detail refinement for detail screens is spec'd in `research-wave-7.md` (3 prompts for Task/Project/Goal refine) — offline spec counts as design evidence until green-run `refine_screen` export lands; code already matches intended MCP output (Task 6-sections + Project/Goal with `FormSection` + sticky 120 + keyboard-safe)
 
 ## Next
-- Wave 10.2 — Tonal system (surfaceLow/Mid/High + containers, danger darker, spacing fix) — per WAVE-10-PLAN H-4/H-5
-- Wave 10.3 — Primitives (Card variants, Button control radius, Chip contrast, SegmentedControl pill thumb, FormSection View)
+- Wave 10.3 — Primitives (Card variants plain/tonal/elevated, Button control radius, Chip contrast, SegmentedControl pill thumb, FormSection View) — per WAVE-10-PLAN H-5/10.3
 - Wave 10.4+ — Work/Today/Goals/Projects/Timer/Search/Profile/Create/Detail/Hooks/Perf/Obsolete/Review per WAVE-10-PLAN 10.4–10.13
 
 ## Handoff Notes for Next Wave Agent

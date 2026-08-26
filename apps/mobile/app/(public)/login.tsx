@@ -237,7 +237,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginBottom: mobileTheme.spacing.sm,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
   },
   root: {
     backgroundColor: mobileTheme.colors.authBackground,
