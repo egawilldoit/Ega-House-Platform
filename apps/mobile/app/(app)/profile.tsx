@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
@@ -11,6 +12,7 @@ import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
 import { useAuth } from '@/lib/auth/auth-context';
 
 export default function ProfileStackScreen() {
+  const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const { signOut, user } = useAuth();
 
   async function onLogout() {
@@ -23,7 +25,7 @@ export default function ProfileStackScreen() {
 
   return (
     <AppScreen padded={false} testID="profile-screen">
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: contentBottomPaddingNoFab }]} showsVerticalScrollIndicator={false}>
         <ScreenHeader
           eyebrow="Account"
           title="Profile"

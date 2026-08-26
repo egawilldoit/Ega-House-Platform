@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { AppScreen, Button, Card, EmptyState, FeedbackBanner, SearchField } from '@/components/mobile/ui';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useGoalListQuery } from '@/features/goals/query';
 import { useProjectListQuery } from '@/features/projects/query';
@@ -22,6 +23,7 @@ const SEARCH_DEBOUNCE_MS = 250;
 const SEARCH_TASK_LIMIT = 200;
 
 export default function SearchScreen() {
+  const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const [rawQuery, setRawQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -125,7 +127,7 @@ export default function SearchScreen() {
 
       {!isLoading && hasQuery && totalResults > 0 ? (
         <ScrollView
-          contentContainerStyle={styles.resultsContent}
+          contentContainerStyle={[styles.resultsContent, { paddingBottom: contentBottomPaddingNoFab }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

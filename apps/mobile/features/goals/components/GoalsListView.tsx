@@ -6,6 +6,7 @@ import { FlatList, Modal, RefreshControl, StyleSheet, Text, TextInput, View } fr
 
 import type { GoalHealth, GoalReadModel, GoalStatus, GoalViewFilter } from '@ega/api-client';
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
 import { Card } from '@/components/mobile/ui/Card';
@@ -34,6 +35,7 @@ const GOAL_STATUS_OPTIONS: GoalStatus[] = ['draft', 'active', 'done', 'paused'];
 const GOAL_HEALTH_OPTIONS: GoalHealth[] = ['on_track', 'at_risk', 'off_track'];
 
 export function GoalsListView() {
+  const { contentBottomPadding } = useBottomChromeMetrics();
   const [view, setView] = useState<GoalViewFilter>('active');
   const [sheetTargetId, setSheetTargetId] = useState<string | null>(null);
   const [nextStepTargetId, setNextStepTargetId] = useState<string | null>(null);
@@ -209,7 +211,7 @@ export function GoalsListView() {
         windowSize={5}
         maxToRenderPerBatch={10}
         removeClippedSubviews={false}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPadding }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl

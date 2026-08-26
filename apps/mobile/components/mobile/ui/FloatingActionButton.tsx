@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 
 export type FloatingActionButtonProps = {
   label: string;
@@ -18,13 +19,14 @@ export function FloatingActionButton({
   accessibilityLabel,
   testID,
 }: FloatingActionButtonProps) {
+  const { fabBottom } = useBottomChromeMetrics();
   return (
     <Pressable
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="button"
       onPress={onPress}
       testID={testID}
-      style={({ pressed }) => [styles.fab, pressed ? styles.pressed : null]}
+      style={({ pressed }) => [styles.fab, { bottom: fabBottom }, pressed ? styles.pressed : null]}
     >
       <View style={styles.toneLayer} pointerEvents="none" />
       <Ionicons color={mobileTheme.colors.textOnAccent} name={icon} size={16} />
@@ -38,7 +40,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
     borderRadius: mobileTheme.radius.pill,
-    bottom: mobileTheme.spacing.lg,
     flexDirection: 'row',
     gap: mobileTheme.spacing.sm,
     overflow: 'hidden',

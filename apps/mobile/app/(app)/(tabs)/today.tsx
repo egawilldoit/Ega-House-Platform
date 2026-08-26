@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
@@ -115,6 +116,7 @@ function getTodayTaskCount(today: MobileTodayResponse | null) {
 
 export default function TodayScreen() {
   const router = useRouter();
+  const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const todayQuery = useTodayWorkspaceQuery();
   const updateTaskMutation = useUpdateTaskMutation();
   const statusMutation = useUpdateTodayTaskStatusMutation();
@@ -473,7 +475,7 @@ export default function TodayScreen() {
   return (
     <AppScreen padded={false} testID="today-screen">
       <SectionList
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPaddingNoFab }]}
         keyExtractor={(item) => item.id}
         sections={sections}
         stickySectionHeadersEnabled={false}

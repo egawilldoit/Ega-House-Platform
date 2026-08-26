@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
@@ -36,6 +37,7 @@ function formatMessage(error: unknown, fallback: string) {
 }
 
 export default function TimerScreen() {
+  const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const workspaceQuery = useTimerWorkspaceQuery();
   const startMutation = useStartTimerMutation();
   const stopMutation = useStopTimerMutation();
@@ -140,7 +142,7 @@ export default function TimerScreen() {
   return (
     <AppScreen padded={false} testID="timer-screen">
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPaddingNoFab }]}
         refreshControl={
           <RefreshControl
             refreshing={workspaceQuery.isRefetching}

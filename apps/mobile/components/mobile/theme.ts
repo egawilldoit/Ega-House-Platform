@@ -102,7 +102,7 @@ export const mobileTheme = {
   },
 
   layout: {
-    floatingTabClearance: 160,
+    floatingTabClearance: 160, // fallback token; runtime authoritative geometry in navigation/bottomChrome.ts
     stickyActionClearance: 120,
     minTouchTarget: 44,
   },
