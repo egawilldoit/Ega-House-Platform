@@ -36,12 +36,12 @@ From repository root, prefer:
 
 ```bash
 npm run web:typecheck
-npm run test:web
-npm run lint:web
-npm run build:web
+npm run web:test
+npm --workspace @ega/web run lint
+npm run web:build
 ```
 
-Use the narrowest relevant test first. Run `npm run build:web` for routing/build-boundary changes, shared import changes, or before claiming a web PR is release-ready. If imports/ownership move across workspaces, also run:
+Use the narrowest relevant test first. Run `npm run web:build` for routing/build-boundary changes, shared import changes, or before claiming a web PR is release-ready. If imports/ownership move across workspaces, also run:
 
 ```bash
 npm run check:architecture
