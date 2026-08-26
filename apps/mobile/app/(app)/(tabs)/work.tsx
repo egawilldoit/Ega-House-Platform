@@ -23,6 +23,7 @@ export default function WorkScreen() {
           title="Work"
           description={mode === 'tasks' ? 'Tasks and projects in one place' : 'Projects group your goals and tasks'}
           rightSlot={<HeaderActions />}
+          style={styles.screenHeader}
         />
         <WorkModeSelector value={mode} onChange={setMode} />
       </View>
@@ -46,7 +47,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerWrap: {
+    gap: 6,
     paddingHorizontal: mobileTheme.spacing.lg,
-    paddingTop: mobileTheme.spacing.sm,
+    paddingTop: 4,
+  },
+  screenHeader: {
+    marginBottom: 6,
+    marginTop: 0,
   },
 });

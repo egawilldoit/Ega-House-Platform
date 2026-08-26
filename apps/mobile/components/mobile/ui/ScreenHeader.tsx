@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
 
@@ -8,12 +8,13 @@ export type ScreenHeaderProps = {
   title: string;
   description?: string;
   rightSlot?: ReactNode;
+  style?: StyleProp<ViewStyle>;
   testID?: string;
 };
 
-export function ScreenHeader({ eyebrow, title, description, rightSlot, testID }: ScreenHeaderProps) {
+export function ScreenHeader({ eyebrow, title, description, rightSlot, style, testID }: ScreenHeaderProps) {
   return (
-    <View style={styles.header} testID={testID}>
+    <View style={[styles.header, style]} testID={testID}>
       <View style={styles.copy}>
         {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
         <Text style={styles.title} accessibilityRole="header">
@@ -44,7 +45,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: mobileTheme.spacing.lg,
+    marginBottom: mobileTheme.spacing.md,
     marginTop: mobileTheme.spacing.sm,
   },
   rightSlot: {
