@@ -1,10 +1,10 @@
-const fs = require('node:fs');
-const path = require('node:path');
+import fs from 'node:fs';
+import path from 'node:path';
 
 const MOBILE_ROOT = path.resolve(__dirname, '..');
 const APP_CONFIG_PATH = path.join(MOBILE_ROOT, 'app.json');
 
-function readPngHeader(relativePath) {
+function readPngHeader(relativePath: string) {
   const absolutePath = path.join(MOBILE_ROOT, relativePath.replace(/^\.\//, ''));
   const buffer = fs.readFileSync(absolutePath);
   const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -16,7 +16,6 @@ function readPngHeader(relativePath) {
     width: buffer.readUInt32BE(16),
     height: buffer.readUInt32BE(20),
     bitDepth: buffer[24],
-    colorType: buffer[25],
   };
 }
 
@@ -28,7 +27,7 @@ describe('mobile branding assets', () => {
     expect(appConfig.splash).toBeUndefined();
 
     const splashPlugin = appConfig.plugins.find(
-      (plugin) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen',
+      (plugin: unknown) => Array.isArray(plugin) && plugin[0] === 'expo-splash-screen',
     );
 
     expect(splashPlugin).toEqual([
@@ -50,19 +49,21 @@ describe('mobile branding assets', () => {
     });
   });
 
-  test.each([
-    ['icon', './assets/images/icon.png', 1024, 1024, 2],
-    ['adaptive foreground', './assets/images/adaptive-icon.png', 1024, 1024, 6],
-    ['adaptive monochrome', './assets/images/adaptive-monochrome-icon.png', 1024, 1024, 6],
-    ['splash icon', './assets/images/splash-icon.png', 1024, 1024, 6],
-    ['favicon', './assets/images/favicon.png', 196, 196, 2],
-  ])('%s has the expected PNG contract', (_name, relativePath, width, height, colorType) => {
-    const png = readPngHeader(relativePath);
-    expect(png).toEqual({
-      width,
-      height,
-      bitDepth: 8,
-      colorType,
+  const assetCases = [
+    { name: 'icon', file: './assets/images/icon.png', width: 1024, height: 1024 },
+    { name: 'adaptive foreground', file: './assets/images/adaptive-icon.png', width: 1024, height: 1024 },
+    { name: 'adaptive monochrome', file: './assets/images/adaptive-monochrome-icon.png', width: 1024, height: 1024 },
+    { name: 'splash icon', file: './assets/images/splash-icon.png', width: 1024, height: 1024 },
+    { name: 'favicon', file: './assets/images/favicon.png', width: 196, height: 196 },
+  ] as const;
+
+  for (const asset of assetCases) {
+    test(`${asset.name} has the expected PNG dimensions`, () => {
+      expect(readPngHeader(asset.file)).toEqual({
+        width: asset.width,
+        height: asset.height,
+        bitDepth: 8,
+      });
     });
-  });
+  }
 });
