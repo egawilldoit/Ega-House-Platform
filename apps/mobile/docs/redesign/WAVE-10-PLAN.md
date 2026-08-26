@@ -76,4 +76,3 @@ Chosen IDs recorded before coding.
 ## Validation per wave
 
 `git diff --check`, `npm run mobile:typecheck`, `npm run mobile:test`, then `mobile:doctor`, `mobile:bundle` at gates. Scope `git diff --name-only origin/main...HEAD | awk '!/^apps\/mobile\//'` must be empty.
-
