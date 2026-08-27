@@ -1,8 +1,8 @@
 # Notification System V1 — Implementation Plan
 
-**Branch:** `feat/notification-system-v1`  
-**Worktree:** `.worktrees/notification-system-v1`  
-**Base:** `origin/main@147a84b` (2026-08-27)  
+**Branch:** `feat/notification-system-v1`
+**Worktree:** `.worktrees/notification-system-v1`
+**Base:** `origin/main@147a84b` (2026-08-27)
 **Spec date:** 2026-08-27
 
 ## 0. Repository Truth Verification (pre-implementation)
