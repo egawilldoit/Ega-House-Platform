@@ -9,6 +9,9 @@
     "./goals": "./src/goals/repository.ts",
     "./tasks": "./src/tasks/repository.ts",
     "./notifications": "./src/notifications/repository.ts",
+    "./notifications/repository": "./src/notifications/repository.ts",
+    "./notifications/fcm-provider": "./src/notifications/fcm-provider.ts",
+    "./notifications/email-provider": "./src/notifications/email-provider.ts",
     "./fcm": "./src/notifications/fcm-provider.ts"
   },
   "scripts": {
