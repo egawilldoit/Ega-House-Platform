@@ -7,7 +7,9 @@
     ".": "./src/index.ts",
     "./projects": "./src/projects/repository.ts",
     "./goals": "./src/goals/repository.ts",
-    "./tasks": "./src/tasks/repository.ts"
+    "./tasks": "./src/tasks/repository.ts",
+    "./notifications": "./src/notifications/repository.ts",
+    "./fcm": "./src/notifications/fcm-provider.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -15,6 +17,7 @@
   },
   "dependencies": {
     "@ega/application": "0.1.0",
-    "@supabase/supabase-js": "^2.103.0"
+    "@supabase/supabase-js": "^2.103.0",
+    "google-auth-library": "^9.15.0"
   }
 }
