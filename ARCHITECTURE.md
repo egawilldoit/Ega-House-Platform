@@ -143,7 +143,36 @@ Root database ownership is intentionally separate from `apps/web` and `apps/serv
 
 Do not infer that physical app placement owns schema authority.
 
-## 6. Autonomous delivery architecture
+## 6. MCP v2 (2026-07-28) — stateless agent interface
+
+`apps/web` hosts the MCP endpoint at `POST /api/mcp` (stateless, `createMcpHandler`-style).
+
+```text
+MCP client (SDK v2, 2026-07-28)
+  → POST /api/mcp
+  → Authorization: Bearer <Supabase JWT> (aud=resource, client_id)
+  → verifyAccessToken → loadActiveMcpGrant → principal (owner, client, grant, permissionsVersion, permissions)
+  → MCP_AUTHORIZED_SCOPE + has_active_mcp_permission(perm) + RLS (private.has_active_mcp_permission)
+  → permission-aware tool catalog (read vs workspace_manager)
+  → audited handler (rate limit + audit)
+  → AuthenticatedActor{userId: principal.ownerUserId}
+  → @ega/application (workflow authority, no duplication)
+  → @ega/data-access (Supabase adapter, request-scoped client)
+  → PostgREST/RLS
+```
+
+- **SDK:** `@modelcontextprotocol/server` `2.0.0` / `client` `2.0.0` / `core` `2.0.0` (zod `^4.2.0`), protocol `2026-07-28`, stateless per-request server, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`, `ctx.mcpReq.requestState<T>()`).
+- **Discovery:** `server/discover` with `ttlMs: 0`, `cacheScope: private`; `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*` validated against body (400 / `-32020`), never authorized.
+- **Auth:** Supabase OAuth + `mcp_authorization_grants` (owner, client, resource, profile, permissions, version); `custom_access_token_hook` injects `aud`; consent offers `read_only` vs `workspace_manager` when `MCP_WRITES_ENABLED=true`.
+- **Reads:** `ega_list_projects/goals/tasks`, `ega_get_task`, `ega_get_today_plan`, `ega_list_timer_sessions` — owner-scoped, bounded, strict schemas, no `ownerUserId` from caller.
+- **Writes:** `ega_create_project`, `ega_update_project_status`, `ega_create_goal`, `ega_create_task`, `ega_update_task`, `ega_plan_task_for_today`, `ega_start_timer`, `ega_stop_timer` (and `clearCompletedToday` with MRTR) — require `workspace_manager` + `MCP_WRITES_ENABLED` + `operationId` idempotency.
+- **MRTR:** `MCP_REQUEST_STATE_SECRET` (32+ bytes) → `createRequestStateCodec({key, ttlSeconds: 300})` HMAC-SHA256 over `base64url(json{ p, exp })`, binding `{user, client, grant/version, resource, tool, operationId, argsHash, target, phase}`; `input_required` / `elicitation` typed, cross-instance, TOCTOU revalidation, tamper/expiry → `-32602`.
+- **Idempotency:** `mcp_mutation_receipts(owner, client, tool, operation_id, args_hash, result_payload)` PK(owner,client,tool,opId) + `mcp_claim_mutation_receipt` / `mcp_store_mutation_result` SECURITY DEFINER, `ON CONFLICT` exactly-once.
+- **Audit/Rate:** `agent_integration_events` + `consume_mcp_rate_limit` (reads 120/min, writes 30/min).
+- **Migrations:** `0045_mcp_workspace_manager`, `0046_mcp_write_rls`, `0047_mcp_mutation_receipts` (journal `meta/_journal.json`).
+- **Runbook:** `docs/implementation/2026-08-28-mcp-v2-read-write-runbook.md` (rollback via `MCP_WRITES_ENABLED=false`, no destructive down migration).
+
+## 7. Autonomous delivery architecture
 
 The Runner is a separate control plane from the productivity product. Its durable run state belongs to the automation database; queue/Git/Hermes/GitHub/Slack are execution and evidence systems around that state.
 
@@ -180,7 +209,7 @@ Subsystem documents:
 - [`docs/architecture/runner-and-worktrees.md`](docs/architecture/runner-and-worktrees.md)
 - [`docs/architecture/hermes-execution.md`](docs/architecture/hermes-execution.md)
 
-## 7. Current known gaps
+## 8. Current known gaps
 
 ### Platform
 
@@ -201,7 +230,7 @@ The current agent-context authority records these important delivery gaps until 
 
 Do not preserve a gap just because it is written here: if current code/runtime now proves it closed, update this map and the decision/evidence trail in the same bounded change.
 
-## 8. Architecture change protocol
+## 9. Architecture change protocol
 
 For architecture or governance changes:
 
