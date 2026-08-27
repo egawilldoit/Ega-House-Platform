@@ -1,0 +1,60 @@
+import { ReactNode } from 'react';
+import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+
+import { mobileTheme } from '@/components/mobile/theme';
+
+export type ScreenHeaderProps = {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  rightSlot?: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  testID?: string;
+};
+
+export function ScreenHeader({ eyebrow, title, description, rightSlot, style, testID }: ScreenHeaderProps) {
+  return (
+    <View style={[styles.header, style]} testID={testID}>
+      <View style={styles.copy}>
+        {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+        <Text style={styles.title} accessibilityRole="header">
+          {title}
+        </Text>
+        {description ? <Text style={styles.description}>{description}</Text> : null}
+      </View>
+      {rightSlot ? <View style={styles.rightSlot}>{rightSlot}</View> : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  copy: {
+    flex: 1,
+    paddingRight: mobileTheme.spacing.md,
+  },
+  description: {
+    color: mobileTheme.colors.textMuted,
+    ...mobileTheme.typography.screenSubtitle,
+    marginTop: 6,
+  },
+  eyebrow: {
+    color: mobileTheme.colors.accent,
+    ...mobileTheme.typography.screenEyebrow,
+  },
+  header: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: mobileTheme.spacing.md,
+    marginTop: mobileTheme.spacing.sm,
+  },
+  rightSlot: {
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+  },
+  title: {
+    color: mobileTheme.colors.text,
+    ...mobileTheme.typography.screenTitle,
+    marginTop: 2,
+  },
+});

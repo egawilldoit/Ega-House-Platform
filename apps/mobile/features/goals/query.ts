@@ -29,6 +29,9 @@ export function useGoalListQuery(view: GoalViewFilter = 'active') {
   return useQuery({
     queryKey: goalQueryKeys.list(view),
     queryFn: () => listMobileGoals(view),
+    // Same placeholder rationale as ProjectsListView: keep previous view visible + Refreshing banner until network.
+    // Hides view switch briefly, but avoids blank flash; error banner + Refreshing keeps feedback visible.
+    placeholderData: (previousData) => previousData,
   });
 }
 
