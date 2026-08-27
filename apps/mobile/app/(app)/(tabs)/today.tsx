@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   RefreshControl,
   SectionList,
   StyleSheet,
@@ -22,6 +23,7 @@ import {
 import { GlassButton, GlassCard } from '@/components/mobile/glass';
 import { TodayTaskCard } from '@/components/mobile/TodayTaskCard';
 import { mobileTheme } from '@/components/mobile/theme';
+import { useUnreadCountQuery } from '@/features/notifications/query';
 import {
   useAddTaskToTodayMutation,
   useClearTodayCompletedMutation,
@@ -32,6 +34,52 @@ import {
 import { useUpdateTaskMutation } from '@/features/tasks/query';
 import type { MobileTodayResponse, MobileTodayTask } from '@/types/today';
 import type { MobileTaskPriority, MobileTaskStatus } from '@/types/tasks';
+
+function NotificationBell() {
+  const router = useRouter();
+  const unreadQuery = useUnreadCountQuery();
+  const count = unreadQuery.data?.unreadCount ?? 0;
+  return (
+    <Pressable
+      onPress={() => router.push('/(app)/notifications')}
+      style={({ pressed }: { pressed: boolean }) => ({
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        backgroundColor: mobileTheme.colors.surface,
+        borderWidth: 1,
+        borderColor: mobileTheme.colors.border,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: pressed ? 0.7 : 1,
+      })}
+      accessibilityRole="button"
+      accessibilityLabel="Notifications"
+    >
+      <Ionicons name="notifications-outline" size={18} color={mobileTheme.colors.text} />
+      {count > 0 ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: -4,
+            right: -4,
+            minWidth: 16,
+            height: 16,
+            borderRadius: 8,
+            backgroundColor: mobileTheme.colors.danger,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: 3,
+            borderWidth: 1,
+            borderColor: mobileTheme.colors.surface,
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{count > 99 ? '99+' : String(count)}</Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
 
 type TodaySection = {
   key: 'planned' | 'inProgress' | 'blocked' | 'completed';
@@ -450,13 +498,16 @@ export default function TodayScreen() {
               title="Today"
               description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
               rightAction={
-                <GlassButton
-                  leftIcon={<Ionicons color={mobileTheme.colors.text} name="search" size={15} />}
-                  onPress={() => router.push('/(app)/search')}
-                  size="sm"
-                  title="Search"
-                  variant="secondary"
-                />
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                  <NotificationBell />
+                  <GlassButton
+                    leftIcon={<Ionicons color={mobileTheme.colors.text} name="search" size={15} />}
+                    onPress={() => router.push('/(app)/search')}
+                    size="sm"
+                    title="Search"
+                    variant="secondary"
+                  />
+                </View>
               }
             />
 

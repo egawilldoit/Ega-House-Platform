@@ -155,8 +155,8 @@ export function useCreateTaskReminderMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ taskId, remindAt }: { taskId: string; remindAt: string }) =>
-      createMobileTaskReminder(taskId, { remindAt }),
+    mutationFn: ({ taskId, remindAt, deliveryMode }: { taskId: string; remindAt: string; deliveryMode?: 'push' | 'email' | 'both' }) =>
+      createMobileTaskReminder(taskId, { remindAt, deliveryMode }),
     onSuccess: (response) => {
       applyTaskToTaskCaches(queryClient, response.task);
       queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists() }).catch(() => {

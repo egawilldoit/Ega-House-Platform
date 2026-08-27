@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { GlassButton, GlassCard, GlassPill } from '@/components/mobile/glass';
 import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
@@ -46,6 +46,26 @@ export default function ProfileScreen() {
             />
           </View>
         </GlassCard>
+
+        <Pressable
+          onPress={() => router.push('/(app)/settings/notifications')}
+          style={({ pressed }) => [
+            styles.settingsRow,
+            pressed ? styles.settingsRowPressed : null,
+          ]}
+          accessibilityRole="button"
+        >
+          <View style={styles.settingsRowLeft}>
+            <View style={styles.settingsIcon}>
+              <Ionicons name="notifications-outline" size={18} color={mobileTheme.colors.accent} />
+            </View>
+            <View>
+              <Text style={styles.settingsRowTitle}>Notifications</Text>
+              <Text style={styles.settingsRowDesc}>Push and email reminders</Text>
+            </View>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+        </Pressable>
 
         <GlassButton
           leftIcon={<Ionicons name="log-out-outline" size={18} color={mobileTheme.colors.textOnAccent} />}
@@ -97,6 +117,29 @@ const styles = StyleSheet.create({
   logoutBtn: {
     marginBottom: 20,
   },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: mobileTheme.colors.surface,
+    borderRadius: mobileTheme.radius.card,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: mobileTheme.colors.border,
+    marginBottom: 14,
+  },
+  settingsRowPressed: { opacity: 0.7 },
+  settingsRowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  settingsIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsRowTitle: { fontSize: 14, fontWeight: mobileTheme.font.semibold as never, color: mobileTheme.colors.text },
+  settingsRowDesc: { fontSize: 12, color: mobileTheme.colors.textMuted, marginTop: 1 },
   versionText: {
     color: mobileTheme.colors.textSubtle,
     fontSize: 12,
