@@ -191,3 +191,99 @@ END;
 $$;--> statement-breakpoint
 REVOKE ALL ON FUNCTION public.claim_notification_device(text, text, text, text) FROM PUBLIC;--> statement-breakpoint
 GRANT EXECUTE ON FUNCTION public.claim_notification_device(text, text, text, text) TO authenticated;--> statement-breakpoint
+
+-- Hardening: task_reminders RLS (live DB shows RLS disabled, no policies)
+ALTER TABLE "task_reminders" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "task_reminders" FORCE ROW LEVEL SECURITY;--> statement-breakpoint
+DROP POLICY IF EXISTS "task_reminders_select_own" ON "task_reminders";--> statement-breakpoint
+DROP POLICY IF EXISTS "task_reminders_insert_own" ON "task_reminders";--> statement-breakpoint
+DROP POLICY IF EXISTS "task_reminders_update_own" ON "task_reminders";--> statement-breakpoint
+DROP POLICY IF EXISTS "task_reminders_delete_own" ON "task_reminders";--> statement-breakpoint
+CREATE POLICY "task_reminders_select_own" ON "task_reminders" FOR SELECT TO authenticated USING (owner_user_id = auth.uid());--> statement-breakpoint
+CREATE POLICY "task_reminders_insert_own" ON "task_reminders" FOR INSERT TO authenticated WITH CHECK (owner_user_id = auth.uid());--> statement-breakpoint
+CREATE POLICY "task_reminders_update_own" ON "task_reminders" FOR UPDATE TO authenticated USING (owner_user_id = auth.uid()) WITH CHECK (owner_user_id = auth.uid());--> statement-breakpoint
+CREATE POLICY "task_reminders_delete_own" ON "task_reminders" FOR DELETE TO authenticated USING (owner_user_id = auth.uid());--> statement-breakpoint
+REVOKE ALL ON TABLE "task_reminders" FROM anon;--> statement-breakpoint
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "task_reminders" TO authenticated;--> statement-breakpoint
+
+-- Hardening: narrow notification RLS (authenticated should not forge deliveries)
+DROP POLICY IF EXISTS "notifications_insert_own" ON "notifications";--> statement-breakpoint
+DROP POLICY IF EXISTS "notifications_delete_own" ON "notifications";--> statement-breakpoint
+DROP POLICY IF EXISTS "notification_devices_insert_own" ON "notification_devices";--> statement-breakpoint
+DROP POLICY IF EXISTS "notification_devices_update_own" ON "notification_devices";--> statement-breakpoint
+DROP POLICY IF EXISTS "notification_devices_delete_own" ON "notification_devices";--> statement-breakpoint
+DROP POLICY IF EXISTS "notification_deliveries_insert_own" ON "notification_deliveries";--> statement-breakpoint
+DROP POLICY IF EXISTS "notification_deliveries_update_own" ON "notification_deliveries";--> statement-breakpoint
+DROP POLICY IF EXISTS "notification_deliveries_delete_own" ON "notification_deliveries";--> statement-breakpoint
+-- Keep: notifications SELECT+UPDATE (for read/open), notification_devices SELECT, notification_deliveries SELECT, preferences all (user controls own preferences)
+-- No new INSERT/DELETE for notifications/devices/deliveries via PostgREST; service_role bypasses RLS for server writes
+
+-- Hardening: device token uniqueness (one active endpoint per provider token)
+CREATE UNIQUE INDEX IF NOT EXISTS "notification_devices_provider_token_active_unique" ON "notification_devices" USING btree ("provider_token") WHERE "is_active" = true;--> statement-breakpoint
+
+-- Hardening: claim function search_path and same-user token dedupe
+CREATE OR REPLACE FUNCTION public.claim_notification_device(
+  p_installation_id text,
+  p_platform text,
+  p_provider text,
+  p_provider_token text
+) RETURNS public.notification_devices
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  v_actor uuid;
+  v_device public.notification_devices%ROWTYPE;
+BEGIN
+  v_actor := auth.uid();
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  IF p_platform NOT IN ('android') THEN
+    RAISE EXCEPTION 'Unsupported platform: %', p_platform;
+  END IF;
+
+  IF p_provider NOT IN ('fcm') THEN
+    RAISE EXCEPTION 'Unsupported provider: %', p_provider;
+  END IF;
+
+  IF p_installation_id IS NULL OR length(trim(p_installation_id)) = 0 THEN
+    RAISE EXCEPTION 'installation_id is required';
+  END IF;
+
+  IF p_provider_token IS NULL OR length(trim(p_provider_token)) = 0 THEN
+    RAISE EXCEPTION 'provider_token is required';
+  END IF;
+
+  -- One active endpoint per provider token (global, any owner, any installation)
+  UPDATE public.notification_devices
+  SET is_active = false,
+      invalidated_at = now(),
+      updated_at = now()
+  WHERE provider_token = p_provider_token
+    AND is_active = true
+    AND (owner_user_id <> v_actor OR installation_id <> p_installation_id);
+
+  INSERT INTO public.notification_devices (
+    owner_user_id, installation_id, platform, provider, provider_token, is_active, last_seen_at
+  ) VALUES (
+    v_actor, p_installation_id, p_platform, p_provider, p_provider_token, true, now()
+  )
+  ON CONFLICT (installation_id) DO UPDATE
+    SET owner_user_id = EXCLUDED.owner_user_id,
+        platform = EXCLUDED.platform,
+        provider = EXCLUDED.provider,
+        provider_token = EXCLUDED.provider_token,
+        is_active = true,
+        last_seen_at = now(),
+        invalidated_at = NULL,
+        updated_at = now()
+  RETURNING * INTO v_device;
+
+  RETURN v_device;
+END;
+$$;--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.claim_notification_device(text, text, text, text) FROM PUBLIC;--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.claim_notification_device(text, text, text, text) TO authenticated;--> statement-breakpoint

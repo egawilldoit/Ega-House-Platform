@@ -304,13 +304,18 @@ export async function processDueTaskReminders(
     // If both channels disabled or no push devices and email disabled, we still want canonical notification but zero deliveries
     // Do not fail the intent in that case.
 
+    let deliveriesOk = true;
     if (deliveriesToCreate.length > 0) {
       const deliveryResult = await options.deliveryRepository.createDeliveries(ownerActor, {
         notificationId: notifResult.value.id,
         deliveries: deliveriesToCreate,
       });
 
-      if (deliveryResult.ok) {
+      if (!deliveryResult.ok) {
+        // Queue creation failed (transient DB) — do not mark processed; lease reclaim will retry
+        counts.skipped += 1;
+        deliveriesOk = false;
+      } else {
         // If deliveries were deduplicated, length may be 0; we still count
         const createdCount = deliveryResult.value.length;
         // If this was a replay (notification already existed), duplicate deliveries would be blocked and createdCount 0
@@ -360,8 +365,12 @@ export async function processDueTaskReminders(
       counts.notificationsCreated += 1;
     }
 
-    // Mark reminder processed regardless of delivery queue success? Only if notification created
-    // If deliveries failed to create, we still mark processed to avoid infinite loop; deliveries are idempotent.
+    if (!deliveriesOk) {
+      // Do not mark processed; allow lease reclaim. Notification already exists idempotently.
+      continue;
+    }
+
+    // Mark reminder processed only when notification + deliveries durable
     const markResult = await options.intentRepository.markProcessed(claimed.value.id, nowIso);
     if (!markResult.ok) {
       // If mark fails, we still counted notification but intent remains processing; next run will retry? But due query filters pending only, so won't retry.

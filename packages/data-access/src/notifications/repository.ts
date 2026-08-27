@@ -19,6 +19,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sanitizeSupabaseError } from "../supabase/errors";
 
+const REMINDER_LEASE_MS = 5 * 60 * 1000;
+const DELIVERY_LEASE_MS = 5 * 60 * 1000;
+
 type Row = Record<string, unknown>;
 
 function asRow(value: unknown): Row {
@@ -365,38 +368,49 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
   ): Promise<RepositoryResult<NotificationDeliveryRecord[]>> {
     if (input.deliveries.length === 0) return { ok: true, value: [] };
 
-    const rows = input.deliveries.map((d) => ({
-      notification_id: input.notificationId,
-      owner_user_id: actor.userId,
-      channel: d.channel,
-      device_id: d.deviceId,
-      provider: d.provider,
-      status: "queued",
-      attempt_count: 0,
-    }));
-
-    // Insert with ignore on conflict? Use upsert with onConflict? Simpler: insert and handle 23505
-    const insert = await this.supabase.from("notification_deliveries").insert(rows as never).select("*");
-    if (!insert.error) {
-      return { ok: true, value: asRows(insert.data).map(mapDelivery) };
+    const created: NotificationDeliveryRecord[] = [];
+    // Per-target insert to handle partial conflicts (existing + new)
+    for (const d of input.deliveries) {
+      const row = {
+        notification_id: input.notificationId,
+        owner_user_id: actor.userId,
+        channel: d.channel,
+        device_id: d.deviceId,
+        provider: d.provider,
+        status: "queued",
+        attempt_count: 0,
+      };
+      const insert = await this.supabase.from("notification_deliveries").insert(row as never).select("*").maybeSingle();
+      if (!insert.error && insert.data) {
+        created.push(mapDelivery(asRow(insert.data)));
+        continue;
+      }
+      if (insert.error && insert.error.code === "23505") {
+        // Already exists — fetch that specific delivery
+        let q = this.supabase
+          .from("notification_deliveries")
+          .select("*")
+          .eq("notification_id", input.notificationId)
+          .eq("owner_user_id", actor.userId)
+          .eq("channel", d.channel);
+        if (d.deviceId) q = q.eq("device_id", d.deviceId);
+        else q = q.is("device_id", null);
+        const existing = await q.maybeSingle();
+        if (existing.error) return failure(existing.error);
+        if (existing.data) created.push(mapDelivery(asRow(existing.data)));
+        continue;
+      }
+      if (insert.error) return failure(insert.error);
     }
 
-    if (insert.error.code === "23505") {
-      // Idempotent: fetch existing deliveries for this notification
-      const existing = await this.supabase
-        .from("notification_deliveries")
-        .select("*")
-        .eq("notification_id", input.notificationId)
-        .eq("owner_user_id", actor.userId);
-      if (existing.error) return failure(existing.error);
-      return { ok: true, value: asRows(existing.data).map(mapDelivery) };
-    }
-
-    return failure(insert.error);
+    // Also ensure we return all deliveries for this notification (including pre-existing that weren't in input? No, just the desired set)
+    // For idempotency, return the union of created + existing for the desired targets (already handled)
+    return { ok: true, value: created };
   }
 
   async listPending(query: { limit: number; nowIso: string }): Promise<RepositoryResult<NotificationDeliveryRecord[]>> {
-    // Fetch both queued and retry_scheduled where nextAttempt null or <= now
+    const leaseCutoff = new Date(new Date(query.nowIso).getTime() - DELIVERY_LEASE_MS).toISOString();
+    // Queued and retry_scheduled
     const queued = await this.supabase
       .from("notification_deliveries")
       .select("*")
@@ -406,8 +420,8 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
       .limit(query.limit);
 
     if (queued.error) return failure(queued.error);
-    // Filter retry_scheduled that are in future
-    const filtered = asRows(queued.data).filter((row) => {
+
+    let rows = asRows(queued.data).filter((row) => {
       const status = String(row.status);
       const nextAt = row.next_attempt_at as string | null;
       if (status === "queued") return true;
@@ -417,7 +431,31 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
       }
       return false;
     });
-    return { ok: true, value: filtered.map(mapDelivery) };
+
+    // Also include stale sending (lease expired)
+    const staleSending = await this.supabase
+      .from("notification_deliveries")
+      .select("*")
+      .eq("status", "sending")
+      .lt("updated_at", leaseCutoff)
+      .order("updated_at", { ascending: true })
+      .limit(query.limit);
+
+    if (staleSending.error) return failure(staleSending.error);
+    const staleRows = asRows(staleSending.data);
+    // Combine, dedupe by id, sort, limit
+    const combined = [...rows, ...staleRows];
+    const seen = new Set<string>();
+    const deduped: Row[] = [];
+    for (const r of combined) {
+      const id = String(r.id);
+      if (!seen.has(id)) {
+        seen.add(id);
+        deduped.push(r);
+      }
+    }
+    deduped.sort((a, b) => new Date(String(a.created_at)).getTime() - new Date(String(b.created_at)).getTime());
+    return { ok: true, value: deduped.slice(0, query.limit).map(mapDelivery) };
   }
 
   async listQueuedForNotification(
@@ -462,11 +500,25 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
 
   async markSending(deliveryId: string): Promise<RepositoryResult<NotificationDeliveryRecord | null>> {
     const nowIso = new Date().toISOString();
-    const result = await this.supabase
+    const leaseCutoff = new Date(Date.now() - DELIVERY_LEASE_MS).toISOString();
+    // Try fresh queued/retry first
+    let result = await this.supabase
       .from("notification_deliveries")
       .update({ status: "sending", updated_at: nowIso } as never)
       .eq("id", deliveryId)
       .in("status", ["queued", "retry_scheduled"])
+      .select("*")
+      .maybeSingle();
+    if (result.error) return failure(result.error);
+    if (result.data) return { ok: true, value: mapDelivery(asRow(result.data)) };
+
+    // Try stale sending reclaim
+    result = await this.supabase
+      .from("notification_deliveries")
+      .update({ status: "sending", updated_at: nowIso } as never)
+      .eq("id", deliveryId)
+      .eq("status", "sending")
+      .lt("updated_at", leaseCutoff)
       .select("*")
       .maybeSingle();
     if (result.error) return failure(result.error);
@@ -537,7 +589,9 @@ export class SupabaseTaskReminderIntentRepository implements TaskReminderIntentR
   constructor(private readonly supabase: SupabaseClient) {}
 
   async findDueIntents(nowIso: string, limit: number): Promise<RepositoryResult<TaskReminderIntentRecord[]>> {
-    const result = await this.supabase
+    const leaseCutoff = new Date(new Date(nowIso).getTime() - REMINDER_LEASE_MS).toISOString();
+    // Pending due
+    const pending = await this.supabase
       .from("task_reminders")
       .select("id, owner_user_id, task_id, remind_at, delivery_mode, status, tasks(title)")
       .eq("status", "pending")
@@ -545,8 +599,24 @@ export class SupabaseTaskReminderIntentRepository implements TaskReminderIntentR
       .order("remind_at", { ascending: true })
       .limit(limit);
 
-    if (result.error) return failure(result.error);
-    const rows = asRows(result.data);
+    if (pending.error) return failure(pending.error);
+
+    // Stale processing (lease expired) — also claimable
+    const stale = await this.supabase
+      .from("task_reminders")
+      .select("id, owner_user_id, task_id, remind_at, delivery_mode, status, tasks(title)")
+      .eq("status", "processing")
+      .lt("updated_at", leaseCutoff)
+      .lte("remind_at", nowIso)
+      .order("remind_at", { ascending: true })
+      .limit(limit);
+
+    if (stale.error) return failure(stale.error);
+
+    const rows = [...asRows(pending.data), ...asRows(stale.data)]
+      .sort((a, b) => new Date(String(a.remind_at)).getTime() - new Date(String(b.remind_at)).getTime())
+      .slice(0, limit);
+
     return {
       ok: true,
       value: rows.map((row) => {
@@ -558,11 +628,31 @@ export class SupabaseTaskReminderIntentRepository implements TaskReminderIntentR
   }
 
   async claimIntent(reminderId: string, nowIso: string): Promise<RepositoryResult<TaskReminderIntentRecord | null>> {
-    const result = await this.supabase
+    const leaseCutoff = new Date(new Date(nowIso).getTime() - REMINDER_LEASE_MS).toISOString();
+    // Try pending first
+    let result = await this.supabase
       .from("task_reminders")
       .update({ status: "processing", updated_at: nowIso } as never)
       .eq("id", reminderId)
       .eq("status", "pending")
+      .select("id, owner_user_id, task_id, remind_at, delivery_mode, status, tasks(title)")
+      .maybeSingle();
+
+    if (result.error) return failure(result.error);
+    if (result.data) {
+      const row = asRow(result.data);
+      const tasks = row.tasks as { title?: string | null } | null;
+      const title = tasks && typeof tasks === "object" && "title" in tasks ? String((tasks as Row).title ?? "") : null;
+      return { ok: true, value: mapIntent(row, title) };
+    }
+
+    // Try stale processing lease reclaim
+    result = await this.supabase
+      .from("task_reminders")
+      .update({ status: "processing", updated_at: nowIso } as never)
+      .eq("id", reminderId)
+      .eq("status", "processing")
+      .lt("updated_at", leaseCutoff)
       .select("id, owner_user_id, task_id, remind_at, delivery_mode, status, tasks(title)")
       .maybeSingle();
 

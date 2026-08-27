@@ -391,6 +391,9 @@ export const notificationDevices = pgTable(
   },
   (table) => [
     uniqueIndex("notification_devices_installation_unique").on(table.installationId),
+    uniqueIndex("notification_devices_provider_token_active_unique")
+      .on(table.providerToken)
+      .where(sql`${table.isActive} = true`),
     index("notification_devices_owner_idx").on(table.ownerUserId),
     index("notification_devices_provider_token_idx").on(table.providerToken),
     index("notification_devices_owner_active_idx")
