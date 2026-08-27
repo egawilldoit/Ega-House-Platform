@@ -3,9 +3,12 @@ import { useRouter } from 'expo-router';
 import { useCallback, useMemo } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
 
-import { GlassButton, GlassCard } from '@/components/mobile/glass';
-import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
+import { AppScreen } from '@/components/mobile/ui/AppScreen';
+import { Button } from '@/components/mobile/ui/Button';
+import { Card } from '@/components/mobile/ui/Card';
+import { EmptyState } from '@/components/mobile/ui/EmptyState';
+import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
 import { useMarkAllReadMutation, useMarkOpenedMutation, useNotificationsQuery } from '@/features/notifications/query';
 import { notificationTargetToRoute } from '@/lib/notifications/target';
 
@@ -79,47 +82,47 @@ export default function NotificationsScreen() {
 
   if (query.isPending) {
     return (
-      <MobileScreen>
+      <AppScreen>
         <View style={styles.centered}>
           <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading notifications…</Text>
         </View>
-      </MobileScreen>
+      </AppScreen>
     );
   }
 
   if (query.isError) {
     return (
-      <MobileScreen>
+      <AppScreen>
         <View style={styles.centered}>
           <Text style={styles.title}>Notifications</Text>
           <Text style={styles.errorText}>Unable to load notifications.</Text>
-          <GlassButton onPress={() => query.refetch()} title="Retry" />
+          <Button onPress={() => query.refetch()} title="Retry" />
         </View>
-      </MobileScreen>
+      </AppScreen>
     );
   }
 
   return (
-    <MobileScreen padded={false}>
+    <AppScreen padded={false} testID="notifications-screen">
       <View style={styles.pagePadding}>
-        <MobileScreenHeader
+        <ScreenHeader
           eyebrow="Inbox"
           title="Notifications"
           description={notifications.length === 0 ? 'No notifications yet' : `${notifications.length} notification${notifications.length === 1 ? '' : 's'}`}
-          rightAction={
-            hasUnread ? <GlassButton onPress={onMarkAll} size="sm" title="Mark all read" variant="secondary" /> : null
-          }
+          rightSlot={hasUnread ? <Button onPress={onMarkAll} size="sm" title="Mark all read" variant="secondary" /> : undefined}
         />
       </View>
 
       {notifications.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <GlassCard variant="fake" style={styles.emptyCard}>
-            <Ionicons name="notifications-outline" size={32} color={mobileTheme.colors.textMuted} />
-            <Text style={styles.emptyTitle}>No notifications yet</Text>
-            <Text style={styles.emptyText}>Task reminders will appear here.</Text>
-          </GlassCard>
+          <Card>
+            <EmptyState
+              icon="notifications-outline"
+              title="No notifications yet"
+              description="Task reminders will appear here."
+            />
+          </Card>
         </View>
       ) : (
         <SectionList
@@ -158,7 +161,7 @@ export default function NotificationsScreen() {
           }}
         />
       )}
-    </MobileScreen>
+    </AppScreen>
   );
 }
 
@@ -183,7 +186,4 @@ const styles = StyleSheet.create({
   itemText: { fontSize: 13, color: mobileTheme.colors.textSecondary, lineHeight: 18 },
   itemTime: { fontSize: 11, color: mobileTheme.colors.textSubtle, marginTop: 2 },
   emptyWrap: { flex: 1, padding: mobileTheme.spacing.lg },
-  emptyCard: { alignItems: 'center', gap: 8, paddingVertical: 28 },
-  emptyTitle: { fontSize: 16, fontWeight: mobileTheme.font.bold as never, color: mobileTheme.colors.text, marginTop: 8 },
-  emptyText: { fontSize: 13, color: mobileTheme.colors.textMuted, textAlign: 'center' },
 });

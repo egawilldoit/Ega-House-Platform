@@ -2,9 +2,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { GlassCard } from '@/components/mobile/glass';
-import { MobileScreen, MobileScreenHeader } from '@/components/mobile/primitives';
 import { mobileTheme } from '@/components/mobile/theme';
+import { AppScreen } from '@/components/mobile/ui/AppScreen';
+import { Card } from '@/components/mobile/ui/Card';
+import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
 import { useNotificationPreferencesQuery, useUpdatePreferenceMutation } from '@/features/notifications/query';
 import { useNotifications } from '@/lib/notifications/provider';
 
@@ -37,21 +38,21 @@ export default function NotificationSettingsScreen() {
 
   if (prefsQuery.isPending) {
     return (
-      <MobileScreen>
+      <AppScreen>
         <View style={styles.centered}>
           <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading preferences…</Text>
         </View>
-      </MobileScreen>
+      </AppScreen>
     );
   }
 
   return (
-    <MobileScreen padded={false}>
+    <AppScreen padded={false} testID="notification-settings-screen">
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <MobileScreenHeader eyebrow="Settings" title="Notifications" description="Choose how you receive task reminders" />
+        <ScreenHeader eyebrow="Settings" title="Notifications" description="Choose how you receive task reminders" />
 
-        <GlassCard variant="fake" style={styles.card}>
+        <Card style={styles.card}>
           <View style={styles.row}>
             <View style={styles.rowText}>
               <View style={styles.rowTitleRow}>
@@ -93,9 +94,9 @@ export default function NotificationSettingsScreen() {
               Choose Push, Email or Both when you schedule a reminder. Push requires system permission and a registered device. Email works immediately.
             </Text>
           </View>
-        </GlassCard>
+        </Card>
 
-        <GlassCard variant="fake" style={styles.card}>
+        <Card style={styles.card}>
           <Text style={styles.cardTitle}>Device status</Text>
           <View style={styles.statusRow}>
             <Text style={styles.statusLabel}>OS permission</Text>
@@ -104,9 +105,9 @@ export default function NotificationSettingsScreen() {
           <Pressable onPress={() => refreshPermission()} style={styles.refreshBtn}>
             <Text style={styles.refreshText}>Refresh status</Text>
           </Pressable>
-        </GlassCard>
+        </Card>
       </ScrollView>
-    </MobileScreen>
+    </AppScreen>
   );
 }
 
