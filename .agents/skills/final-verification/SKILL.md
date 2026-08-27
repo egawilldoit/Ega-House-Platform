@@ -8,12 +8,14 @@ description: >
 
 ## Required evidence
 
-- Base/head commit and final Git diff.
-- Changed-file scope and generated/untracked review.
-- Exact targeted and broader commands with exit codes.
-- Runtime/database evidence when behavior depends on them.
-- For Runner work: queue, claim, lease, attempt/worktree, Hermes artifacts, changed paths, implementation commit, pushed SHA, PR, checks, preview, and terminal events as required.
-- Explicit unavailable checks and external blockers.
+- Exact base/head.
+- Diff.
+- Changed files.
+- Validation commands with exit codes.
+- Runtime/database/device evidence where relevant.
+- External blockers.
+- Unverified evidence.
+- PR state when requested.
 
 ## Workflow
 
