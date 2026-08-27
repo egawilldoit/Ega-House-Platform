@@ -28,6 +28,9 @@ export function useTodayWorkspaceQuery() {
   return useQuery({
     queryKey: todayQueryKeys.workspace(),
     queryFn: fetchMobileToday,
+    // Keep last synced Today visible during refetch (invalidation after task/timer mutation, focus refetch).
+    // Shows stale sections + suggestions + Refreshing banner instead of blank skeleton; `isPending && !data` still skeletons on cold.
+    placeholderData: (previousData) => previousData,
   });
 }
 

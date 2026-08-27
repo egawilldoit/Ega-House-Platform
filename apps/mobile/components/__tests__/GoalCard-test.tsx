@@ -2,7 +2,7 @@ import * as React from 'react';
 import { act, create } from 'react-test-renderer';
 
 import type { GoalReadModel } from '@ega/api-client';
-import { GoalCard } from '../mobile/GoalCard';
+import { GoalCard } from '@/features/goals/components/GoalCard';
 
 jest.mock('@expo/vector-icons/Ionicons', () => ({
   __esModule: true,
@@ -29,7 +29,7 @@ function renderCard(overrides: Partial<GoalReadModel> = {}) {
   let tree: ReturnType<typeof create>;
 
   act(() => {
-    tree = create(<GoalCard goal={{ ...GOAL, ...overrides }} onActions={() => undefined} />);
+    tree = create(<GoalCard goal={{ ...GOAL, ...overrides }} onPress={() => undefined} onActions={() => undefined} />);
   });
 
   return tree!;
@@ -62,8 +62,7 @@ describe('GoalCard', () => {
   it('shows the linked task count and progress', () => {
     const component = renderCard();
 
-    expect(findText(component, '50%')).toBe(true);
-    expect(findText(component, '2 tasks')).toBe(true);
+    expect(findText(component, '1 / 2 tasks')).toBe(true);
   });
 
   it('omits the next step row when absent', () => {

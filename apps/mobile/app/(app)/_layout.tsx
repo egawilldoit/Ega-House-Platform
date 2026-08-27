@@ -21,6 +21,8 @@ export default function ProtectedLayout() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="tasks/index" options={{ headerShown: false }} />
+      <Stack.Screen name="projects/index" options={{ headerShown: false }} />
       <Stack.Screen
         name="tasks/create"
         options={{
@@ -64,6 +66,20 @@ export default function ProtectedLayout() {
         options={{
           headerShown: true,
           title: 'Search',
+        }}
+      />
+      <Stack.Screen
+        name="profile"
+        options={{
+          headerShown: true,
+          title: 'Profile',
+        }}
+      />
+      <Stack.Screen
+        name="tasks/[id]"
+        options={{
+          headerShown: true,
+          title: 'Task',
         }}
       />
     </Stack>
