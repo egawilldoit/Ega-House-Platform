@@ -20,6 +20,7 @@ export * from "./today/service";
 export * from "./timer/ports";
 export * from "./timer/service";
 export * from "./shared/duration";
+export * from "./shared/time-context";
 
 export type {
   GoalHealth,
