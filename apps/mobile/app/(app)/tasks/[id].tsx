@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -33,6 +34,7 @@ import {
   useTaskByIdQuery,
   useUpdateTaskMutation,
 } from '@/features/tasks/query';
+import { useNotifications } from '@/lib/notifications/provider';
 import {
   MOBILE_TASK_PRIORITY_VALUES,
   MOBILE_TASK_RECURRENCE_RULE_VALUES,
@@ -204,11 +206,13 @@ export default function TaskDetailScreen() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditableTaskFields | null>(null);
   const [reminderDate, setReminderDate] = useState<Date | null>(createDefaultReminderDate);
+  const [reminderDeliveryMode, setReminderDeliveryMode] = useState<'push' | 'email' | 'both'>('email');
   const [reminderError, setReminderError] = useState<string | null>(null);
   const [reminderSuccess, setReminderSuccess] = useState<string | null>(null);
   const [isReminderPickerVisible, setIsReminderPickerVisible] = useState(false);
   const [reminderPickerMode, setReminderPickerMode] = useState<ReminderPickerMode>('date');
   const [cancellingReminderId, setCancellingReminderId] = useState<string | null>(null);
+  const { permissionStatus, requestPermissionAndRegister } = useNotifications();
 
   const task = taskQuery.data ?? null;
   const reminders = useMemo(() => sortReminders(task?.reminders ?? []), [task?.reminders]);
@@ -354,6 +358,13 @@ export default function TaskDetailScreen() {
       return;
     }
 
+    // Contextual permission: if push needed but not granted, ask first
+    const needsPush = reminderDeliveryMode === 'push' || reminderDeliveryMode === 'both';
+    if (needsPush && permissionStatus !== 'granted') {
+      setReminderError('Push notifications are off. Enable notifications to receive this reminder on your phone.');
+      return;
+    }
+
     setReminderError(null);
     setReminderSuccess(null);
 
@@ -361,6 +372,7 @@ export default function TaskDetailScreen() {
       await createReminderMutation.mutateAsync({
         taskId,
         remindAt: reminderDate.toISOString(),
+        deliveryMode: reminderDeliveryMode,
       });
       setReminderDate(createDefaultReminderDate());
       setIsReminderPickerVisible(false);
@@ -369,7 +381,7 @@ export default function TaskDetailScreen() {
       const message = error instanceof Error ? error.message : 'Unable to schedule reminder right now.';
       setReminderError(message);
     }
-  }, [createReminderMutation, reminderDate, taskId]);
+  }, [createReminderMutation, reminderDate, reminderDeliveryMode, permissionStatus, taskId]);
 
   const onCancelReminder = useCallback(
     async (reminderId: string) => {
@@ -576,8 +588,44 @@ export default function TaskDetailScreen() {
                 <Text style={[styles.dateFieldValue, !reminderDate ? styles.dateFieldPlaceholder : null]}>
                   {formatReminderDraft(reminderDate)}
                 </Text>
-                <Text style={styles.dateFieldMeta}>Email</Text>
+                <Text style={styles.dateFieldMeta}>{reminderDeliveryMode === 'push' ? 'Push' : reminderDeliveryMode === 'both' ? 'Push + Email' : 'Email'}</Text>
               </Pressable>
+              <Text style={styles.deliveryLabel}>Deliver with</Text>
+              <View style={styles.deliveryRow}>
+                <GlassPill
+                  label="Push"
+                  onPress={() => setReminderDeliveryMode('push')}
+                  selected={reminderDeliveryMode === 'push'}
+                />
+                <GlassPill
+                  label="Email"
+                  onPress={() => setReminderDeliveryMode('email')}
+                  selected={reminderDeliveryMode === 'email'}
+                />
+                <GlassPill
+                  label="Both"
+                  onPress={() => setReminderDeliveryMode('both')}
+                  selected={reminderDeliveryMode === 'both'}
+                />
+              </View>
+              {(reminderDeliveryMode === 'push' || reminderDeliveryMode === 'both') && permissionStatus !== 'granted' ? (
+                <View style={styles.permissionHint}>
+                  <Ionicons name="alert-circle-outline" size={14} color={mobileTheme.colors.warning} />
+                  <Text style={styles.permissionHintText}>Push notifications are off. Enable notifications to receive this reminder on your phone.</Text>
+                  <GlassButton
+                    onPress={async () => {
+                      const status = await requestPermissionAndRegister();
+                      if (status === 'granted') setReminderError(null);
+                    }}
+                    size="sm"
+                    title="Enable notifications"
+                    variant="secondary"
+                  />
+                  <Pressable onPress={() => Linking.openSettings()} style={styles.openSettingsLink}>
+                    <Text style={styles.openSettingsText}>Open settings</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               <View style={styles.quickRow}>
                 <GlassButton
                   disabled={isReminderSubmitting}
@@ -635,7 +683,7 @@ export default function TaskDetailScreen() {
                 loading={isReminderSubmitting}
                 onPress={onCreateReminder}
                 style={styles.reminderScheduleButton}
-                title="Schedule email reminder"
+                title="Schedule reminder"
               />
 
               <SectionTitle icon="mail-outline" label="Pending" />
@@ -647,7 +695,14 @@ export default function TaskDetailScreen() {
                         <Text style={styles.reminderTime}>
                           {formatReminderTimestamp(reminder.remindAt)}
                         </Text>
-                        <Text style={styles.reminderMeta}>Email · Pending</Text>
+                        <Text style={styles.reminderMeta}>
+                          {(reminder as unknown as { deliveryMode?: string }).deliveryMode === 'push'
+                            ? 'Push'
+                            : (reminder as unknown as { deliveryMode?: string }).deliveryMode === 'both'
+                              ? 'Push + Email'
+                              : 'Email'}{' '}
+                          · Pending
+                        </Text>
                       </View>
                       <GlassButton
                         disabled={isCancellingReminder}
@@ -675,7 +730,12 @@ export default function TaskDetailScreen() {
                             {formatReminderTimestamp(reminder.remindAt)}
                           </Text>
                           <Text style={styles.reminderMeta}>
-                            Email · {formatTaskToken(reminder.status)}
+                            {(reminder as unknown as { deliveryMode?: string }).deliveryMode === 'push'
+                              ? 'Push'
+                              : (reminder as unknown as { deliveryMode?: string }).deliveryMode === 'both'
+                                ? 'Push + Email'
+                                : 'Email'}{' '}
+                            · {formatTaskToken(reminder.status)}
                           </Text>
                         </View>
                         <GlassPill
@@ -904,6 +964,39 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 10,
   },
+  deliveryLabel: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold as never,
+    marginTop: 12,
+  },
+  deliveryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  permissionHint: {
+    backgroundColor: mobileTheme.colors.warningBg,
+    borderRadius: mobileTheme.radius.md,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: mobileTheme.colors.warningMid,
+  },
+  permissionHintText: {
+    flex: 1,
+    color: mobileTheme.colors.warning,
+    fontSize: 12,
+    lineHeight: 16,
+    minWidth: 120,
+  },
+  openSettingsLink: { paddingVertical: 4 },
+  openSettingsText: { fontSize: 12, color: mobileTheme.colors.accent, fontWeight: mobileTheme.font.semibold as never },
   emptyReminderText: {
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
