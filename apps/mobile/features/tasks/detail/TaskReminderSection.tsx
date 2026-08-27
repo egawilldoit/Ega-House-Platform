@@ -8,6 +8,7 @@ import { Button } from '@/components/mobile/ui/Button';
 import { Chip } from '@/components/mobile/ui/Chip';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { FormSection } from '@/components/mobile/ui/FormSection';
+import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
 import type { MobileTaskReminder } from '@/types/tasks';
 
 import { createDefaultReminderDate, formatReminderDraft, formatReminderTimestamp } from './formatters';
@@ -85,15 +86,15 @@ export function TaskReminderSection({
       </Pressable>
 
       <Text style={styles.deliveryLabel}>Deliver with</Text>
-      <View style={styles.deliveryRow}>
-        <Chip
-          label="Push"
-          selected={reminderDeliveryMode === 'push'}
-          onPress={() => onDeliveryModeChange('push')}
-        />
-        <Chip label="Email" selected={reminderDeliveryMode === 'email'} onPress={() => onDeliveryModeChange('email')} />
-        <Chip label="Both" selected={reminderDeliveryMode === 'both'} onPress={() => onDeliveryModeChange('both')} />
-      </View>
+      <SegmentedControl
+        value={reminderDeliveryMode}
+        onChange={onDeliveryModeChange}
+        options={[
+          { label: 'Push', value: 'push' },
+          { label: 'Email', value: 'email' },
+          { label: 'Both', value: 'both' },
+        ]}
+      />
 
       {showPermissionHint ? (
         <View style={styles.permissionHint}>
