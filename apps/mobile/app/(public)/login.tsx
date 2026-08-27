@@ -101,7 +101,7 @@ export default function LoginScreen() {
                   // Keep keyboard focus; validation occurs on Login press only.
                 }}
                 placeholder="Email"
-                placeholderTextColor={mobileTheme.colors.authTextSubtle}
+                placeholderTextColor={mobileTheme.colors.authTextMuted}
                 returnKeyType="next"
                 style={styles.input}
                 value={email}
@@ -122,7 +122,7 @@ export default function LoginScreen() {
                 }}
                 onSubmitEditing={onLogin}
                 placeholder="Password"
-                placeholderTextColor={mobileTheme.colors.authTextSubtle}
+                placeholderTextColor={mobileTheme.colors.authTextMuted}
                 returnKeyType="done"
                 secureTextEntry
                 style={styles.input}

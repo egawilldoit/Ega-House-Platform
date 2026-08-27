@@ -253,7 +253,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   dateFieldLabel: {
-    color: mobileTheme.colors.textMuted,
+    color: mobileTheme.colors.textSubtle,
     fontSize: 12,
     fontWeight: mobileTheme.font.semibold,
   },
