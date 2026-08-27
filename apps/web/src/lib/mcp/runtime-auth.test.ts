@@ -24,7 +24,7 @@ describe("createMcpHandlerTokenVerifier", () => {
     const verifyAccessToken = vi.fn();
     const expected: AuthInfo = {
       token: "signed-token",
-      clientId: "hermes-client",
+      clientId: "test-mcp-client",
       scopes: ["ega.mcp.authorized"],
     };
     const dependencies: McpRuntimeAuthDependencies = {

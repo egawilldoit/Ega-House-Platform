@@ -15,7 +15,7 @@ const OPTIONS = {
 
 const AUTH_INFO: AuthInfo = {
   token: "signed-token",
-  clientId: "hermes-client",
+  clientId: "test-mcp-client",
   scopes: ["ega.mcp.authorized", "projects.read"],
   expiresAt: 2_000_000_100,
 };

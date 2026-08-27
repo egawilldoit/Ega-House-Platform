@@ -7,7 +7,7 @@ import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
 
 const PRINCIPAL: McpPrincipal = {
   ownerUserId: "00000000-0000-0000-0000-000000000001",
-  oauthClientId: "hermes-client",
+  oauthClientId: "test-mcp-client",
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,

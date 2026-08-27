@@ -43,7 +43,7 @@ describe("OAuth MCP grant administration", () => {
       activateReadOnlyMcpGrant(client, {
         ownerUserId: "user-123",
         oauthClientId: "client-123",
-        clientName: "Hermes",
+        clientName: "Example App",
         resourceUri: "https://preview.example/api/mcp",
         now: "2026-08-01T18:00:00.000Z",
       }),
@@ -54,7 +54,7 @@ describe("OAuth MCP grant administration", () => {
       {
         owner_user_id: "user-123",
         oauth_client_id: "client-123",
-        client_name: "Hermes",
+        client_name: "Example App",
         resource_uri: "https://preview.example/api/mcp",
         status: "active",
         permission_profile: "read_only",
@@ -77,7 +77,7 @@ describe("OAuth MCP grant administration", () => {
       activateReadOnlyMcpGrant(client, {
         ownerUserId: "user-123",
         oauthClientId: "client-123",
-        clientName: "Hermes",
+        clientName: "Example App",
         resourceUri: "https://preview.example/api/mcp",
       }),
     ).rejects.toThrow("Failed to activate EGA MCP authorization grant.");
