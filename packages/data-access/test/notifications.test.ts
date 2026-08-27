@@ -13,10 +13,6 @@ function mockFetch(status: number, body: unknown): typeof fetch {
   }) as unknown as typeof fetch;
 }
 
-async function mockTokenFetch(): Promise<string> {
-  return "mock-access-token";
-}
-
 // Patch getAccessToken by injecting serviceAccount and mocking JWT? Instead we test via provider with mocked fetch for token?
 // We'll bypass auth by providing a fake provider that skips token fetch? For unit classification, we can test FcmPushProvider's error handling by mocking fetch and providing serviceAccount but stubbing getAccessToken via dependency injection? Simpler: we create provider with serviceAccount null to test not-configured, and with mocked fetch for other cases by monkey patching google-auth-library import failure? Instead we test via direct classify helper.
 

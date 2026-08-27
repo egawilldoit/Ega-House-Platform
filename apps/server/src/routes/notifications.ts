@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 
 import {
-  createNotification,
   getNotificationPreferences,
   getUnreadCount,
   listNotifications,
@@ -13,7 +12,6 @@ import {
   updateNotificationPreferences,
 } from "@ega/application/notifications/service";
 import {
-  SupabaseNotificationDeliveryRepository,
   SupabaseNotificationDeviceRepository,
   SupabaseNotificationPreferenceRepository,
   SupabaseNotificationRepository,

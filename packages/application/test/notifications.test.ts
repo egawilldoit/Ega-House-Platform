@@ -11,10 +11,7 @@ import {
 import {
   createNotification,
   listNotifications,
-  getUnreadCount,
   markNotificationRead,
-  markNotificationOpened,
-  markAllNotificationsRead,
   getNotificationPreferences,
   updateNotificationPreferences,
   registerNotificationDevice,
