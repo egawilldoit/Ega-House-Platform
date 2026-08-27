@@ -82,10 +82,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   // On auth ready, refresh permission and register if already granted
   useEffect(() => {
     if (!isReady) return;
-    refreshPermission();
-    if (isAuthenticated) {
-      registerIfNeeded();
-    }
+    let cancelled = false;
+    const run = async () => {
+      await refreshPermission();
+      if (cancelled) return;
+      if (isAuthenticated) {
+        await registerIfNeeded();
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [isReady, isAuthenticated, refreshPermission, registerIfNeeded]);
 
   // Listen for token rotation while app runs

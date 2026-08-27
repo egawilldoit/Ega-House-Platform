@@ -122,7 +122,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/tasks", createTasksRoutes(dependencies));
   app.route("/api/today", createTodayRoutes(dependencies));
   app.route("/api/timer", createTimerRoutes(dependencies));
-  app.route("/api/notifications", createNotificationsRoutes(dependencies));
+  app.route("/api/notifications", createNotificationsRoutes());
   app.route("/api/auth", createAuthRoutes(dependencies));
 
   app.notFound((c) =>

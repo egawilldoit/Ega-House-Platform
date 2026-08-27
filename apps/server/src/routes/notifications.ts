@@ -17,12 +17,10 @@ import {
   SupabaseNotificationRepository,
 } from "@ega/data-access/notifications";
 
-import type { ServerDependencies, ServerVariables } from "../app";
+import type { ServerVariables } from "../app";
 import { readJsonBody } from "../app";
 
-export function createNotificationsRoutes(
-  _dependencies: ServerDependencies,
-): Hono<{ Variables: ServerVariables }> {
+export function createNotificationsRoutes(): Hono<{ Variables: ServerVariables }> {
   const routes = new Hono<{ Variables: ServerVariables }>();
 
   routes.get("/", async (c) => {

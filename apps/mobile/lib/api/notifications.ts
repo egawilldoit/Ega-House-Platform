@@ -1,5 +1,4 @@
 import type {
-  Notification,
   NotificationListResponse,
   NotificationPreferencesResponse,
   NotificationUnreadCountResponse,
