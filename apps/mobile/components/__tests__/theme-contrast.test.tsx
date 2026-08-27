@@ -1,13 +1,12 @@
-// @ts-nocheck
 import { contrastRatio, luminance } from '@/components/mobile/theme';
 
-function hexToRgb(hex) {
+function hexToRgb(hex: string): [number, number, number] {
   const h = hex.replace('#', '');
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
   return [parseInt(full.slice(0, 2), 16), parseInt(full.slice(2, 4), 16), parseInt(full.slice(4, 6), 16)];
 }
 
-function parseRgba(input) {
+function parseRgba(input: string): [number, number, number, number] {
   const rgba = input.match(/rgba?\(([^)]+)\)/);
   if (!rgba) {
     const [r, g, b] = hexToRgb(input);
@@ -17,7 +16,7 @@ function parseRgba(input) {
   return [parseInt(parts[0], 10), parseInt(parts[1], 10), parseInt(parts[2], 10), parseFloat(parts[3] ?? '1')];
 }
 
-function compositeRgbaOverHex(fg, bgHex) {
+function compositeRgbaOverHex(fg: string, bgHex: string): string {
   const [fr, fgG, fb, fa] = parseRgba(fg);
   const [br, bgG, bb] = hexToRgb(bgHex);
   const r = Math.round(fr * fa + br * (1 - fa));
@@ -26,7 +25,7 @@ function compositeRgbaOverHex(fg, bgHex) {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
 }
 
-function compositeTwoLayers(fgRgba, midRgba, baseHex) {
+function compositeTwoLayers(fgRgba: string, midRgba: string, baseHex: string): string {
   const midEffective = compositeRgbaOverHex(midRgba, baseHex);
   return compositeRgbaOverHex(fgRgba, midEffective);
 }
