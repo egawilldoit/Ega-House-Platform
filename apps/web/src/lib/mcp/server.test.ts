@@ -1,4 +1,4 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 import type { z } from "zod";
 
@@ -109,7 +109,7 @@ describe("registerMcpReadTools", () => {
     const tasks = fake.registrations.find(
       (item) => item.name === "ega_list_tasks",
     )!;
-    const uuid = "00000000-0000-0000-0000-000000000001";
+    const uuid = "550e8400-e29b-41d4-a716-446655440000";
 
     expect(getInputSchema(goals).safeParse({ projectId: uuid }).success).toBe(true);
     expect(getInputSchema(goals).safeParse({ projectId: "project-1" }).success).toBe(false);

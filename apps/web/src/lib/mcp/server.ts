@@ -1,6 +1,6 @@
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { AuthInfo, ServerContext } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod";
 
 import { MCP_PERMISSIONS, MCP_PERMISSION_PROFILES } from "@/lib/mcp/permissions";
@@ -41,10 +41,67 @@ export type McpReadToolHandlers = {
   ) => Promise<CallToolResult>;
 };
 
+export type McpWriteToolHandlers = {
+  createProject: (
+    authInfo: AuthInfo | undefined,
+    input: { name: string; slug?: string; description?: string | null; operationId?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateProjectStatus: (
+    authInfo: AuthInfo | undefined,
+    input: { projectId: string; status: string; operationId?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  createGoal: (
+    authInfo: AuthInfo | undefined,
+    input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  createTask: (
+    authInfo: AuthInfo | undefined,
+    input: { title: string; projectId: string; goalId?: string | null; description?: string | null; status?: string; priority?: string; dueDate?: string | null; estimateMinutes?: number | null; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  updateTask: (
+    authInfo: AuthInfo | undefined,
+    input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  planTaskForToday: (
+    authInfo: AuthInfo | undefined,
+    input: { taskId: string; date: string; operationId?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  startTimer: (
+    authInfo: AuthInfo | undefined,
+    input: { taskId: string; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  stopTimer: (
+    authInfo: AuthInfo | undefined,
+    input: { sessionId: string; operationId: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+};
+
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const WRITE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const DESTRUCTIVE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
   openWorldHint: false,
 } as const;
 
@@ -142,8 +199,79 @@ const tasksOutputSchema = z.object({
   count: z.number().int().nonnegative(),
 }).strict();
 
-function getProtocolContext(extra: { requestId?: string | number }): McpProtocolContext {
-  return { requestId: extra.requestId };
+const createProjectInputSchema = z.object({
+  name: z.string().min(1).max(256),
+  slug: z.string().min(1).max(256).optional(),
+  description: z.string().max(4000).nullable().optional(),
+  operationId: z.string().uuid().optional(),
+}).strict();
+
+const updateProjectStatusInputSchema = z.object({
+  projectId: uuidSchema,
+  status: z.enum(PROJECT_STATUS_VALUES),
+  operationId: z.string().uuid().optional(),
+}).strict();
+
+const createGoalInputSchema = z.object({
+  title: z.string().min(1).max(256),
+  projectId: uuidSchema,
+  description: z.string().max(4000).nullable().optional(),
+  status: z.enum(GOAL_STATUS_VALUES).optional(),
+  slug: z.string().max(256).nullable().optional(),
+  operationId: z.string().uuid().optional(),
+}).strict();
+
+const createTaskInputSchema = z.object({
+  title: z.string().min(1).max(256),
+  projectId: uuidSchema,
+  goalId: uuidSchema.nullable().optional(),
+  description: z.string().max(4000).nullable().optional(),
+  status: z.enum(TASK_STATUS_VALUES).optional(),
+  priority: z.enum(TASK_PRIORITY_VALUES).optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  estimateMinutes: z.number().int().min(1).max(10080).nullable().optional(),
+  operationId: z.string().uuid(),
+}).strict();
+
+const updateTaskInputSchema = z.object({
+  taskId: uuidSchema,
+  title: z.string().min(1).max(256).optional(),
+  status: z.enum(TASK_STATUS_VALUES).optional(),
+  priority: z.enum(TASK_PRIORITY_VALUES).optional(),
+  description: z.string().max(4000).nullable().optional(),
+  operationId: z.string().uuid().optional(),
+}).strict();
+
+const planTaskForTodayInputSchema = z.object({
+  taskId: uuidSchema,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  operationId: z.string().uuid().optional(),
+}).strict();
+
+const startTimerInputSchema = z.object({
+  taskId: uuidSchema,
+  operationId: z.string().uuid(),
+}).strict();
+
+const stopTimerInputSchema = z.object({
+  sessionId: uuidSchema,
+  operationId: z.string().uuid(),
+}).strict();
+
+const genericSuccessOutputSchema = z.object({
+  ok: z.literal(true),
+}).passthrough();
+
+function getProtocolContext(ctx: ServerContext): McpProtocolContext {
+  const id =
+    (ctx as unknown as { mcpReq?: { id?: string | number } }).mcpReq?.id
+    ?? (ctx as unknown as { requestId?: string | number }).requestId;
+  return { requestId: id };
+}
+
+function getAuthInfo(ctx: ServerContext): AuthInfo | undefined {
+  return (ctx as unknown as { http?: { authInfo?: AuthInfo } }).http?.authInfo
+    ?? (ctx as unknown as { authInfo?: AuthInfo }).authInfo;
 }
 
 export function registerMcpReadTools(
@@ -160,8 +288,8 @@ export function registerMcpReadTools(
       outputSchema: capabilitiesOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (_input, extra) =>
-      handlers.getCapabilities(extra.authInfo, getProtocolContext(extra)),
+    async (_input, ctx) =>
+      handlers.getCapabilities(getAuthInfo(ctx as unknown as ServerContext), getProtocolContext(ctx as unknown as ServerContext)),
   );
 
   server.registerTool(
@@ -174,8 +302,8 @@ export function registerMcpReadTools(
       outputSchema: projectsOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input, extra) =>
-      handlers.listProjects(extra.authInfo, input, getProtocolContext(extra)),
+    async (input, ctx) =>
+      handlers.listProjects(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
   );
 
   server.registerTool(
@@ -188,8 +316,8 @@ export function registerMcpReadTools(
       outputSchema: goalsOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input, extra) =>
-      handlers.listGoals(extra.authInfo, input, getProtocolContext(extra)),
+    async (input, ctx) =>
+      handlers.listGoals(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
   );
 
   server.registerTool(
@@ -202,7 +330,125 @@ export function registerMcpReadTools(
       outputSchema: tasksOutputSchema,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async (input, extra) =>
-      handlers.listTasks(extra.authInfo, input, getProtocolContext(extra)),
+    async (input, ctx) =>
+      handlers.listTasks(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
   );
+}
+
+export function registerMcpWriteTools(
+  server: McpServer,
+  handlers: McpWriteToolHandlers,
+): void {
+  server.registerTool(
+    "ega_create_project",
+    {
+      title: "Create EGA House project",
+      description: "Create a new project owned by the authenticated user. Requires workspace_manager.",
+      inputSchema: createProjectInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.createProject(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_update_project_status",
+    {
+      title: "Update project status",
+      description: "Update status of an owned project. Requires workspace_manager.",
+      inputSchema: updateProjectStatusInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.updateProjectStatus(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_create_goal",
+    {
+      title: "Create EGA House goal",
+      description: "Create a goal under an owned project. Requires workspace_manager.",
+      inputSchema: createGoalInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.createGoal(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_create_task",
+    {
+      title: "Create EGA House task",
+      description: "Create a task under an owned project. Requires tasks.create and operationId for idempotency.",
+      inputSchema: createTaskInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.createTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_update_task",
+    {
+      title: "Update EGA House task",
+      description: "Update an owned task. Requires tasks.update.",
+      inputSchema: updateTaskInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.updateTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_plan_task_for_today",
+    {
+      title: "Plan task for Today",
+      description: "Set planned_for_date on an owned task (Today is a projection). Requires today.update.",
+      inputSchema: planTaskForTodayInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.planTaskForToday(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_start_timer",
+    {
+      title: "Start timer",
+      description: "Start a timer session for an owned task. Enforces single open timer. Requires timer.create.",
+      inputSchema: startTimerInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.startTimer(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_stop_timer",
+    {
+      title: "Stop timer",
+      description: "Stop an open timer session. Requires timer.update.",
+      inputSchema: stopTimerInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.stopTimer(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+}
+
+export function registerMcpTools(
+  server: McpServer,
+  readHandlers: McpReadToolHandlers,
+  writeHandlers?: McpWriteToolHandlers,
+): void {
+  registerMcpReadTools(server, readHandlers);
+  if (writeHandlers) registerMcpWriteTools(server, writeHandlers);
 }

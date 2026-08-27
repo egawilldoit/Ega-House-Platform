@@ -18,7 +18,7 @@ const ACTIVE_GRANT: McpGrantRecord = {
   resourceUri: "https://ega.example.com/api/mcp",
   status: "active",
   permissionProfile: "read_only",
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
   permissionsVersion: 1,
 };
 
@@ -30,7 +30,7 @@ describe("resolveMcpPrincipal", () => {
       grantId: ACTIVE_GRANT.id,
       permissionProfile: "read_only",
       permissionsVersion: 1,
-      permissions: ["projects.read", "goals.read", "tasks.read"],
+      permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
     });
   });
 
@@ -131,7 +131,9 @@ describe("resolveMcpPrincipal", () => {
           "projects.read",
           "goals.read",
           "tasks.read",
-          "tasks.read",
+          "today.read",
+          "timer.read",
+          "timer.read",
         ],
       }),
     ).toThrowError(

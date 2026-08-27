@@ -1,4 +1,4 @@
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 type TokenVerifier = (

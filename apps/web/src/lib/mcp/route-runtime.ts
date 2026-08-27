@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
 import { createAuditedMcpReadHandlers } from "@/lib/mcp/audited-read-handlers";
@@ -18,10 +18,13 @@ import {
 import { createMcpHandlerTokenVerifier } from "@/lib/mcp/runtime-auth";
 import {
   registerMcpReadTools,
+  registerMcpTools,
   type McpReadToolHandlers,
+  type McpWriteToolHandlers,
 } from "@/lib/mcp/server";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
+import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
 
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 type TokenVerifier = (
@@ -45,9 +48,15 @@ type AuthOptions = {
 
 export type McpRouteRuntimeDependencies = {
   createReadHandlers: (config: McpRuntimeConfig) => McpReadToolHandlers;
+  createWriteHandlers?: (config: McpRuntimeConfig) => McpWriteToolHandlers;
   registerReadTools: (
     server: McpServer,
     handlers: McpReadToolHandlers,
+  ) => void;
+  registerTools?: (
+    server: McpServer,
+    readHandlers: McpReadToolHandlers,
+    writeHandlers?: McpWriteToolHandlers,
   ) => void;
   createTransportHandler: (
     registerServer: (server: McpServer) => void,
@@ -87,9 +96,20 @@ function createReadHandlers(config: McpRuntimeConfig): McpReadToolHandlers {
   });
 }
 
+function createWriteHandlers(config: McpRuntimeConfig): McpWriteToolHandlers {
+  const createUserClient = (accessToken: string) =>
+    createMcpSupabaseClient(accessToken, {
+      supabaseUrl: config.supabaseUrl,
+      publishableKey: config.publishableKey,
+    });
+  return createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled);
+}
+
 const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
   createReadHandlers,
+  createWriteHandlers,
   registerReadTools: registerMcpReadTools,
+  registerTools: registerMcpTools,
   createTransportHandler: createWebMcpHandler,
   createTokenVerifier: createMcpHandlerTokenVerifier,
   wrapAuth: withEgaMcpAuth,
@@ -114,8 +134,14 @@ export function createMcpRouteRuntime(
   dependencies: McpRouteRuntimeDependencies = DEFAULT_DEPENDENCIES,
 ): McpRouteRuntime {
   const readHandlers = dependencies.createReadHandlers(config);
+  const writeHandlers = dependencies.createWriteHandlers
+    ? dependencies.createWriteHandlers(config)
+    : undefined;
+  const register = dependencies.registerTools
+    ? (server: McpServer) => dependencies.registerTools!(server, readHandlers, writeHandlers)
+    : (server: McpServer) => dependencies.registerReadTools(server, readHandlers);
   const transportHandler = dependencies.createTransportHandler(
-    (server) => dependencies.registerReadTools(server, readHandlers),
+    register,
     {},
     {
       basePath: "/api",

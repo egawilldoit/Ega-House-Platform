@@ -1,9 +1,9 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { McpServer as RuntimeMcpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "@modelcontextprotocol/server";
+import { McpServer as RuntimeMcpServer } from "@modelcontextprotocol/server";
 import {
   WebStandardStreamableHTTPServerTransport,
   type WebStandardStreamableHTTPServerTransportOptions,
-} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+} from "@modelcontextprotocol/server";
 
 import { getMcpRequestAuthInfo } from "@/lib/mcp/http-auth";
 

@@ -1,0 +1,237 @@
+import type { AuthInfo } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
+import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import {
+  McpToolAuthorizationError,
+  requireMcpPermission,
+} from "@/lib/mcp/tool-authorization";
+
+export type McpWriteToolDependencies = {
+  createUserClient: (accessToken: string) => SupabaseClient<McpDatabase>;
+};
+
+type ToolErrorPayload = {
+  ok: false;
+  error: { code: string; message: string };
+};
+
+function resultFromPayload(payload: Record<string, unknown>): CallToolResult {
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload,
+  };
+}
+
+function errorResult(error: unknown): CallToolResult {
+  let payload: ToolErrorPayload;
+  if (error instanceof McpToolAuthorizationError) {
+    payload = { ok: false, error: { code: error.code, message: error.message } };
+  } else if (error instanceof Error && error.message.includes("writes are disabled")) {
+    payload = { ok: false, error: { code: "WRITES_DISABLED", message: error.message } };
+  } else if (error instanceof Error && error.message.startsWith("Failed to")) {
+    payload = { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE", message: "EGA House data is temporarily unavailable." } };
+  } else {
+    payload = { ok: false, error: { code: "INTERNAL_ERROR", message: "The MCP tool could not complete the request." } };
+  }
+  return { ...resultFromPayload(payload as unknown as Record<string, unknown>), isError: true };
+}
+
+function requirePrincipal(authInfo: AuthInfo | undefined) {
+  if (!authInfo) throw new McpToolAuthorizationError("UNAUTHENTICATED", "Authentication is required for this tool.");
+  try {
+    return readPrincipalFromAuthInfo(authInfo);
+  } catch {
+    throw new McpToolAuthorizationError("UNAUTHENTICATED", "Authentication is required for this tool.");
+  }
+}
+
+function createClient(deps: McpWriteToolDependencies, authInfo: AuthInfo): SupabaseClient<McpDatabase> {
+  return deps.createUserClient(authInfo.token);
+}
+
+function assertWritesEnabled(writesEnabled: boolean) {
+  if (!writesEnabled) throw new Error("MCP writes are disabled by server configuration (MCP_WRITES_ENABLED).");
+}
+
+export function createMcpWriteToolHandlers(
+  dependencies: McpWriteToolDependencies,
+  writesEnabled = false,
+) {
+  return {
+    async createProject(
+      authInfo: AuthInfo | undefined,
+      input: { name: string; slug?: string; description?: string | null; operationId?: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "projects.create");
+        requirePrincipal(authInfo);
+        const client = createClient(dependencies, authInfo!);
+        const slug = (input.slug ?? input.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+        if (!input.name?.trim()) throw new Error("Project name is required.");
+        if (!slug) throw new Error("Project slug is required.");
+        const { data, error } = await (client as unknown as SupabaseClient).from("projects").insert({
+          owner_user_id: principal.ownerUserId,
+          name: input.name.trim(),
+          slug,
+          description: input.description ?? null,
+        }).select("id, name, slug, description, status, created_at, updated_at").single();
+        if (error) throw new Error(`Failed to create project: ${error.message}`);
+        return resultFromPayload({ ok: true, project: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateProjectStatus(
+      authInfo: AuthInfo | undefined,
+      input: { projectId: string; status: string; operationId?: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "projects.update");
+        const client = createClient(dependencies, authInfo!);
+        const { data, error } = await (client as unknown as SupabaseClient).from("projects").update({ status: input.status, updated_at: new Date().toISOString() }).eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).select("id, name, slug, status").single();
+        if (error) throw new Error(`Failed to update project: ${error.message}`);
+        return resultFromPayload({ ok: true, project: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async createGoal(
+      authInfo: AuthInfo | undefined,
+      input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId?: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "goals.create");
+        const client = createClient(dependencies, authInfo!);
+        const { data, error } = await (client as unknown as SupabaseClient).from("goals").insert({
+          owner_user_id: principal.ownerUserId,
+          project_id: input.projectId,
+          title: input.title.trim(),
+          description: input.description ?? null,
+          status: input.status ?? "draft",
+          slug: input.slug ?? null,
+        }).select("id, project_id, title, status, created_at").single();
+        if (error) throw new Error(`Failed to create goal: ${error.message}`);
+        return resultFromPayload({ ok: true, goal: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async createTask(
+      authInfo: AuthInfo | undefined,
+      input: { title: string; projectId: string; goalId?: string | null; description?: string | null; status?: string; priority?: string; dueDate?: string | null; estimateMinutes?: number | null; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "tasks.create");
+        if (!input.operationId) throw new Error("operationId is required for idempotent task creation.");
+        const client = createClient(dependencies, authInfo!);
+        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").insert({
+          owner_user_id: principal.ownerUserId,
+          project_id: input.projectId,
+          goal_id: input.goalId ?? null,
+          title: input.title.trim(),
+          description: input.description ?? null,
+          status: input.status ?? "todo",
+          priority: input.priority ?? "medium",
+          due_date: input.dueDate ?? null,
+          estimate_minutes: input.estimateMinutes ?? null,
+        }).select("id, project_id, title, status, priority, created_at").single();
+        if (error) throw new Error(`Failed to create task: ${error.message}`);
+        return resultFromPayload({ ok: true, task: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateTask(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId?: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "tasks.update");
+        const client = createClient(dependencies, authInfo!);
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (input.title !== undefined) patch.title = input.title;
+        if (input.status !== undefined) patch.status = input.status;
+        if (input.priority !== undefined) patch.priority = input.priority;
+        if (input.description !== undefined) patch.description = input.description;
+        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update(patch).eq("id", input.taskId).eq("owner_user_id", principal.ownerUserId).select("id, title, status, priority, updated_at").single();
+        if (error) throw new Error(`Failed to update task: ${error.message}`);
+        return resultFromPayload({ ok: true, task: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async planTaskForToday(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; date: string; operationId?: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "today.update");
+        const client = createClient(dependencies, authInfo!);
+        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update({ planned_for_date: input.date, updated_at: new Date().toISOString() }).eq("id", input.taskId).eq("owner_user_id", principal.ownerUserId).select("id, planned_for_date").single();
+        if (error) throw new Error(`Failed to plan task: ${error.message}`);
+        return resultFromPayload({ ok: true, task: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async startTimer(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "timer.create");
+        const client = createClient(dependencies, authInfo!);
+        const startedAt = new Date().toISOString();
+        const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").insert({
+          owner_user_id: principal.ownerUserId,
+          task_id: input.taskId,
+          started_at: startedAt,
+        }).select("id, task_id, started_at").single();
+        if (error) throw new Error(`Failed to start timer: ${error.message}`);
+        return resultFromPayload({ ok: true, session: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async stopTimer(
+      authInfo: AuthInfo | undefined,
+      input: { sessionId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "timer.update");
+        const client = createClient(dependencies, authInfo!);
+        const endedAt = new Date().toISOString();
+        // fetch started_at to compute duration roughly
+        const { data: existing, error: fetchError } = await (client as unknown as SupabaseClient).from("task_sessions").select("started_at").eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).maybeSingle();
+        if (fetchError) throw new Error(`Failed to stop timer: ${fetchError.message}`);
+        if (!existing) throw new Error("No open timer session found.");
+        const started = new Date((existing as { started_at: string }).started_at).getTime();
+        const ended = new Date(endedAt).getTime();
+        const durationSeconds = Math.max(0, Math.round((ended - started) / 1000));
+        const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").update({ ended_at: endedAt, duration_seconds: durationSeconds, updated_at: endedAt }).eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).select("id, ended_at, duration_seconds").single();
+        if (error) throw new Error(`Failed to stop timer: ${error.message}`);
+        return resultFromPayload({ ok: true, session: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  };
+}

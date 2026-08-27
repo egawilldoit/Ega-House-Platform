@@ -84,12 +84,16 @@ describe("OAuth consent decision service", () => {
     );
 
     expect(order).toEqual(["grant", "approve"]);
-    expect(activateGrant).toHaveBeenCalledWith(expect.anything(), {
-      ownerUserId: "user-123",
-      oauthClientId: "client-123",
-      clientName: "Hermes",
-      resourceUri: "https://preview.example/api/mcp",
-    });
+    expect(activateGrant).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        ownerUserId: "user-123",
+        oauthClientId: "client-123",
+        clientName: "Hermes",
+        resourceUri: "https://preview.example/api/mcp",
+        permissionProfile: "read_only",
+      }),
+    );
   });
 
   it("fails the activated grant when Supabase approval fails", async () => {
