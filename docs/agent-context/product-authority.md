@@ -44,17 +44,9 @@ Search [`decision-log.md`](decision-log.md) before making a new material classif
 | Data access | Repository adapters implement application ports with scoped persistence | `packages/data-access` | Global privileged client for user-scoped requests | Root Drizzle schema remains separate by decision |
 | Database/schema | One root schema/migration authority | `src/db`, `drizzle/`, `drizzle.config.ts` | Duplicate app-local schema/migration tree | Relocation is deferred until a dedicated ownership decision |
 | Agent API | Token scopes and owner filtering govern external task access | `apps/web/src/app/api/agent`, agent service/audit persistence | Direct unscoped table access from agent routes | Verify current rate-limit/process behavior before assuming distributed enforcement |
-| Automation run | Durable automation run state owns delivery lifecycle; events/artifacts provide evidence | deployed `automation.*`, Runner SQL/migrations | Slack, Hermes output, Git branch names, queue messages as terminal truth | Complete deployed schema may contain authority not represented by one local file |
-| Queue | PGMQ owns pending execution, not terminal state | `scripts/ega-runner/src/queue.ts` | Executable `pgmq.pop()` or deletion before durable classification | Archive preconditions are not centrally encoded |
-| Claim/lease | `claimed_by` and `lease_expires_at` establish temporary ownership | Runner lease code, queue VT | Side effects after ownership is uncertain | Heartbeat/process-stop semantics require runtime proof |
-| Runner authorization | A run must be bound to an authorized issue and scope before implementation | Runner context/scope + persisted context hash | Label-only or prompt-only authorization | Project/blocker semantics must be verified from current code/runtime |
-| Worktree | One verified attempt owns one isolated branch/worktree from a pinned base | Runner worktree/attempt records | Main implementation, stale worktree reuse, destructive collision handling | Re-check current implementation before carrying forward historical force-reset gaps |
-| Hermes | Hermes generates candidate code; Runner owns lifecycle and independent proof | `hermes-executor`, result/Git evidence, [`../../HERMES_MASTER_PROMPT.md`](../../HERMES_MASTER_PROMPT.md) | Agent self-certification | Skill visibility must be verified under the Runner profile; project-local trust is explicit |
-| Git/GitHub | Commit/push/PR/check state are independently observed evidence | Runner Git/GitHub adapters + persisted fields | Completion without required verified GitHub objects | Delivery-level success may require more than a subsystem `completed` value |
-| Merge | Human review is the current safe merge authority for Runner PRs | PR state/repository policy | Broad auto-merge or review bypass | Separate controlled automation must not become implicit general authority |
-| Vercel | Deployment truth is exact deployed commit/runtime evidence | platform deployment docs + Vercel API | Inferring deployment from PR text/branch name | Product Hono deployment is separate from Runner preview/terminal proof |
-| Slack | Slack reports projections and operational signals | Runner notify/reporting workflows | Messages/markers as durable run state | Delivery must remain valid when Slack is unavailable |
-| Reconciliation | Partial external effects need an idempotent canonical repair owner | No complete authority proven | Ad-hoc repeated side effects | ABSENT / UNRESOLVED |
+| Git/GitHub | Commit/push/PR/check state are independently observed evidence | Git/GitHub + persisted fields | Completion without required verified GitHub objects | Check/preview completeness must be verified against required contract |
+| Merge | Human review is the current safe merge authority | PR state/repository policy | Broad auto-merge or review bypass | Separate controlled automation must not become implicit general authority |
+| Vercel | Deployment truth is exact deployed commit/runtime evidence | platform deployment docs + Vercel API | Inferring deployment from PR text/branch name | Product Hono deployment must be verified from exact deployed commit |
 
 ## Approval boundaries
 
@@ -62,15 +54,13 @@ Human approval is required for merge, deployment, production data changes, secre
 
 ## Terminal evidence rule
 
-A delivery-level `COMPLETE` verdict requires all evidence demanded by the authorized contract. At minimum for a PR-producing run:
+A PR-producing implementation requires at minimum:
 
-1. Current ownership was maintained through the final owned mutation.
-2. Authorized paths and actual changed paths match.
-3. A non-empty implementation commit descends from the pinned base SHA.
-4. The intended branch was pushed and the remote SHA matches.
-5. A real PR exists and points to that SHA.
-6. Required validations/checks are independently observed.
-7. Preview/runtime evidence is present when required.
-8. Durable run/event/artifact records were written.
+1. Authorized paths and actual changed paths match.
+2. A non-empty implementation commit descends from the pinned base SHA.
+3. The intended branch was pushed and the remote SHA matches.
+4. A real PR exists and points to that SHA.
+5. Required validations/checks are independently observed.
+6. Preview/runtime evidence is present when required.
 
-If current Runner code does not prove a required item, report that as a current-behavior gap rather than translating a database/status value into delivery success.
+If the implementation does not prove a required item, report that as a current-behavior gap rather than translating a status value into success.

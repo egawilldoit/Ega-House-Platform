@@ -52,5 +52,25 @@ This log persists material **current-behavior vs normative-authority conflicts**
 - **Normative authority:** repository policy requires verifiable repository skill provenance without silently editing user-global config; current Hermes project-local trust/discovery semantics satisfy that goal more directly.
 - **Classification:** `DEFECT` (tooling discovery contract drift).
 - **Resolution / required decision:** prefer explicit trusted project-local discovery; preserve read-only `external_dirs` compatibility fallback; never auto-trust or mutate global Hermes config.
-- **Status:** `OPEN` — corrective change proposed on `docs/agent-architecture-context-refresh`; close only after canonical merge and real-profile discovery verification.
-- **Follow-up / evidence:** run `npm run preflight:hermes-skills` under the actual Runner service user/profile and record `DISCOVERY VERIFIED` or the exact blocker.
+- **Status:** `SUPERSEDED` — superseded by DEC-2026-08-27; Hermes/Runner autonomous delivery architecture retired, preflight no longer applies.
+- **Follow-up / evidence:** Historical classification preserved; no further Hermes skill discovery verification required.
+
+### DEC-2026-08-27 — Hermes/Runner autonomous delivery architecture retired
+
+- **Date:** 2026-08-27
+- **Scope:** repository architecture, CI, agent governance, documentation.
+- **Conflict:** Living docs, CI, and validation still described `Linear → PGMQ → Runner → Hermes → repair → GitHub PR` as current architecture, while product direction no longer intends to operate Hermes or maintain this autonomous implementation path.
+- **Current-behavior evidence:** `scripts/ega-runner`, `HERMES_MASTER_PROMPT.md`, `.hermes/`, `scripts/agent/preflight-hermes-skills.mjs`, `scripts/hermes-auto-merge-guardian.mjs`, `docs/architecture/hermes-execution.md`, `docs/architecture/runner-and-worktrees.md`, `docs/architecture/queue-and-leases.md`, `docs/architecture/delivery-lifecycle.md`, `drizzle/0035_automation_implementation_runs.sql`, `drizzle/0036_runner_pr_watch_repair_graph.sql`, CI `regressions` job Runner checks, `AGENTS.md` Runner map, `ARCHITECTURE.md` autonomous section.
+- **Normative authority:** Explicit product direction: Hermes will never be used again; EGA House maintains Web + Mobile + API + shared packages + DB + MCP/OAuth integrations as current architecture.
+- **Classification:** `DEFECT` (obsolete architecture/gov still presented as current).
+- **Decision:** The `Linear → PGMQ → Runner → Hermes` implementation control plane is no longer part of EGA House architecture.
+- **Reason:** The product no longer intends to operate Hermes or maintain this autonomous implementation path. Retention created misleading governance and CI.
+- **Consequences:**
+  - Runtime removed (`scripts/ega-runner`, `.hermes`, `HERMES_MASTER_PROMPT.md`, `preflight:hermes-skills`, `hermes-auto-merge-guardian`, `delivery-run-diagnostics` skill).
+  - Living docs updated (`AGENTS.md`, `CONTEXT.md`, `ARCHITECTURE.md`, `README.md`, `docs/agent-context/*`).
+  - Historical delivery docs archived under `docs/archive/autonomous-delivery/`.
+  - CI/governance no longer validates Runner/Hermes (`validate:agent-context`, CI `regressions` job).
+  - Historical DB migrations (`0035`, `0036`) retained for reproducibility; no production table/queue deletion.
+  - MCP and generic Agent API remain independent integrations.
+- **Status:** `RESOLVED` — canonical branch contains retirement on `chore/retire-hermes-runner`; close after merge to `main`.
+- **Follow-up / evidence:** Verify `npm run validate:agent-context`, `npm run check:architecture`, `npm run test:architecture`, `npm run ci:purity`, `npm run ci:security`, `npm run ci:workspace` pass; confirm `git grep -ni hermes` shows only archived/historical/migration references; document future DB cleanup candidates separately.
