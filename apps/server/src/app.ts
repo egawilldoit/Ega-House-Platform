@@ -17,6 +17,7 @@ import {
 import { getSupabaseEnv } from "./env";
 import { createAuthRoutes } from "./routes/auth";
 import { createGoalsRoutes } from "./routes/goals";
+import { createNotificationsRoutes } from "./routes/notifications";
 import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
 import { createTimerRoutes } from "./routes/timer";
@@ -121,6 +122,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/tasks", createTasksRoutes(dependencies));
   app.route("/api/today", createTodayRoutes(dependencies));
   app.route("/api/timer", createTimerRoutes(dependencies));
+  app.route("/api/notifications", createNotificationsRoutes(dependencies));
   app.route("/api/auth", createAuthRoutes(dependencies));
 
   app.notFound((c) =>
