@@ -285,7 +285,7 @@ export async function processDueTaskReminders(
     // However we need to know if deliveries already exist to avoid double counting.
     // Simpler: attempt to queue; if constraint violation, treat as already queued.
 
-    let deliveriesToCreate: Array<{ channel: "push" | "email"; deviceId: string | null; provider: "fcm" | "resend" }> = [];
+    const deliveriesToCreate: Array<{ channel: "push" | "email"; deviceId: string | null; provider: "fcm" | "resend" }> = [];
 
     if (channels.email) {
       deliveriesToCreate.push({ channel: "email", deviceId: null, provider: "resend" });
