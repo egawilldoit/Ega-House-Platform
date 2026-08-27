@@ -1,7 +1,17 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { useAuth } from '@/lib/auth/auth-context';
@@ -35,7 +45,7 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       await signIn(trimmedEmail, password);
-      router.replace('/(app)/(tabs)/tasks');
+      router.replace('/(app)/(tabs)/today');
     } catch (signInError) {
       const message =
         signInError instanceof Error ? signInError.message : 'Login failed. Try again.';
@@ -46,67 +56,102 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.bgCircle1} />
-      <View style={styles.bgCircle2} />
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={styles.root}
+    >
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.container}>
+          <View pointerEvents="none" style={styles.bgCircle1} />
+          <View pointerEvents="none" style={styles.bgCircle2} />
 
-      <Pressable onPress={() => router.replace('/(public)/welcome')} style={styles.backButton}>
-        <Ionicons name="chevron-back" size={22} color={mobileTheme.colors.textOnAccent} />
-      </Pressable>
+          <Pressable
+            accessibilityLabel="Back to welcome"
+            accessibilityRole="button"
+            onPress={() => router.replace('/(public)/welcome')}
+            style={styles.backButton}
+          >
+            <Ionicons name="chevron-back" size={22} color={mobileTheme.colors.textOnAccent} />
+          </Pressable>
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Login</Text>
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.title}>
+              Login
+            </Text>
 
-        <View style={styles.inputRow}>
-          <Ionicons name="mail-outline" size={18} color={mobileTheme.colors.authTextSubtle} />
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="email"
-            editable={!isSubmitting}
-            keyboardType="email-address"
-            onChangeText={(value) => {
-              setEmail(value);
-              if (error) {
-                setError('');
-              }
-            }}
-            placeholder="Email"
-            placeholderTextColor={mobileTheme.colors.authTextSubtle}
-            style={styles.input}
-            value={email}
-          />
+            <View style={styles.inputRow}>
+              <Ionicons name="mail-outline" size={18} color={mobileTheme.colors.authTextSubtle} />
+              <TextInput
+                accessibilityLabel="Email"
+                autoCapitalize="none"
+                autoComplete="email"
+                editable={!isSubmitting}
+                keyboardType="email-address"
+                onChangeText={(value) => {
+                  setEmail(value);
+                  if (error) {
+                    setError('');
+                  }
+                }}
+                onSubmitEditing={() => {
+                  // Keep keyboard focus; validation occurs on Login press only.
+                }}
+                placeholder="Email"
+                placeholderTextColor={mobileTheme.colors.authTextMuted}
+                returnKeyType="next"
+                style={styles.input}
+                value={email}
+              />
+            </View>
+
+            <View style={styles.inputRow}>
+              <Ionicons name="lock-closed-outline" size={18} color={mobileTheme.colors.authTextSubtle} />
+              <TextInput
+                accessibilityLabel="Password"
+                autoCapitalize="none"
+                editable={!isSubmitting}
+                onChangeText={(value) => {
+                  setPassword(value);
+                  if (error) {
+                    setError('');
+                  }
+                }}
+                onSubmitEditing={onLogin}
+                placeholder="Password"
+                placeholderTextColor={mobileTheme.colors.authTextMuted}
+                returnKeyType="done"
+                secureTextEntry
+                style={styles.input}
+                value={password}
+              />
+            </View>
+
+            <Text accessibilityLiveRegion="polite" style={styles.errorText}>
+              {error || authError || ' '}
+            </Text>
+
+            <Pressable
+              accessibilityLabel="Login"
+              accessibilityRole="button"
+              accessibilityState={{ disabled: isSubmitting, busy: isSubmitting }}
+              disabled={isSubmitting}
+              onPress={onLogin}
+              style={({ pressed }) => [styles.button, pressed && !isSubmitting ? styles.buttonPressed : null]}
+            >
+              {isSubmitting ? (
+                <ActivityIndicator color={mobileTheme.colors.textOnAccent} />
+              ) : (
+                <Text style={styles.buttonText}>Login</Text>
+              )}
+            </Pressable>
+          </View>
         </View>
-
-        <View style={styles.inputRow}>
-          <Ionicons name="lock-closed-outline" size={18} color={mobileTheme.colors.authTextSubtle} />
-          <TextInput
-            autoCapitalize="none"
-            editable={!isSubmitting}
-            onChangeText={(value) => {
-              setPassword(value);
-              if (error) {
-                setError('');
-              }
-            }}
-            placeholder="Password"
-            placeholderTextColor={mobileTheme.colors.authTextSubtle}
-            secureTextEntry
-            style={styles.input}
-            value={password}
-          />
-        </View>
-
-        <Text style={styles.errorText}>{error || authError || ' '}</Text>
-
-        <Pressable disabled={isSubmitting} onPress={onLogin} style={styles.button}>
-          {isSubmitting ? (
-            <ActivityIndicator color={mobileTheme.colors.textOnAccent} />
-          ) : (
-            <Text style={styles.buttonText}>Login</Text>
-          )}
-        </Pressable>
-      </View>
-    </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -114,13 +159,13 @@ const styles = StyleSheet.create({
   backButton: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.overlayLight,
-    borderRadius: 20,
-    height: 40,
+    borderRadius: 22,
+    height: mobileTheme.layout.minTouchTarget,
     justifyContent: 'center',
     left: mobileTheme.spacing.lg,
     position: 'absolute',
     top: 64,
-    width: 40,
+    width: mobileTheme.layout.minTouchTarget,
   },
   bgCircle1: {
     backgroundColor: mobileTheme.colors.authCircleBlue,
@@ -143,11 +188,14 @@ const styles = StyleSheet.create({
   button: {
     alignItems: 'center',
     backgroundColor: mobileTheme.colors.accent,
-    borderRadius: mobileTheme.radius.pill,
+    borderRadius: mobileTheme.radius.control,
     marginTop: 4,
     minHeight: 52,
     justifyContent: 'center',
     ...mobileTheme.shadow.fab,
+  },
+  buttonPressed: {
+    opacity: 0.88,
   },
   buttonText: {
     color: mobileTheme.colors.textOnAccent,
@@ -166,10 +214,12 @@ const styles = StyleSheet.create({
     backgroundColor: mobileTheme.colors.authBackground,
     flex: 1,
     justifyContent: 'center',
+    minHeight: 520,
     padding: mobileTheme.spacing.xl,
   },
   errorText: {
     color: mobileTheme.colors.dangerMid,
+    fontSize: 13,
     minHeight: 20,
   },
   input: {
@@ -187,7 +237,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 10,
     marginBottom: mobileTheme.spacing.sm,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
+  },
+  root: {
+    backgroundColor: mobileTheme.colors.authBackground,
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
   },
   title: {
     color: mobileTheme.colors.textOnAccent,

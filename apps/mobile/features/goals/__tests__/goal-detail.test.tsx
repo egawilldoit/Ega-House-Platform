@@ -120,7 +120,9 @@ describe('GoalDetailScreen', () => {
       (node) => node.props?.value === 'Draft spec',
     );
     expect(nextStepInputs.length).toBeGreaterThan(0);
-    expect(text).toContain('40%');
+    // Dedup: bar + fraction only (1 / 1 tasks) not 40% — Wave 10.6 removes percent duplication
+    expect(text).toContain('1 / 1 tasks');
+    expect(text).not.toContain('40%');
     expect(text).toContain('Linked tasks (1)');
     expect(text).toContain('Write spec');
   });

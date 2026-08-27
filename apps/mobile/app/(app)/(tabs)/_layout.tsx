@@ -3,7 +3,7 @@ import { Tabs } from 'expo-router';
 import { type ComponentProps } from 'react';
 import { StyleSheet, View } from 'react-native';
 
-import { GlassBottomTab } from '@/components/mobile/glass';
+import { BottomNavigation } from '@/components/mobile/ui/BottomNavigation';
 import { mobileTheme } from '@/components/mobile/theme';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
@@ -19,7 +19,7 @@ function TabIcon({ name, color, focused }: { name: IconName; color: string; focu
 export default function AppTabsLayout() {
   return (
     <Tabs
-      tabBar={(props) => <GlassBottomTab {...props} />}
+      tabBar={(props) => <BottomNavigation {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: mobileTheme.colors.accent,
@@ -36,25 +36,12 @@ export default function AppTabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="tasks"
+        name="work"
         options={{
-          title: 'Tasks',
+          title: 'Work',
           tabBarIcon: ({ color, focused }) => (
             <TabIcon
-              name={focused ? 'checkbox' : 'checkbox-outline'}
-              color={color}
-              focused={focused}
-            />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="projects"
-        options={{
-          title: 'Projects',
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              name={focused ? 'folder' : 'folder-outline'}
+              name={focused ? 'briefcase' : 'briefcase-outline'}
               color={color}
               focused={focused}
             />
@@ -76,19 +63,6 @@ export default function AppTabsLayout() {
           title: 'Timer',
           tabBarIcon: ({ color, focused }) => (
             <TabIcon name={focused ? 'timer' : 'timer-outline'} color={color} focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon
-              name={focused ? 'person-circle' : 'person-circle-outline'}
-              color={color}
-              focused={focused}
-            />
           ),
         }}
       />
