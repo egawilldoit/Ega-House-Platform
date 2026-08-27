@@ -35,6 +35,14 @@ describe('theme contrast — WCAG AA >=4.5 for small text', () => {
     expect(contrastRatio('#666b71', '#F3F6FB')).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('FeedbackBanner neutral textSubtle on surfaceMuted meets AA', () => {
+    expect(contrastRatio('#666b71', '#F3F6FB')).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('SelectionRow selected description textSubtle on surfaceMuted meets AA', () => {
+    expect(contrastRatio('#666b71', '#F3F6FB')).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('auth placeholder authTextMuted composited over authSurfaceMuted on authSurface meets AA', () => {
     const authSurface = '#161c28';
     const authSurfaceMuted = 'rgba(255,255,255,0.07)';

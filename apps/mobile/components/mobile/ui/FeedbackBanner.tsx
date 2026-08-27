@@ -15,7 +15,7 @@ const toneMap = {
   success: { bg: mobileTheme.colors.successBg, color: mobileTheme.colors.success, icon: 'checkmark-circle-outline' as const },
   warning: { bg: mobileTheme.colors.warningBg, color: mobileTheme.colors.warning, icon: 'warning-outline' as const },
   danger: { bg: mobileTheme.colors.dangerBg, color: mobileTheme.colors.danger, icon: 'alert-circle-outline' as const },
-  neutral: { bg: mobileTheme.colors.surfaceMuted, color: mobileTheme.colors.textMuted, icon: 'ellipse-outline' as const },
+  neutral: { bg: mobileTheme.colors.surfaceMuted, color: mobileTheme.colors.textSubtle, icon: 'ellipse-outline' as const },
 };
 
 export function FeedbackBanner({ message, tone = 'info', style, testID }: FeedbackBannerProps) {
