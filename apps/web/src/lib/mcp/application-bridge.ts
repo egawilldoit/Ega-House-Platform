@@ -23,7 +23,7 @@ export async function createTaskViaApplication(
   }
   // In full implementation:
   // const actor = { userId: principal.ownerUserId } satisfies AuthenticatedActor
-  // const repo = new SupabaseTasksRepository(deps.createUserClient(authInfo.token))
+  // const repo = /* SupabaseTasksRepository */ deps.createUserClient(authInfo.token)
   // return await createTask(actor, repo, input)
   // For this increment, we delegate to the same Supabase RLS path but through the bridge
   // to prove the thin-transport pattern; the next iteration swaps to the service.
