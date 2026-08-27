@@ -189,4 +189,3 @@ Adding a future `timer` notification is `createNotification({type:'timer', ...})
 - No `getExpoPushTokenAsync` usage.
 - RLS `FORCE` + owner policies on all four tables; cron uses service-role only for narrow due/delivery processing, not for normal mobile CRUD.
 - No caller-supplied `ownerUserId` anywhere; all ownership derives from `auth.uid()` or verified bearer.
-
