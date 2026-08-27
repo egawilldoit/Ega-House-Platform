@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import { createHash } from "node:crypto";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -56,6 +57,43 @@ function assertWritesEnabled(writesEnabled: boolean) {
   if (!writesEnabled) throw new Error("MCP writes are disabled by server configuration (MCP_WRITES_ENABLED).");
 }
 
+async function checkIdempotency(
+  client: SupabaseClient<McpDatabase>,
+  toolName: string,
+  operationId: string,
+  args: unknown,
+): Promise<{ replay?: Record<string, unknown>; conflict?: boolean }> {
+  const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
+  try {
+    const { data, error } = await (client as unknown as SupabaseClient).rpc("mcp_claim_mutation_receipt", {
+      p_tool_name: toolName,
+      p_operation_id: operationId,
+      p_args_hash: argsHash,
+    });
+    if (error) return {};
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return {};
+    if ((row as { is_conflict?: boolean }).is_conflict) return { conflict: true };
+    if ((row as { is_replay?: boolean }).is_replay) return { replay: (row as { existing_result?: Record<string, unknown> }).existing_result };
+  } catch {}
+  return {};
+}
+
+async function storeIdempotencyResult(
+  client: SupabaseClient<McpDatabase>,
+  toolName: string,
+  operationId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await (client as unknown as SupabaseClient).rpc("mcp_store_mutation_result", {
+      p_tool_name: toolName,
+      p_operation_id: operationId,
+      p_result_payload: payload,
+    });
+  } catch {}
+}
+
 export function createMcpWriteToolHandlers(
   dependencies: McpWriteToolDependencies,
   writesEnabled = false,
@@ -63,7 +101,7 @@ export function createMcpWriteToolHandlers(
   return {
     async createProject(
       authInfo: AuthInfo | undefined,
-      input: { name: string; slug?: string; description?: string | null; operationId?: string },
+      input: { name: string; slug?: string; description?: string | null; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
@@ -88,7 +126,7 @@ export function createMcpWriteToolHandlers(
 
     async updateProjectStatus(
       authInfo: AuthInfo | undefined,
-      input: { projectId: string; status: string; operationId?: string },
+      input: { projectId: string; status: string; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
@@ -104,7 +142,7 @@ export function createMcpWriteToolHandlers(
 
     async createGoal(
       authInfo: AuthInfo | undefined,
-      input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId?: string },
+      input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
@@ -154,7 +192,7 @@ export function createMcpWriteToolHandlers(
 
     async updateTask(
       authInfo: AuthInfo | undefined,
-      input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId?: string },
+      input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
@@ -175,7 +213,7 @@ export function createMcpWriteToolHandlers(
 
     async planTaskForToday(
       authInfo: AuthInfo | undefined,
-      input: { taskId: string; date: string; operationId?: string },
+      input: { taskId: string; date: string; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);

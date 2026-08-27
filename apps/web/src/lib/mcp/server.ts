@@ -44,17 +44,17 @@ export type McpReadToolHandlers = {
 export type McpWriteToolHandlers = {
   createProject: (
     authInfo: AuthInfo | undefined,
-    input: { name: string; slug?: string; description?: string | null; operationId?: string },
+    input: { name: string; slug?: string; description?: string | null; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   updateProjectStatus: (
     authInfo: AuthInfo | undefined,
-    input: { projectId: string; status: string; operationId?: string },
+    input: { projectId: string; status: string; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   createGoal: (
     authInfo: AuthInfo | undefined,
-    input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId?: string },
+    input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   createTask: (
@@ -64,12 +64,12 @@ export type McpWriteToolHandlers = {
   ) => Promise<CallToolResult>;
   updateTask: (
     authInfo: AuthInfo | undefined,
-    input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId?: string },
+    input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   planTaskForToday: (
     authInfo: AuthInfo | undefined,
-    input: { taskId: string; date: string; operationId?: string },
+    input: { taskId: string; date: string; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
   startTimer: (
@@ -203,13 +203,13 @@ const createProjectInputSchema = z.object({
   name: z.string().min(1).max(256),
   slug: z.string().min(1).max(256).optional(),
   description: z.string().max(4000).nullable().optional(),
-  operationId: z.string().uuid().optional(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const updateProjectStatusInputSchema = z.object({
   projectId: uuidSchema,
   status: z.enum(PROJECT_STATUS_VALUES),
-  operationId: z.string().uuid().optional(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const createGoalInputSchema = z.object({
@@ -218,7 +218,7 @@ const createGoalInputSchema = z.object({
   description: z.string().max(4000).nullable().optional(),
   status: z.enum(GOAL_STATUS_VALUES).optional(),
   slug: z.string().max(256).nullable().optional(),
-  operationId: z.string().uuid().optional(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const createTaskInputSchema = z.object({
@@ -239,13 +239,13 @@ const updateTaskInputSchema = z.object({
   status: z.enum(TASK_STATUS_VALUES).optional(),
   priority: z.enum(TASK_PRIORITY_VALUES).optional(),
   description: z.string().max(4000).nullable().optional(),
-  operationId: z.string().uuid().optional(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const planTaskForTodayInputSchema = z.object({
   taskId: uuidSchema,
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  operationId: z.string().uuid().optional(),
+  operationId: z.string().uuid(),
 }).strict();
 
 const startTimerInputSchema = z.object({
