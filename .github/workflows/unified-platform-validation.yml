@@ -293,10 +293,6 @@ jobs:
         run: node scripts/ci/verify-platform-optionals.mjs
       - name: Agent context regression
         run: npm run validate:agent-context
-      - name: Runner typecheck regression
-        run: npm run typecheck:ega-runner
-      - name: Runner PR-loop regression
-        run: npm run test:ega-runner-pr-loop
 
   lint-changed:
     runs-on: ubuntu-latest

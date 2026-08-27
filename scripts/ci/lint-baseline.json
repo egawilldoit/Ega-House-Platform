@@ -1,10 +1,10 @@
 {
   "capturedAt": "2026-08-09T22:19:17.749Z",
   "sha": "b5e59ee66bcbda0012286133a8ad157cc1ccd78d",
-  "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.",
+  "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design \u00a78). PR7 must re-capture after moving src/** to apps/web/src/**.",
   "totals": {
-    "errors": 39,
-    "warnings": 53
+    "errors": 34,
+    "warnings": 24
   },
   "perFile": {
     ".opencode/plugins/graphify.js": {
@@ -2439,10 +2439,6 @@
       "errors": 0,
       "warnings": 0
     },
-    "scripts/agent/preflight-hermes-skills.mjs": {
-      "errors": 0,
-      "warnings": 0
-    },
     "scripts/agent/validate-agent-context.mjs": {
       "errors": 0,
       "warnings": 1
@@ -2483,171 +2479,11 @@
       "errors": 0,
       "warnings": 0
     },
-    "scripts/ega-runner/src/config.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/context.ts": {
-      "errors": 0,
-      "warnings": 2
-    },
-    "scripts/ega-runner/src/db.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/event-log.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/evidence.ts": {
-      "errors": 1,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/github-checks.ts": {
-      "errors": 2,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/github-command.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/github-git.ts": {
-      "errors": 0,
-      "warnings": 8
-    },
-    "scripts/ega-runner/src/github-pr.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/github-types.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/github.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/hermes-executor.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/implementation-child.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/implementation-pipeline.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/implementation-subprocess.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/main.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/notify.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/pr-monitor.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/queue.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/repair-evidence.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/repair-hermes.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/repair-loop.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/repair-state.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/repair-types.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/result.ts": {
-      "errors": 2,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/run-lease.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/schema-preflight.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/scope.ts": {
-      "errors": 0,
-      "warnings": 2
-    },
-    "scripts/ega-runner/src/validation.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/vercel.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/src/worktree.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/test/execution-contract.test.mjs": {
-      "errors": 0,
-      "warnings": 5
-    },
-    "scripts/ega-runner/test/hermes-executor.test.mjs": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/test/pipeline-integration.mjs": {
-      "errors": 0,
-      "warnings": 3
-    },
-    "scripts/ega-runner/test/pr-loop-contract.test.mjs": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/test/pr-loop-safety.test.mjs": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/test/schema-preflight.test.mjs": {
-      "errors": 0,
-      "warnings": 8
-    },
-    "scripts/ega-runner/test/smoke-integration.mjs": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/ega-runner/test/worktree-cleanup.test.mjs": {
-      "errors": 0,
-      "warnings": 1
-    },
     "scripts/export-sonar-reliability-issues.mjs": {
       "errors": 0,
       "warnings": 0
     },
     "scripts/generate-agent-token.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "scripts/hermes-auto-merge-guardian.mjs": {
       "errors": 0,
       "warnings": 0
     },

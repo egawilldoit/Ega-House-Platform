@@ -9,10 +9,8 @@ import {
   DEFAULT_PROJECT_DOC_MAX_BYTES,
   REQUIRED_EGA_SKILLS,
   discoverCodexInstructionChain,
-  findExecutablePgmqPopCalls,
   loadCodexDiscoveryConfig,
   parseCodexConfig,
-  parseHermesExternalDirs,
   parseSkillFrontmatter,
   resolveMarkdownTarget,
   validateSkillDocuments,
@@ -22,10 +20,8 @@ export {
   DEFAULT_PROJECT_DOC_MAX_BYTES,
   REQUIRED_EGA_SKILLS,
   discoverCodexInstructionChain,
-  findExecutablePgmqPopCalls,
   loadCodexDiscoveryConfig,
   parseCodexConfig,
-  parseHermesExternalDirs,
   parseSkillFrontmatter,
   resolveMarkdownTarget,
   validateSkillDocuments,
@@ -69,10 +65,8 @@ const required = [
   "apps/server/AGENTS.md",
   "apps/mobile/AGENTS.md",
   "packages/AGENTS.md",
-  "scripts/ega-runner/AGENTS.md",
   "CONTEXT.md",
   "ARCHITECTURE.md",
-  "HERMES_MASTER_PROMPT.md",
   "docs/agent-context/index.md",
   "docs/agent-context/product-authority.md",
   "docs/agent-context/decision-log.md",
@@ -82,10 +76,6 @@ const required = [
   "docs/architecture/platform-monorepo.md",
   "docs/architecture/decisions/001-platform-monorepo.md",
   "docs/architecture/hono-deployment.md",
-  "docs/architecture/delivery-lifecycle.md",
-  "docs/architecture/queue-and-leases.md",
-  "docs/architecture/runner-and-worktrees.md",
-  "docs/architecture/hermes-execution.md",
   "docs/reports/README.md",
 ];
 const conflicts = [
@@ -105,7 +95,6 @@ const navigationRequirements = new Map([
     "(apps/server/AGENTS.md)",
     "(apps/mobile/AGENTS.md)",
     "(packages/AGENTS.md)",
-    "(scripts/ega-runner/AGENTS.md)",
   ]],
   ["docs/agent-context/index.md", [
     "(../../CONTEXT.md)",
@@ -116,12 +105,6 @@ const navigationRequirements = new Map([
     "(../../apps/server/AGENTS.md)",
     "(../../apps/mobile/AGENTS.md)",
     "(../../packages/AGENTS.md)",
-    "(../../scripts/ega-runner/AGENTS.md)",
-  ]],
-  ["HERMES_MASTER_PROMPT.md", [
-    "(CONTEXT.md)",
-    "(docs/agent-context/decision-log.md)",
-    "docs/architecture/platform-monorepo.md",
   ]],
 ]);
 
@@ -135,7 +118,6 @@ const instructionExpectations = new Map([
   ["packages/application/src", ["AGENTS.md", "packages/AGENTS.md"]],
   ["packages/data-access/src", ["AGENTS.md", "packages/AGENTS.md"]],
   ["packages/api-client/src", ["AGENTS.md", "packages/AGENTS.md"]],
-  ["scripts/ega-runner/src", ["AGENTS.md", "scripts/ega-runner/AGENTS.md"]],
 ]);
 
 const exists = async (file, type = "file") => {
@@ -191,8 +173,6 @@ async function validateLinks(root, errors, output) {
     "AGENTS.md",
     "CONTEXT.md",
     "ARCHITECTURE.md",
-    "HERMES_MASTER_PROMPT.md",
-    "scripts/ega-runner/README.md",
     ...discoveredInstructions.map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "agent-context"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "architecture"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
@@ -224,16 +204,14 @@ async function validateCommands(root, errors, output) {
       "domain:test", "domain:typecheck",
       "lint", "lint:changed",
       "mobile:bundle", "mobile:doctor", "mobile:test", "mobile:typecheck",
-      "preflight:hermes-skills",
       "server:test", "server:typecheck",
-      "test", "test:agent-context", "test:architecture", "test:ega-runner-pr-loop",
-      "typecheck", "typecheck:ega-runner",
+      "test", "test:agent-context", "test:architecture",
+      "typecheck",
       "validate:agent-context", "verify:mobile",
       "web:build", "web:test", "web:typecheck",
     ]],
     ["apps/mobile/package.json", ["typecheck", "test", "doctor", "validate:bundle"]],
     ["apps/server/package.json", ["typecheck", "test", "build:vercel"]],
-    ["scripts/ega-runner/package.json", ["start", "typecheck", "smoke", "test:pr-loop"]],
   ]) {
     try {
       const manifest = JSON.parse(await readFile(join(root, file), "utf8"));
@@ -241,10 +219,6 @@ async function validateCommands(root, errors, output) {
         ? output.push(`COMMAND DECLARED ${file}#${command}`)
         : errors.push(`${file}: missing documented npm script '${command}'`);
     } catch (error) { errors.push(`${file}: invalid or unreadable JSON (${error.message})`); }
-  }
-  for (const file of ["execution-contract.test.mjs", "hermes-executor.test.mjs", "schema-preflight.test.mjs", "worktree-cleanup.test.mjs"].map((file) => `scripts/ega-runner/test/${file}`)) {
-    if (await exists(join(root, file))) output.push(`FILE EXISTS ${file}`);
-    else errors.push(`documented Runner validation file does not exist: ${file}`);
   }
 }
 
@@ -314,17 +288,6 @@ async function validateDocumentedNpmCommands(root, errors, output) {
   output.push(`STRUCTURAL PASS checked ${checked} npm command reference(s) in ${instructionFiles.length} instruction file(s)`);
 }
 
-async function validateQueue(root, errors, output) {
-  const files = await walk(join(root, "scripts", "ega-runner", "src"), (file) => /\.(ts|tsx|js|mjs)$/.test(file));
-  let total = 0;
-  for (const file of files) {
-    const findings = findExecutablePgmqPopCalls(await readFile(file, "utf8"), relative(root, file));
-    total += findings.length;
-    for (const finding of findings) errors.push(`${finding.file}:${finding.line}:${finding.column}: executable pgmq.pop() call is forbidden`);
-  }
-  if (!total) output.push(`STRUCTURAL PASS no executable pgmq.pop() calls in ${files.length} Runner source file(s)`);
-}
-
 async function validateInstructions(root, errors, warnings, output, options) {
   const config = await loadCodexDiscoveryConfig({ repoRoot: root, env: options.env ?? process.env, userHome: options.userHome ?? homedir() });
   for (const [cwd, expected] of instructionExpectations) {
@@ -378,7 +341,6 @@ export async function validateRepository(repoRoot, options = {}) {
   await validateLinks(root, result.errors, result.output);
   await validateCommands(root, result.errors, result.output);
   await validateDocumentedNpmCommands(root, result.errors, result.output);
-  await validateQueue(root, result.errors, result.output);
   await validateInstructions(root, result.errors, result.warnings, result.output, options);
   result.output.push("RUNTIME NOT VERIFIED this command does not prove semantic documentation accuracy, command success, tool skill selection, deployment, database state, device behavior, or external systems");
   return result;

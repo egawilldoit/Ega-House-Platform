@@ -9,8 +9,7 @@
  * unified validation workflow.
  *
  * Covers:
- *  1. Root lockfile authority (single root lock, no nested workspace locks,
- *     tracked standalone runner lock).
+ *  1. Root lockfile authority (single root lock, no nested workspace locks).
  *  2. Root workspaces declaration and shared workspace dependencies.
  *  3. Framework pins (Expo / React Native / React / Next / Expo Router /
  *     babel-preset-expo) in manifests.
@@ -125,7 +124,6 @@ const nestedLocks = execFileSync('git', ['ls-files', 'apps/*/package-lock.json',
   .split(/\r?\n/)
   .filter(Boolean);
 assert(nestedLocks.length === 0, `no nested workspace lockfiles tracked (${nestedLocks.length} found)`);
-assert(fs.existsSync('scripts/ega-runner/package-lock.json'), 'standalone runner lockfile remains tracked');
 assert(fs.existsSync('apps/mobile/babel.config.js'), 'mobile babel.config.js exists');
 
 // ---------------------------------------------------------------------------
