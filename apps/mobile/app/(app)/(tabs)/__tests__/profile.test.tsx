@@ -16,7 +16,7 @@ jest.mock('@/lib/auth/auth-context', () => ({
   useAuth: () => ({ signOut: mockSignOut, user: { id: 'u-1', email: 'user@example.com' } }),
 }));
 
-import ProfileScreen from '../profile';
+import ProfileScreen from '../../profile';
 
 function findText(component: ReturnType<typeof create>, text: string) {
   const json = component.toJSON();

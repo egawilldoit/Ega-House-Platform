@@ -1,28 +1,24 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  SectionList,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, RefreshControl, SectionList, StyleSheet, Text, View } from 'react-native';
+
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Pressable } from 'react-native';
 
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
-import {
-  EmptyState,
-  MobileScreen,
-  MobileScreenHeader,
-  MobileSectionHeader,
-  SkeletonCard,
-} from '@/components/mobile/primitives';
-import { GlassButton, GlassCard } from '@/components/mobile/glass';
-import { TodayTaskCard } from '@/components/mobile/TodayTaskCard';
+import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
+import { AppScreen } from '@/components/mobile/ui/AppScreen';
+import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
+import { HeaderActions } from '@/components/mobile/ui/HeaderActions';
+import { Card } from '@/components/mobile/ui/Card';
+import { Button } from '@/components/mobile/ui/Button';
+import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
+import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
+import { DailyMomentum } from '@/features/today/components/DailyMomentum';
+import { TodaySectionEmpty, TodaySectionHeader } from '@/features/today/components/TodaySection';
+import { TodayTaskCard } from '@/features/today/components/TodayTaskCard';
 import { useUnreadCountQuery } from '@/features/notifications/query';
 import {
   useAddTaskToTodayMutation,
@@ -169,6 +165,7 @@ function getTodayTaskCount(today: MobileTodayResponse | null) {
 
 export default function TodayScreen() {
   const router = useRouter();
+  const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const todayQuery = useTodayWorkspaceQuery();
   const updateTaskMutation = useUpdateTaskMutation();
   const statusMutation = useUpdateTodayTaskStatusMutation();
@@ -205,6 +202,9 @@ export default function TodayScreen() {
   const todayIso = useMemo(() => getLocalIsoDate(new Date()), []);
   const tomorrowIso = useMemo(() => getLocalIsoDate(addLocalDays(new Date(), 1)), []);
 
+  // Focus refetch (Wave 10.11 audit): useFocusEffect with [refetch] (not [query]) to avoid storm;
+  // Timer intentionally has none — stale until pull/invalidation via focus-manager (refetchOnWindowFocus true).
+  // Today keeps stale via placeholderData + isFetched guard to avoid refetch before cold load.
   useFocusEffect(
     useCallback(() => {
       if (!isFetched) {
@@ -432,11 +432,50 @@ export default function TodayScreen() {
     tomorrowIso,
   ]);
 
+  const renderTodayItem = useCallback(
+    ({ item }: { item: MobileTodayTask }) => {
+      const isMutating = activeTaskId === item.id;
+      const statusActions = getStatusActions(item);
+      const primaryAction = statusActions[0] ?? { label: 'Open', status: item.status };
+
+      return (
+        <View style={styles.pagePadding}>
+          <TodayTaskCard
+            blockedReason={item.status === 'blocked' ? item.blockedReason : null}
+            busy={isMutating}
+            dueLabel={formatDueDate(item)}
+            goal={item.goalTitle}
+            muted={item.status === 'done'}
+            onActions={() => setSelectedTaskId(item.id)}
+            onOpen={() => {
+              router.push({
+                pathname: '/(app)/tasks/[id]',
+                params: { id: item.id },
+              });
+            }}
+            onPrimaryAction={() => {
+              runStatusAction(item, primaryAction.status).catch(() => {
+                // handled in runStatusAction state
+              });
+            }}
+            primaryActionLabel={primaryAction.label}
+            priority={item.priority}
+            project={item.projectName}
+            status={item.status}
+            title={item.title}
+          />
+        </View>
+      );
+    },
+    [activeTaskId, router, runStatusAction],
+  );
+
+  // Perceived performance: `isPending && !data` → skeleton; `isFetching && data` → Refreshing banner (placeholderData keeps stale visible).
   const isLoading = isPending && !today;
 
   if (isLoading) {
     return (
-      <MobileScreen>
+      <AppScreen testID="today-loading">
         <View style={styles.loadingWrap}>
           <ActivityIndicator color={mobileTheme.colors.accent} />
           <Text style={styles.subtitle}>Loading Today...</Text>
@@ -446,7 +485,7 @@ export default function TodayScreen() {
           <SkeletonCard />
           <SkeletonCard />
         </View>
-      </MobileScreen>
+      </AppScreen>
     );
   }
 
@@ -455,21 +494,22 @@ export default function TodayScreen() {
       error instanceof Error ? error.message : 'Unable to load Today right now.';
 
     return (
-      <MobileScreen>
+      <AppScreen testID="today-error">
         <View style={styles.centered}>
           <Text style={styles.title}>Today</Text>
-          <Text style={styles.errorText}>{loadError}</Text>
-          <GlassButton
+          <Text style={styles.errorTextCentered}>{loadError}</Text>
+          <Button
+            title="Retry"
+            variant="secondary"
             onPress={() => {
               onRefresh().catch(() => {
                 // handled in query state
               });
             }}
             style={styles.retryButton}
-            title="Retry"
           />
         </View>
-      </MobileScreen>
+      </AppScreen>
     );
   }
 
@@ -481,88 +521,56 @@ export default function TodayScreen() {
   const completedRatio =
     todayCount > 0 ? Math.round((today.summary.completedCount / todayCount) * 100) : 0;
   const isRefreshing = isRefetching && !isLoading;
+  const weekday = new Date(`${today.date}T00:00:00`).toLocaleDateString(undefined, {
+    weekday: 'long',
+  });
 
   return (
-    <MobileScreen padded={false}>
+    <AppScreen padded={false} testID="today-screen">
       <SectionList
-        contentContainerStyle={styles.listContent}
+        // SectionList tuning (Wave 10.11): RN defaults as baseline.
+        // `initialNumToRender={10}` default 10 — covers first Planned + In Progress in <400px; `maxToRenderPerBatch={10}` default.
+        // `windowSize` omitted → default 21 vs prior 5: 5 showed blank on fast fling across 4 sections (TodayTaskCard variable
+        // height ~110 wraps, no getItemLayout); 21 keeps offscreen sections buffered cheaply (typical 10-30 total tasks).
+        // `removeClippedSubviews` omitted → default recycling (Android true). Tested: plain Card rows, no clipping bug.
+        contentContainerStyle={[styles.listContent, { paddingBottom: contentBottomPaddingNoFab }]}
         keyExtractor={(item) => item.id}
         sections={sections}
+        stickySectionHeadersEnabled={false}
+        initialNumToRender={10}
+        maxToRenderPerBatch={10}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />}
         ListHeaderComponent={
           <View style={styles.pagePadding}>
-            <MobileScreenHeader
-              eyebrow={new Date(`${today.date}T00:00:00`).toLocaleDateString(undefined, {
-                weekday: 'long',
-              })}
+            <ScreenHeader
+              eyebrow={weekday}
               title="Today"
-              description={`${today.summary.trackedTodayLabel} tracked · ${today.summary.selectedCount} selected`}
-              rightAction={
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+              rightSlot={
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                   <NotificationBell />
-                  <GlassButton
-                    leftIcon={<Ionicons color={mobileTheme.colors.text} name="search" size={15} />}
-                    onPress={() => router.push('/(app)/search')}
-                    size="sm"
-                    title="Search"
-                    variant="secondary"
-                  />
+                  <HeaderActions />
                 </View>
               }
+              style={styles.screenHeader}
             />
 
-            <GlassCard variant="fake" style={styles.summaryCard} contentStyle={styles.summaryContent}>
-              <Text style={styles.summaryTitle}>Daily momentum</Text>
-              <Text style={styles.summaryMeta}>{new Date(`${today.date}T00:00:00`).toDateString()}</Text>
-              <View style={styles.summaryStatsRow}>
-                <View style={styles.statBlock}>
-                  <Text style={styles.statValue}>{today.summary.inProgressCount}</Text>
-                  <Text style={styles.statLabel}>In progress</Text>
-                </View>
-                <View style={styles.statBlock}>
-                  <Text style={styles.statValue}>{today.summary.completedCount}</Text>
-                  <Text style={styles.statLabel}>Completed</Text>
-                </View>
-                <View style={styles.statBlock}>
-                  <Text style={styles.statValue}>{today.summary.overdueCount}</Text>
-                  <Text style={styles.statLabel}>Overdue</Text>
-                </View>
-              </View>
+            <DailyMomentum
+              date={today.date}
+              summary={today.summary}
+              todayCount={todayCount}
+              completedRatio={completedRatio}
+              isClearing={clearCompletedMutation.isPending}
+              onClearCompleted={runClearCompleted}
+            />
 
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${completedRatio}%` }]}>
-                  <View style={styles.progressFillStart} />
-                  <View style={styles.progressFillEnd} />
-                </View>
-              </View>
-
-              {todayCount === 0 ? (
-                <Text style={styles.emptyText}>Nothing in Today yet. Add tasks from suggestions below.</Text>
-              ) : null}
-
-              {today.summary.clearableCompletedCount > 0 ? (
-                <GlassButton
-                  disabled={clearCompletedMutation.isPending}
-                  leftIcon={<Ionicons name="trash-outline" size={16} color={mobileTheme.colors.textOnAccent} />}
-                  loading={clearCompletedMutation.isPending}
-                  onPress={() => {
-                    runClearCompleted().catch(() => {
-                      // handled in runClearCompleted state
-                    });
-                  }}
-                  style={styles.clearButton}
-                  title={clearCompletedMutation.isPending ? 'Clearing...' : 'Clear completed'}
-                  variant="danger"
-                />
-              ) : null}
-
-              {actionError ? <Text style={styles.errorText}>{actionError}</Text> : null}
-            </GlassCard>
+            {actionError ? (
+              <FeedbackBanner message={actionError} tone="danger" style={styles.feedback} />
+            ) : null}
           </View>
         }
         ListFooterComponent={
           <View style={styles.pagePadding}>
-            <GlassCard variant="fake">
+            <Card style={styles.suggestionsCard}>
               <Text style={styles.suggestionsTitle}>Suggestions</Text>
               {today.suggestions.pinned.length === 0 && today.suggestions.inProgress.length === 0 ? (
                 <Text style={styles.sectionEmpty}>No suggestions right now.</Text>
@@ -586,7 +594,10 @@ export default function TodayScreen() {
                               {task.goalTitle ? ` · ${task.goalTitle}` : ''}
                             </Text>
                           </View>
-                          <GlassButton
+                          <Button
+                            title={isMutating ? 'Adding...' : 'Add'}
+                            variant="secondary"
+                            size="sm"
                             disabled={isMutating}
                             loading={isMutating}
                             onPress={() => {
@@ -594,7 +605,7 @@ export default function TodayScreen() {
                                 // handled in runAddSuggestion state
                               });
                             }}
-                            title={isMutating ? 'Adding...' : 'Add'}
+                            testID={`add-suggestion-${task.id}`}
                           />
                         </View>
                       );
@@ -602,59 +613,22 @@ export default function TodayScreen() {
                   </View>
                 ) : null,
               )}
-            </GlassCard>
+            </Card>
           </View>
-        }
-        renderSectionFooter={({ section }) =>
-          section.data.length === 0 ? (
-            <View style={styles.pagePadding}>
-              <GlassCard variant="fake" contentStyle={styles.emptyCardContent}>
-                <EmptyState icon="list-outline" title="No tasks" description={section.emptyText} />
-              </GlassCard>
-            </View>
-          ) : null
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.pagePadding}>
-            <MobileSectionHeader count={section.data.length} title={section.title} />
+            <TodaySectionHeader title={section.title} count={section.data.length} />
           </View>
         )}
-        renderItem={({ item }) => {
-          const isMutating = activeTaskId === item.id;
-          const statusActions = getStatusActions(item);
-          const primaryAction = statusActions[0] ?? { label: 'Open', status: item.status };
-
-          return (
+        renderSectionFooter={({ section }) =>
+          section.data.length === 0 ? (
             <View style={styles.pagePadding}>
-              <View style={styles.cardWrap}>
-                <TodayTaskCard
-                  blockedReason={item.status === 'blocked' ? item.blockedReason : null}
-                  busy={isMutating}
-                  dueLabel={formatDueDate(item)}
-                  goal={item.goalTitle}
-                  muted={item.status === 'done'}
-                  onActions={() => setSelectedTaskId(item.id)}
-                  onOpen={() => {
-                    router.push({
-                      pathname: '/(app)/tasks/[id]',
-                      params: { id: item.id },
-                    });
-                  }}
-                  onPrimaryAction={() => {
-                    runStatusAction(item, primaryAction.status).catch(() => {
-                      // handled in runStatusAction state
-                    });
-                  }}
-                  primaryActionLabel={primaryAction.label}
-                  priority={item.priority}
-                  project={item.projectName}
-                  status={item.status}
-                  title={item.title}
-                />
-              </View>
+              <TodaySectionEmpty emptyText={section.emptyText} />
             </View>
-          );
-        }}
+          ) : null
+        }
+        renderItem={renderTodayItem}
       />
 
       <ActionSheet
@@ -669,67 +643,39 @@ export default function TodayScreen() {
         title={activeTask?.title ?? 'Task actions'}
         visible={Boolean(activeTask)}
       />
-    </MobileScreen>
+    </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  cardWrap: {
-    marginBottom: mobileTheme.spacing.sm,
-  },
   centered: {
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
     padding: 24,
   },
-  clearButton: {
-    alignSelf: 'flex-start',
-    marginTop: mobileTheme.spacing.sm,
-  },
-  emptyText: {
-    color: mobileTheme.colors.textMuted,
-    marginTop: mobileTheme.spacing.sm,
-  },
-  emptyCardContent: {
-    padding: 0,
-  },
-  errorText: {
+  errorTextCentered: {
     color: mobileTheme.colors.danger,
     marginTop: mobileTheme.spacing.sm,
     textAlign: 'center',
   },
+  feedback: {
+    marginTop: mobileTheme.spacing.md,
+  },
   listContent: {
     paddingBottom: mobileTheme.layout.floatingTabClearance,
-    paddingTop: mobileTheme.spacing.sm,
+    paddingTop: 4,
+  },
+  screenHeader: {
+    marginBottom: 6,
+    marginTop: 0,
   },
   loadingWrap: {
     alignItems: 'center',
     paddingTop: mobileTheme.spacing.xxl,
   },
   pagePadding: {
-    paddingHorizontal: 16,
-  },
-  progressFill: {
-    borderRadius: 3,
-    flexDirection: 'row',
-    height: 6,
-    overflow: 'hidden',
-  },
-  progressFillEnd: {
-    backgroundColor: mobileTheme.colors.successMid,
-    flex: 1,
-  },
-  progressFillStart: {
-    backgroundColor: mobileTheme.colors.accentMid,
-    flex: 1,
-  },
-  progressTrack: {
-    backgroundColor: mobileTheme.colors.backgroundDeep,
-    borderRadius: 3,
-    height: 6,
-    marginTop: mobileTheme.spacing.sm,
-    overflow: 'hidden',
+    paddingHorizontal: mobileTheme.spacing.lg,
   },
   retryButton: {
     marginTop: mobileTheme.spacing.lg,
@@ -738,6 +684,7 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
     marginBottom: 12,
+    marginTop: mobileTheme.spacing.sm,
   },
   sheetFooter: {
     color: mobileTheme.colors.textMuted,
@@ -746,24 +693,6 @@ const styles = StyleSheet.create({
   },
   skeletonWrap: {
     marginTop: mobileTheme.spacing.lg,
-  },
-  statBlock: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  statLabel: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 11,
-    fontWeight: mobileTheme.font.bold,
-    letterSpacing: 0.3,
-    marginTop: 2,
-    textTransform: 'uppercase',
-  },
-  statValue: {
-    color: mobileTheme.colors.text,
-    fontSize: 24,
-    fontWeight: mobileTheme.font.black,
-    letterSpacing: 0,
   },
   subtitle: {
     color: mobileTheme.colors.textMuted,
@@ -792,8 +721,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: mobileTheme.spacing.sm,
-    paddingHorizontal: 14,
+    paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 12,
+  },
+  suggestionsCard: {
+    marginTop: mobileTheme.spacing.md,
   },
   suggestionsTitle: {
     color: mobileTheme.colors.text,
@@ -810,28 +742,6 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 14,
     fontWeight: mobileTheme.font.semibold,
-  },
-  summaryCard: {
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  summaryContent: {
-    padding: 14,
-  },
-  summaryMeta: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 13,
-    marginTop: 4,
-  },
-  summaryStatsRow: {
-    flexDirection: 'row',
-    marginTop: mobileTheme.spacing.md,
-  },
-  summaryTitle: {
-    color: mobileTheme.colors.text,
-    fontSize: 17,
-    fontWeight: mobileTheme.font.extrabold,
-    letterSpacing: 0,
   },
   title: {
     color: mobileTheme.colors.text,
