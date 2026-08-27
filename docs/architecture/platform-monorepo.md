@@ -1,6 +1,6 @@
 # EGA House Platform Monorepo Architecture
 
-**Status: IMPLEMENTED CURRENT ARCHITECTURE. Last reviewed: 2026-08-25.**
+**Status: IMPLEMENTED CURRENT ARCHITECTURE. Last reviewed: 2026-08-27.**
 
 The first-wave migration that introduced this topology has landed. This document now describes the current package/application boundary and preserves the August 2026 migration stack only as historical provenance. For the cross-subsystem current map, see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
@@ -31,7 +31,7 @@ The first-wave migration that introduced this topology has landed. This document
                               request-scoped Supabase/RLS
 ```
 
-Root `src/db` + `drizzle/` remain the single schema/migration authority. `scripts/ega-runner` remains a separate autonomous-delivery subsystem.
+Root `src/db` + `drizzle/` remain the single schema/migration authority.
 
 ## Responsibilities
 
@@ -154,7 +154,6 @@ The current monorepo intentionally still contains compatibility surfaces outside
 - OAuth;
 - integrations;
 - cron/background routes;
-- Runner;
 - root database/migration authority;
 - compatibility/re-export/presentation shims with live consumers.
 

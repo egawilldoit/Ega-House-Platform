@@ -10,7 +10,6 @@ Use this directory for current repository-local agent guidance. `AGENTS.md` is t
    - [`../../apps/server/AGENTS.md`](../../apps/server/AGENTS.md)
    - [`../../apps/mobile/AGENTS.md`](../../apps/mobile/AGENTS.md)
    - [`../../packages/AGENTS.md`](../../packages/AGENTS.md)
-   - [`../../scripts/ega-runner/AGENTS.md`](../../scripts/ega-runner/AGENTS.md)
 3. [`../../CONTEXT.md`](../../CONTEXT.md) — product loop, vocabulary, and cross-surface mental model.
 4. [`product-authority.md`](product-authority.md) — current-behavior evidence vs normative product authority.
 5. [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — living current-system map and implementation status.
@@ -23,22 +22,13 @@ Use this directory for current repository-local agent guidance. `AGENTS.md` is t
 
 ## Why scoped instructions
 
-Agents do better when global rules stay short and local implementation constraints live next to the affected subsystem. A web-only agent should not spend instruction budget on Runner queue internals; a Runner agent should receive those invariants automatically when its working directory is inside `scripts/ega-runner`.
-
-The expected discovery order is root → leaf. A deeper `AGENTS.md` may specialize local conventions, but it must not weaken root safety, authority, or approval boundaries.
+Agents do better when global rules stay short and local implementation constraints live next to the affected subsystem. The expected discovery order is root → leaf. A deeper `AGENTS.md` may specialize local conventions, but it must not weaken root safety, authority, or approval boundaries.
 
 ## Platform architecture
 
 - [`../architecture/decisions/001-platform-monorepo.md`](../architecture/decisions/001-platform-monorepo.md)
 - [`../architecture/hono-deployment.md`](../architecture/hono-deployment.md)
 - [`../architecture/dependency-audit-exceptions.md`](../architecture/dependency-audit-exceptions.md)
-
-## Delivery subsystem
-
-- [`../architecture/delivery-lifecycle.md`](../architecture/delivery-lifecycle.md)
-- [`../architecture/queue-and-leases.md`](../architecture/queue-and-leases.md)
-- [`../architecture/runner-and-worktrees.md`](../architecture/runner-and-worktrees.md)
-- [`../architecture/hermes-execution.md`](../architecture/hermes-execution.md)
 
 ## Skill design
 

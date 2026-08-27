@@ -18,7 +18,7 @@ Structural/static validation does not establish deployment, device, database, cr
 
 | Change type | Minimum validation | Additional validation when affected |
 |---|---|---|
-| Agent context/docs/skills | `npm run validate:agent-context` | Inspect final diff; Codex/OpenCode/Hermes discovery under the real profile when available |
+| Agent context/docs/skills | `npm run validate:agent-context` | Inspect final diff; Codex/OpenCode discovery under the real profile when available |
 | Platform architecture/boundaries | `npm run check:architecture`, `npm run test:architecture` | `npm run ci:purity`, `npm run ci:security`, `npm run ci:workspace` |
 | Web (`apps/web`) | `npm run web:typecheck`, targeted `npm run web:test` | `npm run lint:changed`, full `npm run web:test`, `npm run web:build` |
 | Hono server (`apps/server`) | `npm run server:typecheck`, `npm run server:test` | Deployment-bundle/health/readiness proof per `docs/architecture/hono-deployment.md` |
@@ -27,13 +27,6 @@ Structural/static validation does not establish deployment, device, database, cr
 | API client | `npm run api-client:typecheck`, `npm run api-client:test` | Mobile/server integration for changed endpoints |
 | Mobile (`apps/mobile`) | `npm run mobile:typecheck`, `npm run mobile:test` | `npm run verify:mobile` levels required by the change; bundle/prebuild/device/runtime proof as applicable |
 | Database schema/migration | SQL/journal inspection | Controlled migration against disposable database + affected package/server/web tests |
-| Runner TypeScript | `npm run typecheck:ega-runner` | Focused Runner tests and real integrations |
-| PR monitor/repair graph | `npm run test:ega-runner-pr-loop` | GitHub fixture/integration tests including pagination/concurrency edge cases |
-| Queue/lease | `node scripts/ega-runner/test/execution-contract.test.mjs` | Disposable Postgres/PGMQ duplicate, lease-loss, crash/retry scenarios |
-| Worktree/Git | `node scripts/ega-runner/test/worktree-cleanup.test.mjs` | Temporary real Git repository with malicious refs/collisions/stale/dirty evidence cases |
-| Hermes adapter | `node scripts/ega-runner/test/hermes-executor.test.mjs` | `npm run preflight:hermes-skills` under Runner user + controlled Hermes smoke |
-| Automation schema | `node scripts/ega-runner/test/schema-preflight.test.mjs` | Apply/rollback against disposable database |
-| Full Runner | `cd scripts/ega-runner && npm run smoke` | Authorized real ticket through the contract's review-ready state |
 
 ## Agent-context commands
 
@@ -43,7 +36,6 @@ From repository root:
 npm ci
 npm run test:agent-context
 node --check scripts/agent/validate-agent-context.mjs
-node --check scripts/agent/preflight-hermes-skills.mjs
 npm run validate:agent-context
 npm run check:architecture
 npm run test:architecture
@@ -74,36 +66,11 @@ npm run mobile:typecheck && npm run mobile:test
 
 Do not substitute the root `typecheck/test/build` aliases for a subsystem-specific command when the task needs proof for multiple workspaces; run the relevant workspace scripts explicitly.
 
-## Runner commands
-
-```bash
-cd scripts/ega-runner
-npm ci
-npm run typecheck
-npm run test:pr-loop
-node test/execution-contract.test.mjs
-node test/hermes-executor.test.mjs
-node test/schema-preflight.test.mjs
-node test/worktree-cleanup.test.mjs
-```
-
-Focused suites do not replace live GitHub pagination/concurrency proof, database migration proof, or live Hermes execution when those boundaries matter.
-
 ## Codex / OpenCode instruction discovery
 
 Root `AGENTS.md` is the repository guidance source. `npm run validate:agent-context` models Codex instruction-chain structure; model output is not proof that a particular installed CLI version loaded it. When discovery itself matters, start a clean session from the repository root/subdirectory, record tool version/CWD, and verify the selected instructions.
 
 OpenCode V2 currently discovers `AGENTS.md`; do not rely on an `opencode.json` `instructions` entry as a substitute unless the installed version proves it resolves that source. See [`tooling-map.md`](tooling-map.md).
-
-## Hermes discovery
-
-Run under the same OS user/profile and repository working directory as the Runner service:
-
-```bash
-npm run preflight:hermes-skills
-```
-
-The preflight supports trusted project-local discovery as the preferred path and `skills.external_dirs` as a compatibility fallback. It is read-only: it never trusts a repository or edits user configuration. If trust/configuration is missing, the operator must perform that explicit setup action separately.
 
 ## E2E delivery proof
 
@@ -111,14 +78,10 @@ A real low-risk ticket should prove the authorized lifecycle rather than a remem
 
 ```text
 authorized trigger
-→ one durable run / queued message
-→ valid claim + lease
 → isolated implementation
-→ independent Runner validation
+→ independent validation
 → verified commit/push/PR
 → required checks/review/preview observation
-→ controlled repair path when in scope
-→ review-ready durable classification
 → human merge
 ```
 

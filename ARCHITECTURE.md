@@ -1,12 +1,12 @@
 # EGA House Architecture
 
-**Living current-system map. Last code-truth refresh: 2026-08-25.**
+**Living current-system map. Last code-truth refresh: 2026-08-27.**
 
 This document describes the repository architecture that is currently present. Executable code, migrations, runtime evidence, and external-system evidence outrank this map when the repository changes. Normative requirements live in the authority chain defined by [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md).
 
 ## 1. Platform topology
 
-EGA House is an npm-workspace monorepo with three product applications, five shared packages, root database authority, and a separate autonomous-delivery subsystem.
+EGA House is an npm-workspace monorepo with three product applications, five shared packages, root database authority, and MCP/OAuth integration surfaces.
 
 ```text
                                EGA HOUSE
@@ -35,7 +35,7 @@ EGA House is an npm-workspace monorepo with three product applications, five sha
                                               Supabase/Postgres
 
 Root DB authority: src/db + drizzle/
-Autonomous delivery: scripts/ega-runner + automation.* + PGMQ + Hermes/GitHub
+MCP / OAuth / integrations: apps/web/src/app/api/{agent,mcp,oauth,integrations,cron} + apps/web/src/lib/mcp
 ```
 
 ## 2. Current surface map
@@ -52,8 +52,7 @@ Autonomous delivery: scripts/ega-runner + automation.* + PGMQ + Hermes/GitHub
 | API client | CURRENT | `packages/api-client`: typed cross-platform Projects/Goals/Tasks/Today HTTP mechanics |
 | Database/schema | CURRENT | root `src/db`, `drizzle/`, `drizzle.config.ts` remain the single schema/migration authority |
 | Web compatibility APIs | CURRENT | `apps/web/src/app/api/{agent,mcp,oauth,integrations,cron}` |
-| Autonomous Runner | CURRENT / PARTIAL | `scripts/ega-runner`: PGMQ claim/lease, Hermes execution, Git/GitHub evidence, PR-monitor/repair work |
-| Reconciliation | ABSENT / GAP | No proven canonical owner repairs every partial external side effect idempotently |
+| MCP / OAuth | CURRENT | `apps/web/src/lib/mcp`, `apps/web/src/lib/oauth`: typed MCP server and OAuth grant/audit flows |
 
 The first-wave monorepo migration is no longer merely a target architecture: the `apps/*` and `packages/*` topology is present on `main`. Historical migration-stack evidence remains in [`docs/architecture/platform-monorepo.md`](docs/architecture/platform-monorepo.md) but must not be interpreted as the current branch state.
 
@@ -143,44 +142,7 @@ Root database ownership is intentionally separate from `apps/web` and `apps/serv
 
 Do not infer that physical app placement owns schema authority.
 
-## 6. Autonomous delivery architecture
-
-The Runner is a separate control plane from the productivity product. Its durable run state belongs to the automation database; queue/Git/Hermes/GitHub/Slack are execution and evidence systems around that state.
-
-```text
-Authorized issue / trigger
-        ↓
- durable automation run
-        ↓
-      PGMQ
-        ↓
- read → claim/lease → classify
-        ↓
- verified branch/worktree
-        ↓
-      Hermes
-        ↓
- independent diff / validation / Git proof
-        ↓
- push → real GitHub PR → checks/review/preview evidence
-        ↓
- READY_TO_MERGE candidate
-        ↓
- human merge
-        ↓
- durable terminal classification + queue archive when safe
-```
-
-Never translate `completed` in one subsystem directly into delivery-level success. The terminal evidence rule in [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md) defines what must be observed for the requested contract.
-
-Subsystem documents:
-
-- [`docs/architecture/delivery-lifecycle.md`](docs/architecture/delivery-lifecycle.md)
-- [`docs/architecture/queue-and-leases.md`](docs/architecture/queue-and-leases.md)
-- [`docs/architecture/runner-and-worktrees.md`](docs/architecture/runner-and-worktrees.md)
-- [`docs/architecture/hermes-execution.md`](docs/architecture/hermes-execution.md)
-
-## 7. Current known gaps
+## 6. Current known gaps
 
 ### Platform
 
@@ -189,19 +151,9 @@ Subsystem documents:
 - Root DB authority is intentional; relocating schema/migrations requires a dedicated ownership decision and must not create parallel migration trees.
 - Runtime/deployment proof is subsystem-specific. Static architecture checks do not prove Vercel, Supabase, mobile-device, or cross-user behavior.
 
-### Runner
-
-The current agent-context authority records these important delivery gaps until newer executable evidence proves otherwise:
-
-- archive preconditions are not centrally encoded;
-- lease-heartbeat failure does not by itself prove active Hermes work stopped before further effects;
-- Hermes validation claims are not sufficient independent proof;
-- PR/check/preview completeness has historically been weaker than the delivery-level terminal evidence rule;
-- reconciliation of partial external effects lacks a proven canonical owner.
-
 Do not preserve a gap just because it is written here: if current code/runtime now proves it closed, update this map and the decision/evidence trail in the same bounded change.
 
-## 8. Architecture change protocol
+## 7. Architecture change protocol
 
 For architecture or governance changes:
 

@@ -1,7 +1,7 @@
 # Agent Tooling Map
 
 **Status:** living repository-local map
-**Last verified:** 2026-08-25
+**Last verified:** 2026-08-27
 
 The repository governance contract is `AGENTS.md` plus scoped nested `AGENTS.md` files. Tool configuration should discover or point to that contract; it should not carry an independent copy of repository policy.
 
@@ -11,11 +11,10 @@ The repository governance contract is `AGENTS.md` plus scoped nested `AGENTS.md`
 |---|---|---|---|
 | Codex-style project instructions | `AGENTS.md`, nested `*/AGENTS.md`, `.codex/` hooks/config where present | root→leaf instruction discovery; deeper file scopes local paths | No |
 | OpenCode | `.opencode/`, root/nested `AGENTS.md` | repository config is for plugins/skills; repository governance stays in `AGENTS.md` | No |
-| Hermes | `HERMES_MASTER_PROMPT.md`, `.hermes/skills`, `.agents/skills`, `scripts/agent/preflight-hermes-skills.mjs` | fallback entry prompt points to repository governance; project-local skills require the configured/trusted discovery path | No |
-| Repository skills | `.agents/skills/*/SKILL.md`, `skills-lock.json` | workflow specializations selected by task trigger; never higher authority than repository/product policy | No |
+| Repository skills | `.agents/skills/*/SKILL.md` | workflow specializations selected by task trigger; never higher authority than repository/product policy | No |
 | Graphify / Pi compatibility | `.pi/agent/skills/graphify`, mirrored Graphify skill locations | code-graph/helper capability only | No |
 
-Tool-specific files may define hooks, plugins, skill discovery, transport, or runtime integration. They must not silently redefine branch policy, merge authority, product behavior, queue semantics, or validation truth.
+Tool-specific files may define hooks, plugins, skill discovery, transport, or runtime integration. They must not silently redefine branch policy, merge authority, product behavior, or validation truth.
 
 ## Scoped `AGENTS.md` layout
 
@@ -26,8 +25,7 @@ AGENTS.md
 ├── apps/web/AGENTS.md
 ├── apps/server/AGENTS.md
 ├── apps/mobile/AGENTS.md
-├── packages/AGENTS.md
-└── scripts/ega-runner/AGENTS.md
+└── packages/AGENTS.md
 ```
 
 The root file owns repository-wide invariants. The leaf files own local architecture/pitfalls/commands. If a new subsystem becomes large or safety-critical enough to need materially different working rules, prefer another scoped `AGENTS.md` over growing the root file indefinitely.
@@ -42,8 +40,7 @@ Do not create nested files merely to repeat the root. A nested file must add loc
 - the root file links to product/context/architecture and scoped instruction entry points;
 - local Markdown links resolve;
 - skill frontmatter parses and required skills remain discoverable;
-- no executable Runner `pgmq.pop()` call exists;
-- the expected root→leaf instruction chain is selected for web, server, mobile, shared packages, and Runner workdirs;
+- the expected root→leaf instruction chain is selected for web, server, mobile, and shared packages;
 - instruction bytes remain within the configured discovery budget.
 
 A green structural validation proves file/discovery consistency. It does **not** prove semantic correctness, deployed behavior, external-tool configuration, or runtime success.
