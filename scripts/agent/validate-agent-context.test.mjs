@@ -7,14 +7,13 @@ import {
   DEFAULT_PROJECT_DOC_MAX_BYTES,
   discoverCodexInstructionChain,
   extractDocumentedNpmCommands,
-  findExecutablePgmqPopCalls,
   parseCodexConfig,
-  parseHermesExternalDirs,
   parseSkillFrontmatter,
   resolveMarkdownTarget,
   validateRepository,
   validateSkillDocuments,
 } from "./validate-agent-context.mjs";
+import { findExecutablePgmqPopCalls } from "./agent-context-core.mjs";
 
 function skill(content) {
   return `---\n${content}\n---\n# Body\n`;
@@ -107,12 +106,12 @@ test("documented npm commands: root, workspace, prefix, and npm test forms are c
     npm run web:test
     npm --workspace @ega/web run lint
     npm run build --workspace @ega/web
-    npm --prefix scripts/ega-runner run test:pr-loop
+    npm --prefix scripts/agent run validate-agent-context
     npm test
     npm run web:test
   `);
   assert.deepEqual(result, [
-    { kind: "prefix", script: "test:pr-loop", target: "scripts/ega-runner" },
+    { kind: "prefix", script: "validate-agent-context", target: "scripts/agent" },
     { kind: "workspace", script: "lint", target: "@ega/web" },
     { kind: "root", script: "web:test", target: null },
     { kind: "workspace", script: "build", target: "@ega/web" },
@@ -176,29 +175,6 @@ test("Codex discovery: byte-budget overflow uses UTF-8 bytes", async () => {
 test("Codex config: commented fallback assignments are ignored", () => {
   const parsed = parseCodexConfig('# project_doc_fallback_filenames = ["OLD.md"]\nproject_doc_fallback_filenames = ["CURRENT.md"]\n');
   assert.deepEqual(parsed.fallbackFilenames, ["CURRENT.md"]);
-});
-
-test("Hermes config: repository external directory is parsed only under skills.external_dirs", () => {
-  const parsed = parseHermesExternalDirs(`
-other:
-  external_dirs:
-    - /wrong/section
-skills:
-  external_dirs:
-    - "/repo/.agents/skills"
-    - '/shared/skills' # optional shared source
-`);
-  assert.deepEqual(parsed, ["/repo/.agents/skills", "/shared/skills"]);
-});
-
-test("Hermes config: commented external directories are ignored", () => {
-  const parsed = parseHermesExternalDirs(`
-skills:
-  external_dirs:
-    # - /old/repo/.agents/skills
-    - /current/repo/.agents/skills
-`);
-  assert.deepEqual(parsed, ["/current/repo/.agents/skills"]);
 });
 
 test("repository validation: AGENTS npm commands must resolve to manifests", async () => {

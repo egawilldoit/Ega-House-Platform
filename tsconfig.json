@@ -21,7 +21,6 @@
     "scripts/**/*.mjs"
   ],
   "exclude": [
-    "node_modules",
-    "scripts/ega-runner"
+    "node_modules"
   ]
 }
