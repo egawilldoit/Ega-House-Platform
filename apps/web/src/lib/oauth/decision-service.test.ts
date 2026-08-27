@@ -7,7 +7,7 @@ import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 function authorizationDetails() {
   return {
     authorization_id: "authorization-123",
-    client: { client_id: "client-123", name: "Hermes" },
+    client: { client_id: "client-123", name: "Example App" },
     redirect_uri: "http://127.0.0.1:3210/callback",
     scope: "openid email",
   };
@@ -87,7 +87,7 @@ describe("OAuth consent decision service", () => {
     expect(activateGrant).toHaveBeenCalledWith(expect.anything(), {
       ownerUserId: "user-123",
       oauthClientId: "client-123",
-      clientName: "Hermes",
+      clientName: "Example App",
       resourceUri: "https://preview.example/api/mcp",
     });
   });

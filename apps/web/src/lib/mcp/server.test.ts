@@ -134,7 +134,7 @@ describe("registerMcpReadTools", () => {
     const fake = createFakeServer();
     const handlers = createHandlers();
     registerMcpReadTools(fake.server, handlers);
-    const authInfo = { token: "test-bearer", clientId: "hermes", scopes: [] };
+    const authInfo = { token: "test-bearer", clientId: "test-client", scopes: [] };
     const context = { requestId: "mcp-request-1" };
 
     const projects = fake.registrations.find(

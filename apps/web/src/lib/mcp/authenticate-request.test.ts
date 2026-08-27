@@ -39,7 +39,7 @@ describe("MCP request authentication", () => {
       iss: ISSUER,
       aud: AUDIENCE,
       sub: "00000000-0000-0000-0000-000000000001",
-      client_id: "hermes-client",
+      client_id: "test-mcp-client",
       exp: NOW + 600,
     });
 
@@ -54,7 +54,7 @@ describe("MCP request authentication", () => {
       accessToken: "signed-token",
       claims: {
         sub: "00000000-0000-0000-0000-000000000001",
-        client_id: "hermes-client",
+        client_id: "test-mcp-client",
       },
     });
 

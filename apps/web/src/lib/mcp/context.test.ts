@@ -7,7 +7,7 @@ import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 const ISSUER = "https://example.supabase.co/auth/v1";
 const AUDIENCE = "https://ega.example.com/api/mcp";
 const USER_ID = "00000000-0000-0000-0000-000000000001";
-const CLIENT_ID = "hermes-client";
+const CLIENT_ID = "test-mcp-client";
 
 function bearerHeaders(): Headers {
   return new Headers({ authorization: "Bearer signed-token" });

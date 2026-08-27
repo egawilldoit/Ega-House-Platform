@@ -4,11 +4,9 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
-  Bot,
   CalendarCheck2,
   CheckSquare,
   CircleHelp,
-  ExternalLink,
   FileText,
   Flag,
   Grid2X2,
@@ -269,25 +267,6 @@ export function SidebarNavigation({
         <div id="workspace-system-label" className="sidebar-section-label">
           System
         </div>
-
-        <a
-          href="https://hermes.egawilldoit.online/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="sidebar-link workspace-nav-link"
-          aria-label={compact ? "Hermes" : undefined}
-          title={compact ? "Hermes" : undefined}
-          onClick={onNavigate}
-        >
-          <span className="workspace-nav-index" aria-hidden="true">
-            HX
-          </span>
-          <span className="sidebar-link-icon" aria-hidden="true">
-            <Bot />
-          </span>
-          <span className="workspace-nav-label">Hermes</span>
-          <ExternalLink className="workspace-nav-external" aria-hidden="true" />
-        </a>
 
         {SYSTEM_ROUTES.map((route) => (
           <RouteLink

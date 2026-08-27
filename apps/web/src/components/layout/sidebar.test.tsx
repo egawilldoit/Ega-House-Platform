@@ -11,11 +11,9 @@ const navigationFile = path.join(
   "sidebar-navigation.tsx",
 );
 
-test("renders Hermes external link in shared workspace navigation", () => {
+test("does not render Hermes external link in shared workspace navigation", () => {
   const source = readFileSync(navigationFile, "utf8");
 
-  assert.match(source, /href="https:\/\/hermes\.egawilldoit\.online\/"/);
-  assert.match(source, /target="_blank"/);
-  assert.match(source, /rel="noopener noreferrer"/);
-  assert.match(source, /Hermes/);
+  assert.doesNotMatch(source, /hermes\.egawilldoit\.online/);
+  assert.doesNotMatch(source, /href="https:\/\/hermes/);
 });
