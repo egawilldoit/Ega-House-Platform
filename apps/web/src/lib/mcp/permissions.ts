@@ -2,16 +2,26 @@ export const MCP_PERMISSION_PROFILES = [
   "read_only",
   "task_manager",
   "delivery_observer",
+  "workspace_manager",
 ] as const;
 
 export type McpPermissionProfile = (typeof MCP_PERMISSION_PROFILES)[number];
 
 export const MCP_PERMISSIONS = [
   "projects.read",
+  "projects.create",
+  "projects.update",
   "goals.read",
+  "goals.create",
+  "goals.update",
   "tasks.read",
   "tasks.create",
   "tasks.update",
+  "today.read",
+  "today.update",
+  "timer.read",
+  "timer.create",
+  "timer.update",
   "delivery_runs.read",
   "delivery_events.read",
   "delivery_artifacts.read",
@@ -26,6 +36,8 @@ const PROFILE_PERMISSIONS: Readonly<
     "projects.read",
     "goals.read",
     "tasks.read",
+    "today.read",
+    "timer.read",
   ],
   task_manager: [
     "projects.read",
@@ -33,11 +45,29 @@ const PROFILE_PERMISSIONS: Readonly<
     "tasks.read",
     "tasks.create",
     "tasks.update",
+    "today.read",
+    "timer.read",
   ],
   delivery_observer: [
     "delivery_runs.read",
     "delivery_events.read",
     "delivery_artifacts.read",
+  ],
+  workspace_manager: [
+    "projects.read",
+    "projects.create",
+    "projects.update",
+    "goals.read",
+    "goals.create",
+    "goals.update",
+    "tasks.read",
+    "tasks.create",
+    "tasks.update",
+    "today.read",
+    "today.update",
+    "timer.read",
+    "timer.create",
+    "timer.update",
   ],
 };
 

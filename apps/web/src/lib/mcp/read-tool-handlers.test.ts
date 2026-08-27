@@ -1,4 +1,4 @@
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,7 +16,7 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
 };
 
 function createDependencies(): McpReadToolDependencies {
@@ -54,7 +54,7 @@ describe("MCP read tool handlers", () => {
       ok: true,
       permissionProfile: "read_only",
       permissionsVersion: 1,
-      permissions: ["projects.read", "goals.read", "tasks.read"],
+      permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
       writesEnabled: false,
     });
     expect(dependencies.createUserClient).not.toHaveBeenCalled();

@@ -14,6 +14,8 @@ describe("MCP permission profiles", () => {
       "projects.read",
       "goals.read",
       "tasks.read",
+      "today.read",
+      "timer.read",
     ]);
     expect(hasMcpPermission(permissions, "tasks.create")).toBe(false);
   });

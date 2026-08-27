@@ -10,7 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
   title: "Authorize MCP access",
-  description: "Review and approve secure, read-only EGA House MCP access.",
+  description: "Review and approve secure EGA House MCP access.",
 };
 
 type ConsentPageProps = {
@@ -107,6 +107,7 @@ export default async function OAuthConsentPage({
   }
 
   const decisionError = readSingleParameter(parameters.error);
+  const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
 
   return (
     <main className="min-h-screen bg-[#f4ed9a] px-6 py-14 text-[#17383a]">
@@ -117,12 +118,12 @@ export default async function OAuthConsentPage({
               EGA House MCP
             </p>
             <h1 className="mt-5 text-4xl font-semibold leading-tight lg:text-5xl">
-              Approve read-only workspace access.
+              {writesEnabled ? "Choose workspace access level." : "Approve read-only workspace access."}
             </h1>
             <p className="mt-5 max-w-md leading-7 text-[#f4ed9a]/70">
-              The requesting client will be able to inspect your projects, goals,
-              and tasks. It cannot create, edit, archive, merge, deploy, or run
-              commands through this authorization.
+              {writesEnabled
+                ? "Grant read-only inspection or full workspace management. Workspace management can create and update projects, goals, tasks, Today and timers — still scoped to your account and client."
+                : "The requesting client will be able to inspect your projects, goals, and tasks. It cannot create, edit, archive, merge, deploy, or run commands through this authorization."}
             </p>
           </div>
 
@@ -152,18 +153,38 @@ export default async function OAuthConsentPage({
               <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-black/45">
                 EGA House permissions
               </h3>
-              <ul className="mt-3 space-y-3">
-                {[
-                  ["Projects", "List projects that belong to your account"],
-                  ["Goals", "List goals that belong to your account"],
-                  ["Tasks", "List and filter tasks that belong to your account"],
-                ].map(([label, description]) => (
-                  <li key={label} className="rounded-2xl border border-black/10 bg-white/60 p-4">
-                    <p className="font-semibold">Read {label}</p>
-                    <p className="mt-1 text-sm leading-6 text-black/55">{description}</p>
-                  </li>
-                ))}
-              </ul>
+              {writesEnabled ? (
+                <fieldset className="mt-3 space-y-3">
+                  <legend className="sr-only">Permission level</legend>
+                  <label className="flex gap-3 rounded-2xl border border-black/10 bg-white/80 p-4 has-[input:checked]:border-[#17383a] has-[input:checked]:bg-[#17383a]/[0.04]">
+                    <input type="radio" name="permission_profile" value="read_only" defaultChecked className="mt-1" />
+                    <span>
+                      <span className="font-semibold">Read-only</span>
+                      <span className="mt-1 block text-sm leading-6 text-black/55">List projects, goals, tasks, Today plan and timer sessions. No writes.</span>
+                    </span>
+                  </label>
+                  <label className="flex gap-3 rounded-2xl border border-black/10 bg-white/80 p-4 has-[input:checked]:border-[#17383a] has-[input:checked]:bg-[#17383a]/[0.04]">
+                    <input type="radio" name="permission_profile" value="workspace_manager" className="mt-1" />
+                    <span>
+                      <span className="font-semibold">Workspace management</span>
+                      <span className="mt-1 block text-sm leading-6 text-black/55">Read plus create/update projects, goals, tasks, Today and timers. Still owner-scoped and client-bound.</span>
+                    </span>
+                  </label>
+                </fieldset>
+              ) : (
+                <ul className="mt-3 space-y-3">
+                  {[
+                    ["Projects", "List projects that belong to your account"],
+                    ["Goals", "List goals that belong to your account"],
+                    ["Tasks", "List and filter tasks that belong to your account"],
+                  ].map(([label, description]) => (
+                    <li key={label} className="rounded-2xl border border-black/10 bg-white/60 p-4">
+                      <p className="font-semibold">Read {label}</p>
+                      <p className="mt-1 text-sm leading-6 text-black/55">{description}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             {details.scopes.length > 0 ? (

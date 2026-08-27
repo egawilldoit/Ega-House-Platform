@@ -53,7 +53,7 @@ describe("verifyMcpHandlerToken", () => {
       resourceUri: AUDIENCE,
       status: "active",
       permissionProfile: "read_only",
-      permissions: ["projects.read", "goals.read", "tasks.read"],
+      permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
       permissionsVersion: 1,
     });
 
@@ -68,6 +68,8 @@ describe("verifyMcpHandlerToken", () => {
           "projects.read",
           "goals.read",
           "tasks.read",
+          "today.read",
+          "timer.read",
         ],
         expiresAt: EXPIRY,
       }),
