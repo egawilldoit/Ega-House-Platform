@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   description: {
-    color: mobileTheme.colors.textMuted,
+    color: mobileTheme.colors.textSubtle,
     fontSize: 12,
     marginTop: 2,
   },
