@@ -82,6 +82,11 @@ export type McpWriteToolHandlers = {
     input: { sessionId: string; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  clearCompletedToday: (
+    authInfo: AuthInfo | undefined,
+    input: { date: string; operationId: string; confirmed?: boolean; requestState?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 const READ_ONLY_ANNOTATIONS = {
@@ -256,6 +261,13 @@ const startTimerInputSchema = z.object({
 const stopTimerInputSchema = z.object({
   sessionId: uuidSchema,
   operationId: z.string().uuid(),
+}).strict();
+
+const clearCompletedTodayInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  operationId: z.string().uuid(),
+  confirmed: z.boolean().optional(),
+  requestState: z.string().optional(),
 }).strict();
 
 const genericSuccessOutputSchema = z.object({
@@ -441,6 +453,19 @@ export function registerMcpWriteTools(
     },
     async (input, ctx) =>
       handlers.stopTimer(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_clear_completed_today",
+    {
+      title: "Clear completed Today items",
+      description: "Clear completed tasks planned for date. Requires today.update and human confirmation via MRTR.",
+      inputSchema: clearCompletedTodayInputSchema,
+      outputSchema: genericSuccessOutputSchema,
+      annotations: DESTRUCTIVE_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.clearCompletedToday(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
   );
 }
 

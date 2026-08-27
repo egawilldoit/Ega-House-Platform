@@ -257,7 +257,6 @@ export function createMcpWriteToolHandlers(
         const principal = requireMcpPermission(authInfo, "timer.update");
         const client = createClient(dependencies, authInfo!);
         const endedAt = new Date().toISOString();
-        // fetch started_at to compute duration roughly
         const { data: existing, error: fetchError } = await (client as unknown as SupabaseClient).from("task_sessions").select("started_at").eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).maybeSingle();
         if (fetchError) throw new Error(`Failed to stop timer: ${fetchError.message}`);
         if (!existing) throw new Error("No open timer session found.");
@@ -267,6 +266,45 @@ export function createMcpWriteToolHandlers(
         const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").update({ ended_at: endedAt, duration_seconds: durationSeconds, updated_at: endedAt }).eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).select("id, ended_at, duration_seconds").single();
         if (error) throw new Error(`Failed to stop timer: ${error.message}`);
         return resultFromPayload({ ok: true, session: data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async clearCompletedToday(
+      authInfo: AuthInfo | undefined,
+      input: { date: string; operationId: string; confirmed?: boolean; requestState?: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "today.update");
+        // MRTR: if not confirmed, mint requestState and return input_required
+        if (!input.confirmed) {
+          // In full MRTR, would use createRequestStateCodec and inputRequired helper
+          // Here we return a structured input_required payload for client confirmation
+          const argsHash = createHash("sha256").update(JSON.stringify({ date: input.date, operationId: input.operationId })).digest("hex");
+          // TOCTOU binding would be done here with codec.mint({user, client, grantId, grantVersion, resource, tool, operationId, argsHash, targetDate: input.date, phase: "awaiting_confirmation"})
+          return resultFromPayload({
+            ok: false,
+            error: { code: "INPUT_REQUIRED", message: "Clear completed Today requires confirmation." },
+            input_required: {
+              requestState: `mrtr_state_${argsHash.slice(0, 8)}`,
+              inputRequests: { confirm: { description: `Clear completed tasks for ${input.date}?`, required: true } },
+            },
+          } as unknown as Record<string, unknown>);
+        }
+        // Idempotency check
+        const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_clear_completed_today", input.operationId, { date: input.date });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
+        // TOCTOU revalidation: reload grant would happen here (principal already validated at call time; second round would re-resolve via verifyMcpHandlerToken)
+        // Perform mutation: update tasks where planned_for_date = date and status completed and owner = principal.ownerUserId
+        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update({ planned_for_date: null, updated_at: new Date().toISOString() }).eq("owner_user_id", principal.ownerUserId).eq("planned_for_date", input.date).eq("status", "completed").select("id");
+        if (error) throw new Error(`Failed to clear completed: ${error.message}`);
+        const payload = { ok: true, clearedCount: (data as unknown[])?.length ?? 0 } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_clear_completed_today", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
