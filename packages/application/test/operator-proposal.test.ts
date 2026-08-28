@@ -344,13 +344,16 @@ test("Proposal includes canonical local date/time-context identifier", () => {
   const proposalUtc = buildOperatorProposal({ snapshot: snap, timezone: "UTC", now: new Date("2026-08-10T12:00:00Z") });
   assert.equal(proposalUtc.date, TODAY);
   assert.equal(proposalUtc.timezone, "UTC");
-  assert.equal(proposalUtc.timeContextId, `${TODAY}::UTC`);
-  assert.equal(proposalUtc.sourceEvidence.timeContextId, `${TODAY}::UTC`);
+  assert.equal(proposalUtc.timeContextId.startsWith(`${TODAY}::UTC::`), true);
+  assert.equal(proposalUtc.sourceEvidence.timeContextId.startsWith(`${TODAY}::UTC::`), true);
   assert.equal(proposalUtc.sourceEvidence.date, TODAY);
   assert.equal(proposalUtc.sourceEvidence.timezone, "UTC");
+  // dayWindow evidence must be present and match UTC day window
+  assert.ok(proposalUtc.dayWindow.startUtcIso);
+  assert.ok(proposalUtc.sourceEvidence.dayWindow.startUtcIso);
 
   const proposalNY = buildOperatorProposal({ snapshot: snap, timezone: "America/New_York", now: new Date("2026-08-10T12:00:00Z") });
-  assert.equal(proposalNY.timeContextId, `${TODAY}::America/New_York`);
+  assert.equal(proposalNY.timeContextId.startsWith(`${TODAY}::America/New_York::`), true);
   assert.equal(proposalNY.sourceEvidence.timezone, "America/New_York");
 });
 

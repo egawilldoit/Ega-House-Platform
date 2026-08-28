@@ -18,6 +18,10 @@ import type { OperatorSnapshotDto } from '@ega/contracts/operator';
 const EMPTY_TODAY_RESPONSE: OperatorSnapshotDto = {
   ok: true,
   date: '2026-08-10',
+  timezone: 'UTC',
+  timeContextId: '2026-08-10::UTC::2026-08-10T00:00:00.000Z',
+  dayWindow: { startUtcIso: '2026-08-10T00:00:00.000Z', endUtcIso: '2026-08-11T00:00:00.000Z' },
+  plannedToday: [],
   sections: { planned: [], inProgress: [], blocked: [], completed: [] },
   focus: { startHere: null, queue: [] },
   schedule: { blocks: [], flexible: [] },
@@ -123,6 +127,15 @@ function makeFakeClient(): EgaApiClient {
       remove: jest.fn(),
       updateStatus: jest.fn(),
       clearCompleted: jest.fn(),
+    },
+    operator: {
+      create: jest.fn(),
+      revise: jest.fn(),
+      approve: jest.fn(),
+      apply: jest.fn(),
+      dismiss: jest.fn(),
+      get: jest.fn(),
+      list: jest.fn(),
     },
     notifications: {
       list: jest.fn(),

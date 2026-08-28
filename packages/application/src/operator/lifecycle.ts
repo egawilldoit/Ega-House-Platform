@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { getLocalDayWindow } from "@ega/domain";
 import { isTaskCanceledStatus, isTaskCompletedStatus } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
@@ -160,6 +161,14 @@ export function computeOperatorBaselineHash(input: {
   taskVersions: OperatorProposalTaskVersion[];
 }): string {
   // Reuse canonical hash input shape from proposal builder
+  let dayWindow: { startUtcIso: string; endUtcIso: string };
+  try {
+    const w = getLocalDayWindow(input.timezone, input.date);
+    dayWindow = { startUtcIso: w.startUtcIso, endUtcIso: w.endUtcIso };
+  } catch {
+    const iso = new Date().toISOString();
+    dayWindow = { startUtcIso: iso, endUtcIso: iso };
+  }
   const proposalLike: OperatorProposal = {
     version: input.version,
     date: input.date,
@@ -171,6 +180,7 @@ export function computeOperatorBaselineHash(input: {
     totalEstimateMinutes: 0,
     isSparse: false,
     remainingCandidates: 0,
+    dayWindow,
     sourceEvidence: {
       version: input.version,
       generatedAt: new Date().toISOString(),
@@ -180,6 +190,7 @@ export function computeOperatorBaselineHash(input: {
       totalCandidatesConsidered: input.candidateIds.length,
       candidateIds: input.candidateIds,
       taskVersions: input.taskVersions,
+      dayWindow,
     },
   };
   const hashInput = getOperatorProposalHashInput(proposalLike);
@@ -734,7 +745,6 @@ export async function getOperatorAcceptedBaseline(
   if (!found.value) return applicationFailure("Proposal not found.");
   const p = found.value;
   // Baseline reconstructable: for applied/partially_applied, use result.appliedTaskIds, otherwise proposedTaskIds
-  const appliedTaskIds = p.result?.appliedTaskIds ?? (p.status === "applied" || p.status === "partially_applied" ? p.proposedTaskIds : []);
   // For stale/dismissed, baseline is empty or original? Spec says baseline for later replanning is what actually applied, including partial, not merely original. So for not-applied, baseline is empty or original but flag status.
   const baseline: OperatorAcceptedBaseline = {
     proposalId: p.id,

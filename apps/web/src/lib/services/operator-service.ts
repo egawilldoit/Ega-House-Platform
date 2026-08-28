@@ -1,6 +1,7 @@
 import { createAuthenticatedActor, getOperatorSnapshot, type OperatorSnapshot } from "@ega/application";
-import { SupabaseTodayReadPort } from "@ega/data-access";
+import { SupabaseTimeContextRepository, SupabaseTodayReadPort } from "@ega/data-access";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -9,25 +10,23 @@ export type OperatorSnapshotData = OperatorSnapshot;
 export async function getOperatorSnapshotData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
-  actorId?: string;
+  requestedTimezone?: string;
 }): Promise<{ data: OperatorSnapshotData | null; errorMessage: string | null }> {
   const supabase = options?.supabase ?? (await createClient());
   const now = options?.now ?? new Date();
 
-  // Derive actor from supplied actorId or current user session.
-  let actorId = options?.actorId ?? null;
-  if (!actorId) {
-    const { data: userData } = await supabase.auth.getUser();
-    actorId = userData.user?.id ?? null;
-  }
-  if (!actorId) {
+  let user;
+  try {
+    user = await requireAuthenticatedUser({ supabase });
+  } catch {
     return { data: null, errorMessage: "Authentication required." };
   }
 
-  const actor = createAuthenticatedActor(actorId);
+  const actor = createAuthenticatedActor(user.id);
   const port = new SupabaseTodayReadPort(supabase as never);
+  const timeContextRepo = new SupabaseTimeContextRepository(supabase as never);
 
-  const result = await getOperatorSnapshot(actor, port, { now });
+  const result = await getOperatorSnapshot(actor, port, timeContextRepo, { now, requestedTimezone: options?.requestedTimezone });
   if (!result.ok) {
     return { data: null, errorMessage: result.errorMessage };
   }

@@ -1,6 +1,5 @@
 import { Hono, type Context } from "hono";
 
-import type { MobileTodayResponse } from "@ega/contracts/mobile";
 import type { OperatorSnapshotDto } from "@ega/contracts/operator";
 import {
   clearCompletedToday,
@@ -11,7 +10,11 @@ import {
   toLocalIsoDate,
   updateTodayTaskStatus,
 } from "@ega/application";
-import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -46,11 +49,12 @@ export function createTodayRoutes(
 
   routes.get("/", async (c) => {
     const { actor, client } = c.var;
-    const result = await getOperatorSnapshot(
-      actor,
-      new SupabaseTodayReadPort(client),
-      { date: c.req.query("date"), now: dependencies.now?.() },
-    );
+    const timeContextRepo = new SupabaseTimeContextRepository(client as never);
+    const result = await getOperatorSnapshot(actor, new SupabaseTodayReadPort(client), timeContextRepo, {
+      date: c.req.query("date"),
+      requestedTimezone: c.req.query("timezone"),
+      now: dependencies.now?.(),
+    });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
 
     // Operator snapshot is canonical; it extends the legacy MobileTodayResponse
@@ -58,6 +62,10 @@ export function createTodayRoutes(
     const payload = {
       ok: true as const,
       date: result.data.date,
+      timezone: result.data.timezone,
+      timeContextId: result.data.timeContextId,
+      dayWindow: result.data.dayWindow,
+      plannedToday: result.data.plannedToday,
       sections: result.data.sections,
       focus: result.data.focus,
       schedule: result.data.schedule,
@@ -65,8 +73,7 @@ export function createTodayRoutes(
       summary: result.data.summary,
       activeTimer: result.data.activeTimer,
       signals: result.data.signals,
-      plannedToday: result.data.plannedToday,
-    } satisfies OperatorSnapshotDto & MobileTodayResponse & { plannedToday: unknown };
+    } satisfies OperatorSnapshotDto;
     return c.json(payload);
   });
 

@@ -1,12 +1,12 @@
+import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain";
 import { isTaskCanceledStatus, isTaskCompletedStatus } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
-import { toLocalIsoDate } from "../shared/duration";
 import type { TodayReadPort } from "../today/ports";
 import { buildTodayPlan } from "../today/plan";
-import type { TodayPlanTask } from "../today/plan";
 import { buildOperatorSnapshot, type OperatorSnapshot, type OperatorTask } from "./snapshot";
+import { resolveTimeContext, type TimeContextRepository } from "../shared/time-context";
 
 // ---------------------------------------------------------------------------
 // Constants — deterministic proposal version & bounds
@@ -82,6 +82,7 @@ export type OperatorProposalSourceEvidence = Readonly<{
   totalCandidatesConsidered: number;
   candidateIds: string[];
   taskVersions: OperatorProposalTaskVersion[];
+  dayWindow: Readonly<{ startUtcIso: string; endUtcIso: string }>;
 }>;
 
 export type OperatorProposal = Readonly<{
@@ -96,12 +97,15 @@ export type OperatorProposal = Readonly<{
   isSparse: boolean;
   remainingCandidates: number;
   sourceEvidence: OperatorProposalSourceEvidence;
+  dayWindow: Readonly<{ startUtcIso: string; endUtcIso: string }>;
 }>;
 
 export type BuildOperatorProposalInput = Readonly<{
   snapshot: OperatorSnapshot;
   timezone?: string;
   now?: Date;
+  timeContextId?: string;
+  dayWindow?: Readonly<{ startUtcIso: string; endUtcIso: string }>;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -237,11 +241,7 @@ function dedupeTasks(tasks: OperatorTask[]): OperatorTask[] {
 function selectBoundedSet(sorted: OperatorTask[]): OperatorTask[] {
   if (sorted.length === 0) return [];
   if (sorted.length <= OPERATOR_PROPOSAL_MAX_TASKS) {
-    // Still respect load guard when we have more than MIN but load would exceed threshold?
-    // If pool small, just return all sorted — sparse handling will mark isSparse.
-    // For consistency, apply load guard even for small pools when pool size >= MIN but load huge.
     if (sorted.length < OPERATOR_PROPOSAL_MIN_TASKS) return sorted;
-    // Apply load guard: iterate and stop when threshold exceeded after MIN.
     const result: OperatorTask[] = [];
     let total = 0;
     for (const task of sorted) {
@@ -253,14 +253,9 @@ function selectBoundedSet(sorted: OperatorTask[]): OperatorTask[] {
       result.push(task);
       total += est;
     }
-    // Ensure at least MIN when load guard would have trimmed below MIN (already handled first MIN unconditional if we loop with condition? Actually we did unconditional for first MIN? Above condition only checks after MIN, so first MIN always added.)
-    // But above loop still respects max; if sorted length > MIN but we break early due load, we return 3..6.
-    // If sorted length <= MAX and load guard would trim, we return trimmed.
-    // If trimmed is still < MIN? not possible because we always add first MIN.
     return result.length >= OPERATOR_PROPOSAL_MIN_TASKS ? result : sorted.slice(0, Math.min(OPERATOR_PROPOSAL_MAX_TASKS, sorted.length));
   }
 
-  // Sorted length > MAX
   const result: OperatorTask[] = [];
   let total = 0;
   for (const task of sorted) {
@@ -272,7 +267,6 @@ function selectBoundedSet(sorted: OperatorTask[]): OperatorTask[] {
     result.push(task);
     total += est;
   }
-  // Deterministic fallback: if load guard produced fewer than MIN (should not), fill to MIN ignoring load
   if (result.length < OPERATOR_PROPOSAL_MIN_TASKS) {
     return sorted.slice(0, OPERATOR_PROPOSAL_MIN_TASKS);
   }
@@ -286,9 +280,24 @@ function selectBoundedSet(sorted: OperatorTask[]): OperatorTask[] {
 export function buildOperatorProposal(input: BuildOperatorProposalInput): OperatorProposal {
   const snapshot = input.snapshot;
   const now = input.now ?? new Date();
-  const timezone = (input.timezone ?? "UTC").trim() || "UTC";
+  // Prefer explicit timezone from input, else snapshot's timezone, else UTC
+  const timezone = (input.timezone ?? (snapshot as { timezone?: string }).timezone ?? "UTC").trim() || "UTC";
   const date = snapshot.date;
-  const timeContextId = `${date}::${timezone}`;
+  // Canonical day window evidence: use provided dayWindow or compute via domain
+  let dayWindow: { startUtcIso: string; endUtcIso: string };
+  if (input.dayWindow) {
+    dayWindow = { startUtcIso: input.dayWindow.startUtcIso, endUtcIso: input.dayWindow.endUtcIso };
+  } else {
+    try {
+      const w = getLocalDayWindow(timezone, date);
+      dayWindow = { startUtcIso: w.startUtcIso, endUtcIso: w.endUtcIso };
+    } catch {
+      const fallbackIso = now.toISOString();
+      dayWindow = { startUtcIso: fallbackIso, endUtcIso: fallbackIso };
+    }
+  }
+  // Evidence-based timeContextId: includes date, timezone, and UTC window start (proves DST-aware resolution)
+  const timeContextId = input.timeContextId ?? `${date}::${timezone}::${dayWindow.startUtcIso}`;
   const generatedAt = now.toISOString();
 
   // Candidate pool — all Today-relevant tasks the snapshot knows about
@@ -336,6 +345,7 @@ export function buildOperatorProposal(input: BuildOperatorProposalInput): Operat
     totalCandidatesConsidered: actionable.length,
     candidateIds: [...candidateIds],
     taskVersions: [...taskVersions],
+    dayWindow: { ...dayWindow },
   };
 
   return {
@@ -350,6 +360,7 @@ export function buildOperatorProposal(input: BuildOperatorProposalInput): Operat
     isSparse,
     remainingCandidates,
     sourceEvidence,
+    dayWindow: { ...dayWindow },
   };
 }
 
@@ -384,28 +395,77 @@ export function getOperatorProposalHashInput(proposal: OperatorProposal): Record
 export async function getOperatorProposal(
   actor: AuthenticatedActor,
   todayPort: TodayReadPort,
-  input: Readonly<{ date?: unknown; timezone?: unknown; now?: Date }> = {},
+  timeContextRepoOrInput: TimeContextRepository | Readonly<{ date?: unknown; timezone?: unknown; requestedTimezone?: unknown; now?: Date }> = {},
+  maybeInput: Readonly<{ date?: unknown; timezone?: unknown; requestedTimezone?: unknown; now?: Date }> = {},
 ): Promise<ApplicationResult<OperatorProposal>> {
-  const now = input.now ?? new Date();
-  const rawDate = String(input.date ?? "").trim();
-  const today = rawDate || toLocalIsoDate(now);
-  const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : "UTC";
+  let timeContextRepo: TimeContextRepository | null = null;
+  let input: Readonly<{ date?: unknown; timezone?: unknown; requestedTimezone?: unknown; now?: Date }> = {};
+  if (
+    timeContextRepoOrInput &&
+    typeof (timeContextRepoOrInput as TimeContextRepository).getTimezone === "function"
+  ) {
+    timeContextRepo = timeContextRepoOrInput as TimeContextRepository;
+    input = maybeInput;
+  } else {
+    input = (timeContextRepoOrInput as Readonly<{ date?: unknown; timezone?: unknown; requestedTimezone?: unknown; now?: Date }>) ?? {};
+  }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
-    return applicationFailure("Today date is invalid.");
+  const now = input.now ?? new Date();
+  if (Number.isNaN(now.getTime())) return applicationFailure("Current time is invalid.");
+
+  let timezone = "UTC";
+  let localDate = "";
+  let dayWindow: { startUtcIso: string; endUtcIso: string };
+
+  if (timeContextRepo) {
+    const tzInput = (input.requestedTimezone ?? input.timezone) as unknown;
+    const tcResult = await resolveTimeContext(actor, timeContextRepo, { requestedTimezone: tzInput, now });
+    if (!tcResult.ok) return applicationFailure(tcResult.errorMessage);
+    const tc = tcResult.data;
+    timezone = tc.timezone;
+    const rawDate = typeof input.date === "string" ? String(input.date).trim() : "";
+    if (rawDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return applicationFailure("Today date is invalid.");
+      localDate = rawDate;
+      try {
+        const w = getLocalDayWindow(timezone, localDate);
+        dayWindow = { startUtcIso: w.startUtcIso, endUtcIso: w.endUtcIso };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Today date is invalid.";
+        return applicationFailure(msg);
+      }
+    } else {
+      localDate = tc.localDate;
+      dayWindow = { startUtcIso: tc.dayWindow.startUtcIso, endUtcIso: tc.dayWindow.endUtcIso };
+    }
+  } else {
+    const rawDate = String(input.date ?? "").trim();
+    const requestedTzRaw = typeof (input.requestedTimezone ?? input.timezone) === "string" ? String(input.requestedTimezone ?? input.timezone).trim() : "";
+    timezone = requestedTzRaw && (() => { try { new Intl.DateTimeFormat("en-US", { timeZone: requestedTzRaw }).format(now); return true; } catch { return false; } })() ? requestedTzRaw : "UTC";
+    if (rawDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) return applicationFailure("Today date is invalid.");
+      localDate = rawDate;
+    } else {
+      try {
+        localDate = getLocalDateInTimezone(now, timezone);
+      } catch {
+        return applicationFailure("Unable to resolve local date right now.");
+      }
+    }
+    try {
+      const w = getLocalDayWindow(timezone, localDate);
+      dayWindow = { startUtcIso: w.startUtcIso, endUtcIso: w.endUtcIso };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Today date is invalid.";
+      return applicationFailure(msg);
+    }
   }
 
   const nowIso = now.toISOString();
-  const dayWindowStart = new Date(`${today}T00:00:00`);
-  const windowStartIso = (() => {
-    const dayStart = new Date(dayWindowStart);
-    if (Number.isNaN(dayStart.valueOf())) return nowIso;
-    dayStart.setHours(0, 0, 0, 0);
-    return dayStart.toISOString();
-  })();
+  const windowStartIso = dayWindow.startUtcIso;
 
   const [selectedResult, pinnedResult, inProgressResult, timerResult] = await Promise.all([
-    todayPort.listSelectedTasks(actor, { today }),
+    todayPort.listSelectedTasks(actor, { today: localDate }),
     todayPort.listPinnedSuggestions(actor, { limit: 80 }),
     todayPort.listInProgressSuggestions(actor, { limit: 80 }),
     todayPort.getTodayTimerSnapshot(actor, { nowIso, windowStartIso }),
@@ -419,7 +479,7 @@ export async function getOperatorProposal(
   const timerSnapshot = timerResult.ok ? timerResult.value : { activeTimer: null, trackedTodaySeconds: 0 };
 
   const plan = buildTodayPlan({
-    today,
+    today: localDate,
     selectedRows: selectedResult.value,
     pinnedRows: pinnedResult.value,
     inProgressRows: inProgressResult.value,
@@ -427,9 +487,9 @@ export async function getOperatorProposal(
     trackedTodaySeconds: timerSnapshot.trackedTodaySeconds,
   });
 
-  const snapshot = buildOperatorSnapshot({ plan });
+  const snapshot = buildOperatorSnapshot({ plan, timezone, dayWindow, timeContextId: `${localDate}::${timezone}::${dayWindow.startUtcIso}` });
 
-  const proposal = buildOperatorProposal({ snapshot, timezone, now });
+  const proposal = buildOperatorProposal({ snapshot, timezone, now, dayWindow, timeContextId: `${localDate}::${timezone}::${dayWindow.startUtcIso}` });
 
   return applicationSuccess(proposal);
 }

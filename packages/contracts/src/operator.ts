@@ -20,6 +20,10 @@ export type OperatorScheduleDto = Readonly<{
 export type OperatorSnapshotDto = Readonly<{
   ok: true;
   date: string;
+  timezone: string;
+  timeContextId: string;
+  dayWindow: Readonly<{ startUtcIso: string; endUtcIso: string }>;
+  plannedToday: MobileTodayTaskItem[];
   sections: Readonly<{
     planned: MobileTodayTaskItem[];
     inProgress: MobileTodayTaskItem[];

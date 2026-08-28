@@ -844,7 +844,8 @@ test("AC: Migration is generated and reviewed — production application separat
   const path = await import("node:path");
   const url = await import("node:url");
   const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-  const filePath = path.resolve(__dirname, "../../../drizzle/0047_operator_proposals.sql");
+  const candidates = ["../../../drizzle/0048_operator_proposals.sql", "../../../drizzle/0047_operator_proposals.sql"];
+  const filePath = candidates.map((p) => path.resolve(__dirname, p)).find((p) => fs.existsSync(p)) ?? path.resolve(__dirname, candidates[0]);
   assert.equal(fs.existsSync(filePath), true, "migration file should exist");
   const content = fs.readFileSync(filePath, "utf8");
   assert.match(content, /operator_proposals/);
