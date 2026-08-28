@@ -8,7 +8,8 @@
     "./mobile": "./src/mobile.ts",
     "./agent": "./src/agent.ts",
     "./common/task-list": "./src/common/task-list.ts",
-    "./time-context": "./src/time-context.ts"
+    "./time-context": "./src/time-context.ts",
+    "./execution-evidence": "./src/execution-evidence.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

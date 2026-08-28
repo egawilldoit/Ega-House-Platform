@@ -22,7 +22,8 @@
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
-    "./shared/duration": "./src/shared/duration.ts"
+    "./shared/duration": "./src/shared/duration.ts",
+    "./shared/execution-evidence": "./src/shared/execution-evidence.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
