@@ -16,6 +16,12 @@
 import type { HealthWorkloadSnapshot } from "./workload-snapshot";
 
 // Thresholds — shared policy, single source of truth.
+//
+// Product rulings — do not silently change without product review:
+// - 600/900 minutes weekly workload, 90/120 minutes session duration,
+//   2 days / 90 min low-activity, density 0.43.
+// Linear note: thresholds pending explicit product review (EGA-501/EGA-502).
+// Centralized, deterministic — keep here, never in React/Expo/Hono.
 export const HEALTH_RECOMMENDATION_THRESHOLDS = {
   // Rolling workload over 7d window
   highWorkloadMinutes: 600, // 10h in 7d
@@ -69,11 +75,6 @@ const SEVERITY_RANK: Record<HealthRecommendationSeverity, number> = {
 
 function formatMinutesLabel(minutes: number): string {
   return `${minutes} min`;
-}
-
-function formatSecondsLabel(seconds: number): string {
-  if (seconds >= 3600) return `${Math.floor(seconds / 60)} min`;
-  return `${Math.floor(seconds / 60)} min`;
 }
 
 export function getHealthRecommendations(snapshot: HealthWorkloadSnapshot): HealthRecommendation[] {

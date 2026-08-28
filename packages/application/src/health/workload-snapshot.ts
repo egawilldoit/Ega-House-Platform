@@ -19,11 +19,7 @@
  * (unless `suspect` outranks). Malformed rows → `suspect`.
  */
 
-import {
-  getLocalDateInTimezone,
-  getLocalDayWindow,
-  type LocalDayWindow,
-} from "@ega/domain";
+import { getLocalDayWindow, type LocalDayWindow } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import {
@@ -158,8 +154,6 @@ export async function getHealthWorkloadSnapshot(
   // We use the same includeOpenSessions policy so provisional evidence is
   // consistent with quality.
   let longestSeconds: number | null = null;
-  let totalForAvg = 0;
-  let contributingCount = 0;
 
   for (const session of sessions) {
     const overlap = getExecutionEvidenceSessionOverlapSeconds(session, window, {
@@ -167,8 +161,6 @@ export async function getHealthWorkloadSnapshot(
       includeOpenSessions,
     });
     if (overlap <= 0) continue;
-    totalForAvg += overlap;
-    contributingCount += 1;
     if (longestSeconds === null || overlap > longestSeconds) {
       longestSeconds = overlap;
     }

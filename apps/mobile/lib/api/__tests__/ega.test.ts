@@ -126,7 +126,6 @@ function makeFakeClient(): EgaApiClient {
       preferences: jest.fn(),
       updatePreferences: jest.fn(),
     },
-    },
   };
 }
 
