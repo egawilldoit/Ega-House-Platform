@@ -34,7 +34,7 @@ export type TodayTimerSnapshot = Readonly<{
 export interface TodayReadPort {
   listSelectedTasks(
     actor: AuthenticatedActor,
-    input: Readonly<{ today: string }>,
+    input: Readonly<{ today: string; windowStartIso?: string; windowEndIso?: string }>,
   ): Promise<RepositoryResult<TodaySourceTask[]>>;
   listPinnedSuggestions(
     actor: AuthenticatedActor,
