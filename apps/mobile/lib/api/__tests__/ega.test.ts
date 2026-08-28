@@ -112,6 +112,9 @@ function makeFakeClient(): EgaApiClient {
       updateStatus: jest.fn(),
       clearCompleted: jest.fn(),
     },
+    healthSnapshot: {
+      getSnapshot: jest.fn(),
+    },
   };
 }
 
