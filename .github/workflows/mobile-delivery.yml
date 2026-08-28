@@ -52,23 +52,15 @@ jobs:
             echo "::error::Failed to read apps/mobile/app.json expo.version — app.json is the ONLY native version authority"
             exit 1
           fi
-          if [[ "$SOURCE_REF" =~ refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
-            TAG_VERSION="${BASH_REMATCH[1]}"
-            if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
-              echo "::error::TAG_APP_VERSION_MISMATCH: tag version $TAG_VERSION != app.json expo.version $APP_VERSION"
-              exit 1
-            fi
-          fi
+          REF_META="$(node scripts/ci/validate-mobile-delivery-ref.mjs \
+            --ref "$SOURCE_REF" \
+            --app-version "$APP_VERSION" \
+            --json)"
+          echo "Mobile delivery ref metadata: $REF_META"
+          IS_TAG="$(printf '%s' "$REF_META" | jq -r '.isTag')"
+          IS_RC="$(printf '%s' "$REF_META" | jq -r '.isRc')"
 
           API_BASE_URL="https://ega-api.egawilldoit.online"
-          IS_TAG="false"
-          IS_RC="false"
-          if [[ "$SOURCE_REF" == refs/tags/mobile-v* ]]; then
-            IS_TAG="true"
-            if [[ "$SOURCE_REF" == *"-rc."* ]]; then
-              IS_RC="true"
-            fi
-          fi
 
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
@@ -138,8 +130,8 @@ jobs:
           REF="${{ steps.identity.outputs.source_ref }}"
           if [[ "$REF" == "refs/heads/main" ]]; then
             echo "Source is main — allowed."
-          elif [[ "$REF" == refs/tags/mobile-v* ]]; then
-            echo "Source is mobile tag — allowed."
+          elif [[ "$REF" =~ ^refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            echo "Source is valid mobile tag — allowed."
             TAG="${REF#refs/tags/}"
             TAG_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || echo "")"
             HEAD_SHA="$(git rev-parse HEAD)"
@@ -148,8 +140,11 @@ jobs:
               echo "::error::Tag $TAG does not point to HEAD $HEAD_SHA (points to $TAG_SHA)"
               exit 1
             fi
+          elif [[ "$REF" == refs/tags/mobile-v* ]]; then
+            echo "::error::INVALID_MOBILE_TAG: $REF"
+            exit 1
           else
-            echo "::error::Source $REF is not refs/heads/main nor refs/tags/mobile-v* — failing before Blacksmith"
+            echo "::error::Source $REF is not refs/heads/main nor a valid mobile-vX.Y.Z(-rc.N) tag — failing before Blacksmith"
             exit 1
           fi
 
