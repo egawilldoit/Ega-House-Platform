@@ -2,8 +2,8 @@
 
 **Branch:** `feat/mcp-v2-full-read-write`
 **Base SHA:** `1a01bf3d03bf2394358f204448d247f1b04d544e`
-**Final SHA (current):** `062554f` → next `0114826` etc
-**SDK:** `@modelcontextprotocol/server` 2.0.0 / `client` 2.0.0 / `core` 2.0.0, `zod` 4.4.3
+**Final SHA (current):** `fdf2ed2` (after W16 + W6 + W14-15 + zod-v4 + esbuild)
+**SDK:** `@modelcontextprotocol/server` 2.0.0 / `client` 2.0.0 / `core` 2.0.0, `zod` ^3.25.0 + `zod-v4` alias (MCP schemas), `esbuild` 0.28.2
 **Protocol:** `2026-07-28` (stateless, `ServerContext`, `requestState` HMAC, `MCP-Protocol-Version`/`Mcp-*` validated)
 
 ## Baseline (W0)
