@@ -11,6 +11,7 @@ import { ScreenHeader } from "@/components/mobile/ui/ScreenHeader";
 import { useBottomChromeMetrics } from "@/components/mobile/navigation/bottomChrome";
 import { InboxCaptureSheet } from "@/features/inbox/components/InboxCaptureSheet";
 import { useInboxListQuery, useArchiveInboxMutation, useCreateInboxMutation, useRestoreInboxMutation } from "@/features/inbox/query";
+import type { InboxItem } from "@ega/contracts/inbox";
 
 export default function InboxScreen() {
   const inboxQuery = useInboxListQuery();
@@ -23,7 +24,7 @@ export default function InboxScreen() {
   const [draftBody, setDraftBody] = useState("");
   const { contentBottomPadding } = useBottomChromeMetrics();
 
-  const items = (inboxQuery.data as any)?.items ?? [];
+  const items = (inboxQuery.data as unknown as { items?: InboxItem[] } | undefined)?.items ?? [];
   const isLoading = inboxQuery.isPending && !inboxQuery.data;
   const isError = inboxQuery.isError && !inboxQuery.data;
 
@@ -112,7 +113,7 @@ export default function InboxScreen() {
             </Card>
           ) : (
             <View style={styles.list}>
-              {items.map((item: any) => (
+              {items.map((item: InboxItem) => (
                 <Card key={item.id} style={styles.itemCard}>
                   <Text style={styles.itemTitle}>{item.title}</Text>
                   <Text style={styles.itemMeta}>

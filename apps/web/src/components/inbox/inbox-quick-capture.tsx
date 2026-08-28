@@ -15,7 +15,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { workspaceShortcutEvents } from "@/components/layout/workspace-keyboard-shortcuts";
 
 import { captureInboxIdea } from "./capture-action";
 
@@ -81,6 +80,7 @@ export function InboxQuickCapture() {
   useEffect(() => {
     const draft = loadDraft();
     if (draft) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(draft.title);
       setBody(draft.body);
       idempotencyKeyRef.current = draft.idempotencyKey || createIdempotencyKey();

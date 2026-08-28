@@ -13,6 +13,7 @@ import {
 import { convertInboxInputSchema } from "@ega/contracts/inbox";
 import { SupabaseInboxRepository, SupabaseTasksRepository } from "@ega/data-access";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
 
@@ -29,6 +30,7 @@ function getIdempotencyKey(c: { req: { header: (name: string) => string | undefi
 export function createInboxRoutes(
   _dependencies: ServerDependencies,
 ): Hono<{ Variables: ServerVariables }> {
+  void _dependencies;
   const routes = new Hono<{ Variables: ServerVariables }>();
 
   routes.get("/", async (c) => {
@@ -38,7 +40,7 @@ export function createInboxRoutes(
       return c.json({ error: { code: "VALIDATION", message: parsed.message } }, 400);
     }
 
-    const repo = new SupabaseInboxRepository(client as any);
+    const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await listInboxItems(actor, repo, parsed.data);
     if (!result.ok) {
       return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
@@ -60,7 +62,7 @@ export function createInboxRoutes(
 
   routes.get("/:id", async (c) => {
     const { actor, client } = c.var;
-    const repo = new SupabaseInboxRepository(client as any);
+    const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await getInboxItem(actor, repo, c.req.param("id"));
     if (!result.ok) return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     if (!result.data) return c.json({ error: { code: "NOT_FOUND", message: "Idea not found." } }, 404);
@@ -73,7 +75,17 @@ export function createInboxRoutes(
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
 
-    const repo = new SupabaseInboxRepository(client as any);
+    const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
+    // Idempotency: check pre-existing mapping to decide 200 vs 201 per HTTP semantics.
+    // If server can distinguish replay (existing key) from fresh create, return 200 for
+    // replay, 201 for new. This uses repository lookup before application call; the
+    // application layer also handles race idempotency, so 201->200 distinction is best-effort
+    // and clients accept both.
+    let isReplay = false;
+    if (idempotencyKey) {
+      const pre = await repo.getInboxItemByIdempotencyKey(actor, idempotencyKey);
+      if (pre.ok && pre.value) isReplay = true;
+    }
     const result = await createInboxItem(actor, repo, {
       title: body.title,
       body: body.body,
@@ -90,10 +102,8 @@ export function createInboxRoutes(
     // Echo idempotency key if provided (helps clients correlate retries).
     if (idempotencyKey) c.header("X-Idempotency-Key", idempotencyKey);
 
-    // Deduplicated retries return 200 with same item; fresh creates return 201.
-    // For simplicity we always return 200 when idempotency key was used and item already existed;
-    // otherwise 201. Detect via repository lookup? We keep 201 for now but clients handle both.
-    return c.json({ ok: true as const, item: result.data }, 201);
+    // Conventional HTTP: 201 for newly created, 200 for idempotent replay.
+    return c.json({ ok: true as const, item: result.data }, isReplay ? 200 : 201);
   });
 
   routes.patch("/:id", async (c) => {
@@ -101,7 +111,7 @@ export function createInboxRoutes(
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
 
-    const repo = new SupabaseInboxRepository(client as any);
+    const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await updateInboxItem(actor, repo, {
       id: c.req.param("id"),
       title: body.title,
@@ -120,7 +130,7 @@ export function createInboxRoutes(
 
   routes.post("/:id/archive", async (c) => {
     const { actor, client } = c.var;
-    const repo = new SupabaseInboxRepository(client as any);
+    const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await archiveInboxItem(actor, repo, { id: c.req.param("id") });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true as const, item: result.data });
@@ -128,7 +138,7 @@ export function createInboxRoutes(
 
   routes.post("/:id/restore", async (c) => {
     const { actor, client } = c.var;
-    const repo = new SupabaseInboxRepository(client as any);
+    const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await restoreInboxItem(actor, repo, { id: c.req.param("id") });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true as const, item: result.data });
@@ -146,8 +156,8 @@ export function createInboxRoutes(
       return c.json({ error: { code: "VALIDATION", message } }, 400);
     }
 
-    const inboxRepo = new SupabaseInboxRepository(client as any);
-    const tasksRepo = new SupabaseTasksRepository(client as any);
+    const inboxRepo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
+    const tasksRepo = new SupabaseTasksRepository(client as unknown as SupabaseClient);
     const result = await convertInboxItemToTask(actor, inboxRepo, tasksRepo, {
       inboxItemId: inboxId,
       projectId: parsed.data.projectId,

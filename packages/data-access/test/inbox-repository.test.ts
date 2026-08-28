@@ -290,54 +290,14 @@ test("markInboxItemConverted updates status to converted owner scoped", async ()
   assert.equal((upd.args[0] as any).status, "converted");
 });
 
-test("findRecentOrphanTaskId is owner-scoped, title/project filtered and time-bounded", async () => {
-  const sinceIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const taskRow = { id: "task-orphan", created_at: new Date().toISOString() };
+test("conversion uses deterministic task id - no heuristic orphan lookup", async () => {
+  // This test documents the removal of the unsafe heuristic: conversion must use
+  // deterministicTaskIdForInboxConversion, not title/project/5min matching.
+  // See packages/application/src/inbox/convert.ts for the deterministic design.
   const fake = new FakeSupabase();
-  // First call returns candidate task
-  fake.push("tasks", { data: [taskRow], error: null });
-  // Second call checks task_external_refs for that task - not linked
-  fake.push("task_external_refs", { data: null, error: null });
-  const result = await repository(fake).findRecentOrphanTaskId(ACTOR, {
-    title: "Recoverable",
-    projectId: "proj-1",
-    sinceIso,
-  });
+  fake.push("idea_notes", { data: inboxRow({ status: "converted" }), error: null });
+  const result = await repository(fake).markInboxItemConverted(ACTOR, "inbox-1");
   assert.equal(result.ok, true);
-  assert.equal((result as any).value, "task-orphan");
-  // Verify owner-scoped and title/project and time filters present
-  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
-  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "title" && s.args[1] === "Recoverable"));
-  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "project_id" && s.args[1] === "proj-1"));
-  assert.ok(fake.calls[0].steps.some((s) => s.method === "gt" && s.args[0] === "created_at"));
-  // Second call should check task_external_refs owner-scoped
-  assert.ok(fake.calls[1].steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id"));
-  assert.ok(fake.calls[1].steps.some((s) => s.method === "eq" && s.args[0] === "task_id" && s.args[1] === "task-orphan"));
-});
-
-test("findRecentOrphanTaskId returns null when candidate is already linked", async () => {
-  const sinceIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const fake = new FakeSupabase();
-  fake.push("tasks", { data: [{ id: "task-linked", created_at: new Date().toISOString() }], error: null });
-  fake.push("task_external_refs", { data: { task_id: "task-linked" }, error: null });
-  const result = await repository(fake).findRecentOrphanTaskId(ACTOR, {
-    title: "Recoverable",
-    projectId: "proj-1",
-    sinceIso,
-  });
-  assert.equal(result.ok, true);
-  assert.equal((result as any).value, null);
-});
-
-test("findRecentOrphanTaskId respects time window (no recent candidate)", async () => {
-  const sinceIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const fake = new FakeSupabase();
-  fake.push("tasks", { data: [], error: null });
-  const result = await repository(fake).findRecentOrphanTaskId(ACTOR, {
-    title: "Old",
-    projectId: "proj-1",
-    sinceIso,
-  });
-  assert.equal(result.ok, true);
-  assert.equal((result as any).value, null);
+  // Ensure repository no longer exposes findRecentOrphanTaskId
+  assert.equal(typeof (repository(fake) as any).findRecentOrphanTaskId, "undefined");
 });

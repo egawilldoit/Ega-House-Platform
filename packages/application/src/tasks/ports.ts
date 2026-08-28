@@ -86,6 +86,8 @@ export type TaskQuery = Readonly<{
 }>;
 
 export type CreateTaskRecordInput = Readonly<{
+  /** Optional deterministic id for inbox conversion idempotency; when omitted, DB generates random. */
+  id?: string;
   title: string;
   projectId: string;
   goalId: string | null;

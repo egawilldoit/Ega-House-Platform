@@ -1,7 +1,7 @@
-import type { ConvertInboxInput, InboxConversionResponse, InboxItem, InboxListResponse, InboxMutationResponse } from "@ega/contracts/inbox";
+import type { ConvertInboxInput, InboxConversionResponse, InboxListResponse, InboxMutationResponse } from "@ega/contracts/inbox";
 
 import type { ApiResult } from "./errors";
-import type { HttpClient } from "./http";
+import type { HttpClient, HttpRequestOptions } from "./http";
 
 export type InboxListQuery = Readonly<{
   view?: string | null;
@@ -86,7 +86,7 @@ export function createInboxApi(http: HttpClient): InboxApi {
       // For now, we use fetch directly if idempotency key needed, but we can also pass via query? Simpler: ignore header for now and rely on future extension.
       // To keep sliced vertical, we send via HttpClient with body and let server read header if we extend HttpClient later.
       // As workaround, pass idempotencyKey as part of request options via extended http method if available.
-      const requestOptions: any = { path: "/api/inbox", method: "POST", body: input };
+      const requestOptions = { path: "/api/inbox", method: "POST" as const, body: input } as HttpRequestOptions;
       if (headers) {
         requestOptions.headers = headers;
       }

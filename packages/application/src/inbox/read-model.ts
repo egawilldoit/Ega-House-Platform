@@ -1,5 +1,4 @@
 import { isInboxType, isManualInboxStatus, normalizeInboxPriority, normalizeOptionalProjectId, parseInboxTags } from "@ega/domain";
-import type { InboxListFilters } from "@ega/contracts/inbox";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
@@ -13,7 +12,7 @@ export function parseInboxListQuery(
   query: (name: string) => string | undefined | null,
 ): { ok: true; data: InboxQuery } | { ok: false; message: string } {
   const viewParam = (query("view") ?? "active").trim().toLowerCase();
-  const view = (["active", "archived", "all"] as const).includes(viewParam as any) ? (viewParam as any) : "active";
+  const view = (["active", "archived", "all"] as readonly string[]).includes(viewParam) ? (viewParam as "active" | "archived" | "all") : "active";
 
   const searchParam = (query("search") ?? query("q") ?? "").trim();
   const search = searchParam || null;
@@ -22,14 +21,14 @@ export function parseInboxListQuery(
   let type: InboxQuery["type"] = null;
   if (typeParam && typeParam !== "all") {
     if (!isInboxType(typeParam)) return { ok: false, message: "Invalid type filter." };
-    type = typeParam as any;
+    type = typeParam as unknown as typeof type;
   }
 
   const statusParam = (query("status") ?? "all").trim().toLowerCase();
   let status: InboxQuery["status"] = null;
   if (statusParam && statusParam !== "all") {
     if (!isManualInboxStatus(statusParam)) return { ok: false, message: "Invalid status filter." };
-    status = statusParam as any;
+    status = statusParam as unknown as typeof status;
   }
 
   const projectParam = (query("project") ?? query("projectId") ?? "all").trim();
@@ -73,7 +72,7 @@ export function parseInboxListQuery(
   return {
     ok: true,
     data: {
-      view: view as any,
+      view: view as unknown as typeof view,
       search,
       type,
       status,

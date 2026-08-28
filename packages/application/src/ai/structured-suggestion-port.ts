@@ -3,7 +3,7 @@
  * Smart Inbox and Daily Operator. Every AI proposal flows through this shape
  * so we have one hardened integration stack, not two.
  *
- * Design invariants (EGA-508):
+ * Design invariants (EGA-508): Provider-neutral foundation implemented. Concrete suggestion experience blocked on HITL provider/model decision.
  * - provider/model are configurable strings; secrets never enter this layer
  * - input is treated as untrusted data (capture text is content, not policy)
  * - output is strict schema-validated + allow-list + owner-side entity checked

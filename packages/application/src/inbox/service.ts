@@ -20,11 +20,6 @@ import type {
   UpdateInboxRecordInput,
 } from "./ports";
 
-function optionalTrimmedString(value: unknown): string | null {
-  const normalized = String(value ?? "").trim();
-  return normalized ? normalized : null;
-}
-
 function normalizeTitle(value: unknown): string {
   return String(value ?? "").trim();
 }
@@ -32,15 +27,6 @@ function normalizeTitle(value: unknown): string {
 function normalizeBody(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
   return normalized ? normalized : null;
-}
-
-function normalizeTagsInput(value: unknown): string[] {
-  try {
-    return parseInboxTags(value ?? "");
-  } catch (error) {
-    // rethrow with consistent message; caller will map to failure
-    throw error;
-  }
 }
 
 async function ensureProjectVisible(
@@ -264,7 +250,7 @@ export function normalizeInboxListFilters(filters?: {
   tag: string;
 } {
   const viewRaw = String(filters?.view ?? "active").trim().toLowerCase();
-  const view = (["active", "archived", "all"] as const).includes(viewRaw as any) ? (viewRaw as any) : "active";
+  const view = (["active", "archived", "all"] as readonly string[]).includes(viewRaw) ? (viewRaw as "active" | "archived" | "all") : "active";
   const search = String(filters?.search ?? "").trim();
   const typeRaw = String(filters?.type ?? "all").trim().toLowerCase();
   const type = typeRaw && typeRaw !== "all" && isInboxType(typeRaw) ? typeRaw : "all";

@@ -59,8 +59,9 @@ const JSON_HEADERS = { "content-type": "application/json" };
 
 test("POST /api/inbox with same X-Idempotency-Key does not create duplicate (retry-safe)", async () => {
   const fake = fakeSupabase();
-  // First request: lookup miss, then projects check, then insert
-  fake.pushResult("inbox_idempotency_keys", { data: null, error: null }); // pre-check miss
+  // First request: pre-check miss + service lookup miss, then projects check, then insert
+  fake.pushResult("inbox_idempotency_keys", { data: null, error: null }); // pre-check miss (no idea fetch)
+  fake.pushResult("inbox_idempotency_keys", { data: null, error: null }); // service lookup miss (no idea fetch)
   fake.pushResult("projects", { data: [{ id: "project-1" }], error: null });
   fake.pushResult("idea_notes", { data: { id: "inbox-1", title: "Idea", body: null, status: "inbox", type: "idea", project_id: null, priority: null, tags: [], created_at: "2026-04-29T12:00:00.000Z", updated_at: "2026-04-29T12:00:00.000Z", projects: null }, error: null });
   fake.pushResult("inbox_idempotency_keys", { data: null, error: null }); // insert mapping
@@ -77,11 +78,13 @@ test("POST /api/inbox with same X-Idempotency-Key does not create duplicate (ret
   assert.equal(firstBody.item.id, "inbox-1");
   assert.equal(first.headers.get("x-idempotency-key"), key);
 
-  // Second request with same key: should return same item without second insert
-  // Setup: lookup hit returns existing mapping, then fetch idea_notes
+  // Second request with same key: should return same item without second insert (replay -> 200)
+  // Setup: pre-check hit (route) requires keys+idea, service lookup hit also requires keys+idea
   const fake2 = fakeSupabase();
-  fake2.pushResult("inbox_idempotency_keys", { data: { inbox_item_id: "inbox-1" }, error: null });
-  fake2.pushResult("idea_notes", { data: { id: "inbox-1", title: "Idea", body: null, status: "inbox", type: "idea", project_id: null, priority: null, tags: [], created_at: "2026-04-29T12:00:00.000Z", updated_at: "2026-04-29T12:00:00.000Z", projects: null }, error: null });
+  fake2.pushResult("inbox_idempotency_keys", { data: { inbox_item_id: "inbox-1" }, error: null }); // pre-check keys
+  fake2.pushResult("idea_notes", { data: { id: "inbox-1", title: "Idea", body: null, status: "inbox", type: "idea", project_id: null, priority: null, tags: [], created_at: "2026-04-29T12:00:00.000Z", updated_at: "2026-04-29T12:00:00.000Z", projects: null }, error: null }); // pre-check idea
+  fake2.pushResult("inbox_idempotency_keys", { data: { inbox_item_id: "inbox-1" }, error: null }); // service lookup keys
+  fake2.pushResult("idea_notes", { data: { id: "inbox-1", title: "Idea", body: null, status: "inbox", type: "idea", project_id: null, priority: null, tags: [], created_at: "2026-04-29T12:00:00.000Z", updated_at: "2026-04-29T12:00:00.000Z", projects: null }, error: null }); // service lookup idea
   // No projects or insert needed because early return
   const app2 = makeApp(fake2);
   const second = await app2.request("/api/inbox", {
@@ -89,7 +92,7 @@ test("POST /api/inbox with same X-Idempotency-Key does not create duplicate (ret
     headers: { ...AUTH, ...JSON_HEADERS, "x-idempotency-key": key },
     body: JSON.stringify({ title: "Idea" }),
   });
-  assert.equal(second.status, 201);
+  assert.equal(second.status, 200);
   const secondBody = await second.json();
   assert.equal(secondBody.item.id, "inbox-1");
   // Ensure no duplicate insert happened: only one call to idea_notes insert in first flow, second flow has 0 inserts
