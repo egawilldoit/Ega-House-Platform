@@ -148,6 +148,12 @@ async function getUserTimezoneForReview(
   }
 }
 
+function isValidWindowIso(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
 function resolveWeeklyWindow(
   weekStart: string,
   weekEnd: string,
@@ -162,11 +168,16 @@ function resolveWeeklyWindow(
       // so weekStart's window should match week bounds. Use domain directly for explicit weekStart/weekEnd pair.
       const startWindow = getDomainWeekWindow(tz, weekStart);
       const domainEnd = getDomainWeekWindow(tz, weekEnd);
-      return { startIso: startWindow.weekStartUtcIso, endExclusiveIso: domainEnd.weekEndExclusiveUtcIso };
+      const candidate = { startIso: startWindow.weekStartUtcIso, endExclusiveIso: domainEnd.weekEndExclusiveUtcIso };
+      if (isValidWindowIso(candidate.startIso) && isValidWindowIso(candidate.endExclusiveIso)) return candidate;
     }
   } catch {}
   // Fallback to UTC legacy helper
-  return getWeekWindow(weekStart, weekEnd);
+  const fallback = getWeekWindow(weekStart, weekEnd);
+  if (!isValidWindowIso(fallback.startIso) || !isValidWindowIso(fallback.endExclusiveIso)) {
+    throw new Error("Invalid window for weekly review.");
+  }
+  return fallback;
 }
 
 async function getWeeklyStats(
@@ -261,6 +272,9 @@ async function getMostTrackedInsights(
   timezone: string | null,
 ): Promise<MostTrackedInsights> {
   const { startIso, endExclusiveIso } = resolveWeeklyWindow(weekStart, weekEnd, timezone);
+  if (!isValidWindowIso(startIso) || !isValidWindowIso(endExclusiveIso)) {
+    throw new Error("Invalid window for most tracked insights.");
+  }
   const { data, error } = await supabase
     .from("task_sessions")
     .select(
@@ -302,7 +316,7 @@ export async function getWeeklyReviewPageData({
       getPastReviews(supabase, ownerUserId),
       getSelectedWeekReview(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId),
       getWeeklyStats(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId, timezone),
-      getRecentDailyTrackedTime(supabase, { ownerUserId }),
+      getRecentDailyTrackedTime(supabase, { ownerUserId, timezone: timezone ?? "UTC" }),
       getMostTrackedInsights(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId, timezone),
       generateWeeklyReviewDraftForUser({
         supabase,

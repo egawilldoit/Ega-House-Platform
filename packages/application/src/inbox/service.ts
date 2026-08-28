@@ -11,9 +11,11 @@ import {
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
+import { sha256Hex } from "../shared/hash";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
 import type {
   CreateInboxRecordInput,
+  InboxIdempotencyEntry,
   InboxQuery,
   InboxRecord,
   InboxRepository,
@@ -41,6 +43,30 @@ async function ensureProjectVisible(
     return "Selected project is unavailable.";
   }
   return null;
+}
+
+export function deterministicInboxIdForCapture(actor: AuthenticatedActor, key: string): string {
+  const input = `${actor.userId}:${String(key).trim()}:inbox`;
+  const hash = sha256Hex(input);
+  const hex = hash.slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+export function computeInboxFingerprint(input: {
+  title: string;
+  body: string | null;
+  projectId: string | null;
+  tags: string[];
+  type: string;
+}): string {
+  const payload = {
+    title: String(input.title ?? "").trim(),
+    body: input.body != null ? String(input.body).trim() || null : null,
+    projectId: input.projectId ?? null,
+    tags: [...(input.tags ?? [])].sort(),
+    kind: String(input.type ?? DEFAULT_INBOX_TYPE).trim(),
+  };
+  return sha256Hex(JSON.stringify(payload));
 }
 
 export async function createInboxItem(
@@ -85,33 +111,112 @@ export async function createInboxItem(
 
   const rawKey = input.idempotencyKey != null ? String(input.idempotencyKey).trim() : "";
   let idempotencyKey: string | null = null;
+  let fingerprint: string | null = null;
+  let deterministicId: string | null = null;
   if (rawKey) {
-    if (rawKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) return applicationFailure("Idempotency key is too long.");
-    if (/[\0-\x1f\x7f]/.test(rawKey)) return applicationFailure("Idempotency key is invalid.");
+    if (rawKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) return applicationFailure("Idempotency key is too long.", "validation");
+    if (/[\0-\x1f\x7f]/.test(rawKey)) return applicationFailure("Idempotency key is invalid.", "validation");
     idempotencyKey = rawKey;
-    const existing = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
-    if (!existing.ok) return applicationFailure("Unable to create idea right now.");
-    if (existing.value) return applicationSuccess(existing.value);
+    const resolvedType = type ?? DEFAULT_INBOX_TYPE;
+    fingerprint = computeInboxFingerprint({ title, body, projectId, tags, type: resolvedType });
+    deterministicId = deterministicInboxIdForCapture(actor, idempotencyKey);
+    // Check existing mapping with fingerprint comparison (first-write-wins with payload check)
+    if (repository.getInboxIdempotencyEntry) {
+      const entry = await repository.getInboxIdempotencyEntry(actor, idempotencyKey);
+      if (!entry.ok) return applicationFailure("Unable to create idea right now.", "unknown");
+      if (entry.value) {
+        const stored = entry.value as InboxIdempotencyEntry;
+        if (stored.fingerprint && stored.fingerprint !== fingerprint) {
+          return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+        }
+        if (!stored.fingerprint && fingerprint) {
+          // Legacy row without fingerprint: treat as replay for backwards compat (no conflict)
+        }
+        const existing = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
+        if (!existing.ok) return applicationFailure("Unable to create idea right now.", "unknown");
+        if (existing.value) return applicationSuccess(existing.value);
+        // Mapping exists but note missing (orphan edge): fallback to fetch by deterministic id
+        const byId = await repository.getInboxItem(actor, stored.inboxItemId);
+        if (byId.ok && byId.value) return applicationSuccess(byId.value);
+      }
+    } else {
+      const existing = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
+      if (!existing.ok) return applicationFailure("Unable to create idea right now.", "unknown");
+      if (existing.value) {
+        // Without fingerprint support, legacy replay; will be enhanced after repo upgrade
+        return applicationSuccess(existing.value);
+      }
+    }
+  }
+
+  const resolvedType = type ?? DEFAULT_INBOX_TYPE;
+  if (!fingerprint && idempotencyKey) {
+    fingerprint = computeInboxFingerprint({ title, body, projectId, tags, type: resolvedType });
+  }
+  if (!deterministicId && idempotencyKey) {
+    deterministicId = deterministicInboxIdForCapture(actor, idempotencyKey);
   }
 
   const record: CreateInboxRecordInput = {
     title,
     body,
-    type: type ?? DEFAULT_INBOX_TYPE,
+    type: resolvedType,
     projectId,
     priority,
     tags,
     ...(idempotencyKey ? { idempotencyKey } : {}),
+    ...(deterministicId ? { id: deterministicId } : {}),
+    ...(fingerprint ? { fingerprint } : {}),
   };
 
   const result = await repository.createInboxItem(actor, record);
   if (result.ok) return applicationSuccess(result.value);
-  // Handle race: duplicate key inserted concurrently -> fetch existing
+  // Handle race: duplicate PK or mapping inserted concurrently
   if (idempotencyKey) {
+    const errorCode = (result as unknown as { error?: { code?: string } }).error?.code ?? "";
+    const isConflict = errorCode === "conflict";
+    // Always try to resolve to canonical existing on conflict or any error with key
+    const entry = repository.getInboxIdempotencyEntry
+      ? await repository.getInboxIdempotencyEntry(actor, idempotencyKey)
+      : null;
+    if (entry && entry.ok && entry.value) {
+      const stored = entry.value as InboxIdempotencyEntry;
+      if (stored.fingerprint && stored.fingerprint !== fingerprint) {
+        return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+      }
+    } else if (entry && !entry.ok) {
+      return applicationFailure("Unable to create idea right now.", "unknown");
+    }
+    // If isConflict and fingerprint matches, replay; if fingerprint mismatched already returned above
     const retry = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
-    if (retry.ok && retry.value) return applicationSuccess(retry.value);
+    if (retry.ok && retry.value) {
+      if (isConflict) {
+        // Check fingerprint again if we have stored
+        if (entry && entry.ok && entry.value && entry.value.fingerprint && entry.value.fingerprint !== fingerprint) {
+          return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+        }
+        return applicationSuccess(retry.value);
+      }
+      // Non-conflict error but mapping now exists -> still replay
+      return applicationSuccess(retry.value);
+    }
+    // If we have deterministic id, try direct fetch by id (handles PK race where mapping not yet visible)
+    if (deterministicId) {
+      const byId = await repository.getInboxItem(actor, deterministicId);
+      if (byId.ok && byId.value) {
+        // Fingerprint mismatch still conflict even via direct id fetch
+        if (entry && entry.ok && entry.value && entry.value.fingerprint && entry.value.fingerprint !== fingerprint) {
+          return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+        }
+        return applicationSuccess(byId.value);
+      }
+    }
+    if (isConflict) {
+      return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+    }
   }
-  return applicationFailure("Unable to create idea right now.");
+  const mappedCode = (result as unknown as { error?: { code?: string } }).error?.code === "conflict" ? "conflict" : "unknown";
+  return applicationFailure("Unable to create idea right now.", mappedCode as never);
 }
 
 export async function updateInboxItem(
