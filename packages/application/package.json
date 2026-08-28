@@ -23,7 +23,10 @@
     "./today/service": "./src/today/service.ts",
     "./inbox/ports": "./src/inbox/ports.ts",
     "./inbox/service": "./src/inbox/service.ts",
-    "./inbox/read-model": "./src/inbox/read-model.ts"
+    "./inbox/read-model": "./src/inbox/read-model.ts",
+    "./shared/time-context": "./src/shared/time-context.ts",
+    "./shared/duration": "./src/shared/duration.ts",
+    "./shared/execution-evidence": "./src/shared/execution-evidence.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
