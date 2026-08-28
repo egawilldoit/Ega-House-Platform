@@ -10,7 +10,12 @@
     "./tasks": "./src/tasks/repository.ts",
     "./friction": "./src/friction/repository.ts",
     "./time-context": "./src/time-context/repository.ts",
-    "./execution-evidence": "./src/execution-evidence/repository.ts"
+    "./execution-evidence": "./src/execution-evidence/repository.ts",
+    "./notifications": "./src/notifications/repository.ts",
+    "./notifications/repository": "./src/notifications/repository.ts",
+    "./notifications/fcm-provider": "./src/notifications/fcm-provider.ts",
+    "./notifications/email-provider": "./src/notifications/email-provider.ts",
+    "./fcm": "./src/notifications/fcm-provider.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -18,6 +23,7 @@
   },
   "dependencies": {
     "@ega/application": "0.1.0",
-    "@supabase/supabase-js": "^2.103.0"
+    "@supabase/supabase-js": "^2.103.0",
+    "google-auth-library": "^9.15.0"
   }
 }
