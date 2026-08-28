@@ -110,7 +110,7 @@ describe('task mutation wrappers delegate to the canonical client', () => {
     expect(get).toHaveBeenCalledWith('task-1');
     expect(create).toHaveBeenCalled();
     expect(update).toHaveBeenCalledWith('task-1', { status: 'done' });
-    expect(createReminder).toHaveBeenCalledWith('task-1', '2026-09-01T09:00:00.000Z');
+    expect(createReminder).toHaveBeenCalledWith('task-1', '2026-09-01T09:00:00.000Z', undefined);
     expect(cancelReminder).toHaveBeenCalledWith('task-1', 'reminder-1');
 
     expect(unwrappedTask).toEqual({ ok: true, task: { id: 'task-1' } });

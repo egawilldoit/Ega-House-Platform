@@ -115,6 +115,17 @@ function makeFakeClient(): EgaApiClient {
     weeklyReview: {
       get: jest.fn(),
     },
+    notifications: {
+      list: jest.fn(),
+      unreadCount: jest.fn(),
+      markRead: jest.fn(),
+      markOpened: jest.fn(),
+      markAllRead: jest.fn(),
+      registerDevice: jest.fn(),
+      unregisterDevice: jest.fn(),
+      preferences: jest.fn(),
+      updatePreferences: jest.fn(),
+    },
   };
 }
 

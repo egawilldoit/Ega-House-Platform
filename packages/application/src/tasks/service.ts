@@ -183,7 +183,7 @@ export async function unarchiveTask(
 export async function createTaskReminder(
   actor: AuthenticatedActor,
   repository: TasksRepository,
-  input: { taskId: unknown; remindAt: unknown; now?: Date },
+  input: { taskId: unknown; remindAt: unknown; deliveryMode?: unknown; now?: Date },
 ): Promise<ApplicationResult<TaskRecord>> {
   const taskId = String(input.taskId ?? "").trim();
   const raw = String(input.remindAt ?? "").trim();
@@ -194,11 +194,19 @@ export async function createTaskReminder(
   if (!raw || Number.isNaN(remindAt.getTime())) return applicationFailure("Reminder time is required.");
   if (remindAt.getTime() <= now.getTime()) return applicationFailure("Reminder time must be in the future.");
 
+  const rawMode = String(input.deliveryMode ?? "email").trim().toLowerCase();
+  const allowedModes = new Set(["push", "email", "both"]);
+  const deliveryMode = allowedModes.has(rawMode) ? (rawMode as "push" | "email" | "both") : "email";
+  if (input.deliveryMode !== undefined && !allowedModes.has(rawMode)) {
+    return applicationFailure("Delivery mode is invalid.");
+  }
+
   const result = await repository.createReminder(actor, {
     taskId,
     remindAt: remindAt.toISOString(),
     channel: "email",
     status: "pending",
+    deliveryMode,
   });
   return result.ok
     ? applicationSuccess(result.value)
