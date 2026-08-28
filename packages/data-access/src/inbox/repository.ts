@@ -176,53 +176,106 @@ export class SupabaseInboxRepository implements InboxRepository {
     return this.getInboxItem(actor, inboxId);
   }
 
+  async getInboxIdempotencyEntry(
+    actor: AuthenticatedActor,
+    key: string,
+  ): Promise<RepositoryResult<{ inboxItemId: string; fingerprint: string | null } | null>> {
+    const trimmed = String(key ?? "").trim();
+    if (!trimmed) return { ok: true, value: null };
+    const lookup = await this.supabase
+      .from("inbox_idempotency_keys")
+      .select("inbox_item_id, fingerprint")
+      .eq("owner_user_id", actor.userId)
+      .eq("key", trimmed)
+      .maybeSingle();
+    if (lookup.error) return failure(lookup.error);
+    if (!lookup.data) return { ok: true, value: null };
+    const row = lookup.data as unknown as { inbox_item_id?: string; inboxItemId?: string; fingerprint?: string | null };
+    const inboxItemId = String(row.inbox_item_id ?? row.inboxItemId ?? "");
+    if (!inboxItemId) return { ok: true, value: null };
+    return { ok: true, value: { inboxItemId, fingerprint: row.fingerprint ?? null } };
+  }
+
   async createInboxItem(
     actor: AuthenticatedActor,
     input: CreateInboxRecordInput,
   ): Promise<RepositoryResult<InboxRecord>> {
     const idempotencyKey = (input as unknown as { idempotencyKey?: string | null }).idempotencyKey ? String((input as unknown as { idempotencyKey?: string | null }).idempotencyKey).trim() : null;
-    if (idempotencyKey) {
-      const existing = await this.getInboxItemByIdempotencyKey(actor, idempotencyKey);
-      if (existing.ok && existing.value) return { ok: true, value: existing.value };
-      if (!existing.ok) return existing as RepositoryResult<InboxRecord>;
-    }
+    const fingerprint = (input as unknown as { fingerprint?: string | null }).fingerprint ? String((input as unknown as { fingerprint?: string | null }).fingerprint).trim() : null;
+    const deterministicId = (input as unknown as { id?: string | null }).id ? String((input as unknown as { id?: string | null }).id).trim() : null;
+
+    const insertPayload: Record<string, unknown> = {
+      owner_user_id: actor.userId,
+      title: input.title,
+      body: input.body,
+      status: "inbox",
+      type: input.type,
+      project_id: input.projectId,
+      priority: input.priority,
+      tags: input.tags,
+    };
+    if (deterministicId) insertPayload.id = deterministicId;
 
     const result = await this.supabase
       .from("idea_notes")
-      .insert({
-        owner_user_id: actor.userId,
-        title: input.title,
-        body: input.body,
-        status: "inbox",
-        type: input.type,
-        project_id: input.projectId,
-        priority: input.priority,
-        tags: input.tags,
-      })
+      .insert(insertPayload)
       .select(INBOX_SELECT)
       .single();
-    if (result.error || !result.data) return failure(result.error);
+    if (result.error || !result.data) {
+      if (result.error) {
+        const code = String((result.error as unknown as { code?: string })?.code ?? "");
+        const msg = String((result.error as unknown as { message?: string })?.message ?? "");
+        const isDuplicate = code.includes("23505") || /duplicate|unique/i.test(msg);
+        if (isDuplicate && idempotencyKey) {
+          return { ok: false, error: { code: "conflict" } };
+        }
+      }
+      return failure(result.error);
+    }
     const created = mapInboxRow(result.data as InboxRow);
 
     if (idempotencyKey) {
-      const link = await this.supabase.from("inbox_idempotency_keys").insert({
+      const linkPayload: Record<string, unknown> = {
         owner_user_id: actor.userId,
         key: idempotencyKey,
         inbox_item_id: created.id,
-      });
-      // If insert fails due to unique violation, another retry already stored the mapping.
-      // Fetch the canonical record and return it, discarding our duplicate? For test simplicity,
-      // if insert error indicates duplicate, fetch existing.
+      };
+      if (fingerprint) linkPayload.fingerprint = fingerprint;
+      const link = await this.supabase.from("inbox_idempotency_keys").insert(linkPayload);
       if (link.error) {
         const isDuplicate =
           String(link.error.code ?? "").includes("23505") ||
           /duplicate|unique/i.test(String(link.error.message ?? ""));
         if (isDuplicate) {
+          const entry = await this.getInboxIdempotencyEntry(actor, idempotencyKey);
+          if (entry.ok && entry.value) {
+            if (entry.value.fingerprint && fingerprint && entry.value.fingerprint !== fingerprint) {
+              // Fingerprint mismatch => conflict. Cleanup our orphan note if it differs from canonical
+              if (created.id !== entry.value.inboxItemId) {
+                try {
+                  await this.supabase.from("idea_notes").delete().eq("id", created.id).eq("owner_user_id", actor.userId);
+                } catch {}
+              }
+              return { ok: false, error: { code: "conflict" } };
+            }
+          }
           const retry = await this.getInboxItemByIdempotencyKey(actor, idempotencyKey);
-          if (retry.ok && retry.value) return { ok: true, value: retry.value };
+          if (retry.ok && retry.value) {
+            // Our insert was orphan if duplicate mapping means canonical already exists; delete our orphan if different id
+            if (created.id !== retry.value.id) {
+              try {
+                await this.supabase.from("idea_notes").delete().eq("id", created.id).eq("owner_user_id", actor.userId);
+              } catch {}
+            }
+            return { ok: true, value: retry.value };
+          }
+          return { ok: false, error: { code: "conflict" } };
         }
-        // Non-duplicate errors are logged but do not fail the create; the note already exists.
-        // We treat as success for capture path (idempotency best-effort).
+        // Non-duplicate mapping failure: cleanup orphan and return failure (proper error propagation)
+        try {
+          await this.supabase.from("idea_notes").delete().eq("id", created.id).eq("owner_user_id", actor.userId);
+        } catch {}
+        return failure(link.error);
       }
     }
 
