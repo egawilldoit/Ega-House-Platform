@@ -18,6 +18,7 @@ export * from "./today/ports";
 export * from "./today/plan";
 export * from "./today/service";
 export * from "./operator/snapshot";
+export * from "./operator/proposal";
 export * from "./timer/ports";
 export * from "./timer/service";
 export * from "./shared/duration";
