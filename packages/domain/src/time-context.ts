@@ -125,9 +125,9 @@ function wallTimeToUtc(
   ms = 0,
 ): Date {
   const wallUtcMs = Date.UTC(year, month - 1, day, hour, minute, second, ms);
-  let offset = getTimezoneOffsetMinutes(new Date(wallUtcMs), timeZone);
+  const offset = getTimezoneOffsetMinutes(new Date(wallUtcMs), timeZone);
   let utcMs = wallUtcMs - offset * 60000;
-  let newOffset = getTimezoneOffsetMinutes(new Date(utcMs), timeZone);
+  const newOffset = getTimezoneOffsetMinutes(new Date(utcMs), timeZone);
   if (newOffset !== offset) {
     utcMs = wallUtcMs - newOffset * 60000;
     const finalOffset = getTimezoneOffsetMinutes(new Date(utcMs), timeZone);

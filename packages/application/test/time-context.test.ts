@@ -24,11 +24,13 @@ class FakeTimeContextRepo implements TimeContextRepository {
     public lastSet: string | null = null,
   ) {}
 
-  async getTimezone(_actor: AuthenticatedActor): Promise<RepositoryResult<string | null>> {
+  async getTimezone(actor: AuthenticatedActor): Promise<RepositoryResult<string | null>> {
+    void actor;
     if (this.shouldFail) return fail();
     return ok(this.stored);
   }
-  async setTimezone(_actor: AuthenticatedActor, timezone: string): Promise<RepositoryResult<string>> {
+  async setTimezone(actor: AuthenticatedActor, timezone: string): Promise<RepositoryResult<string>> {
+    void actor;
     if (this.shouldFail) return fail();
     this.lastSet = timezone;
     this.stored = timezone;

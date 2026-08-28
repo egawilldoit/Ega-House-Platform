@@ -154,6 +154,9 @@ function makeFakeClient(): EgaApiClient {
         },
       })),
     },
+    timeContext: {
+      get: jest.fn(),
+    },
     notifications: {
       list: jest.fn(),
       unreadCount: jest.fn(),
