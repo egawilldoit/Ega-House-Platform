@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
@@ -71,6 +71,25 @@ export default function ProfileStackScreen() {
             </View>
           </View>
         </Card>
+
+        <Pressable
+          onPress={() => router.push('/(app)/settings/notifications')}
+          style={({ pressed }: { pressed: boolean }) => [styles.notificationCard, pressed ? styles.pressed : null]}
+          accessibilityRole="button"
+        >
+          <Card style={styles.notificationInner}>
+            <View style={styles.notificationRow}>
+              <View style={styles.notificationIcon}>
+                <Ionicons name="notifications-outline" size={18} color={mobileTheme.colors.accent} />
+              </View>
+              <View style={styles.notificationCopy}>
+                <Text style={styles.notificationTitle}>Notifications</Text>
+                <Text style={styles.notificationDesc}>Push and email reminders</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+            </View>
+          </Card>
+        </Pressable>
 
         <Card style={styles.actionCard} testID="profile-actions-card">
           <View style={styles.actionRow}>
@@ -201,4 +220,19 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.md,
     textAlign: 'center',
   },
+  notificationCard: { marginTop: mobileTheme.spacing.sm },
+  notificationInner: { padding: 0 },
+  notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  notificationIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationCopy: { flex: 1, gap: 1 },
+  notificationTitle: { fontSize: 14, fontWeight: mobileTheme.font.semibold as never, color: mobileTheme.colors.text },
+  notificationDesc: { fontSize: 12, color: mobileTheme.colors.textMuted },
+  pressed: { opacity: 0.7 },
 });

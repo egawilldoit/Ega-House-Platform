@@ -45,7 +45,7 @@ export type TasksApi = {
   unarchive(taskId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
   pin(taskId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
   unpin(taskId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
-  createReminder(taskId: string, remindAt: string): Promise<ApiResult<MobileTaskMutationResponse>>;
+  createReminder(taskId: string, remindAt: string, deliveryMode?: "push" | "email" | "both"): Promise<ApiResult<MobileTaskMutationResponse>>;
   cancelReminder(taskId: string, reminderId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
   setRecurrence(taskId: string, input: SetTaskRecurrenceInput): Promise<ApiResult<MobileTaskMutationResponse>>;
   clearRecurrence(taskId: string): Promise<ApiResult<MobileTaskMutationResponse>>;
@@ -99,11 +99,11 @@ export function createTasksApi(http: HttpClient): TasksApi {
     unpin(taskId) {
       return http.request<MobileTaskMutationResponse>({ path: idPath(taskId, "/unpin"), method: "POST" });
     },
-    createReminder(taskId, remindAt) {
+    createReminder(taskId, remindAt, deliveryMode) {
       return http.request<MobileTaskMutationResponse>({
         path: idPath(taskId, "/reminders"),
         method: "POST",
-        body: { remindAt },
+        body: deliveryMode ? { remindAt, deliveryMode } : { remindAt },
       });
     },
     cancelReminder(taskId, reminderId) {
