@@ -238,6 +238,11 @@ jobs:
           echo "APK_FILENAME=$APK_FILENAME"
 
           BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Derive runtime fingerprint for manifest (best-effort); falls back to policy string
+          RUNTIME_FINGERPRINT="$(npx expo fingerprint:generate --platform android --output /tmp/fp.json 2>/dev/null && jq -r '.hash // empty' /tmp/fp.json 2>/dev/null || echo "")"
+          if [ -z "$RUNTIME_FINGERPRINT" ]; then
+            RUNTIME_FINGERPRINT="$(node -p "JSON.stringify(require('./apps/mobile/app.json').expo.runtimeVersion ?? 'unknown')" 2>/dev/null || echo "unknown")"
+          fi
           cat > dist-apk/release-manifest.json <<EOF
           {
             "repository": "egawilldoit/Ega-House-Platform",
@@ -251,7 +256,9 @@ jobs:
             "runner": "blacksmith-2vcpu-ubuntu-2404",
             "architectures": ["arm64-v8a", "x86_64"],
             "apkFile": "$APK_FILENAME",
-            "apkSha256": "$APK_SHA256"
+            "apkSha256": "$APK_SHA256",
+            "runtimeVersion": "$RUNTIME_FINGERPRINT",
+            "channel": "production"
           }
           EOF
           cat dist-apk/release-manifest.json
