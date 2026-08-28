@@ -22,6 +22,7 @@ import { createNotificationsRoutes } from "./routes/notifications";
 import { createOperatorRoutes } from "./routes/operator";
 import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
+import { createTimeContextRoutes } from "./routes/time-context";
 import { createTimerRoutes } from "./routes/timer";
 import { createTodayRoutes } from "./routes/today";
 
@@ -126,6 +127,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/today", createTodayRoutes(dependencies));
   app.route("/api/timer", createTimerRoutes(dependencies));
   app.route("/api/operator", createOperatorRoutes(dependencies));
+  app.route("/api/time-context", createTimeContextRoutes(dependencies));
   app.route("/api/notifications", createNotificationsRoutes());
   app.route("/api/auth", createAuthRoutes(dependencies));
 
