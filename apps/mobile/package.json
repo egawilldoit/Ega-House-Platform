@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "doctor": "node -e \"process.env.EXPO_NO_TELEMETRY='1'; const r=require('child_process').spawnSync('npx',['expo-doctor','.'],{stdio:'inherit',shell:true}); process.exit(r.status ?? 1)\"",
     "typecheck": "tsc --noEmit",
