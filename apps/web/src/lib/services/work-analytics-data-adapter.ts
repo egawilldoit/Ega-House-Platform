@@ -8,11 +8,20 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
+function isValidWindowIso(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
 export async function getWorkAnalyticsSessionsForWindow(args: {
   ownerUserId: string;
   window: ExecutionEvidenceWindow;
   supabase?: SupabaseServerClient;
 }) {
+  if (!isValidWindowIso(args.window.startIso) || !isValidWindowIso(args.window.endIso)) {
+    return { data: null, errorMessage: "Invalid window for work analytics." };
+  }
   const supabase = await resolveSupabaseClient(args.supabase);
   const { data, error } = await supabase
     .from("task_sessions")
