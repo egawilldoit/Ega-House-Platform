@@ -1,0 +1,139 @@
+/* EGA Command OS — Authoritative Design Tokens
+ * Single semantic authority per Wave 1.
+ * Imported first in globals.css. All other files must consume these vars.
+ */
+
+:root {
+  /* ── Foundation ───────────────────────────── */
+  --ega-bg: #F7F3EA;
+  --ega-surface: #FFFFFF;
+  --ega-sidebar: #161F2C;
+  --ega-border: #E8E2D3;
+  --ega-text: #1A1A18;
+  --ega-text-secondary: #6B6963;
+  --ega-text-tertiary: #9A9793;
+
+  /* ── Brand ──────────────────────────────── */
+  --ega-gold: #E0A23A;
+  --ega-gold-soft: #FBEFDA;
+  --ega-gold-strong: #C98E2E;
+  --ega-gold-ring: rgba(224, 162, 58, 0.24);
+
+  /* ── Status ─────────────────────────────── */
+  --status-healthy: #3E8F6B;
+  --status-risk: #D97B3F;
+  --status-overdue: #C24B4B;
+  --status-pending: #8B8880;
+
+  --status-healthy-bg: #E8F5EE;
+  --status-risk-bg: #FFF0E6;
+  --status-overdue-bg: #FDECEC;
+  --status-pending-bg: #F2F1EF;
+
+  --status-healthy-border: rgba(62, 143, 107, 0.18);
+  --status-risk-border: rgba(217, 123, 63, 0.18);
+  --status-overdue-border: rgba(194, 75, 75, 0.18);
+  --status-pending-border: rgba(139, 136, 128, 0.16);
+
+  /* ── Category ───────────────────────────── */
+  --category-deep-work: #B5754A;
+  --category-meeting: #5B6FCC;
+  --category-review: #93588F;
+  --category-focus: #2E8C8C;
+  --category-admin: #6E7A8A;
+
+  /* ── Derived Surfaces ───────────────────── */
+  --ega-surface-subtle: #FDFCF9;
+  --ega-surface-hover: #F5F1E8;
+  --ega-surface-selected: var(--ega-gold-soft);
+  --ega-surface-muted: #EDE9E1;
+
+  --ega-border-strong: #D8D0BE;
+  --ega-border-subtle: rgba(26, 26, 24, 0.06);
+  --ega-divider: rgba(26, 26, 24, 0.08);
+
+  --ega-overlay: rgba(22, 31, 44, 0.52);
+  --ega-overlay-soft: rgba(22, 31, 44, 0.24);
+
+  --ega-focus-ring: 0 0 0 3px var(--ega-gold-ring);
+  --ega-focus-ring-strong: 0 0 0 3px rgba(224, 162, 58, 0.32);
+
+  --ega-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --ega-sidebar-selected: var(--ega-gold);
+  --ega-sidebar-text: #E8E6E1;
+  --ega-sidebar-muted: #8A9199;
+  --ega-sidebar-border: rgba(255, 255, 255, 0.08);
+
+  --ega-disabled: #C4C1BC;
+  --ega-skeleton: #EDE9E1;
+  --ega-skeleton-shimmer: #F5F1E8;
+
+  /* ── Shadow ─────────────────────────────── */
+  --ega-shadow-sm: 0 1px 2px rgba(22, 31, 44, 0.06), 0 1px 3px rgba(22, 31, 44, 0.04);
+  --ega-shadow-md: 0 4px 12px rgba(22, 31, 44, 0.07), 0 1px 3px rgba(22, 31, 44, 0.05);
+  --ega-shadow-lg: 0 12px 32px rgba(22, 31, 44, 0.09), 0 4px 12px rgba(22, 31, 44, 0.06);
+  --ega-shadow-sidebar: 12px 0 32px rgba(22, 31, 44, 0.08);
+
+  /* ── Radius ─────────────────────────────── */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* ── Spacing scale (4-based) ───────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── Typography scale ───────────────────── */
+  --text-micro: 0.6875rem;   /* 11px */
+  --text-meta: 0.75rem;      /* 12px */
+  --text-meta-lg: 0.8125rem; /* 13px */
+  --text-body: 0.875rem;     /* 14px */
+  --text-body-lg: 0.9375rem; /* 15px */
+  --text-section: 1rem;      /* 16px */
+  --text-title-sm: 1.125rem; /* 18px */
+  --text-title: 1.5rem;      /* 24px */
+  --text-page: clamp(1.75rem, 2.5vw, 2.25rem); /* 28–36px */
+
+  --leading-tight: 1.1;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.65;
+
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.06em;
+  --tracking-widest: 0.12em;
+
+  /* ── Motion ─────────────────────────────── */
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 240ms;
+  --duration-enter: 320ms;
+
+  /* ── Layout ─────────────────────────────── */
+  --sidebar-width: 280px;
+  --topbar-height: 56px;
+  --content-max: 1760px;
+  --radius-card: var(--radius-lg);
+
+  /* ── Sidebar legacy shim (for editorial compat) ── */
+  --workspace-sidebar-width: var(--sidebar-width);
+  --workspace-topbar-height: var(--topbar-height);
+}
+
+/* ── Dark / high-contrast adjustments (future) ── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Keep light as default for Command OS; dark is opt-in via data-theme if needed */
+  }
+}
