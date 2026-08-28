@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
  * Purity evaluation (repair 2026-08-28):
  * - `node:crypto` is Node.js stdlib, available in all app/server runtimes and Node test runner.
  * - `scripts/ci/package-purity.mjs` allows `node:` imports in `packages/application` (only forbids
- *   Next/React/Supabase/ORM). Contracts/domain forbid `node:`, but application is permitted.
+ *   next/react/supabase). Contracts/domain forbid `node:`, but application is permitted.
  * - Extracting to this shared utility centralizes the dependency, makes it mockable for tests,
  *   and documents intent. Domain remains pure (no crypto). Data-access uses Supabase, not hashing.
  * - Alternative (inject hash function) considered but not needed: deterministic ID is a small,
