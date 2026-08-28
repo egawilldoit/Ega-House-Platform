@@ -33,8 +33,7 @@ describe("W15 real MCP client E2E", () => {
     const handler = createMcpHandler(
       () => {
         const server = new McpServer({ name: "test", version: "1.0.0" }, { capabilities: { tools: {} } });
-        // @ts-expect-error — test helper
-        server.registerTool("ega_list_projects", { title: "list", description: "list", inputSchema: z.object({}) } as unknown as never, async () => ({ content: [{ type: "text", text: "ok" }] }) as never);
+        server.registerTool("ega_list_projects", { title: "list", description: "list", inputSchema: z.object({}) } as unknown as never, async () => ({ content: [{ type: "text", text: "ok" }] }) as unknown as never);
         return server;
       },
       { legacy: "stateless" } as never,

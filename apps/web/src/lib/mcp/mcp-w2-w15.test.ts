@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod-v4";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
 import { createRequestStateCodec } from "@/lib/mcp/request-state";
@@ -27,8 +28,8 @@ describe("W2 createMcpHandler auth propagation", () => {
         const server = new McpServer({ name: "test", version: "1.0.0" }, { capabilities: { tools: {} } });
         server.registerTool(
           "ping",
-          { title: "ping", description: "ping", inputSchema: {} as never },
-          async (_args, ctx) => {
+          { title: "ping", description: "ping", inputSchema: z.object({}) },
+          async (_args: unknown, ctx: unknown) => {
             capturedAuth = (ctx as unknown as { http?: { authInfo?: AuthInfo } }).http?.authInfo ?? (ctx as unknown as { authInfo?: AuthInfo }).authInfo;
             return { content: [{ type: "text", text: "pong" }] };
           },
