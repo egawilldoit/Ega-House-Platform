@@ -9,7 +9,8 @@ export type TaskReminderRecord = Readonly<{
   taskId: string;
   remindAt: string;
   channel: "email";
-  status: "pending" | "processing" | "sent" | "failed" | "cancelled";
+  deliveryMode?: "push" | "email" | "both";
+  status: "pending" | "processing" | "sent" | "failed" | "cancelled" | "processed";
   sentAt: string | null;
   failureReason: string | null;
   createdAt?: string;
@@ -85,6 +86,8 @@ export type TaskQuery = Readonly<{
 }>;
 
 export type CreateTaskRecordInput = Readonly<{
+  /** Optional deterministic id for inbox conversion idempotency; when omitted, DB generates random. */
+  id?: string;
   title: string;
   projectId: string;
   goalId: string | null;
@@ -140,7 +143,7 @@ export interface TasksRepository {
   ): Promise<RepositoryResult<TaskRecord>>;
   createReminder(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; remindAt: string; channel: "email"; status: "pending" }>,
+    input: Readonly<{ taskId: string; remindAt: string; channel: "email"; status: "pending"; deliveryMode?: "push" | "email" | "both" }>,
   ): Promise<RepositoryResult<TaskRecord>>;
   cancelReminder(
     actor: AuthenticatedActor,

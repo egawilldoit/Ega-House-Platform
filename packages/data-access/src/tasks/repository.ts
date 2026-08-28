@@ -48,7 +48,7 @@ const TASK_SELECT = [
 ].join(",");
 
 const REMINDER_SELECT =
-  "id,task_id,remind_at,channel,status,sent_at,failure_reason,created_at,updated_at";
+  "id,task_id,remind_at,channel,delivery_mode,status,sent_at,failure_reason,created_at,updated_at";
 const RECURRENCE_SELECT = "id,task_id,rule,anchor_date,timezone,next_occurrence_date,last_generated_at";
 const SESSION_TOTAL_SELECT = "task_id,duration_seconds";
 
@@ -76,6 +76,7 @@ function mapReminder(row: Row): TaskReminderRecord {
     taskId: String(row.task_id),
     remindAt: String(row.remind_at),
     channel: "email",
+    deliveryMode: (String(row.delivery_mode ?? "email") as TaskReminderRecord["deliveryMode"]) ?? "email",
     status: String(row.status) as TaskReminderRecord["status"],
     sentAt: asNullableString(row.sent_at),
     failureReason: asNullableString(row.failure_reason),
@@ -248,6 +249,7 @@ export class SupabaseTasksRepository implements TasksRepository {
     const result = await this.supabase
       .from("tasks")
       .insert({
+        ...(input.id ? { id: input.id } : {}),
         owner_user_id: actor.userId,
         title: input.title,
         project_id: input.projectId,
@@ -343,13 +345,14 @@ export class SupabaseTasksRepository implements TasksRepository {
 
   async createReminder(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; remindAt: string; channel: "email"; status: "pending" }>,
+    input: Readonly<{ taskId: string; remindAt: string; channel: "email"; status: "pending"; deliveryMode?: "push" | "email" | "both" }>,
   ): Promise<RepositoryResult<TaskRecord>> {
     const result = await this.supabase.from("task_reminders").insert({
       owner_user_id: actor.userId,
       task_id: input.taskId,
       remind_at: input.remindAt,
       channel: input.channel,
+      delivery_mode: input.deliveryMode ?? "email",
       status: input.status,
     });
     if (result.error) return failure(result.error);

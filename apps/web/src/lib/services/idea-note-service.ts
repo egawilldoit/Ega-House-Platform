@@ -66,6 +66,7 @@ export type CreateIdeaNoteInput = {
   priority?: unknown;
   tagsInput?: unknown;
   tags?: unknown;
+  idempotencyKey?: unknown;
 };
 
 export type UpdateIdeaNoteInput = CreateIdeaNoteInput & {
@@ -94,6 +95,19 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   }
 
   return createClient();
+}
+
+async function getAuthenticatedUserId(supabase: SupabaseServerClient): Promise<string | null> {
+  if (!("auth" in supabase) || typeof (supabase as unknown as { auth?: { getUser?: () => unknown } }).auth?.getUser !== "function") {
+    return null;
+  }
+  try {
+    const { data, error } = await (supabase as unknown as { auth: { getUser: () => Promise<{ data: { user?: { id?: string } } | null; error: unknown }> } }).auth.getUser();
+    if (error) return null;
+    return (data as unknown as { user?: { id?: string } } | null)?.user?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeIdeaNoteInput(input: CreateIdeaNoteInput) {
@@ -208,7 +222,7 @@ async function ensureProjectVisible(
 
 export async function createIdeaNote(
   input: CreateIdeaNoteInput,
-  options?: { supabase?: SupabaseServerClient },
+  options?: { supabase?: SupabaseServerClient; idempotencyKey?: unknown },
 ): Promise<CreateIdeaNoteResult> {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const normalized = normalizeIdeaNoteInput(input);
@@ -225,6 +239,42 @@ export async function createIdeaNote(
       errorMessage: normalized.errorMessage,
       data: null,
     };
+  }
+
+  const rawIdempotency = String(input.idempotencyKey ?? options?.idempotencyKey ?? "").trim();
+  let idempotencyKey: string | null = null;
+  if (rawIdempotency) {
+    if (rawIdempotency.length > 128) {
+      return { errorMessage: "Idempotency key is too long.", data: null };
+    }
+    if (/[\0-\x1f\x7f]/.test(rawIdempotency)) {
+      return { errorMessage: "Idempotency key is invalid.", data: null };
+    }
+    idempotencyKey = rawIdempotency;
+    // Check for existing mapping (owner-scoped for EGA-507; RLS is defense-in-depth)
+    const ownerIdForLookup = await getAuthenticatedUserId(supabase);
+    const existingLookup = (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> }; maybeSingle: () => Promise<{ data: unknown; error: unknown }> } } } }).from("inbox_idempotency_keys").select("inbox_item_id").eq("key", idempotencyKey);
+    const { data: existingKeyRow, error: existingKeyError } = await (ownerIdForLookup
+      ? existingLookup.eq("owner_user_id", ownerIdForLookup)
+      : existingLookup
+    ).maybeSingle();
+    if (existingKeyError) {
+      // best-effort: if lookup fails, proceed to create (will attempt insert dedup)
+    } else if (existingKeyRow) {
+      const inboxItemId = String(((existingKeyRow as unknown as { inbox_item_id?: string; inboxItemId?: string })?.inbox_item_id ?? (existingKeyRow as unknown as { inbox_item_id?: string; inboxItemId?: string })?.inboxItemId ?? ""));
+      if (inboxItemId) {
+        const { data: existingNote, error: existingNoteError } = await supabase
+          .from("idea_notes")
+          .select(
+            "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+          )
+          .eq("id", inboxItemId)
+          .maybeSingle();
+        if (!existingNoteError && existingNote) {
+          return { errorMessage: null, data: existingNote as IdeaNote };
+        }
+      }
+    }
   }
 
   const projectError = await ensureProjectVisible(supabase, normalized.projectId || null);
@@ -258,6 +308,42 @@ export async function createIdeaNote(
       errorMessage: "Unable to create idea right now.",
       data: null,
     };
+  }
+
+  if (idempotencyKey) {
+    const ownerIdForInsert = await getAuthenticatedUserId(supabase);
+    const insertPayload: Record<string, unknown> = {
+      key: idempotencyKey,
+      inbox_item_id: (data as unknown as { id: string }).id,
+    };
+    if (ownerIdForInsert) insertPayload.owner_user_id = ownerIdForInsert;
+    const { error: linkError } = await (supabase as unknown as { from: (t: string) => { insert: (p: unknown) => Promise<{ error: unknown }> } }).from("inbox_idempotency_keys").insert(insertPayload);
+    if (linkError) {
+      const isDuplicate =
+        String((linkError as unknown as { code?: string })?.code ?? "").includes("23505") ||
+        /duplicate|unique/i.test(String((linkError as unknown as { message?: string })?.message ?? ""));
+      if (isDuplicate) {
+        const dupLookup = (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> }; maybeSingle: () => Promise<{ data: unknown; error: unknown }> } } } }).from("inbox_idempotency_keys").select("inbox_item_id").eq("key", idempotencyKey);
+        const { data: dupRow } = await (ownerIdForInsert ? dupLookup.eq("owner_user_id", ownerIdForInsert) : dupLookup).maybeSingle();
+        const dupId = String((dupRow as unknown as { inbox_item_id?: string })?.inbox_item_id ?? "");
+        if (dupId) {
+          const { data: dupNote } = await supabase
+            .from("idea_notes")
+            .select(
+              "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+            )
+            .eq("id", dupId)
+            .maybeSingle();
+          if (dupNote) {
+            // Cleanup duplicate we just created to avoid orphan
+            try {
+              await (supabase as unknown as { from: (t: string) => { delete: () => { eq: (k: string, v: string) => Promise<unknown> } } }).from("idea_notes").delete().eq("id", (data as unknown as { id: string }).id);
+            } catch {}
+            return { errorMessage: null, data: dupNote as IdeaNote };
+          }
+        }
+      }
+    }
   }
 
   return {
