@@ -22,6 +22,7 @@ ALTER TABLE public.mcp_mutation_receipts ENABLE ROW LEVEL SECURITY;
 -- Deny direct client table access; only via security-definer functions
 DROP POLICY IF EXISTS "mcp_mutation_receipts_deny_client_access" ON public.mcp_mutation_receipts;
 CREATE POLICY "mcp_mutation_receipts_deny_client_access"
+  ON public.mcp_mutation_receipts
   AS RESTRICTIVE
   FOR ALL
   TO anon, authenticated
