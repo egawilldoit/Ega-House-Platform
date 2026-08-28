@@ -20,9 +20,6 @@
  */
 
 import * as cp from 'node:child_process';
-import path from 'node:path';
-
-const REPO_ROOT = path.resolve(import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname), '..', '..');
 
 const NATIVE_SENSITIVE_PATTERNS = [
   /^apps\/mobile\/app\.json$/,
@@ -63,7 +60,8 @@ const NATIVE_DEP_KEYS = [
 
 function getChangedFiles(base, head) {
   const args = ['diff', '--name-only', `${base}...${head}`];
-  const res = cp.spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' });
+  const cwd = process.cwd();
+  const res = cp.spawnSync('git', args, { cwd, encoding: 'utf8' });
   if (res.status !== 0) {
     return { files: [], error: res.stderr || `git diff failed for ${base}...${head}` };
   }
@@ -73,7 +71,7 @@ function getChangedFiles(base, head) {
 
 function getDiffText(base, head, paths) {
   const args = ['diff', `${base}...${head}`, '--', ...paths];
-  const res = cp.spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' });
+  const res = cp.spawnSync('git', args, { cwd: process.cwd(), encoding: 'utf8' });
   if (res.status !== 0) return '';
   return res.stdout;
 }

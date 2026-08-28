@@ -2,10 +2,12 @@ import Constants from 'expo-constants';
 
 import type { NativeUpdateClassification, ReleaseManifest } from './types';
 
-const GITHUB_RELEASES_LATEST_URL =
-  'https://api.github.com/repos/egawilldoit/Ega-House-Platform/releases/latest';
+const GITHUB_RELEASES_LIST_URL = 'https://api.github.com/repos/egawilldoit/Ega-House-Platform/releases';
 const APK_GITHUB_URL_BASE = 'https://github.com/egawilldoit/Ega-House-Platform/releases';
 const FETCH_TIMEOUT_MS = 8000;
+const EXPECTED_REPO = 'egawilldoit/Ega-House-Platform';
+const EXPECTED_PACKAGE = 'com.ega_house.mobile';
+const EXPECTED_CHANNEL = 'production';
 
 export type FetchImpl = typeof fetch;
 
@@ -30,7 +32,7 @@ export function compareVersions(a: string, b: string): number {
   const pa = parseVersionStrict(a);
   const pb = parseVersionStrict(b);
   const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i += 1) {
+  for (let i = 0; i < len; i++) {
     const da = pa[i] ?? 0;
     const db = pb[i] ?? 0;
     if (da !== db) return da - db;
@@ -42,6 +44,26 @@ export function compareVersions(a: string, b: string): number {
 
 export function isNewerVersion(remote: string, local: string): boolean {
   return compareVersions(remote, local) > 0;
+}
+
+export function parseMobileVersionFromTag(tag: string): string | null {
+  const m = tag.match(/^mobile-v(\d+\.\d+\.\d+)$/);
+  return m ? m[1] : null;
+}
+
+export function isStableMobileRelease(release: { tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string }> }): boolean {
+  if (release.draft) return false;
+  if (release.prerelease) return false;
+  const version = parseMobileVersionFromTag(release.tag_name);
+  if (!version) return false;
+  try {
+    validateSemverStrict(version);
+  } catch {
+    return false;
+  }
+  const hasManifest = (release.assets || []).some((a) => a.name === 'release-manifest.json');
+  if (!hasManifest) return false;
+  return true;
 }
 
 export function buildApkUrlFromManifest(manifest: ReleaseManifest): string | null {
@@ -85,7 +107,7 @@ const REQUIRED_MANIFEST_FIELDS: (keyof ReleaseManifest)[] = [
   'channel',
 ];
 
-export function validateManifest(manifest: unknown): ReleaseManifest {
+export function validateManifest(manifest: unknown, expectedTagVersion?: string): ReleaseManifest {
   if (!manifest || typeof manifest !== 'object') throw new Error('manifest is not an object');
   const m = manifest as Record<string, unknown>;
   for (const field of REQUIRED_MANIFEST_FIELDS) {
@@ -95,17 +117,61 @@ export function validateManifest(manifest: unknown): ReleaseManifest {
     }
   }
   validateSemverStrict(m.version as string);
-  if ((m.repository as string) !== 'egawilldoit/Ega-House-Platform') {
+  validateSemverStrict(m.runtimeVersion as string);
+  if ((m.repository as string) !== EXPECTED_REPO) {
     throw new Error(`malformed manifest: unexpected repository ${m.repository}`);
   }
-  if ((m.androidPackage as string) !== 'com.ega_house.mobile') {
+  if ((m.androidPackage as string) !== EXPECTED_PACKAGE) {
     throw new Error(`malformed manifest: unexpected androidPackage ${m.androidPackage}`);
+  }
+  if ((m.channel as string) !== EXPECTED_CHANNEL) {
+    throw new Error(`malformed manifest: channel ${m.channel}`);
+  }
+  if (m.runtimeVersion !== m.version) {
+    throw new Error(`malformed manifest: runtimeVersion ${m.runtimeVersion} != version ${m.version}`);
   }
   if (!/^[0-9a-f]{40}$/.test(m.gitSha as string)) {
     throw new Error(`malformed manifest: invalid gitSha ${m.gitSha}`);
   }
-  if (!(m.channel as string).trim()) throw new Error('malformed manifest: empty channel');
+  const expectedRef = `refs/tags/mobile-v${m.version as string}`;
+  if ((m.gitRef as string) !== expectedRef) {
+    throw new Error(`malformed manifest: gitRef ${m.gitRef} != ${expectedRef}`);
+  }
+  if (expectedTagVersion && m.version !== expectedTagVersion) {
+    throw new Error(`malformed manifest: version ${m.version} != tag version ${expectedTagVersion}`);
+  }
+  if (!(m.apkFile as string).trim() || !(m.apkSha256 as string)?.trim()) {
+    throw new Error('malformed manifest: missing apkFile/apkSha256');
+  }
   return m as unknown as ReleaseManifest;
+}
+
+export async function fetchReleasesPaginated(opts: {
+  fetchImpl?: FetchImpl;
+  timeoutMs?: number;
+  perPage?: number;
+  maxPages?: number;
+} = {}): Promise<Array<{ tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string; browser_download_url: string }>; html_url: string }>> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const perPage = opts.perPage ?? 100;
+  const maxPages = opts.maxPages ?? 2;
+  const all: Array<{ tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string; browser_download_url: string }>; html_url: string }> = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const url = `${GITHUB_RELEASES_LIST_URL}?per_page=${perPage}&page=${page}`;
+    const res = await withTimeout(
+      fetchImpl(url, {
+        headers: { Accept: 'application/vnd.github+json' },
+      }),
+      timeoutMs
+    );
+    if (!res.ok) throw new Error(`GitHub releases API ${res.status}`);
+    const data = (await res.json()) as Array<{ tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string; browser_download_url: string }>; html_url: string }>;
+    if (!Array.isArray(data) || data.length === 0) break;
+    all.push(...data);
+    if (data.length < perPage) break;
+  }
+  return all;
 }
 
 export async function fetchLatestReleaseManifest(opts: {
@@ -115,41 +181,32 @@ export async function fetchLatestReleaseManifest(opts: {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
 
-  const abort = new AbortController();
-  try {
-    const releaseRes = await withTimeout(
-      fetchImpl(GITHUB_RELEASES_LATEST_URL, {
-        headers: { Accept: 'application/vnd.github+json' },
-        signal: abort.signal,
-      }),
-      timeoutMs
-    );
-    if (!releaseRes.ok) {
-      if (releaseRes.status === 404) throw new Error('no releases found');
-      throw new Error(`GitHub releases API ${releaseRes.status}`);
-    }
-    const release = (await releaseRes.json()) as {
-      tag_name: string;
-      assets: Array<{ name: string; browser_download_url: string }>;
-    };
-    const manifestAsset = release.assets.find((a) => a.name === 'release-manifest.json');
-    if (!manifestAsset) throw new Error('release-manifest.json asset missing');
-    const manifestRes = await withTimeout(
-      fetchImpl(manifestAsset.browser_download_url, {
-        headers: { Accept: 'application/json' },
-        signal: abort.signal,
-      }),
-      timeoutMs
-    );
-    if (!manifestRes.ok) throw new Error(`manifest fetch ${manifestRes.status}`);
-    const raw = await manifestRes.json();
-    return validateManifest(raw);
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('timeout');
-    throw error;
-  } finally {
-    abort.abort();
+  const releases = await fetchReleasesPaginated({ fetchImpl, timeoutMs, perPage: 100, maxPages: 2 });
+  const stableCandidates = releases.filter(isStableMobileRelease);
+  if (stableCandidates.length === 0) {
+    throw new Error('no stable mobile release with release-manifest.json');
   }
+  stableCandidates.sort((a, b) => {
+    const va = parseMobileVersionFromTag(a.tag_name) as string;
+    const vb = parseMobileVersionFromTag(b.tag_name) as string;
+    return compareVersions(vb, va);
+  });
+  const highest = stableCandidates[0];
+  const tagVersion = parseMobileVersionFromTag(highest.tag_name) as string;
+  const manifestAsset = (highest.assets || []).find((a) => a.name === 'release-manifest.json');
+  if (!manifestAsset) throw new Error(`release ${highest.tag_name} missing release-manifest.json`);
+  const manifestRes = await withTimeout(
+    fetchImpl(manifestAsset.browser_download_url, {
+      headers: { Accept: 'application/json' },
+    }),
+    timeoutMs
+  );
+  if (!manifestRes.ok) throw new Error(`manifest fetch ${manifestRes.status} for ${highest.tag_name}`);
+  const raw = await manifestRes.json();
+  const manifest = validateManifest(raw, tagVersion);
+  const apkAsset = (highest.assets || []).find((a) => a.name === manifest.apkFile);
+  if (!apkAsset) throw new Error(`release ${highest.tag_name} missing APK asset ${manifest.apkFile}`);
+  return manifest;
 }
 
 export function classifyNativeUpdate(
@@ -166,7 +223,7 @@ export function classifyNativeUpdate(
   }
   if (isNewerVersion(remoteVersion, localVersion)) {
     const apkUrl = buildApkUrlFromManifest(manifest);
-    const releaseUrl = getGithubReleasesUrl();
+    const releaseUrl = `https://github.com/egawilldoit/Ega-House-Platform/releases/tag/mobile-v${manifest.version}`;
     return {
       status: 'NATIVE_UPDATE_REQUIRED',
       localVersion,
@@ -180,7 +237,7 @@ export function classifyNativeUpdate(
   }
   if (compareVersions(remoteVersion, localVersion) === 0 && remoteRuntime !== localRuntime) {
     const apkUrl = buildApkUrlFromManifest(manifest);
-    const releaseUrl = getGithubReleasesUrl();
+    const releaseUrl = `https://github.com/egawilldoit/Ega-House-Platform/releases/tag/mobile-v${manifest.version}`;
     return {
       status: 'NATIVE_UPDATE_REQUIRED',
       localVersion,
@@ -230,8 +287,9 @@ export async function checkNativeUpdateRequired(opts: {
       lower.includes('failed to fetch') ||
       lower.includes('abort') ||
       lower.includes('malformed') ||
-      lower.includes('no releases') ||
-      lower.includes('asset missing')
+      lower.includes('no stable') ||
+      lower.includes('asset missing') ||
+      lower.includes('github releases api')
     ) {
       return { status: 'ERROR', error: message };
     }

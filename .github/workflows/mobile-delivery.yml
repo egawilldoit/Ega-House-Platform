@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Determine source identity
         id: identity
@@ -47,9 +47,17 @@ jobs:
           echo "source_sha=$SOURCE_SHA"
           echo "source_ref=$SOURCE_REF"
 
-          APP_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || node -p "require('./apps/mobile/package.json').version" 2>/dev/null || echo "0.0.0")"
-          if [[ "$SOURCE_REF" =~ refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            APP_VERSION="${BASH_REMATCH[1]}"
+          APP_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || echo "")"
+          if [ -z "$APP_VERSION" ]; then
+            echo "::error::Failed to read apps/mobile/app.json expo.version — app.json is the ONLY native version authority"
+            exit 1
+          fi
+          if [[ "$SOURCE_REF" =~ refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            TAG_VERSION="${BASH_REMATCH[1]}"
+            if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+              echo "::error::TAG_APP_VERSION_MISMATCH: tag version $TAG_VERSION != app.json expo.version $APP_VERSION"
+              exit 1
+            fi
           fi
 
           API_BASE_URL="https://ega-api.egawilldoit.online"
@@ -88,37 +96,40 @@ jobs:
           CANDIDATE_VER="$(node -p "require('./apps/mobile/app.json').expo.version")"
           echo "Candidate SHA: $CANDIDATE_SHA"
           echo "Candidate version (app.json): $CANDIDATE_VER"
-          # Fetch latest stable baseline manifest (if any)
-          BASELINE_URL=""
-          if gh api repos/${{ github.repository }}/releases/latest --jq '.assets[] | select(.name=="release-manifest.json") | .browser_download_url' > /tmp/baseline_url.txt 2>/dev/null; then
-            BASELINE_URL="$(cat /tmp/baseline_url.txt | head -n1)"
-          fi
-          if [ -z "$BASELINE_URL" ]; then
-            echo "No baseline manifest asset found — bootstrap first native release, allowing $CANDIDATE_VER"
-            echo "If this is not the intended bootstrap (1.0.1), ensure a stable release-manifest.json exists"
-            exit 0
-          fi
-          echo "Baseline manifest URL: $BASELINE_URL"
-          if ! curl -fsSL -H "Accept: application/json" -H "Authorization: Bearer $GH_TOKEN" "$BASELINE_URL" -o /tmp/baseline-manifest.json; then
-            echo "::error::Failed to fetch baseline manifest from $BASELINE_URL"
+          # Deterministic stable mobile release selector (not repo-wide latest)
+          if node scripts/ci/mobile-release-selector.mjs --json --token "$GH_TOKEN" > /tmp/selector.json 2> /tmp/selector.err; then
+            if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
+              echo "No stable mobile baseline found — bootstrap case"
+              cat /tmp/selector.json
+              if [ "$CANDIDATE_VER" = "1.0.1" ]; then
+                echo "Bootstrap allowed: candidate is 1.0.1 (first OTA-enabled APK)"
+                exit 0
+              else
+                echo "::error::BOOTSTRAP_VERSION_UNEXPECTED: no stable mobile baseline but candidate $CANDIDATE_VER != 1.0.1 → BLOCK"
+                exit 1
+              fi
+            fi
+            cat /tmp/selector.json
+            BASELINE_SHA="$(jq -r .gitSha /tmp/selector.json)"
+            BASELINE_VER="$(jq -r .version /tmp/selector.json)"
+            echo "Baseline SHA: $BASELINE_SHA version: $BASELINE_VER"
+            jq .manifest /tmp/selector.json > /tmp/baseline-manifest.json
+            if [ -z "$BASELINE_SHA" ] || [ "$BASELINE_SHA" = "null" ] || [ -z "$BASELINE_VER" ] || [ "$BASELINE_VER" = "null" ]; then
+              echo "::error::Malformed baseline selector output — fail closed"
+              cat /tmp/selector.json
+              exit 1
+            fi
+            node scripts/ci/check-native-version-bump.mjs \
+              --baseline-manifest /tmp/baseline-manifest.json \
+              --candidate-version "$CANDIDATE_VER" \
+              --base "$BASELINE_SHA" \
+              --head "$CANDIDATE_SHA"
+          else
+            echo "::error::Failed to select stable mobile release — fail closed"
+            cat /tmp/selector.err || true
+            cat /tmp/selector.json || true
             exit 1
           fi
-          cat /tmp/baseline-manifest.json
-          BASELINE_VER="$(jq -r .version /tmp/baseline-manifest.json)"
-          BASELINE_SHA="$(jq -r .gitSha /tmp/baseline-manifest.json)"
-          BASELINE_RT="$(jq -r .runtimeVersion /tmp/baseline-manifest.json)"
-          echo "Baseline version: $BASELINE_VER runtime: $BASELINE_RT sha: $BASELINE_SHA"
-          if [ -z "$BASELINE_VER" ] || [ "$BASELINE_VER" = "null" ] || [ -z "$BASELINE_SHA" ] || [ "$BASELINE_SHA" = "null" ]; then
-            echo "::error::Malformed baseline manifest — missing version/gitSha — fail closed"
-            cat /tmp/baseline-manifest.json
-            exit 1
-          fi
-          # Strict semver compare via helper; allow JS-only same version, block native diff without bump
-          node scripts/ci/check-native-version-bump.mjs \
-            --baseline-manifest /tmp/baseline-manifest.json \
-            --candidate-version "$CANDIDATE_VER" \
-            --base "$BASELINE_SHA" \
-            --head "$CANDIDATE_SHA"
 
       - name: Validate source ref is main or mobile-v* tag
         shell: bash
