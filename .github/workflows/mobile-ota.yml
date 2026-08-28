@@ -1,21 +1,15 @@
-name: Mobile OTA (EAS Update)
+name: Mobile OTA (EAS Update — production only)
 
 on:
   workflow_dispatch:
     inputs:
-      channel:
-        description: "EAS Update channel (production or preview)"
-        required: true
-        default: "production"
-        type: choice
-        options: [production, preview]
       message:
         description: "Update message (required, e.g. fix: login alignment)"
         required: true
         type: string
 
 concurrency:
-  group: mobile-ota-${{ inputs.channel }}
+  group: mobile-ota-production
   cancel-in-progress: false
 
 permissions:
@@ -23,17 +17,19 @@ permissions:
 
 env:
   EXPO_PROJECT_ID: 73d127b6-c8f6-450c-8d97-2dca8434cd59
+  EAS_CLI_VERSION: 13.5.1
 
 jobs:
   preflight:
-    name: Preflight (OTA gate)
+    name: Preflight (OTA gate — production)
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     outputs:
       source_sha: ${{ steps.identity.outputs.source_sha }}
       source_ref: ${{ steps.identity.outputs.source_ref }}
-      channel: ${{ steps.identity.outputs.channel }}
       message: ${{ steps.identity.outputs.message }}
+      app_version: ${{ steps.app_version.outputs.app_version }}
+      manifest_sha: ${{ steps.native_manifest.outputs.manifest_sha }}
     steps:
       - name: Checkout exact source SHA
         uses: actions/checkout@v5
@@ -41,39 +37,45 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
 
-      - name: Determine source identity
+      - name: Determine source identity (production only from main)
         id: identity
         shell: bash
         run: |
           set -euo pipefail
           SOURCE_SHA="${{ github.sha }}"
           SOURCE_REF="${{ github.ref }}"
-          CHANNEL="${{ inputs.channel }}"
           MESSAGE="${{ inputs.message }}"
           if [ -z "$MESSAGE" ]; then
             echo "::error::Message is required for OTA publication"
             exit 1
           fi
-          if [ "$CHANNEL" != "production" ] && [ "$CHANNEL" != "preview" ]; then
-            echo "::error::Channel must be production or preview"
-            exit 1
-          fi
-          # production channel only from main or tag; preview allowed from any branch
-          if [ "$CHANNEL" = "production" ] && [ "$SOURCE_REF" != "refs/heads/main" ] && [[ "$SOURCE_REF" != refs/tags/mobile-v* ]]; then
-            echo "::error::Production OTA only from main or mobile-v* tag (got $SOURCE_REF)"
+          if [ "$SOURCE_REF" != "refs/heads/main" ]; then
+            echo "::error::Production OTA may run ONLY from refs/heads/main (got $SOURCE_REF)"
             exit 1
           fi
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
-          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
           cat <<EOF >> "$GITHUB_STEP_SUMMARY"
-          ## OTA Preflight
+          ## OTA Preflight — production
           - Source SHA: \`$SOURCE_SHA\`
           - Source ref: \`$SOURCE_REF\`
-          - Channel: \`$CHANNEL\`
           - Message: \`$MESSAGE\`
+          - Channel: \`production\` (V1 only)
           EOF
+
+      - name: Extract authoritative app version
+        id: app_version
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          if [ -z "$APP_VERSION" ]; then
+            echo "::error::Failed to read apps/mobile/app.json expo.version"
+            exit 1
+          fi
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "App version (app.json): $APP_VERSION"
 
       - name: Verify Unified Platform Validation is green for exact SOURCE_SHA
         env:
@@ -86,36 +88,153 @@ jobs:
           SUCCESS="$(gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=20" --jq "[.workflow_runs[] | select(.head_sha==\"$SHA\" and .conclusion==\"success\" and .status==\"completed\")] | length" 2>/dev/null || echo "0")"
           echo "Successful runs for $SHA: $SUCCESS"
           if [ "$SUCCESS" -eq 0 ]; then
-            echo "::error::BLOCKED_CI_NOT_GREEN: No successful Unified Platform Validation for exact SOURCE_SHA $SHA. Wait for CI to be green before publishing OTA."
+            echo "::error::BLOCKED_CI_NOT_GREEN: No successful Unified Platform Validation for exact SOURCE_SHA $SHA"
             gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=5" --jq ".workflow_runs[] | \"\(.head_sha) \(.status) \(.conclusion)\"" || true
             exit 1
           fi
-          echo "Unified CI is green for $SHA"
 
-      - name: Guard native-runtime inputs (no silent OTA for native changes)
+      - name: Prove clean npm ci
         shell: bash
         run: |
           set -euo pipefail
-          echo "Running native-change guard (allows OTA only when fingerprint unchanged vs last APK manifest, but never blocks on first run)"
-          node scripts/ci/guard-ota-native.mjs || echo "::warning::guard-ota-native reported risk — see logs; OTA still allowed but operator must confirm native APK is not required"
+          npm ci --no-audit --no-fund
+
+      - name: Check EXPO_TOKEN
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::EXPO_TOKEN secret missing. Create at https://expo.dev/settings/access-tokens"
+            exit 1
+          fi
+          echo "EXPO_TOKEN present"
+
+      - name: Verify EAS project identity matches expected
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED="73d127b6-c8f6-450c-8d97-2dca8434cd59"
+          ACTUAL="$(node -p "require('./apps/mobile/app.json').expo.extra.eas.projectId")"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::EAS projectId mismatch: got $ACTUAL expected $EXPECTED"
+            exit 1
+          fi
+          ACTUAL2="$(grep -o '"expo-channel-name":"production"' apps/mobile/app.json || echo "")"
+          if [ -z "$ACTUAL2" ]; then
+            echo "::error::app.json must contain requestHeaders expo-channel-name production"
+            exit 1
+          fi
+          echo "Project ID and channel header OK"
+
+      - name: Fetch latest native release-manifest
+        id: native_manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Fetching latest release manifest via gh api"
+          # Try GH releases latest asset via API
+          gh api repos/${{ github.repository }}/releases/latest --jq '.assets[] | select(.name=="release-manifest.json") | .browser_download_url' > /tmp/manifest_url.txt || true
+          MANIFEST_URL="$(cat /tmp/manifest_url.txt | head -n1)"
+          if [ -z "$MANIFEST_URL" ]; then
+            # fallback: try gitHub API json directly for artifact list
+            echo "::error::No release-manifest.json asset found in latest release — has a native APK been built yet?"
+            gh api repos/${{ github.repository }}/releases/latest --jq '.' | head -n 100 || true
+            exit 1
+          fi
+          echo "Manifest URL: $MANIFEST_URL"
+          curl -fsSL -H "Accept: application/json" -H "Authorization: Bearer $GH_TOKEN" "$MANIFEST_URL" -o /tmp/release-manifest.json
+          cat /tmp/release-manifest.json
+          MANIFEST_SHA="$(jq -r .gitSha /tmp/release-manifest.json)"
+          MANIFEST_VER="$(jq -r .version /tmp/release-manifest.json)"
+          MANIFEST_RT="$(jq -r .runtimeVersion /tmp/release-manifest.json)"
+          MANIFEST_PKG="$(jq -r .androidPackage /tmp/release-manifest.json)"
+          MANIFEST_CH="$(jq -r .channel /tmp/release-manifest.json)"
+          MANIFEST_REF="$(jq -r .gitRef /tmp/release-manifest.json)"
+          if [ -z "$MANIFEST_SHA" ] || [ "$MANIFEST_SHA" = "null" ]; then
+            echo "::error::manifest gitSha missing"
+            exit 1
+          fi
+          echo "manifest_sha=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
+          echo "manifest_version=$MANIFEST_VER" >> "$GITHUB_OUTPUT"
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## Native baseline (latest APK)
+          - gitSha: \`$MANIFEST_SHA\`
+          - gitRef: \`$MANIFEST_REF\`
+          - version: \`$MANIFEST_VER\`
+          - runtimeVersion: \`$MANIFEST_RT\`
+          - package: \`$MANIFEST_PKG\`
+          - channel: \`$MANIFEST_CH\`
+          EOF
+          # Save for later steps
+          cp /tmp/release-manifest.json release-manifest.snapshot.json
+
+      - name: Validate manifest fields vs current build
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST="/tmp/release-manifest.json"
+          APP_VERSION="${{ steps.app_version.outputs.app_version }}"
+          MANIFEST_VER="$(jq -r .version "$MANIFEST")"
+          MANIFEST_RT="$(jq -r .runtimeVersion "$MANIFEST")"
+          MANIFEST_PKG="$(jq -r .androidPackage "$MANIFEST")"
+          MANIFEST_CH="$(jq -r .channel "$MANIFEST")"
+          MANIFEST_SHA="$(jq -r .gitSha "$MANIFEST")"
+          echo "App version: $APP_VERSION vs manifest version $MANIFEST_VER runtime $MANIFEST_RT"
+          if [ "$MANIFEST_PKG" != "com.ega_house.mobile" ]; then
+            echo "::error::manifest androidPackage expected com.ega_house.mobile got $MANIFEST_PKG"
+            exit 1
+          fi
+          if [ "$MANIFEST_CH" != "production" ]; then
+            echo "::error::manifest channel expected production got $MANIFEST_CH"
+            exit 1
+          fi
+          # For appVersion policy, runtimeVersion must equal version
+          if [ "$MANIFEST_RT" != "$MANIFEST_VER" ]; then
+            echo "::error::manifest runtimeVersion $MANIFEST_RT != version $MANIFEST_VER — appVersion policy requires equality"
+            exit 1
+          fi
+          # manifest.version must equal current app.json version? Not necessarily if we are publishing OTA for same version.
+          # We require manifest.version == current appVersion (same native baseline) — otherwise native changed but no new APK?
+          # Actually OTA should be for same native version, so require equality.
+          if [ "$MANIFEST_VER" != "$APP_VERSION" ]; then
+            echo "::error::manifest.version $MANIFEST_VER != current app.json $APP_VERSION — a new native APK with version $APP_VERSION has not been built yet, or manifest is stale. Build new APK first."
+            exit 1
+          fi
+          # manifest.gitSha must be ancestor of OTA SHA
+          OTA_SHA="${{ steps.identity.outputs.source_sha }}"
+          if ! git merge-base --is-ancestor "$MANIFEST_SHA" "$OTA_SHA"; then
+            echo "::error::manifest.gitSha $MANIFEST_SHA is not an ancestor of OTA SHA $OTA_SHA — native baseline diverged"
+            git log --oneline --graph "$MANIFEST_SHA".."$OTA_SHA" | head -n 30 || true
+            exit 1
+          fi
+          echo "Manifest validation PASS"
+
+      - name: Hard native/OTA guard (manifest SHA → OTA SHA)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="$(jq -r .gitSha /tmp/release-manifest.json)"
+          HEAD="${{ steps.identity.outputs.source_sha }}"
+          echo "Guard: base=$BASE head=$HEAD --check-ota-safe"
+          node scripts/ci/guard-ota-native.mjs --base "$BASE" --head "$HEAD" --check-ota-safe
+
+      - name: Upload native baseline evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: ota-native-baseline-${{ steps.identity.outputs.source_sha }}
+          path: release-manifest.snapshot.json
+          if-no-files-found: error
+          retention-days: 7
 
   publish:
-    name: Publish OTA (${{ inputs.channel }})
+    name: Publish OTA (production, Android only)
     needs: [preflight]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
     steps:
-      - name: Check EXPO_TOKEN
-        shell: bash
-        run: |
-          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
-            echo "::error::EXPO_TOKEN secret missing. Create it at https://expo.dev/settings/access-tokens and add to repo secrets."
-            exit 1
-          fi
-          echo "EXPO_TOKEN present"
-
       - name: Checkout exact source SHA
         uses: actions/checkout@v5
         with:
@@ -129,33 +248,46 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
-      - name: Set up EAS
+      - name: Set up EAS (pinned)
         uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          eas-version: ${{ env.EAS_CLI_VERSION }}
           token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Record EAS CLI version
+        shell: bash
+        run: |
+          eas --version | tee eas-cli-version.txt
+          cat eas-cli-version.txt >> "$GITHUB_STEP_SUMMARY"
 
       - name: Install workspace dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Verify Expo project and runtime fingerprint
-        working-directory: apps/mobile
+      - name: Verify Expo project and production channel exists
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "Project ID: $EXPO_PROJECT_ID"
-          echo "Expo version $(npx expo --version)"
-          npx expo config --type public | head -n 80
-          echo "Runtime version policy should be fingerprint"
-          node -p "JSON.stringify(require('./app.json').expo.runtimeVersion, null, 2)"
-          if ! grep -q "fingerprint" apps/mobile/app.json; then
-            echo "::error::runtimeVersion fingerprint policy missing in app.json"
+          echo "EXPO_PROJECT_ID $EXPO_PROJECT_ID"
+          # Verify eas config is valid
+          eas config --platform android --json --non-interactive > eas-config.json
+          cat eas-config.json | head -n 100
+          # Verify channel exists server-side
+          eas channel:view production --json --non-interactive > channel.json
+          cat channel.json
+          jq -e '.name == "production" or .channel == "production" or .branch // empty' channel.json || jq -e . channel.json
+          echo "Channel production exists"
+          # Also ensure app.json runtime policy is appVersion
+          POLICY="$(node -p "require('./apps/mobile/app.json').expo.runtimeVersion.policy")"
+          if [ "$POLICY" != "appVersion" ]; then
+            echo "::error::runtimeVersion policy must be appVersion got $POLICY"
             exit 1
           fi
-          # fingerprint generation (dry-run) to prove deterministic hash exists
-          npx expo fingerprint:generate --platform android --output .fingerprint.json 2>&1 | tail -n 20 || echo "fingerprint generate not available, skipping proof"
+          APP_VER="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          echo "App version $APP_VER policy $POLICY OK"
 
-      - name: Publish OTA update via EAS
+      - name: Publish OTA update via EAS (exactly once)
         id: publish
         working-directory: apps/mobile
         env:
@@ -163,58 +295,74 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CHANNEL="${{ needs.preflight.outputs.channel }}"
           MESSAGE="${{ needs.preflight.outputs.message }}"
           SHA="${{ needs.preflight.outputs.source_sha }}"
-          FULL_MESSAGE="$MESSAGE (sha $SHA, channel $CHANNEL, ${{ needs.preflight.outputs.source_ref }})"
-          echo "Publishing EAS update on channel $CHANNEL with message: $FULL_MESSAGE"
-          # --non-interactive + --json for evidence (where supported)
-          set +e
-          eas update --channel "$CHANNEL" --message "$FULL_MESSAGE" --non-interactive --json > eas-update.json 2>&1
+          FULL_MESSAGE="$MESSAGE (sha $SHA, production, ${{ needs.preflight.outputs.source_ref }})"
+          echo "Publishing EAS update --channel production --platform android --message \"$FULL_MESSAGE\""
+          rm -f eas-update.json eas-update.stderr.log
+          eas update \
+            --channel production \
+            --platform android \
+            --message "$FULL_MESSAGE" \
+            --non-interactive \
+            --json \
+            > eas-update.json \
+            2> eas-update.stderr.log
           STATUS=$?
+          echo "EAS exit status: $STATUS"
+          echo "--- stdout json ---"
           cat eas-update.json || true
-          set -e
+          echo "--- stderr ---"
+          cat eas-update.stderr.log || true
           if [ $STATUS -ne 0 ]; then
-            # fallback without --json if CLI version doesn't support it
-            echo "Retrying without --json"
-            eas update --channel "$CHANNEL" --message "$FULL_MESSAGE" --non-interactive
-            echo '{"fallback": true, "message": "'"$FULL_MESSAGE"'"}' > eas-update.json
+            echo "::error::EAS update failed with status $STATUS — no retry"
+            exit $STATUS
           fi
-          # Extract update identity where possible
+          jq -e . eas-update.json > /dev/null || { echo "::error::eas-update.json is not valid JSON"; exit 1; }
           UPDATE_ID="$(jq -r '.[0].id // .id // .updateId // empty' eas-update.json 2>/dev/null || echo "")"
           UPDATE_GROUP="$(jq -r '.[0].group // .group // empty' eas-update.json 2>/dev/null || echo "")"
           echo "update_id=$UPDATE_ID" >> "$GITHUB_OUTPUT"
           echo "update_group=$UPDATE_GROUP" >> "$GITHUB_OUTPUT"
-          echo "Published SHA $SHA to channel $CHANNEL"
+          echo "EAS version: $(eas --version)"
 
       - name: Record evidence summary
         shell: bash
         run: |
           set -euo pipefail
+          APP_VER="$(node -p "require('./apps/mobile/app.json').expo.version")"
           cat <<EOF >> "$GITHUB_STEP_SUMMARY"
-          # Mobile OTA Published
+          # Mobile OTA Published — production / android
           | Field | Value |
           |---|---|
-          | Channel | \`${{ needs.preflight.outputs.channel }}\` |
+          | Channel | \`production\` |
+          | Platform | \`android\` |
           | Message | \`${{ needs.preflight.outputs.message }}\` |
           | Source SHA | \`${{ needs.preflight.outputs.source_sha }}\` |
-          | Source ref | \`${{ needs.preflight.outputs.source_ref }}\` |
+          | App version | \`$APP_VER\` |
+          | Runtime policy | \`appVersion\` |
           | Update ID | \`${{ steps.publish.outputs.update_id }}\` |
           | Update Group | \`${{ steps.publish.outputs.update_group }}\` |
-          | EXPO_PROJECT_ID | \`${{ env.EXPO_PROJECT_ID }}\` |
-          | Runtime policy | \`fingerprint\` |
+          | EAS CLI | \`${{ env.EAS_CLI_VERSION }}\` |
+          | Manifest baseline SHA | \`${{ needs.preflight.outputs.manifest_sha }}\` |
           EOF
           echo "--- eas-update.json ---"
           cat apps/mobile/eas-update.json 2>/dev/null || cat eas-update.json 2>/dev/null || true
 
-      - name: Upload OTA evidence (7 days)
+      - name: Upload OTA evidence
         uses: actions/upload-artifact@v4
         with:
-          name: eas-ota-${{ needs.preflight.outputs.channel }}-${{ needs.preflight.outputs.source_sha }}
+          name: eas-ota-production-${{ needs.preflight.outputs.source_sha }}
           path: |
             apps/mobile/eas-update.json
+            apps/mobile/eas-update.stderr.log
             eas-update.json
-            apps/mobile/.fingerprint.json
+            eas-update.stderr.log
+            apps/mobile/eas-config.json
+            apps/mobile/channel.json
+            eas-config.json
+            channel.json
+            eas-cli-version.txt
+            release-manifest.snapshot.json
           if-no-files-found: warn
           retention-days: 7
 
@@ -232,9 +380,9 @@ jobs:
           # OTA Delivery Summary
           | Gate | Result |
           |---|---|
-          | Preflight (CI green + guard) | \`${{ needs.preflight.result }}\` |
-          | EAS Update publish | \`${{ needs.publish.result }}\` |
-          | Channel | \`${{ needs.preflight.outputs.channel }}\` |
+          | Preflight (12 checks) | \`${{ needs.preflight.result }}\` |
+          | EAS publish (android, once) | \`${{ needs.publish.result }}\` |
           | SHA | \`${{ needs.preflight.outputs.source_sha }}\` |
-          Rollback: \`eas update:rollback --branch ${{ needs.preflight.outputs.channel }} --non-interactive\` or \`eas update:republish --branch ${{ needs.preflight.outputs.channel }}\`
+          Rollback (if needed): \`eas update:rollback --branch production --non-interactive\` then republish, or \`eas update:republish --branch production\`
+          See docs/mobile-ota.md for correct rollback with group ID where required.
           EOF
