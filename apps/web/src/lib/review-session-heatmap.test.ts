@@ -134,11 +134,8 @@ test("timezone-aware: New York 23:30 local on 01-15 (04:30 next day UTC) buckets
 });
 
 test("timezone-aware: session crossing local midnight splits correctly", () => {
-  // Tokyo day 01-16 window: 15:00Z 01-15 -> 15:00Z 01-16; day 01-16 and 01-17 window for 2 days
-  const window = getDailyTrackedWindow(2, "2026-01-16", "Asia/Tokyo");
   // Session from 23:30 JST 01-16 (=14:30Z 01-16) to 00:30 JST 01-17 (=15:30Z 01-16) crosses local midnight
-  // Should split 30 min to 01-16, 30 min to next window? But our 2-day window is 01-15..01-16, next day not included.
-  // Let's use window 01-16..01-17 to see split
+  // Should split 30 min to 01-16, 30 min to 01-17
   const window2 = getDailyTrackedWindow(2, "2026-01-17", "Asia/Tokyo");
   const data = aggregateDailyTrackedSeconds(
     [{ started_at: "2026-01-16T14:30:00.000Z", ended_at: "2026-01-16T15:30:00.000Z" }],
