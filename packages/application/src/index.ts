@@ -22,6 +22,8 @@ export * from "./timer/service";
 export * from "./friction/ports";
 export * from "./friction/stale-blocked-signals";
 export * from "./shared/duration";
+export * from "./shared/time-context";
+export * from "./shared/execution-evidence";
 
 export type {
   GoalHealth,
