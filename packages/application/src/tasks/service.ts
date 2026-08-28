@@ -45,6 +45,7 @@ export async function createTask(
     dueDate?: unknown;
     estimateMinutes?: unknown;
   },
+  options?: { preallocatedId?: string },
 ): Promise<ApplicationResult<TaskRecord>> {
   const title = String(input.title ?? "").trim();
   const projectId = String(input.projectId ?? "").trim();
@@ -78,6 +79,7 @@ export async function createTask(
   }
 
   const record: CreateTaskRecordInput = {
+    ...(options?.preallocatedId ? { id: String(options.preallocatedId).trim() } : {}),
     title,
     projectId,
     goalId,

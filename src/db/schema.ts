@@ -344,6 +344,8 @@ export const taskReminders = pgTable(
     failureReason: text("failure_reason"),
     processedAt: timestamp("processed_at", { withTimezone: true }),
     processingError: text("processing_error"),
+    source: varchar("source", { length: 64 }),
+    sourceId: varchar("source_id", { length: 256 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -360,6 +362,9 @@ export const taskReminders = pgTable(
     index("task_reminders_pending_by_remind_at_idx")
       .on(table.status, table.remindAt)
       .where(sql`${table.status} = 'pending'`),
+    uniqueIndex("task_reminders_owner_source_source_id_unique")
+      .on(table.ownerUserId, table.source, table.sourceId)
+      .where(sql`${table.source} is not null and ${table.sourceId} is not null`),
     check(
       "task_reminders_delivery_mode_check",
       sql`${table.deliveryMode} in ('push', 'email', 'both')`,
