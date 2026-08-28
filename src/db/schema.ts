@@ -465,6 +465,30 @@ export const userTimeContext = pgTable("user_time_context", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const inboxIdempotencyKeys = pgTable(
+  "inbox_idempotency_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    key: varchar("key", { length: 128 }).notNull(),
+    inboxItemId: uuid("inbox_item_id")
+      .notNull()
+      .references(() => ideaNotes.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("inbox_idempotency_keys_owner_key_unique").on(
+      table.ownerUserId,
+      table.key,
+    ),
+    index("inbox_idempotency_keys_owner_idx").on(table.ownerUserId),
+    index("inbox_idempotency_keys_inbox_item_id_idx").on(table.inboxItemId),
+  ],
+);
+
+
 export const operatorProposals = pgTable(
   "operator_proposals",
   {
