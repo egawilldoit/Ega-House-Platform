@@ -199,6 +199,29 @@ function isTaskExcluded(task: { status: string; archivedAt: string | null }): bo
   return false;
 }
 
+function validateExplicitTaskIds(
+  proposedTaskIds: string[],
+  explicitIds: unknown,
+): { ok: true; value: string[] } | { ok: false; message: string } {
+  if (explicitIds === undefined) return { ok: true, value: [...proposedTaskIds] };
+  if (!Array.isArray(explicitIds)) return { ok: false, message: "Apply task ids must be an array." };
+  if (explicitIds.length > 6) return { ok: false, message: "Apply exceeds maximum of 6 tasks." };
+  const proposedSet = new Set(proposedTaskIds);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of explicitIds) {
+    if (typeof raw !== "string" || !raw.trim()) return { ok: false, message: "Apply task id is invalid." };
+    const id = raw.trim();
+    if (id.length > 256) return { ok: false, message: "Apply task id is too long." };
+    if (seen.has(id)) return { ok: false, message: "Duplicate Task id in apply." };
+    if (!proposedSet.has(id)) return { ok: false, message: `Task ${id} is not part of proposal.` };
+    seen.add(id);
+    out.push(id);
+  }
+  // Allow empty explicit array as no-op but preserve idempotency semantics
+  return { ok: true, value: out };
+}
+
 export async function validateProposedTasksShared(
   actor: AuthenticatedActor,
   lookup: OperatorTaskLookupPort,
@@ -234,13 +257,22 @@ export async function detectStale(
   actor: AuthenticatedActor,
   lookup: OperatorTaskLookupPort,
   proposal: OperatorProposalRecord,
+  explicitIds?: string[],
 ): Promise<{ stale: boolean; reason?: string }> {
-  // Compare stored taskVersions vs current tasks
-  for (const stored of proposal.taskVersions) {
+  // Compare stored taskVersions vs current tasks — when explicitIds provided,
+  // only check subset (partial explicit apply should not be blocked by unrelated stale tasks)
+  const filter = explicitIds ? new Set(explicitIds) : null;
+  const versionsToCheck = filter
+    ? proposal.taskVersions.filter((v) => filter.has(v.id))
+    : proposal.taskVersions;
+  for (const stored of versionsToCheck) {
     const currentResult = await lookup.getTask(actor, stored.id);
     if (!currentResult.ok) return { stale: true, reason: "Unable to load Task for stale check." };
     if (!currentResult.value) return { stale: true, reason: `Task ${stored.id} missing.` };
     const current = currentResult.value;
+    // Completed/archived/canceled/blocked are handled as per-task skip with structured result,
+    // not as whole-proposal stale — allows partial apply to succeed for remaining tasks.
+    if (isTaskExcluded(current)) continue;
     if (current.updatedAt !== stored.updatedAt) return { stale: true, reason: `Task ${stored.id} updatedAt mismatch.` };
     if (current.status !== stored.status) return { stale: true, reason: `Task ${stored.id} status changed.` };
     if (current.priority !== stored.priority) return { stale: true, reason: `Task ${stored.id} priority changed.` };
@@ -248,7 +280,6 @@ export async function detectStale(
     if (current.focusRank !== stored.focusRank) return { stale: true, reason: `Task ${stored.id} focusRank changed.` };
     if (current.estimateMinutes !== stored.estimateMinutes) return { stale: true, reason: `Task ${stored.id} estimate changed.` };
     if (current.plannedForDate !== stored.plannedForDate) return { stale: true, reason: `Task ${stored.id} plannedForDate changed.` };
-    if (isTaskExcluded(current)) return { stale: true, reason: `Task ${stored.id} is no longer actionable.` };
   }
   // Also detect if new blocking tasks appeared? For now only check versions.
   // Additional check: if proposal has 0 tasks but there are now actionable tasks? Not stale — sparse is valid.
@@ -475,7 +506,7 @@ export async function applyOperatorProposal(
   proposalRepo: OperatorProposalRepository,
   taskLookup: OperatorTaskLookupPort,
   todayMutation: OperatorTodayMutationPort,
-  input: Readonly<{ proposalId: unknown; idempotencyKey?: unknown }>,
+  input: Readonly<{ proposalId: unknown; idempotencyKey?: unknown; taskIds?: unknown }>,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const proposalId = String(input.proposalId ?? "").trim();
   if (!proposalId) return applicationFailure("Proposal id is required.");
@@ -499,10 +530,16 @@ export async function applyOperatorProposal(
     return applicationSuccess(proposal);
   }
 
-  // Stale detection before mutation (compare taskVersions vs current)
-  const staleCheck = await detectStale(actor, taskLookup, proposal);
+  // Explicit partial apply: validate requested subset is within proposal (LLM cannot inject arbitrary ids)
+  const explicitValidation = validateExplicitTaskIds(proposal.proposedTaskIds, input.taskIds);
+  if (!explicitValidation.ok) return applicationFailure(explicitValidation.message);
+  const explicitTaskIds = explicitValidation.value;
+
+  // Stale detection before mutation (compare taskVersions vs current) — scoped to explicit ids
+  const staleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
   if (staleCheck.stale) {
     const nowIso = new Date().toISOString();
+    const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
     const updated = await proposalRepo.updateProposal(actor, proposal.id, {
       status: "stale",
       updatedAt: nowIso,
@@ -510,7 +547,7 @@ export async function applyOperatorProposal(
       result: {
         appliedTaskIds: [],
         skippedTaskIds: [],
-        failedTaskIds: proposal.proposedTaskIds.map((id) => ({ id, reason: staleCheck.reason ?? "stale" })),
+        failedTaskIds: targetIds.map((id) => ({ id, reason: staleCheck.reason ?? "stale" })),
         staleDetected: true,
         appliedAt: nowIso,
         status: "stale",
@@ -529,13 +566,14 @@ export async function applyOperatorProposal(
   if (!applyingUpdate.ok) return applicationFailure("Unable to transition proposal to applying.");
   proposal = applyingUpdate.value;
 
-  // Partial apply: attempt each task's plannedForDate mutation
+  // Partial apply: attempt each task's plannedForDate mutation — explicit subset when provided
+  const targetIds = explicitTaskIds;
   const appliedTaskIds: string[] = [];
   const skippedTaskIds: Array<{ id: string; reason: string }> = [];
   const failedTaskIds: Array<{ id: string; reason: string }> = [];
 
-  for (const taskId of proposal.proposedTaskIds) {
-    // Re-validate each task is still actionable before mutation
+  for (const taskId of targetIds) {
+    // Re-validate each task is still actionable before mutation — revalidates ownership/state
     const taskCheck = await taskLookup.getTask(actor, taskId);
     if (!taskCheck.ok) {
       failedTaskIds.push({ id: taskId, reason: "Unable to load Task." });
@@ -545,11 +583,15 @@ export async function applyOperatorProposal(
       failedTaskIds.push({ id: taskId, reason: "Task not found." });
       continue;
     }
+    // Archived/completed/canceled/blocked are skipped with structured reason — not mutated
     if (isTaskExcluded(taskCheck.value)) {
-      skippedTaskIds.push({ id: taskId, reason: `Task is ${taskCheck.value.status}` });
+      const reason = taskCheck.value.archivedAt
+        ? "Task is archived"
+        : `Task is ${taskCheck.value.status}`;
+      skippedTaskIds.push({ id: taskId, reason });
       continue;
     }
-    // If already planned for this date, skip as already applied (idempotent)
+    // If already planned for this date, treat as already applied (idempotent retry for Today selection)
     if (taskCheck.value.plannedForDate === proposal.localDate) {
       appliedTaskIds.push(taskId);
       continue;
@@ -571,26 +613,20 @@ export async function applyOperatorProposal(
 
   const nowIso = new Date().toISOString();
   let finalStatus: OperatorProposalStatus;
-  if (failedTaskIds.length > 0 || skippedTaskIds.length > 0) {
-    if (appliedTaskIds.length === 0) {
-      finalStatus = failedTaskIds.length > 0 ? "stale" : "partially_applied";
-      // If nothing applied and all failed, consider stale? But spec says partially_applied when some skipped
-      // For simplicity: if any applied, partially_applied; if none applied but some skipped/failed, also partially_applied unless all failed due to stale?
-      // We'll define: if appliedTaskIds >0 and (skipped+failed)>0 => partially_applied, if applied==0 and proposed>0 => partially_applied (records exactly what skipped)
-      // To avoid stale confusion, use partially_applied when no applied but there were attempts
-      if (appliedTaskIds.length === 0 && proposal.proposedTaskIds.length > 0) {
-        finalStatus = "partially_applied";
-      }
-    } else if (failedTaskIds.length > 0 || skippedTaskIds.length > 0) {
+  const hasSkips = failedTaskIds.length > 0 || skippedTaskIds.length > 0;
+  if (hasSkips) {
+    if (appliedTaskIds.length === 0 && targetIds.length > 0) {
       finalStatus = "partially_applied";
-    } else {
+    } else if (appliedTaskIds.length > 0 && hasSkips) {
+      finalStatus = "partially_applied";
+    } else if (targetIds.length === 0) {
       finalStatus = "applied";
+    } else {
+      finalStatus = "partially_applied";
     }
   } else {
-    finalStatus = appliedTaskIds.length === proposal.proposedTaskIds.length ? "applied" : appliedTaskIds.length === 0 && proposal.proposedTaskIds.length === 0 ? "applied" : "partially_applied";
-    // Empty proposal with 0 tasks -> applied (nothing to do)
-    if (proposal.proposedTaskIds.length === 0) finalStatus = "applied";
-    if (appliedTaskIds.length === proposal.proposedTaskIds.length) finalStatus = "applied";
+    finalStatus = targetIds.length === 0 ? "applied" : appliedTaskIds.length === targetIds.length ? "applied" : "partially_applied";
+    if (targetIds.length === 0) finalStatus = "applied";
   }
 
   // Edge: if we had no tasks to apply but proposal had tasks and all skipped as already planned? That's still applied? Let's treat as applied if all were already planned
@@ -614,6 +650,12 @@ export async function applyOperatorProposal(
   if (!finalUpdate.ok) return applicationFailure("Unable to finalize proposal apply.");
   return applicationSuccess(finalUpdate.value);
 }
+
+// Canonical alias for EGA-518: explicit approval before apply — use case validates
+// proposal against current Task state before changing planned_for_date. Web calls
+// this directly server-side; mobile via authenticated Hono/api-client. Thin
+// transports must preserve this shared validation (LLM/client cannot bypass).
+export const applyApprovedOperatorProposal = applyOperatorProposal;
 
 export async function dismissOperatorProposal(
   actor: AuthenticatedActor,
