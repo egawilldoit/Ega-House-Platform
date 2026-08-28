@@ -23,6 +23,8 @@ import { formatTaskDueDate } from "@/lib/task-due-date";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getTodayPlannerData } from "@/lib/services/today-planner-service";
+import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
+import { HealthCoachSnapshot } from "@/components/health/health-coach-snapshot";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -59,7 +61,11 @@ export default async function TodayPage({
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
 
-  const [todayResult, user] = await Promise.all([getTodayPlannerData(), getCurrentUser()]);
+  const [todayResult, user, healthResult] = await Promise.all([
+    getTodayPlannerData(),
+    getCurrentUser(),
+    getHealthSnapshotData().catch(() => ({ errorMessage: "Unable to load health snapshot.", data: null as null })),
+  ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
     return (
@@ -142,6 +148,8 @@ export default async function TodayPage({
           totalEstimateMinutes={todayData.summary.totalEstimateMinutes}
           trackedTodayLabel={todayData.summary.trackedTodayLabel}
         />
+
+        <HealthCoachSnapshot snapshot={healthResult.data as unknown as import("@ega/contracts/health").HealthWorkloadSnapshotDto | null} errorMessage={healthResult.errorMessage} />
 
         <div className="today-cockpit-grid">
           <StartHerePanel

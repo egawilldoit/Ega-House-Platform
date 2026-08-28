@@ -22,6 +22,7 @@ export * from "./timer/service";
 export * from "./shared/duration";
 export * from "./shared/time-context";
 export * from "./shared/execution-evidence";
+export * from "./health/workload-snapshot";
 
 export type {
   GoalHealth,

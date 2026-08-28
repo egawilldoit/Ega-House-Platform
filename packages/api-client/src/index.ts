@@ -11,6 +11,7 @@ export type { GoalsApi } from "./goals";
 export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
+export type { HealthApi } from "./health";
 export type { AuthApi } from "./auth";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
@@ -36,6 +37,7 @@ export type {
 } from "@ega/contracts/mobile";
 export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 export type { TaskPriority, TaskStatus } from "@ega/domain";
+export type { HealthWorkloadSnapshotDto, HealthSnapshotResponse, HealthEvidenceQualityDto } from "@ega/contracts";
 
 export type {
   ProjectViewFilter,

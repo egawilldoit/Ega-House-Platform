@@ -80,6 +80,9 @@ function makeWave2Apis() {
     today: {
       get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn(),
     },
+    healthSnapshot: {
+      getSnapshot: jest.fn(),
+    },
   };
 }
 
