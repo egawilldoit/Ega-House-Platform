@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 
 import { getHealthWorkloadSnapshot } from "@ega/application/health/workload-snapshot";
+import { getHealthRecommendations } from "@ega/application/health/recommendations";
 import type { HealthSnapshotResponse } from "@ega/contracts/health";
 import { SupabaseExecutionEvidenceRepository, SupabaseTimeContextRepository } from "@ega/data-access";
 
@@ -34,6 +35,7 @@ export function createHealthRoutes(
     }
 
     const snapshot = result.data;
+    const recommendations = getHealthRecommendations(snapshot);
 
     const payload: HealthSnapshotResponse = {
       ok: true,
@@ -55,6 +57,15 @@ export function createHealthRoutes(
         averageSessionLabel: snapshot.averageSessionLabel,
         quality: snapshot.quality,
       },
+      recommendations: recommendations.map((r) => ({
+        id: r.id,
+        kind: r.kind,
+        severity: r.severity,
+        copyKey: r.copyKey,
+        title: r.title,
+        message: r.message,
+        evidence: r.evidence,
+      })),
     };
 
     return c.json(payload);

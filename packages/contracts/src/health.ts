@@ -47,7 +47,32 @@ export type HealthSnapshotRequest = Readonly<{
   includeOpenSessions?: boolean;
 }>;
 
+export type HealthRecommendationKindDto = "recovery" | "break" | "movement" | "training";
+
+export type HealthRecommendationSeverityDto = "info" | "nudge" | "guide";
+
+export type HealthRecommendationEvidenceDto = Readonly<{
+  metric: string;
+  value: number;
+  threshold: number;
+  unit: "minutes" | "seconds" | "days" | "count" | "density";
+  label: string;
+  windowDays: number;
+  quality: HealthEvidenceQualityDto;
+}>;
+
+export type HealthRecommendationDto = Readonly<{
+  id: string;
+  kind: HealthRecommendationKindDto;
+  severity: HealthRecommendationSeverityDto;
+  copyKey: string;
+  title: string;
+  message: string;
+  evidence: HealthRecommendationEvidenceDto;
+}>;
+
 export type HealthSnapshotResponse = Readonly<{
   ok: true;
   snapshot: HealthWorkloadSnapshotDto;
+  recommendations: HealthRecommendationDto[];
 }>;

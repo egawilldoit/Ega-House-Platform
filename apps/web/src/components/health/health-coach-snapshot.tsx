@@ -1,9 +1,10 @@
-import type { HealthWorkloadSnapshotDto } from "@ega/contracts/health";
+import type { HealthWorkloadSnapshotDto, HealthRecommendationDto } from "@ega/contracts/health";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 type Props = {
   snapshot: HealthWorkloadSnapshotDto | null;
+  recommendations?: HealthRecommendationDto[] | null;
   errorMessage?: string | null;
 };
 
@@ -35,7 +36,7 @@ function formatQualityTone(quality: HealthWorkloadSnapshotDto["quality"]["qualit
   }
 }
 
-export function HealthCoachSnapshot({ snapshot, errorMessage }: Props) {
+export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }: Props) {
   if (errorMessage) {
     return (
       <Card className="border-[var(--border)] bg-white" data-testid="health-coach-error">
@@ -138,6 +139,28 @@ export function HealthCoachSnapshot({ snapshot, errorMessage }: Props) {
         <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
           Window {snapshot.window.startIso.slice(0, 10)} → {snapshot.window.endIso.slice(0, 10)} · Evidence: {snapshot.quality.reasons.join(", ") || "ok"}
         </p>
+
+        {recommendations && recommendations.length > 0 ? (
+          <div className="space-y-3" data-testid="health-coach-recommendations">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--muted-foreground)]">Workload guidance</p>
+            {recommendations.map((rec) => (
+              <div key={rec.id} className="rounded-md border border-[var(--border)] p-3" data-testid={`health-recommendation-${rec.kind}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={rec.severity === "guide" ? "warn" : rec.severity === "nudge" ? "info" : "muted"}>{rec.severity}</Badge>
+                  <Badge tone="muted">{rec.kind}</Badge>
+                  <span className="text-xs text-[color:var(--muted-foreground)]" data-testid="health-recommendation-evidence">{rec.evidence.label}</span>
+                </div>
+                <p className="mt-2 text-sm font-medium">{rec.title}</p>
+                <p className="mt-1 text-sm leading-5 text-[color:var(--muted-foreground)]">{rec.message}</p>
+                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">Evidence: {rec.evidence.metric} {rec.evidence.value} (threshold {rec.evidence.threshold}) · {rec.copyKey}</p>
+              </div>
+            ))}
+          </div>
+        ) : snapshot.quality.quality === "sufficient" ? (
+          <p className="text-sm leading-5 text-[color:var(--muted-foreground)]" data-testid="health-coach-no-recommendations">
+            Workload looks balanced this week — keep your current rhythm and adjust as needed.
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
