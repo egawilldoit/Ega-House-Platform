@@ -23,6 +23,7 @@
     "./today/service": "./src/today/service.ts",
     "./operator/snapshot": "./src/operator/snapshot.ts",
     "./operator/proposal": "./src/operator/proposal.ts",
+    "./operator/lifecycle": "./src/operator/lifecycle.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts"

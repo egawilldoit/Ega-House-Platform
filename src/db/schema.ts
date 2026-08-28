@@ -464,3 +464,50 @@ export const userTimeContext = pgTable("user_time_context", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export const operatorProposals = pgTable(
+  "operator_proposals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    revision: integer("revision").notNull(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    localDate: date("local_date").notNull(),
+    timeContextId: varchar("time_context_id", { length: 256 }).notNull(),
+    baselineHash: text("baseline_hash").notNull(),
+    proposedTaskIds: jsonb("proposed_task_ids").notNull().default(sql`'[]'::jsonb`),
+    taskVersions: jsonb("task_versions").notNull().default(sql`'[]'::jsonb`),
+    parentProposalId: uuid("parent_proposal_id"),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("generated"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    result: jsonb("result"),
+    aiRef: text("ai_ref"),
+  },
+  (table) => [
+    index("operator_proposals_owner_user_id_idx").on(table.ownerUserId),
+    index("operator_proposals_owner_local_date_idx").on(table.ownerUserId, table.localDate),
+    index("operator_proposals_owner_status_idx").on(table.ownerUserId, table.status),
+    index("operator_proposals_owner_created_at_idx").on(table.ownerUserId, table.createdAt.desc()),
+    index("operator_proposals_parent_id_idx").on(table.parentProposalId),
+    uniqueIndex("operator_proposals_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    check(
+      "operator_proposals_revision_check",
+      sql`${table.revision} > 0`,
+    ),
+    check(
+      "operator_proposals_status_check",
+      sql`${table.status} in ('generated','revised','approved','applying','applied','partially_applied','stale','dismissed')`,
+    ),
+    check(
+      "operator_proposals_idempotency_key_not_blank",
+      sql`length(btrim(${table.idempotencyKey})) > 0`,
+    ),
+  ],
+);

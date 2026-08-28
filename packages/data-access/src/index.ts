@@ -6,3 +6,4 @@ export * from "./timer/repository";
 export * from "./today/repository";
 export * from "./time-context/repository";
 export * from "./execution-evidence/repository";
+export * from "./operator/repository";
