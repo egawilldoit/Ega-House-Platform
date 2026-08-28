@@ -23,6 +23,8 @@ export * from "./friction/ports";
 export * from "./friction/stale-blocked-signals";
 export * from "./friction/estimate-accuracy";
 export * from "./friction/context-switch";
+export * from "./friction/neglected-goal";
+export * from "./friction/workload-imbalance";
 export * from "./shared/duration";
 export * from "./shared/time-context";
 export * from "./shared/execution-evidence";

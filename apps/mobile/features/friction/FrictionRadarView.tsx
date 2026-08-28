@@ -3,8 +3,10 @@ import type {
   FrictionBlockedSignal,
   FrictionContextSwitchSignal,
   FrictionEstimateSignal,
+  FrictionNeglectedGoalSignal,
   FrictionStaleGoalSignal,
   FrictionStaleTaskSignal,
+  FrictionWorkloadImbalanceSignal,
 } from "@ega/contracts/friction";
 import { mobileTheme } from "@/components/mobile/theme";
 import { Card } from "@/components/mobile/ui/Card";
@@ -16,6 +18,8 @@ type Props = {
   thresholdDays: number;
   estimateSignals: FrictionEstimateSignal[];
   contextSwitch: FrictionContextSwitchSignal;
+  neglectedGoals: FrictionNeglectedGoalSignal[];
+  workloadImbalance: FrictionWorkloadImbalanceSignal;
   evidenceWindow: { startIso: string; endIso: string } | null;
 };
 
@@ -41,20 +45,22 @@ function SignalRow({
   );
 }
 
-export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDays, estimateSignals, contextSwitch }: Props) {
+export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDays, estimateSignals, contextSwitch, neglectedGoals, workloadImbalance }: Props) {
   const hasAny =
     blocked.length > 0 ||
     staleTasks.length > 0 ||
     staleGoals.length > 0 ||
     estimateSignals.length > 0 ||
-    contextSwitch.isFriction;
+    contextSwitch.isFriction ||
+    neglectedGoals.length > 0 ||
+    workloadImbalance.isImbalance;
 
   if (!hasAny) {
     return (
       <Card style={styles.card}>
         <Text style={styles.emptyTitle}>No friction detected</Text>
         <Text style={styles.emptySubtitle}>
-          No blocked, stale, estimate, or context-switch friction found.
+          No blocked, stale, estimate, context-switch, neglected-goal, or imbalance friction found.
         </Text>
       </Card>
     );
@@ -148,6 +154,36 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
         <Text style={styles.emptyInline}>
           {contextSwitch.transitionsCount} sessions · {contextSwitch.distinctTaskCount} tasks · {contextSwitch.switchCount} switches · {contextSwitch.severity}
           {contextSwitch.isFriction ? " · Friction" : " · No friction"}
+        </Text>
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Neglected Goals ({neglectedGoals.length})</Text>
+        <Text style={styles.sectionSubtitle}>Active goals with no tracked execution in window (rolling window from time-context).</Text>
+        {neglectedGoals.length === 0 ? (
+          <Text style={styles.emptyInline}>No neglected goals in window.</Text>
+        ) : (
+          neglectedGoals.map((goal) => (
+            <View key={goal.id} style={styles.row}>
+              <View style={styles.rowCopy}>
+                <Text style={styles.rowTitle}>{goal.title}</Text>
+                <Text style={styles.rowSubtitle}>Status {goal.status} · Window {new Date(goal.window.startIso).toLocaleDateString()} → {new Date(goal.window.endIso).toLocaleDateString()}</Text>
+              </View>
+              <View style={styles.ageBadge}>
+                <Text style={styles.ageText}>{goal.daysSinceActivity === null ? "no activity" : `${goal.daysSinceActivity}d`}</Text>
+              </View>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Workload Imbalance ({workloadImbalance.severity})</Text>
+        <Text style={styles.sectionSubtitle}>Project share from canonical tracked-time. Threshold {workloadImbalance.threshold}% (med), {workloadImbalance.highThreshold}% (high). Min {workloadImbalance.minTotalMinutes}m total, {workloadImbalance.minForHighMinutes}m for high. Sparse cannot trigger high.</Text>
+        <Text style={styles.emptyInline}>
+          {workloadImbalance.projectCount === 0
+            ? "No tracked work in window."
+            : `${workloadImbalance.totalTrackedMinutes}m total · ${workloadImbalance.projectCount} projects · Dominant ${workloadImbalance.dominantProjectName ?? workloadImbalance.dominantProjectId ?? "-"} ${workloadImbalance.dominantSharePercent}% (${Math.floor(workloadImbalance.dominantTrackedSeconds / 60)}m) · ${workloadImbalance.severity}${workloadImbalance.isImbalance ? " · Imbalance" : " · Balanced"}`}
         </Text>
       </Card>
     </View>

@@ -7,7 +7,12 @@ import {
   FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD,
   FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES,
   FRICTION_ESTIMATE_PERCENT_THRESHOLD,
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
   FRICTION_STALE_THRESHOLD_DAYS,
+  FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
+  FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
   type FrictionRadarResponse,
 } from "../src/friction";
 import {
@@ -16,7 +21,12 @@ import {
   FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD as DOMAIN_EST_HIGH,
   FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES as DOMAIN_EST_MIN,
   FRICTION_ESTIMATE_PERCENT_THRESHOLD as DOMAIN_EST,
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS as DOMAIN_NEGLECTED_DAYS,
   FRICTION_STALE_THRESHOLD_DAYS as DOMAIN_THRESHOLD,
+  FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD as DOMAIN_IMB_HIGH,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES as DOMAIN_IMB_HIGH_MIN,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES as DOMAIN_IMB_MIN,
+  FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD as DOMAIN_IMB,
 } from "@ega/domain/friction";
 
 test("friction contract threshold matches domain and is 7 days", () => {
@@ -27,6 +37,11 @@ test("friction contract threshold matches domain and is 7 days", () => {
   assert.equal(FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD, DOMAIN_EST_HIGH);
   assert.equal(FRICTION_CONTEXT_SWITCH_THRESHOLD, DOMAIN_CTX);
   assert.equal(FRICTION_CONTEXT_SWITCH_HIGH_THRESHOLD, DOMAIN_CTX_HIGH);
+  assert.equal(FRICTION_NEGLECTED_GOAL_WINDOW_DAYS, DOMAIN_NEGLECTED_DAYS);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD, DOMAIN_IMB);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD, DOMAIN_IMB_HIGH);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES, DOMAIN_IMB_MIN);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES, DOMAIN_IMB_HIGH_MIN);
 });
 
 test("friction radar response shape carries shared signals", () => {
@@ -91,6 +106,33 @@ test("friction radar response shape carries shared signals", () => {
       distinctTaskCount: 4,
       window: { startIso: "2026-08-18T00:00:00.000Z", endIso: "2026-08-25T00:00:00.000Z" },
     },
+    neglectedGoals: [
+      {
+        id: "goal-2",
+        title: "Neglected goal",
+        projectId: "proj-1",
+        status: "active",
+        window: { startIso: "2026-08-13T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+        lastActivityAt: null,
+        daysSinceActivity: null,
+      },
+    ],
+    workloadImbalance: {
+      isImbalance: true,
+      severity: "medium",
+      totalTrackedSeconds: 7200,
+      totalTrackedMinutes: 120,
+      projectCount: 2,
+      dominantProjectId: "proj-1",
+      dominantProjectName: "Ops",
+      dominantTrackedSeconds: 5400,
+      dominantSharePercent: 75,
+      threshold: FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
+      highThreshold: FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
+      minTotalMinutes: FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
+      minForHighMinutes: FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
+      window: { startIso: "2026-08-18T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+    },
     evidenceWindow: { startIso: "2026-08-18T00:00:00.000Z", endIso: "2026-08-25T00:00:00.000Z" },
   };
 
@@ -121,6 +163,23 @@ test("empty friction radar response is valid", () => {
       isFriction: false,
       transitionsCount: 0,
       distinctTaskCount: 0,
+      window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+    },
+    neglectedGoals: [],
+    workloadImbalance: {
+      isImbalance: false,
+      severity: "none",
+      totalTrackedSeconds: 0,
+      totalTrackedMinutes: 0,
+      projectCount: 0,
+      dominantProjectId: null,
+      dominantProjectName: null,
+      dominantTrackedSeconds: 0,
+      dominantSharePercent: 0,
+      threshold: FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
+      highThreshold: FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
+      minTotalMinutes: FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
+      minForHighMinutes: FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
       window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
     },
     evidenceWindow: null,

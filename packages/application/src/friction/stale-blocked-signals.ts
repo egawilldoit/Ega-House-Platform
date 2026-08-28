@@ -4,8 +4,13 @@ import {
   FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD,
   FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES,
   FRICTION_ESTIMATE_PERCENT_THRESHOLD,
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
   FRICTION_STALE_THRESHOLD_DAYS,
   FRICTION_STALE_THRESHOLD_MS,
+  FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
+  FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
   getFrictionAgeDays,
   isActiveFrictionGoal,
   isActiveFrictionTask,
@@ -15,9 +20,11 @@ import type {
   FrictionBlockedSignal,
   FrictionContextSwitchSignal,
   FrictionEstimateSignal,
+  FrictionNeglectedGoalSignal,
   FrictionRadarResponse,
   FrictionStaleGoalSignal,
   FrictionStaleTaskSignal,
+  FrictionWorkloadImbalanceSignal,
 } from "@ega/contracts/friction";
 
 import {
@@ -27,6 +34,8 @@ import {
 
 import { getContextSwitchSignal } from "./context-switch";
 import { getEstimateAccuracySignals } from "./estimate-accuracy";
+import { getNeglectedGoalSignals } from "./neglected-goal";
+import { getWorkloadImbalanceSignal } from "./workload-imbalance";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
@@ -45,6 +54,11 @@ export const ESTIMATE_PERCENT_THRESHOLD = FRICTION_ESTIMATE_PERCENT_THRESHOLD;
 export const ESTIMATE_HIGH_PERCENT_THRESHOLD = FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD;
 export const CONTEXT_SWITCH_THRESHOLD = FRICTION_CONTEXT_SWITCH_THRESHOLD;
 export const CONTEXT_SWITCH_HIGH_THRESHOLD = FRICTION_CONTEXT_SWITCH_HIGH_THRESHOLD;
+export const NEGLECTED_GOAL_WINDOW_DAYS = FRICTION_NEGLECTED_GOAL_WINDOW_DAYS;
+export const WORKLOAD_IMBALANCE_SHARE_THRESHOLD = FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD;
+export const WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD = FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD;
+export const WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES = FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES;
+export const WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES = FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES;
 
 export type FrictionRadarEvidenceOptions = Readonly<{
   window: ExecutionEvidenceWindow;
@@ -99,14 +113,17 @@ function toStaleGoalSignal(
 }
 
 /**
- * Friction Radar read model — stale/blocked + estimate accuracy + context-switch.
+ * Friction Radar read model — stale/blocked + estimate accuracy + context-switch +
+ * neglected-goal + workload-imbalance.
  * Owner-scoped via the supplied repositories; thresholds deterministic and
  * owned in domain/application, not transports.
  *
- * When `evidence` is supplied, estimate and context-switch signals are
- * derived from canonical execution-evidence (window-clipped, no double-count,
- * deterministic ordered transitions). When absent, those signals return empty
- * / none so callers without evidence still receive stale/blocked semantics.
+ * When `evidence` is supplied, estimate, context-switch, neglected-goal and
+ * workload-imbalance signals are derived from canonical execution-evidence
+ * (window-clipped, no double-count, deterministic ordered transitions, rolling
+ * window from time-context). When absent, those signals return empty / none
+ * so callers without evidence still receive stale/blocked semantics.
+ * Sparse evidence cannot trigger high-confidence imbalance (capped at medium).
  */
 export async function getFrictionRadarReadModel(
   actor: AuthenticatedActor,
@@ -223,6 +240,23 @@ export async function getFrictionRadarReadModel(
     distinctTaskCount: 0,
     window: evidence?.window ? { startIso: evidence.window.startIso, endIso: evidence.window.endIso } : { startIso: now.toISOString(), endIso: now.toISOString() },
   };
+  let neglectedGoals: FrictionNeglectedGoalSignal[] = [];
+  let workloadImbalance: FrictionWorkloadImbalanceSignal = {
+    isImbalance: false,
+    severity: "none",
+    totalTrackedSeconds: 0,
+    totalTrackedMinutes: 0,
+    projectCount: 0,
+    dominantProjectId: null,
+    dominantProjectName: null,
+    dominantTrackedSeconds: 0,
+    dominantSharePercent: 0,
+    threshold: WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
+    highThreshold: WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
+    minTotalMinutes: WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
+    minForHighMinutes: WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
+    window: evidence?.window ? { startIso: evidence.window.startIso, endIso: evidence.window.endIso } : { startIso: now.toISOString(), endIso: now.toISOString() },
+  };
   let evidenceWindow: { startIso: string; endIso: string } | null = null;
 
   if (evidence) {
@@ -240,10 +274,19 @@ export async function getFrictionRadarReadModel(
           nowIso: evidence.nowIso ?? now.toISOString(),
           includeOpenSessions: evidence.includeOpenSessions,
         });
+        neglectedGoals = getNeglectedGoalSignals(goals, sessions, evidence.window, {
+          nowIso: evidence.nowIso ?? now.toISOString(),
+          includeOpenSessions: evidence.includeOpenSessions,
+          now,
+        });
+        workloadImbalance = getWorkloadImbalanceSignal(sessions, evidence.window, {
+          nowIso: evidence.nowIso ?? now.toISOString(),
+          includeOpenSessions: evidence.includeOpenSessions,
+        });
       }
       // If evidence repository fails, keep deterministic empty signals — stale/blocked still served.
     } catch {
-      // Gracefully degrade to empty estimate/context-switch if evidence retrieval throws (e.g., test fake missing methods).
+      // Gracefully degrade to empty estimate/context-switch/neglected/imbalance if evidence retrieval throws (e.g., test fake missing methods).
     }
   }
 
@@ -256,6 +299,8 @@ export async function getFrictionRadarReadModel(
     staleGoals,
     estimateSignals,
     contextSwitch,
+    neglectedGoals,
+    workloadImbalance,
     evidenceWindow,
   });
 }

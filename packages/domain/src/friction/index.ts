@@ -174,3 +174,78 @@ export function isFrictionContextSwitchFriction(switchCount: number): boolean {
   const severity = getFrictionContextSwitchSeverity(switchCount);
   return severity === "medium" || severity === "high";
 }
+
+// ---------------------------------------------------------------------------
+// Neglected goal — rolling window based on actual Task/session activity.
+// ---------------------------------------------------------------------------
+
+/** Rolling window for neglected-goal detection — 14 days. */
+export const FRICTION_NEGLECTED_GOAL_WINDOW_DAYS = 14;
+export const FRICTION_NEGLECTED_GOAL_WINDOW_MS =
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
+// Workload imbalance — tracked-time share with minimum-evidence guards.
+// ---------------------------------------------------------------------------
+
+/** Dominant project share >60% triggers medium imbalance. */
+export const FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD = 60;
+/** Dominant share >=75% can trigger high if enough evidence. */
+export const FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD = 75;
+/** Minimum total tracked minutes before any imbalance is emitted. */
+export const FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES = 120;
+/** Minimum total before high-confidence imbalance (sparse guard). */
+export const FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES = 240;
+
+export const FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_SECONDS =
+  FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES * 60;
+export const FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_SECONDS =
+  FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES * 60;
+
+export type FrictionWorkloadImbalanceSeverity = "none" | "low" | "medium" | "high";
+
+export function getFrictionWorkloadSharePercent(
+  trackedSeconds: number,
+  totalSeconds: number,
+): number {
+  if (!Number.isFinite(trackedSeconds) || !Number.isFinite(totalSeconds)) return 0;
+  if (totalSeconds <= 0) return 0;
+  if (trackedSeconds <= 0) return 0;
+  // Clamp to 0-100, rounded to nearest integer, deterministic.
+  const raw = (trackedSeconds / totalSeconds) * 100;
+  const rounded = Math.round(raw);
+  if (!Number.isFinite(rounded)) return 0;
+  return Math.max(0, Math.min(100, rounded));
+}
+
+export function getFrictionWorkloadImbalanceSeverity(
+  sharePercent: number,
+  totalMinutes: number,
+  projectCount: number,
+): FrictionWorkloadImbalanceSeverity {
+  if (!Number.isFinite(sharePercent) || !Number.isFinite(totalMinutes) || !Number.isFinite(projectCount)) return "none";
+  if (projectCount < 2) return "none";
+  if (totalMinutes < FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES) return "none";
+  if (sharePercent >= FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD) {
+    // Sparse guard: high requires enough evidence, otherwise cap at medium.
+    if (totalMinutes >= FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES) return "high";
+    return "medium";
+  }
+  if (sharePercent >= FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD) return "medium";
+  if (sharePercent > 0) return "low";
+  return "none";
+}
+
+export function isFrictionWorkloadImbalance(severity: FrictionWorkloadImbalanceSeverity): boolean {
+  return severity === "medium" || severity === "high";
+}
+
+export function getFrictionNeglectedDaysSinceActivity(
+  lastActivityAt: string | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!lastActivityAt) return null;
+  const ms = getFrictionAgeMs(lastActivityAt, now);
+  if (ms <= 0) return 0;
+  return Math.floor(ms / (24 * 60 * 60 * 1000));
+}

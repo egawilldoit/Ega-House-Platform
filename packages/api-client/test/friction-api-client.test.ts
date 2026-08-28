@@ -51,6 +51,23 @@ test("friction radar maps GET /api/friction/radar with auth", async () => {
       distinctTaskCount: 0,
       window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
     },
+    neglectedGoals: [],
+    workloadImbalance: {
+      isImbalance: false,
+      severity: "none",
+      totalTrackedSeconds: 0,
+      totalTrackedMinutes: 0,
+      projectCount: 0,
+      dominantProjectId: null,
+      dominantProjectName: null,
+      dominantTrackedSeconds: 0,
+      dominantSharePercent: 0,
+      threshold: 60,
+      highThreshold: 75,
+      minTotalMinutes: 120,
+      minForHighMinutes: 240,
+      window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+    },
     evidenceWindow: null,
   };
   const { client, calls } = makeHarness(200, radar);
