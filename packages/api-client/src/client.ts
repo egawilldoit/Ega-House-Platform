@@ -15,6 +15,7 @@ import {
   type RefreshAccessToken,
   type TokenProvider,
 } from "./http";
+import { createNotificationsApi, type NotificationsApi } from "./notifications";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
 import { createTimerApi, type TimerApi } from "./timer";
@@ -48,6 +49,7 @@ export type EgaApiClient = {
   today: TodayApi;
   timer: TimerApi;
   weeklyReview: WeeklyReviewApi;
+  notifications: NotificationsApi;
   auth: AuthApi;
 };
 
@@ -73,6 +75,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     today: createTodayApi(http),
     timer: createTimerApi(http),
     weeklyReview: createWeeklyReviewApi(http),
+    notifications: createNotificationsApi(http),
     auth: createAuthApi(http),
   };
 }
