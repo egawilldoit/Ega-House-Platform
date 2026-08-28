@@ -47,9 +47,9 @@ export default async function AccountSettingsPage({
 
   return (
     <AppShell
-      eyebrow="Settings"
-      title="Account"
-      description="Control account-level integrations used by scheduled execution."
+      eyebrow="System"
+      title="Settings"
+      description="Account controls and integrations."
     >
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
         <Card>

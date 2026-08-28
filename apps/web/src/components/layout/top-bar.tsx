@@ -3,10 +3,11 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Keyboard, Mail, Search } from "lucide-react";
+import { Keyboard, Search } from "lucide-react";
 
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
+import { Tooltip } from "@/components/ui/tooltip";
 import { getShellRouteMeta } from "./shell-route-meta";
 import { TopBarSignalCluster } from "./shell-signals";
 import { COMMAND_PALETTE_EVENT } from "./command-palette";
@@ -57,31 +58,29 @@ export function TopBar({ metrics, mobileNavigation }: TopBarProps) {
             Apps
           </Link>
 
-          <button
-            type="button"
-            className="workspace-topbar-control workspace-shortcut-control"
-            aria-label="Open keyboard shortcuts"
-            onClick={() =>
-              window.dispatchEvent(new CustomEvent(workspaceShortcutEvents.openHelp))
-            }
-          >
-            <Keyboard aria-hidden="true" />
-            <span>Shortcuts</span>
-            <kbd>?</kbd>
-          </button>
+          <Tooltip content="Keyboard shortcuts (?)">
+            <button
+              type="button"
+              className="workspace-topbar-control workspace-shortcut-control"
+              aria-label="Open keyboard shortcuts"
+              onClick={() => window.dispatchEvent(new CustomEvent(workspaceShortcutEvents.openHelp))}
+            >
+              <Keyboard aria-hidden="true" />
+              <span>Shortcuts</span>
+              <kbd>?</kbd>
+            </button>
+          </Tooltip>
 
-          <button type="button" className="workspace-topbar-icon" aria-label="Messages">
-            <Mail aria-hidden="true" />
-          </button>
-
-          <button type="button" className="workspace-topbar-icon" aria-label="Notifications">
-            <Bell aria-hidden="true" />
-            <span className="workspace-notification-signal" aria-hidden="true" />
-          </button>
-
-          <div className="ega-topbar-avatar" aria-label="User profile" suppressHydrationWarning>
-            EG
-          </div>
+          <Tooltip content="User menu">
+            <Link
+              href={canonicalUrl.resolve("/settings/account")}
+              className="ega-topbar-avatar"
+              aria-label="Account settings"
+              suppressHydrationWarning
+            >
+              EG
+            </Link>
+          </Tooltip>
         </div>
       </div>
     </header>
