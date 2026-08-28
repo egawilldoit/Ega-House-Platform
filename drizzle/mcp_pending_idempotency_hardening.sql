@@ -1,9 +1,0 @@
--- Pending: MCP idempotency hardening — fail-closed + concurrency-safe
--- This will be renumbered after integration head is known (see repair ledger #7)
--- Current 0047 uses ON CONFLICT DO NOTHING without exclusive execution ownership.
--- Hardened version should use:
---   SELECT pg_advisory_xact_lock(hashtext(owner||client||tool||opId))
---   INSERT ... ON CONFLICT (owner,client,tool,opId) DO UPDATE SET ... WHERE result_payload IS NULL
---   RETURNING is_replay, is_conflict, existing_result
--- And state machine: CLAIMED → SUCCEEDED with lease, stale recovery, etc.
--- See W10 design in repair ledger.

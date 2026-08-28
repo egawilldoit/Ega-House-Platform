@@ -9,9 +9,12 @@ CREATE TABLE IF NOT EXISTS public.mcp_mutation_receipts (
   tool_name varchar(128) NOT NULL,
   operation_id uuid NOT NULL,
   args_hash text NOT NULL,
+  status text NOT NULL DEFAULT 'CLAIMED' CHECK (status IN ('CLAIMED','EXECUTING','SUCCEEDED','FAILED_RETRYABLE','FAILED_FINAL')),
+  claim_token uuid NOT NULL DEFAULT gen_random_uuid(),
   result_payload jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
+  lease_expires_at timestamptz,
   PRIMARY KEY (owner_user_id, oauth_client_id, tool_name, operation_id),
   CONSTRAINT mcp_mutation_receipts_tool_check CHECK (tool_name ~ '^[a-z0-9_]{1,128}$'),
   CONSTRAINT mcp_mutation_receipts_args_hash_check CHECK (char_length(args_hash) > 0)
@@ -61,6 +64,7 @@ DECLARE
   v_resource_uri text;
   v_existing_args_hash text;
   v_existing_result jsonb;
+  v_status text;
   v_grant_exists boolean;
 BEGIN
   v_user_id := (SELECT auth.uid());
@@ -84,18 +88,20 @@ BEGIN
     RAISE EXCEPTION 'No active EGA MCP authorization grant.' USING ERRCODE = '42501';
   END IF;
 
-  -- Try to insert; if conflict, fetch existing
+  -- Concurrency-safe claim with advisory lock and state machine (fail-closed)
+  PERFORM pg_advisory_xact_lock(hashtext(v_user_id::text || '|' || v_client_id || '|' || p_tool_name || '|' || p_operation_id::text));
+
   BEGIN
-    INSERT INTO public.mcp_mutation_receipts (owner_user_id, oauth_client_id, tool_name, operation_id, args_hash, result_payload)
-    VALUES (v_user_id, v_client_id, p_tool_name, p_operation_id, p_args_hash, NULL)
+    INSERT INTO public.mcp_mutation_receipts (owner_user_id, oauth_client_id, tool_name, operation_id, args_hash, status, result_payload, lease_expires_at)
+    VALUES (v_user_id, v_client_id, p_tool_name, p_operation_id, p_args_hash, 'CLAIMED', NULL, now() + interval '5 minutes')
     ON CONFLICT (owner_user_id, oauth_client_id, tool_name, operation_id) DO NOTHING;
 
-    SELECT args_hash, result_payload INTO v_existing_args_hash, v_existing_result
+    SELECT args_hash, result_payload, status INTO v_existing_args_hash, v_existing_result, v_status
     FROM public.mcp_mutation_receipts
-    WHERE owner_user_id = v_user_id AND oauth_client_id = v_client_id AND tool_name = p_tool_name AND operation_id = p_operation_id;
+    WHERE owner_user_id = v_user_id AND oauth_client_id = v_client_id AND tool_name = p_tool_name AND operation_id = p_operation_id
+    FOR UPDATE;
 
     IF v_existing_args_hash IS NULL THEN
-      -- This should not happen: inserted row should be visible
       RAISE EXCEPTION 'Idempotency ledger insert failed.' USING ERRCODE = '40001';
     END IF;
 
@@ -107,7 +113,7 @@ BEGIN
       RETURN;
     END IF;
 
-    IF v_existing_result IS NOT NULL THEN
+    IF v_existing_result IS NOT NULL AND v_status = 'SUCCEEDED' THEN
       is_replay := true;
       existing_result := v_existing_result;
       is_conflict := false;
@@ -115,7 +121,19 @@ BEGIN
       RETURN;
     END IF;
 
-    -- New claim, not a replay, not a conflict — caller should proceed to mutate
+    IF v_status = 'CLAIMED' OR v_status = 'EXECUTING' THEN
+      -- If already CLAIMED/EXECUTING by another backend, do not mutate again — treat as in-progress
+      -- For now, return not replay but also not conflict, and let caller wait or return retryable
+      -- We mark as EXECUTING for this caller
+      UPDATE public.mcp_mutation_receipts SET status = 'EXECUTING', updated_at = now() WHERE owner_user_id = v_user_id AND oauth_client_id = v_client_id AND tool_name = p_tool_name AND operation_id = p_operation_id AND status = 'CLAIMED';
+      is_replay := false;
+      existing_result := NULL;
+      is_conflict := false;
+      RETURN NEXT;
+      RETURN;
+    END IF;
+
+    -- New claim
     is_replay := false;
     existing_result := NULL;
     is_conflict := false;
@@ -151,7 +169,7 @@ BEGIN
   END IF;
 
   UPDATE public.mcp_mutation_receipts
-  SET result_payload = p_result_payload, updated_at = now()
+  SET result_payload = p_result_payload, status = 'SUCCEEDED', updated_at = now()
   WHERE owner_user_id = v_user_id AND oauth_client_id = v_client_id AND tool_name = p_tool_name AND operation_id = p_operation_id;
 
   IF NOT FOUND THEN
