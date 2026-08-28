@@ -248,7 +248,7 @@ export async function getOperatorSnapshot(
   if (Number.isNaN(now.getTime())) return applicationFailure("Current time is invalid.");
 
   // Resolve canonical Time Context when repo is available, otherwise fallback to UTC-aware conversion
-  let timezone = "UTC";
+  let timezone: string;
   let localDate = "";
   let dayWindow: { startUtcIso: string; endUtcIso: string };
   let timeContextId = "";

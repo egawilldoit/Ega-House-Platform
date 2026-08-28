@@ -413,7 +413,7 @@ export async function getOperatorProposal(
   const now = input.now ?? new Date();
   if (Number.isNaN(now.getTime())) return applicationFailure("Current time is invalid.");
 
-  let timezone = "UTC";
+  let timezone: string;
   let localDate = "";
   let dayWindow: { startUtcIso: string; endUtcIso: string };
 
