@@ -25,14 +25,35 @@ jest.mock('@/components/mobile/navigation/bottomChrome', () => ({
   useBottomChromeMetrics: () => ({ contentBottomPaddingNoFab: 0 }),
 }));
 
-const mockState = {
-  status: 'IDLE' as const,
+const mockState: {
+  status: import('@/lib/updates/types').UpdateStatus;
+  isChecking: boolean;
+  isDownloading: boolean;
+  isReady: boolean;
+  error: string | null;
+  lastCheckedAt: string | null;
+  availableUpdateId: string | null;
+  info: {
+    appVersion: string;
+    runtimeVersion: string;
+    updateId: string | null;
+    channel: string | null;
+    isEmbeddedLaunch: boolean;
+    isEmergencyLaunch: boolean;
+    isEnabled: boolean;
+    createdAt: string | null;
+  };
+  check: jest.Mock;
+  download: jest.Mock;
+  reload: jest.Mock;
+} = {
+  status: 'IDLE',
   isChecking: false,
   isDownloading: false,
   isReady: false,
-  error: null as string | null,
-  lastCheckedAt: null as string | null,
-  availableUpdateId: null as string | null,
+  error: null,
+  lastCheckedAt: null,
+  availableUpdateId: null,
   info: {
     appVersion: '1.0.0',
     runtimeVersion: 'fingerprint-abc',
