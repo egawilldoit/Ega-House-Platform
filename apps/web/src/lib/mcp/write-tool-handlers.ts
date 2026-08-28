@@ -108,6 +108,9 @@ export function createMcpWriteToolHandlers(
         const principal = requireMcpPermission(authInfo, "projects.create");
         requirePrincipal(authInfo);
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_create_project", input.operationId, { name: input.name, slug: input.slug, description: input.description });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const slug = (input.slug ?? input.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
         if (!input.name?.trim()) throw new Error("Project name is required.");
         if (!slug) throw new Error("Project slug is required.");
@@ -118,7 +121,9 @@ export function createMcpWriteToolHandlers(
           description: input.description ?? null,
         }).select("id, name, slug, description, status, created_at, updated_at").single();
         if (error) throw new Error(`Failed to create project: ${error.message}`);
-        return resultFromPayload({ ok: true, project: data });
+        const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_create_project", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -132,9 +137,14 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "projects.update");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_update_project_status", input.operationId, { projectId: input.projectId, status: input.status });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const { data, error } = await (client as unknown as SupabaseClient).from("projects").update({ status: input.status, updated_at: new Date().toISOString() }).eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).select("id, name, slug, status").single();
         if (error) throw new Error(`Failed to update project: ${error.message}`);
-        return resultFromPayload({ ok: true, project: data });
+        const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_update_project_status", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -148,6 +158,9 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "goals.create");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_create_goal", input.operationId, { title: input.title, projectId: input.projectId, status: input.status });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const { data, error } = await (client as unknown as SupabaseClient).from("goals").insert({
           owner_user_id: principal.ownerUserId,
           project_id: input.projectId,
@@ -157,7 +170,9 @@ export function createMcpWriteToolHandlers(
           slug: input.slug ?? null,
         }).select("id, project_id, title, status, created_at").single();
         if (error) throw new Error(`Failed to create goal: ${error.message}`);
-        return resultFromPayload({ ok: true, goal: data });
+        const payload = { ok: true, goal: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_create_goal", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -170,8 +185,10 @@ export function createMcpWriteToolHandlers(
       try {
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "tasks.create");
-        if (!input.operationId) throw new Error("operationId is required for idempotent task creation.");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_create_task", input.operationId, { title: input.title, projectId: input.projectId, goalId: input.goalId });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const { data, error } = await (client as unknown as SupabaseClient).from("tasks").insert({
           owner_user_id: principal.ownerUserId,
           project_id: input.projectId,
@@ -184,7 +201,9 @@ export function createMcpWriteToolHandlers(
           estimate_minutes: input.estimateMinutes ?? null,
         }).select("id, project_id, title, status, priority, created_at").single();
         if (error) throw new Error(`Failed to create task: ${error.message}`);
-        return resultFromPayload({ ok: true, task: data });
+        const payload = { ok: true, task: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_create_task", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -198,6 +217,9 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "tasks.update");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_update_task", input.operationId, { taskId: input.taskId, title: input.title, status: input.status });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
         if (input.title !== undefined) patch.title = input.title;
         if (input.status !== undefined) patch.status = input.status;
@@ -205,7 +227,9 @@ export function createMcpWriteToolHandlers(
         if (input.description !== undefined) patch.description = input.description;
         const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update(patch).eq("id", input.taskId).eq("owner_user_id", principal.ownerUserId).select("id, title, status, priority, updated_at").single();
         if (error) throw new Error(`Failed to update task: ${error.message}`);
-        return resultFromPayload({ ok: true, task: data });
+        const payload = { ok: true, task: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_update_task", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -219,9 +243,14 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "today.update");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_plan_task_for_today", input.operationId, { taskId: input.taskId, date: input.date });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update({ planned_for_date: input.date, updated_at: new Date().toISOString() }).eq("id", input.taskId).eq("owner_user_id", principal.ownerUserId).select("id, planned_for_date").single();
         if (error) throw new Error(`Failed to plan task: ${error.message}`);
-        return resultFromPayload({ ok: true, task: data });
+        const payload = { ok: true, task: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_plan_task_for_today", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -235,6 +264,9 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "timer.create");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_start_timer", input.operationId, { taskId: input.taskId });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const startedAt = new Date().toISOString();
         const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").insert({
           owner_user_id: principal.ownerUserId,
@@ -242,7 +274,9 @@ export function createMcpWriteToolHandlers(
           started_at: startedAt,
         }).select("id, task_id, started_at").single();
         if (error) throw new Error(`Failed to start timer: ${error.message}`);
-        return resultFromPayload({ ok: true, session: data });
+        const payload = { ok: true, session: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_start_timer", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }
@@ -256,6 +290,9 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "timer.update");
         const client = createClient(dependencies, authInfo!);
+        const idempotency = await checkIdempotency(client, "ega_stop_timer", input.operationId, { sessionId: input.sessionId });
+        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
+        if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const endedAt = new Date().toISOString();
         const { data: existing, error: fetchError } = await (client as unknown as SupabaseClient).from("task_sessions").select("started_at").eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).maybeSingle();
         if (fetchError) throw new Error(`Failed to stop timer: ${fetchError.message}`);
@@ -265,7 +302,9 @@ export function createMcpWriteToolHandlers(
         const durationSeconds = Math.max(0, Math.round((ended - started) / 1000));
         const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").update({ ended_at: endedAt, duration_seconds: durationSeconds, updated_at: endedAt }).eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).select("id, ended_at, duration_seconds").single();
         if (error) throw new Error(`Failed to stop timer: ${error.message}`);
-        return resultFromPayload({ ok: true, session: data });
+        const payload = { ok: true, session: data } as unknown as Record<string, unknown>;
+        await storeIdempotencyResult(client, "ega_stop_timer", input.operationId, payload);
+        return resultFromPayload(payload);
       } catch (error) {
         return errorResult(error);
       }

@@ -254,5 +254,31 @@ export function createAuditedMcpReadHandlers(
         () => handlers.listTasks(authInfo, input),
       );
     },
+
+    getTodayPlan(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["getTodayPlan"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_get_today_plan",
+        authInfo,
+        context,
+        () => handlers.getTodayPlan(authInfo, input),
+      );
+    },
+
+    listTimerSessions(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["listTimerSessions"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_list_timer_sessions",
+        authInfo,
+        context,
+        () => handlers.listTimerSessions(authInfo, input),
+      );
+    },
   };
 }

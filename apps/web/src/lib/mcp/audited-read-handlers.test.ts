@@ -16,7 +16,7 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
 };
 
 const AUTH_INFO = createMcpAuthInfo("test-bearer", PRINCIPAL);
@@ -45,6 +45,8 @@ function createBaseHandlers() {
     listProjects: vi.fn().mockResolvedValue(successResult(3)),
     listGoals: vi.fn().mockResolvedValue(successResult(2)),
     listTasks: vi.fn().mockResolvedValue(successResult(1)),
+    getTodayPlan: vi.fn().mockResolvedValue(successResult(0)),
+    listTimerSessions: vi.fn().mockResolvedValue(successResult(0)),
   };
 }
 
