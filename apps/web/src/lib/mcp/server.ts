@@ -94,8 +94,8 @@ export type McpWriteToolHandlers = {
   ) => Promise<CallToolResult>;
   clearCompletedToday: (
     authInfo: AuthInfo | undefined,
-    input: { date: string; operationId: string; confirmed?: boolean; requestState?: string },
-    context?: McpProtocolContext,
+    input: { date: string; operationId: string },
+    context?: ServerContext,
   ) => Promise<CallToolResult>;
 };
 
@@ -302,8 +302,6 @@ const stopTimerInputSchema = z.object({
 const clearCompletedTodayInputSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   operationId: z.string().uuid(),
-  confirmed: z.boolean().optional(),
-  requestState: z.string().optional(),
 }).strict();
 
 const genericSuccessOutputSchema = z.object({
@@ -527,7 +525,7 @@ export function registerMcpWriteTools(
       annotations: DESTRUCTIVE_ANNOTATIONS,
     },
     async (input, ctx) =>
-      handlers.clearCompletedToday(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+      handlers.clearCompletedToday(getAuthInfo(ctx as unknown as ServerContext), input, ctx as unknown as ServerContext),
   );
 }
 

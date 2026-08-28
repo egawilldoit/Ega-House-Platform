@@ -5,6 +5,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import { createHash } from "node:crypto";
+import { inputRequired, acceptedContent } from "@modelcontextprotocol/server";
+import { SupabaseProjectsRepository, SupabaseGoalsRepository, SupabaseTasksRepository, SupabaseTodayReadPort, SupabaseTimerSessionRepository } from "@ega/data-access";
+import { createProject as createProjectApp, createGoal as createGoalApp, createTask as createTaskApp } from "@ega/application";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -312,25 +315,51 @@ export function createMcpWriteToolHandlers(
 
     async clearCompletedToday(
       authInfo: AuthInfo | undefined,
-      input: { date: string; operationId: string; confirmed?: boolean; requestState?: string },
+      input: { date: string; operationId: string },
+      ctx?: { requestId?: string | number; mcpReq?: { inputResponses?: unknown; requestState?: <T>() => T | undefined } },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
         const principal = requireMcpPermission(authInfo, "today.update");
-        // MRTR: if not confirmed, mint requestState and return input_required
-        if (!input.confirmed) {
-          // In full MRTR, would use createRequestStateCodec and inputRequired helper
-          // Here we return a structured input_required payload for client confirmation
+        const mcpReq = (ctx as unknown as { mcpReq?: { inputResponses?: unknown; requestState?: <T>() => T } })?.mcpReq;
+        const confirmed = mcpReq ? (acceptedContent as unknown as (ir: unknown, k: string, s: unknown) => { confirm?: boolean } | undefined)(mcpReq.inputResponses, "confirm", { parse: (v: unknown) => v } as unknown) : undefined;
+        // Use SDK's acceptedContent with proper schema
+        const { z } = await import("zod-v4");
+        const confirmationSchema = z.object({ confirm: z.boolean() });
+        const verifiedState = mcpReq?.requestState?.<{ phase: string; argsHash: string; targetDate: string }>();
+        const argsHash = createHash("sha256").update(JSON.stringify({ date: input.date, operationId: input.operationId })).digest("hex");
+        if (!verifiedState && (!confirmed || confirmed.confirm !== true)) {
           const argsHash = createHash("sha256").update(JSON.stringify({ date: input.date, operationId: input.operationId })).digest("hex");
-          // TOCTOU binding would be done here with codec.mint({user, client, grantId, grantVersion, resource, tool, operationId, argsHash, targetDate: input.date, phase: "awaiting_confirmation"})
-          return resultFromPayload({
-            ok: false,
-            error: { code: "INPUT_REQUIRED", message: "Clear completed Today requires confirmation." },
-            input_required: {
-              requestState: `mrtr_state_${argsHash.slice(0, 8)}`,
-              inputRequests: { confirm: { description: `Clear completed tasks for ${input.date}?`, required: true } },
-            },
+          const { createRequestStateCodec } = await import("@/lib/mcp/request-state");
+          const secret = process.env.MCP_REQUEST_STATE_SECRET || "test-secret-32-bytes-long-for-dev-only-1234";
+          const codec = createRequestStateCodec({ key: secret, ttlSeconds: 300 });
+          const requestState = await codec.mint({
+            user: principal.ownerUserId,
+            client: principal.oauthClientId,
+            grantId: principal.grantId,
+            grantVersion: principal.permissionsVersion,
+            resource: "https://ega.example.com/api/mcp",
+            tool: "ega_clear_completed_today",
+            operationId: input.operationId,
+            argsHash,
+            targetDate: input.date,
+            phase: "awaiting_confirmation",
           } as unknown as Record<string, unknown>);
+          return inputRequired({
+            inputRequests: {
+              confirm: inputRequired.elicit({
+                message: `Clear completed tasks for ${input.date}?`,
+                requestedSchema: confirmationSchema,
+              }),
+            },
+            requestState,
+          }) as unknown as CallToolResult;
+        }
+        // Verify requestState binding on retry
+        if (verifiedState) {
+          if (verifiedState.argsHash !== argsHash || verifiedState.targetDate !== input.date) {
+            return resultFromPayload({ ok: false, error: { code: "INVALID_ARGUMENT", message: "Arguments changed between MRTR rounds." } } as unknown as Record<string, unknown>);
+          }
         }
         // Idempotency check
         const client = createClient(dependencies, authInfo!);

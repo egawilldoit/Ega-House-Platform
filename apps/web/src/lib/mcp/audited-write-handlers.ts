@@ -101,6 +101,6 @@ export function createAuditedMcpWriteHandlers(
     planTaskForToday: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["planTaskForToday"]>[1], c?: ProtocolContext) => execute("ega_plan_task_for_today", a, c, () => handlers.planTaskForToday(a, i)),
     startTimer: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["startTimer"]>[1], c?: ProtocolContext) => execute("ega_start_timer", a, c, () => handlers.startTimer(a, i)),
     stopTimer: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["stopTimer"]>[1], c?: ProtocolContext) => execute("ega_stop_timer", a, c, () => handlers.stopTimer(a, i)),
-    clearCompletedToday: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["clearCompletedToday"]>[1], c?: ProtocolContext) => execute("ega_clear_completed_today", a, c, () => handlers.clearCompletedToday(a, i)),
+    clearCompletedToday: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["clearCompletedToday"]>[1], c?: ProtocolContext & { mcpReq?: unknown }) => execute("ega_clear_completed_today", a, c as unknown as ProtocolContext, () => handlers.clearCompletedToday(a, i, c as unknown as never)),
   };
 }
