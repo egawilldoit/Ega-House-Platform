@@ -1,13 +1,15 @@
 import { getReviewFormValuesFromRecord } from "@/app/review/review-form-state";
 import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review-most-tracked";
 import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
-import { getWeekBounds, getWeekWindow } from "@/lib/review-week";
+import { getWeekWindow } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
 import { getTasksForReview } from "@/lib/services/task-read-service";
 import { generateWeeklyReviewDraftForUser } from "@/lib/services/weekly-review-draft-service";
 import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
 import { calculateWorkAnalytics } from "@/lib/services/work-analytics-service";
 import type { WeeklyReviewDraft } from "@/lib/weekly-review-generator";
+import { resolveHistoricalTimeContext } from "@ega/application";
+import { getWeekWindow as getDomainWeekWindow } from "@ega/domain";
 
 const PAST_REVIEW_LIMIT = 100;
 
@@ -128,13 +130,53 @@ async function getSelectedWeekReview(
   return data?.[0] ?? null;
 }
 
+async function getUserTimezoneForReview(
+  supabase: ReviewPageSupabaseClient,
+  ownerUserId: string,
+): Promise<string | null> {
+  try {
+    const { data } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
+      "user_time_context",
+    )
+      .select("iana_timezone")
+      .eq("user_id", ownerUserId)
+      .maybeSingle();
+    const tz = (data as { iana_timezone?: string | null } | null)?.iana_timezone;
+    return typeof tz === "string" && tz.trim() ? tz.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveWeeklyWindow(
+  weekStart: string,
+  weekEnd: string,
+  timezone: string | null,
+): { startIso: string; endExclusiveIso: string } {
+  // Canonical via resolveHistoricalTimeContext — historical reproducibility and DST-aware.
+  const tz = timezone ?? "UTC";
+  try {
+    const result = resolveHistoricalTimeContext({ timezone: tz, date: weekStart });
+    if (result.ok) {
+      // result's weekWindow is for the week containing weekStart; weekStart/weekEnd are Monday/Sunday of that week,
+      // so weekStart's window should match week bounds. Use domain directly for explicit weekStart/weekEnd pair.
+      const startWindow = getDomainWeekWindow(tz, weekStart);
+      const domainEnd = getDomainWeekWindow(tz, weekEnd);
+      return { startIso: startWindow.weekStartUtcIso, endExclusiveIso: domainEnd.weekEndExclusiveUtcIso };
+    }
+  } catch {}
+  // Fallback to UTC legacy helper
+  return getWeekWindow(weekStart, weekEnd);
+}
+
 async function getWeeklyStats(
   supabase: ReviewPageSupabaseClient,
   weekStart: string,
   weekEnd: string,
   ownerUserId: string,
+  timezone: string | null,
 ): Promise<WeeklyStats> {
-  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
+  const { startIso, endExclusiveIso } = resolveWeeklyWindow(weekStart, weekEnd, timezone);
   const nowIso = new Date().toISOString();
   const sessionNowIso = nowIso < endExclusiveIso ? nowIso : endExclusiveIso;
   const [tasksResult, sessionsResult, goalsResult, blockedTasksResult, analyticsSessionsResult] = await Promise.all([
@@ -216,8 +258,9 @@ async function getMostTrackedInsights(
   weekStart: string,
   weekEnd: string,
   ownerUserId: string,
+  timezone: string | null,
 ): Promise<MostTrackedInsights> {
-  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
+  const { startIso, endExclusiveIso } = resolveWeeklyWindow(weekStart, weekEnd, timezone);
   const { data, error } = await supabase
     .from("task_sessions")
     .select(
@@ -242,19 +285,25 @@ export async function getWeeklyReviewPageData({
   selectedWeekOf,
   useGeneratedDraft,
 }: WeeklyReviewPageDataParams): Promise<WeeklyReviewPageData> {
-  const bounds = getWeekBounds(selectedWeekOf);
-  if (!bounds) {
+  const supabase = await createClient();
+  const timezone = await getUserTimezoneForReview(supabase, ownerUserId);
+  // Canonical historical window via resolveHistoricalTimeContext (timezone-aware, DST-aware, reproducible)
+  const historical = resolveHistoricalTimeContext({ timezone: timezone ?? "UTC", date: selectedWeekOf });
+  if (!historical.ok) {
     throw new Error("Failed to resolve selected week.");
   }
+  const bounds = {
+    weekStart: historical.data.weekWindow.weekStart,
+    weekEnd: historical.data.weekWindow.weekEnd,
+  };
 
-  const supabase = await createClient();
   const [pastReviews, selectedReview, weeklyStats, sessionHeatmap, mostTrackedInsights, generatedDraft] =
     await Promise.all([
       getPastReviews(supabase, ownerUserId),
       getSelectedWeekReview(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId),
-      getWeeklyStats(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId),
+      getWeeklyStats(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId, timezone),
       getRecentDailyTrackedTime(supabase, { ownerUserId }),
-      getMostTrackedInsights(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId),
+      getMostTrackedInsights(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId, timezone),
       generateWeeklyReviewDraftForUser({
         supabase,
         ownerUserId,
