@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS "inbox_idempotency_keys" (
   "owner_user_id" uuid DEFAULT auth.uid() NOT NULL,
   "key" varchar(128) NOT NULL,
   "inbox_item_id" uuid NOT NULL REFERENCES "idea_notes"("id") ON DELETE CASCADE,
+  "fingerprint" text,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL,
   CONSTRAINT "inbox_idempotency_keys_key_not_blank" CHECK (length(btrim("key")) > 0)
 );
