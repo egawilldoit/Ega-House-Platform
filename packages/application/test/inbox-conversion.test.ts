@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createHash } from "node:crypto";
 
 import {
   convertInboxItemToTask,
@@ -218,18 +217,32 @@ class FakeTasksRepository implements TasksRepository {
     this.calls.push({ method: "createReminder", args: input, actor: actor.userId });
     const task = this.taskStore.get(input.taskId);
     if (!task) return fail();
+    // Idempotency via source correlation: if source+sourceId already exists, simulate DB unique violation
+    if (input.source && input.sourceId) {
+      const exists = task.reminders.some(
+        (r: any) => r.source === input.source && r.sourceId === input.sourceId,
+      );
+      if (exists) {
+        // Simulate unique constraint violation - data-access would catch and return existing task
+        // For fake, return duplicate error so caller can handle, but our new convert checks existence before calling,
+        // so this path should rarely be hit except concurrent races. Return duplicate-like error.
+        return { ok: false, error: { code: "23505", message: "duplicate key value violates unique constraint \"task_reminders_owner_source_source_id_unique\"" } } as any;
+      }
+    }
     const updated = {
       ...task,
       reminders: [
         ...task.reminders,
         {
-          id: "reminder-1",
+          id: `reminder-${task.reminders.length + 1}`,
           taskId: input.taskId,
           remindAt: input.remindAt,
           channel: "email" as const,
           status: "pending" as const,
           sentAt: null,
           failureReason: null,
+          source: input.source ?? null,
+          sourceId: input.sourceId ?? null,
         },
       ],
     };
@@ -406,7 +419,7 @@ test("retry after link failure with remindAt still same deterministic Task", asy
 
 test("archive/keep transitions remain explicit and owner-scoped", async () => {
   const inboxRepo = new FakeInboxRepository();
-  const archiveResult = await inboxRepo.setInboxItemStatus(ACTOR, { id: "inbox-1", status: "archived" });
+  await inboxRepo.setInboxItemStatus(ACTOR, { id: "inbox-1", status: "archived" });
   assert.equal(inboxRepo.calls[0].actor, "user-123");
   inboxRepo.inboxItem = inboxRecord({ id: "inbox-1", status: "archived" });
   inboxRepo.inboxStore.set("inbox-1", inboxRepo.inboxItem);
@@ -520,4 +533,144 @@ test("reconciliation after link succeeded but status failed returns existing tas
   assert.equal((second as any).data.task.id, taskId);
   const createCount = tasksRepo.calls.filter((c) => c.method === "createTask").length;
   assert.equal(createCount, 1, "should not create second task when link already exists");
+});
+
+// --- Repair TDD: cases A-F for reminder invariant (must fail before fix, pass after) ---
+
+test("BUG1-A: retry after reminder creation failure must not mark converted without reminder (exact proof)", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  // Make createReminder fail on first call, succeed on second
+  let reminderCall = 0;
+  const origCreateReminder = tasksRepo.createReminder.bind(tasksRepo);
+  tasksRepo.createReminder = async (actor: AuthenticatedActor, input: any) => {
+    reminderCall++;
+    if (reminderCall === 1) return fail() as any;
+    return origCreateReminder(actor, input);
+  };
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-reminder-fail", title: "Need reminder" });
+  inboxRepo.inboxStore.set("inbox-reminder-fail", inboxRepo.inboxItem);
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const now = new Date();
+
+  const first = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-reminder-fail", remindAt: future }, { now });
+  assert.equal(first.ok, false, "first attempt should fail when reminder creation fails");
+  // Invariant: not converted, link exists but reminder missing -> must not be converted
+  const afterFirstInbox = inboxRepo.inboxStore.get("inbox-reminder-fail")!;
+  assert.notEqual(afterFirstInbox.status, "converted", "must not be converted while reminder missing");
+  // task should exist, link should exist, but no reminder
+  const detId = deterministicTaskIdForInboxConversion(ACTOR, "inbox-reminder-fail");
+  const taskAfterFirst = tasksRepo.taskStore.get(detId);
+  assert.ok(taskAfterFirst, "task should exist even though reminder failed");
+  assert.equal(taskAfterFirst!.reminders.length, 0, "no reminder yet");
+
+  const second = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-reminder-fail", remindAt: future }, { now });
+  assert.equal(second.ok, true, "retry should succeed and create reminder");
+  assert.equal((second as any).data.inboxItem.status, "converted");
+  assert.equal((second as any).data.task.reminders.length, 1, "retry must prove reminder exists exactly once before marking converted");
+  // Ensure not marked converted without reminder: fetch link path alone would have returned 0 reminders
+  assert.equal(inboxRepo.taskLink, detId);
+});
+
+test("BUG1-B: invalid remindAt must fail before any side effects (no task, no link, not converted)", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-invalid-time", title: "Invalid time" });
+  inboxRepo.inboxStore.set("inbox-invalid-time", inboxRepo.inboxItem);
+  const initialTaskCount = tasksRepo.taskStore.size;
+  const invalidPast = new Date(Date.now() - 60 * 1000).toISOString();
+  const result = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-invalid-time", remindAt: invalidPast }, { now: new Date() });
+  assert.equal(result.ok, false);
+  assert.match((result as any).errorMessage, /future/i);
+  assert.equal(tasksRepo.taskStore.size, initialTaskCount, "invalid timestamp must not create orphan task");
+  assert.equal(inboxRepo.taskLink, null, "no link must be created");
+  assert.notEqual(inboxRepo.inboxStore.get("inbox-invalid-time")!.status, "converted");
+
+  const badFormat = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-invalid-time", remindAt: "not-a-date" }, { now: new Date() });
+  assert.equal(badFormat.ok, false);
+  assert.match((badFormat as any).errorMessage, /invalid/i);
+  assert.equal(tasksRepo.taskStore.size, initialTaskCount);
+});
+
+test("BUG1-C: link succeeds but markConverted fails then retry with reminder must still ensure single reminder", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-mark-fail", title: "Mark fail" });
+  inboxRepo.inboxStore.set("inbox-mark-fail", inboxRepo.inboxItem);
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const now = new Date();
+
+  // First attempt: make mark fail after reminder creation
+  inboxRepo.markConvertedShouldFail = true;
+  const first = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-mark-fail", remindAt: future }, { now });
+  assert.equal(first.ok, false, "mark failure should be reported, not claimed converted");
+  const detId = deterministicTaskIdForInboxConversion(ACTOR, "inbox-mark-fail");
+  const taskAfterFirst = tasksRepo.taskStore.get(detId)!;
+  assert.equal(taskAfterFirst.reminders.length, 1, "reminder should exist even though mark failed");
+  assert.notEqual(inboxRepo.inboxStore.get("inbox-mark-fail")!.status, "converted");
+
+  inboxRepo.markConvertedShouldFail = false;
+  const second = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-mark-fail", remindAt: future }, { now });
+  assert.equal(second.ok, true);
+  assert.equal((second as any).data.inboxItem.status, "converted");
+  // Must not create duplicate reminder on retry: still exactly one
+  const taskAfterSecond = tasksRepo.taskStore.get(detId)!;
+  assert.equal(taskAfterSecond.reminders.length, 1, "retry must not duplicate reminder, exactly once");
+});
+
+test("BUG1-D: concurrent converts with reminder must result in exactly one reminder (idempotency via source correlation)", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  // Simulate second concurrent sees deterministic task already exists but link not yet visible?
+  // Our Fake will handle PK duplicate and link conflict; reminder idempotency must also be exact.
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-concurrent-reminder", title: "Concurrent reminder" });
+  inboxRepo.inboxStore.set("inbox-concurrent-reminder", inboxRepo.inboxItem);
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const now = new Date();
+  const detId = deterministicTaskIdForInboxConversion(ACTOR, "inbox-concurrent-reminder");
+
+  const first = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-concurrent-reminder", remindAt: future }, { now });
+  assert.equal(first.ok, true);
+  assert.equal((first as any).data.task.reminders.length, 1);
+
+  // Second caller: fresh store but task already exists (simulating race where task creation serialized)
+  const tasksRepo2 = new FakeTasksRepository();
+  const nowIso = new Date().toISOString();
+  // Pre-populate deterministic task without reminder? Or with reminder? To simulate reminder already created but link not yet?
+  // More realistic: second caller finds task exists with reminder already, should not duplicate.
+  tasksRepo2.taskStore.set(detId, taskRecord({ id: detId, title: "Concurrent reminder", projectId: PROJECT_ID, createdAt: nowIso, updatedAt: nowIso, reminders: [{ id: "reminder-1", taskId: detId, remindAt: future, channel: "email" as const, status: "pending" as const, sentAt: null, failureReason: null, source: "smart_inbox_conversion" as any, sourceId: "inbox-concurrent-reminder" as any }] } as any));
+  tasksRepo2.taskOwner.set(detId, ACTOR.userId);
+  const inboxRepo2 = new FakeInboxRepository(tasksRepo2);
+  inboxRepo2.inboxItem = inboxRecord({ id: "inbox-concurrent-reminder", title: "Concurrent reminder" });
+  inboxRepo2.inboxStore.set("inbox-concurrent-reminder", inboxRepo2.inboxItem);
+  inboxRepo2.taskLink = null;
+
+  const second = await convertInboxItemToTask(ACTOR, inboxRepo2, tasksRepo2, { inboxItemId: "inbox-concurrent-reminder", remindAt: future }, { now });
+  assert.equal(second.ok, true);
+  // Must reuse same task and not duplicate reminder
+  assert.equal((second as any).data.task.id, detId);
+  const finalTask = tasksRepo2.taskStore.get(detId)!;
+  assert.equal(finalTask.reminders.length, 1, "concurrent must not duplicate reminder, exactly once");
+});
+
+test("BUG1-E: successful conversion invariant - Task exactly once, link exactly once, reminder exactly once, status converted", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-invariant", title: "Invariant" });
+  inboxRepo.inboxStore.set("inbox-invariant", inboxRepo.inboxItem);
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const result = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-invariant", remindAt: future }, { now: new Date() });
+  assert.equal(result.ok, true);
+  const detId = deterministicTaskIdForInboxConversion(ACTOR, "inbox-invariant");
+  assert.equal((result as any).data.task.id, detId);
+  assert.equal(inboxRepo.taskLink, detId);
+  const task = tasksRepo.taskStore.get(detId)!;
+  assert.equal(task.reminders.length, 1);
+  assert.equal((result as any).data.inboxItem.status, "converted");
+  // Retry should keep exact once
+  const retry = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-invariant", remindAt: future }, { now: new Date() });
+  assert.equal(retry.ok, true);
+  assert.equal(tasksRepo.taskStore.get(detId)!.reminders.length, 1, "retry must keep reminder exactly once");
+  assert.equal(inboxRepo.taskLink, detId);
+  assert.equal(retry.data.inboxItem.status, "converted");
 });
