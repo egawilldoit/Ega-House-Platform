@@ -1,7 +1,7 @@
 import type { AuthInfo, ServerContext } from "@modelcontextprotocol/server";
 import type { McpServer } from "@modelcontextprotocol/server";
 import type { CallToolResult } from "@modelcontextprotocol/server";
-import { z } from "zod";
+import { z } from "zod-v4";
 
 import { MCP_PERMISSIONS, MCP_PERMISSION_PROFILES } from "@/lib/mcp/permissions";
 import type {

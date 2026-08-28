@@ -1,8 +1,8 @@
 # Editorial Workspace Shell — Design Specification
 
-**Date:** 2026-08-04  
-**Status:** Approved for implementation planning  
-**Branch:** `feat/editorial-workspace-shell`  
+**Date:** 2026-08-04
+**Status:** Approved for implementation planning
+**Branch:** `feat/editorial-workspace-shell`
 **Base:** `main`
 
 ## 1. Objective

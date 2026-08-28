@@ -1,8 +1,8 @@
 # Editorial Workspace Shell — Implementation Evidence
 
-**Date:** 2026-08-04  
-**Branch:** `feat/editorial-workspace-shell`  
-**Pull request:** #118  
+**Date:** 2026-08-04
+**Branch:** `feat/editorial-workspace-shell`
+**Pull request:** #118
 **Verified runtime commit:** `e3022421355442f858134437f9e5ed61ab012f81`
 
 ## Delivered
@@ -50,9 +50,9 @@ The implementation does not change:
 
 ## Final GitHub Actions Gate
 
-**Workflow:** Public Signup CI  
-**Run:** `30895290815`  
-**Job:** `91946627848`  
+**Workflow:** Public Signup CI
+**Run:** `30895290815`
+**Job:** `91946627848`
 **Commit:** `e3022421355442f858134437f9e5ed61ab012f81`
 
 Results:
@@ -73,7 +73,7 @@ Results:
 
 ## Exact Runtime Preview
 
-**Vercel deployment:** `dpl_GwS5uZSpi8KFyCGke4XxVcPEA6GM`  
+**Vercel deployment:** `dpl_GwS5uZSpi8KFyCGke4XxVcPEA6GM`
 **Runtime URL:** `https://ega-house-platform-evdrc8edg-egas-projects-4fb87621.vercel.app`
 
 The deployment was built from exact commit `e3022421355442f858134437f9e5ed61ab012f81` and reached `READY`.

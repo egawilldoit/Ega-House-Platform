@@ -1,7 +1,7 @@
 # Runbook — MCP v2 read/write (2026-07-28)
 
-**Branch:** `feat/mcp-v2-full-read-write`  
-**SDK:** `@modelcontextprotocol/server` 2.0.0, `@modelcontextprotocol/client` 2.0.0, `@modelcontextprotocol/core` 2.0.0  
+**Branch:** `feat/mcp-v2-full-read-write`
+**SDK:** `@modelcontextprotocol/server` 2.0.0, `@modelcontextprotocol/client` 2.0.0, `@modelcontextprotocol/core` 2.0.0
 **Protocol:** `2026-07-28` (stateless `createMcpHandler`, `server/discover`, `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`)
 
 ## Serving

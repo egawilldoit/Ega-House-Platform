@@ -1,7 +1,7 @@
 # Agent Task Control API
 
-> **Version:** 1.0.0  
-> **Base URL:** `https://[your-domain]/api/agent`  
+> **Version:** 1.0.0
+> **Base URL:** `https://[your-domain]/api/agent`
 > **Agent Name:** `ega-house`
 
 ## 1. Overview
