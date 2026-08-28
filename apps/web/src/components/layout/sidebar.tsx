@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 
+import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
 import { QuickTaskSheet } from "@/components/tasks/quick-task-sheet";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import {
@@ -39,7 +40,8 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
         </span>
       </div>
 
-      <div className="workspace-quick-task">
+      <div className="workspace-quick-task flex flex-col gap-2">
+        <InboxQuickCapture />
         <QuickTaskSheet projects={projects} goals={goals} />
       </div>
 

@@ -14,8 +14,11 @@ export async function listInboxItems(params: ListInboxParams = {}) {
   return unwrapApiResult(await getMobileEgaApiClient().inbox.list(params as any));
 }
 
-export async function createInboxItem(input: { title: string; body?: string | null; type?: string | null; projectId?: string | null; priority?: string | null; tags?: string[] }) {
-  return unwrapApiResult(await getMobileEgaApiClient().inbox.create(input as any));
+export async function createInboxItem(
+  input: { title: string; body?: string | null; type?: string | null; projectId?: string | null; priority?: string | null; tags?: string[] },
+  idempotencyKey?: string,
+) {
+  return unwrapApiResult(await getMobileEgaApiClient().inbox.create(input as any, idempotencyKey));
 }
 
 export async function updateInboxItem(id: string, input: Record<string, unknown>) {

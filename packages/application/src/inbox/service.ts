@@ -2,6 +2,7 @@ import {
   DEFAULT_INBOX_TYPE,
   isInboxType,
   isManualInboxStatus,
+  MAX_IDEMPOTENCY_KEY_LENGTH,
   normalizeInboxPriority,
   normalizeOptionalProjectId,
   parseInboxTags,
@@ -67,6 +68,7 @@ export async function createInboxItem(
     priority?: unknown;
     tags?: unknown;
     tagsInput?: unknown;
+    idempotencyKey?: unknown;
   },
 ): Promise<ApplicationResult<InboxRecord>> {
   const title = normalizeTitle(input.title);
@@ -95,6 +97,17 @@ export async function createInboxItem(
   const scopeError = await ensureProjectVisible(actor, repository, projectId);
   if (scopeError) return applicationFailure(scopeError);
 
+  const rawKey = input.idempotencyKey != null ? String(input.idempotencyKey).trim() : "";
+  let idempotencyKey: string | null = null;
+  if (rawKey) {
+    if (rawKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) return applicationFailure("Idempotency key is too long.");
+    if (/[\0-\x1f\x7f]/.test(rawKey)) return applicationFailure("Idempotency key is invalid.");
+    idempotencyKey = rawKey;
+    const existing = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
+    if (!existing.ok) return applicationFailure("Unable to create idea right now.");
+    if (existing.value) return applicationSuccess(existing.value);
+  }
+
   const record: CreateInboxRecordInput = {
     title,
     body,
@@ -102,10 +115,17 @@ export async function createInboxItem(
     projectId,
     priority,
     tags,
+    ...(idempotencyKey ? { idempotencyKey } : {}),
   };
 
   const result = await repository.createInboxItem(actor, record);
-  return result.ok ? applicationSuccess(result.value) : applicationFailure("Unable to create idea right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  // Handle race: duplicate key inserted concurrently -> fetch existing
+  if (idempotencyKey) {
+    const retry = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
+    if (retry.ok && retry.value) return applicationSuccess(retry.value);
+  }
+  return applicationFailure("Unable to create idea right now.");
 }
 
 export async function updateInboxItem(

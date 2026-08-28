@@ -66,6 +66,7 @@ export type CreateIdeaNoteInput = {
   priority?: unknown;
   tagsInput?: unknown;
   tags?: unknown;
+  idempotencyKey?: unknown;
 };
 
 export type UpdateIdeaNoteInput = CreateIdeaNoteInput & {
@@ -208,7 +209,7 @@ async function ensureProjectVisible(
 
 export async function createIdeaNote(
   input: CreateIdeaNoteInput,
-  options?: { supabase?: SupabaseServerClient },
+  options?: { supabase?: SupabaseServerClient; idempotencyKey?: unknown },
 ): Promise<CreateIdeaNoteResult> {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const normalized = normalizeIdeaNoteInput(input);
@@ -225,6 +226,41 @@ export async function createIdeaNote(
       errorMessage: normalized.errorMessage,
       data: null,
     };
+  }
+
+  const rawIdempotency = String(input.idempotencyKey ?? options?.idempotencyKey ?? "").trim();
+  let idempotencyKey: string | null = null;
+  if (rawIdempotency) {
+    if (rawIdempotency.length > 128) {
+      return { errorMessage: "Idempotency key is too long.", data: null };
+    }
+    if (/[\0-\x1f\x7f]/.test(rawIdempotency)) {
+      return { errorMessage: "Idempotency key is invalid.", data: null };
+    }
+    idempotencyKey = rawIdempotency;
+    // Check for existing mapping
+    const { data: existingKeyRow, error: existingKeyError } = await (supabase as any)
+      .from("inbox_idempotency_keys")
+      .select("inbox_item_id")
+      .eq("key", idempotencyKey)
+      .maybeSingle();
+    if (existingKeyError) {
+      // best-effort: if lookup fails, proceed to create (will attempt insert dedup)
+    } else if (existingKeyRow) {
+      const inboxItemId = String((existingKeyRow as any).inbox_item_id ?? (existingKeyRow as any).inboxItemId ?? "");
+      if (inboxItemId) {
+        const { data: existingNote, error: existingNoteError } = await supabase
+          .from("idea_notes")
+          .select(
+            "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+          )
+          .eq("id", inboxItemId)
+          .maybeSingle();
+        if (!existingNoteError && existingNote) {
+          return { errorMessage: null, data: existingNote as IdeaNote };
+        }
+      }
+    }
   }
 
   const projectError = await ensureProjectVisible(supabase, normalized.projectId || null);
@@ -258,6 +294,44 @@ export async function createIdeaNote(
       errorMessage: "Unable to create idea right now.",
       data: null,
     };
+  }
+
+  if (idempotencyKey) {
+    const { error: linkError } = await (supabase as any)
+      .from("inbox_idempotency_keys")
+      .insert({
+        key: idempotencyKey,
+        inbox_item_id: (data as any).id,
+      });
+    if (linkError) {
+      const isDuplicate =
+        String((linkError as any).code ?? "").includes("23505") ||
+        /duplicate|unique/i.test(String(linkError.message ?? ""));
+      if (isDuplicate) {
+        const { data: dupRow } = await (supabase as any)
+          .from("inbox_idempotency_keys")
+          .select("inbox_item_id")
+          .eq("key", idempotencyKey)
+          .maybeSingle();
+        const dupId = String((dupRow as any)?.inbox_item_id ?? "");
+        if (dupId) {
+          const { data: dupNote } = await supabase
+            .from("idea_notes")
+            .select(
+              "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+            )
+            .eq("id", dupId)
+            .maybeSingle();
+          if (dupNote) {
+            // Cleanup duplicate we just created to avoid orphan
+            try {
+              await (supabase as any).from("idea_notes").delete().eq("id", (data as any).id);
+            } catch {}
+            return { errorMessage: null, data: dupNote as IdeaNote };
+          }
+        }
+      }
+    }
   }
 
   return {

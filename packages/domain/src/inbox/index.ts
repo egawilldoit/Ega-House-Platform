@@ -104,3 +104,14 @@ export function isInboxArchivedStatus(status: string | null | undefined): boolea
 export function isInboxConvertedStatus(status: string | null | undefined): boolean {
   return String(status ?? "").trim().toLowerCase() === "converted";
 }
+
+export const MAX_IDEMPOTENCY_KEY_LENGTH = 128;
+
+export function normalizeIdempotencyKey(value: unknown): string | null {
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_IDEMPOTENCY_KEY_LENGTH) return "";
+  // Allow UUID-like or any non-empty token without control chars; keep simple.
+  if (/[\0-\x1f\x7f]/.test(trimmed)) return "";
+  return trimmed;
+}
