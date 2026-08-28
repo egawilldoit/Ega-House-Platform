@@ -16,6 +16,7 @@ import {
   type TokenProvider,
 } from "./http";
 import { createInboxApi, type InboxApi } from "./inbox";
+import { createNotificationsApi, type NotificationsApi } from "./notifications";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
 import { createTimerApi, type TimerApi } from "./timer";
@@ -48,6 +49,7 @@ export type EgaApiClient = {
   inbox: InboxApi;
   today: TodayApi;
   timer: TimerApi;
+  notifications: NotificationsApi;
   auth: AuthApi;
 };
 
@@ -73,6 +75,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     inbox: createInboxApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    notifications: createNotificationsApi(http),
     auth: createAuthApi(http),
   };
 }
