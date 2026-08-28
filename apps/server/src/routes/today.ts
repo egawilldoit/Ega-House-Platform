@@ -10,6 +10,7 @@ import {
   updateTodayTaskStatus,
 } from "@ega/application";
 import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
+import { getLocalDateInTimezone } from "@ega/domain";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -70,16 +71,23 @@ export function createTodayRoutes(
     const earlyResponse = await resolveOwnedTaskOr404(c, actor, repository, c.req.param("id"));
     if (earlyResponse) return earlyResponse;
 
-    const fallbackDate = body?.date
-      ? String(body.date)
-      : body?.timezone
-        ? null
-        : dependencies.now
-          ? dependencies.now().toISOString().slice(0, 10)
-          : undefined;
+    const now = dependencies.now ? dependencies.now() : new Date();
+    let resolvedDate: string | undefined;
+    const rawDate = body?.date != null ? String(body.date).trim() : "";
+    if (rawDate) {
+      resolvedDate = rawDate;
+    } else if (typeof body?.timezone === "string" && body.timezone.trim()) {
+      try {
+        resolvedDate = getLocalDateInTimezone(now, body.timezone.trim());
+      } catch {
+        resolvedDate = now.toISOString().slice(0, 10);
+      }
+    } else {
+      resolvedDate = now.toISOString().slice(0, 10);
+    }
     const result = await planTaskForToday(actor, repository, {
       taskId: c.req.param("id"),
-      date: fallbackDate ?? body?.date,
+      date: resolvedDate,
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, taskId: result.data.id });
@@ -121,11 +129,20 @@ export function createTodayRoutes(
   routes.post("/clear-completed", async (c) => {
     const { actor, client } = c.var;
     const body = (await readJsonBody(c)) ?? {};
-    const fallbackClearDate = body.date
-      ? String(body.date)
-      : dependencies.now
-        ? dependencies.now().toISOString().slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
+    const now = dependencies.now ? dependencies.now() : new Date();
+    let fallbackClearDate: string;
+    const rawDate = body.date != null ? String(body.date).trim() : "";
+    if (rawDate) {
+      fallbackClearDate = rawDate;
+    } else if (typeof (body as Record<string, unknown>).timezone === "string" && String((body as Record<string, unknown>).timezone).trim()) {
+      try {
+        fallbackClearDate = getLocalDateInTimezone(now, String((body as Record<string, unknown>).timezone).trim());
+      } catch {
+        fallbackClearDate = now.toISOString().slice(0, 10);
+      }
+    } else {
+      fallbackClearDate = now.toISOString().slice(0, 10);
+    }
     const result = await clearCompletedToday(actor, new SupabaseTasksRepository(client), {
       date: fallbackClearDate,
     });
