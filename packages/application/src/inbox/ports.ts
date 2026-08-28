@@ -61,6 +61,11 @@ export type UpdateInboxRecordInput = Readonly<{
   status: ManualInboxStatus;
 }>;
 
+export type InboxConversionLinkRecord = Readonly<{
+  inboxItemId: string;
+  taskId: string;
+}>;
+
 export interface InboxRepository {
   getScope(actor: AuthenticatedActor): Promise<RepositoryResult<InboxScopeRecord>>;
   listInboxItems(
@@ -89,5 +94,18 @@ export interface InboxRepository {
   setInboxItemStatus(
     actor: AuthenticatedActor,
     input: Readonly<{ id: string; status: ManualInboxStatus | "archived" | "inbox" }>,
+  ): Promise<RepositoryResult<InboxRecord>>;
+  // Conversion idempotency via task_external_refs (source='inbox')
+  getTaskIdForInboxItem(
+    actor: AuthenticatedActor,
+    inboxItemId: string,
+  ): Promise<RepositoryResult<string | null>>;
+  createInboxTaskLink(
+    actor: AuthenticatedActor,
+    input: Readonly<{ inboxItemId: string; taskId: string }>,
+  ): Promise<RepositoryResult<void>>;
+  markInboxItemConverted(
+    actor: AuthenticatedActor,
+    inboxItemId: string,
   ): Promise<RepositoryResult<InboxRecord>>;
 }

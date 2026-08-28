@@ -25,6 +25,7 @@ export * from "./shared/execution-evidence";
 export * from "./inbox/ports";
 export * from "./inbox/service";
 export * from "./inbox/read-model";
+export * from "./inbox/convert";
 
 export type {
   GoalHealth,

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 
 import {
   archiveInboxItem,
+  convertInboxItemToTask,
   createInboxItem,
   getInboxItem,
   listInboxItems,
@@ -9,7 +10,8 @@ import {
   restoreInboxItem,
   updateInboxItem,
 } from "@ega/application";
-import { SupabaseInboxRepository } from "@ega/data-access";
+import { convertInboxInputSchema } from "@ega/contracts/inbox";
+import { SupabaseInboxRepository, SupabaseTasksRepository } from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -130,6 +132,46 @@ export function createInboxRoutes(
     const result = await restoreInboxItem(actor, repo, { id: c.req.param("id") });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true as const, item: result.data });
+  });
+
+  routes.post("/:id/convert", async (c) => {
+    const { actor, client } = c.var;
+    const inboxId = c.req.param("id");
+    const body = await readJsonBody(c);
+    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
+
+    const parsed = convertInboxInputSchema.safeParse(body ?? {});
+    if (!parsed.success) {
+      const message = parsed.error.issues[0]?.message ?? "Invalid conversion input.";
+      return c.json({ error: { code: "VALIDATION", message } }, 400);
+    }
+
+    const inboxRepo = new SupabaseInboxRepository(client as any);
+    const tasksRepo = new SupabaseTasksRepository(client as any);
+    const result = await convertInboxItemToTask(actor, inboxRepo, tasksRepo, {
+      inboxItemId: inboxId,
+      projectId: parsed.data.projectId,
+      goalId: parsed.data.goalId,
+      priority: parsed.data.priority,
+      dueDate: parsed.data.dueDate,
+      title: parsed.data.title,
+      description: parsed.data.description,
+      remindAt: parsed.data.remindAt,
+    });
+
+    if (!result.ok) {
+      // Use 404 for unavailable, 409 for already converted, otherwise 400
+      const msg = result.errorMessage;
+      if (msg.includes("unavailable") || msg.includes("not found")) {
+        return c.json({ error: { code: "NOT_FOUND", message: msg } }, 404);
+      }
+      if (msg.includes("already converted")) {
+        return c.json({ error: { code: "CONFLICT", message: msg } }, 409);
+      }
+      return c.json({ error: { code: "VALIDATION", message: msg } }, 400);
+    }
+
+    return c.json({ ok: true as const, item: result.data.inboxItem, task: result.data.task }, 201);
   });
 
   return routes;
