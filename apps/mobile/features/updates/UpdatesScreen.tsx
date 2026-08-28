@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -60,31 +60,32 @@ function statusTone(status: UpdateStatus): 'info' | 'success' | 'warning' | 'dan
 export function UpdatesScreenContent() {
   const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const svc = getUpdateService();
-  const { status, isChecking, isDownloading, error, lastCheckedAt, check, download, reload, info } =
-    useUpdateService(svc);
-  const [nativeInfo, setNativeInfo] = useState<{ version: string | null; url: string | null }>({
-    version: null,
-    url: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const { fetchLatestReleaseManifest } = await import('@/lib/updates/native');
-        const manifest = await fetchLatestReleaseManifest().catch(() => null);
-        if (!cancelled && manifest) {
-          const { buildApkUrlFromManifest } = await import('@/lib/updates/native');
-          setNativeInfo({ version: manifest.version, url: buildApkUrlFromManifest(manifest) });
-        }
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [status]);
+  const {
+    status,
+    isChecking,
+    isDownloading,
+    error,
+    lastCheckedAt,
+    check,
+    download,
+    reload,
+    info,
+    latestNativeVersion,
+    latestNativeRuntimeVersion,
+    latestApkUrl,
+    latestNativeReleaseUrl,
+    appVersion,
+    runtimeVersion,
+    channel,
+  } = useUpdateService(svc) as ReturnType<typeof useUpdateService> & {
+    latestNativeVersion: string | null;
+    latestNativeRuntimeVersion: string | null;
+    latestApkUrl: string | null;
+    latestNativeReleaseUrl: string | null;
+    appVersion: string;
+    runtimeVersion: string;
+    channel: string | null;
+  };
 
   const onCheck = useCallback(async () => {
     await check();
@@ -95,22 +96,26 @@ export function UpdatesScreenContent() {
   }, [download]);
 
   const onRestart = useCallback(async () => {
-    await reload().catch(() => {});
+    try {
+      await reload();
+    } catch {
+      // error is surfaced via service state (ERROR with retryable message)
+    }
   }, [reload]);
 
   const onOpenRelease = useCallback(async () => {
-    const url = nativeInfo.url ?? getGithubReleasesUrl();
+    const url = latestApkUrl ?? latestNativeReleaseUrl ?? getGithubReleasesUrl();
     try {
       await WebBrowser.openBrowserAsync(url);
     } catch {
       Linking.openURL(url);
     }
-  }, [nativeInfo.url]);
+  }, [latestApkUrl, latestNativeReleaseUrl]);
 
   const showDownload = status === 'OTA_AVAILABLE';
   const showRestart = status === 'OTA_READY';
   const showNative = status === 'NATIVE_UPDATE_REQUIRED';
-  const showError = status === 'ERROR';
+  const isNativeUnavailable = status === 'ERROR' && error?.includes('native release status unavailable');
 
   return (
     <AppScreen padded={false} testID="updates-screen">
@@ -125,17 +130,17 @@ export function UpdatesScreenContent() {
           <View style={styles.metaList}>
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>App version</Text>
-              <Text style={styles.metaValue} testID="updates-app-version">{info.appVersion}</Text>
+              <Text style={styles.metaValue} testID="updates-app-version">{appVersion}</Text>
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>Runtime version</Text>
               <Text style={styles.metaValue} numberOfLines={1} testID="updates-runtime-version">
-                {info.runtimeVersion || '—'}
+                {runtimeVersion || '—'}
               </Text>
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>Channel</Text>
-              <Text style={styles.metaValue} testID="updates-channel">{info.channel ?? '—'}</Text>
+              <Text style={styles.metaValue} testID="updates-channel">{channel ?? '—'}</Text>
             </View>
             <View style={styles.metaRow}>
               <Text style={styles.metaLabel}>Update ID</Text>
@@ -175,7 +180,7 @@ export function UpdatesScreenContent() {
           {showNative ? (
             <View style={styles.nativeBlock}>
               <FeedbackBanner
-                message={`A new native app version is required${nativeInfo.version ? ` (${nativeInfo.version})` : ''}. OTA cannot apply native/runtime changes. Please install the latest APK from the official GitHub Release.`}
+                message={`New app version required — Installed: ${appVersion}${latestNativeVersion ? ` · Available: ${latestNativeVersion}` : ''}${latestNativeRuntimeVersion && latestNativeRuntimeVersion !== latestNativeVersion ? ` (runtime ${latestNativeRuntimeVersion})` : ''}. A full APK update is required.`}
                 tone="warning"
                 testID="updates-native-required"
               />
@@ -184,8 +189,16 @@ export function UpdatesScreenContent() {
               </Text>
             </View>
           ) : null}
-          {showError ? (
-            <FeedbackBanner message={error ?? 'Update check failed. Check your connection and retry.'} tone="danger" testID="updates-error" />
+          {status === 'ERROR' ? (
+            <FeedbackBanner
+              message={
+                isNativeUnavailable
+                  ? "Couldn't verify the latest app version. Check your connection and retry."
+                  : (error ?? 'Update check failed. Check your connection and retry.')
+              }
+              tone="danger"
+              testID="updates-error"
+            />
           ) : null}
 
           {lastCheckedAt ? <Text style={styles.lastChecked}>Last checked: {new Date(lastCheckedAt).toLocaleString()}</Text> : null}
@@ -209,7 +222,7 @@ export function UpdatesScreenContent() {
               />
             ) : showNative ? (
               <Button
-                title="Open releases page"
+                title="Open official release"
                 variant="secondary"
                 onPress={onOpenRelease}
                 leftIcon={<Ionicons name="open-outline" size={16} color={mobileTheme.colors.text} />}
@@ -225,6 +238,9 @@ export function UpdatesScreenContent() {
                 testID="updates-check"
               />
             )}
+            {status === 'ERROR' && error?.includes('Unable to restart') ? (
+              <FeedbackBanner message="Unable to restart and apply update. Retry restart." tone="danger" />
+            ) : null}
             {(status === 'UP_TO_DATE' || status === 'ERROR' || status === 'IDLE') && !showNative ? (
               <Text style={styles.retryHint}>Retry is safe — checks are rate-limited and never poll aggressively.</Text>
             ) : null}
@@ -234,8 +250,9 @@ export function UpdatesScreenContent() {
         <Card variant="tonal" tone="low" testID="updates-help-card">
           <Text style={styles.helpTitle}>How updates work</Text>
           <Text style={styles.helpText}>
-            Compatible JS and asset updates are delivered over-the-air via EAS Update. Incompatible native/runtime changes
-            require a new APK from GitHub Releases. OTA is never attempted when a native update is required.
+            Compatible JS and asset updates are delivered over-the-air via EAS Update on the production channel.
+            Incompatible native/runtime changes require a new APK from GitHub Releases. OTA is never attempted when a
+            native update is required.
           </Text>
           <Text style={styles.helpText}>Flow: Checking → Update available → Downloading → Ready → Restart & update → Updated.</Text>
         </Card>

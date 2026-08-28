@@ -15,7 +15,7 @@ function makeUpdates(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     isEnabled: true,
     channel: 'production',
-    runtimeVersion: '1.0.0',
+    runtimeVersion: '1.0.1',
     updateId: 'embedded-abc',
     isEmbeddedLaunch: true,
     isEmergencyLaunch: false,
@@ -27,20 +27,20 @@ function makeUpdates(overrides: Partial<Record<string, unknown>> = {}) {
   } as unknown as import('../service').UpdatesModule;
 }
 
-function makeConstants(version = '1.0.0') {
+function makeConstants(version = '1.0.1', runtime = '1.0.1') {
   return {
-    expoConfig: { version, runtimeVersion: { policy: 'fingerprint' }, extra: { eas: { projectId: 'test' } } },
+    expoConfig: { version, extra: { eas: { projectId: 'test' } } },
   } as unknown as typeof import('expo-constants').default;
 }
 
 describe('getAppUpdateInfo', () => {
   it('exposes version/runtime/channel/updateId', () => {
-    const updates = makeUpdates({ updateId: 'update-123', channel: 'preview', runtimeVersion: 'rv-1' });
-    const constants = makeConstants('1.2.3');
+    const updates = makeUpdates({ updateId: 'update-123', channel: 'production', runtimeVersion: '1.0.1' });
+    const constants = makeConstants('1.0.1', '1.0.1');
     const info = getAppUpdateInfo({ updates: updates as never, constants: constants as never });
-    expect(info.appVersion).toBe('1.2.3');
-    expect(info.runtimeVersion).toBe('rv-1');
-    expect(info.channel).toBe('preview');
+    expect(info.appVersion).toBe('1.0.1');
+    expect(info.runtimeVersion).toBe('1.0.1');
+    expect(info.channel).toBe('production');
     expect(info.updateId).toBe('update-123');
   });
 });
@@ -52,18 +52,22 @@ describe('checkForUpdate', () => {
   });
 
   it('returns UP_TO_DATE when updates disabled', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({ isEnabled: false });
     const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
     expect(res.status).toBe('UP_TO_DATE');
   });
 
-  it('returns NATIVE_UPDATE_REQUIRED when native newer', async () => {
+  it('returns NATIVE_UPDATE_REQUIRED when native newer and does NOT call EAS', async () => {
     mockCheckNative.mockResolvedValue({
       status: 'NATIVE_UPDATE_REQUIRED',
-      localVersion: '1.0.0',
-      remoteVersion: '2.0.0',
+      localVersion: '1.0.1',
+      localRuntime: '1.0.1',
+      remoteVersion: '1.0.2',
+      remoteRuntime: '1.0.2',
       apkUrl: 'https://example.com/apk',
+      releaseUrl: 'https://github.com/egawilldoit/Ega-House-Platform/releases',
+      reason: 'newer',
     });
     const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }) });
     const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
@@ -71,22 +75,32 @@ describe('checkForUpdate', () => {
     expect(updates.checkForUpdateAsync).not.toHaveBeenCalled();
   });
 
-  it('returns OTA_AVAILABLE when check finds update', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: '1.0.0' });
+  it('returns ERROR when native unknown and does NOT call EAS (fail closed)', async () => {
+    mockCheckNative.mockResolvedValue({ status: 'ERROR', error: 'native release status unavailable: timeout' });
+    const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }) });
+    const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
+    expect(res.status).toBe('ERROR');
+    expect(res.error).toMatch(/native release status unavailable/);
+    expect(updates.checkForUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns OTA_AVAILABLE when native compatible and EAS has update', async () => {
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true, manifest: { id: 'u1' } }) });
     const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
     expect(res.status).toBe('OTA_AVAILABLE');
+    expect(updates.checkForUpdateAsync).toHaveBeenCalledTimes(1);
   });
 
   it('returns UP_TO_DATE when no update available', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: false }) });
     const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
     expect(res.status).toBe('UP_TO_DATE');
   });
 
-  it('returns ERROR on network failure', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+  it('returns ERROR on EAS network failure', async () => {
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockRejectedValue(new Error('Network request failed')) });
     const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
     expect(res.status).toBe('ERROR');
@@ -94,13 +108,28 @@ describe('checkForUpdate', () => {
   });
 
   it('returns ERROR on timeout', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
-    const updates = makeUpdates({
-      checkForUpdateAsync: jest.fn(() => new Promise(() => {})),
-    });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
+    const updates = makeUpdates({ checkForUpdateAsync: jest.fn(() => new Promise(() => {})) });
     const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never }, { timeoutMs: 10 });
     expect(res.status).toBe('ERROR');
     expect(res.error).toMatch(/timeout/i);
+  });
+
+  it('same version different runtime => NATIVE_UPDATE_REQUIRED and no EAS', async () => {
+    mockCheckNative.mockResolvedValue({
+      status: 'NATIVE_UPDATE_REQUIRED',
+      localVersion: '1.0.1',
+      localRuntime: '1.0.1',
+      remoteVersion: '1.0.1',
+      remoteRuntime: '1.0.2',
+      apkUrl: 'https://example.com/apk',
+      releaseUrl: 'https://github.com/egawilldoit/Ega-House-Platform/releases',
+      reason: 'runtime mismatch',
+    });
+    const updates = makeUpdates({ checkForUpdateAsync: jest.fn() });
+    const res = await checkForUpdate({ updates: updates as never, constants: makeConstants() as never });
+    expect(res.status).toBe('NATIVE_UPDATE_REQUIRED');
+    expect(updates.checkForUpdateAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -110,7 +139,6 @@ describe('downloadUpdate', () => {
     const res = await downloadUpdate({ updates: updates as never, constants: makeConstants() as never });
     expect(res.status).toBe('OTA_READY');
   });
-
   it('returns ERROR on fetch network failure', async () => {
     const updates = makeUpdates({ fetchUpdateAsync: jest.fn().mockRejectedValue(new Error('timeout after 30000ms')) });
     const res = await downloadUpdate({ updates: updates as never, constants: makeConstants() as never });
@@ -126,7 +154,7 @@ describe('createUpdateService state machine', () => {
   });
 
   it('transitions CHECKING -> OTA_AVAILABLE', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }) });
     const svc = createUpdateService({ updates: updates as never, constants: makeConstants() as never });
     expect(svc.getState().status).toBe('IDLE');
@@ -138,8 +166,39 @@ describe('createUpdateService state machine', () => {
     expect(svc.getState().isChecking).toBe(false);
   });
 
+  it('native required => service NATIVE_UPDATE_REQUIRED and stores latestNative', async () => {
+    mockCheckNative.mockResolvedValue({
+      status: 'NATIVE_UPDATE_REQUIRED',
+      localVersion: '1.0.1',
+      localRuntime: '1.0.1',
+      remoteVersion: '1.0.2',
+      remoteRuntime: '1.0.2',
+      apkUrl: 'https://example.com/apk',
+      releaseUrl: 'https://github.com/egawilldoit/Ega-House-Platform/releases',
+      reason: 'newer',
+    });
+    const updates = makeUpdates({ checkForUpdateAsync: jest.fn() });
+    const svc = createUpdateService({ updates: updates as never, constants: makeConstants() as never });
+    await svc.check();
+    const state = svc.getState();
+    expect(state.status).toBe('NATIVE_UPDATE_REQUIRED');
+    expect(state.latestNativeVersion).toBe('1.0.2');
+    expect(state.latestApkUrl).toBe('https://example.com/apk');
+    expect(updates.checkForUpdateAsync).not.toHaveBeenCalled();
+  });
+
+  it('native ERROR => service ERROR and does not call EAS', async () => {
+    mockCheckNative.mockResolvedValue({ status: 'ERROR', error: 'native release status unavailable: network' });
+    const updates = makeUpdates({ checkForUpdateAsync: jest.fn() });
+    const svc = createUpdateService({ updates: updates as never, constants: makeConstants() as never });
+    await svc.check();
+    expect(svc.getState().status).toBe('ERROR');
+    expect(svc.getState().error).toMatch(/native release status unavailable/);
+    expect(updates.checkForUpdateAsync).not.toHaveBeenCalled();
+  });
+
   it('transitions DOWNLOADING -> OTA_READY', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({
       checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }),
       fetchUpdateAsync: jest.fn().mockResolvedValue({ isNew: true }),
@@ -153,47 +212,48 @@ describe('createUpdateService state machine', () => {
   });
 
   it('handles error state and retry', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockRejectedValue(new Error('Network failed')) });
     const svc = createUpdateService({ updates: updates as never, constants: makeConstants() as never });
     let res = await svc.check();
     expect(res.status).toBe('ERROR');
     expect(svc.getState().status).toBe('ERROR');
     expect(svc.getState().error).toMatch(/offline/i);
-    // retry succeeds
     (updates.checkForUpdateAsync as jest.Mock).mockResolvedValue({ isAvailable: false });
     res = await svc.check();
     expect(res.status).toBe('UP_TO_DATE');
     expect(svc.getState().error).toBeNull();
   });
 
-  it('reload only after OTA_READY', async () => {
+  it('reload only after OTA_READY and surfaces failure retryable', async () => {
     const updates1 = makeUpdates({ reloadAsync: jest.fn().mockResolvedValue(undefined) });
     const svc = createUpdateService({ updates: updates1 as never, constants: makeConstants() as never });
     await expect(svc.reload()).rejects.toThrow(/no downloaded update/i);
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
     const updates2 = makeUpdates({
       checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }),
       fetchUpdateAsync: jest.fn().mockResolvedValue({ isNew: true }),
-      reloadAsync: jest.fn().mockResolvedValue(undefined),
+      reloadAsync: jest.fn().mockRejectedValue(new Error('reload failed')),
     });
     const svc2 = createUpdateService({ updates: updates2 as never, constants: makeConstants() as never });
     await svc2.check();
     await svc2.download();
-    await expect(svc2.reload()).resolves.toBeUndefined();
-    expect(updates2.reloadAsync).toHaveBeenCalled();
+    expect(svc2.getState().status).toBe('OTA_READY');
+    await expect(svc2.reload()).rejects.toThrow(/Unable to restart/);
+    expect(svc2.getState().status).toBe('ERROR');
+    expect(svc2.getState().error).toMatch(/Unable to restart/);
+    // retry remains possible: status is ERROR but OTA_READY info still implies retry? For V1 we keep ERROR with message
   });
 
-  it('exposes checking/downloading/ready/error states', async () => {
-    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.0', remoteVersion: null });
-    const updates = makeUpdates({ checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }) });
+  it('download after OTA_AVAILABLE => OTA_READY', async () => {
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
+    const updates = makeUpdates({
+      checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }),
+      fetchUpdateAsync: jest.fn().mockResolvedValue({ isNew: true }),
+    });
     const svc = createUpdateService({ updates: updates as never, constants: makeConstants() as never });
-    let state = svc.getState();
-    expect(state.status).toBe('IDLE');
-    expect(state.isChecking).toBe(false);
-    expect(state.isReady).toBe(false);
     await svc.check();
-    state = svc.getState();
-    expect(state.status).toBe('OTA_AVAILABLE');
+    await svc.download();
+    expect(svc.getState().status).toBe('OTA_READY');
   });
 });

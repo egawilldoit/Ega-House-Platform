@@ -1,8 +1,8 @@
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 
-import type { AppUpdateInfo, UpdateStatus } from './types';
-import { checkNativeUpdateRequired } from './native';
+import type { AppUpdateInfo, UpdateServiceState, UpdateStatus } from './types';
+import { buildApkUrlFromManifest, checkNativeUpdateRequired, getGithubReleasesUrl } from './native';
 
 const CHECK_TIMEOUT_MS = 15000;
 const FETCH_TIMEOUT_MS = 30000;
@@ -25,14 +25,14 @@ export function getAppUpdateInfo(deps: ServiceDeps = getDefaultDeps()): AppUpdat
   const runtimeVersion =
     (typeof updates.runtimeVersion === 'string' ? updates.runtimeVersion : null) ??
     (expoConfig?.runtimeVersion as string | undefined) ??
-    '';
+    appVersion;
   const channel = (updates.channel as string | null) ?? null;
   const updateId = (updates.updateId as string | null) ?? null;
   const createdAt = (updates.createdAt as Date | null)?.toISOString?.() ?? null;
-
+  const runtimeStr = typeof runtimeVersion === 'object' ? JSON.stringify(runtimeVersion) : String(runtimeVersion);
   return {
     appVersion,
-    runtimeVersion: typeof runtimeVersion === 'object' ? JSON.stringify(runtimeVersion) : String(runtimeVersion),
+    runtimeVersion: runtimeStr,
     updateId,
     channel,
     isEmbeddedLaunch: Boolean(updates.isEmbeddedLaunch),
@@ -62,25 +62,34 @@ export type CheckOptions = {
 export async function checkForUpdate(
   deps: ServiceDeps = getDefaultDeps(),
   opts: CheckOptions = {}
-): Promise<{ status: UpdateStatus; availableUpdateId?: string | null; error?: string }> {
+): Promise<{ status: UpdateStatus; availableUpdateId?: string | null; error?: string; latestNativeVersion?: string | null; latestNativeRuntime?: string | null; apkUrl?: string | null; releaseUrl?: string | null }> {
   const { updates } = deps;
+  if (isDevMode()) return { status: 'UP_TO_DATE' };
+  if (!updates.isEnabled) return { status: 'UP_TO_DATE' };
 
-  if (isDevMode()) {
-    return { status: 'UP_TO_DATE' };
-  }
-  if (!updates.isEnabled) {
-    return { status: 'UP_TO_DATE' };
-  }
+  const info = getAppUpdateInfo(deps);
+  const localVersion = info.appVersion;
+  const localRuntime = info.runtimeVersion;
 
   const nativeCheck = await checkNativeUpdateRequired({
     fetchImpl: opts.fetchImpl,
     timeoutMs: Math.min(opts.timeoutMs ?? CHECK_TIMEOUT_MS, 8000),
+    localVersion,
+    localRuntime,
   });
-  if (nativeCheck.status === 'NATIVE_UPDATE_REQUIRED') {
-    return { status: 'NATIVE_UPDATE_REQUIRED' };
-  }
+
   if (nativeCheck.status === 'ERROR') {
-    // offline/error on native check does not block OTA check; continue but surface error only if OTA also fails
+    return { status: 'ERROR', error: `native release status unavailable: ${nativeCheck.error}` };
+  }
+  if (nativeCheck.status === 'NATIVE_UPDATE_REQUIRED') {
+    return {
+      status: 'NATIVE_UPDATE_REQUIRED',
+      error: nativeCheck.reason,
+      latestNativeVersion: nativeCheck.remoteVersion,
+      latestNativeRuntime: nativeCheck.remoteRuntime,
+      apkUrl: nativeCheck.apkUrl,
+      releaseUrl: nativeCheck.releaseUrl,
+    };
   }
 
   try {
@@ -107,20 +116,12 @@ export async function downloadUpdate(
   opts: CheckOptions = {}
 ): Promise<{ status: UpdateStatus; error?: string }> {
   const { updates } = deps;
-  if (isDevMode()) {
-    return { status: 'ERROR', error: 'updates disabled in dev mode' };
-  }
-  if (!updates.isEnabled) {
-    return { status: 'ERROR', error: 'updates disabled' };
-  }
+  if (isDevMode()) return { status: 'ERROR', error: 'updates disabled in dev mode' };
+  if (!updates.isEnabled) return { status: 'ERROR', error: 'updates disabled' };
   try {
     const result = await withTimeout(updates.fetchUpdateAsync(), opts.timeoutMs ?? FETCH_TIMEOUT_MS);
-    if (result.isNew) {
-      return { status: 'OTA_READY' };
-    }
-    if ((result as { isRollback?: boolean }).isRollback) {
-      return { status: 'UP_TO_DATE' };
-    }
+    if (result.isNew) return { status: 'OTA_READY' };
+    if ((result as { isRollback?: boolean }).isRollback) return { status: 'UP_TO_DATE' };
     return { status: 'OTA_READY' };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -144,6 +145,10 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
   let lastError: string | null = null;
   let lastCheckedAt: string | null = null;
   let availableUpdateId: string | null = null;
+  let latestNativeVersion: string | null = null;
+  let latestNativeRuntimeVersion: string | null = null;
+  let latestApkUrl: string | null = null;
+  let latestReleaseUrl: string | null = null;
   let checking = false;
   let downloading = false;
 
@@ -152,8 +157,13 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
     listeners.forEach((l) => l());
   }
 
+  function getInfo() {
+    return getAppUpdateInfo(deps);
+  }
+
   return {
-    getState() {
+    getState(): UpdateServiceState {
+      const info = getInfo();
       return {
         status: currentStatus,
         isChecking: checking,
@@ -162,15 +172,21 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
         error: lastError,
         lastCheckedAt,
         availableUpdateId,
+        latestNativeVersion,
+        latestNativeRuntimeVersion,
+        latestNativeReleaseUrl: latestReleaseUrl,
+        latestApkUrl,
+        currentUpdateId: info.updateId,
+        appVersion: info.appVersion,
+        runtimeVersion: info.runtimeVersion,
+        channel: info.channel,
       };
     },
     subscribe(fn: () => void) {
       listeners.add(fn);
       return () => listeners.delete(fn);
     },
-    getInfo() {
-      return getAppUpdateInfo(deps);
-    },
+    getInfo,
     async check(opts: CheckOptions = {}) {
       if (checking || downloading) return { status: currentStatus as UpdateStatus };
       checking = true;
@@ -181,6 +197,17 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       checking = false;
       currentStatus = result.status;
       lastError = result.error ?? null;
+      if (result.status === 'NATIVE_UPDATE_REQUIRED') {
+        latestNativeVersion = result.latestNativeVersion ?? null;
+        latestNativeRuntimeVersion = result.latestNativeRuntime ?? null;
+        latestApkUrl = result.apkUrl ?? null;
+        latestReleaseUrl = result.releaseUrl ?? getGithubReleasesUrl();
+      } else if (result.status === 'ERROR') {
+        // keep previous native info but surface error
+      } else {
+        latestNativeVersion = null;
+        latestNativeRuntimeVersion = null;
+      }
       availableUpdateId = result.availableUpdateId ?? null;
       lastCheckedAt = new Date().toISOString();
       notify();
@@ -207,13 +234,25 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       if (currentStatus !== 'OTA_READY') {
         throw new Error('no downloaded update ready to reload');
       }
-      await reloadApp(deps);
+      try {
+        await reloadApp(deps);
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        lastError = `Unable to restart and apply update: ${msg}`;
+        currentStatus = 'ERROR';
+        notify();
+        throw new Error(lastError);
+      }
     },
     reset() {
       currentStatus = 'IDLE';
       lastError = null;
       checking = false;
       downloading = false;
+      latestNativeVersion = null;
+      latestNativeRuntimeVersion = null;
+      latestApkUrl = null;
+      latestReleaseUrl = null;
       notify();
     },
   };
@@ -226,4 +265,8 @@ let singleton: UpdateService | null = null;
 export function getUpdateService(): UpdateService {
   if (!singleton) singleton = createUpdateService();
   return singleton;
+}
+
+export function __resetSingletonForTests() {
+  singleton = null;
 }
