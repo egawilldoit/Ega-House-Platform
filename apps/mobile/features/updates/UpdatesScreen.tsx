@@ -257,7 +257,7 @@ export function UpdatesScreenContent() {
             Incompatible native/runtime changes require a new APK from GitHub Releases. OTA is never attempted when a
             native update is required.
           </Text>
-          <Text style={styles.helpText}>Flow: Checking → Update available → Downloading → Ready → Restart & update → Updated.</Text>
+          <Text style={styles.helpText}>Flow: Checking → Update available → Downloading → Ready → Restart & update → Updated. OTA proof r1.</Text>
         </Card>
       </ScrollView>
     </AppScreen>
