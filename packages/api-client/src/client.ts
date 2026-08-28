@@ -8,6 +8,7 @@
  */
 
 import { createAuthApi, type AuthApi } from "./auth";
+import { createFrictionApi, type FrictionApi } from "./friction";
 import { createGoalsApi, type GoalsApi } from "./goals";
 import {
   HttpClient,
@@ -46,6 +47,7 @@ export type EgaApiClient = {
   tasks: TasksApi;
   today: TodayApi;
   timer: TimerApi;
+  friction: FrictionApi;
   auth: AuthApi;
 };
 
@@ -70,6 +72,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     tasks: createTasksApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    friction: createFrictionApi(http),
     auth: createAuthApi(http),
   };
 }

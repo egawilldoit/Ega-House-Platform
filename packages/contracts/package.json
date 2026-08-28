@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./mobile": "./src/mobile.ts",
     "./agent": "./src/agent.ts",
-    "./common/task-list": "./src/common/task-list.ts"
+    "./common/task-list": "./src/common/task-list.ts",
+    "./friction": "./src/friction.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

@@ -112,6 +112,9 @@ function makeFakeClient(): EgaApiClient {
       updateStatus: jest.fn(),
       clearCompleted: jest.fn(),
     },
+    friction: {
+      radar: jest.fn(async () => ({ ok: true as const, data: { ok: true as const, generatedAt: "2026-08-27T12:00:00.000Z", thresholdDays: 7, blocked: [], staleTasks: [], staleGoals: [] } })),
+    },
   };
 }
 

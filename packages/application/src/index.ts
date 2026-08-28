@@ -19,6 +19,8 @@ export * from "./today/plan";
 export * from "./today/service";
 export * from "./timer/ports";
 export * from "./timer/service";
+export * from "./friction/ports";
+export * from "./friction/stale-blocked-signals";
 export * from "./shared/duration";
 
 export type {

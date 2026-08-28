@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./tasks": "./src/tasks/index.ts",
     "./projects": "./src/projects/index.ts",
-    "./goals": "./src/goals/index.ts"
+    "./goals": "./src/goals/index.ts",
+    "./friction": "./src/friction/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
