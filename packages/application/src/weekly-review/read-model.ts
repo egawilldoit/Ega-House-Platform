@@ -1,4 +1,4 @@
-import { getWeekWindow, isValidIANATimeZone } from "@ega/domain";
+import { getWeekWindow } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import {
@@ -13,7 +13,7 @@ import {
   type ExecutionEvidenceSessionRow,
   type ExecutionEvidenceRepository,
 } from "../shared/execution-evidence";
-import type { TimeContextRepository } from "../shared/time-context";
+import { resolveEffectiveTimezone, type TimeContextRepository } from "../shared/time-context";
 
 import { generateWeeklyReviewDraft, type WeeklyReviewDraft, type WeeklyReviewTaskActivity } from "./draft";
 import type {
@@ -93,49 +93,10 @@ export type WeeklyReviewReadModel = Readonly<{
   comparison: WeeklyReviewComparison;
 }>;
 
-// ---------------------------------------------------------------------------
-// Helpers: timezone resolution (explicit input not now-dependent)
-// ---------------------------------------------------------------------------
-
 function normalizeWeekOf(value: unknown): string | null {
   const raw = typeof value === "string" ? value.trim() : "";
   if (!raw) return null;
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
-}
-
-async function resolveEffectiveTimezone(
-  actor: AuthenticatedActor,
-  timeContextRepo: TimeContextRepository,
-  requestedTimezone: unknown,
-): Promise<
-  | { ok: true; timezone: string; requestedTimezone: string | null; fallback: "none" | "invalid_timezone" | "missing_timezone" }
-  | { ok: false; errorMessage: string }
-> {
-  const rawRequested = typeof requestedTimezone === "string" ? requestedTimezone.trim() : "";
-  if (rawRequested) {
-    if (isValidIANATimeZone(rawRequested)) {
-      return { ok: true, timezone: rawRequested, requestedTimezone: rawRequested, fallback: "none" };
-    }
-    return {
-      ok: true,
-      timezone: "UTC",
-      requestedTimezone: rawRequested,
-      fallback: "invalid_timezone",
-    };
-  }
-
-  const storedResult = await timeContextRepo.getTimezone(actor);
-  if (!storedResult.ok) {
-    return { ok: false, errorMessage: "Unable to load time context right now." };
-  }
-  const stored = storedResult.value ? String(storedResult.value).trim() : null;
-  if (stored && isValidIANATimeZone(stored)) {
-    return { ok: true, timezone: stored, requestedTimezone: null, fallback: "none" };
-  }
-  if (stored) {
-    return { ok: true, timezone: "UTC", requestedTimezone: stored, fallback: "invalid_timezone" };
-  }
-  return { ok: true, timezone: "UTC", requestedTimezone: null, fallback: "missing_timezone" };
 }
 
 function formatCompactDurationLabel(seconds: number): string {
@@ -299,8 +260,9 @@ export async function getWeeklyReviewReadModel(
     // Use a lightweight timezone-aware local date derivation without reusing
     // resolveTimeContext's now-dependent dayWindow; we need explicit weekOf first.
     // Resolve timezone first, then derive local date.
-    const tzResolved = await resolveEffectiveTimezone(actor, deps.timeContext, input.timezone);
-    if (!tzResolved.ok) return applicationFailure(tzResolved.errorMessage);
+    const tzEffectiveResult = await resolveEffectiveTimezone(actor, deps.timeContext, input.timezone);
+    if (!tzEffectiveResult.ok) return applicationFailure(tzEffectiveResult.errorMessage);
+    const tzResolved = tzEffectiveResult.data;
     try {
       const { getLocalDateInTimezone } = await import("@ega/domain");
       const localDate = getLocalDateInTimezone(now, tzResolved.timezone);
@@ -329,12 +291,13 @@ export async function getWeeklyReviewReadModel(
   }
 
   // Explicit weekOf path: historical, not now-dependent
-  const tzResolved = await resolveEffectiveTimezone(actor, deps.timeContext, input.timezone);
-  if (!tzResolved.ok) return applicationFailure(tzResolved.errorMessage);
+  const tzEffectiveResult2 = await resolveEffectiveTimezone(actor, deps.timeContext, input.timezone);
+  if (!tzEffectiveResult2.ok) return applicationFailure(tzEffectiveResult2.errorMessage);
+  const tzResolved2 = tzEffectiveResult2.data;
 
   let weekWindowRaw: ReturnType<typeof getWeekWindow>;
   try {
-    weekWindowRaw = getWeekWindow(tzResolved.timezone, weekOf);
+    weekWindowRaw = getWeekWindow(tzResolved2.timezone, weekOf);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Week date is invalid.";
     if (message.includes("Invalid date")) return applicationFailure("Week date is invalid. Expected YYYY-MM-DD.");
@@ -347,9 +310,9 @@ export async function getWeeklyReviewReadModel(
     weekEnd: weekWindowRaw.weekEnd,
     weekStartUtc: weekWindowRaw.weekStartUtcIso,
     weekEndExclusiveUtc: weekWindowRaw.weekEndExclusiveUtcIso,
-    timezone: tzResolved.timezone,
-    requestedTimezone: tzResolved.requestedTimezone,
-    fallback: tzResolved.fallback,
+    timezone: tzResolved2.timezone,
+    requestedTimezone: tzResolved2.requestedTimezone,
+    fallback: tzResolved2.fallback,
   };
 
   const execWindow: ExecutionEvidenceWindow = {
