@@ -100,12 +100,10 @@ async function SummaryStripAsync() {
     client.from("goals").select("id", { count: "exact", head: true }).eq("status", "active"),
   ]);
   if (totalResult.error || activeResult.error) {
-    // Preserve repo error semantics: surface fallback is handled by caller, but do not silently treat failure as 0
-    // For summary strip, show 0 with error context via pendingReviews still accurate; goal counts will be 0 but error is logged
     console.warn("SummaryStrip goal count query failed", totalResult.error ?? activeResult.error);
   }
-  const goalsTotal = totalResult.error ? 0 : (totalResult.count ?? 0);
-  const activeGoals = activeResult.error ? 0 : (activeResult.count ?? 0);
+  const goalsTotal = totalResult.error ? null : (totalResult.count ?? 0);
+  const activeGoals = activeResult.error ? null : (activeResult.count ?? 0);
   const pendingReviews = metrics.reviewMissing ? 1 : 0;
 
   return (

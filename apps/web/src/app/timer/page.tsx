@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { getTimerPageModel } from "./_lib/timer-page-model";
@@ -13,7 +14,7 @@ export default async function TimerPage({ searchParams }: { searchParams: Promis
   const resolvedSearchParams = await searchParams;
   const model = await getTimerPageModel(resolvedSearchParams);
   return (
-    <AppShell eyebrow="Focus" title="Timer" description="Active session is primary — elapsed, target, pause, stop." actions={<div className="flex gap-3"><span className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">Today</span><a href="/timer/export" className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">Export CSV</a></div>}>
+    <AppShell eyebrow="Focus" title="Timer" description="Active session is primary — elapsed, target, pause, stop." actions={<div className="flex gap-3"><Link href="/today" className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">Today</Link><a href="/timer/export" className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">Export CSV</a></div>}>
       <TimerActionFeedback actionError={model.actionError} actionSuccess={model.actionSuccess} />
       <TimerPageView model={model} />
     </AppShell>
