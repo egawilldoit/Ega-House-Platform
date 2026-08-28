@@ -111,7 +111,9 @@ export function createMcpWriteToolHandlers(
         const idempotency = await checkIdempotency(client, "ega_create_project", input.operationId, { name: input.name, slug: input.slug, description: input.description });
         if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
         if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const slug = (input.slug ?? input.name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+        // Use canonical slug normalization (same as @ega/application normalizeProjectSlug)
+        const { normalizeProjectSlug } = await import("@ega/application");
+        const slug = input.slug ? normalizeProjectSlug(input.slug) : normalizeProjectSlug(input.name);
         if (!input.name?.trim()) throw new Error("Project name is required.");
         if (!slug) throw new Error("Project slug is required.");
         const { data, error } = await (client as unknown as SupabaseClient).from("projects").insert({
@@ -189,6 +191,16 @@ export function createMcpWriteToolHandlers(
         const idempotency = await checkIdempotency(client, "ega_create_task", input.operationId, { title: input.title, projectId: input.projectId, goalId: input.goalId });
         if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
         if (idempotency.replay) return resultFromPayload(idempotency.replay);
+        // Canonical validation: ensure project belongs to actor before insert (via RLS + app-level check)
+        const { data: projectCheck, error: projectError } = await (client as unknown as SupabaseClient).from("projects").select("id").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
+        if (projectError) throw new Error(`Failed to validate project: ${projectError.message}`);
+        if (!projectCheck) throw new Error("Project not found or not owned by actor");
+        if (input.goalId) {
+          const { data: goalCheck, error: goalError } = await (client as unknown as SupabaseClient).from("goals").select("id, project_id").eq("id", input.goalId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
+          if (goalError) throw new Error(`Failed to validate goal: ${goalError.message}`);
+          if (!goalCheck) throw new Error("Goal not found or not owned by actor");
+          if ((goalCheck as { project_id: string }).project_id !== input.projectId) throw new Error("Goal does not belong to selected project");
+        }
         const { data, error } = await (client as unknown as SupabaseClient).from("tasks").insert({
           owner_user_id: principal.ownerUserId,
           project_id: input.projectId,
