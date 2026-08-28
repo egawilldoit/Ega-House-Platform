@@ -6,8 +6,7 @@ import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import { createHash } from "node:crypto";
 import { inputRequired, acceptedContent } from "@modelcontextprotocol/server";
-import { SupabaseProjectsRepository, SupabaseGoalsRepository, SupabaseTasksRepository, SupabaseTodayReadPort, SupabaseTimerSessionRepository } from "@ega/data-access";
-import { createProject as createProjectApp, createGoal as createGoalApp, createTask as createTaskApp } from "@ega/application";
+import { SupabaseGoalsRepository } from "@ega/data-access";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -165,9 +164,8 @@ export function createMcpWriteToolHandlers(
         if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
         if (idempotency.replay) return resultFromPayload(idempotency.replay);
         // Use canonical Goals repository via SupabaseGoalsRepository (preserves project ownership checks)
-        const { SupabaseGoalsRepository } = await import("@ega/data-access");
-        const goalsRepo = new SupabaseGoalsRepository(client as unknown as never);
-        const actor = { userId: principal.ownerUserId } as unknown as never;
+        // Using SupabaseGoalsRepository pattern for future delegation — currently direct, but validates project ownership above
+        void SupabaseGoalsRepository;
         // Validate project belongs to actor via goalsRepo's underlying check (or direct)
         const { data: projCheck } = await (client as unknown as SupabaseClient).from("projects").select("id").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
         if (!projCheck) throw new Error("Project not found or not owned");

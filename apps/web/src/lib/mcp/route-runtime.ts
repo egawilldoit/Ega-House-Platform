@@ -160,24 +160,6 @@ export function createMcpRouteRuntime(
       // If no write allowed, only reads
         // Per-tool filtering: only register tools whose required permission is in allowed
       // Map tool names to required permissions (from tool-discovery.ts)
-      const toolToPerm: Record<string, string> = {
-        ega_get_capabilities: "projects.read",
-        ega_list_projects: "projects.read",
-        ega_list_goals: "goals.read",
-        ega_list_tasks: "tasks.read",
-        ega_get_today_plan: "today.read",
-        ega_list_timer_sessions: "timer.read",
-        ega_create_project: "projects.create",
-        ega_update_project_status: "projects.update",
-        ega_create_goal: "goals.create",
-        ega_create_task: "tasks.create",
-        ega_update_task: "tasks.update",
-        ega_plan_task_for_today: "today.update",
-        ega_start_timer: "timer.create",
-        ega_stop_timer: "timer.update",
-        ega_clear_completed_today: "today.update",
-      };
-      const allowedReads = [...allowed].filter((t) => ["ega_get_capabilities","ega_list_projects","ega_list_goals","ega_list_tasks","ega_get_today_plan","ega_list_timer_sessions"].includes(t));
       const allowedWrites = [...allowed].filter((t) => !["ega_get_capabilities","ega_list_projects","ega_list_goals","ega_list_tasks","ega_get_today_plan","ega_list_timer_sessions"].includes(t));
       if (allowedWrites.length > 0 && writeHandlers && dependencies.registerTools) {
         // For now, still register all writes if any write allowed — next step is per-tool register
