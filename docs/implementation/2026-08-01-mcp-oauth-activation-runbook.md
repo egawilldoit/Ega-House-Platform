@@ -1,9 +1,9 @@
 # EGA House MCP OAuth — Activation and Rollback Runbook
 
-Date: 2026-08-01  
-Branch: `feat/mcp-oauth-integration`  
-Pull request: `#112`  
-Production Supabase project: `ofpqkogwatceimtzvenh`  
+Date: 2026-08-01
+Branch: `feat/mcp-oauth-integration`
+Pull request: `#112`
+Production Supabase project: `ofpqkogwatceimtzvenh`
 Free MCP staging Supabase project: `atmzqhpioaepykehjbui`
 
 ## Current safety state

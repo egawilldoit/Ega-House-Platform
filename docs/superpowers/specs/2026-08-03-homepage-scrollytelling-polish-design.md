@@ -1,7 +1,7 @@
 # Homepage Scrollytelling Polish Design
 
-**Date:** 2026-08-03  
-**Branch:** `feat/homepage-operational-studies`  
+**Date:** 2026-08-03
+**Branch:** `feat/homepage-operational-studies`
 **Status:** Approved
 
 ## Goal

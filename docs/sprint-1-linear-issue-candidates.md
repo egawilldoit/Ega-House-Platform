@@ -1,7 +1,7 @@
 # Sprint 1 Linear Issue Candidates
 
-Source: `docs/sprint-1-fast-execution-ux-grill.md`  
-Skill used: `to-issues` style vertical slicing  
+Source: `docs/sprint-1-fast-execution-ux-grill.md`
+Skill used: `to-issues` style vertical slicing
 Target: Linear Sprint 1 issues for Fast Execution UX
 
 ## Re-analysis
@@ -12,8 +12,8 @@ Because Linear tools are not available in this session, I could not check which 
 
 ## Issue 1 - Quick Add creates a Task from one command line
 
-Type: AFK  
-Blocked by: None  
+Type: AFK
+Blocked by: None
 Labels: `feature`, `productivity`, `sprint-1`, `quick-add`, `frontend`, `backend`
 
 ### What to build
@@ -36,8 +36,8 @@ This should strengthen the `Project -> Goal -> Task -> Timer -> Review` loop by 
 
 ## Issue 2 - Quick Add supports Goal and blocked Task tokens
 
-Type: AFK  
-Blocked by: Issue 1  
+Type: AFK
+Blocked by: Issue 1
 Labels: `feature`, `productivity`, `sprint-1`, `quick-add`, `frontend`, `backend`
 
 ### What to build
@@ -57,8 +57,8 @@ Extend Quick Add so command input can attach a Task to a Goal and create blocked
 
 ## Issue 3 - Compact Kanban card keeps Timer handoff visible
 
-Type: AFK  
-Blocked by: None  
+Type: AFK
+Blocked by: None
 Labels: `feature`, `productivity`, `sprint-1`, `kanban`, `frontend`, `ux-polish`
 
 ### What to build
@@ -77,8 +77,8 @@ Refactor the existing Kanban Task card into a compact execution card that shows 
 
 ## Issue 4 - Kanban details preserve lifecycle actions
 
-Type: AFK  
-Blocked by: Issue 3  
+Type: AFK
+Blocked by: Issue 3
 Labels: `feature`, `productivity`, `sprint-1`, `kanban`, `frontend`, `ux-polish`
 
 ### What to build
@@ -98,8 +98,8 @@ Move secondary Kanban actions and metadata into a details or menu state without 
 
 ## Issue 5 - Deep Work saved view ships through JSON definitions
 
-Type: AFK  
-Blocked by: None  
+Type: AFK
+Blocked by: None
 Labels: `feature`, `productivity`, `sprint-1`, `saved-views`, `backend`, `frontend`
 
 ### What to build
@@ -119,8 +119,8 @@ Evolve saved views with a nullable JSON definition model and ship the first syst
 
 ## Issue 6 - Add Quick Wins, Blocked, and Due This Week default views
 
-Type: AFK  
-Blocked by: Issue 5  
+Type: AFK
+Blocked by: Issue 5
 Labels: `feature`, `productivity`, `sprint-1`, `saved-views`, `frontend`, `backend`
 
 ### What to build
@@ -140,8 +140,8 @@ Add the remaining Sprint 1 system saved views using the JSON definition path est
 
 ## Issue 7 - Saved views panel separates default and custom views
 
-Type: AFK  
-Blocked by: Issue 5  
+Type: AFK
+Blocked by: Issue 5
 Labels: `feature`, `productivity`, `sprint-1`, `saved-views`, `frontend`, `ux-polish`
 
 ### What to build
