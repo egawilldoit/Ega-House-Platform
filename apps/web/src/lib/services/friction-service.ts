@@ -31,7 +31,7 @@ export async function getFrictionRadar(options?: {
     // fallback UTC
   }
 
-  let evidenceWindow: { startIso: string; endIso: string } | null = null;
+  let evidenceWindow: { startIso: string; endIso: string };
   try {
     const localDate = getLocalDateInTimezone(now, timezone);
     const week = getWeekWindow(timezone, localDate);
@@ -43,16 +43,12 @@ export async function getFrictionRadar(options?: {
 
   const result = await getFrictionRadarReadModel(actor, repository, {
     now,
-    ...(evidenceWindow
-      ? {
-          evidence: {
-            window: evidenceWindow,
-            repository: new SupabaseExecutionEvidenceRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient),
-            includeOpenSessions: false,
-            nowIso: now.toISOString(),
-          },
-        }
-      : {}),
+    evidence: {
+      window: evidenceWindow,
+      repository: new SupabaseExecutionEvidenceRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient),
+      includeOpenSessions: false,
+      nowIso: now.toISOString(),
+    },
   });
 
   if (!result.ok) {

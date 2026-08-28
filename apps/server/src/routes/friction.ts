@@ -31,7 +31,7 @@ export function createFrictionRoutes(
       // Fallback to UTC — window remains bounded and deterministic.
     }
 
-    let evidenceWindow: { startIso: string; endIso: string } | null = null;
+    let evidenceWindow: { startIso: string; endIso: string };
     try {
       const localDate = getLocalDateInTimezone(now, timezone);
       const week = getWeekWindow(timezone, localDate);
@@ -47,16 +47,12 @@ export function createFrictionRoutes(
       new SupabaseFrictionRepository(client),
       {
         now,
-        ...(evidenceWindow
-          ? {
-              evidence: {
-                window: evidenceWindow,
-                repository: new SupabaseExecutionEvidenceRepository(client),
-                includeOpenSessions: false,
-                nowIso: now.toISOString(),
-              },
-            }
-          : {}),
+        evidence: {
+          window: evidenceWindow,
+          repository: new SupabaseExecutionEvidenceRepository(client),
+          includeOpenSessions: false,
+          nowIso: now.toISOString(),
+        },
       },
     );
 
