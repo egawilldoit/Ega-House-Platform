@@ -60,17 +60,6 @@ CREATE POLICY "projects_mcp_update_access"
     AND private.has_active_mcp_permission('projects.update')
   );
 
-DROP POLICY IF EXISTS "projects_mcp_delete_access" ON public.projects;
-CREATE POLICY "projects_mcp_delete_access"
-  ON public.projects
-  FOR DELETE
-  TO authenticated
-  USING (
-    owner_user_id = (SELECT auth.uid())
-    AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
-    AND private.has_active_mcp_permission('projects.update')
-  );
-
 --> statement-breakpoint
 -- Goals write policies
 
@@ -101,17 +90,6 @@ CREATE POLICY "goals_mcp_update_access"
     AND private.has_active_mcp_permission('goals.update')
   );
 
-DROP POLICY IF EXISTS "goals_mcp_delete_access" ON public.goals;
-CREATE POLICY "goals_mcp_delete_access"
-  ON public.goals
-  FOR DELETE
-  TO authenticated
-  USING (
-    owner_user_id = (SELECT auth.uid())
-    AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
-    AND private.has_active_mcp_permission('goals.update')
-  );
-
 --> statement-breakpoint
 -- Tasks write policies
 
@@ -137,17 +115,6 @@ CREATE POLICY "tasks_mcp_update_access"
     AND private.has_active_mcp_permission('tasks.update')
   )
   WITH CHECK (
-    owner_user_id = (SELECT auth.uid())
-    AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
-    AND private.has_active_mcp_permission('tasks.update')
-  );
-
-DROP POLICY IF EXISTS "tasks_mcp_delete_access" ON public.tasks;
-CREATE POLICY "tasks_mcp_delete_access"
-  ON public.tasks
-  FOR DELETE
-  TO authenticated
-  USING (
     owner_user_id = (SELECT auth.uid())
     AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
     AND private.has_active_mcp_permission('tasks.update')
@@ -233,16 +200,32 @@ CREATE POLICY "task_reminders_direct_user_all"
   );
 
 DROP POLICY IF EXISTS "task_reminders_mcp_access" ON public.task_reminders;
-CREATE POLICY "task_reminders_mcp_access"
+DROP POLICY IF EXISTS "task_reminders_mcp_select_access" ON public.task_reminders;
+DROP POLICY IF EXISTS "task_reminders_mcp_insert_access" ON public.task_reminders;
+DROP POLICY IF EXISTS "task_reminders_mcp_delete_access" ON public.task_reminders;
+CREATE POLICY "task_reminders_mcp_select_access"
   ON public.task_reminders
-  FOR ALL
+  FOR SELECT
   TO authenticated
   USING (
     owner_user_id = (SELECT auth.uid())
     AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
-    AND private.has_active_mcp_permission('tasks.update')
-  )
+    AND private.has_active_mcp_permission('tasks.read')
+  );
+CREATE POLICY "task_reminders_mcp_insert_access"
+  ON public.task_reminders
+  FOR INSERT
+  TO authenticated
   WITH CHECK (
+    owner_user_id = (SELECT auth.uid())
+    AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
+    AND private.has_active_mcp_permission('tasks.create')
+  );
+CREATE POLICY "task_reminders_mcp_delete_access"
+  ON public.task_reminders
+  FOR DELETE
+  TO authenticated
+  USING (
     owner_user_id = (SELECT auth.uid())
     AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
     AND private.has_active_mcp_permission('tasks.update')

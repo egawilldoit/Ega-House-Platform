@@ -141,8 +141,12 @@ export function createMcpWriteToolHandlers(
         const idempotency = await checkIdempotency(client, "ega_update_project_status", input.operationId, { projectId: input.projectId, status: input.status });
         if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
         if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const { data, error } = await (client as unknown as SupabaseClient).from("projects").update({ status: input.status, updated_at: new Date().toISOString() }).eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).select("id, name, slug, status").single();
-        // TODO: delegate to projRepo.updateProjectStatus fully in next increment — currently direct but with same RLS + status validation as @ega/application
+        const { SupabaseProjectsRepository: SPR2 } = await import("@ega/data-access");
+        const projRepo2 = new SPR2(client as unknown as never);
+        const actor2 = { userId: principal.ownerUserId } as unknown as never;
+        const updRes = await projRepo2.updateProjectStatus(actor2 as never, { projectId: input.projectId, status: input.status as never, updatedAt: new Date().toISOString() } as never);
+        if (!updRes.ok) throw new Error(updRes.error.message ?? "Failed to update project");
+        const { data, error } = await (client as unknown as SupabaseClient).from("projects").select("id, name, slug, status").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
         if (error) throw new Error(`Failed to update project: ${error.message}`);
         const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
         await storeIdempotencyResult(client, "ega_update_project_status", input.operationId, payload);
