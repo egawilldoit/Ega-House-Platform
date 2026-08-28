@@ -148,7 +148,8 @@ export default async function OAuthConsentPage({
             </div>
           ) : null}
 
-          <div className="mt-8 space-y-6">
+          <form action="/api/oauth/decision" method="post" className="mt-8 space-y-6">
+            <input type="hidden" name="authorization_id" value={details.authorizationId} />
             <div>
               <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-black/45">
                 EGA House permissions
@@ -213,10 +214,8 @@ export default async function OAuthConsentPage({
                 </p>
               </div>
             ) : null}
-          </div>
 
-          <form action="/api/oauth/decision" method="post" className="mt-8 grid gap-3 sm:grid-cols-2">
-            <input type="hidden" name="authorization_id" value={details.authorizationId} />
+            <div className="grid gap-3 sm:grid-cols-2 pt-2">
             <button
               type="submit"
               name="decision"
