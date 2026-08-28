@@ -1,10 +1,9 @@
-import { createHash } from "node:crypto";
-
-import { isTaskPriority } from "@ega/domain";
+import { sha256Hex } from "../shared/hash";
+import { createTask } from "../tasks/service";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
-import type { TasksRepository } from "../tasks/ports";
+import type { TaskRecord, TasksRepository } from "../tasks/ports";
 import type { InboxRecord, InboxRepository } from "./ports";
 
 export type ConvertInboxItemInput = Readonly<{
@@ -20,8 +19,10 @@ export type ConvertInboxItemInput = Readonly<{
 
 export type ConvertInboxItemResult = Readonly<{
   inboxItem: InboxRecord;
-  task: import("../tasks/ports").TaskRecord;
+  task: TaskRecord;
 }>;
+
+const SMART_INBOX_REMINDER_SOURCE = "smart_inbox_conversion";
 
 function optionalTrimmedString(value: unknown): string | null {
   const normalized = String(value ?? "").trim();
@@ -33,8 +34,6 @@ function optionalDateOnly(value: unknown): string | null {
   if (!normalized) return null;
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
-
-
 
 /**
  * Deterministic task id for inbox conversion.
@@ -52,16 +51,25 @@ function optionalDateOnly(value: unknown): string | null {
  *   id returns 23505, allowing retry to fetch the orphaned task and link it deterministically.
  * - No new table needed; task PK uniqueness provides the guard. Transactional alternative would
  *   require an RPC; deterministic ID avoids orphan heuristic entirely.
+ *
+ * Purity note (repair 2026-08-28): uses shared sha256Hex which wraps node:crypto.
+ * Application layer may use node: (purity scan allows it); contracts/domain forbid it.
+ * Centralizing in shared/hash.ts keeps single injection point and documents evaluation.
  */
 export function deterministicTaskIdForInboxConversion(
   actor: AuthenticatedActor,
   inboxItemId: string,
 ): string {
   const input = `${actor.userId}:${String(inboxItemId).trim()}:inbox-conversion`;
-  const hash = createHash("sha256").update(input).digest("hex");
-  // Format as UUID v4-like: 8-4-4-4-12 from hash
+  const hash = sha256Hex(input);
   const hex = hash.slice(0, 32);
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function hasInboxReminder(task: TaskRecord, inboxItemId: string): boolean {
+  return task.reminders.some(
+    (r) => (r as unknown as { source?: string | null; sourceId?: string | null }).source === SMART_INBOX_REMINDER_SOURCE && (r as unknown as { source?: string | null; sourceId?: string | null }).sourceId === inboxItemId,
+  );
 }
 
 export async function convertInboxItemToTask(
@@ -80,7 +88,11 @@ export async function convertInboxItemToTask(
   const inboxItem = inboxResult.value;
   if (!inboxItem) return applicationFailure("Idea is unavailable.");
 
-  // 2. If already converted, return existing linked task (idempotency)
+  if (inboxItem.status === "archived") {
+    return applicationFailure("Archived ideas must be restored before conversion.");
+  }
+
+  // 2. If already converted, return existing linked task (idempotency for completed)
   if (inboxItem.status === "converted") {
     const linkResult = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
     if (!linkResult.ok) return applicationFailure("Unable to load conversion link right now.");
@@ -95,26 +107,7 @@ export async function convertInboxItemToTask(
     return applicationFailure("Idea is already converted.");
   }
 
-  if (inboxItem.status === "archived") {
-    return applicationFailure("Archived ideas must be restored before conversion.");
-  }
-
-  // 3. Check for existing conversion link even though status not converted (recovery path: link created but status not updated)
-  const existingLink = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
-  if (!existingLink.ok) return applicationFailure("Unable to load conversion link right now.");
-  if (existingLink.value) {
-    const taskResult = await tasksRepository.getTask(actor, existingLink.value);
-    if (!taskResult.ok) return applicationFailure("Unable to load task right now.");
-    if (taskResult.value) {
-      const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
-      if (!markResult.ok) {
-        return applicationSuccess({ inboxItem, task: taskResult.value });
-      }
-      return applicationSuccess({ inboxItem: markResult.value, task: taskResult.value });
-    }
-  }
-
-  // 4. Determine effective fields
+  // 3. Early validation BEFORE any side effects (ensures invalid input never creates orphan)
   const effectiveTitle = optionalTrimmedString(input.title) ?? inboxItem.title.trim();
   if (!effectiveTitle) return applicationFailure("Task title is required.");
 
@@ -128,12 +121,6 @@ export async function convertInboxItemToTask(
   })();
 
   if (!effectiveProjectId) return applicationFailure("Project is required.");
-
-  const effectivePriorityInput = input.priority !== undefined ? String(input.priority ?? "").trim() : inboxItem.priority ?? "medium";
-  const effectivePriority = String(effectivePriorityInput).trim().toLowerCase();
-  if (!isTaskPriority(effectivePriority)) {
-    return applicationFailure("Task priority is invalid.");
-  }
 
   const effectiveGoalId = (() => {
     if (input.goalId !== undefined) {
@@ -151,164 +138,9 @@ export async function convertInboxItemToTask(
     return applicationFailure("Due date is invalid.");
   }
 
-  // Validate project/goal ownership via TasksRepository scope (reuse canonical validation)
-  const scopeResult = await tasksRepository.getScope(actor);
-  if (!scopeResult.ok) return applicationFailure("Unable to validate task scope right now.");
-
-  if (!scopeResult.value.projectIds.includes(effectiveProjectId)) {
-    return applicationFailure("Selected project is unavailable.");
-  }
-
-  if (effectiveGoalId) {
-    const goal = scopeResult.value.goals.find((g) => g.id === effectiveGoalId);
-    if (!goal) return applicationFailure("Selected goal is unavailable.");
-    if (goal.projectId !== effectiveProjectId) {
-      return applicationFailure("Selected goal does not belong to the chosen project.");
-    }
-  }
-
-  // 5. Deterministic conversion correlation: preallocate exact Task ID
-  // This replaces the unsafe findRecentOrphanTaskId heuristic. Retries always resolve to same
-  // deterministic task, never a same-looking unrelated task. Concurrent converts serialize via
-  // primary key uniqueness on tasks.id and unique index on task_external_refs.
-  const deterministicTaskId = deterministicTaskIdForInboxConversion(actor, inboxItemId);
-  const nowForRemind = options?.now ?? new Date();
-  const rawRemindAtEarly = input.remindAt !== undefined ? String(input.remindAt ?? "").trim() : "";
-
-  // If a prior attempt created the deterministic task but failed to link, we can recover by
-  // checking if that task already exists before creating.
-  const existingDeterministicTask = await tasksRepository.getTask(actor, deterministicTaskId);
-  if (existingDeterministicTask.ok && existingDeterministicTask.value) {
-    // Task with deterministic id already exists - try to link it
-    const linkExisting = await inboxRepository.createInboxTaskLink(actor, {
-      inboxItemId,
-      taskId: deterministicTaskId,
-    });
-    if (linkExisting.ok) {
-      let reconciledTask = existingDeterministicTask.value;
-      if (rawRemindAtEarly) {
-        const remindDate = new Date(rawRemindAtEarly);
-        if (!Number.isNaN(remindDate.getTime()) && remindDate.getTime() > nowForRemind.getTime()) {
-          const reminderResult = await tasksRepository.createReminder(actor, {
-            taskId: deterministicTaskId,
-            remindAt: remindDate.toISOString(),
-            channel: "email",
-            status: "pending",
-          });
-          if (reminderResult.ok) {
-            reconciledTask = reminderResult.value;
-          } else {
-            return applicationFailure("Unable to create reminder right now.");
-          }
-        } else if (Number.isNaN(remindDate.getTime())) {
-          return applicationFailure("Reminder time is invalid.");
-        } else if (remindDate.getTime() <= nowForRemind.getTime()) {
-          return applicationFailure("Reminder time must be in the future.");
-        }
-      }
-      const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
-      if (markResult.ok) {
-        return applicationSuccess({ inboxItem: markResult.value, task: reconciledTask });
-      }
-      return applicationSuccess({ inboxItem, task: reconciledTask });
-    }
-    const isConflict = (linkExisting.error as { code?: string })?.code === "conflict";
-    if (isConflict) {
-      const existingTaskIdResult = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
-      if (existingTaskIdResult.ok && existingTaskIdResult.value) {
-        const existingTaskResult = await tasksRepository.getTask(actor, existingTaskIdResult.value);
-        if (existingTaskResult.ok && existingTaskResult.value) {
-          const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
-          if (markResult.ok) {
-            return applicationSuccess({ inboxItem: markResult.value, task: existingTaskResult.value });
-          }
-          return applicationSuccess({ inboxItem, task: existingTaskResult.value });
-        }
-      }
-      return applicationFailure("Idea is already converted.");
-    }
-    // Non-conflict link failure -> fall through to try to create? But task already exists, so we should not create new.
-    // Instead treat as failure and let caller retry (which will hit the same deterministic task again)
-    // For now, try to proceed to link retry logic below
-  } else if (!existingDeterministicTask.ok) {
-    return applicationFailure("Unable to load task right now.");
-  }
-
-  // 5b. Create task with deterministic ID via canonical use case (reuse)
-  // We bypass createTask wrapper for id injection and call repository directly to preserve deterministic id,
-  // but still need same validation as createTask. Since we already validated scope etc., we can call repository directly.
-  // However to reuse canonical validation, we construct the input and use repository.createTask with id.
-  const taskCreateResult = await tasksRepository.createTask(actor, {
-    id: deterministicTaskId,
-    title: effectiveTitle,
-    projectId: effectiveProjectId,
-    goalId: effectiveGoalId,
-    description: effectiveDescription,
-    blockedReason: null,
-    status: "todo",
-    priority: effectivePriority as unknown as import("../tasks/ports").TaskRecord["priority"],
-    dueDate: effectiveDueDate,
-    estimateMinutes: null,
-  });
-
-  let createdTask: import("../tasks/ports").TaskRecord;
-  if (!taskCreateResult.ok) {
-    const err = taskCreateResult.error as { code?: string; message?: string };
-    const isDuplicate =
-      String(err?.code ?? "").includes("23505") ||
-      /duplicate|unique|already exists/i.test(String(err?.message ?? ""));
-    if (isDuplicate) {
-      const existingTaskResult = await tasksRepository.getTask(actor, deterministicTaskId);
-      if (existingTaskResult.ok && existingTaskResult.value) {
-        createdTask = existingTaskResult.value;
-      } else if (!existingTaskResult.ok) {
-        return applicationFailure("Unable to load task right now.");
-      } else {
-        return applicationFailure("Unable to create task right now.");
-      }
-    } else {
-      return applicationFailure("Unable to create task right now.");
-    }
-  } else {
-    createdTask = taskCreateResult.value;
-  }
-
-  // 6. Persist conversion link before marking converted (durability)
-  const linkResult = await inboxRepository.createInboxTaskLink(actor, {
-    inboxItemId,
-    taskId: createdTask.id,
-  });
-
-  if (!linkResult.ok) {
-    const isConflict = (linkResult.error as { code?: string })?.code === "conflict";
-    if (isConflict) {
-      const existingTaskIdResult = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
-      if (existingTaskIdResult.ok && existingTaskIdResult.value) {
-        const existingTaskResult = await tasksRepository.getTask(actor, existingTaskIdResult.value);
-        if (existingTaskResult.ok && existingTaskResult.value) {
-          const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
-          if (markResult.ok) {
-            return applicationSuccess({ inboxItem: markResult.value, task: existingTaskResult.value });
-          }
-          return applicationSuccess({ inboxItem, task: existingTaskResult.value });
-        }
-      }
-      return applicationFailure("Idea is already converted.");
-    }
-    const retryLink = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
-    if (retryLink.ok && retryLink.value) {
-      const taskRetry = await tasksRepository.getTask(actor, retryLink.value);
-      if (taskRetry.ok && taskRetry.value) {
-        const markRetry = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
-        if (markRetry.ok) return applicationSuccess({ inboxItem: markRetry.value, task: taskRetry.value });
-        return applicationSuccess({ inboxItem, task: taskRetry.value });
-      }
-    }
-    return applicationFailure("Unable to link converted task right now.");
-  }
-
-  // 7. Optionally create reminder if requested
+  // Validate remindAt BEFORE side effects - required for invariant (never converted while reminder missing, never orphan on invalid)
   const rawRemindAt = input.remindAt !== undefined ? String(input.remindAt ?? "").trim() : "";
+  let validatedRemindAtIso: string | null = null;
   if (rawRemindAt) {
     const remindDate = new Date(rawRemindAt);
     const now = options?.now ?? new Date();
@@ -318,28 +150,162 @@ export async function convertInboxItemToTask(
     if (remindDate.getTime() <= now.getTime()) {
       return applicationFailure("Reminder time must be in the future.");
     }
-    const reminderResult = await tasksRepository.createReminder(actor, {
-      taskId: createdTask.id,
-      remindAt: remindDate.toISOString(),
-      channel: "email",
-      status: "pending",
-    });
-    if (!reminderResult.ok) {
-      return applicationFailure("Unable to create reminder right now.");
-    }
-    const refreshed = reminderResult.value;
-    const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
-    if (!markResult.ok) {
-      return applicationFailure("Unable to mark idea as converted right now.");
-    }
-    return applicationSuccess({ inboxItem: markResult.value, task: refreshed });
+    validatedRemindAtIso = remindDate.toISOString();
   }
 
-  // 8. Mark inbox as converted
+  // 4. Deterministic conversion correlation: preallocate exact Task ID
+  const deterministicTaskId = deterministicTaskIdForInboxConversion(actor, inboxItemId);
+
+  // 5. Ensure Task exists (retry-safe via deterministic ID + canonical createTask)
+  // This uses canonical createTask so Project/Goal/priority validation remains centralized (BUG2 fix).
+  let task: TaskRecord | null = null;
+  const existingTaskResult = await tasksRepository.getTask(actor, deterministicTaskId);
+  if (!existingTaskResult.ok) return applicationFailure("Unable to load task right now.");
+  if (existingTaskResult.value) {
+    task = existingTaskResult.value;
+  } else {
+    // Call canonical createTask with preallocatedId — reuses exact same validation as normal task creation.
+    const effectivePriorityInput = input.priority !== undefined ? String(input.priority ?? "").trim() : inboxItem.priority ?? "medium";
+    const createResult = await createTask(
+      actor,
+      tasksRepository,
+      {
+        title: effectiveTitle,
+        projectId: effectiveProjectId,
+        goalId: effectiveGoalId,
+        description: effectiveDescription,
+        priority: effectivePriorityInput,
+        dueDate: effectiveDueDate,
+      },
+      { preallocatedId: deterministicTaskId },
+    );
+    if (createResult.ok) {
+      task = createResult.data;
+    } else {
+      // Handle race: if another concurrent convert created same deterministic id, fetch it
+      const msg = String((createResult as unknown as { errorMessage?: string }).errorMessage ?? "");
+      const isDuplicate = /duplicate|unique|already exists|23505/i.test(msg);
+      // Also check if the underlying repository would have returned duplicate via error code path: we treat any "Unable to create task" with preallocated id as possible duplicate
+      // Try to fetch existing deterministic task regardless of error type when preallocated
+      const retryTask = await tasksRepository.getTask(actor, deterministicTaskId);
+      if (retryTask.ok && retryTask.value) {
+        task = retryTask.value;
+      } else if (isDuplicate) {
+        if (!retryTask.ok) return applicationFailure("Unable to load task right now.");
+        return applicationFailure("Unable to create task right now.");
+      } else {
+        // Propagate canonical validation errors (e.g., project unavailable) directly
+        return createResult as ApplicationResult<never>;
+      }
+    }
+  }
+
+  if (!task) return applicationFailure("Unable to create task right now.");
+
+  // 6. Ensure exact Inbox→Task link exists (retry-safe, owner-scoped)
+  const linkAttempt = await inboxRepository.createInboxTaskLink(actor, {
+    inboxItemId,
+    taskId: task.id,
+  });
+  if (linkAttempt.ok) {
+    // Link created now - proceed
+  } else {
+    const isConflict = (linkAttempt.error as { code?: string })?.code === "conflict";
+    if (isConflict) {
+      const existingLink = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
+      if (!existingLink.ok) return applicationFailure("Unable to load conversion link right now.");
+      if (existingLink.value) {
+        const linkedTask = await tasksRepository.getTask(actor, existingLink.value);
+        if (!linkedTask.ok) return applicationFailure("Unable to load task right now.");
+        if (linkedTask.value) {
+          // Use the already-linked task (could be same deterministic id or earlier link; exact correlation via link wins)
+          task = linkedTask.value;
+        } else {
+          return applicationFailure("Converted idea is missing its task.");
+        }
+      } else {
+        return applicationFailure("Idea is already converted.");
+      }
+    } else {
+      // Transient failure: check if link now exists (retry succeeded elsewhere)
+      const retryLink = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
+      if (retryLink.ok && retryLink.value) {
+        const retryTask = await tasksRepository.getTask(actor, retryLink.value);
+        if (retryTask.ok && retryTask.value) {
+          task = retryTask.value;
+        } else if (!retryTask.ok) {
+          return applicationFailure("Unable to load task right now.");
+        } else {
+          return applicationFailure("Unable to link converted task right now.");
+        }
+      } else if (!retryLink.ok) {
+        return applicationFailure("Unable to load conversion link right now.");
+      } else {
+        return applicationFailure("Unable to link converted task right now.");
+      }
+    }
+  }
+
+  // 7. If reminder requested: ensure exact reminder exists (retry-safe via source correlation + DB uniqueness)
+  // Required invariant: successful conversion with remindAt means reminder exists exactly once.
+  // Never mark converted while reminder missing. Uses source=smart_inbox_conversion, sourceId=inboxItemId.
+  if (validatedRemindAtIso) {
+    // Refresh task to check current reminders via source correlation (durable state)
+    const freshTaskRes = await tasksRepository.getTask(actor, task.id);
+    if (!freshTaskRes.ok) return applicationFailure("Unable to load task right now.");
+    const freshTask = freshTaskRes.value;
+    if (!freshTask) return applicationFailure("Converted idea is missing its task.");
+    task = freshTask;
+
+    if (!hasInboxReminder(task, inboxItemId)) {
+      const reminderResult = await tasksRepository.createReminder(actor, {
+        taskId: task.id,
+        remindAt: validatedRemindAtIso,
+        channel: "email",
+        status: "pending",
+        source: SMART_INBOX_REMINDER_SOURCE,
+        sourceId: inboxItemId,
+      });
+      if (!reminderResult.ok) {
+        // If duplicate due to concurrent creation with same source, treat as success and fetch again
+        const err = reminderResult.error as { code?: string; message?: string };
+        const isDuplicate = String(err?.code ?? "").includes("23505") || /duplicate|unique/i.test(String(err?.message ?? ""));
+        if (isDuplicate) {
+          const dupTask = await tasksRepository.getTask(actor, task.id);
+          if (!dupTask.ok) return applicationFailure("Unable to load task right now.");
+          if (dupTask.value && hasInboxReminder(dupTask.value, inboxItemId)) {
+            task = dupTask.value;
+          } else if (!dupTask.ok) {
+            return applicationFailure("Unable to load task right now.");
+          } else {
+            return applicationFailure("Unable to create reminder right now.");
+          }
+        } else {
+          return applicationFailure("Unable to create reminder right now.");
+        }
+      } else {
+        task = reminderResult.value;
+        // Verify reminder now exists exactly once via source correlation (durability proof)
+        if (!hasInboxReminder(task, inboxItemId)) {
+          // Fallback: fetch again to ensure DB has it
+          const verify = await tasksRepository.getTask(actor, task.id);
+          if (!verify.ok || !verify.value || !hasInboxReminder(verify.value, inboxItemId)) {
+            return applicationFailure("Unable to create reminder right now.");
+          }
+          task = verify.value;
+        }
+      }
+    } else {
+      // Reminder already exists exactly - idempotent, do not duplicate
+      // Ensure we have freshest task with reminder
+    }
+  }
+
+  // 8. Mark inbox as converted only after all side effects proven (invariant)
   const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
   if (!markResult.ok) {
     return applicationFailure("Unable to mark idea as converted right now.");
   }
 
-  return applicationSuccess({ inboxItem: markResult.value, task: createdTask });
+  return applicationSuccess({ inboxItem: markResult.value, task });
 }
