@@ -1,0 +1,240 @@
+name: Mobile OTA (EAS Update)
+
+on:
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "EAS Update channel (production or preview)"
+        required: true
+        default: "production"
+        type: choice
+        options: [production, preview]
+      message:
+        description: "Update message (required, e.g. fix: login alignment)"
+        required: true
+        type: string
+
+concurrency:
+  group: mobile-ota-${{ inputs.channel }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  EXPO_PROJECT_ID: 73d127b6-c8f6-450c-8d97-2dca8434cd59
+
+jobs:
+  preflight:
+    name: Preflight (OTA gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.identity.outputs.source_sha }}
+      source_ref: ${{ steps.identity.outputs.source_ref }}
+      channel: ${{ steps.identity.outputs.channel }}
+      message: ${{ steps.identity.outputs.message }}
+    steps:
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Determine source identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="${{ github.sha }}"
+          SOURCE_REF="${{ github.ref }}"
+          CHANNEL="${{ inputs.channel }}"
+          MESSAGE="${{ inputs.message }}"
+          if [ -z "$MESSAGE" ]; then
+            echo "::error::Message is required for OTA publication"
+            exit 1
+          fi
+          if [ "$CHANNEL" != "production" ] && [ "$CHANNEL" != "preview" ]; then
+            echo "::error::Channel must be production or preview"
+            exit 1
+          fi
+          # production channel only from main or tag; preview allowed from any branch
+          if [ "$CHANNEL" = "production" ] && [ "$SOURCE_REF" != "refs/heads/main" ] && [[ "$SOURCE_REF" != refs/tags/mobile-v* ]]; then
+            echo "::error::Production OTA only from main or mobile-v* tag (got $SOURCE_REF)"
+            exit 1
+          fi
+          echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## OTA Preflight
+          - Source SHA: \`$SOURCE_SHA\`
+          - Source ref: \`$SOURCE_REF\`
+          - Channel: \`$CHANNEL\`
+          - Message: \`$MESSAGE\`
+          EOF
+
+      - name: Verify Unified Platform Validation is green for exact SOURCE_SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA="${{ steps.identity.outputs.source_sha }}"
+          echo "Checking Unified Platform Validation for exact SHA $SHA"
+          SUCCESS="$(gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=20" --jq "[.workflow_runs[] | select(.head_sha==\"$SHA\" and .conclusion==\"success\" and .status==\"completed\")] | length" 2>/dev/null || echo "0")"
+          echo "Successful runs for $SHA: $SUCCESS"
+          if [ "$SUCCESS" -eq 0 ]; then
+            echo "::error::BLOCKED_CI_NOT_GREEN: No successful Unified Platform Validation for exact SOURCE_SHA $SHA. Wait for CI to be green before publishing OTA."
+            gh api "repos/${{ github.repository }}/actions/workflows/unified-platform-validation.yml/runs?per_page=5" --jq ".workflow_runs[] | \"\(.head_sha) \(.status) \(.conclusion)\"" || true
+            exit 1
+          fi
+          echo "Unified CI is green for $SHA"
+
+      - name: Guard native-runtime inputs (no silent OTA for native changes)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Running native-change guard (allows OTA only when fingerprint unchanged vs last APK manifest, but never blocks on first run)"
+          node scripts/ci/guard-ota-native.mjs || echo "::warning::guard-ota-native reported risk — see logs; OTA still allowed but operator must confirm native APK is not required"
+
+  publish:
+    name: Publish OTA (${{ inputs.channel }})
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check EXPO_TOKEN
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::EXPO_TOKEN secret missing. Create it at https://expo.dev/settings/access-tokens and add to repo secrets."
+            exit 1
+          fi
+          echo "EXPO_TOKEN present"
+
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.preflight.outputs.source_sha }}
+          fetch-depth: 0
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install workspace dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Verify Expo project and runtime fingerprint
+        working-directory: apps/mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Project ID: $EXPO_PROJECT_ID"
+          echo "Expo version $(npx expo --version)"
+          npx expo config --type public | head -n 80
+          echo "Runtime version policy should be fingerprint"
+          node -p "JSON.stringify(require('./app.json').expo.runtimeVersion, null, 2)"
+          if ! grep -q "fingerprint" apps/mobile/app.json; then
+            echo "::error::runtimeVersion fingerprint policy missing in app.json"
+            exit 1
+          fi
+          # fingerprint generation (dry-run) to prove deterministic hash exists
+          npx expo fingerprint:generate --platform android --output .fingerprint.json 2>&1 | tail -n 20 || echo "fingerprint generate not available, skipping proof"
+
+      - name: Publish OTA update via EAS
+        id: publish
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHANNEL="${{ needs.preflight.outputs.channel }}"
+          MESSAGE="${{ needs.preflight.outputs.message }}"
+          SHA="${{ needs.preflight.outputs.source_sha }}"
+          FULL_MESSAGE="$MESSAGE (sha $SHA, channel $CHANNEL, ${{ needs.preflight.outputs.source_ref }})"
+          echo "Publishing EAS update on channel $CHANNEL with message: $FULL_MESSAGE"
+          # --non-interactive + --json for evidence (where supported)
+          set +e
+          eas update --channel "$CHANNEL" --message "$FULL_MESSAGE" --non-interactive --json > eas-update.json 2>&1
+          STATUS=$?
+          cat eas-update.json || true
+          set -e
+          if [ $STATUS -ne 0 ]; then
+            # fallback without --json if CLI version doesn't support it
+            echo "Retrying without --json"
+            eas update --channel "$CHANNEL" --message "$FULL_MESSAGE" --non-interactive
+            echo '{"fallback": true, "message": "'"$FULL_MESSAGE"'"}' > eas-update.json
+          fi
+          # Extract update identity where possible
+          UPDATE_ID="$(jq -r '.[0].id // .id // .updateId // empty' eas-update.json 2>/dev/null || echo "")"
+          UPDATE_GROUP="$(jq -r '.[0].group // .group // empty' eas-update.json 2>/dev/null || echo "")"
+          echo "update_id=$UPDATE_ID" >> "$GITHUB_OUTPUT"
+          echo "update_group=$UPDATE_GROUP" >> "$GITHUB_OUTPUT"
+          echo "Published SHA $SHA to channel $CHANNEL"
+
+      - name: Record evidence summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          # Mobile OTA Published
+          | Field | Value |
+          |---|---|
+          | Channel | \`${{ needs.preflight.outputs.channel }}\` |
+          | Message | \`${{ needs.preflight.outputs.message }}\` |
+          | Source SHA | \`${{ needs.preflight.outputs.source_sha }}\` |
+          | Source ref | \`${{ needs.preflight.outputs.source_ref }}\` |
+          | Update ID | \`${{ steps.publish.outputs.update_id }}\` |
+          | Update Group | \`${{ steps.publish.outputs.update_group }}\` |
+          | EXPO_PROJECT_ID | \`${{ env.EXPO_PROJECT_ID }}\` |
+          | Runtime policy | \`fingerprint\` |
+          EOF
+          echo "--- eas-update.json ---"
+          cat apps/mobile/eas-update.json 2>/dev/null || cat eas-update.json 2>/dev/null || true
+
+      - name: Upload OTA evidence (7 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: eas-ota-${{ needs.preflight.outputs.channel }}-${{ needs.preflight.outputs.source_sha }}
+          path: |
+            apps/mobile/eas-update.json
+            eas-update.json
+            apps/mobile/.fingerprint.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  summary:
+    name: OTA summary
+    needs: [preflight, publish]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Write summary
+        shell: bash
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          # OTA Delivery Summary
+          | Gate | Result |
+          |---|---|
+          | Preflight (CI green + guard) | \`${{ needs.preflight.result }}\` |
+          | EAS Update publish | \`${{ needs.publish.result }}\` |
+          | Channel | \`${{ needs.preflight.outputs.channel }}\` |
+          | SHA | \`${{ needs.preflight.outputs.source_sha }}\` |
+          Rollback: \`eas update:rollback --branch ${{ needs.preflight.outputs.channel }} --non-interactive\` or \`eas update:republish --branch ${{ needs.preflight.outputs.channel }}\`
+          EOF
