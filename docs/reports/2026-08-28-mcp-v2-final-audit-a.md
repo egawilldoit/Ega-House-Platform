@@ -61,4 +61,3 @@
 - `git status --short` clean
 
 **Verdict:** 0 P0/P1/P2, 1 P3 — Audit A passes.
-

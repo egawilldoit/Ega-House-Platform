@@ -18,4 +18,3 @@
 **Validation:** Same as Audit A — `git diff --check` PASS, `npm ci` PASS, `web:typecheck` PASS, `web:test` 166, `web:build` PASS, `arch` PASS, `security` PASS
 
 **Verdict:** 0 P0/P1/P2, 1 P3 — Audit B passes, ready for exact-head validation and CI.
-
