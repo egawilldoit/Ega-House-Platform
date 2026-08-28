@@ -99,14 +99,12 @@ describe("editorial authenticated workspace shell", () => {
       "TimerStopOutcomePrompt",
       "PanelErrorBoundary",
       "Suspense",
-      "HeroPanelAsync",
-      "CommandCenterAsync",
+      "SummaryStripAsync",
+      "AttentionQueueAsync",
       "ReviewPulseAsync",
       "PlannerAsync",
       "FocusAsync",
-      "GoalsAsync",
       "ProjectsAsync",
-      "TimerSummaryAsync",
       "McpComingSoonAnnouncement",
     ]) {
       expect(dashboard).toContain(contract);
