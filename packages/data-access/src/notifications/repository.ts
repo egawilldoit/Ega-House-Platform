@@ -421,7 +421,7 @@ export class SupabaseNotificationDeliveryRepository implements NotificationDeliv
 
     if (queued.error) return failure(queued.error);
 
-    let rows = asRows(queued.data).filter((row) => {
+    const rows = asRows(queued.data).filter((row) => {
       const status = String(row.status);
       const nextAt = row.next_attempt_at as string | null;
       if (status === "queued") return true;
