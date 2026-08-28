@@ -47,7 +47,6 @@ describe("EGA-516 Operator acceptance", () => {
     const { createAuthenticatedActor } = await import("@ega/application");
     const { getOperatorSnapshot } = await import("@ega/application/operator/snapshot");
     // Use a minimal fake port that succeeds
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fakePort: any = {
       listSelectedTasks: async () => ({ ok: true, value: [] }),
       listPinnedSuggestions: async () => ({ ok: true, value: [] }),

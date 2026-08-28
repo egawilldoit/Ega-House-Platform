@@ -1,15 +1,18 @@
 import { Hono, type Context } from "hono";
 
-import type { MobileTodayResponse } from "@ega/contracts/mobile";
 import {
   clearCompletedToday,
+  getOperatorSnapshot,
   getTaskReadModel,
-  getTodayPlan,
   planTaskForToday,
   removeTaskFromToday,
   updateTodayTaskStatus,
 } from "@ega/application";
-import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -44,23 +47,21 @@ export function createTodayRoutes(
 
   routes.get("/", async (c) => {
     const { actor, client } = c.var;
-    const timezone = c.req.query("timezone") ?? c.req.query("tz") ?? null;
-    const result = await getTodayPlan(
+    const requestedTimezone = c.req.query("timezone") ?? c.req.query("tz") ?? null;
+    // Canonical Operator snapshot (EGA-516): mobile Today consumes the same
+    // shared snapshot as web; OperatorSnapshotDto satisfies MobileTodayResponse.
+    const result = await getOperatorSnapshot(
       actor,
       new SupabaseTodayReadPort(client),
-      { date: c.req.query("date"), timezone, now: dependencies.now?.() },
+      new SupabaseTimeContextRepository(client),
+      {
+        now: dependencies.now?.(),
+        requestedTimezone: requestedTimezone ?? undefined,
+        date: c.req.query("date"),
+      },
     );
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-
-    const payload = {
-      ok: true as const,
-      date: result.data.date,
-      sections: result.data.sections,
-      suggestions: result.data.suggestions,
-      summary: result.data.summary,
-      activeTimer: result.data.activeTimer,
-    } satisfies MobileTodayResponse;
-    return c.json(payload);
+    return c.json({ ok: true as const, ...result.data });
   });
 
   routes.post("/tasks/:id", async (c) => {
