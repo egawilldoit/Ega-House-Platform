@@ -28,7 +28,6 @@ import {
   MAX_INBOX_AI_INPUT_CHARS,
   MAX_INBOX_AI_CANDIDATE_PROJECTS,
   MAX_INBOX_AI_CANDIDATE_GOALS,
-  DEFAULT_INBOX_AI_TIMEOUT_MS,
 } from "@ega/domain/inbox-ai";
 
 // ---------------------------------------------------------------------------
@@ -543,7 +542,7 @@ test("deterministic manual Inbox processing remains usable when AI unavailable",
   assert.equal(blocked.data.generation.status, "blocked");
 
   // Manual fallback still works — archive/convert without AI
-  const { archiveInboxItem, createInboxItem } = await import("../src/inbox/service");
+  const { createInboxItem } = await import("../src/inbox/service");
   const inboxRepo2 = new FakeInboxRepo();
   const manualCreate = await createInboxItem(ACTOR, inboxRepo2, { title: "Manual without AI", type: "idea" });
   assert.equal(manualCreate.ok, true);

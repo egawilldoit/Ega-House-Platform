@@ -17,10 +17,6 @@ function ok<T>(value: T): RepositoryResult<T> {
   return { ok: true, value };
 }
 
-function fail(): RepositoryResult<never> {
-  return { ok: false, error: { code: "unknown" } };
-}
-
 class FakeRepo implements InboxRepository {
   calls: Array<{ method: string; input?: unknown; actor?: string }> = [];
   // Store for idempotency simulation
