@@ -25,6 +25,7 @@ import {
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
+import { createAuditedMcpWriteHandlers } from "@/lib/mcp/audited-write-handlers";
 
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 type TokenVerifier = (
@@ -102,7 +103,14 @@ function createWriteHandlers(config: McpRuntimeConfig): McpWriteToolHandlers {
       supabaseUrl: config.supabaseUrl,
       publishableKey: config.publishableKey,
     });
-  return createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled);
+  const baseHandlers = createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled);
+  return createAuditedMcpWriteHandlers(baseHandlers, {
+    createUserClient,
+    consumeRateLimit: consumeMcpRateLimit,
+    writeAudit: writeMcpAuditEvent,
+    nowMs: () => performance.now(),
+    createRequestId: randomUUID,
+  });
 }
 
 const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
@@ -119,7 +127,7 @@ const PREFLIGHT_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
+    "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, Mcp-Method, Mcp-Name, Mcp-Param-*",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -134,7 +142,7 @@ export function createMcpRouteRuntime(
   dependencies: McpRouteRuntimeDependencies = DEFAULT_DEPENDENCIES,
 ): McpRouteRuntime {
   const readHandlers = dependencies.createReadHandlers(config);
-  const writeHandlers = dependencies.createWriteHandlers
+  const writeHandlers = config.writesEnabled && dependencies.createWriteHandlers
     ? dependencies.createWriteHandlers(config)
     : undefined;
   const register = dependencies.registerTools

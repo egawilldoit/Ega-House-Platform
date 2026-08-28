@@ -39,6 +39,16 @@ export type McpReadToolHandlers = {
     input: McpTaskFilters,
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
+  getTodayPlan: (
+    authInfo: AuthInfo | undefined,
+    input: { date?: string },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
+  listTimerSessions: (
+    authInfo: AuthInfo | undefined,
+    input: { limit?: number; includeClosed?: boolean },
+    context?: McpProtocolContext,
+  ) => Promise<CallToolResult>;
 };
 
 export type McpWriteToolHandlers = {
@@ -178,6 +188,15 @@ const tasksInputSchema = z.object({
   limit: limitSchema,
 }).strict();
 
+const todayPlanInputSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+}).strict();
+
+const timerSessionsInputSchema = z.object({
+  limit: limitSchema,
+  includeClosed: z.boolean().default(false),
+}).strict();
+
 const capabilitiesOutputSchema = z.object({
   ok: z.literal(true),
   permissionProfile: z.enum(MCP_PERMISSION_PROFILES),
@@ -201,6 +220,23 @@ const goalsOutputSchema = z.object({
 const tasksOutputSchema = z.object({
   ok: z.literal(true),
   tasks: z.array(taskSchema),
+  count: z.number().int().nonnegative(),
+}).strict();
+
+const todayPlanOutputSchema = z.object({
+  ok: z.literal(true),
+  today: z.string(),
+  selectedCount: z.number().int().nonnegative(),
+}).passthrough();
+
+const timerSessionsOutputSchema = z.object({
+  ok: z.literal(true),
+  sessions: z.array(z.object({
+    id: uuidSchema,
+    taskId: uuidSchema,
+    startedAt: z.string(),
+    endedAt: z.string().nullable(),
+  }).strict()),
   count: z.number().int().nonnegative(),
 }).strict();
 
@@ -344,6 +380,32 @@ export function registerMcpReadTools(
     },
     async (input, ctx) =>
       handlers.listTasks(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_get_today_plan",
+    {
+      title: "Get Today plan",
+      description: "Get Today projection (selected tasks, suggestions, timer snapshot) for date. Requires today.read.",
+      inputSchema: todayPlanInputSchema,
+      outputSchema: todayPlanOutputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.getTodayPlan(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
+  );
+
+  server.registerTool(
+    "ega_list_timer_sessions",
+    {
+      title: "List timer sessions",
+      description: "List timer sessions (open and recent) for the authenticated user. Requires timer.read.",
+      inputSchema: timerSessionsInputSchema,
+      outputSchema: timerSessionsOutputSchema,
+      annotations: READ_ONLY_ANNOTATIONS,
+    },
+    async (input, ctx) =>
+      handlers.listTimerSessions(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
   );
 }
 

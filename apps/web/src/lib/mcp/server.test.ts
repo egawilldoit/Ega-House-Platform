@@ -34,6 +34,8 @@ function createHandlers() {
     listProjects: vi.fn().mockResolvedValue({ content: [] }),
     listGoals: vi.fn().mockResolvedValue({ content: [] }),
     listTasks: vi.fn().mockResolvedValue({ content: [] }),
+    getTodayPlan: vi.fn().mockResolvedValue({ content: [] }),
+    listTimerSessions: vi.fn().mockResolvedValue({ content: [] }),
   };
 }
 
@@ -42,7 +44,7 @@ function getInputSchema(registration: Registration): z.ZodTypeAny {
 }
 
 describe("registerMcpReadTools", () => {
-  it("registers exactly the four private-MVP read tools", () => {
+  it("registers exactly the six read tools", () => {
     const fake = createFakeServer();
 
     registerMcpReadTools(fake.server, createHandlers());
@@ -52,6 +54,8 @@ describe("registerMcpReadTools", () => {
       "ega_list_projects",
       "ega_list_goals",
       "ega_list_tasks",
+      "ega_get_today_plan",
+      "ega_list_timer_sessions",
     ]);
   });
 
