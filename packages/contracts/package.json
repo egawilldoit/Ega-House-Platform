@@ -5,11 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./auth": "./src/auth.ts",
     "./mobile": "./src/mobile.ts",
     "./agent": "./src/agent.ts",
     "./common/task-list": "./src/common/task-list.ts",
     "./time-context": "./src/time-context.ts",
-    "./execution-evidence": "./src/execution-evidence.ts"
+    "./execution-evidence": "./src/execution-evidence.ts",
+    "./operator": "./src/operator.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

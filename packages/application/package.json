@@ -21,6 +21,7 @@
     "./tasks/recurrence": "./src/tasks/recurrence.ts",
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts",
+    "./operator/snapshot": "./src/operator/snapshot.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts"

@@ -34,6 +34,7 @@ export type {
   MobileTodayTaskStatusMutationResponse,
   MobileTodayClearCompletedResponse,
 } from "@ega/contracts/mobile";
+export type { OperatorSnapshotDto, OperatorSignalsDto, OperatorFocusDto, OperatorScheduleDto, GetOperatorSnapshotResponse } from "@ega/contracts/operator";
 export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 export type { TaskPriority, TaskStatus } from "@ega/domain";
 
