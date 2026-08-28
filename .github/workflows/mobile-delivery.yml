@@ -47,7 +47,7 @@ jobs:
           echo "source_sha=$SOURCE_SHA"
           echo "source_ref=$SOURCE_REF"
 
-          APP_VERSION="$(node -p "require('./apps/mobile/package.json').version" 2>/dev/null || node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || echo "0.0.0")"
+          APP_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || node -p "require('./apps/mobile/package.json').version" 2>/dev/null || echo "0.0.0")"
           if [[ "$SOURCE_REF" =~ refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
             APP_VERSION="${BASH_REMATCH[1]}"
           fi
@@ -238,17 +238,56 @@ jobs:
           echo "APK_FILENAME=$APK_FILENAME"
 
           BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          # Derive runtime fingerprint for manifest (best-effort); falls back to policy string
-          RUNTIME_FINGERPRINT="$(npx expo fingerprint:generate --platform android --output /tmp/fp.json 2>/dev/null && jq -r '.hash // empty' /tmp/fp.json 2>/dev/null || echo "")"
-          if [ -z "$RUNTIME_FINGERPRINT" ]; then
-            RUNTIME_FINGERPRINT="$(node -p "JSON.stringify(require('./apps/mobile/app.json').expo.runtimeVersion ?? 'unknown')" 2>/dev/null || echo "unknown")"
+          # Extract actual embedded runtimeVersion from generated native config (appVersion policy)
+          APP_JSON_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          if [ "$APP_JSON_VERSION" != "$VERSION" ]; then
+            echo "::error::APK version mismatch: app.json $APP_JSON_VERSION != preflight $VERSION"
+            exit 1
           fi
+          STRINGS_XML="apps/mobile/android/app/src/main/res/values/strings.xml"
+          ANDROID_MANIFEST="apps/mobile/android/app/src/main/AndroidManifest.xml"
+          if [ ! -f "$STRINGS_XML" ]; then
+            echo "::error::Missing strings.xml at $STRINGS_XML — prebuild did not run"
+            exit 1
+          fi
+          if [ ! -f "$ANDROID_MANIFEST" ]; then
+            echo "::error::Missing AndroidManifest.xml at $ANDROID_MANIFEST"
+            exit 1
+          fi
+          EMBEDDED_RUNTIME="$(grep -oP '(?<=<string name="expo_runtime_version">)[^<]+' "$STRINGS_XML" | head -n1 | tr -d '\r' || echo "")"
+          if [ -z "$EMBEDDED_RUNTIME" ]; then
+            echo "::error::Failed to extract expo_runtime_version from $STRINGS_XML"
+            cat "$STRINGS_XML"
+            exit 1
+          fi
+          echo "Embedded runtimeVersion: $EMBEDDED_RUNTIME"
+          echo "App.json version: $APP_JSON_VERSION"
+          if [ "$EMBEDDED_RUNTIME" != "$APP_JSON_VERSION" ]; then
+            echo "::error::FAIL BUILD: embeddedRuntimeVersion ($EMBEDDED_RUNTIME) != app.json expo.version ($APP_JSON_VERSION) — appVersion policy requires equality"
+            exit 1
+          fi
+          EMBEDDED_URL="$(grep -oP 'EXPO_UPDATE_URL.*?value="\K[^"]+' "$ANDROID_MANIFEST" | head -n1 || echo "")"
+          EXPECTED_URL="https://u.expo.dev/73d127b6-c8f6-450c-8d97-2dca8434cd59"
+          if [ "$EMBEDDED_URL" != "$EXPECTED_URL" ]; then
+            echo "::error::EXPO_UPDATE_URL mismatch: got $EMBEDDED_URL expected $EXPECTED_URL"
+            grep -n "EXPO_UPDATE" "$ANDROID_MANIFEST" || true
+            exit 1
+          fi
+          echo "EXPO_UPDATE_URL OK: $EMBEDDED_URL"
+          CHANNEL_HEADER="$(grep -o '"expo-channel-name":"production"' "$ANDROID_MANIFEST" || echo "")"
+          if [ -z "$CHANNEL_HEADER" ]; then
+            echo "::error::expo-channel-name=production not found in AndroidManifest"
+            grep -n "UPDATES_CONFIGURATION_REQUEST_HEADERS" "$ANDROID_MANIFEST" || true
+            cat "$ANDROID_MANIFEST" | grep -A2 -B2 "updates" || true
+            exit 1
+          fi
+          echo "Channel header OK: production"
           cat > dist-apk/release-manifest.json <<EOF
           {
             "repository": "egawilldoit/Ega-House-Platform",
             "gitSha": "${{ needs.preflight.outputs.source_sha }}",
             "gitRef": "${{ needs.preflight.outputs.source_ref }}",
-            "version": "$VERSION",
+            "version": "$APP_JSON_VERSION",
             "variant": "release",
             "androidPackage": "com.ega_house.mobile",
             "apiBaseUrl": "${{ needs.preflight.outputs.api_base_url }}",
@@ -257,7 +296,7 @@ jobs:
             "architectures": ["arm64-v8a", "x86_64"],
             "apkFile": "$APK_FILENAME",
             "apkSha256": "$APK_SHA256",
-            "runtimeVersion": "$RUNTIME_FINGERPRINT",
+            "runtimeVersion": "$EMBEDDED_RUNTIME",
             "channel": "production"
           }
           EOF
