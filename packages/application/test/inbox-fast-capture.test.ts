@@ -81,6 +81,9 @@ class FakeRepo implements InboxRepository {
   }
   async updateInboxItem() { return ok(null as any); }
   async setInboxItemStatus() { return ok(null as any); }
+  async getTaskIdForInboxItem() { return ok(null as string | null); }
+  async createInboxTaskLink() { return ok(undefined); }
+  async markInboxItemConverted() { return ok(null as any); }
 }
 
 test("fast capture accepts raw thought without project/goal/priority (unstructured global)", async () => {

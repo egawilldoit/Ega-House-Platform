@@ -272,4 +272,69 @@ export class SupabaseInboxRepository implements InboxRepository {
     if (!result.data) return { ok: false, error: { code: "unknown" } };
     return { ok: true, value: mapInboxRow(result.data as InboxRow) };
   }
+
+  async getTaskIdForInboxItem(
+    actor: AuthenticatedActor,
+    inboxItemId: string,
+  ): Promise<RepositoryResult<string | null>> {
+    const trimmed = String(inboxItemId ?? "").trim();
+    if (!trimmed) return { ok: true, value: null };
+    const result = await (this.supabase as any)
+      .from("task_external_refs")
+      .select("task_id")
+      .eq("owner_user_id", actor.userId)
+      .eq("source", "inbox")
+      .eq("source_id", trimmed)
+      .maybeSingle();
+    if (result.error) return failure(result.error);
+    if (!result.data) return { ok: true, value: null };
+    const taskId = String((result.data as any).task_id ?? (result.data as any).taskId ?? "");
+    return { ok: true, value: taskId || null };
+  }
+
+  async createInboxTaskLink(
+    actor: AuthenticatedActor,
+    input: Readonly<{ inboxItemId: string; taskId: string }>,
+  ): Promise<RepositoryResult<void>> {
+    const inboxItemId = String(input.inboxItemId ?? "").trim();
+    const taskId = String(input.taskId ?? "").trim();
+    if (!inboxItemId || !taskId) return { ok: false, error: { code: "unknown" } };
+    const result = await (this.supabase as any).from("task_external_refs").insert({
+      owner_user_id: actor.userId,
+      task_id: taskId,
+      source: "inbox",
+      source_id: inboxItemId,
+    });
+    if (result.error) {
+      const code = String((result.error as any).code ?? "");
+      const msg = String((result.error as any).message ?? "");
+      const isDuplicate = code.includes("23505") || /duplicate|unique/i.test(msg);
+      if (isDuplicate) {
+        return { ok: false, error: { code: "conflict" } };
+      }
+      return failure(result.error);
+    }
+    return { ok: true, value: undefined };
+  }
+
+  async markInboxItemConverted(
+    actor: AuthenticatedActor,
+    inboxItemId: string,
+  ): Promise<RepositoryResult<InboxRecord>> {
+    const id = String(inboxItemId ?? "").trim();
+    if (!id) return { ok: false, error: { code: "unknown" } };
+    const result = await (this.supabase as any)
+      .from("idea_notes")
+      .update({
+        status: "converted",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("owner_user_id", actor.userId)
+      .select(INBOX_SELECT)
+      .maybeSingle();
+    if (result.error) return failure(result.error);
+    if (!result.data) return { ok: false, error: { code: "unknown" } };
+    return { ok: true, value: mapInboxRow(result.data as InboxRow) };
+  }
 }

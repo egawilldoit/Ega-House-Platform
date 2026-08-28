@@ -242,3 +242,46 @@ test("getInboxItem is owner scoped and hydrates project name", async () => {
   assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
   assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "id" && s.args[1] === "inbox-42"));
 });
+
+test("getTaskIdForInboxItem queries task_external_refs with owner and inbox source", async () => {
+  const fake = new FakeSupabase();
+  fake.push("task_external_refs", { data: { task_id: "task-123" }, error: null });
+  const result = await repository(fake).getTaskIdForInboxItem(ACTOR, "inbox-1");
+  assert.equal(result.ok, true);
+  assert.equal((result as any).value, "task-123");
+  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
+  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "source" && s.args[1] === "inbox"));
+  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "source_id" && s.args[1] === "inbox-1"));
+});
+
+test("createInboxTaskLink inserts owner-scoped inbox mapping with conflict mapping", async () => {
+  const fake = new FakeSupabase();
+  fake.push("task_external_refs", { data: null, error: null });
+  const result = await repository(fake).createInboxTaskLink(ACTOR, { inboxItemId: "inbox-1", taskId: "task-99" });
+  assert.equal(result.ok, true);
+  const insert = fake.calls[0].steps.find((s) => s.method === "insert");
+  assert.ok(insert);
+  assert.equal((insert.args[0] as any).owner_user_id, "user-123");
+  assert.equal((insert.args[0] as any).source, "inbox");
+  assert.equal((insert.args[0] as any).source_id, "inbox-1");
+  assert.equal((insert.args[0] as any).task_id, "task-99");
+
+  const fake2 = new FakeSupabase();
+  fake2.push("task_external_refs", { data: null, error: { code: "23505", message: "duplicate key" } });
+  const dup = await repository(fake2).createInboxTaskLink(ACTOR, { inboxItemId: "inbox-1", taskId: "task-99" });
+  assert.equal(dup.ok, false);
+  assert.equal((dup as any).error.code, "conflict");
+});
+
+test("markInboxItemConverted updates status to converted owner scoped", async () => {
+  const fake = new FakeSupabase();
+  fake.push("idea_notes", { data: inboxRow({ status: "converted" }), error: null });
+  const result = await repository(fake).markInboxItemConverted(ACTOR, "inbox-1");
+  assert.equal(result.ok, true);
+  assert.equal((result as any).value.status, "converted");
+  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
+  assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "id" && s.args[1] === "inbox-1"));
+  const upd = fake.calls[0].steps.find((s) => s.method === "update");
+  assert.ok(upd);
+  assert.equal((upd.args[0] as any).status, "converted");
+});

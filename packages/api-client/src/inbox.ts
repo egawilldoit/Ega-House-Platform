@@ -1,4 +1,4 @@
-import type { InboxItem, InboxListResponse, InboxMutationResponse } from "@ega/contracts/inbox";
+import type { ConvertInboxInput, InboxConversionResponse, InboxItem, InboxListResponse, InboxMutationResponse } from "@ega/contracts/inbox";
 
 import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
@@ -36,6 +36,8 @@ export type UpdateInboxInput = Readonly<{
   status: string;
 }>;
 
+export type ConvertInboxApiInput = ConvertInboxInput;
+
 export type InboxApi = {
   list(query?: InboxListQuery): Promise<ApiResult<InboxListResponse>>;
   get(id: string): Promise<ApiResult<InboxMutationResponse>>;
@@ -43,6 +45,7 @@ export type InboxApi = {
   update(id: string, input: UpdateInboxInput): Promise<ApiResult<InboxMutationResponse>>;
   archive(id: string): Promise<ApiResult<InboxMutationResponse>>;
   restore(id: string): Promise<ApiResult<InboxMutationResponse>>;
+  convert(id: string, input?: ConvertInboxApiInput): Promise<ApiResult<InboxConversionResponse>>;
 };
 
 function queryValue(value: string | null | undefined): string | undefined {
@@ -97,6 +100,9 @@ export function createInboxApi(http: HttpClient): InboxApi {
     },
     restore(id) {
       return http.request<InboxMutationResponse>({ path: idPath(id, "/restore"), method: "POST" });
+    },
+    convert(id, input = {}) {
+      return http.request<InboxConversionResponse>({ path: idPath(id, "/convert"), method: "POST", body: input });
     },
   };
 }

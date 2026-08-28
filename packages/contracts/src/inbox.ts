@@ -104,3 +104,36 @@ export const inboxListQuerySchema = z.object({
   tag: z.string().optional(),
   q: z.string().optional(),
 });
+
+export type ConvertInboxInput = {
+  projectId?: string | null;
+  goalId?: string | null;
+  priority?: InboxPriority | null;
+  dueDate?: string | null;
+  title?: string | null;
+  description?: string | null;
+  remindAt?: string | null;
+};
+
+export const convertInboxInputSchema = z.object({
+  projectId: z.string().nullable().optional(),
+  goalId: z.string().nullable().optional(),
+  priority: z.string().nullable().optional(),
+  dueDate: z.string().nullable().optional(),
+  title: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  remindAt: z.string().nullable().optional(),
+});
+
+export type InboxConversionResponse = {
+  ok: true;
+  item: InboxItem;
+  task: {
+    id: string;
+    title: string;
+    projectId: string;
+    goalId: string | null;
+    priority: InboxPriority;
+    dueDate: string | null;
+  };
+};
