@@ -216,22 +216,23 @@ export default async function OAuthConsentPage({
             ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2 pt-2">
-            <button
-              type="submit"
-              name="decision"
-              value="deny"
-              className="rounded-xl border border-black/15 px-5 py-3.5 font-semibold transition hover:bg-black/5"
-            >
-              Deny
-            </button>
-            <button
-              type="submit"
-              name="decision"
-              value="approve"
-              className="rounded-xl bg-[#17383a] px-5 py-3.5 font-semibold text-[#f4ed9a] transition hover:bg-[#102a2c]"
-            >
-              Approve read-only access
-            </button>
+              <button
+                type="submit"
+                name="decision"
+                value="deny"
+                className="rounded-xl border border-black/15 px-5 py-3.5 font-semibold transition hover:bg-black/5"
+              >
+                Deny
+              </button>
+              <button
+                type="submit"
+                name="decision"
+                value="approve"
+                className="rounded-xl bg-[#17383a] px-5 py-3.5 font-semibold text-[#f4ed9a] transition hover:bg-[#102a2c]"
+              >
+                Approve read-only access
+              </button>
+            </div>
           </form>
         </section>
       </div>
