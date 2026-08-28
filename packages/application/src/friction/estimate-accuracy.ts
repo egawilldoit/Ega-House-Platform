@@ -1,7 +1,4 @@
 import {
-  FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD,
-  FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES,
-  FRICTION_ESTIMATE_PERCENT_THRESHOLD,
   getFrictionEstimatePercentError,
   getFrictionEstimateSeverity,
   isMeaningfulFrictionEstimate,
