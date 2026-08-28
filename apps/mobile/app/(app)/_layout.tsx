@@ -82,6 +82,13 @@ export default function ProtectedLayout() {
           title: 'Task',
         }}
       />
+      <Stack.Screen
+        name="updates"
+        options={{
+          headerShown: true,
+          title: 'App Updates',
+        }}
+      />
     </Stack>
   );
 }
