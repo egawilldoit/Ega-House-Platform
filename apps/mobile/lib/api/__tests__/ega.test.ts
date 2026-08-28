@@ -105,6 +105,14 @@ function makeFakeClient(): EgaApiClient {
       pin: jest.fn(),
       unpin: jest.fn(),
     },
+    inbox: {
+      list: jest.fn(),
+      get: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      archive: jest.fn(),
+      restore: jest.fn(),
+    },
     today: {
       get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
       plan: jest.fn(),
