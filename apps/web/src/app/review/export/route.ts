@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { getWeekBounds } from "@/lib/review-week";
+import { getWeekBoundsForTimezone } from "@/lib/review-week";
 import {
   buildReviewExportCsv,
   getReviewExportWeekOf,
@@ -20,7 +20,25 @@ export async function GET(request: Request) {
     .order("week_start", { ascending: false });
 
   if (selectedWeekOf) {
-    const bounds = getWeekBounds(selectedWeekOf);
+    // Timezone-aware bounds via canonical Time Context
+    let bounds: { weekStart: string; weekEnd: string } | null = null;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      const uid = authData.user?.id;
+      let tz: string | null = null;
+      if (uid) {
+        const { data: tzRow } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
+          "user_time_context",
+        )
+          .select("iana_timezone")
+          .eq("user_id", uid)
+          .maybeSingle();
+        tz = (tzRow as { iana_timezone?: string | null } | null)?.iana_timezone ?? null;
+      }
+      bounds = getWeekBoundsForTimezone(selectedWeekOf, tz);
+    } catch {
+      bounds = getWeekBoundsForTimezone(selectedWeekOf, null);
+    }
 
     if (!bounds) {
       return Response.json({ error: "Week selection is invalid." }, { status: 400 });
