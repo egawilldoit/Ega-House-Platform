@@ -15,7 +15,7 @@ export default function PublicLayout() {
   }
 
   if (isAuthenticated) {
-    return <Redirect href="/(app)/(tabs)/tasks" />;
+    return <Redirect href="/(app)/(tabs)/today" />;
   }
 
   return <Slot />;

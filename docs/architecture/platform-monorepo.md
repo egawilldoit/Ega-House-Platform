@@ -1,27 +1,10 @@
 # EGA House Platform Monorepo Architecture
 
-Status: first-wave target architecture implemented on the ordered August 2026 migration stack. The stack is pre-merge validated; this document does not authorize production deployment.
+**Status: IMPLEMENTED CURRENT ARCHITECTURE. Last reviewed: 2026-08-25.**
 
-## Pre-migration baseline
+The first-wave migration that introduced this topology has landed. This document now describes the current package/application boundary and preserves the August 2026 migration stack only as historical provenance. For the cross-subsystem current map, see [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
-Before this migration wave, the repository's principal delivery surfaces were:
-
-- root `src/app`: Next.js UI, Server Components/Actions, and route handlers;
-- `src/app/api/mobile`: legacy mobile Auth, Tasks, and Today HTTP surface;
-- `src/app/api/agent`: Agent task-control API;
-- `src/app/api/mcp`: MCP integration routes;
-- `src/app/api/oauth`: OAuth routes;
-- `src/app/api/integrations`: external integrations;
-- `src/app/api/cron`: cron/background entry points;
-- `src/lib/services`, `src/lib/contracts`, `src/lib/validation`, `src/lib/supabase`;
-- root `src/db/schema.ts`, `src/db/mcp-schema.ts`, `drizzle/`;
-- `apps/mobile`: Expo application;
-- `scripts/ega-runner`: autonomous delivery Runner;
-- Supabase/Postgres: durable data and RLS enforcement.
-
-Agent, MCP, OAuth, integrations, cron, Runner, legacy Mobile Auth/Tasks/Today, and root database schema ownership remain compatibility surfaces during this first wave.
-
-## Converged first-wave architecture
+## Current topology
 
 ```text
                          EGA HOUSE
@@ -37,89 +20,86 @@ Agent, MCP, OAuth, integrations, cron, Runner, legacy Mobile Auth/Tasks/Today, a
                      ▼       ▼       ▼
                        @ega/contracts
                               │
-                       @ega/application
-                              │
-                        repository ports
-                              │
-                       @ega/data-access
-                              │
-                 request-scoped Supabase client
-                              │
-                         Supabase/RLS
+                ┌─────────────┴─────────────┐
+                ▼                           ▼
+          @ega/domain                @ega/application
+                                            │
+                                     repository ports
+                                            │
+                                     @ega/data-access
+                                            │
+                              request-scoped Supabase/RLS
 ```
 
-`@ega/domain` supplies pure platform-neutral rules where appropriate. It does not own transport, persistence, rendering, or authentication.
+Root `src/db` + `drizzle/` remain the single schema/migration authority. `scripts/ega-runner` remains a separate autonomous-delivery subsystem.
 
 ## Responsibilities
 
 ### `apps/web`
 
-Owns Next.js web transport and rendering. Server Components and Server Actions call `@ega/application` and `@ega/data-access` directly. They must not make HTTP calls back into EGA House's own Hono server merely to reach the same application logic.
+Owns Next.js web transport/rendering, Server Components/Actions, presentation, and retained compatibility routes such as Agent/MCP/OAuth/integrations/cron. Server-side web code may compose application/data-access directly; it must not self-fetch the repository's Hono server merely to reuse the same application logic.
 
 ### `apps/mobile`
 
-Owns Expo-native UI, navigation, token/session storage, and native composition. New Projects/Goals flows use `@ega/api-client` and the authenticated standalone server. Mobile must not import application or persistence implementations.
+Owns Expo-native UI, navigation, token/session storage, and native composition. Canonical mobile product traffic uses the standalone authenticated Hono API. Mobile must not import server-side application/persistence/web internals.
 
 ### `apps/server`
 
-Owns the standalone Hono HTTP transport for first-wave Projects/Goals. It verifies Supabase bearer identity, derives the authenticated actor from the verified user, creates a request-scoped Supabase client carrying the same token, and composes application/data-access. It does not duplicate business rules.
+Owns the standalone Hono HTTP transport. Current routes include Auth, Timer, Projects, Goals, Tasks, and Today. It verifies Supabase bearer identity, derives the authenticated actor, creates request-scoped persistence composition, and maps HTTP to shared use cases instead of duplicating business rules. Deployment authority is documented in [`hono-deployment.md`](hono-deployment.md).
 
 ### `@ega/contracts`
 
-Owns reusable platform-neutral DTOs/contracts. It must not depend on React, Next, React Native, Expo, Supabase, Drizzle, Node server APIs, or database queries.
+Owns reusable platform-neutral DTOs/contracts. It must not depend on React, Next, React Native, Expo, Supabase, Drizzle, or database queries.
 
 ### `@ega/domain`
 
-Owns pure domain constants/rules and stays framework- and persistence-independent.
+Owns pure domain constants/rules and stays framework-/transport-/persistence-independent.
 
 ### `@ega/application`
 
-Owns use-case semantics, stable application errors, orchestration, repository ports, and read-model calculations. It does not own HTTP, redirects, cookies, rendering, Supabase implementation, or DB drivers.
+Owns use-case semantics, stable application errors, orchestration, repository ports, read models, and product calculations. Current exports cover Projects, Goals, Tasks, Today, focus-queue/recurrence behavior, and related ports. It does not own HTTP, redirects, cookies, rendering, Supabase implementation, or DB drivers.
 
 ### `@ega/data-access`
 
-Owns repository adapters. First-wave Projects/Goals adapters receive a request-scoped Supabase client from the transport and do not create a global privileged client.
+Owns repository adapters for shared application ports. User-scoped adapters receive/use request-scoped Supabase context; they do not create a global privileged authorization shortcut.
 
 ### `@ega/api-client`
 
-Owns typed reusable HTTP mechanics and Projects/Goals endpoint methods. Token acquisition/refresh callbacks are injected; Expo storage/session ownership remains mobile-side.
+Owns reusable typed HTTP mechanics and current Projects/Goals/Tasks/Today endpoint methods. Token/session acquisition remains client-side composition rather than package-owned Expo storage.
 
 ## Dependency direction
 
-Allowed first-wave direction:
+Executable enforcement lives in `scripts/architecture/check-boundaries.mjs`.
 
 ```text
-apps/web      -> contracts/domain/application/data-access
-apps/server   -> contracts/domain/application/data-access
-apps/mobile   -> contracts/api-client
-api-client    -> contracts
-application   -> contracts/domain + repository ports
-data-access   -> application ports/contracts + request-scoped Supabase
-contracts     -> platform-neutral primitives only
-domain        -> platform-neutral primitives only
+apps/web         -> contracts/domain/application/data-access
+apps/server      -> contracts/domain/application/data-access
+apps/mobile      -> contracts/domain/api-client
+api-client       -> contracts
+application      -> contracts/domain + repository ports
+data-access      -> application ports + request-scoped Supabase
+contracts/domain -> platform-neutral primitives only
 ```
 
-Forbidden examples include mobile importing application/data-access/server/web internals; contracts/domain importing framework or persistence packages; and api-client importing Expo, React Native, application, or data-access implementation.
-
-Executable enforcement lives in `scripts/architecture/check-boundaries.mjs`; package-purity and security invariants are also enforced by `scripts/ci/*` in Unified Platform Validation.
+Forbidden examples include mobile importing application/data-access/server/web/DB internals; contracts/domain importing framework or persistence packages; and api-client importing Expo/React/Next/Supabase/application/data-access implementations.
 
 ## Request security and RLS
 
 ```text
 Authorization: Bearer <Supabase access token>
                 ↓
-server-side Supabase token verification
+server-side token verification
                 ↓
-verified authenticated user
+verified user.id
                 ↓
 AuthenticatedActor { userId }
                 ↓
-request-scoped Supabase client carrying that access token
+request-scoped Supabase client carrying caller token
                 ↓
 PostgREST / RLS
 ```
 
-Identity never comes from JSON body, URL parameter, query string, FormData, or a custom user-id header. Normal Projects/Goals requests must not use service-role or unrestricted privileged DB access as an authorization shortcut.
+Identity never comes from JSON body, URL/query parameter, FormData, or a custom user-id header. Normal user-scoped requests must not use service-role/unrestricted privileged DB access as an authorization shortcut.
 
 ## Web data flow
 
@@ -133,11 +113,29 @@ Server Component / Server Action
 request-scoped Supabase / RLS
 ```
 
-The web application does not self-fetch `apps/server` from Server Components/Actions. HTTP is used for native/external consumers where a transport boundary is required.
+The web application does not need an internal HTTP hop to `apps/server` for logic it can compose directly.
 
-## Database ownership during this wave
+## Mobile data flow
 
-Canonical DB/migration authority remains at the repository root:
+```text
+Expo screen / feature
+        ↓
+mobile session + API adapter
+        ↓
+@ega/api-client where covered
+        ↓
+apps/server
+        ↓
+shared application/data-access
+        ↓
+Supabase/RLS
+```
+
+Package adoption is feature-specific; do not infer that every transport helper has been consolidated into `@ega/api-client` merely because the package exists.
+
+## Database ownership
+
+Canonical DB/migration authority remains at repository root:
 
 - `src/db/schema.ts`
 - `src/db/mcp-schema.ts`
@@ -145,71 +143,63 @@ Canonical DB/migration authority remains at the repository root:
 - `drizzle/`
 - `drizzle.config.ts`
 
-PR #125 originally moved this authority with the web application; the pre-merge architecture audit corrected that defect. There is no duplicate tracked DB authority under `apps/web`.
+There is no second tracked schema/migration authority under `apps/web` or `apps/server`. Relocation requires a separate explicit ownership ADR/migration plan.
 
-## Compatibility retained during this wave
+## Retained compatibility surfaces
 
-The following remain compatibility surfaces rather than being forced through the new Projects/Goals boundary:
+The current monorepo intentionally still contains compatibility surfaces outside the shared native HTTP path, including:
 
-- Agent API;
+- Agent API under `apps/web/src/app/api/agent`;
 - MCP API;
 - OAuth;
 - integrations;
-- cron/background jobs;
+- cron/background routes;
 - Runner;
-- legacy Mobile Auth;
-- legacy Mobile Tasks;
-- legacy Mobile Today;
-- root Drizzle/schema ownership.
+- root database/migration authority;
+- compatibility/re-export/presentation shims with live consumers.
 
-Their behavior must remain stable while Projects/Goals establish the new package/server boundaries.
+Their existence is not permission to put new shared product rules in transport code. Migrate one bounded surface only when its ownership and compatibility evidence are explicit.
 
-## Migration sequence
+## CI and executable enforcement
 
-1. Add architecture documentation and executable boundary checks.
-2. Establish npm workspaces while keeping the root Next app in place.
-3. Extract platform-neutral contracts and domain rules.
-4. Extract Projects/Goals application and request-scoped data-access behavior.
-5. Add authenticated Hono Projects/Goals transport.
-6. Add a cross-platform API client.
-7. Move Next.js physically into `apps/web` while retaining root DB authority.
-8. Add native Projects/Goals UI through the API-client/server path.
-9. Enforce all boundaries and validation in unified CI.
-10. Remove only proven-dead compatibility artifacts and document readiness.
+The root manifest exposes architecture/workspace/purity/security checks plus per-workspace typecheck/test/build scripts. Use [`../agent-context/testing-and-validation.md`](../agent-context/testing-and-validation.md) rather than frozen test-count baselines.
 
-## Migration status — 2026-08-09
+Important structural gates include:
 
-The migration is delivered as an ordered stacked-PR chain. Each PR targets the immediately preceding stage; open stacked PRs are intentional until an explicit ordered merge is authorized.
+- `npm run check:architecture`
+- `npm run test:architecture`
+- `npm run ci:purity`
+- `npm run ci:security`
+- `npm run ci:workspace`
 
-| Step | State | Current evidence |
-|---|---|---|
-| 1 Guardrails + architecture checks | complete, open | `arch/01-baseline-guardrails` @ `d71d689`; PR #119 |
-| 2 npm workspace foundation | complete, open | `arch/02-npm-workspace-foundation` @ `cf6ec0a`; PR #120 |
-| 3 Contracts + domain | complete, open | `arch/03-contracts-domain` @ `9dcf207`; PR #121 |
-| 4 Application + data access | complete, open | `arch/04-project-goal-application-core` @ `9de1f43`; PR #122; exact-head CI run `31335892952` green |
-| 5 Authenticated Hono transport | complete, open | `arch/05-hono-project-goal-transport` @ `79c61ba`; PR #123; run `31336079119` green |
-| 6 Cross-platform API client | complete, open | `arch/06-api-client` @ `21604b3`; PR #124; run `31336139911` green |
-| 7 Next.js move to `apps/web` | complete, open | `arch/07-web-app-workspace` @ `7711e74`; PR #125; run `31336169803` green; root DB authority preserved |
-| 8 Native Projects/Goals | complete, open | `arch/08-native-project-goal-ui` @ `71eede6`; PR #126; run `31338780846` green; pre-merge lint regression removed |
-| 9 Unified platform CI | complete, open | `arch/09-unified-ci` @ `c909e1f`; PR #127; run `31339129854` green; inherited lint baseline 39 errors / 53 warnings |
-| 10 Cleanup + readiness | complete implementation, open | `arch/10-compat-cleanup-readiness`; PR #128. Use live PR #128 head/checks as authority because edits to readiness evidence advance this branch SHA. |
+These prove source/package constraints for the executed revision; they do not by themselves prove deployed Vercel/Supabase/mobile-device behavior.
 
-The authoritative current SHA for each open PR is its live GitHub PR metadata. Hard-coded Stage-10 self-SHAs are intentionally avoided in readiness documentation to prevent evidence from becoming stale when the documentation itself changes.
+## Historical migration provenance — 2026-08-08 to 2026-08-09
 
-## Lockfile and dependency validation
+> **HISTORICAL SNAPSHOT — NOT CURRENT BRANCH TRUTH.** The original first-wave was delivered as an ordered stacked-PR chain (`arch/01-*` through `arch/10-*`, PRs #119–#128). At the time this section was written, stages were pre-merge validated/open. That status has since been superseded by the topology now present on `main`. Use Git history/PR metadata for exact historical SHAs/check runs; use current code and this document's sections above for present architecture.
 
-The root `package-lock.json` is authoritative for platform workspaces. `scripts/ega-runner/package-lock.json` remains an explicit standalone Runner exception.
+The migration sequence was:
 
-Unified CI proves lock↔manifest consistency with clean `npm ci`, validates required Linux x64 native optionals, and applies an evidence-gated high/critical production dependency policy. Dependency exceptions are explicit and time-bounded; they are not blanket audit suppression.
+1. architecture guardrails;
+2. npm workspace foundation;
+3. contracts/domain extraction;
+4. application/data-access extraction;
+5. authenticated Hono transport;
+6. cross-platform API client;
+7. Next.js move into `apps/web` while retaining root DB authority;
+8. native Projects/Goals adoption;
+9. unified platform CI;
+10. compatibility cleanup/readiness evidence.
 
-## Lint regression policy
+The original scope deliberately avoided a microservices rewrite, pnpm/Turborepo migration, broad auth redesign, and premature DB-schema relocation. Those non-goals remain useful context but are not perpetual prohibitions if a future explicit architecture decision supersedes ADR 001.
 
-Full-repo inherited lint debt is currently **39 errors / 53 warnings**. The Stage-8 pre-merge audit removed 5 errors and 3 warnings that had accidentally been absorbed by an intermediate baseline, then Stage 9 deliberately re-captured the corrected 39/53 ceiling.
+## Architecture evolution rule
 
-`lint-changed` blocks new regression. `lint-report` reports inherited debt until a dedicated cleanup reduces the baseline.
+When this boundary changes, update together:
 
-## Intentional non-goals
-
-This is not a microservices rewrite. It does not introduce pnpm/Turborepo, redesign authentication, migrate Agent/MCP/OAuth/Cron to new transports, relocate database schema authority, or authorize production deployment.
-
-The target is a modular npm-workspace monorepo with shared application authority and explicit transport boundaries, not a distributed system with duplicated business/state authority.
+1. the accepted/new ADR;
+2. executable boundary/security/purity checks;
+3. this living architecture document;
+4. root `ARCHITECTURE.md` when the system map changes;
+5. `CONTEXT.md` only when the product mental model changes;
+6. the decision log for the conflict/resolution trail.

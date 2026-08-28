@@ -1,22 +1,28 @@
 ## EGA House Platform
 
-EGA House is a productivity platform with a Next.js web application, an Expo mobile application, agent-facing task APIs, and an autonomous-delivery Runner under active development.
+EGA House is a productivity platform organized as an npm-workspace monorepo: a Next.js web application, an Expo mobile application, a standalone Hono API, shared domain/application/data packages, agent-facing integrations, and an autonomous-delivery Runner under active development.
 
 ## Product surfaces
 
-- Web workspace: tasks, goals, timer, review, analytics, and integrations under `src/`.
-- Mobile client: Expo application under `apps/mobile`.
-- Standalone Hono API server: mobile-facing auth/timer/goals/projects endpoints under `apps/server`; deployment target and environment contract in [`docs/architecture/hono-deployment.md`](docs/architecture/hono-deployment.md).
-- Agent task-control API: scoped project/goal/task endpoints under `src/app/api/agent`.
-- Autonomous Runner: partial Linear/PGMQ/Hermes/GitHub delivery vertical slice under `scripts/ega-runner`.
+- Web workspace: `apps/web` — tasks, goals, timer, review, analytics, integrations, and compatibility Agent/MCP/OAuth/Cron routes.
+- Mobile client: `apps/mobile` — Expo native client using the authenticated standalone API.
+- Standalone API: `apps/server` — Hono Auth/Timer/Projects/Goals/Tasks/Today transport; deployment contract in [`docs/architecture/hono-deployment.md`](docs/architecture/hono-deployment.md).
+- Shared product authority: `packages/domain`, `packages/contracts`, `packages/application`, `packages/data-access`, and `packages/api-client`.
+- Database/migration authority: root `src/db`, `drizzle/`, and `drizzle.config.ts`.
+- Agent task-control API: compatibility surface under `apps/web/src/app/api/agent`.
+- Autonomous Runner: `scripts/ega-runner` — partial Linear/PGMQ/Hermes/GitHub delivery vertical slice.
 
-The Runner is not yet a fully proven end-to-end production delivery system. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for current-behavior classification and known evidence gaps.
+The Runner is not automatically equivalent to a fully proven end-to-end production delivery system. Read [`ARCHITECTURE.md`](ARCHITECTURE.md) for current-behavior classification and known evidence gaps.
 
-## Route strategy
+## Product and architecture context
 
-- Canonical workspace routes: `/tasks`, `/goals`, `/timer`, `/review`.
-- `/apps/*` routes are compatibility redirects.
-- Protected root/subdomain routes redirect unauthenticated users to `/login?next=...`.
+Start with:
+
+1. [`CONTEXT.md`](CONTEXT.md) — Project → Goal → Task → Timer → Review mental model.
+2. [`ARCHITECTURE.md`](ARCHITECTURE.md) — current system map.
+3. [`docs/architecture/platform-monorepo.md`](docs/architecture/platform-monorepo.md) — workspace/package boundaries.
+
+Canonical web workspace routes include `/tasks`, `/goals`, `/timer`, and `/review`; compatibility redirects may still exist. Protected routes require authentication.
 
 ## Development
 
@@ -25,20 +31,23 @@ npm ci
 npm run dev
 ```
 
+The root lockfile is authoritative for `apps/*` and `packages/*`; the Runner retains its documented standalone dependency exception.
+
 ## Validation
 
 ```bash
 npm run validate:agent-context
+npm run check:architecture
 npm run typecheck
 npm run lint
 npm test
 npm run build
 ```
 
-Mobile and Runner validation have separate commands in [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md). Report current command results rather than preserving test/page counts as a permanent baseline.
+Platform package, server, mobile, and Runner commands are listed in [`docs/agent-context/testing-and-validation.md`](docs/agent-context/testing-and-validation.md). Report exact current command results rather than preserving test/page counts as permanent baselines.
 
 ## Agent-assisted development
 
-Start with [`AGENTS.md`](AGENTS.md). It defines stable safety, scope, approval, navigation, and skill-routing rules. [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md) separates current-behavior evidence from normative product authority. [`HERMES_MASTER_PROMPT.md`](HERMES_MASTER_PROMPT.md) is a compact Hermes fallback and discovery contract, not a second product specification.
+Start with [`AGENTS.md`](AGENTS.md). It is the repository-wide governance map. [`CONTEXT.md`](CONTEXT.md) supplies the product mental model; [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md) separates current-behavior evidence from normative product authority; [`docs/agent-context/decision-log.md`](docs/agent-context/decision-log.md) persists material conflict classifications; [`docs/agent-context/tooling-map.md`](docs/agent-context/tooling-map.md) records how each agent harness loads repository guidance.
 
-Current merge policy for Runner-created PRs is human review. `.github/workflows/slack-pr-ready.yml` reports readiness but does not merge. The separate docs-only guardian is controlled automation and must not be treated as general Runner authority.
+[`HERMES_MASTER_PROMPT.md`](HERMES_MASTER_PROMPT.md) is a compact Hermes fallback/discovery contract, not a second product specification. Current Runner merge policy remains human review unless separately and explicitly authorized.
