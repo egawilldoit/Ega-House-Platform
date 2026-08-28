@@ -152,6 +152,81 @@ function validateProposedTaskIds(ids: unknown): { ok: true; value: string[] } | 
   return { ok: true, value: out };
 }
 
+function normalizeAiRef(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed.length > 0 ? trimmed.slice(0, 1024) : null;
+}
+
+function deriveTimezoneFromTimeContextId(timeContextId: string): string {
+  const parts = String(timeContextId ?? "").split("::");
+  const tz = parts[1]?.trim();
+  return tz && tz.length > 0 ? tz : "UTC";
+}
+
+function sortTaskIds(ids: string[]): string[] {
+  return [...ids].map((id) => String(id).trim()).sort((a, b) => a.localeCompare(b));
+}
+
+export function computeCreateProposalRequestFingerprint(input: Readonly<{
+  localDate: string;
+  timeContextId: string;
+  timezone: string;
+  proposedTaskIds: string[];
+  parentProposalId: string | null;
+  aiRef: string | null;
+}>): string {
+  const normalized = {
+    v: 1,
+    localDate: String(input.localDate).trim(),
+    timeContextId: String(input.timeContextId).trim(),
+    timezone: String(input.timezone).trim() || "UTC",
+    proposedTaskIds: sortTaskIds(input.proposedTaskIds),
+    parentProposalId: input.parentProposalId ? String(input.parentProposalId).trim() : null,
+    aiRef: input.aiRef ? String(input.aiRef).trim().slice(0, 1024) : null,
+  };
+  if (normalized.parentProposalId === "") normalized.parentProposalId = null;
+  if (normalized.aiRef === "") normalized.aiRef = null;
+  const json = JSON.stringify(normalized);
+  return createHash("sha256").update(json).digest("hex");
+}
+
+export function computeReviseProposalRequestFingerprint(input: Readonly<{
+  parentProposalId: string;
+  proposedTaskIds: string[];
+  aiRef: string | null;
+}>): string {
+  const normalized = {
+    v: 1,
+    parentProposalId: String(input.parentProposalId).trim(),
+    proposedTaskIds: sortTaskIds(input.proposedTaskIds),
+    aiRef: input.aiRef ? String(input.aiRef).trim().slice(0, 1024) : null,
+  };
+  if (normalized.aiRef === "") normalized.aiRef = null;
+  const json = JSON.stringify(normalized);
+  return createHash("sha256").update(json).digest("hex");
+}
+
+function computeStoredCreateFingerprint(record: OperatorProposalRecord): string {
+  const timezone = deriveTimezoneFromTimeContextId(record.timeContextId);
+  return computeCreateProposalRequestFingerprint({
+    localDate: record.localDate,
+    timeContextId: record.timeContextId,
+    timezone,
+    proposedTaskIds: record.proposedTaskIds,
+    parentProposalId: record.parentProposalId,
+    aiRef: record.aiRef,
+  });
+}
+
+function computeStoredReviseFingerprint(record: OperatorProposalRecord): string {
+  return computeReviseProposalRequestFingerprint({
+    parentProposalId: record.parentProposalId ?? "",
+    proposedTaskIds: record.proposedTaskIds,
+    aiRef: record.aiRef,
+  });
+}
+
 export function computeOperatorBaselineHash(input: {
   version: string;
   date: string;
@@ -337,12 +412,24 @@ export async function createOperatorProposal(
 
   const timezone = typeof input.timezone === "string" && input.timezone.trim() ? input.timezone.trim() : "UTC";
 
-  // Idempotency: if same owner+key exists, return existing (retry returns same result)
+  const incomingFingerprint = computeCreateProposalRequestFingerprint({
+    localDate,
+    timeContextId,
+    timezone,
+    proposedTaskIds,
+    parentProposalId,
+    aiRef,
+  });
+
+  // Idempotency: same key + same semantic request → same result, same key + different semantic request → conflict
   const existingByKey = await proposalRepo.findByIdempotencyKey(actor, idempotencyKey);
   if (!existingByKey.ok) return applicationFailure("Unable to check proposal idempotency right now.");
   if (existingByKey.value) {
-    // Validate that retry has same parent and task ids? For strict idempotency, if proposal already exists with same key but different payload, we should return conflict? For now return existing to satisfy retry idempotency.
-    return applicationSuccess(existingByKey.value);
+    const storedFingerprint = computeStoredCreateFingerprint(existingByKey.value);
+    if (storedFingerprint === incomingFingerprint) {
+      return applicationSuccess(existingByKey.value);
+    }
+    return applicationFailure("Idempotency key conflict: same key with different request payload.");
   }
 
   // Shared validation — LLM/client cannot bypass
@@ -389,10 +476,16 @@ export async function createOperatorProposal(
     aiRef,
   });
   if (!createResult.ok) {
-    // Handle unique conflict as idempotency (race)
+    // Handle unique conflict as idempotency (race) — one writer wins, other compares fingerprint
     if (createResult.error.code === "conflict") {
       const retry = await proposalRepo.findByIdempotencyKey(actor, idempotencyKey);
-      if (retry.ok && retry.value) return applicationSuccess(retry.value);
+      if (retry.ok && retry.value) {
+        const storedFingerprint = computeStoredCreateFingerprint(retry.value);
+        if (storedFingerprint === incomingFingerprint) {
+          return applicationSuccess(retry.value);
+        }
+        return applicationFailure("Idempotency key conflict: same key with different request payload.");
+      }
     }
     return applicationFailure("Unable to create proposal right now.");
   }
@@ -417,10 +510,23 @@ export async function reviseOperatorProposal(
   const proposedIdsValidation = validateProposedTaskIds(input.proposedTaskIds);
   if (!proposedIdsValidation.ok) return applicationFailure(proposedIdsValidation.message);
 
-  // Idempotency check first
+  const aiRef = normalizeAiRef(input.aiRef);
+  const incomingFingerprint = computeReviseProposalRequestFingerprint({
+    parentProposalId: proposalId,
+    proposedTaskIds: proposedIdsValidation.value,
+    aiRef,
+  });
+
+  // Idempotency: same key + same semantic request → same result, different → conflict
   const existingByKey = await proposalRepo.findByIdempotencyKey(actor, idempotencyKey);
   if (!existingByKey.ok) return applicationFailure("Unable to check idempotency.");
-  if (existingByKey.value) return applicationSuccess(existingByKey.value);
+  if (existingByKey.value) {
+    const storedFingerprint = computeStoredReviseFingerprint(existingByKey.value);
+    if (storedFingerprint === incomingFingerprint) {
+      return applicationSuccess(existingByKey.value);
+    }
+    return applicationFailure("Idempotency key conflict: same key with different revise payload.");
+  }
 
   const parentResult = await proposalRepo.findById(actor, proposalId);
   if (!parentResult.ok) return applicationFailure("Unable to load proposal.");
@@ -451,12 +557,18 @@ export async function reviseOperatorProposal(
     parentProposalId: parent.id,
     idempotencyKey,
     status: "revised",
-    aiRef: input.aiRef ? String(input.aiRef).trim().slice(0, 1024) : null,
+    aiRef,
   });
   if (!createResult.ok) {
     if (createResult.error.code === "conflict") {
       const retry = await proposalRepo.findByIdempotencyKey(actor, idempotencyKey);
-      if (retry.ok && retry.value) return applicationSuccess(retry.value);
+      if (retry.ok && retry.value) {
+        const storedFingerprint = computeStoredReviseFingerprint(retry.value);
+        if (storedFingerprint === incomingFingerprint) {
+          return applicationSuccess(retry.value);
+        }
+        return applicationFailure("Idempotency key conflict: same key with different revise payload.");
+      }
     }
     return applicationFailure("Unable to revise proposal.");
   }

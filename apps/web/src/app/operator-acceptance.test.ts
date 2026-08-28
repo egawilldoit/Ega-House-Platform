@@ -47,6 +47,7 @@ describe("EGA-516 Operator acceptance", () => {
     const { createAuthenticatedActor } = await import("@ega/application");
     const { getOperatorSnapshot } = await import("@ega/application/operator/snapshot");
     // Use a minimal fake port that succeeds
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const fakePort: any = {
       listSelectedTasks: async () => ({ ok: true, value: [] }),
       listPinnedSuggestions: async () => ({ ok: true, value: [] }),
@@ -105,6 +106,7 @@ describe("EGA-516 Operator acceptance", () => {
     expect(appPlan).toContain("scheduledStartAt");
     expect(appPlan).toContain("scheduledEndAt");
     const webBuilder = read("src/lib/services/today-plan-builder.ts");
+    expect(webBuilder.length).toBeGreaterThan(0);
     // Web builder should now delegate or at least not be the canonical owner – check it does not duplicate ranking alone
     // If it exists, it should be thin or re-export; we at least ensure operator snapshot is the owner
     const opService = read("src/lib/services/operator-service.ts");

@@ -74,6 +74,11 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       timezone,
     });
     if (!result.ok) {
+      const msg = result.errorMessage.toLowerCase();
+      const isConflict = msg.includes("idempotency") && msg.includes("conflict");
+      if (isConflict) {
+        return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      }
       const notFound = result.errorMessage.includes("not found");
       return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
     }
@@ -93,7 +98,14 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       idempotencyKey: body.idempotencyKey,
       aiRef: body.aiRef,
     });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const msg = result.errorMessage.toLowerCase();
+      const isConflict = msg.includes("idempotency") && msg.includes("conflict");
+      if (isConflict) {
+        return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      }
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) }, 201);
   });
 

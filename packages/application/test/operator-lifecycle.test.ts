@@ -844,7 +844,11 @@ test("AC: Migration is generated and reviewed — production application separat
   const path = await import("node:path");
   const url = await import("node:url");
   const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
-  const candidates = ["../../../drizzle/0048_operator_proposals.sql", "../../../drizzle/0047_operator_proposals.sql"];
+  const candidates = [
+    "../../../drizzle/0049_operator_proposals.sql",
+    "../../../drizzle/0048_operator_proposals.sql",
+    "../../../drizzle/0047_operator_proposals.sql",
+  ];
   const filePath = candidates.map((p) => path.resolve(__dirname, p)).find((p) => fs.existsSync(p)) ?? path.resolve(__dirname, candidates[0]);
   assert.equal(fs.existsSync(filePath), true, "migration file should exist");
   const content = fs.readFileSync(filePath, "utf8");
@@ -946,4 +950,366 @@ test("Lifecycle: cannot approve terminal (dismissed) proposal", async () => {
   if (!dismissed.ok) return;
   const approve = await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id });
   assert.equal(approve.ok, false);
+});
+
+// ---------------------------------------------------------------------------
+// 11. Strict idempotency: same key + same semantic request → same result, different → conflict
+// ---------------------------------------------------------------------------
+
+test("Idempotency strict: same key same semantic request → same proposal (fingerprint match)", async () => {
+  const id1 = randomUUID();
+  const id2 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  for (const id of [id1, id2]) tasks.set(id, makeTaskRow({ id, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    proposedTaskIds: [id1, id2],
+    idempotencyKey: "idem-strict-1",
+    timezone: "UTC",
+    parentProposalId: null,
+    aiRef: "ai-1",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    proposedTaskIds: [id2, id1], // different order → same fingerprint (stable sorted)
+    idempotencyKey: "idem-strict-1",
+    timezone: "UTC",
+    parentProposalId: null,
+    aiRef: "ai-1",
+  });
+  assert.equal(second.ok, true);
+  if (!second.ok) return;
+  assert.equal(first.data.id, second.data.id);
+  assert.equal(repo.getAllForOwner(ACTOR_A).length, 1);
+});
+
+test("Idempotency strict: same key different tasks → conflict", async () => {
+  const id1 = randomUUID();
+  const id2 = randomUUID();
+  const id3 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  for (const id of [id1, id2, id3]) tasks.set(id, makeTaskRow({ id, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-tasks",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id2],
+    idempotencyKey: "idem-conflict-tasks",
+  });
+  assert.equal(second.ok, false);
+  if (second.ok) return;
+  assert.match(second.errorMessage, /Idempotency key conflict/);
+  assert.equal(repo.getAllForOwner(ACTOR_A).length, 1);
+});
+
+test("Idempotency strict: same key different localDate → conflict", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-date",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-11",
+    timeContextId: "2026-08-11::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-date",
+  });
+  assert.equal(second.ok, false);
+  assert.match(second.errorMessage, /Idempotency key conflict/);
+});
+
+test("Idempotency strict: same key different timeContextId → conflict", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-tc",
+    timezone: "UTC",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T04:00:00.000Z",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-tc",
+    timezone: "UTC",
+  });
+  assert.equal(second.ok, false);
+  assert.match(second.errorMessage, /Idempotency key conflict/);
+});
+
+test("Idempotency strict: same key different parent → conflict", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const parent1 = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "parent-1",
+  });
+  assert.equal(parent1.ok, true);
+  if (!parent1.ok) return;
+  const parent2 = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "parent-2",
+  });
+  assert.equal(parent2.ok, true);
+  if (!parent2.ok) return;
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-parent",
+    parentProposalId: parent1.data.id,
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-parent",
+    parentProposalId: parent2.data.id,
+  });
+  assert.equal(second.ok, false);
+  assert.match(second.errorMessage, /Idempotency key conflict/);
+});
+
+test("Idempotency strict: same key different aiRef → conflict", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-ai",
+    aiRef: "ai-1",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-ai",
+    aiRef: "ai-2",
+  });
+  assert.equal(second.ok, false);
+  assert.match(second.errorMessage, /Idempotency key conflict/);
+});
+
+test("Idempotency strict: same key different timezone → conflict", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const first = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-tz",
+    timezone: "UTC",
+  });
+  assert.equal(first.ok, true);
+  if (!first.ok) return;
+
+  const second = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::America/New_York::2026-08-10T04:00:00.000Z",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-conflict-tz",
+    timezone: "America/New_York",
+  });
+  assert.equal(second.ok, false);
+  assert.match(second.errorMessage, /Idempotency key conflict/);
+});
+
+test("Idempotency concurrent: two identical creates race → one logical proposal (one writer)", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const payload = {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-concurrent-identical",
+  };
+
+  const [a, b] = await Promise.all([
+    createOperatorProposal(ACTOR_A, repo, lookup, payload),
+    createOperatorProposal(ACTOR_A, repo, lookup, payload),
+  ]);
+
+  assert.equal(a.ok, true);
+  assert.equal(b.ok, true);
+  if (!a.ok || !b.ok) return;
+  assert.equal(a.data.id, b.data.id);
+  assert.equal(repo.getAllForOwner(ACTOR_A).length, 1);
+});
+
+test("Idempotency concurrent: same key different payload race → one wins, other conflict", async () => {
+  const id1 = randomUUID();
+  const id2 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  for (const id of [id1, id2]) tasks.set(id, makeTaskRow({ id, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const payloadA = {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "idem-concurrent-diff",
+  };
+  const payloadB = {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id2],
+    idempotencyKey: "idem-concurrent-diff",
+  };
+
+  const [a, b] = await Promise.all([
+    createOperatorProposal(ACTOR_A, repo, lookup, payloadA),
+    createOperatorProposal(ACTOR_A, repo, lookup, payloadB),
+  ]);
+
+  // One must succeed, one must be conflict
+  const successes = [a, b].filter((r) => r.ok);
+  const failures = [a, b].filter((r) => !r.ok);
+  assert.equal(successes.length, 1);
+  assert.equal(failures.length, 1);
+  assert.match((failures[0] as { ok: false; errorMessage: string }).errorMessage, /Idempotency key conflict/);
+  assert.equal(repo.getAllForOwner(ACTOR_A).length, 1);
+});
+
+test("Idempotency revise: same key same revise payload → same result, different → conflict", async () => {
+  const id1 = randomUUID();
+  const id2 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  for (const id of [id1, id2]) tasks.set(id, makeTaskRow({ id, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+
+  const parent = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "revise-parent",
+  });
+  assert.equal(parent.ok, true);
+  if (!parent.ok) return;
+
+  const firstRevise = await reviseOperatorProposal(ACTOR_A, repo, lookup, {
+    proposalId: parent.data.id,
+    proposedTaskIds: [id2],
+    idempotencyKey: "revise-key-1",
+    aiRef: "ai-1",
+  });
+  assert.equal(firstRevise.ok, true);
+  if (!firstRevise.ok) return;
+
+  const secondSame = await reviseOperatorProposal(ACTOR_A, repo, lookup, {
+    proposalId: parent.data.id,
+    proposedTaskIds: [id2],
+    idempotencyKey: "revise-key-1",
+    aiRef: "ai-1",
+  });
+  assert.equal(secondSame.ok, true);
+  if (!secondSame.ok) return;
+  assert.equal(firstRevise.data.id, secondSame.data.id);
+
+  const different = await reviseOperatorProposal(ACTOR_A, repo, lookup, {
+    proposalId: parent.data.id,
+    proposedTaskIds: [id1],
+    idempotencyKey: "revise-key-1",
+    aiRef: "ai-1",
+  });
+  assert.equal(different.ok, false);
+  assert.match(different.errorMessage, /Idempotency key conflict/);
+});
+
+test("Fingerprint is deterministic and stable across task order shuffle (no timestamp)", async () => {
+  const { computeCreateProposalRequestFingerprint } = await import("../src/operator/lifecycle");
+  const fp1 = computeCreateProposalRequestFingerprint({
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    timezone: "UTC",
+    proposedTaskIds: ["b", "a", "c"],
+    parentProposalId: null,
+    aiRef: "ref-1",
+  });
+  const fp2 = computeCreateProposalRequestFingerprint({
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    timezone: "UTC",
+    proposedTaskIds: ["a", "c", "b"],
+    parentProposalId: null,
+    aiRef: "ref-1",
+  });
+  assert.equal(fp1, fp2);
+  // Different aiRef → different fingerprint
+  const fp3 = computeCreateProposalRequestFingerprint({
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC::2026-08-10T00:00:00.000Z",
+    timezone: "UTC",
+    proposedTaskIds: ["a", "b", "c"],
+    parentProposalId: null,
+    aiRef: "ref-2",
+  });
+  assert.notEqual(fp1, fp3);
 });
