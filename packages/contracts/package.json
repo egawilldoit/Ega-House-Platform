@@ -9,7 +9,8 @@
     "./agent": "./src/agent.ts",
     "./common/task-list": "./src/common/task-list.ts",
     "./time-context": "./src/time-context.ts",
-    "./execution-evidence": "./src/execution-evidence.ts"
+    "./execution-evidence": "./src/execution-evidence.ts",
+    "./weekly-review": "./src/weekly-review.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

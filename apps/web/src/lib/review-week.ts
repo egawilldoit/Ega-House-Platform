@@ -1,3 +1,12 @@
+/**
+ * Review week helpers — canonical delegation.
+ * The single source of truth for week bounds is @ega/domain/time-context
+ * (canonical timezone-aware). This module preserves the existing web import
+ * path but delegates to the domain so no second source exists.
+ */
+
+import { getWeekWindow as getDomainWeekWindow } from "@ega/domain";
+
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
@@ -16,32 +25,21 @@ export function isIsoDate(value: string) {
 }
 
 export function getWeekBounds(weekOf: string) {
-  const parsed = new Date(`${weekOf}T00:00:00.000Z`);
-
-  if (Number.isNaN(parsed.getTime())) {
+  if (!isIsoDate(weekOf)) return null;
+  try {
+    const window = getDomainWeekWindow("UTC", weekOf);
+    return { weekStart: window.weekStart, weekEnd: window.weekEnd };
+  } catch {
     return null;
   }
-
-  const day = parsed.getUTCDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-
-  const weekStart = new Date(parsed);
-  weekStart.setUTCDate(parsed.getUTCDate() + diffToMonday);
-
-  const weekEnd = new Date(weekStart);
-  weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
-
-  return {
-    weekStart: toIsoDate(weekStart),
-    weekEnd: toIsoDate(weekEnd),
-  };
 }
 
 export function getWeekWindow(weekStart: string, weekEnd: string) {
+  // Domain expects a single date within the week; use weekStart as anchor.
+  // UTC is preserved for backward compatibility where weekStart/weekEnd are already resolved.
   const startIso = `${weekStart}T00:00:00.000Z`;
   const endExclusiveDate = new Date(`${weekEnd}T00:00:00.000Z`);
   endExclusiveDate.setUTCDate(endExclusiveDate.getUTCDate() + 1);
-
   return {
     startIso,
     endExclusiveIso: `${toIsoDate(endExclusiveDate)}T00:00:00.000Z`,

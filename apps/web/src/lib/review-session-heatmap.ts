@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/database.types";
 import { getTodayIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
+import {
+  calculateExecutionEvidenceForWindow,
+  type ExecutionEvidenceSessionRow,
+} from "@ega/application/shared/execution-evidence";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -73,6 +77,11 @@ export function buildUtcDateSeries(startDate: string, endDate: string) {
   return dates;
 }
 
+/**
+ * Daily aggregation now delegates to the shared execution-evidence model for
+ * window overlap semantics. This wrapper preserves the existing web import path
+ * while ensuring no second source.
+ */
 export function aggregateDailyTrackedSeconds(
   sessions: SessionRangeRow[],
   window: DailyTrackedWindow,
@@ -84,49 +93,23 @@ export function aggregateDailyTrackedSeconds(
     return [];
   }
 
-  const rangeStartMs = parseIso(window.startIso);
-  const rangeEndExclusiveMs = parseIso(window.endExclusiveIso);
-  const nowMs = parseIso(nowIso);
+  const execSessions: ExecutionEvidenceSessionRow[] = sessions.map((s, idx) => ({
+    id: `s-${idx}`,
+    task_id: `task-${idx}`,
+    started_at: s.started_at,
+    ended_at: s.ended_at,
+    duration_seconds: null,
+    tasks: null,
+  }));
 
-  if (rangeStartMs === null || rangeEndExclusiveMs === null || nowMs === null) {
-    return dateSeries.map((date) => ({ date, trackedSeconds: 0 }));
-  }
+  const evidence = calculateExecutionEvidenceForWindow(
+    execSessions,
+    { startIso: window.startIso, endIso: window.endExclusiveIso },
+    { nowIso, includeOpenSessions: true },
+  );
 
-  const totals = new Map<string, number>();
-
-  for (const session of sessions) {
-    const rawStartMs = parseIso(session.started_at);
-    const rawEndMs = parseIso(session.ended_at ?? nowIso);
-
-    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) {
-      continue;
-    }
-
-    const overlapStartMs = Math.max(rawStartMs, rangeStartMs);
-    const overlapEndMs = Math.min(rawEndMs, rangeEndExclusiveMs);
-
-    if (overlapEndMs <= overlapStartMs) {
-      continue;
-    }
-
-    let cursorMs = overlapStartMs;
-
-    while (cursorMs < overlapEndMs) {
-      const dayStartMs = startOfUtcDayMs(cursorMs);
-      const dayEndMs = dayStartMs + DAY_IN_MS;
-      const segmentEndMs = Math.min(overlapEndMs, dayEndMs);
-      const segmentSeconds = Math.floor((segmentEndMs - cursorMs) / 1000);
-
-      if (segmentSeconds > 0) {
-        const dayKey = toIsoDate(new Date(dayStartMs));
-        totals.set(dayKey, (totals.get(dayKey) ?? 0) + segmentSeconds);
-      }
-
-      cursorMs = segmentEndMs;
-    }
-  }
-
-  return dateSeries.map((date) => ({ date, trackedSeconds: totals.get(date) ?? 0 }));
+  const byDay = evidence.trackedSecondsByDay;
+  return dateSeries.map((date) => ({ date, trackedSeconds: byDay.get(date) ?? 0 }));
 }
 
 export async function getRecentDailyTrackedTime(
