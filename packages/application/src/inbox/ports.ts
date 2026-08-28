@@ -108,4 +108,14 @@ export interface InboxRepository {
     actor: AuthenticatedActor,
     inboxItemId: string,
   ): Promise<RepositoryResult<InboxRecord>>;
+  /**
+   * Orphan reconciliation: find a recent task that was created for this inbox
+   * but whose link failed. Owner-scoped and time-bounded to avoid overly broad reuse.
+   * Returns the most recent candidate task id that matches title/project and is still
+   * unlinked (not present in task_external_refs), or null if none.
+   */
+  findRecentOrphanTaskId(
+    actor: AuthenticatedActor,
+    input: Readonly<{ title: string; projectId: string | null; sinceIso: string }>,
+  ): Promise<RepositoryResult<string | null>>;
 }

@@ -153,6 +153,83 @@ export async function convertInboxItemToTask(
     }
   }
 
+  // 5a. Orphan reconciliation before creating new task (EGA-507)
+  // If a prior convert created a Task but failed to persist the link,
+  // a retry would otherwise create a second Task (duplicate). Check for
+  // a recent unlinked task with matching title/project owned by this actor,
+  // time-bounded to 5 minutes to avoid overly broad reuse.
+  const nowForOrphan = options?.now ?? new Date();
+  const sinceIso = new Date(nowForOrphan.getTime() - 5 * 60 * 1000).toISOString();
+  const rawRemindAtEarly = input.remindAt !== undefined ? String(input.remindAt ?? "").trim() : "";
+  try {
+    const orphanLookup = await inboxRepository.findRecentOrphanTaskId(actor, {
+      title: effectiveTitle,
+      projectId: effectiveProjectId,
+      sinceIso,
+    });
+    if (orphanLookup.ok && orphanLookup.value) {
+      const orphanId = orphanLookup.value;
+      const linkOrphan = await inboxRepository.createInboxTaskLink(actor, {
+        inboxItemId,
+        taskId: orphanId,
+      });
+      if (linkOrphan.ok) {
+        const taskResult = await tasksRepository.getTask(actor, orphanId);
+        if (taskResult.ok && taskResult.value) {
+          let reconciledTask = taskResult.value;
+          // Handle reminder for reconciled orphan if requested (same validation as fresh path)
+          if (rawRemindAtEarly) {
+            const remindDate = new Date(rawRemindAtEarly);
+            if (!Number.isNaN(remindDate.getTime()) && remindDate.getTime() > nowForOrphan.getTime()) {
+              const reminderResult = await tasksRepository.createReminder(actor, {
+                taskId: orphanId,
+                remindAt: remindDate.toISOString(),
+                channel: "email",
+                status: "pending",
+              });
+              if (reminderResult.ok) {
+                reconciledTask = reminderResult.value;
+              } else {
+                // If reminder creation fails, still mark converted with original orphan task
+                // Caller will get failure on reminder but orphan is already linked to prevent duplicate
+                // For now, treat as failure to keep contract consistent with fresh path
+                return applicationFailure("Unable to create reminder right now.");
+              }
+            } else if (Number.isNaN(remindDate.getTime())) {
+              return applicationFailure("Reminder time is invalid.");
+            } else if (remindDate.getTime() <= nowForOrphan.getTime()) {
+              return applicationFailure("Reminder time must be in the future.");
+            }
+          }
+          const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
+          if (markResult.ok) {
+            return applicationSuccess({ inboxItem: markResult.value, task: reconciledTask });
+          }
+          return applicationSuccess({ inboxItem, task: reconciledTask });
+        }
+      } else {
+        const isOrphanConflict = (linkOrphan.error as any)?.code === "conflict";
+        if (isOrphanConflict) {
+          const existingTaskIdResult = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
+          if (existingTaskIdResult.ok && existingTaskIdResult.value) {
+            const existingTaskResult = await tasksRepository.getTask(actor, existingTaskIdResult.value);
+            if (existingTaskResult.ok && existingTaskResult.value) {
+              const markResult = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
+              if (markResult.ok) {
+                return applicationSuccess({ inboxItem: markResult.value, task: existingTaskResult.value });
+              }
+              return applicationSuccess({ inboxItem, task: existingTaskResult.value });
+            }
+          }
+          return applicationFailure("Idea is already converted.");
+        }
+        // Non-conflict orphan link failure -> fall through to fresh creation
+      }
+    }
+  } catch {
+    // Best-effort reconciliation; ignore errors and proceed to fresh creation
+  }
+
   // 5. Create task via canonical use case (reuse)
   const taskCreateResult = await createTask(actor, tasksRepository, {
     title: effectiveTitle,
@@ -199,9 +276,7 @@ export async function convertInboxItemToTask(
     }
     // Non-conflict failure: task was created but link failed -> inbox remains recoverable
     // Do not mark converted; return failure with reason, allowing retry to reconcile.
-    // On next retry, we will find no link and attempt to create again, but to avoid duplicate we should check for recent orphan?
-    // For now, return failure; caller can retry and we will attempt to create new task (potential duplicate).
-    // To improve reconciliation, we attempt to see if link now exists (maybe transient)
+    // Attempt to see if link now exists (maybe transient)
     const retryLink = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
     if (retryLink.ok && retryLink.value) {
       const taskRetry = await tasksRepository.getTask(actor, retryLink.value);
@@ -210,6 +285,48 @@ export async function convertInboxItemToTask(
         if (markRetry.ok) return applicationSuccess({ inboxItem: markRetry.value, task: taskRetry.value });
         return applicationSuccess({ inboxItem, task: taskRetry.value });
       }
+    }
+    // Orphan reconciliation after link failure: look for a different recent unlinked task
+    // that could be the orphan from this or a previous attempt. The pre-creation check
+    // on the next retry will handle the common case, but we also try here to
+    // avoid leaving an additional orphan when a prior orphan exists alongside
+    // the just-created task.
+    try {
+      const orphanAfter = await inboxRepository.findRecentOrphanTaskId(actor, {
+        title: effectiveTitle,
+        projectId: effectiveProjectId,
+        sinceIso,
+      });
+      if (orphanAfter.ok && orphanAfter.value && orphanAfter.value !== createdTask.id) {
+        const orphanId2 = orphanAfter.value;
+        const linkOrphan2 = await inboxRepository.createInboxTaskLink(actor, {
+          inboxItemId,
+          taskId: orphanId2,
+        });
+        if (linkOrphan2.ok) {
+          const taskOrphan2 = await tasksRepository.getTask(actor, orphanId2);
+          if (taskOrphan2.ok && taskOrphan2.value) {
+            let reconciled2 = taskOrphan2.value;
+            if (rawRemindAtEarly) {
+              const remindDate2 = new Date(rawRemindAtEarly);
+              if (!Number.isNaN(remindDate2.getTime()) && remindDate2.getTime() > nowForOrphan.getTime()) {
+                const rem2 = await tasksRepository.createReminder(actor, {
+                  taskId: orphanId2,
+                  remindAt: remindDate2.toISOString(),
+                  channel: "email",
+                  status: "pending",
+                });
+                if (rem2.ok) reconciled2 = rem2.value;
+              }
+            }
+            const mark2 = await inboxRepository.markInboxItemConverted(actor, inboxItemId);
+            if (mark2.ok) return applicationSuccess({ inboxItem: mark2.value, task: reconciled2 });
+            return applicationSuccess({ inboxItem, task: reconciled2 });
+          }
+        }
+      }
+    } catch {
+      // ignore orphan lookup errors
     }
     return applicationFailure("Unable to link converted task right now.");
   }

@@ -97,6 +97,19 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
+async function getAuthenticatedUserId(supabase: SupabaseServerClient): Promise<string | null> {
+  if (!("auth" in supabase) || typeof (supabase as any).auth?.getUser !== "function") {
+    return null;
+  }
+  try {
+    const { data, error } = await (supabase as any).auth.getUser();
+    if (error) return null;
+    return (data as any)?.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function normalizeIdeaNoteInput(input: CreateIdeaNoteInput) {
   const title = String(input.title ?? "").trim();
   const body = String(input.body ?? "").trim();
@@ -238,12 +251,13 @@ export async function createIdeaNote(
       return { errorMessage: "Idempotency key is invalid.", data: null };
     }
     idempotencyKey = rawIdempotency;
-    // Check for existing mapping
-    const { data: existingKeyRow, error: existingKeyError } = await (supabase as any)
-      .from("inbox_idempotency_keys")
-      .select("inbox_item_id")
-      .eq("key", idempotencyKey)
-      .maybeSingle();
+    // Check for existing mapping (owner-scoped for EGA-507; RLS is defense-in-depth)
+    const ownerIdForLookup = await getAuthenticatedUserId(supabase);
+    const existingLookup = (supabase as any).from("inbox_idempotency_keys").select("inbox_item_id").eq("key", idempotencyKey);
+    const { data: existingKeyRow, error: existingKeyError } = await (ownerIdForLookup
+      ? existingLookup.eq("owner_user_id", ownerIdForLookup)
+      : existingLookup
+    ).maybeSingle();
     if (existingKeyError) {
       // best-effort: if lookup fails, proceed to create (will attempt insert dedup)
     } else if (existingKeyRow) {
@@ -297,22 +311,20 @@ export async function createIdeaNote(
   }
 
   if (idempotencyKey) {
-    const { error: linkError } = await (supabase as any)
-      .from("inbox_idempotency_keys")
-      .insert({
-        key: idempotencyKey,
-        inbox_item_id: (data as any).id,
-      });
+    const ownerIdForInsert = await getAuthenticatedUserId(supabase);
+    const insertPayload: Record<string, unknown> = {
+      key: idempotencyKey,
+      inbox_item_id: (data as any).id,
+    };
+    if (ownerIdForInsert) insertPayload.owner_user_id = ownerIdForInsert;
+    const { error: linkError } = await (supabase as any).from("inbox_idempotency_keys").insert(insertPayload);
     if (linkError) {
       const isDuplicate =
         String((linkError as any).code ?? "").includes("23505") ||
         /duplicate|unique/i.test(String(linkError.message ?? ""));
       if (isDuplicate) {
-        const { data: dupRow } = await (supabase as any)
-          .from("inbox_idempotency_keys")
-          .select("inbox_item_id")
-          .eq("key", idempotencyKey)
-          .maybeSingle();
+        const dupLookup = (supabase as any).from("inbox_idempotency_keys").select("inbox_item_id").eq("key", idempotencyKey);
+        const { data: dupRow } = await (ownerIdForInsert ? dupLookup.eq("owner_user_id", ownerIdForInsert) : dupLookup).maybeSingle();
         const dupId = String((dupRow as any)?.inbox_item_id ?? "");
         if (dupId) {
           const { data: dupNote } = await supabase

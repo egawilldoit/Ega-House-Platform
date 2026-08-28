@@ -74,9 +74,13 @@ class FakeInboxRepository implements InboxRepository {
   createLinkShouldFail: RepositoryResult<void> | null = null;
   markConvertedShouldFail = false;
   inboxStore: Map<string, InboxRecord> = new Map();
+  // For orphan reconciliation: track linked ids and reference to tasks repo
+  linkedTaskIds: Set<string> = new Set();
+  tasksRepo?: FakeTasksRepository;
 
-  constructor() {
+  constructor(tasksRepo?: FakeTasksRepository) {
     this.inboxStore.set("inbox-1", inboxRecord());
+    if (tasksRepo) this.tasksRepo = tasksRepo;
   }
 
   async getScope(actor: AuthenticatedActor) {
@@ -116,6 +120,7 @@ class FakeInboxRepository implements InboxRepository {
       return conflict();
     }
     this.taskLink = input.taskId;
+    this.linkedTaskIds.add(input.taskId);
     return ok(undefined);
   }
   async markInboxItemConverted(actor: AuthenticatedActor, inboxItemId: string) {
@@ -128,6 +133,42 @@ class FakeInboxRepository implements InboxRepository {
     this.inboxItem = updated;
     return ok(updated);
   }
+  async findRecentOrphanTaskId(
+    actor: AuthenticatedActor,
+    input: { title: string; projectId: string | null; sinceIso: string },
+  ): Promise<RepositoryResult<string | null>> {
+    this.calls.push({ method: "findRecentOrphanTaskId", args: input, actor: actor.userId });
+    // Owner-scoped: other actor sees nothing
+    if (actor.userId === "user-999") return ok(null);
+    const repo = this.tasksRepo;
+    if (!repo) return ok(null);
+    const title = String(input.title ?? "").trim();
+    const projectId = input.projectId ? String(input.projectId).trim() : null;
+    const sinceIso = String(input.sinceIso ?? "").trim();
+    if (!title || !sinceIso) return ok(null);
+    const sinceMs = Date.parse(sinceIso);
+    if (Number.isNaN(sinceMs)) return ok(null);
+    let candidates: Array<{ id: string; createdAt: string }> = [];
+    for (const [id, rec] of repo.taskStore.entries()) {
+      const owner = repo.taskOwner.get(id);
+      if (owner && owner !== actor.userId) continue;
+      // Owner-scoped via taskOwner, but also ensure title/project match
+      if (rec.title !== title) continue;
+      if (projectId) {
+        if (rec.projectId !== projectId) continue;
+      } else {
+        if (rec.projectId) continue;
+      }
+      const createdAt = (rec as any).createdAt ?? (rec as any).updatedAt ?? new Date().toISOString();
+      const createdMs = Date.parse(String(createdAt));
+      if (Number.isNaN(createdMs) || createdMs <= sinceMs) continue;
+      if (this.linkedTaskIds.has(id) || this.taskLink === id) continue;
+      candidates.push({ id, createdAt: String(createdAt) });
+    }
+    if (candidates.length === 0) return ok(null);
+    candidates.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return ok(candidates[0].id);
+  }
 }
 
 class FakeTasksRepository implements TasksRepository {
@@ -137,11 +178,14 @@ class FakeTasksRepository implements TasksRepository {
     goals: [{ id: GOAL_ID, projectId: PROJECT_ID }],
   });
   taskStore: Map<string, TaskRecord> = new Map();
+  taskOwner: Map<string, string> = new Map();
   createShouldFail = false;
   getTaskShouldFail = false;
 
   constructor() {
-    this.taskStore.set("task-1", taskRecord());
+    const initial = taskRecord({ id: "task-1", createdAt: new Date().toISOString() } as any);
+    this.taskStore.set("task-1", initial);
+    this.taskOwner.set("task-1", ACTOR.userId);
   }
 
   async getScope(actor: AuthenticatedActor) {
@@ -162,8 +206,9 @@ class FakeTasksRepository implements TasksRepository {
     this.calls.push({ method: "createTask", args: input, actor: actor.userId });
     if (this.createShouldFail) return fail();
     if (actor.userId === "user-999") return fail();
-    // Simulate creation with generated id
+    // Simulate creation with generated id and owner/time tracking for orphan test
     const id = `task-${this.taskStore.size + 1}`;
+    const nowIso = new Date().toISOString();
     const record = taskRecord({
       id,
       title: input.title,
@@ -172,8 +217,11 @@ class FakeTasksRepository implements TasksRepository {
       goalId: input.goalId,
       priority: input.priority,
       dueDate: input.dueDate,
-    });
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    } as any);
     this.taskStore.set(id, record);
+    this.taskOwner.set(id, actor.userId);
     return ok(record);
   }
   async updateTask() { return ok(taskRecord()); }
@@ -247,8 +295,8 @@ test("same approved conversion does not create second Task (idempotency)", async
 });
 
 test("failed link leaves inbox recoverable and reports reason; retry reconciles to existing Task", async () => {
-  const inboxRepo = new FakeInboxRepository();
   const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
   inboxRepo.inboxItem = inboxRecord({ id: "inbox-2", title: "Recoverable" });
   inboxRepo.inboxStore.set("inbox-2", inboxRepo.inboxItem);
   // Simulate link failure on first attempt
@@ -260,21 +308,77 @@ test("failed link leaves inbox recoverable and reports reason; retry reconciles 
   // Inbox should still not be converted (recoverable)
   const afterFail = inboxRepo.inboxStore.get("inbox-2")!;
   assert.equal(afterFail.status !== "converted", true);
+  const createCountAfterFirst = tasksRepo.calls.filter((c) => c.method === "createTask").length;
+  assert.equal(createCountAfterFirst, 1);
+  // Capture orphan id (the task created despite link failure)
+  const orphanTaskId = Array.from(tasksRepo.taskStore.keys()).find((id) => id !== "task-1" && !inboxRepo.linkedTaskIds.has(id))!;
+  assert.ok(orphanTaskId, "orphan task should exist after link failure");
 
-  // Second attempt: link should succeed now, but we have an orphan task created in first attempt
-  // Our fake tasks repo has created a task; inbox taskLink is still null (failed), so second attempt will try to create another task
-  // To test recoverable, we need to simulate that first orphan task is found via alternative path
-  // For now we verify that second attempt after fixing link still results in a task, and inbox becomes converted after retry succeeds
+  // Second attempt: link should succeed now; should reconcile to orphan, not create second task (EGA-507)
   inboxRepo.createLinkShouldFail = null;
-  // Reset taskLink? Actually first attempt created task but didn't link; second attempt will create new task; we need to ensure reconciliation would use existing?
-  // For this test, we expect at most one linked task, but orphan may exist; we check that inbox becomes converted on retry
   const second = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-2" });
-  // Since our current simple implementation will create a second task when link previously failed, this will succeed but create second task
-  // The ideal reconciled behavior would be to not create second, but we accept that second creates new and links
-  // Verify inbox is converted after successful retry
-  // This test documents current recoverable behavior (inbox not stuck)
   assert.equal(second.ok, true);
   assert.equal((second as any).data.inboxItem.status, "converted");
+  assert.equal((second as any).data.task.id, orphanTaskId, "retry should reuse orphan task id, not create second");
+  const createCountAfterSecond = tasksRepo.calls.filter((c) => c.method === "createTask").length;
+  assert.equal(createCountAfterSecond, createCountAfterFirst, "should not create second task when orphan exists");
+  assert.equal(inboxRepo.taskLink, orphanTaskId);
+});
+
+test("orphan reconciliation is owner-scoped: other owner's task not reused", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  const otherTaskId = "task-other";
+  const nowIso = new Date().toISOString();
+  tasksRepo.taskStore.set(
+    otherTaskId,
+    taskRecord({ id: otherTaskId, title: "Recoverable", projectId: PROJECT_ID, createdAt: nowIso, updatedAt: nowIso } as any),
+  );
+  tasksRepo.taskOwner.set(otherTaskId, OTHER_ACTOR.userId);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-2", title: "Recoverable" });
+  inboxRepo.inboxStore.set("inbox-2", inboxRepo.inboxItem);
+  const result = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-2" });
+  assert.equal(result.ok, true);
+  assert.notEqual((result as any).data.task.id, otherTaskId, "should not reuse other owner's orphan");
+  // Ensure a new task was created for ACTOR
+  const createdForActor = tasksRepo.calls.filter((c) => c.method === "createTask" && c.actor === ACTOR.userId).length;
+  assert.equal(createdForActor, 1);
+});
+
+test("orphan reconciliation is time-bounded: old tasks not reused", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  const oldId = "task-old";
+  const oldIso = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  tasksRepo.taskStore.set(
+    oldId,
+    taskRecord({ id: oldId, title: "Recoverable", projectId: PROJECT_ID, createdAt: oldIso, updatedAt: oldIso } as any),
+  );
+  tasksRepo.taskOwner.set(oldId, ACTOR.userId);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-2", title: "Recoverable" });
+  inboxRepo.inboxStore.set("inbox-2", inboxRepo.inboxItem);
+  const now = new Date();
+  const result = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-2" }, { now });
+  assert.equal(result.ok, true);
+  assert.notEqual((result as any).data.task.id, oldId, "old orphan beyond 5m window should not be reused");
+  assert.ok(tasksRepo.calls.some((c) => c.method === "createTask"), "should create new task when only old orphan exists");
+});
+
+test("orphan scan is narrowly scoped by title: different title not reused", async () => {
+  const tasksRepo = new FakeTasksRepository();
+  const inboxRepo = new FakeInboxRepository(tasksRepo);
+  const otherTitleId = "task-other-title";
+  const nowIso = new Date().toISOString();
+  tasksRepo.taskStore.set(
+    otherTitleId,
+    taskRecord({ id: otherTitleId, title: "Different title", projectId: PROJECT_ID, createdAt: nowIso, updatedAt: nowIso } as any),
+  );
+  tasksRepo.taskOwner.set(otherTitleId, ACTOR.userId);
+  inboxRepo.inboxItem = inboxRecord({ id: "inbox-2", title: "Recoverable" });
+  inboxRepo.inboxStore.set("inbox-2", inboxRepo.inboxItem);
+  const result = await convertInboxItemToTask(ACTOR, inboxRepo, tasksRepo, { inboxItemId: "inbox-2" });
+  assert.equal(result.ok, true);
+  assert.notEqual((result as any).data.task.id, otherTitleId);
 });
 
 test("archive/keep transitions remain explicit and owner-scoped", async () => {
