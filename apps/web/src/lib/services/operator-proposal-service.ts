@@ -5,9 +5,15 @@ import {
   createOperatorProposal,
   dismissOperatorProposal,
   getOperatorStoredProposal,
+  resolveTimeContext,
 } from "@ega/application";
-import { SupabaseOperatorProposalRepository, SupabaseTasksRepository } from "@ega/data-access";
+import {
+  SupabaseOperatorProposalRepository,
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+} from "@ega/data-access";
 import { createClient } from "@/lib/supabase/server";
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -31,47 +37,56 @@ function todayMutation(client: SupabaseServerClient) {
 
 export async function createOperatorProposalData(input: {
   supabase?: SupabaseServerClient;
-  actorId?: string;
-  localDate: string;
-  timeContextId: string;
   proposedTaskIds: string[];
   idempotencyKey: string;
   parentProposalId?: string | null;
   aiRef?: string | null;
-  timezone?: string;
+  requestedTimezone?: string;
+  now?: Date;
 }) {
   const supabase = input.supabase ?? (await createClient());
-  let actorId = input.actorId ?? null;
-  if (!actorId) {
-    const { data } = await supabase.auth.getUser();
-    actorId = data.user?.id ?? null;
+  let user;
+  try {
+    user = await requireAuthenticatedUser({ supabase });
+  } catch {
+    return { data: null as unknown, errorMessage: "Authentication required." };
   }
-  if (!actorId) return { data: null as unknown, errorMessage: "Authentication required." };
-  const actor = createAuthenticatedActor(actorId);
+  const actor = createAuthenticatedActor(user.id);
+  // Resolve canonical Time Context: evidence-based localDate/timeContextId
+  const timeContextRepo = new SupabaseTimeContextRepository(supabase as never);
+  const tcResult = await resolveTimeContext(actor, timeContextRepo, {
+    requestedTimezone: input.requestedTimezone,
+    now: input.now ?? new Date(),
+  });
+  if (!tcResult.ok) return { data: null, errorMessage: tcResult.errorMessage };
+  const tc = tcResult.data;
+  const localDate = tc.localDate;
+  const timezone = tc.timezone;
+  const timeContextId = `${localDate}::${timezone}::${tc.dayWindow.startUtcIso}`;
   const repo = new SupabaseOperatorProposalRepository(supabase as never);
   const lookup = taskLookup(supabase);
   const result = await createOperatorProposal(actor, repo, lookup, {
-    localDate: input.localDate,
-    timeContextId: input.timeContextId,
+    localDate,
+    timeContextId,
     proposedTaskIds: input.proposedTaskIds,
     idempotencyKey: input.idempotencyKey,
     parentProposalId: input.parentProposalId ?? null,
     aiRef: input.aiRef ?? null,
-    timezone: input.timezone,
+    timezone,
   });
   if (!result.ok) return { data: null, errorMessage: result.errorMessage };
   return { data: result.data, errorMessage: null };
 }
 
-export async function approveOperatorProposalData(input: { supabase?: SupabaseServerClient; actorId?: string; proposalId: string }) {
+export async function approveOperatorProposalData(input: { supabase?: SupabaseServerClient; proposalId: string }) {
   const supabase = input.supabase ?? (await createClient());
-  let actorId = input.actorId ?? null;
-  if (!actorId) {
-    const { data } = await supabase.auth.getUser();
-    actorId = data.user?.id ?? null;
+  let user;
+  try {
+    user = await requireAuthenticatedUser({ supabase });
+  } catch {
+    return { data: null, errorMessage: "Authentication required." };
   }
-  if (!actorId) return { data: null, errorMessage: "Authentication required." };
-  const actor = createAuthenticatedActor(actorId);
+  const actor = createAuthenticatedActor(user.id);
   const repo = new SupabaseOperatorProposalRepository(supabase as never);
   const lookup = taskLookup(supabase);
   const result = await approveOperatorProposal(actor, repo, lookup, { proposalId: input.proposalId });
@@ -81,18 +96,17 @@ export async function approveOperatorProposalData(input: { supabase?: SupabaseSe
 
 export async function applyApprovedOperatorProposalData(input: {
   supabase?: SupabaseServerClient;
-  actorId?: string;
   proposalId: string;
   taskIds?: string[];
 }) {
   const supabase = input.supabase ?? (await createClient());
-  let actorId = input.actorId ?? null;
-  if (!actorId) {
-    const { data } = await supabase.auth.getUser();
-    actorId = data.user?.id ?? null;
+  let user;
+  try {
+    user = await requireAuthenticatedUser({ supabase });
+  } catch {
+    return { data: null, errorMessage: "Authentication required." };
   }
-  if (!actorId) return { data: null, errorMessage: "Authentication required." };
-  const actor = createAuthenticatedActor(actorId);
+  const actor = createAuthenticatedActor(user.id);
   const repo = new SupabaseOperatorProposalRepository(supabase as never);
   const lookup = taskLookup(supabase);
   const mutation = todayMutation(supabase);
@@ -104,30 +118,30 @@ export async function applyApprovedOperatorProposalData(input: {
   return { data: result.data, errorMessage: null };
 }
 
-export async function dismissOperatorProposalData(input: { supabase?: SupabaseServerClient; actorId?: string; proposalId: string }) {
+export async function dismissOperatorProposalData(input: { supabase?: SupabaseServerClient; proposalId: string }) {
   const supabase = input.supabase ?? (await createClient());
-  let actorId = input.actorId ?? null;
-  if (!actorId) {
-    const { data } = await supabase.auth.getUser();
-    actorId = data.user?.id ?? null;
+  let user;
+  try {
+    user = await requireAuthenticatedUser({ supabase });
+  } catch {
+    return { data: null, errorMessage: "Authentication required." };
   }
-  if (!actorId) return { data: null, errorMessage: "Authentication required." };
-  const actor = createAuthenticatedActor(actorId);
+  const actor = createAuthenticatedActor(user.id);
   const repo = new SupabaseOperatorProposalRepository(supabase as never);
   const result = await dismissOperatorProposal(actor, repo, { proposalId: input.proposalId });
   if (!result.ok) return { data: null, errorMessage: result.errorMessage };
   return { data: result.data, errorMessage: null };
 }
 
-export async function getOperatorProposalData(input: { supabase?: SupabaseServerClient; actorId?: string; proposalId: string }) {
+export async function getOperatorProposalData(input: { supabase?: SupabaseServerClient; proposalId: string }) {
   const supabase = input.supabase ?? (await createClient());
-  let actorId = input.actorId ?? null;
-  if (!actorId) {
-    const { data } = await supabase.auth.getUser();
-    actorId = data.user?.id ?? null;
+  let user;
+  try {
+    user = await requireAuthenticatedUser({ supabase });
+  } catch {
+    return { data: null, errorMessage: "Authentication required." };
   }
-  if (!actorId) return { data: null, errorMessage: "Authentication required." };
-  const actor = createAuthenticatedActor(actorId);
+  const actor = createAuthenticatedActor(user.id);
   const repo = new SupabaseOperatorProposalRepository(supabase as never);
   const result = await getOperatorStoredProposal(actor, repo, input.proposalId);
   if (!result.ok) return { data: null, errorMessage: result.errorMessage };

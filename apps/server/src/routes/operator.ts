@@ -6,9 +6,14 @@ import {
   createOperatorProposal,
   dismissOperatorProposal,
   getOperatorStoredProposal,
+  resolveTimeContext,
   reviseOperatorProposal,
 } from "@ega/application";
-import { SupabaseOperatorProposalRepository, SupabaseTasksRepository } from "@ega/data-access";
+import {
+  SupabaseOperatorProposalRepository,
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+} from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -36,20 +41,37 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
   const routes = new Hono<{ Variables: ServerVariables }>();
 
   // Create — thin: parse, validate, delegate to application (shared validation guards LLM bypass)
+  // Canonical Time Context: derive localDate/timeContextId from resolved context, not client strings
   routes.post("/proposals", async (c) => {
     const { actor, client } = c.var;
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     const proposalRepo = new SupabaseOperatorProposalRepository(client as never);
     const lookup = toTaskLookup(client);
+    const timeContextRepo = new SupabaseTimeContextRepository(client as never);
+    const now = dependencies.now?.() ?? new Date();
+    const requestedTz =
+      typeof body.requestedTimezone === "string"
+        ? body.requestedTimezone
+        : typeof body.timezone === "string"
+          ? body.timezone
+          : undefined;
+    const tcResult = await resolveTimeContext(actor, timeContextRepo, { requestedTimezone: requestedTz, now });
+    if (!tcResult.ok) {
+      return c.json({ error: { code: "VALIDATION", message: tcResult.errorMessage } }, 400);
+    }
+    const tc = tcResult.data;
+    const localDate = tc.localDate;
+    const timezone = tc.timezone;
+    const timeContextId = `${localDate}::${timezone}::${tc.dayWindow.startUtcIso}`;
     const result = await createOperatorProposal(actor, proposalRepo, lookup, {
-      localDate: body.localDate,
-      timeContextId: body.timeContextId,
+      localDate,
+      timeContextId,
       proposedTaskIds: body.proposedTaskIds,
       idempotencyKey: body.idempotencyKey,
       parentProposalId: body.parentProposalId,
       aiRef: body.aiRef,
-      timezone: body.timezone,
+      timezone,
     });
     if (!result.ok) {
       const notFound = result.errorMessage.includes("not found");
