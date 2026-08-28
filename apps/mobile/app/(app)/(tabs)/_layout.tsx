@@ -66,6 +66,15 @@ export default function AppTabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="inbox"
+        options={{
+          title: 'Inbox',
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon name={focused ? 'mail' : 'mail-outline'} color={color} focused={focused} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

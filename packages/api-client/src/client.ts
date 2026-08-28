@@ -15,6 +15,7 @@ import {
   type RefreshAccessToken,
   type TokenProvider,
 } from "./http";
+import { createInboxApi, type InboxApi } from "./inbox";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
 import { createTimerApi, type TimerApi } from "./timer";
@@ -44,6 +45,7 @@ export type EgaApiClient = {
   projects: ProjectsApi;
   goals: GoalsApi;
   tasks: TasksApi;
+  inbox: InboxApi;
   today: TodayApi;
   timer: TimerApi;
   auth: AuthApi;
@@ -68,6 +70,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     projects: createProjectsApi(http),
     goals: createGoalsApi(http),
     tasks: createTasksApi(http),
+    inbox: createInboxApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
     auth: createAuthApi(http),
