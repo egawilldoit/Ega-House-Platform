@@ -1,7 +1,7 @@
 -- Split task_sessions MCP write access into separate INSERT/UPDATE policies (was FOR ALL)
 --> statement-breakpoint
 DROP POLICY IF EXISTS "task_sessions_mcp_write_access" ON public.task_sessions;
-
+--> statement-breakpoint
 CREATE POLICY "task_sessions_mcp_insert_access"
   ON public.task_sessions
   FOR INSERT
@@ -11,7 +11,7 @@ CREATE POLICY "task_sessions_mcp_insert_access"
     AND ((SELECT auth.jwt()) ->> 'client_id') IS NOT NULL
     AND private.has_active_mcp_permission('timer.create')
   );
-
+--> statement-breakpoint
 CREATE POLICY "task_sessions_mcp_update_access"
   ON public.task_sessions
   FOR UPDATE

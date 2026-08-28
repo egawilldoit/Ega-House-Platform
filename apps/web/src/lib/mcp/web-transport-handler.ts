@@ -2,8 +2,6 @@ import type { McpServer } from "@modelcontextprotocol/server";
 import { McpServer as RuntimeMcpServer, createMcpHandler } from "@modelcontextprotocol/server";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 
-import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
-import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 

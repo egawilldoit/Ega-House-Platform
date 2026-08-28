@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { z } from "zod-v4";
@@ -34,7 +33,7 @@ describe("W15 real MCP client E2E", () => {
     const handler = createMcpHandler(
       () => {
         const server = new McpServer({ name: "test", version: "1.0.0" }, { capabilities: { tools: {} } });
-        // @ts-ignore — test helper
+        // @ts-expect-error — test helper
         server.registerTool("ega_list_projects", { title: "list", description: "list", inputSchema: z.object({}) } as unknown as never, async () => ({ content: [{ type: "text", text: "ok" }] }) as never);
         return server;
       },

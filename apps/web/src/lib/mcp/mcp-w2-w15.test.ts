@@ -1,16 +1,11 @@
-// @ts-nocheck
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { McpServer } from "@modelcontextprotocol/server";
-import { z } from "zod-v4";
-
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
 import { createRequestStateCodec } from "@/lib/mcp/request-state";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
-import { createMcpReadToolHandlers } from "@/lib/mcp/read-tool-handlers";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
-import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 
