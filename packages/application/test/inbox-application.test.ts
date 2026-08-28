@@ -88,9 +88,6 @@ class FakeInboxRepository implements InboxRepository {
     this.calls.push({ method: "markInboxItemConverted", actor: actor.userId, input: inboxItemId });
     return this.mutation;
   }
-  async findRecentOrphanTaskId() {
-    return ok(null as string | null);
-  }
 }
 
 test("createInboxItem validates title and delegates normalized data with trusted actor", async () => {

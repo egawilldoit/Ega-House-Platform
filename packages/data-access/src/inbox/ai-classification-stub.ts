@@ -1,5 +1,6 @@
 /**
  * Data-access stub for provider-neutral Inbox AI classification (EGA-508).
+ * Provider-neutral foundation implemented. Concrete suggestion experience blocked on HITL provider/model decision.
  *
  * This is a server-only integration layer stub. It implements the same
  * provider-neutral port as the server adapter but lives in data-access so
@@ -57,6 +58,7 @@ export class InboxAiStubAdapter implements InboxAiClassificationPort {
   }
 
   async classify(_input: InboxAiClassificationInput): Promise<InboxAiClassifyResult> {
+    void _input;
     const start = Date.now();
     const gen = createSafeNoSuggestionGeneration({
       provider: this.provider,

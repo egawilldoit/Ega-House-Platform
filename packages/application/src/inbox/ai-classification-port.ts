@@ -1,6 +1,4 @@
-import type { InboxPriority, InboxType } from "@ega/domain";
 import {
-  DEFAULT_INBOX_AI_RATE_LIMIT_PER_MINUTE,
   DEFAULT_INBOX_AI_TIMEOUT_MS,
   hashInboxAiInput,
   INBOX_AI_PROMPT_VERSION,
@@ -22,11 +20,9 @@ import {
 } from "@ega/contracts/inbox-ai";
 import { INBOX_AI_PROMPT_VERSION as CONTRACT_PROMPT_VERSION, INBOX_AI_SCHEMA_VERSION as CONTRACT_SCHEMA_VERSION } from "@ega/contracts/inbox-ai";
 
-import type { AuthenticatedActor } from "../auth/actor";
 import type {
   StructuredSuggestionGeneration,
   StructuredSuggestionPort,
-  AiRateLimiter,
 } from "../ai/structured-suggestion-port";
 
 // ---------------------------------------------------------------------------
@@ -47,9 +43,7 @@ export type InboxAiClassificationInput = Readonly<{
 
 export type InboxAiClassifyResult = StructuredSuggestionGeneration<InboxAiSuggestion>;
 
-export interface InboxAiClassificationPort extends StructuredSuggestionPort<InboxAiClassificationInput, InboxAiSuggestion> {
-  // provider/model/promptVersion/schemaVersion are readonly config — no secrets.
-}
+export type InboxAiClassificationPort = StructuredSuggestionPort<InboxAiClassificationInput, InboxAiSuggestion>;
 
 // ---------------------------------------------------------------------------
 // Config validation — ensures provider/model contain no secrets.

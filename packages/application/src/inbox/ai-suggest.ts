@@ -64,7 +64,7 @@ export async function suggestInboxItemClassification(
     return applicationSuccess({ suggestion: null, generation: sanitizeGenerationForTelemetry(generation) });
   }
 
-  const timeoutMs = options?.timeoutMs ?? (port as any).timeoutMs ?? 8000;
+  const timeoutMs = options?.timeoutMs ?? (port as unknown as { timeoutMs?: number }).timeoutMs ?? 8000;
   const now = options?.now ?? new Date();
   const nowMs = now.getTime();
   const nowIso = options?.nowIso ?? now.toISOString();
@@ -123,14 +123,14 @@ export async function suggestInboxItemClassification(
   // For richer goal titles, also fetch via tasksRepository.listGoalOptions if available
   // (best-effort, no failure if missing)
   try {
-    const goalOptions = await (tasksRepository as any).listGoalOptions?.(actor);
+    const goalOptions = await (tasksRepository as unknown as { listGoalOptions?: (actor: unknown) => Promise<{ ok: boolean; value?: unknown }> }).listGoalOptions?.(actor as unknown as Parameters<typeof tasksRepository.getScope>[0]);
     if (goalOptions?.ok && Array.isArray(goalOptions.value)) {
       // Replace with real titles where available
       const map = new Map<string, string>();
       for (const g of goalOptions.value) map.set(g.id, g.title);
       for (const c of candidateGoals) {
         const title = map.get(c.id);
-        if (title) (c as any).title = title;
+        if (title) (c as unknown as { title: string }).title = title;
       }
     }
   } catch {
@@ -146,7 +146,7 @@ export async function suggestInboxItemClassification(
       body: inboxItem.body,
       candidateProjects,
       candidateGoals,
-      maxInputChars: (port as any).maxInputChars,
+      maxInputChars: (port as unknown as { maxInputChars?: number }).maxInputChars,
     });
   } catch (error) {
     const generation = createSafeNoSuggestionGeneration({
@@ -213,7 +213,7 @@ export async function suggestInboxItemClassification(
 
   // 6. Validate suggestion against strict schema + allow-list + owner candidates.
   // If validation fails, degrade to safe no-suggestion with sanitized generation.
-  const rawSuggestion = (rawResult as any).result ?? sanitizedGeneration.result ?? null;
+  const rawSuggestion = (rawResult as unknown as { result?: unknown } | null)?.result ?? sanitizedGeneration.result ?? null;
 
   if (rawSuggestion === null || rawSuggestion === undefined) {
     // Port explicitly returned no suggestion — surface as is with success status

@@ -112,6 +112,7 @@ function makeFakeClient(): EgaApiClient {
       update: jest.fn(),
       archive: jest.fn(),
       restore: jest.fn(),
+      convert: jest.fn(),
     },
     today: {
       get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),

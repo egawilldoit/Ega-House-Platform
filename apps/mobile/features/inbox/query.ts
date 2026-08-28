@@ -8,10 +8,10 @@ export const inboxQueryKeys = {
   list: (params: Record<string, string | null | undefined> = {}) => ["inbox", "list", params] as const,
 };
 
-export function useInboxListQuery(params: Record<string, string | null | undefined> = {}) {
-  return useQuery({
+export function useInboxListQuery(params: Record<string, string | null | undefined> = {}): ReturnType<typeof useQuery<InboxListResponse>> {
+  return useQuery<InboxListResponse>({
     queryKey: inboxQueryKeys.list(params),
-    queryFn: () => listInboxItems(params as any),
+    queryFn: () => listInboxItems(params as unknown as Parameters<typeof listInboxItems>[0]),
     placeholderData: (prev) => prev,
   });
 }

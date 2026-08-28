@@ -59,7 +59,7 @@ export class SupabaseInboxRepository implements InboxRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
   async getScope(actor: AuthenticatedActor): Promise<RepositoryResult<InboxScopeRecord>> {
-    const projects = await (this.supabase as any)
+    const projects = await this.supabase
       .from("projects")
       .select("id")
       .eq("owner_user_id", actor.userId);
@@ -75,7 +75,7 @@ export class SupabaseInboxRepository implements InboxRepository {
     actor: AuthenticatedActor,
     query: InboxQuery = {},
   ): Promise<RepositoryResult<InboxRecord[]>> {
-    let request = (this.supabase as any)
+    let request = this.supabase
       .from("idea_notes")
       .select(INBOX_SELECT)
       .eq("owner_user_id", actor.userId);
@@ -127,7 +127,7 @@ export class SupabaseInboxRepository implements InboxRepository {
   }
 
   async listProjectOptions(actor: AuthenticatedActor): Promise<RepositoryResult<InboxProjectOptionRecord[]>> {
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("projects")
       .select("id, name")
       .eq("owner_user_id", actor.userId)
@@ -146,7 +146,7 @@ export class SupabaseInboxRepository implements InboxRepository {
     actor: AuthenticatedActor,
     id: string,
   ): Promise<RepositoryResult<InboxRecord | null>> {
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("idea_notes")
       .select(INBOX_SELECT)
       .eq("id", id)
@@ -163,7 +163,7 @@ export class SupabaseInboxRepository implements InboxRepository {
   ): Promise<RepositoryResult<InboxRecord | null>> {
     const trimmed = String(key ?? "").trim();
     if (!trimmed) return { ok: true, value: null };
-    const lookup = await (this.supabase as any)
+    const lookup = await this.supabase
       .from("inbox_idempotency_keys")
       .select("inbox_item_id")
       .eq("owner_user_id", actor.userId)
@@ -171,7 +171,7 @@ export class SupabaseInboxRepository implements InboxRepository {
       .maybeSingle();
     if (lookup.error) return failure(lookup.error);
     if (!lookup.data) return { ok: true, value: null };
-    const inboxId = String((lookup.data as any).inbox_item_id ?? (lookup.data as any).inboxItemId ?? "");
+    const inboxId = String(((lookup.data as unknown as { inbox_item_id?: string; inboxItemId?: string })?.inbox_item_id ?? (lookup.data as unknown as { inbox_item_id?: string; inboxItemId?: string })?.inboxItemId ?? ""));
     if (!inboxId) return { ok: true, value: null };
     return this.getInboxItem(actor, inboxId);
   }
@@ -180,14 +180,14 @@ export class SupabaseInboxRepository implements InboxRepository {
     actor: AuthenticatedActor,
     input: CreateInboxRecordInput,
   ): Promise<RepositoryResult<InboxRecord>> {
-    const idempotencyKey = (input as any).idempotencyKey ? String((input as any).idempotencyKey).trim() : null;
+    const idempotencyKey = (input as unknown as { idempotencyKey?: string | null }).idempotencyKey ? String((input as unknown as { idempotencyKey?: string | null }).idempotencyKey).trim() : null;
     if (idempotencyKey) {
       const existing = await this.getInboxItemByIdempotencyKey(actor, idempotencyKey);
       if (existing.ok && existing.value) return { ok: true, value: existing.value };
       if (!existing.ok) return existing as RepositoryResult<InboxRecord>;
     }
 
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("idea_notes")
       .insert({
         owner_user_id: actor.userId,
@@ -205,7 +205,7 @@ export class SupabaseInboxRepository implements InboxRepository {
     const created = mapInboxRow(result.data as InboxRow);
 
     if (idempotencyKey) {
-      const link = await (this.supabase as any).from("inbox_idempotency_keys").insert({
+      const link = await this.supabase.from("inbox_idempotency_keys").insert({
         owner_user_id: actor.userId,
         key: idempotencyKey,
         inbox_item_id: created.id,
@@ -233,7 +233,7 @@ export class SupabaseInboxRepository implements InboxRepository {
     actor: AuthenticatedActor,
     input: UpdateInboxRecordInput,
   ): Promise<RepositoryResult<InboxRecord>> {
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("idea_notes")
       .update({
         title: input.title,
@@ -258,7 +258,7 @@ export class SupabaseInboxRepository implements InboxRepository {
     actor: AuthenticatedActor,
     input: Readonly<{ id: string; status: string }>,
   ): Promise<RepositoryResult<InboxRecord>> {
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("idea_notes")
       .update({
         status: input.status,
@@ -279,7 +279,7 @@ export class SupabaseInboxRepository implements InboxRepository {
   ): Promise<RepositoryResult<string | null>> {
     const trimmed = String(inboxItemId ?? "").trim();
     if (!trimmed) return { ok: true, value: null };
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("task_external_refs")
       .select("task_id")
       .eq("owner_user_id", actor.userId)
@@ -288,7 +288,7 @@ export class SupabaseInboxRepository implements InboxRepository {
       .maybeSingle();
     if (result.error) return failure(result.error);
     if (!result.data) return { ok: true, value: null };
-    const taskId = String((result.data as any).task_id ?? (result.data as any).taskId ?? "");
+    const taskId = String((result.data as { task_id?: string; taskId?: string } | null)?.task_id ?? (result.data as { task_id?: string; taskId?: string } | null)?.taskId ?? "");
     return { ok: true, value: taskId || null };
   }
 
@@ -299,15 +299,15 @@ export class SupabaseInboxRepository implements InboxRepository {
     const inboxItemId = String(input.inboxItemId ?? "").trim();
     const taskId = String(input.taskId ?? "").trim();
     if (!inboxItemId || !taskId) return { ok: false, error: { code: "unknown" } };
-    const result = await (this.supabase as any).from("task_external_refs").insert({
+    const result = await this.supabase.from("task_external_refs").insert({
       owner_user_id: actor.userId,
       task_id: taskId,
       source: "inbox",
       source_id: inboxItemId,
     });
     if (result.error) {
-      const code = String((result.error as any).code ?? "");
-      const msg = String((result.error as any).message ?? "");
+      const code = String((result.error as unknown as { code?: string })?.code ?? "");
+      const msg = String((result.error as unknown as { message?: string })?.message ?? "");
       const isDuplicate = code.includes("23505") || /duplicate|unique/i.test(msg);
       if (isDuplicate) {
         return { ok: false, error: { code: "conflict" } };
@@ -323,7 +323,7 @@ export class SupabaseInboxRepository implements InboxRepository {
   ): Promise<RepositoryResult<InboxRecord>> {
     const id = String(inboxItemId ?? "").trim();
     if (!id) return { ok: false, error: { code: "unknown" } };
-    const result = await (this.supabase as any)
+    const result = await this.supabase
       .from("idea_notes")
       .update({
         status: "converted",
@@ -336,52 +336,5 @@ export class SupabaseInboxRepository implements InboxRepository {
     if (result.error) return failure(result.error);
     if (!result.data) return { ok: false, error: { code: "unknown" } };
     return { ok: true, value: mapInboxRow(result.data as InboxRow) };
-  }
-
-  async findRecentOrphanTaskId(
-    actor: AuthenticatedActor,
-    input: Readonly<{ title: string; projectId: string | null; sinceIso: string }>,
-  ): Promise<RepositoryResult<string | null>> {
-    const title = String(input.title ?? "").trim();
-    const sinceIso = String(input.sinceIso ?? "").trim();
-    const projectId = input.projectId ? String(input.projectId).trim() : null;
-    if (!title || !sinceIso) return { ok: true, value: null };
-    // Validate sinceIso parses
-    if (Number.isNaN(Date.parse(sinceIso))) return { ok: true, value: null };
-
-    let request = (this.supabase as any)
-      .from("tasks")
-      .select("id, created_at")
-      .eq("owner_user_id", actor.userId)
-      .eq("title", title)
-      .gt("created_at", sinceIso)
-      .order("created_at", { ascending: false })
-      .limit(5);
-    if (projectId) {
-      request = request.eq("project_id", projectId);
-    }
-    const candidates = await request;
-    if (candidates.error) return failure(candidates.error);
-    const rows = (candidates.data ?? []) as Array<{ id: string }>;
-    if (rows.length === 0) return { ok: true, value: null };
-
-    // Filter to those not yet linked in task_external_refs (owner-scoped).
-    // Keep query bounded: check each candidate individually. This preserves
-    // correctness without requiring a sub-select and keeps blast radius low.
-    for (const row of rows) {
-      const taskId = String((row as any).id ?? "");
-      if (!taskId) continue;
-      const linkCheck = await (this.supabase as any)
-        .from("task_external_refs")
-        .select("task_id")
-        .eq("owner_user_id", actor.userId)
-        .eq("task_id", taskId)
-        .maybeSingle();
-      if (linkCheck.error) return failure(linkCheck.error);
-      if (!linkCheck.data) {
-        return { ok: true, value: taskId };
-      }
-    }
-    return { ok: true, value: null };
   }
 }

@@ -1,5 +1,6 @@
 /**
  * Server-only concrete adapter stub for Inbox AI classification (EGA-508).
+ * Provider-neutral foundation implemented. Concrete suggestion experience blocked on HITL provider/model decision.
  *
  * This stub implements the provider-neutral port but does NOT wire a concrete
  * LLM provider. External AI wiring remains HITL-blocked until provider/model/
@@ -69,6 +70,7 @@ export class BlockedInboxAiAdapter implements InboxAiClassificationPort {
   }
 
   async classify(_input: InboxAiClassificationInput): Promise<InboxAiClassifyResult> {
+    void _input;
     // HITL blocked: no external provider call. Return safe no-suggestion with
     // durable evidence so callers can show manual fallback does not depend on AI.
     // The input is treated as untrusted data and is NOT executed; we only

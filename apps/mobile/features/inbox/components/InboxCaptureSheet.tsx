@@ -17,7 +17,7 @@ import { FeedbackBanner } from "@/components/mobile/ui/FeedbackBanner";
 
 function createIdempotencyKey(): string {
   // Prefer crypto.randomUUID if available (Expo/Jest polyfill)
-  const g: any = globalThis as any;
+  const g = globalThis as unknown as { crypto?: { randomUUID?: () => string } };
   if (g.crypto && typeof g.crypto.randomUUID === "function") {
     return g.crypto.randomUUID();
   }
@@ -48,6 +48,8 @@ export function InboxCaptureSheet({
 
   useEffect(() => {
     if (visible) {
+      // Sync draft from parent (retry-safe) - intentional setState in effect for sheet open
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(initialTitle);
       setBody(initialBody);
       setError(null);

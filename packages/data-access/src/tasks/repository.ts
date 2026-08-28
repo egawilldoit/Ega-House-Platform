@@ -249,6 +249,7 @@ export class SupabaseTasksRepository implements TasksRepository {
     const result = await this.supabase
       .from("tasks")
       .insert({
+        ...(input.id ? { id: input.id } : {}),
         owner_user_id: actor.userId,
         title: input.title,
         project_id: input.projectId,
