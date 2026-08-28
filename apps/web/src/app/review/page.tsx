@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   formatDateTime,
   formatIsoDate,
-  getTodayIsoDate,
+  getTodayIsoDateForTimezone,
   isIsoDate,
   shiftIsoDateByDays,
 } from "@/lib/review-week";
@@ -159,16 +159,30 @@ function MostTrackedSection({
 
 export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   const resolvedSearchParams = await searchParams;
-  const selectedWeekOf =
-    resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)
-      ? resolvedSearchParams.weekOf
-      : getTodayIsoDate();
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) {
     throw new Error("You must be signed in to review weekly activity.");
   }
   const ownerUserId = authData.user.id;
+  // Canonical Today via Time Context — timezone-aware, reproducible, server-TZ independent
+  let todayIsoForSelection: string;
+  try {
+    const { data: tzRow } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
+      "user_time_context",
+    )
+      .select("iana_timezone")
+      .eq("user_id", ownerUserId)
+      .maybeSingle();
+    const tz = (tzRow as { iana_timezone?: string | null } | null)?.iana_timezone;
+    todayIsoForSelection = getTodayIsoDateForTimezone(typeof tz === "string" ? tz : null, new Date());
+  } catch {
+    todayIsoForSelection = getTodayIsoDateForTimezone(null, new Date());
+  }
+  const selectedWeekOf =
+    resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)
+      ? resolvedSearchParams.weekOf
+      : todayIsoForSelection;
   const shouldUseGeneratedDraft = resolvedSearchParams.draft === "generated";
   const {
     bounds,
