@@ -6,7 +6,7 @@ import type {
   TodaySourceTask,
   TodayTimerSnapshot,
 } from "@ega/application";
-import { getSessionOverlapSeconds, getLocalDayWindow } from "@ega/application";
+import { getSessionOverlapSeconds } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sanitizeSupabaseError } from "../supabase/errors";
@@ -79,17 +79,33 @@ export class SupabaseTodayReadPort implements TodayReadPort {
 
   async listSelectedTasks(
     actor: AuthenticatedActor,
-    input: Readonly<{ today: string }>,
+    input: Readonly<{ today: string; windowStartIso?: string; windowEndIso?: string }>,
   ): Promise<RepositoryResult<TodaySourceTask[]>> {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.today)) {
       return { ok: false, error: { code: "unknown" } };
     }
-    const dayStart = new Date(`${input.today}T00:00:00`);
-    if (Number.isNaN(dayStart.valueOf())) {
-      return { ok: false, error: { code: "unknown" } };
+    // Canonical day window for scheduled_start_at — prefers caller-provided ResolvedTimeContext.dayWindow
+    // (server-TZ independent). Falls back to UTC midnight for legacy callers.
+    let dayStartIso: string;
+    let nextDayStartIso: string;
+    if (input.windowStartIso && input.windowEndIso) {
+      const s = new Date(input.windowStartIso).getTime();
+      const e = new Date(input.windowEndIso).getTime();
+      if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) {
+        return { ok: false, error: { code: "unknown" } };
+      }
+      dayStartIso = new Date(s).toISOString();
+      nextDayStartIso = new Date(e).toISOString();
+    } else {
+      const dayStart = new Date(`${input.today}T00:00:00.000Z`);
+      if (Number.isNaN(dayStart.valueOf())) {
+        return { ok: false, error: { code: "unknown" } };
+      }
+      const nextDayStart = new Date(dayStart);
+      nextDayStart.setUTCDate(nextDayStart.getUTCDate() + 1);
+      dayStartIso = dayStart.toISOString();
+      nextDayStartIso = nextDayStart.toISOString();
     }
-    const nextDayStart = new Date(dayStart);
-    nextDayStart.setDate(nextDayStart.getDate() + 1);
 
     const result = await this.supabase
       .from("tasks")
@@ -97,7 +113,7 @@ export class SupabaseTodayReadPort implements TodayReadPort {
       .eq("owner_user_id", actor.userId)
       .is("archived_at", null)
       .or(
-        `planned_for_date.eq.${input.today},due_date.eq.${input.today},and(scheduled_start_at.gte.${dayStart.toISOString()},scheduled_start_at.lt.${nextDayStart.toISOString()})`,
+        `planned_for_date.eq.${input.today},due_date.eq.${input.today},and(scheduled_start_at.gte.${dayStartIso},scheduled_start_at.lt.${nextDayStartIso})`,
       )
       .order("updated_at", { ascending: false })
       .limit(240);
@@ -170,7 +186,12 @@ export class SupabaseTodayReadPort implements TodayReadPort {
       ? { sessionId: String(openSession.id), taskId: String(openSession.task_id) }
       : null;
 
-    const window = getLocalDayWindow(new Date(input.nowIso));
+    // Canonical: use caller-provided windowStartIso (derived from ResolvedTimeContext.dayWindow or @ega/domain).
+    // This is server-TZ independent; the window is [dayStartUtc, nowIso).
+    const window = {
+      startIso: input.windowStartIso,
+      endIso: input.nowIso,
+    };
     const trackedTodaySeconds = asRows(recentResult.data).reduce((sum, rawRow) => {
       const row = rawRow as Record<string, unknown>;
       return (
