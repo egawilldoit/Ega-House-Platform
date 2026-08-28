@@ -47,6 +47,7 @@
     { "idx": 42, "version": "7", "when": 1785656500000, "tag": "0042_fix_mcp_oauth_hook_variable_ambiguity", "breakpoints": true },
     { "idx": 43, "version": "7", "when": 1785659700000, "tag": "0043_mcp_production_owner_reconciliation", "breakpoints": true },
     { "idx": 44, "version": "7", "when": 1787362800000, "tag": "0044_task_sessions_owner_open_unique", "breakpoints": true },
-    { "idx": 45, "version": "7", "when": 1787874064314, "tag": "0045_user_time_context", "breakpoints": true }
+    { "idx": 45, "version": "7", "when": 1787874064314, "tag": "0045_user_time_context", "breakpoints": true },
+    { "idx": 47, "version": "7", "when": 1787874064316, "tag": "0047_operator_proposals", "breakpoints": true }
   ]
 }
