@@ -1,8 +1,9 @@
+import { getLocalDayWindow } from "@ega/domain";
+
 import {
   formatDurationLabel,
   getSessionDurationSeconds,
   getSessionOverlapSeconds,
-  getLocalDayWindow,
   type DayWindow,
 } from "../shared/duration";
 import type { AuthenticatedActor } from "../auth/actor";
@@ -38,7 +39,23 @@ export function summarizeTimerSessions(
   nowIso: string,
   todayWindow?: DayWindow,
 ): TimerSummary {
-  const window = todayWindow ?? getLocalDayWindow(new Date(nowIso));
+  // Canonical Today window is ResolvedTimeContext.dayWindow or @ega/domain getLocalDayWindow.
+  // Fallback is UTC-based and server-TZ independent.
+  const window: DayWindow =
+    todayWindow ??
+    (() => {
+      const now = new Date(nowIso);
+      if (Number.isNaN(now.getTime())) return { startIso: nowIso, endIso: nowIso };
+      const dateStr = now.toISOString().slice(0, 10);
+      try {
+        const canonical = getLocalDayWindow("UTC", dateStr);
+        // Timer Today tracks [dayStart, now) within the canonical day, not full 24h.
+        const endIso = nowIso < canonical.endUtcIso ? nowIso : canonical.endUtcIso;
+        return { startIso: canonical.startUtcIso, endIso };
+      } catch {
+        return { startIso: nowIso, endIso: nowIso };
+      }
+    })();
   const durations = sessions.map(
     (session) => ({ session, seconds: getSessionDurationSeconds(session, nowIso) }),
   );
