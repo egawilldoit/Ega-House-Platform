@@ -84,10 +84,16 @@ Timer invariant: `task_sessions_owner_open_unique` enforces one open per owner �
 | delivery runs | existing delivery observer | `automation_*` | R | `ega_list_delivery_runs` etc already via task_manager? | `delivery_runs.read` | no | EXPOSE (read only, already via delivery_observer) |
 | agent integration tokens/events | legacy agent API | — | — | — | — | **EXCLUDE** | Legacy, not MCP |
 
-## Counts
+## Counts (actual runtime @ cb5f0a8 + W2-W8)
 
-- **Read EXPOSE:** 10 (`projects`, `goals`, `tasks`, `get_task`, `today_plan`, `timer_sessions` ×2 variants, `delivery_*` ×3, idea_notes deferred)
-- **Write EXPOSE:** 18 (projects ×3, goals ×4, tasks ×7 incl focus/reminder, today ×4, timer ×2)
+- **Read EXPOSE runtime:** 6 (`ega_list_projects`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan`, `ega_list_timer_sessions`, `ega_get_capabilities` + delivery observer reads deferred)
+- **Write EXPOSE runtime:** 9 (`ega_create_project`, `ega_update_project_status`, `ega_create_goal`, `ega_create_task`, `ega_update_task`, `ega_plan_task_for_today`, `ega_start_timer`, `ega_stop_timer`, `ega_clear_completed_today` MRTR)
+- **DEFERRED with product reason (not in this PR, per isolation directive):**
+  - Projects archive/unarchive (canonical `archiveProject` exists but MCP archive not exposed — defer, low ROI)
+  - Goals update health/nextStep/archive (canonical exists, defer — not critical for agent)
+  - Tasks archive/unarchive, focus rank, reminders, scheduling (canonical exists, defer — agent can use updateTask for now)
+  - Today remove/updateTodayTaskStatus (Today is projection, remove handled via plan null; update via updateTask)
+  - Delivery writes remain read-only per architecture
 - **EXCLUDE/DEFER with reason above:** calendar, week reviews, external refs, sync jobs, idea write, saved views write
 
 ## Permission catalog for MCP

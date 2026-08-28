@@ -158,10 +158,19 @@ export function createWebMcpHandler(
     (ctx: { era: "legacy" | "modern"; authInfo?: AuthInfo; requestInfo?: Request }) => {
       const server = new RuntimeMcpServer(
         { name: "ega-house", version: "0.1.0" },
-        { capabilities: { tools: {} } },
+        {
+          capabilities: { tools: {} },
+          requestState: {
+            verify: async (token: string) => {
+              const { createRequestStateCodec } = await import("@/lib/mcp/request-state");
+              const secret = process.env.MCP_REQUEST_STATE_SECRET;
+              if (!secret || secret.length < 32) throw new Error("MCP_REQUEST_STATE_SECRET not configured");
+              const codec = createRequestStateCodec({ key: secret, ttlSeconds: 300 });
+              return codec.verify(token);
+            },
+          },
+        } as unknown as ConstructorParameters<typeof RuntimeMcpServer>[1],
       ) as unknown as McpServer;
-      // Permission-aware registration: only expose tools allowed for this principal + writesEnabled
-      // The factory receives verified authInfo via ctx.authInfo (pass-through from handler.fetch)
       registerServer(server, ctx.authInfo);
       return server;
     },
@@ -209,7 +218,7 @@ export function createWebMcpHandler(
     // The SDK's createMcpHandler validates them against body; we just ensure we don't treat them as auth
     // No authorization derived from Mcp-Method/Mcp-Name/Mcp-Param-* or body owner fields
 
-    return handler.fetch(request, authInfo ? { authInfo } : undefined);
+    return (handler.fetch as unknown as (r: Request, o?: unknown) => Promise<Response>)(request, authInfo ? { authInfo } : undefined);
   };
 }
 
