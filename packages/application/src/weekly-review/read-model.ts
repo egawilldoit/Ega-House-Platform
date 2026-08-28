@@ -189,7 +189,6 @@ function buildMostTracked(
     const project = task.projects as { id?: string; name?: string; slug?: string } | null | undefined;
     const goal = task.goals as { id?: string; title?: string } | null | undefined;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const taskBucket = taskBuckets.get(task.id) as unknown as Bucket | undefined;
     taskBuckets.set(task.id, {
       id: task.id,

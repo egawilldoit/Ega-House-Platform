@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
-import { getWeekBounds, getTodayIsoDate } from "@/lib/review-week";
+import { getWeekBounds } from "@/lib/review-week";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
+import { getLocalDateInTimezone } from "@ega/domain";
+import { SupabaseTimeContextRepository } from "@ega/data-access";
+import { createAuthenticatedActor } from "@ega/application/auth/actor";
 
 export type WorkspaceShellPrioritySignal =
   | "active_timer"
@@ -121,7 +124,30 @@ export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics>
   try {
     const supabase = await createClient();
     const today = getTodayLocalIsoDate();
-    const reviewWeek = getWeekBounds(getTodayIsoDate());
+    // Weekly Review week must be derived from canonical Time Context, not UTC.
+    // Resolve stored timezone first; fall back to device local today if unauthenticated or on error.
+    let reviewWeek: ReturnType<typeof getWeekBounds> = null;
+    try {
+      const { data: authData } = await supabase.auth.getUser();
+      if (authData?.user) {
+        const repo = new SupabaseTimeContextRepository(
+          supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
+        );
+        const actor = createAuthenticatedActor(authData.user.id);
+        const tzResult = await repo.getTimezone(actor);
+        const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
+        const localToday = getLocalDateInTimezone(new Date(), effectiveTz);
+        reviewWeek = getWeekBounds(localToday);
+      } else {
+        reviewWeek = getWeekBounds(getLocalDateInTimezone(new Date(), "UTC"));
+      }
+    } catch {
+      reviewWeek = getWeekBounds(getLocalDateInTimezone(new Date(), "UTC"));
+    }
+    if (!reviewWeek) {
+      // Final fallback to previous logic if Time Context resolution failed.
+      reviewWeek = getWeekBounds(getLocalDateInTimezone(new Date(), "UTC"));
+    }
 
     if (!reviewWeek) {
       throw new Error("Failed to resolve current review week.");
