@@ -63,6 +63,9 @@ function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiC
     operator: {
       create: jest.fn(), revise: jest.fn(), approve: jest.fn(), apply: jest.fn(), dismiss: jest.fn(), get: jest.fn(), list: jest.fn(),
     },
+    timeContext: {
+      get: jest.fn(),
+    },
     timer: {
       workspace: jest.fn(
         async (): Promise<ApiResult<TimerWorkspaceState>> => ({ ok: true, data: WORKSPACE }),
