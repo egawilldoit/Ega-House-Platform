@@ -26,6 +26,11 @@ export function useProjectListQuery(view: ProjectViewFilter = 'active') {
   return useQuery({
     queryKey: projectQueryKeys.list(view),
     queryFn: () => listMobileProjects(view),
+    // Keep previous view visible during active→archived→all switch (no blank). Shows stale + “Refreshing…” until network.
+    // Caveat: placeholder makes isPending false while fetching new view → stale list appears under new view header.
+    // Audit (Wave 10.11): benefit outweighs risk — empty→empty still shows counter 0, and Refreshing + FeedbackBanner
+    // on error signals staleness. `isPending && !data` still shows skeleton on true cold start.
+    placeholderData: (previousData) => previousData,
   });
 }
 

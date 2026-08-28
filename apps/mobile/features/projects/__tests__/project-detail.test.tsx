@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import TestRenderer, { act, create } from 'react-test-renderer';
 import { Text } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import type { ProjectIdentityReadModel } from '@ega/api-client';
 import ProjectDetailScreen from '../../../app/(app)/projects/[slug]';
@@ -14,6 +14,7 @@ jest.mock('@expo/vector-icons/Ionicons', () => ({
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: jest.fn(),
+  useRouter: jest.fn(() => ({ back: jest.fn(), push: jest.fn(), replace: jest.fn() })),
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -160,10 +161,12 @@ async function openActionsSheet(tree: ReturnType<typeof create>) {
 
 describe('ProjectDetailScreen status actions (ws10 port)', () => {
   const useParamsMock = useLocalSearchParams as unknown as jest.Mock;
+  const useRouterMock = useRouter as unknown as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     useParamsMock.mockReturnValue({ slug: 'launch' });
+    useRouterMock.mockReturnValue({ back: jest.fn(), push: jest.fn(), replace: jest.fn() });
     mock(getMobileProjectBySlug).mockResolvedValue(DETAIL);
     mock(listMobileProjects).mockResolvedValue({
       projects: [],
