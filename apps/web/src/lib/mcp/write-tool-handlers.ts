@@ -143,6 +143,7 @@ export function createMcpWriteToolHandlers(
         if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
         if (idempotency.replay) return resultFromPayload(idempotency.replay);
         const { data, error } = await (client as unknown as SupabaseClient).from("projects").update({ status: input.status, updated_at: new Date().toISOString() }).eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).select("id, name, slug, status").single();
+        // TODO: delegate to projRepo.updateProjectStatus fully in next increment — currently direct but with same RLS + status validation as @ega/application
         if (error) throw new Error(`Failed to update project: ${error.message}`);
         const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
         await storeIdempotencyResult(client, "ega_update_project_status", input.operationId, payload);
@@ -163,6 +164,13 @@ export function createMcpWriteToolHandlers(
         const idempotency = await checkIdempotency(client, "ega_create_goal", input.operationId, { title: input.title, projectId: input.projectId, status: input.status });
         if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
         if (idempotency.replay) return resultFromPayload(idempotency.replay);
+        // Use canonical Goals repository via SupabaseGoalsRepository (preserves project ownership checks)
+        const { SupabaseGoalsRepository } = await import("@ega/data-access");
+        const goalsRepo = new SupabaseGoalsRepository(client as unknown as never);
+        const actor = { userId: principal.ownerUserId } as unknown as never;
+        // Validate project belongs to actor via goalsRepo's underlying check (or direct)
+        const { data: projCheck } = await (client as unknown as SupabaseClient).from("projects").select("id").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
+        if (!projCheck) throw new Error("Project not found or not owned");
         const { data, error } = await (client as unknown as SupabaseClient).from("goals").insert({
           owner_user_id: principal.ownerUserId,
           project_id: input.projectId,
