@@ -35,6 +35,14 @@ export type UpdateServiceState = {
   error: string | null;
   lastCheckedAt: string | null;
   availableUpdateId: string | null;
+  latestNativeVersion: string | null;
+  latestNativeRuntimeVersion: string | null;
+  latestNativeReleaseUrl: string | null;
+  latestApkUrl: string | null;
+  currentUpdateId: string | null;
+  appVersion: string;
+  runtimeVersion: string;
+  channel: string | null;
 };
 
 export type ReleaseManifest = {
@@ -50,11 +58,11 @@ export type ReleaseManifest = {
   architectures: string[];
   apkFile: string;
   apkSha256: string;
-  runtimeVersion?: string;
-  channel?: string;
+  runtimeVersion: string;
+  channel: string;
 };
 
 export type NativeUpdateClassification =
-  | { status: 'UP_TO_DATE'; localVersion: string; remoteVersion: string | null }
-  | { status: 'NATIVE_UPDATE_REQUIRED'; localVersion: string; remoteVersion: string; apkUrl: string | null }
+  | { status: 'UP_TO_DATE'; localVersion: string; localRuntime: string; remoteVersion: string; remoteRuntime: string }
+  | { status: 'NATIVE_UPDATE_REQUIRED'; localVersion: string; localRuntime: string; remoteVersion: string; remoteRuntime: string; apkUrl: string | null; reason: string; releaseUrl: string }
   | { status: 'ERROR'; error: string };

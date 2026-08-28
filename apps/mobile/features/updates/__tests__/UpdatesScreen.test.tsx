@@ -5,8 +5,8 @@ jest.mock('expo-constants', () => ({
   __esModule: true,
   default: {
     expoConfig: {
-      version: '1.0.0',
-      runtimeVersion: { policy: 'fingerprint' },
+      version: '1.0.1',
+      runtimeVersion: { policy: 'appVersion' },
       extra: { eas: { projectId: '73d127b6-c8f6-450c-8d97-2dca8434cd59' } },
     },
   },
@@ -33,6 +33,13 @@ const mockState: {
   error: string | null;
   lastCheckedAt: string | null;
   availableUpdateId: string | null;
+  latestNativeVersion: string | null;
+  latestNativeRuntimeVersion: string | null;
+  latestApkUrl: string | null;
+  latestNativeReleaseUrl: string | null;
+  appVersion: string;
+  runtimeVersion: string;
+  channel: string | null;
   info: {
     appVersion: string;
     runtimeVersion: string;
@@ -54,9 +61,16 @@ const mockState: {
   error: null,
   lastCheckedAt: null,
   availableUpdateId: null,
+  latestNativeVersion: null,
+  latestNativeRuntimeVersion: null,
+  latestApkUrl: null,
+  latestNativeReleaseUrl: null,
+  appVersion: '1.0.1',
+  runtimeVersion: '1.0.1',
+  channel: 'production',
   info: {
-    appVersion: '1.0.0',
-    runtimeVersion: 'fingerprint-abc',
+    appVersion: '1.0.1',
+    runtimeVersion: '1.0.1',
     updateId: null,
     channel: 'production',
     isEmbeddedLaunch: true,
@@ -119,12 +133,15 @@ describe('UpdatesScreen', () => {
 
   it('shows native required state correctly', async () => {
     mockState.status = 'NATIVE_UPDATE_REQUIRED';
+    mockState.latestNativeVersion = '1.0.2';
+    mockState.latestApkUrl = 'https://example.com/apk';
+    mockState.appVersion = '1.0.1';
     let component: ReturnType<typeof create>;
     await act(async () => {
       component = create(<UpdatesScreenContent />);
     });
     expect(findText(component!, 'New app version required')).toBe(true);
-    expect(findText(component!, 'Open releases page')).toBe(true);
+    expect(findText(component!, 'Open official release')).toBe(true);
   });
 
   it('surfaces error state', async () => {
