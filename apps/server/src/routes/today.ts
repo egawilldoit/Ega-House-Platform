@@ -7,7 +7,6 @@ import {
   getTodayPlan,
   planTaskForToday,
   removeTaskFromToday,
-  toLocalIsoDate,
   updateTodayTaskStatus,
 } from "@ega/application";
 import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
@@ -45,10 +44,11 @@ export function createTodayRoutes(
 
   routes.get("/", async (c) => {
     const { actor, client } = c.var;
+    const timezone = c.req.query("timezone") ?? c.req.query("tz") ?? null;
     const result = await getTodayPlan(
       actor,
       new SupabaseTodayReadPort(client),
-      { date: c.req.query("date"), now: dependencies.now?.() },
+      { date: c.req.query("date"), timezone, now: dependencies.now?.() },
     );
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
 
@@ -70,9 +70,16 @@ export function createTodayRoutes(
     const earlyResponse = await resolveOwnedTaskOr404(c, actor, repository, c.req.param("id"));
     if (earlyResponse) return earlyResponse;
 
+    const fallbackDate = body?.date
+      ? String(body.date)
+      : body?.timezone
+        ? null
+        : dependencies.now
+          ? dependencies.now().toISOString().slice(0, 10)
+          : undefined;
     const result = await planTaskForToday(actor, repository, {
       taskId: c.req.param("id"),
-      date: body?.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : undefined),
+      date: fallbackDate ?? body?.date,
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, taskId: result.data.id });
@@ -114,8 +121,13 @@ export function createTodayRoutes(
   routes.post("/clear-completed", async (c) => {
     const { actor, client } = c.var;
     const body = (await readJsonBody(c)) ?? {};
+    const fallbackClearDate = body.date
+      ? String(body.date)
+      : dependencies.now
+        ? dependencies.now().toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
     const result = await clearCompletedToday(actor, new SupabaseTasksRepository(client), {
-      date: body.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : new Date().toISOString().slice(0, 10)),
+      date: fallbackClearDate,
     });
     if (!result.ok) return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     return c.json({ ok: true });
