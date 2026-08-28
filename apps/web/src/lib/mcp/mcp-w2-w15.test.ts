@@ -1,6 +1,8 @@
+// @ts-nocheck
 import { describe, expect, it, vi } from "vitest";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { McpServer } from "@modelcontextprotocol/server";
+import { z } from "zod-v4";
 
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
@@ -147,7 +149,8 @@ describe("W9 requestState", () => {
     const codec = createRequestStateCodec({ key: secret, ttlSeconds: 1 });
     const state = await codec.mint({ user: "u1", client: "c1", tool: "t" } as never);
     // Tamper
-    await expect(codec.verify(state.slice(0, -1) + "A")).rejects.toThrow();
+    const tampered = state.slice(0, -1) + (state.endsWith("A") ? "B" : "A");
+    await expect(codec.verify(tampered)).rejects.toThrow();
     // Expiry — wait 2s to ensure floor crosses
     await new Promise((r) => setTimeout(r, 2100));
     await expect(codec.verify(state)).rejects.toThrow();

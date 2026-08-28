@@ -54,4 +54,3 @@
 Exact-head validation at `94862a7` (or final after docs), CI green, PR update, final Linear.
 
 **Verdict:** P0 0, P1 0, P2 0, P3 1 (consent test) — Audit B passes.
-

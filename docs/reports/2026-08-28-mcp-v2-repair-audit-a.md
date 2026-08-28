@@ -70,4 +70,3 @@
 - Proceed to Audit B at new head after fixes if any P2
 
 **Verdict:** No P0/P1/P2 — Audit A passes with 1 P3 (consent test).
-
