@@ -52,7 +52,7 @@ export function buildApkUrlFromManifest(manifest: ReleaseManifest): string | nul
   return null;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, signal?: AbortSignal): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timeout: ReturnType<typeof setTimeout>;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeout = setTimeout(() => reject(new Error(`timeout after ${ms}ms`)), ms);
@@ -74,8 +74,7 @@ export async function fetchLatestReleaseManifest(opts: {
         headers: { Accept: 'application/vnd.github+json' },
         signal: abort.signal,
       }),
-      timeoutMs,
-      abort.signal
+      timeoutMs
     );
     if (!releaseRes.ok) {
       if (releaseRes.status === 404) return null;

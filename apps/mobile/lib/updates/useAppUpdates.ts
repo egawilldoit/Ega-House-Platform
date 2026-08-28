@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import { getAppUpdateInfo } from './service';
-import { createUpdateService, getUpdateService } from './service';
-import type { AppUpdateInfo, UpdateStatus } from './types';
+import { getUpdateService } from './service';
+import type { AppUpdateInfo } from './types';
 
 export function useAppUpdateInfo() {
   return useMemo<AppUpdateInfo>(() => getAppUpdateInfo(), []);
@@ -26,29 +26,14 @@ export function useUpdateService(service = getUpdateService()) {
 export function useAppUpdatesFlow() {
   const svc = getUpdateService();
   const { status, isChecking, isDownloading, error, check, download, reload, info } = useUpdateService(svc);
-  const [step, setStep] = useState<UpdateStatus>(status);
 
-  useEffect(() => {
-    setStep(status);
-  }, [status]);
-
-  const runCheck = useCallback(async () => {
-    const res = await check();
-    return res;
-  }, [check]);
-
-  const runDownload = useCallback(async () => {
-    const res = await download();
-    return res;
-  }, [download]);
-
-  const runReload = useCallback(async () => {
-    await reload();
-  }, [reload]);
+  const runCheck = useCallback(async () => check(), [check]);
+  const runDownload = useCallback(async () => download(), [download]);
+  const runReload = useCallback(async () => reload(), [reload]);
 
   return {
     info,
-    status: step,
+    status,
     isChecking,
     isDownloading,
     error,
