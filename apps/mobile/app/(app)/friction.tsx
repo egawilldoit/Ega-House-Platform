@@ -69,7 +69,7 @@ export default function FrictionRadarScreen() {
             {new Date(data.generatedAt).toLocaleString()}
             {data.evidenceWindow ? ` · Window ${new Date(data.evidenceWindow.startIso).toLocaleDateString()} → ${new Date(data.evidenceWindow.endIso).toLocaleDateString()}` : ""}.
           </Text>
-          {isError && data ? (
+          {isError ? (
             <FeedbackBanner message={error instanceof Error ? error.message : "Refresh failed"} tone="danger" style={styles.feedback} />
           ) : null}
           <FrictionRadarView
