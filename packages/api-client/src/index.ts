@@ -11,6 +11,7 @@ export type { GoalsApi } from "./goals";
 export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
+export type { OperatorApi } from "./operator";
 export type { AuthApi } from "./auth";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
@@ -34,7 +35,20 @@ export type {
   MobileTodayTaskStatusMutationResponse,
   MobileTodayClearCompletedResponse,
 } from "@ega/contracts/mobile";
-export type { OperatorSnapshotDto, OperatorSignalsDto, OperatorFocusDto, OperatorScheduleDto, GetOperatorSnapshotResponse } from "@ega/contracts/operator";
+export type {
+  OperatorSnapshotDto,
+  OperatorSignalsDto,
+  OperatorFocusDto,
+  OperatorScheduleDto,
+  GetOperatorSnapshotResponse,
+  OperatorProposalDto,
+  OperatorProposalResultDto,
+  CreateOperatorProposalRequest,
+  CreateOperatorProposalResponse,
+  ApplyOperatorProposalRequest,
+  ApplyOperatorProposalResponse,
+  ApproveOperatorProposalResponse,
+} from "@ega/contracts/operator";
 export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 export type { TaskPriority, TaskStatus } from "@ega/domain";
 

@@ -16,6 +16,7 @@ import {
   type TokenProvider,
 } from "./http";
 import { createProjectsApi, type ProjectsApi } from "./projects";
+import { createOperatorApi, type OperatorApi } from "./operator";
 import { createTasksApi, type TasksApi } from "./tasks";
 import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
@@ -46,6 +47,7 @@ export type EgaApiClient = {
   tasks: TasksApi;
   today: TodayApi;
   timer: TimerApi;
+  operator: OperatorApi;
   auth: AuthApi;
 };
 
@@ -70,6 +72,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     tasks: createTasksApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    operator: createOperatorApi(http),
     auth: createAuthApi(http),
   };
 }
