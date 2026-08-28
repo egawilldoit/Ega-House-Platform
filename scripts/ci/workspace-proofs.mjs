@@ -87,7 +87,7 @@ const WORKSPACES = [
     dir: 'packages/data-access',
     name: '@ega/data-access',
     version: '0.1.0',
-    dependencies: { '@ega/application': '0.1.0', '@supabase/supabase-js': '^2.103.0' },
+    dependencies: { '@ega/application': '0.1.0', '@supabase/supabase-js': '^2.103.0', 'google-auth-library': '^9.15.0' },
     entry: './src/index.ts',
   },
   {

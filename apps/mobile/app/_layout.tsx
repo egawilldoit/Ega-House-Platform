@@ -11,6 +11,7 @@ import SpaceMono from '../assets/fonts/SpaceMono-Regular.ttf';
 import { useColorScheme } from '@/components/useColorScheme';
 import { mobileTheme } from '@/components/mobile/theme';
 import { AuthProvider } from '@/lib/auth/auth-context';
+import { NotificationProvider } from '@/lib/notifications/provider';
 import { MobileQueryProvider } from '@/lib/query/provider';
 
 export {
@@ -55,14 +56,16 @@ function RootLayoutNav() {
   return (
     <MobileQueryProvider>
       <AuthProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <StatusBar backgroundColor={mobileTheme.colors.background} style="dark" />
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-            <Stack.Screen name="(public)" />
-            <Stack.Screen name="(app)" />
-          </Stack>
-        </ThemeProvider>
+        <NotificationProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <StatusBar backgroundColor={mobileTheme.colors.background} style="dark" />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+              <Stack.Screen name="(public)" />
+              <Stack.Screen name="(app)" />
+            </Stack>
+          </ThemeProvider>
+        </NotificationProvider>
       </AuthProvider>
     </MobileQueryProvider>
   );
