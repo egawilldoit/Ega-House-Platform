@@ -2,29 +2,5 @@
   "cli": {
     "version": ">= 5.9.1",
     "appVersionSource": "local"
-  },
-  "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "channel": "preview"
-    },
-    "preview": {
-      "distribution": "internal",
-      "channel": "preview"
-    },
-    "production": {
-      "distribution": "internal",
-      "channel": "production",
-      "autoIncrement": false
-    }
-  },
-  "update": {
-    "preview": {
-      "channel": "preview"
-    },
-    "production": {
-      "channel": "production"
-    }
   }
 }
