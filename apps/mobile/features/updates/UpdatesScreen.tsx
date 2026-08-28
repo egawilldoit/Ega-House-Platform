@@ -77,6 +77,7 @@ export function UpdatesScreenContent() {
     appVersion,
     runtimeVersion,
     channel,
+    downloadedUpdateReady,
   } = useUpdateService(svc) as ReturnType<typeof useUpdateService> & {
     latestNativeVersion: string | null;
     latestNativeRuntimeVersion: string | null;
@@ -85,6 +86,7 @@ export function UpdatesScreenContent() {
     appVersion: string;
     runtimeVersion: string;
     channel: string | null;
+    downloadedUpdateReady: boolean;
   };
 
   const onCheck = useCallback(async () => {
@@ -113,9 +115,10 @@ export function UpdatesScreenContent() {
   }, [latestApkUrl, latestNativeReleaseUrl]);
 
   const showDownload = status === 'OTA_AVAILABLE';
-  const showRestart = status === 'OTA_READY';
+  const showRestart = status === 'OTA_READY' || (downloadedUpdateReady && status === 'ERROR' && error?.includes('Unable to restart'));
   const showNative = status === 'NATIVE_UPDATE_REQUIRED';
   const isNativeUnavailable = status === 'ERROR' && error?.includes('native release status unavailable');
+  const isReloadError = status === 'ERROR' && error?.includes('Unable to restart');
 
   return (
     <AppScreen padded={false} testID="updates-screen">
@@ -206,7 +209,7 @@ export function UpdatesScreenContent() {
           <View style={styles.actions}>
             {showRestart ? (
               <Button
-                title="Restart & update"
+                title={isReloadError ? 'Retry restart' : 'Restart & update'}
                 onPress={onRestart}
                 leftIcon={<Ionicons name="refresh" size={16} color={mobileTheme.colors.textOnAccent} />}
                 testID="updates-restart"
@@ -238,10 +241,10 @@ export function UpdatesScreenContent() {
                 testID="updates-check"
               />
             )}
-            {status === 'ERROR' && error?.includes('Unable to restart') ? (
+            {isReloadError ? (
               <FeedbackBanner message="Unable to restart and apply update. Retry restart." tone="danger" />
             ) : null}
-            {(status === 'UP_TO_DATE' || status === 'ERROR' || status === 'IDLE') && !showNative ? (
+            {(status === 'UP_TO_DATE' || status === 'ERROR' || status === 'IDLE') && !showNative && !isReloadError ? (
               <Text style={styles.retryHint}>Retry is safe — checks are rate-limited and never poll aggressively.</Text>
             ) : null}
           </View>

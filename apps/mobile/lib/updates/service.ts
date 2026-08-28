@@ -151,6 +151,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
   let latestReleaseUrl: string | null = null;
   let checking = false;
   let downloading = false;
+  let downloadedUpdateReady = false;
 
   const listeners = new Set<() => void>();
   function notify() {
@@ -168,7 +169,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
         status: currentStatus,
         isChecking: checking,
         isDownloading: downloading,
-        isReady: currentStatus === 'OTA_READY',
+        isReady: downloadedUpdateReady,
         error: lastError,
         lastCheckedAt,
         availableUpdateId,
@@ -180,6 +181,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
         appVersion: info.appVersion,
         runtimeVersion: info.runtimeVersion,
         channel: info.channel,
+        downloadedUpdateReady,
       };
     },
     subscribe(fn: () => void) {
@@ -226,12 +228,14 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       const result = await downloadUpdate(deps, opts);
       downloading = false;
       currentStatus = result.status;
+      if (result.status === 'OTA_READY') downloadedUpdateReady = true;
+      else downloadedUpdateReady = false;
       lastError = result.error ?? null;
       notify();
       return result;
     },
     async reload() {
-      if (currentStatus !== 'OTA_READY') {
+      if (!downloadedUpdateReady) {
         throw new Error('no downloaded update ready to reload');
       }
       try {
@@ -240,6 +244,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
         const msg = error instanceof Error ? error.message : String(error);
         lastError = `Unable to restart and apply update: ${msg}`;
         currentStatus = 'ERROR';
+        // keep downloadedUpdateReady true for retry, do not redownload
         notify();
         throw new Error(lastError);
       }
@@ -253,6 +258,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       latestNativeRuntimeVersion = null;
       latestApkUrl = null;
       latestReleaseUrl = null;
+      downloadedUpdateReady = false;
       notify();
     },
   };
