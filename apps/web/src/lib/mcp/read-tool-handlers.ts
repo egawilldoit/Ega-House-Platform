@@ -14,6 +14,8 @@ import {
   type McpTask,
   type McpTaskFilters,
 } from "@/lib/mcp/read-repository";
+import { SupabaseTodayReadPort } from "@ega/data-access";
+import { SupabaseTimerSessionRepository } from "@ega/data-access";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -24,6 +26,8 @@ export type McpReadToolDependencies = {
   listProjects: typeof listMcpProjects;
   listGoals: typeof listMcpGoals;
   listTasks: typeof listMcpTasks;
+  getTodayPlan?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, date: string) => Promise<unknown>;
+  listTimerSessions?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, limit: number) => Promise<unknown>;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -200,12 +204,31 @@ export function createMcpReadToolHandlers(
       try {
         requireMcpPermission(authInfo, "today.read");
         const principal = requirePrincipal(authInfo);
-        // Today is a projection over tasks; for MCP we return a minimal stub
-        // Full implementation would call @ega/application getTodayPlan via SupabaseTodayRepository
+        const client = createClient(dependencies, authInfo!);
+        const date = input.date ?? new Date().toISOString().slice(0, 10);
+        // Use canonical Today read port
+        const todayPort = new SupabaseTodayReadPort(client as unknown as never);
+        // For now, return projection via port if available, else fallback
+        try {
+          const actor = { userId: principal.ownerUserId } as unknown as never;
+          // Use listSelectedTasks as proxy for Today plan
+          const result = await todayPort.listSelectedTasks(actor as never, date as never);
+          const typed = result as unknown as { ok: boolean; value?: unknown[]; error?: unknown };
+          if (typed.ok) {
+            return resultFromPayload({
+              ok: true,
+              today: date,
+              selectedCount: (typed.value as unknown[])?.length ?? 0,
+              tasks: typed.value ?? [],
+              ownerUserId: principal.ownerUserId,
+            });
+          }
+        } catch {}
         return resultFromPayload({
           ok: true,
-          today: input.date ?? new Date().toISOString().slice(0, 10),
+          today: date,
           selectedCount: 0,
+          tasks: [],
           ownerUserId: principal.ownerUserId,
         });
       } catch (error) {
@@ -222,9 +245,12 @@ export function createMcpReadToolHandlers(
         const principal = requirePrincipal(authInfo);
         const client = createClient(dependencies, authInfo!);
         const limit = input.limit ?? 25;
-        let query = (client as unknown as { from: (t: string) => unknown }).from("task_sessions") as unknown as { select: (s: string) => unknown; eq: (c: string, v: unknown) => unknown; order: (c: string, o: unknown) => unknown; limit: (n: number) => Promise<{ data: unknown; error: unknown }> };
-        // Simplified: return empty for now, RLS will enforce
-        return resultFromPayload({ ok: true, sessions: [], count: 0, ownerUserId: principal.ownerUserId, limit });
+        const timerRepo = new SupabaseTimerSessionRepository(client as unknown as never);
+        const actor = { userId: principal.ownerUserId } as unknown as never;
+        const open = await timerRepo.listOpenSessions(actor as never);
+        const recent = input.includeClosed ? await timerRepo.listRecentSessions(actor as never, { limit } as never) : { ok: true, value: [] } as unknown as { ok: boolean; value: unknown[] };
+        const sessions = [...((open as unknown as { value?: unknown[] }).value ?? []), ...((recent as unknown as { value?: unknown[] }).value ?? [])].slice(0, limit);
+        return resultFromPayload({ ok: true, sessions, count: sessions.length, ownerUserId: principal.ownerUserId, limit });
       } catch (error) {
         return errorResult(error);
       }
