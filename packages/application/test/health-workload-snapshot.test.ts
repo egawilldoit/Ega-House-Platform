@@ -82,11 +82,11 @@ test("snapshot includes evidence quality for UI to distinguish insufficient vs z
   // insufficient: no sessions
   const insufficient = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo([]), { now });
   assert.equal(insufficient.ok, true);
-  assert.equal((insufficient as any).data.quality.quality, "insufficient");
-  assert.equal((insufficient as any).data.sessionCount, 0);
-  assert.equal((insufficient as any).data.activeDays, 0);
-  assert.equal((insufficient as any).data.longestSessionSeconds, null);
-  assert.equal((insufficient as any).data.averageSessionSeconds, null);
+  assert.equal((insufficient as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "insufficient");
+  assert.equal((insufficient as unknown as { data: HealthWorkloadSnapshot }).data.sessionCount, 0);
+  assert.equal((insufficient as unknown as { data: HealthWorkloadSnapshot }).data.activeDays, 0);
+  assert.equal((insufficient as unknown as { data: HealthWorkloadSnapshot }).data.longestSessionSeconds, null);
+  assert.equal((insufficient as unknown as { data: HealthWorkloadSnapshot }).data.averageSessionSeconds, null);
 
   // sufficient: closed sessions
   const sufficient = await getHealthWorkloadSnapshot(
@@ -95,7 +95,7 @@ test("snapshot includes evidence quality for UI to distinguish insufficient vs z
     makeEvidenceRepo([row({ task_id: "t1", started_at: "2026-04-19T09:00:00.000Z", ended_at: "2026-04-19T10:00:00.000Z" })]),
     { now },
   );
-  assert.equal((sufficient as any).data.quality.quality, "sufficient");
+  assert.equal((sufficient as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "sufficient");
 
   // provisional: open session included
   const provisional = await getHealthWorkloadSnapshot(
@@ -104,10 +104,10 @@ test("snapshot includes evidence quality for UI to distinguish insufficient vs z
     makeEvidenceRepo([{ task_id: "t-open", started_at: "2026-04-20T11:00:00.000Z", ended_at: null, duration_seconds: null, tasks: null }]),
     { now, includeOpenSessions: true },
   );
-  assert.equal((provisional as any).data.quality.quality, "provisional");
-  assert.equal((provisional as any).data.quality.hasOpenSessions, true);
-  assert.equal((provisional as any).data.quality.openSessionCount, 1);
-  assert.equal((provisional as any).data.sessionCount, 1);
+  assert.equal((provisional as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "provisional");
+  assert.equal((provisional as unknown as { data: HealthWorkloadSnapshot }).data.quality.hasOpenSessions, true);
+  assert.equal((provisional as unknown as { data: HealthWorkloadSnapshot }).data.quality.openSessionCount, 1);
+  assert.equal((provisional as unknown as { data: HealthWorkloadSnapshot }).data.sessionCount, 1);
 
   // suspect: malformed
   const suspect = await getHealthWorkloadSnapshot(
@@ -116,8 +116,8 @@ test("snapshot includes evidence quality for UI to distinguish insufficient vs z
     makeEvidenceRepo([row({ task_id: "bad", started_at: "not-a-date", ended_at: "2026-04-20T10:00:00.000Z" })]),
     { now, includeOpenSessions: true },
   );
-  assert.equal((suspect as any).data.quality.quality, "suspect");
-  assert.equal((suspect as any).data.quality.malformedCount, 1);
+  assert.equal((suspect as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "suspect");
+  assert.equal((suspect as unknown as { data: HealthWorkloadSnapshot }).data.quality.malformedCount, 1);
 });
 
 test("open sessions excluded by default (consistent with shared policy)", async () => {
@@ -126,15 +126,15 @@ test("open sessions excluded by default (consistent with shared policy)", async 
 
   const excluded = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo([open]), { now });
   assert.equal(excluded.ok, true);
-  assert.equal((excluded as any).data.quality.quality, "insufficient");
-  assert.equal((excluded as any).data.sessionCount, 0);
-  assert.equal((excluded as any).data.rollingWorkload.totalTrackedSeconds, 0);
+  assert.equal((excluded as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "insufficient");
+  assert.equal((excluded as unknown as { data: HealthWorkloadSnapshot }).data.sessionCount, 0);
+  assert.equal((excluded as unknown as { data: HealthWorkloadSnapshot }).data.rollingWorkload.totalTrackedSeconds, 0);
 
   const included = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo([open]), { now, includeOpenSessions: true });
   assert.equal(included.ok, true);
-  assert.equal((included as any).data.quality.quality, "provisional");
-  assert.equal((included as any).data.sessionCount, 1);
-  assert.equal((included as any).data.rollingWorkload.totalTrackedSeconds, 3600);
+  assert.equal((included as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "provisional");
+  assert.equal((included as unknown as { data: HealthWorkloadSnapshot }).data.sessionCount, 1);
+  assert.equal((included as unknown as { data: HealthWorkloadSnapshot }).data.rollingWorkload.totalTrackedSeconds, 3600);
 });
 
 test("window boundaries come from time-context local day window, not server process time", async () => {
@@ -145,7 +145,7 @@ test("window boundaries come from time-context local day window, not server proc
   const repo = makeEvidenceRepo([], capture);
   const result = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("America/New_York"), repo, { now });
   assert.equal(result.ok, true);
-  const snap = (result as any).data as HealthWorkloadSnapshot;
+  const snap = (result as unknown as { data: HealthWorkloadSnapshot }).data as HealthWorkloadSnapshot;
   // Local date in NY should be 2026-04-19
   assert.equal(snap.localDate, "2026-04-19");
   assert.equal(snap.timezone, "America/New_York");
@@ -169,7 +169,7 @@ test("suspect outranks provisional when both malformed and open", async () => {
   ];
   const result = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo(sessions), { now, includeOpenSessions: true });
   assert.equal(result.ok, true);
-  assert.equal((result as any).data.quality.quality, "suspect");
+  assert.equal((result as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "suspect");
 });
 
 test("window clipping respects local day boundaries — sessions outside window not counted", async () => {
@@ -180,8 +180,8 @@ test("window clipping respects local day boundaries — sessions outside window 
   ];
   const result = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo(sessions), { now });
   assert.equal(result.ok, true);
-  assert.equal((result as any).data.sessionCount, 1);
-  assert.equal((result as any).data.rollingWorkload.totalTrackedSeconds, 3600);
+  assert.equal((result as unknown as { data: HealthWorkloadSnapshot }).data.sessionCount, 1);
+  assert.equal((result as unknown as { data: HealthWorkloadSnapshot }).data.rollingWorkload.totalTrackedSeconds, 3600);
 });
 
 test("requestedTimezone overrides stored timezone via shared time-context", async () => {
@@ -194,7 +194,7 @@ test("requestedTimezone overrides stored timezone via shared time-context", asyn
     requestedTimezone: "Asia/Tokyo",
   });
   assert.equal(result.ok, true);
-  const snap = (result as any).data as HealthWorkloadSnapshot;
+  const snap = (result as unknown as { data: HealthWorkloadSnapshot }).data as HealthWorkloadSnapshot;
   assert.equal(snap.timezone, "Asia/Tokyo");
   assert.equal(snap.requestedTimezone, "Asia/Tokyo");
   // Tokyo local date for now 2026-04-20T12:00Z is 2026-04-20 21:00 JST => localDate 2026-04-20
@@ -212,7 +212,7 @@ test("invalid requested timezone falls back to UTC with invalid_timezone fallbac
     requestedTimezone: "Bad/Zone",
   });
   assert.equal(result.ok, true);
-  const snap = (result as any).data as HealthWorkloadSnapshot;
+  const snap = (result as unknown as { data: HealthWorkloadSnapshot }).data as HealthWorkloadSnapshot;
   assert.equal(snap.timezone, "UTC");
   assert.equal(snap.fallback, "invalid_timezone");
 });
@@ -221,7 +221,7 @@ test("health snapshot distinguishes insufficient from zero activity via quality"
   const now = new Date("2026-04-20T12:00:00.000Z");
   // Zero activity but window valid — insufficient
   const r1 = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo([]), { now });
-  assert.equal((r1 as any).data.quality.quality, "insufficient");
+  assert.equal((r1 as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "insufficient");
   // Zero activity due to malformed — suspect, not insufficient
   const r2 = await getHealthWorkloadSnapshot(
     ACTOR,
@@ -229,7 +229,7 @@ test("health snapshot distinguishes insufficient from zero activity via quality"
     makeEvidenceRepo([row({ task_id: "t", started_at: "bad", ended_at: "2026-04-20T10:00:00.000Z" })]),
     { now },
   );
-  assert.equal((r2 as any).data.quality.quality, "suspect");
+  assert.equal((r2 as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "suspect");
   // Provisional with open session dominating — still provisional, not sufficient
   const r3 = await getHealthWorkloadSnapshot(
     ACTOR,
@@ -237,10 +237,10 @@ test("health snapshot distinguishes insufficient from zero activity via quality"
     makeEvidenceRepo([{ task_id: "t-open", started_at: "2026-04-14T00:00:00.000Z", ended_at: null, duration_seconds: null, tasks: null }]),
     { now, includeOpenSessions: true },
   );
-  assert.equal((r3 as any).data.quality.quality, "provisional");
+  assert.equal((r3 as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "provisional");
   // Ensure recommendations can suppress themselves when not sufficient
   for (const r of [r1, r2, r3]) {
-    const q = (r as any).data.quality.quality;
+    const q = (r as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality;
     const canRecommend = q === "sufficient";
     assert.equal(canRecommend, false);
   }
@@ -250,8 +250,8 @@ test("health snapshot distinguishes insufficient from zero activity via quality"
     makeEvidenceRepo([row({ task_id: "t1", started_at: "2026-04-19T09:00:00.000Z", ended_at: "2026-04-19T10:00:00.000Z" })]),
     { now },
   );
-  assert.equal((sufficient as any).data.quality.quality, "sufficient");
-  assert.equal((sufficient as any).data.quality.quality === "sufficient", true);
+  assert.equal((sufficient as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality, "sufficient");
+  assert.equal((sufficient as unknown as { data: HealthWorkloadSnapshot }).data.quality.quality === "sufficient", true);
 });
 
 test("no new health database: snapshot fails gracefully when evidence repository fails", async () => {
@@ -269,7 +269,7 @@ test("rolling workload window is always 7 days", async () => {
   const now = new Date("2026-04-20T12:00:00.000Z");
   const result = await getHealthWorkloadSnapshot(ACTOR, makeTimeRepo("UTC"), makeEvidenceRepo([]), { now });
   assert.equal(result.ok, true);
-  const snap = (result as any).data as HealthWorkloadSnapshot;
+  const snap = (result as unknown as { data: HealthWorkloadSnapshot }).data as HealthWorkloadSnapshot;
   assert.equal(snap.windowDays, HEALTH_ROLLING_WINDOW_DAYS);
   assert.equal(snap.windowDays, 7);
   const startMs = new Date(snap.window.startIso).getTime();

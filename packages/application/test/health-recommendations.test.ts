@@ -316,15 +316,6 @@ test("training_low_density: triggers at threshold inclusive, suppressed when wor
 // ---------------------------------------------------------------------------
 
 test("recommendations are deterministic for same evidence/time window", () => {
-  const snap = makeSnapshot({
-    rollingWorkload: { totalTrackedSeconds: 650 * 60, totalTrackedMinutes: 650, totalTrackedLabel: "10h 50m 0s" },
-    longestSessionSeconds: 100 * 60,
-    longestSessionLabel: "1h 40m 0s",
-    activeDays: 1,
-    sessionDensity: 0.2,
-    quality: { quality: "sufficient", reasons: [], hasOpenSessions: false, openSessionCount: 0, malformedCount: 0, sessionCount: 2, totalTrackedSeconds: 650 * 60 },
-  });
-  // Force low activity too: totalMinutes <= lowTotalMinutes? But 650 > lowTotal, so movement won't fire — make compliant: use moderate workload but low density
   const snapMulti = makeSnapshot({
     rollingWorkload: { totalTrackedSeconds: 650 * 60, totalTrackedMinutes: 650, totalTrackedLabel: "10h 50m 0s" },
     longestSessionSeconds: 100 * 60,
