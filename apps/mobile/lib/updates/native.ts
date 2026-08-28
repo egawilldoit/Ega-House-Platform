@@ -51,7 +51,7 @@ export function parseMobileVersionFromTag(tag: string): string | null {
   return m ? m[1] : null;
 }
 
-export function isStableMobileRelease(release: { tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string }> }): boolean {
+export function isStableMobileTagRelease(release: { tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string }> }): boolean {
   if (release.draft) return false;
   if (release.prerelease) return false;
   const version = parseMobileVersionFromTag(release.tag_name);
@@ -61,9 +61,11 @@ export function isStableMobileRelease(release: { tag_name: string; draft: boolea
   } catch {
     return false;
   }
-  const hasManifest = (release.assets || []).some((a) => a.name === 'release-manifest.json');
-  if (!hasManifest) return false;
   return true;
+}
+
+export function isStableMobileRelease(release: { tag_name: string; draft: boolean; prerelease: boolean; assets: Array<{ name: string }> }): boolean {
+  return isStableMobileTagRelease(release);
 }
 
 export function buildApkUrlFromManifest(manifest: ReleaseManifest): string | null {
@@ -182,30 +184,30 @@ export async function fetchLatestReleaseManifest(opts: {
   const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
 
   const releases = await fetchReleasesPaginated({ fetchImpl, timeoutMs, perPage: 100, maxPages: 2 });
-  const stableCandidates = releases.filter(isStableMobileRelease);
-  if (stableCandidates.length === 0) {
-    throw new Error('no stable mobile release with release-manifest.json');
+  const stableTags = releases.filter(isStableMobileTagRelease);
+  if (stableTags.length === 0) {
+    throw new Error('ZERO_STABLE_MOBILE_RELEASES: no stable mobile tag releases — bootstrap only for 1.0.1');
   }
-  stableCandidates.sort((a, b) => {
+  stableTags.sort((a, b) => {
     const va = parseMobileVersionFromTag(a.tag_name) as string;
     const vb = parseMobileVersionFromTag(b.tag_name) as string;
     return compareVersions(vb, va);
   });
-  const highest = stableCandidates[0];
+  const highest = stableTags[0];
   const tagVersion = parseMobileVersionFromTag(highest.tag_name) as string;
   const manifestAsset = (highest.assets || []).find((a) => a.name === 'release-manifest.json');
-  if (!manifestAsset) throw new Error(`release ${highest.tag_name} missing release-manifest.json`);
+  if (!manifestAsset) throw new Error(`BASELINE_METADATA_INVALID: highest stable mobile release ${highest.tag_name} missing release-manifest.json — FAIL CLOSED`);
   const manifestRes = await withTimeout(
     fetchImpl(manifestAsset.browser_download_url, {
       headers: { Accept: 'application/json' },
     }),
     timeoutMs
   );
-  if (!manifestRes.ok) throw new Error(`manifest fetch ${manifestRes.status} for ${highest.tag_name}`);
+  if (!manifestRes.ok) throw new Error(`BASELINE_METADATA_INVALID: manifest fetch ${manifestRes.status} for ${highest.tag_name} — FAIL CLOSED`);
   const raw = await manifestRes.json();
   const manifest = validateManifest(raw, tagVersion);
   const apkAsset = (highest.assets || []).find((a) => a.name === manifest.apkFile);
-  if (!apkAsset) throw new Error(`release ${highest.tag_name} missing APK asset ${manifest.apkFile}`);
+  if (!apkAsset) throw new Error(`BASELINE_METADATA_INVALID: release ${highest.tag_name} missing APK asset ${manifest.apkFile} — FAIL CLOSED`);
   return manifest;
 }
 

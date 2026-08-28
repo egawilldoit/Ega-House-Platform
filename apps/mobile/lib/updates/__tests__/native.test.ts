@@ -146,15 +146,66 @@ describe('checkNativeUpdateRequired error handling', () => {
     const badManifest = { version: 'bad', runtimeVersion: '', repository: 'egawilldoit/Ega-House-Platform' };
     const releaseJson = {
       tag_name: 'mobile-v1.0.1',
+      draft: false,
+      prerelease: false,
       assets: [{ name: 'release-manifest.json', browser_download_url: 'https://example.com/manifest.json' }],
+      html_url: 'https://github.com/egawilldoit/Ega-House-Platform/releases/tag/mobile-v1.0.1',
     };
     const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('/releases?')) {
+        return Promise.resolve({ ok: true, json: async () => [releaseJson] } as Response);
+      }
       if (url.includes('api.github.com')) {
-        return Promise.resolve({ ok: true, json: async () => releaseJson } as Response);
+        return Promise.resolve({ ok: true, json: async () => [releaseJson] } as Response);
       }
       return Promise.resolve({ ok: true, json: async () => badManifest } as Response);
     });
     const res = await checkNativeUpdateRequired({ fetchImpl: fetchImpl as unknown as typeof fetch, localVersion: '1.0.0', localRuntime: '1.0.0' });
     expect(res.status).toBe('ERROR');
+  });
+
+  it('returns ERROR when highest stable tag has no manifest (fail closed, no fallback)', async () => {
+    const releaseNoManifest = {
+      tag_name: 'mobile-v1.0.1',
+      draft: false,
+      prerelease: false,
+      assets: [],
+      html_url: 'https://github.com/egawilldoit/Ega-House-Platform/releases/tag/mobile-v1.0.1',
+    };
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('/releases?') || url.includes('api.github.com')) {
+        return Promise.resolve({ ok: true, json: async () => [releaseNoManifest] } as Response);
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    const res = await checkNativeUpdateRequired({ fetchImpl: fetchImpl as unknown as typeof fetch, localVersion: '1.0.0', localRuntime: '1.0.0' });
+    expect(res.status).toBe('ERROR');
+    if (res.status === 'ERROR') expect(res.error).toMatch(/BASELINE_METADATA_INVALID|missing.*manifest/);
+  });
+
+  it('does not fall back to older valid when highest missing manifest', async () => {
+    const releaseHighNoManifest = {
+      tag_name: 'mobile-v1.2.0',
+      draft: false,
+      prerelease: false,
+      assets: [],
+      html_url: 'https://github.com/egawilldoit/Ega-House-Platform/releases/tag/mobile-v1.2.0',
+    };
+    const releaseLowValid = {
+      tag_name: 'mobile-v1.0.1',
+      draft: false,
+      prerelease: false,
+      assets: [{ name: 'release-manifest.json', browser_download_url: 'https://example.com/manifest.json' }],
+      html_url: 'https://github.com/egawilldoit/Ega-House-Platform/releases/tag/mobile-v1.0.1',
+    };
+    const fetchImpl = jest.fn().mockImplementation((url: string) => {
+      if (url.includes('/releases?') || url.includes('api.github.com')) {
+        return Promise.resolve({ ok: true, json: async () => [releaseHighNoManifest, releaseLowValid] } as Response);
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    const res = await checkNativeUpdateRequired({ fetchImpl: fetchImpl as unknown as typeof fetch, localVersion: '1.0.0', localRuntime: '1.0.0' });
+    expect(res.status).toBe('ERROR');
+    if (res.status === 'ERROR') expect(res.error).toMatch(/BASELINE_METADATA_INVALID.*1\.2\.0/);
   });
 });
