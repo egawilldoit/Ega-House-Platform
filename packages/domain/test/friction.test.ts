@@ -2,14 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  FRICTION_CONTEXT_SWITCH_HIGH_THRESHOLD,
+  FRICTION_CONTEXT_SWITCH_THRESHOLD,
+  FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD,
+  FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES,
+  FRICTION_ESTIMATE_PERCENT_THRESHOLD,
   FRICTION_STALE_THRESHOLD_DAYS,
   FRICTION_STALE_THRESHOLD_MS,
   getFrictionAgeDays,
   getFrictionAgeMs,
+  getFrictionContextSwitchCount,
+  getFrictionContextSwitchSeverity,
+  getFrictionEstimatePercentError,
+  getFrictionEstimateSeverity,
   isActiveFrictionGoal,
   isActiveFrictionTask,
   isBlockedFrictionTask,
+  isFrictionContextSwitchFriction,
+  isFrictionEstimateMismatch,
   isFrictionStale,
+  isMeaningfulFrictionEstimate,
   isStaleFrictionGoal,
   isStaleFrictionTask,
 } from "../src/friction/index";
@@ -79,4 +91,47 @@ test("isStale helpers combine active + threshold", () => {
   assert.equal(isStaleFrictionTask(archivedStaleTask, NOW), false);
   assert.equal(isStaleFrictionGoal(staleGoal, NOW), true);
   assert.equal(isStaleFrictionGoal(archivedStaleGoal, NOW), false);
+});
+
+test("estimate thresholds are deterministic and owned in domain", () => {
+  assert.equal(FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES, 5);
+  assert.equal(FRICTION_ESTIMATE_PERCENT_THRESHOLD, 50);
+  assert.equal(FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD, 100);
+  assert.equal(isMeaningfulFrictionEstimate(5), true);
+  assert.equal(isMeaningfulFrictionEstimate(4), false);
+  assert.equal(isMeaningfulFrictionEstimate(null), false);
+  assert.equal(isMeaningfulFrictionEstimate(undefined), false);
+  assert.equal(isMeaningfulFrictionEstimate(0), false);
+  assert.equal(getFrictionEstimatePercentError(90, 60), 50);
+  assert.equal(getFrictionEstimatePercentError(120, 60), 100);
+  assert.equal(getFrictionEstimatePercentError(180, 60), 200);
+  assert.equal(getFrictionEstimatePercentError(30, 60), -50);
+  assert.equal(getFrictionEstimatePercentError(60, 60), 0);
+  assert.equal(getFrictionEstimateSeverity(50), "low");
+  assert.equal(getFrictionEstimateSeverity(51), "medium");
+  assert.equal(getFrictionEstimateSeverity(100), "medium");
+  assert.equal(getFrictionEstimateSeverity(101), "high");
+  assert.equal(getFrictionEstimateSeverity(-51), "medium");
+  assert.equal(getFrictionEstimateSeverity(-101), "high");
+  assert.equal(isFrictionEstimateMismatch(51), true);
+  assert.equal(isFrictionEstimateMismatch(50), false);
+  assert.equal(isFrictionEstimateMismatch(101), true);
+});
+
+test("context-switch thresholds are deterministic and owned in domain", () => {
+  assert.equal(FRICTION_CONTEXT_SWITCH_THRESHOLD, 6);
+  assert.equal(FRICTION_CONTEXT_SWITCH_HIGH_THRESHOLD, 10);
+  assert.equal(getFrictionContextSwitchCount(["a", "a", "b", "b", "a"]), 2);
+  assert.equal(getFrictionContextSwitchCount(["a"]), 0);
+  assert.equal(getFrictionContextSwitchCount([]), 0);
+  assert.equal(getFrictionContextSwitchCount(["a", "b", "c", "d", "e", "f", "g"]), 6);
+  assert.equal(getFrictionContextSwitchSeverity(0), "none");
+  assert.equal(getFrictionContextSwitchSeverity(5), "low");
+  assert.equal(getFrictionContextSwitchSeverity(6), "medium");
+  assert.equal(getFrictionContextSwitchSeverity(9), "medium");
+  assert.equal(getFrictionContextSwitchSeverity(10), "high");
+  assert.equal(getFrictionContextSwitchSeverity(12), "high");
+  assert.equal(isFrictionContextSwitchFriction(5), false);
+  assert.equal(isFrictionContextSwitchFriction(6), true);
+  assert.equal(isFrictionContextSwitchFriction(10), true);
 });

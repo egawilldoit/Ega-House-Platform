@@ -65,8 +65,9 @@ export default function FrictionRadarScreen() {
             style={styles.screenHeader}
           />
           <Text style={styles.description}>
-            Deterministic stale ({data.thresholdDays}d) and blocked-work signals. Generated{" "}
-            {new Date(data.generatedAt).toLocaleString()}.
+            Deterministic stale ({data.thresholdDays}d), estimate, and context-switch signals. Generated{" "}
+            {new Date(data.generatedAt).toLocaleString()}
+            {data.evidenceWindow ? ` · Window ${new Date(data.evidenceWindow.startIso).toLocaleDateString()} → ${new Date(data.evidenceWindow.endIso).toLocaleDateString()}` : ""}.
           </Text>
           {isError && data ? (
             <FeedbackBanner message={error instanceof Error ? error.message : "Refresh failed"} tone="danger" style={styles.feedback} />
@@ -76,6 +77,9 @@ export default function FrictionRadarScreen() {
             staleTasks={data.staleTasks}
             staleGoals={data.staleGoals}
             thresholdDays={data.thresholdDays}
+            estimateSignals={data.estimateSignals}
+            contextSwitch={data.contextSwitch}
+            evidenceWindow={data.evidenceWindow}
           />
         </View>
       </ScrollView>

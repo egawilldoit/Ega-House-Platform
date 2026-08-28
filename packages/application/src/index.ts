@@ -21,6 +21,8 @@ export * from "./timer/ports";
 export * from "./timer/service";
 export * from "./friction/ports";
 export * from "./friction/stale-blocked-signals";
+export * from "./friction/estimate-accuracy";
+export * from "./friction/context-switch";
 export * from "./shared/duration";
 export * from "./shared/time-context";
 export * from "./shared/execution-evidence";

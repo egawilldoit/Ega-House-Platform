@@ -151,6 +151,10 @@ test("empty state returns empty arrays with threshold and generatedAt", async ()
   assert.deepEqual(result.data.blocked, []);
   assert.deepEqual(result.data.staleTasks, []);
   assert.deepEqual(result.data.staleGoals, []);
+  assert.deepEqual(result.data.estimateSignals, []);
+  assert.equal(result.data.contextSwitch.switchCount, 0);
+  assert.equal(result.data.contextSwitch.severity, "none");
+  assert.equal(result.data.evidenceWindow, null);
   assert.equal(result.data.thresholdDays, 7);
   assert.equal(result.data.generatedAt, NOW.toISOString());
   assert.equal(result.data.ok, true);

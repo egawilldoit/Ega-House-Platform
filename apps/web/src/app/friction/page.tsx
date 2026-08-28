@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
-import { AlertTriangle, PauseCircle, Clock3 } from "lucide-react";
+import { AlertTriangle, PauseCircle, Clock3, Timer, Shuffle } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -25,20 +25,20 @@ export default async function FrictionRadarPage() {
     return <div className="p-6">Failed to load friction signals: {result.errorMessage}</div>;
   }
 
-  const { blocked, staleTasks, staleGoals, thresholdDays, generatedAt } = result.data;
-  const hasAny = blocked.length > 0 || staleTasks.length > 0 || staleGoals.length > 0;
+  const { blocked, staleTasks, staleGoals, thresholdDays, generatedAt, estimateSignals, contextSwitch, evidenceWindow } = result.data;
+  const hasAny = blocked.length > 0 || staleTasks.length > 0 || staleGoals.length > 0 || estimateSignals.length > 0 || contextSwitch.isFriction;
 
   return (
     <AppShell
       eyebrow="Friction Radar"
       title="Workflow Friction"
-      description={`Deterministic stale (${thresholdDays}d) and blocked-work signals. Generated ${new Date(generatedAt).toLocaleString()}.`}
+      description={`Deterministic stale (${thresholdDays}d), estimate, and context-switch signals. Generated ${new Date(generatedAt).toLocaleString()}${evidenceWindow ? ` · Window ${new Date(evidenceWindow.startIso).toLocaleDateString()} → ${new Date(evidenceWindow.endIso).toLocaleDateString()}` : ""}.`}
     >
       {!hasAny ? (
         <EmptyState
           icon={Clock3}
           title="No friction detected"
-          description="No blocked or stale work found. Your active tasks and goals are fresh."
+          description="No blocked, stale, estimate, or context-switch friction found."
         />
       ) : null}
 
@@ -154,6 +154,54 @@ export default async function FrictionRadarPage() {
                 ))}
               </ul>
             )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Estimate Accuracy */}
+      <section className="mt-4">
+        <Card className="ega-glass rounded-[1.35rem]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Timer className="h-5 w-5" aria-hidden="true" />
+              Estimate Accuracy ({estimateSignals.length})
+            </CardTitle>
+            <CardDescription>Tasks with meaningful estimate (≥5m) and tracked evidence where actual deviates &gt;50% (medium) or &gt;100% (high). Window-clipped via execution evidence, no double-count.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {estimateSignals.length === 0 ? (
+              <p className="text-sm text-[color:var(--muted-foreground)]">No estimate friction in window.</p>
+            ) : (
+              <ul className="space-y-3">
+                {estimateSignals.map((sig) => (
+                  <li key={sig.id} className="ega-glass-soft flex flex-col gap-1 rounded-[1rem] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium text-[color:var(--foreground)]">{sig.title}</span>
+                      <Badge tone={sig.severity === "high" ? "warn" : "muted"}>{sig.percentError}% {sig.status}</Badge>
+                    </div>
+                    <p className="text-xs text-[color:var(--muted-foreground)]">Est {sig.estimateMinutes}m · Actual {sig.actualMinutes}m · Δ {sig.deltaMinutes}m</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Context Switch */}
+      <section className="mt-4">
+        <Card className="ega-glass rounded-[1.35rem]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shuffle className="h-5 w-5" aria-hidden="true" />
+              Context Switches ({contextSwitch.switchCount})
+            </CardTitle>
+            <CardDescription>Transitions between different Task ids in ordered sessions (repeat same Task not a switch). Threshold {contextSwitch.threshold} (medium), {contextSwitch.highThreshold} (high).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              {contextSwitch.transitionsCount} sessions · {contextSwitch.distinctTaskCount} tasks · {contextSwitch.switchCount} switches · Severity {contextSwitch.severity} {contextSwitch.isFriction ? "· Friction detected" : "· No friction"}
+            </p>
           </CardContent>
         </Card>
       </section>
