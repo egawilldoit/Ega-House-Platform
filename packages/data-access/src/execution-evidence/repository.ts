@@ -27,7 +27,7 @@ export class SupabaseExecutionEvidenceRepository implements ExecutionEvidenceRep
     const limit = options.limit ?? 2000;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query: any = this.supabase
+    const query: any = this.supabase
       .from("task_sessions")
       .select(
         "id, task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, goal_id, estimate_minutes, projects(id, name), goals(id, title))",

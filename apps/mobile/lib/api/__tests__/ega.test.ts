@@ -115,6 +115,9 @@ function makeFakeClient(): EgaApiClient {
     healthSnapshot: {
       getSnapshot: jest.fn(),
     },
+    timeContext: {
+      get: jest.fn(),
+    },
     notifications: {
       list: jest.fn(),
       unreadCount: jest.fn(),
