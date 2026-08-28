@@ -204,6 +204,7 @@ export function createTasksRoutes(
     const result = await createTaskReminder(actor, new SupabaseTasksRepository(client), {
       taskId: c.req.param("id"),
       remindAt: body.remindAt,
+      deliveryMode: body.deliveryMode,
       now: dependencies.now?.(),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
