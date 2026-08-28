@@ -9,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   formatDateTime,
   formatIsoDate,
+  getTodayIsoDateForTimezone,
   isIsoDate,
   shiftIsoDateByDays,
 } from "@/lib/review-week";
@@ -17,9 +18,6 @@ import {
   getWeeklyReviewPageData,
   type WeeklyReviewPageData,
 } from "@/lib/services/weekly-review-page-service";
-import { getLocalDateInTimezone } from "@ega/domain";
-import { SupabaseTimeContextRepository } from "@ega/data-access";
-import { createAuthenticatedActor } from "@ega/application/auth/actor";
 
 import { ReviewEmailPreviewForm } from "./review-email-preview-form";
 import { ReviewForm } from "./review-form";
@@ -167,26 +165,24 @@ export default async function ReviewPage({ searchParams }: ReviewPageProps) {
     throw new Error("You must be signed in to review weekly activity.");
   }
   const ownerUserId = authData.user.id;
-  let selectedWeekOf: string;
-  if (resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)) {
-    selectedWeekOf = resolvedSearchParams.weekOf;
-  } else {
-    // Canonical Time Context: derive local calendar date for current week,
-    // not UTC. This ensures Asia/Tokyo 01:00 (UTC previous day) shows the
-    // correct local week (Monday boundary correct).
-    try {
-      const repo = new SupabaseTimeContextRepository(
-        supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
-      );
-      const actor = createAuthenticatedActor(ownerUserId);
-      const tzResult = await repo.getTimezone(actor);
-      const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
-      selectedWeekOf = getLocalDateInTimezone(new Date(), effectiveTz);
-      if (!isIsoDate(selectedWeekOf)) selectedWeekOf = getLocalDateInTimezone(new Date(), "UTC");
-    } catch {
-      selectedWeekOf = getLocalDateInTimezone(new Date(), "UTC");
-    }
+  // Canonical Today via Time Context — timezone-aware, reproducible, server-TZ independent
+  let todayIsoForSelection: string;
+  try {
+    const { data: tzRow } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
+      "user_time_context",
+    )
+      .select("iana_timezone")
+      .eq("user_id", ownerUserId)
+      .maybeSingle();
+    const tz = (tzRow as { iana_timezone?: string | null } | null)?.iana_timezone;
+    todayIsoForSelection = getTodayIsoDateForTimezone(typeof tz === "string" ? tz : null, new Date());
+  } catch {
+    todayIsoForSelection = getTodayIsoDateForTimezone(null, new Date());
   }
+  const selectedWeekOf =
+    resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)
+      ? resolvedSearchParams.weekOf
+      : todayIsoForSelection;
   const shouldUseGeneratedDraft = resolvedSearchParams.draft === "generated";
   const {
     bounds,

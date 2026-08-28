@@ -1,30 +1,26 @@
-/**
- * Review week helpers — canonical delegation.
- * The single source of truth for week bounds is @ega/domain/time-context
- * (canonical timezone-aware). This module preserves the existing web import
- * path but delegates to the domain so no second source exists.
- */
-
-import { getLocalDateInTimezone, getWeekWindow as getDomainWeekWindow } from "@ega/domain";
+import {
+  getLocalDateInTimezone as getDomainLocalDate,
+  getWeekWindow as getDomainWeekWindow,
+  getLocalDayWindow as getDomainDayWindow,
+} from "@ega/domain";
+import { resolveHistoricalTimeContext } from "@ega/application";
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-/**
- * @deprecated Use `getLocalDateInTimezone` with the user's canonical Time Context timezone.
- * This UTC helper is retained for non-review surfaces and legacy callers but must not be
- * used as the canonical user-day authority for Weekly Review. Weekly Review must derive
- * `today` via the stored `user_time_context.iana_timezone` through the canonical domain
- * Time Context helpers so that early-morning Asia/Tokyo (and other offsets) does not
- * collapse to the previous UTC day.
- */
 export function getTodayIsoDate() {
+  // Canonical UTC fallback; server-TZ independent via explicit UTC.
+  // For user-local Today, use getTodayIsoDateForTimezone.
   return toIsoDate(new Date());
 }
 
-export function getLocalTodayIsoDate(timezone: string, now: Date = new Date()): string {
-  return getLocalDateInTimezone(now, timezone);
+export function getTodayIsoDateForTimezone(timezone: string | null | undefined, now = new Date()) {
+  try {
+    return getDomainLocalDate(now, timezone ?? "UTC");
+  } catch {
+    return toIsoDate(now);
+  }
 }
 
 export function isIsoDate(value: string) {
@@ -37,24 +33,74 @@ export function isIsoDate(value: string) {
 }
 
 export function getWeekBounds(weekOf: string) {
-  if (!isIsoDate(weekOf)) return null;
+  // Canonical via @ega/domain (UTC) — preserves existing UTC semantics but uses single owner.
+  // For timezone-aware bounds, use getWeekBoundsForTimezone.
   try {
-    const window = getDomainWeekWindow("UTC", weekOf);
-    return { weekStart: window.weekStart, weekEnd: window.weekEnd };
+    const w = getDomainWeekWindow("UTC", weekOf);
+    return { weekStart: w.weekStart, weekEnd: w.weekEnd };
   } catch {
     return null;
   }
 }
 
-export function getWeekWindow(weekStart: string, weekEnd: string) {
-  // Domain expects a single date within the week; use weekStart as anchor.
-  // UTC is preserved for backward compatibility where weekStart/weekEnd are already resolved.
-  const startIso = `${weekStart}T00:00:00.000Z`;
-  const endExclusiveDate = new Date(`${weekEnd}T00:00:00.000Z`);
-  endExclusiveDate.setUTCDate(endExclusiveDate.getUTCDate() + 1);
+export function getWeekBoundsForTimezone(weekOf: string, timezone: string | null | undefined) {
+  const result = resolveHistoricalTimeContext({ timezone: timezone ?? "UTC", date: weekOf });
+  if (!result.ok) return null;
   return {
-    startIso,
-    endExclusiveIso: `${toIsoDate(endExclusiveDate)}T00:00:00.000Z`,
+    weekStart: result.data.weekWindow.weekStart,
+    weekEnd: result.data.weekWindow.weekEnd,
+  };
+}
+
+export function getWeekWindow(weekStart: string, weekEnd: string) {
+  // UTC canonical via domain; caller should prefer getWeekWindowForTimezone for user-local.
+  try {
+    const startWindow = getDomainDayWindow("UTC", weekStart);
+    const endWindow = getDomainDayWindow("UTC", weekEnd);
+    // endExclusive is next day after weekEnd at 00:00 UTC
+    const endExclusiveIso = endWindow.endUtcIso;
+    return {
+      startIso: startWindow.startUtcIso,
+      endExclusiveIso,
+    };
+  } catch {
+    const startIso = `${weekStart}T00:00:00.000Z`;
+    const endExclusiveDate = new Date(`${weekEnd}T00:00:00.000Z`);
+    endExclusiveDate.setUTCDate(endExclusiveDate.getUTCDate() + 1);
+    return {
+      startIso,
+      endExclusiveIso: `${toIsoDate(endExclusiveDate)}T00:00:00.000Z`,
+    };
+  }
+}
+
+export function getWeekWindowForTimezone(
+  weekStart: string,
+  weekEnd: string,
+  timezone: string | null | undefined,
+) {
+  const tz = timezone ?? "UTC";
+  try {
+    const startWindow = getDomainDayWindow(tz, weekStart);
+    // endExclusive is start of day after weekEnd in that timezone
+    const weekEndDate = getDomainWeekWindow(tz, weekEnd);
+    return {
+      startIso: startWindow.startUtcIso,
+      endExclusiveIso: weekEndDate.weekEndExclusiveUtcIso,
+    };
+  } catch {
+    return getWeekWindow(weekStart, weekEnd);
+  }
+}
+
+export function getWeekWindowViaTimeContext(timezone: string | null | undefined, date: string) {
+  const result = resolveHistoricalTimeContext({ timezone: timezone ?? "UTC", date });
+  if (!result.ok) return null;
+  return {
+    weekStart: result.data.weekWindow.weekStart,
+    weekEnd: result.data.weekWindow.weekEnd,
+    startIso: result.data.weekWindow.weekStartUtcIso,
+    endExclusiveIso: result.data.weekWindow.weekEndExclusiveUtcIso,
   };
 }
 
