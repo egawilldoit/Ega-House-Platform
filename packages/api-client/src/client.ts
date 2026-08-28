@@ -19,6 +19,7 @@ import { createInboxApi, type InboxApi } from "./inbox";
 import { createNotificationsApi, type NotificationsApi } from "./notifications";
 import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
+import { createTimeContextApi, type TimeContextApi } from "./time-context";
 import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
 import type { ApiErrorPayload, ApiResult } from "./errors";
@@ -49,6 +50,7 @@ export type EgaApiClient = {
   inbox: InboxApi;
   today: TodayApi;
   timer: TimerApi;
+  timeContext: TimeContextApi;
   notifications: NotificationsApi;
   auth: AuthApi;
 };
@@ -75,6 +77,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     inbox: createInboxApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    timeContext: createTimeContextApi(http),
     notifications: createNotificationsApi(http),
     auth: createAuthApi(http),
   };

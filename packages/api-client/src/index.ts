@@ -12,6 +12,7 @@ export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
 export type { InboxApi, InboxListQuery, CreateInboxInput, UpdateInboxInput } from "./inbox";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
+export type { TimeContextApi, TimeContextQuery } from "./time-context";
 export type { AuthApi } from "./auth";
 
 export type { ApiResult, ApiErrorPayload, ApiErrorCode, OkResponse } from "./errors";
