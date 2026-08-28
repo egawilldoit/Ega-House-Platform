@@ -27,7 +27,7 @@ function makeUpdates(overrides: Partial<Record<string, unknown>> = {}) {
   } as unknown as import('../service').UpdatesModule;
 }
 
-function makeConstants(version = '1.0.1', runtime = '1.0.1') {
+function makeConstants(version = '1.0.1') {
   return {
     expoConfig: { version, extra: { eas: { projectId: 'test' } } },
   } as unknown as typeof import('expo-constants').default;

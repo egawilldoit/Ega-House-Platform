@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 
 import type { AppUpdateInfo, UpdateServiceState, UpdateStatus } from './types';
-import { buildApkUrlFromManifest, checkNativeUpdateRequired, getGithubReleasesUrl } from './native';
+import { checkNativeUpdateRequired, getGithubReleasesUrl } from './native';
 
 const CHECK_TIMEOUT_MS = 15000;
 const FETCH_TIMEOUT_MS = 30000;
