@@ -72,6 +72,13 @@ function hasInboxReminder(task: TaskRecord, inboxItemId: string): boolean {
   );
 }
 
+function getInboxReminder(task: TaskRecord, inboxItemId: string): TaskRecord["reminders"][number] | null {
+  const found = task.reminders.find(
+    (r) => (r as unknown as { source?: string | null; sourceId?: string | null }).source === SMART_INBOX_REMINDER_SOURCE && (r as unknown as { source?: string | null; sourceId?: string | null }).sourceId === inboxItemId,
+  );
+  return (found as TaskRecord["reminders"][number] | undefined) ?? null;
+}
+
 export async function convertInboxItemToTask(
   actor: AuthenticatedActor,
   inboxRepository: InboxRepository,
@@ -163,6 +170,57 @@ export async function convertInboxItemToTask(
   if (!existingTaskResult.ok) return applicationFailure("Unable to load task right now.");
   if (existingTaskResult.value) {
     task = existingTaskResult.value;
+    // I2: on reuse path, re-validate scope for provided projectId/goalId/priority — do not silently return existing
+    if (input.projectId !== undefined || input.goalId !== undefined || input.priority !== undefined) {
+      const scopeRes = await tasksRepository.getScope(actor);
+      if (!scopeRes.ok) return applicationFailure("Unable to validate task scope right now.", "unknown");
+      if (input.projectId !== undefined) {
+        const providedPid = String(input.projectId ?? "").trim();
+        if (providedPid) {
+          if (!scopeRes.value.projectIds.includes(providedPid)) {
+            return applicationFailure("Selected project is unavailable.", "validation");
+          }
+          if (providedPid !== task.projectId) {
+            return applicationFailure("Selected project does not match the already converted task.", "validation");
+          }
+        } else if (!providedPid && task.projectId) {
+          return applicationFailure("Project mismatch with existing converted task.", "validation");
+        }
+      }
+      if (input.goalId !== undefined) {
+        const providedGid = String(input.goalId ?? "").trim() || null;
+        if (providedGid) {
+          const goal = scopeRes.value.goals.find((g) => g.id === providedGid);
+          if (!goal) return applicationFailure("Selected goal is unavailable.", "validation");
+          const effectivePidForGoal = input.projectId !== undefined ? String(input.projectId ?? "").trim() || task.projectId : task.projectId;
+          if (goal.projectId !== effectivePidForGoal) {
+            return applicationFailure("Selected goal does not belong to the chosen project.", "validation");
+          }
+          if (providedGid !== (task.goalId ?? null)) {
+            return applicationFailure("Selected goal does not match the already converted task.", "validation");
+          }
+        } else if (providedGid === null && task.goalId) {
+          return applicationFailure("Goal mismatch with existing converted task.", "validation");
+        }
+      }
+      if (input.priority !== undefined) {
+        const providedPri = String(input.priority ?? "").trim();
+        if (providedPri) {
+          const { isTaskPriority } = await import("@ega/domain");
+          if (!isTaskPriority(providedPri)) return applicationFailure("Task priority is invalid.", "validation");
+          if (providedPri !== task.priority) {
+            return applicationFailure("Priority does not match the already converted task.", "validation");
+          }
+        }
+      }
+    }
+    // I4: if caller requests reminder with different remindAt than existing, return conflict
+    if (validatedRemindAtIso) {
+      const existingReminder = getInboxReminder(task, inboxItemId);
+      if (existingReminder && existingReminder.remindAt !== validatedRemindAtIso) {
+        return applicationFailure("Reminder time conflict: existing reminder differs from requested time.", "conflict");
+      }
+    }
   } else {
     // Call canonical createTask with preallocatedId — reuses exact same validation as normal task creation.
     const effectivePriorityInput = input.priority !== undefined ? String(input.priority ?? "").trim() : inboxItem.priority ?? "medium";
@@ -183,16 +241,44 @@ export async function convertInboxItemToTask(
       task = createResult.data;
     } else {
       // Handle race: if another concurrent convert created same deterministic id, fetch it
-      const msg = String((createResult as unknown as { errorMessage?: string }).errorMessage ?? "");
-      const isDuplicate = /duplicate|unique|already exists|23505/i.test(msg);
-      // Also check if the underlying repository would have returned duplicate via error code path: we treat any "Unable to create task" with preallocated id as possible duplicate
-      // Try to fetch existing deterministic task regardless of error type when preallocated
+      // Use error code not prose (I1 fix)
+      const errorCode = String((createResult as unknown as { code?: string }).code ?? "");
+      const isDuplicate = errorCode === "conflict";
       const retryTask = await tasksRepository.getTask(actor, deterministicTaskId);
       if (retryTask.ok && retryTask.value) {
         task = retryTask.value;
+        // I2/I4 checks on retry path as well
+        if (input.priority !== undefined || input.projectId !== undefined || input.goalId !== undefined) {
+          // Re-validate mismatch against retry task (already validated above for existing path, but for create race we also need)
+          // For brevity, if retry succeeded due to concurrent creation, we enforce same validation as reuse path
+          if (input.projectId !== undefined) {
+            const providedPid = String(input.projectId ?? "").trim();
+            if (providedPid && providedPid !== task.projectId) {
+              return applicationFailure("Selected project does not match the already converted task.", "validation");
+            }
+          }
+          if (input.goalId !== undefined) {
+            const providedGid = String(input.goalId ?? "").trim() || null;
+            if (providedGid !== (task.goalId ?? null)) {
+              return applicationFailure("Selected goal does not match the already converted task.", "validation");
+            }
+          }
+          if (input.priority !== undefined) {
+            const providedPri = String(input.priority ?? "").trim();
+            if (providedPri && providedPri !== task.priority) {
+              return applicationFailure("Priority does not match the already converted task.", "validation");
+            }
+          }
+        }
+        if (validatedRemindAtIso) {
+          const ex = getInboxReminder(task, inboxItemId);
+          if (ex && ex.remindAt !== validatedRemindAtIso) {
+            return applicationFailure("Reminder time conflict: existing reminder differs from requested time.", "conflict");
+          }
+        }
       } else if (isDuplicate) {
-        if (!retryTask.ok) return applicationFailure("Unable to load task right now.");
-        return applicationFailure("Unable to create task right now.");
+        if (!retryTask.ok) return applicationFailure("Unable to load task right now.", "unknown");
+        return applicationFailure("Unable to create task right now.", "conflict");
       } else {
         // Propagate canonical validation errors (e.g., project unavailable) directly
         return createResult as ApplicationResult<never>;
@@ -257,7 +343,13 @@ export async function convertInboxItemToTask(
     if (!freshTask) return applicationFailure("Converted idea is missing its task.");
     task = freshTask;
 
-    if (!hasInboxReminder(task, inboxItemId)) {
+    const existingReminder = getInboxReminder(task, inboxItemId);
+    if (existingReminder) {
+      if (existingReminder.remindAt !== validatedRemindAtIso) {
+        return applicationFailure("Reminder time conflict: existing reminder differs from requested time.", "conflict");
+      }
+      // Reminder already exists with same time - idempotent
+    } else {
       const reminderResult = await tasksRepository.createReminder(actor, {
         taskId: task.id,
         remindAt: validatedRemindAtIso,
@@ -268,20 +360,25 @@ export async function convertInboxItemToTask(
       });
       if (!reminderResult.ok) {
         // If duplicate due to concurrent creation with same source, treat as success and fetch again
-        const err = reminderResult.error as { code?: string; message?: string };
-        const isDuplicate = String(err?.code ?? "").includes("23505") || /duplicate|unique/i.test(String(err?.message ?? ""));
+        const err = reminderResult.error as { code?: string };
+        const isDuplicate = err?.code === "conflict";
         if (isDuplicate) {
           const dupTask = await tasksRepository.getTask(actor, task.id);
-          if (!dupTask.ok) return applicationFailure("Unable to load task right now.");
+          if (!dupTask.ok) return applicationFailure("Unable to load task right now.", "unknown");
           if (dupTask.value && hasInboxReminder(dupTask.value, inboxItemId)) {
+            const existing = getInboxReminder(dupTask.value, inboxItemId);
+            if (existing && existing.remindAt !== validatedRemindAtIso) {
+              return applicationFailure("Reminder time conflict: existing reminder differs from requested time.", "conflict");
+            }
             task = dupTask.value;
           } else if (!dupTask.ok) {
-            return applicationFailure("Unable to load task right now.");
+            return applicationFailure("Unable to load task right now.", "unknown");
           } else {
-            return applicationFailure("Unable to create reminder right now.");
+            return applicationFailure("Unable to create reminder right now.", "unknown");
           }
         } else {
-          return applicationFailure("Unable to create reminder right now.");
+          const mapped = (reminderResult.error as { code?: string })?.code === "conflict" ? "conflict" : "unknown";
+          return applicationFailure("Unable to create reminder right now.", mapped as never);
         }
       } else {
         task = reminderResult.value;
@@ -295,9 +392,6 @@ export async function convertInboxItemToTask(
           task = verify.value;
         }
       }
-    } else {
-      // Reminder already exists exactly - idempotent, do not duplicate
-      // Ensure we have freshest task with reminder
     }
   }
 

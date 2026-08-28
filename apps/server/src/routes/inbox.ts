@@ -97,7 +97,14 @@ export function createInboxRoutes(
       idempotencyKey: idempotencyKey ?? undefined,
     });
 
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const code = (result as unknown as { code?: string }).code;
+      if (code === "conflict") return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      if (code === "validation") return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+      if (code === "notFound") return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+      // Fallback to validation for backward compat when code missing
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
 
     // Echo idempotency key if provided (helps clients correlate retries).
     if (idempotencyKey) c.header("X-Idempotency-Key", idempotencyKey);
@@ -124,7 +131,12 @@ export function createInboxRoutes(
       status: body.status,
     });
 
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const code = (result as unknown as { code?: string }).code;
+      if (code === "conflict") return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      if (code === "notFound") return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
     return c.json({ ok: true as const, item: result.data });
   });
 
@@ -132,7 +144,12 @@ export function createInboxRoutes(
     const { actor, client } = c.var;
     const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await archiveInboxItem(actor, repo, { id: c.req.param("id") });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const code = (result as unknown as { code?: string }).code;
+      if (code === "conflict") return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      if (code === "notFound") return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
     return c.json({ ok: true as const, item: result.data });
   });
 
@@ -140,7 +157,12 @@ export function createInboxRoutes(
     const { actor, client } = c.var;
     const repo = new SupabaseInboxRepository(client as unknown as SupabaseClient);
     const result = await restoreInboxItem(actor, repo, { id: c.req.param("id") });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const code = (result as unknown as { code?: string }).code;
+      if (code === "conflict") return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      if (code === "notFound") return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
     return c.json({ ok: true as const, item: result.data });
   });
 
@@ -170,12 +192,16 @@ export function createInboxRoutes(
     });
 
     if (!result.ok) {
-      // Use 404 for unavailable, 409 for already converted, otherwise 400
+      const code = (result as unknown as { code?: string }).code;
+      if (code === "conflict") return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+      if (code === "notFound") return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+      // Fallback: map known messages when code missing for backward compat
+      if (code === "validation") return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
       const msg = result.errorMessage;
       if (msg.includes("unavailable") || msg.includes("not found")) {
         return c.json({ error: { code: "NOT_FOUND", message: msg } }, 404);
       }
-      if (msg.includes("already converted")) {
+      if (msg.includes("already converted") || msg.includes("conflict")) {
         return c.json({ error: { code: "CONFLICT", message: msg } }, 409);
       }
       return c.json({ error: { code: "VALIDATION", message: msg } }, 400);

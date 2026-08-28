@@ -48,6 +48,13 @@ export type CreateInboxRecordInput = Readonly<{
   tags: string[];
   // status defaults to inbox on create
   idempotencyKey?: string | null;
+  id?: string | null;
+  fingerprint?: string | null;
+}>;
+
+export type InboxIdempotencyEntry = Readonly<{
+  inboxItemId: string;
+  fingerprint: string | null;
 }>;
 
 export type UpdateInboxRecordInput = Readonly<{
@@ -83,6 +90,10 @@ export interface InboxRepository {
     actor: AuthenticatedActor,
     key: string,
   ): Promise<RepositoryResult<InboxRecord | null>>;
+  getInboxIdempotencyEntry?(
+    actor: AuthenticatedActor,
+    key: string,
+  ): Promise<RepositoryResult<InboxIdempotencyEntry | null>>;
   createInboxItem(
     actor: AuthenticatedActor,
     input: CreateInboxRecordInput,
