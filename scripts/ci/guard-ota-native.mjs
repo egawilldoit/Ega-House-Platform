@@ -89,7 +89,8 @@ function checkNativeDiff(base, head) {
   return checkNativeDiffFromTexts(diffMobilePkg, diffAppJson, diffEas);
 }
 
-export function checkNativeDiffFromTexts(diffMobilePkg, diffAppJson, diffEas) {
+export function checkNativeDiffFromTexts(diffMobilePkg, diffAppJson, _diffEas) {
+  void _diffEas;
   const hits = [];
   for (const dep of NATIVE_DEP_KEYS) {
     if (diffMobilePkg.includes(`"${dep}"`)) hits.push(`dependency:${dep}`);
