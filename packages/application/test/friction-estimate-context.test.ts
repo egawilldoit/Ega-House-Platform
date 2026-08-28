@@ -38,8 +38,14 @@ class FakeFrictionRepository implements FrictionRepository {
     this.tasks = tasks;
     this.goals = goals;
   }
-  async listTasks(_actor: AuthenticatedActor) { return ok(this.tasks); }
-  async listGoals(_actor: AuthenticatedActor) { return ok(this.goals); }
+  async listTasks(_actor: AuthenticatedActor) {
+    void _actor;
+    return ok(this.tasks);
+  }
+  async listGoals(_actor: AuthenticatedActor) {
+    void _actor;
+    return ok(this.goals);
+  }
 }
 
 class FakeEvidenceRepository implements ExecutionEvidenceRepository {

@@ -5,8 +5,6 @@ import { getLocalDayWindow, getWeekWindow } from "@ega/domain/time-context";
 import {
   FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
   FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
-  FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
-  FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
   FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
 } from "@ega/domain/friction";
 import {
@@ -63,9 +61,11 @@ class FakeFrictionRepository implements FrictionRepository {
     this.goals = goals;
   }
   async listTasks(_actor: AuthenticatedActor) {
+    void _actor;
     return ok(this.tasks);
   }
   async listGoals(_actor: AuthenticatedActor) {
+    void _actor;
     return ok(this.goals);
   }
 }
@@ -76,6 +76,8 @@ class FakeEvidenceRepository implements ExecutionEvidenceRepository {
     this.sessions = sessions;
   }
   async listSessionsForWindow(_actor: AuthenticatedActor, _window: ExecutionEvidenceWindow) {
+    void _actor;
+    void _window;
     return ok(this.sessions);
   }
 }
@@ -543,6 +545,8 @@ test("historical window fixtures stable: same sessions with UTC vs explicit date
     now: new Date("2026-04-22T12:00:00.000Z"),
     evidence: { window: histWindow, repository: new FakeEvidenceRepository(sessions) },
   });
+  assert.equal(result2.ok, true);
+  if (!result2.ok) return;
   assert.deepEqual(result.data.neglectedGoals, result2.data.neglectedGoals);
   assert.deepEqual(result.data.workloadImbalance, result2.data.workloadImbalance);
 });
