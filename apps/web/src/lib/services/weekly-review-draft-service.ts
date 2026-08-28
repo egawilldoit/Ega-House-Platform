@@ -77,6 +77,12 @@ function mapTaskActivity(
   };
 }
 
+function isValidWindowIso(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
 function mapTimeBuckets(
   buckets: ExecutionEvidenceTimeBucket[],
 ): WeeklyReviewTimeBucket[] {
@@ -171,6 +177,9 @@ export async function generateWeeklyReviewDraftForUser({
     const endWindow = getDomainWeekWindow("UTC", weekEnd);
     startIso = startWindow.weekStartUtcIso;
     endExclusiveIso = endWindow.weekEndExclusiveUtcIso;
+  }
+  if (!isValidWindowIso(startIso) || !isValidWindowIso(endExclusiveIso)) {
+    throw new Error("Invalid window for weekly review draft.");
   }
   const [completedResult, carriedResult, blockedResult, sessionsResult, goalsResult, previousReview] =
     await Promise.all([

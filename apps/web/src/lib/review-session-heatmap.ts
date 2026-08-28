@@ -1,15 +1,15 @@
-import { createClient } from "@/lib/supabase/server";
+import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain";
 import type { Tables } from "@/lib/supabase/database.types";
-import { shiftIsoDateByDays } from "@/lib/review-week";
-import {
-  calculateExecutionEvidenceForWindow,
-  type ExecutionEvidenceSessionRow,
-} from "@ega/application/shared/execution-evidence";
-import { getLocalDateInTimezone } from "@ega/domain";
-import { SupabaseTimeContextRepository } from "@ega/data-access";
-import { createAuthenticatedActor } from "@ega/application/auth/actor";
+import { createClient } from "@/lib/supabase/server";
+import { getTodayIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+function isValidWindowIso(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -25,6 +25,7 @@ export type DailyTrackedWindow = {
   endDate: string;
   startIso: string;
   endExclusiveIso: string;
+  timezone: string;
 };
 
 export const DEFAULT_DAILY_TRACKED_WINDOW_DAYS = 28;
@@ -42,20 +43,48 @@ function toUtcDateStartMs(isoDate: string) {
   return parseIso(`${isoDate}T00:00:00.000Z`);
 }
 
+function startOfUtcDayMs(ms: number) {
+  const date = new Date(ms);
+  date.setUTCHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
 export function getDailyTrackedWindow(
   days = DEFAULT_DAILY_TRACKED_WINDOW_DAYS,
-  endDate?: string,
+  endDate = getTodayIsoDate(),
+  timezone: string | null | undefined = "UTC",
 ): DailyTrackedWindow {
-  const effectiveEndDate = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : getLocalDateInTimezone(new Date(), "UTC");
   const safeDays = Number.isFinite(days) ? Math.max(1, Math.floor(days)) : DEFAULT_DAILY_TRACKED_WINDOW_DAYS;
-  const startDate = shiftIsoDateByDays(effectiveEndDate, -(safeDays - 1));
+  const startDate = shiftIsoDateByDays(endDate, -(safeDays - 1));
+  const tz = typeof timezone === "string" && timezone.trim() ? timezone.trim() : "UTC";
 
-  return {
-    startDate,
-    endDate: effectiveEndDate,
-    startIso: `${startDate}T00:00:00.000Z`,
-    endExclusiveIso: `${shiftIsoDateByDays(effectiveEndDate, 1)}T00:00:00.000Z`,
-  };
+  try {
+    const startWindow = getLocalDayWindow(tz, startDate);
+    const endWindow = getLocalDayWindow(tz, endDate);
+    return {
+      startDate,
+      endDate,
+      startIso: startWindow.startUtcIso,
+      endExclusiveIso: endWindow.endUtcIso,
+      timezone: startWindow.timezone,
+    };
+  } catch {
+    return {
+      startDate,
+      endDate,
+      startIso: `${startDate}T00:00:00.000Z`,
+      endExclusiveIso: `${shiftIsoDateByDays(endDate, 1)}T00:00:00.000Z`,
+      timezone: "UTC",
+    };
+  }
+}
+
+export function getDailyTrackedWindowForTimezone(
+  days: number,
+  endDate: string,
+  timezone: string | null | undefined,
+): DailyTrackedWindow {
+  return getDailyTrackedWindow(days, endDate, timezone);
 }
 
 export function buildUtcDateSeries(startDate: string, endDate: string) {
@@ -75,11 +104,6 @@ export function buildUtcDateSeries(startDate: string, endDate: string) {
   return dates;
 }
 
-/**
- * Daily aggregation now delegates to the shared execution-evidence model for
- * window overlap semantics. This wrapper preserves the existing web import path
- * while ensuring no second source.
- */
 export function aggregateDailyTrackedSeconds(
   sessions: SessionRangeRow[],
   window: DailyTrackedWindow,
@@ -91,23 +115,149 @@ export function aggregateDailyTrackedSeconds(
     return [];
   }
 
-  const execSessions: ExecutionEvidenceSessionRow[] = sessions.map((s, idx) => ({
-    id: `s-${idx}`,
-    task_id: `task-${idx}`,
-    started_at: s.started_at,
-    ended_at: s.ended_at,
-    duration_seconds: null,
-    tasks: null,
-  }));
+  const rangeStartMs = parseIso(window.startIso);
+  const rangeEndExclusiveMs = parseIso(window.endExclusiveIso);
+  const nowMs = parseIso(nowIso);
 
-  const evidence = calculateExecutionEvidenceForWindow(
-    execSessions,
-    { startIso: window.startIso, endIso: window.endExclusiveIso },
-    { nowIso, includeOpenSessions: true },
-  );
+  if (rangeStartMs === null || rangeEndExclusiveMs === null || nowMs === null) {
+    return dateSeries.map((date) => ({ date, trackedSeconds: 0 }));
+  }
 
-  const byDay = evidence.trackedSecondsByDay;
-  return dateSeries.map((date) => ({ date, trackedSeconds: byDay.get(date) ?? 0 }));
+  const tz = window.timezone ?? "UTC";
+  const useLocal = tz !== "UTC";
+
+  // Build local day boundaries for each date in the series when timezone is non-UTC
+  let localDayBounds: Map<string, { startMs: number; endMs: number }> | null = null;
+  if (useLocal) {
+    localDayBounds = new Map();
+    for (const date of dateSeries) {
+      try {
+        const w = getLocalDayWindow(tz, date);
+        const s = parseIso(w.startUtcIso);
+        const e = parseIso(w.endUtcIso);
+        if (s !== null && e !== null) localDayBounds.set(date, { startMs: s, endMs: e });
+      } catch {
+        // fallback to UTC boundaries for that date
+        const s = toUtcDateStartMs(date);
+        if (s !== null) localDayBounds.set(date, { startMs: s, endMs: s + DAY_IN_MS });
+      }
+    }
+  }
+
+  const totals = new Map<string, number>();
+
+  for (const session of sessions) {
+    const rawStartMs = parseIso(session.started_at);
+    const rawEndMs = parseIso(session.ended_at ?? nowIso);
+
+    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) {
+      continue;
+    }
+
+    const overlapStartMs = Math.max(rawStartMs, rangeStartMs);
+    const overlapEndMs = Math.min(rawEndMs, rangeEndExclusiveMs);
+
+    if (overlapEndMs <= overlapStartMs) {
+      continue;
+    }
+
+    if (useLocal && localDayBounds) {
+      for (const date of dateSeries) {
+        const bounds = localDayBounds.get(date);
+        if (!bounds) continue;
+        const dayOverlapStart = Math.max(overlapStartMs, bounds.startMs);
+        const dayOverlapEnd = Math.min(overlapEndMs, bounds.endMs);
+        if (dayOverlapEnd > dayOverlapStart) {
+          const segmentSeconds = Math.floor((dayOverlapEnd - dayOverlapStart) / 1000);
+          if (segmentSeconds > 0) totals.set(date, (totals.get(date) ?? 0) + segmentSeconds);
+        }
+      }
+    } else {
+      let cursorMs = overlapStartMs;
+      while (cursorMs < overlapEndMs) {
+        const dayStartMs = startOfUtcDayMs(cursorMs);
+        const dayEndMs = dayStartMs + DAY_IN_MS;
+        const segmentEndMs = Math.min(overlapEndMs, dayEndMs);
+        const segmentSeconds = Math.floor((segmentEndMs - cursorMs) / 1000);
+        if (segmentSeconds > 0) {
+          const dayKey = toIsoDate(new Date(dayStartMs));
+          totals.set(dayKey, (totals.get(dayKey) ?? 0) + segmentSeconds);
+        }
+        cursorMs = segmentEndMs;
+      }
+    }
+  }
+
+  return dateSeries.map((date) => ({ date, trackedSeconds: totals.get(date) ?? 0 }));
+}
+
+export function aggregateDailyTrackedSecondsForWindow(
+  sessions: SessionRangeRow[],
+  window: { startIso: string; endIso: string },
+  dates: string[],
+  timezone: string,
+  nowIso = new Date().toISOString(),
+): Map<string, number> {
+  const totals = new Map<string, number>();
+  const windowStartMs = parseIso(window.startIso);
+  const windowEndMs = parseIso(window.endIso);
+  const nowMs = parseIso(nowIso);
+  if (windowStartMs === null || windowEndMs === null || nowMs === null) return totals;
+
+  const bounds = new Map<string, { startMs: number; endMs: number }>();
+  for (const date of dates) {
+    try {
+      const w = getLocalDayWindow(timezone, date);
+      const s = parseIso(w.startUtcIso);
+      const e = parseIso(w.endUtcIso);
+      if (s !== null && e !== null) bounds.set(date, { startMs: s, endMs: e });
+    } catch {
+      continue;
+    }
+  }
+
+  for (const session of sessions) {
+    const rawStartMs = parseIso(session.started_at);
+    const rawEndMs = parseIso(session.ended_at ?? nowIso);
+    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) continue;
+    const overlapStartMs = Math.max(rawStartMs, windowStartMs);
+    const overlapEndMs = Math.min(rawEndMs, windowEndMs);
+    if (overlapEndMs <= overlapStartMs) continue;
+    for (const date of dates) {
+      const b = bounds.get(date);
+      if (!b) continue;
+      const s = Math.max(overlapStartMs, b.startMs);
+      const e = Math.min(overlapEndMs, b.endMs);
+      if (e > s) {
+        const secs = Math.floor((e - s) / 1000);
+        if (secs > 0) totals.set(date, (totals.get(date) ?? 0) + secs);
+      }
+    }
+  }
+  return totals;
+}
+
+async function resolveHeatmapTimezone(
+  supabase: SupabaseServerClient,
+  ownerUserId: string | undefined,
+): Promise<string> {
+  if (!ownerUserId) return "UTC";
+  try {
+    const result = await (supabase as unknown as {
+      from(t: string): {
+        select(c: string): { eq(a: string, b: string): { maybeSingle(): Promise<{ data: unknown; error: unknown }> } };
+      };
+    })
+      .from("user_time_context")
+      .select("iana_timezone")
+      .eq("user_id", ownerUserId)
+      .maybeSingle();
+    const tz = (result.data as { iana_timezone?: string | null } | null)?.iana_timezone;
+    if (typeof tz === "string" && tz.trim()) return tz.trim();
+  } catch {
+    // ignore and fallback to UTC
+  }
+  return "UTC";
 }
 
 export async function getRecentDailyTrackedTime(
@@ -117,41 +267,63 @@ export async function getRecentDailyTrackedTime(
     endDate,
     nowIso = new Date().toISOString(),
     ownerUserId,
-    now,
+    timezone,
+    window,
   }: {
     days?: number;
     endDate?: string;
     nowIso?: string;
     ownerUserId?: string;
-    now?: Date;
+    timezone?: string | null;
+    window?: DailyTrackedWindow | { startIso: string; endExclusiveIso: string; startDate: string; endDate: string; timezone?: string };
   } = {},
 ): Promise<DailyTrackedTime[]> {
-  let effectiveEndDate = endDate;
-  if (!effectiveEndDate && ownerUserId) {
-    try {
-      const actor = createAuthenticatedActor(ownerUserId);
-      const timeContextRepo = new SupabaseTimeContextRepository(
-        supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
-      );
-      const tzResult = await timeContextRepo.getTimezone(actor);
-      const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
-      const nowDate = now ?? (nowIso ? new Date(nowIso) : new Date());
-      const safeNow = Number.isNaN(nowDate.getTime()) ? new Date() : nowDate;
-      effectiveEndDate = getLocalDateInTimezone(safeNow, effectiveTz);
-    } catch {
-      // Fallback to UTC local date on failure; weekly review page will still render.
-      effectiveEndDate = getLocalDateInTimezone(now ?? new Date(), "UTC");
+  let resolvedWindow: DailyTrackedWindow;
+
+  if (window) {
+    if (!isValidWindowIso(window.startIso) || !isValidWindowIso(window.endExclusiveIso)) {
+      throw new Error("Invalid window for session heatmap.");
     }
+    const startDate = (window as DailyTrackedWindow).startDate ?? window.startIso.slice(0, 10);
+    const endDateIso = (window as DailyTrackedWindow).endDate ?? window.endExclusiveIso.slice(0, 10);
+    resolvedWindow = {
+      startDate,
+      endDate: endDateIso,
+      startIso: window.startIso,
+      endExclusiveIso: window.endExclusiveIso,
+      timezone: (window as DailyTrackedWindow).timezone ?? timezone ?? "UTC",
+    };
+  } else {
+    let tz = timezone ?? null;
+    let resolvedEndDate = endDate ?? null;
+
+    if (!tz && ownerUserId) {
+      tz = await resolveHeatmapTimezone(supabase, ownerUserId);
+    }
+    const effectiveTz = tz ?? "UTC";
+
+    if (!resolvedEndDate) {
+      try {
+        const nowDate = new Date(nowIso);
+        resolvedEndDate = Number.isFinite(nowDate.getTime())
+          ? getLocalDateInTimezone(nowDate, effectiveTz)
+          : getTodayIsoDate();
+      } catch {
+        resolvedEndDate = getTodayIsoDate();
+      }
+    }
+    resolvedWindow = getDailyTrackedWindow(days, resolvedEndDate, effectiveTz);
   }
-  if (!effectiveEndDate) {
-    effectiveEndDate = getLocalDateInTimezone(now ?? new Date(), "UTC");
+
+  if (!isValidWindowIso(resolvedWindow.startIso) || !isValidWindowIso(resolvedWindow.endExclusiveIso)) {
+    throw new Error("Invalid window for session heatmap.");
   }
-  const window = getDailyTrackedWindow(days, effectiveEndDate);
+
   let query = supabase
     .from("task_sessions")
     .select("started_at, ended_at")
-    .lt("started_at", window.endExclusiveIso)
-    .or(`ended_at.is.null,ended_at.gte.${window.startIso}`);
+    .lt("started_at", resolvedWindow.endExclusiveIso)
+    .or(`ended_at.is.null,ended_at.gte.${resolvedWindow.startIso}`);
 
   if (ownerUserId) {
     query = query.eq("owner_user_id", ownerUserId);
@@ -163,5 +335,5 @@ export async function getRecentDailyTrackedTime(
     throw new Error(`Failed to load session heatmap data: ${error.message}`);
   }
 
-  return aggregateDailyTrackedSeconds(data ?? [], window, nowIso);
+  return aggregateDailyTrackedSeconds(data ?? [], resolvedWindow, nowIso);
 }
