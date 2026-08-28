@@ -337,4 +337,51 @@ export class SupabaseInboxRepository implements InboxRepository {
     if (!result.data) return { ok: false, error: { code: "unknown" } };
     return { ok: true, value: mapInboxRow(result.data as InboxRow) };
   }
+
+  async findRecentOrphanTaskId(
+    actor: AuthenticatedActor,
+    input: Readonly<{ title: string; projectId: string | null; sinceIso: string }>,
+  ): Promise<RepositoryResult<string | null>> {
+    const title = String(input.title ?? "").trim();
+    const sinceIso = String(input.sinceIso ?? "").trim();
+    const projectId = input.projectId ? String(input.projectId).trim() : null;
+    if (!title || !sinceIso) return { ok: true, value: null };
+    // Validate sinceIso parses
+    if (Number.isNaN(Date.parse(sinceIso))) return { ok: true, value: null };
+
+    let request = (this.supabase as any)
+      .from("tasks")
+      .select("id, created_at")
+      .eq("owner_user_id", actor.userId)
+      .eq("title", title)
+      .gt("created_at", sinceIso)
+      .order("created_at", { ascending: false })
+      .limit(5);
+    if (projectId) {
+      request = request.eq("project_id", projectId);
+    }
+    const candidates = await request;
+    if (candidates.error) return failure(candidates.error);
+    const rows = (candidates.data ?? []) as Array<{ id: string }>;
+    if (rows.length === 0) return { ok: true, value: null };
+
+    // Filter to those not yet linked in task_external_refs (owner-scoped).
+    // Keep query bounded: check each candidate individually. This preserves
+    // correctness without requiring a sub-select and keeps blast radius low.
+    for (const row of rows) {
+      const taskId = String((row as any).id ?? "");
+      if (!taskId) continue;
+      const linkCheck = await (this.supabase as any)
+        .from("task_external_refs")
+        .select("task_id")
+        .eq("owner_user_id", actor.userId)
+        .eq("task_id", taskId)
+        .maybeSingle();
+      if (linkCheck.error) return failure(linkCheck.error);
+      if (!linkCheck.data) {
+        return { ok: true, value: taskId };
+      }
+    }
+    return { ok: true, value: null };
+  }
 }

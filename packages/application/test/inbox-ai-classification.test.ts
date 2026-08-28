@@ -120,6 +120,9 @@ class FakeInboxRepo implements InboxRepository {
     this.calls.push("markInboxItemConverted");
     return ok(inboxRecord({ status: "converted" }));
   }
+  async findRecentOrphanTaskId() {
+    return ok(null as string | null);
+  }
 }
 
 class FakeTasksRepo implements TasksRepository {
