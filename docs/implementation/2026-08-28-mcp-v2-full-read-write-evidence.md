@@ -84,4 +84,3 @@ CI: pushed `062554f` and `0114826` to `origin/feat/mcp-v2-full-read-write`; GitH
 - EGA-540 → finalize exact-head CI recording
 - EGA-541 → Audit #1
 - EGA-542 → Audit #2
-
