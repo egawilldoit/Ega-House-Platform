@@ -37,7 +37,7 @@ export type {
 } from "@ega/contracts/mobile";
 export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 export type { TaskPriority, TaskStatus } from "@ega/domain";
-export type { HealthWorkloadSnapshotDto, HealthSnapshotResponse, HealthEvidenceQualityDto } from "@ega/contracts";
+export type { HealthWorkloadSnapshotDto, HealthSnapshotResponse, HealthEvidenceQualityDto, HealthRecommendationDto, HealthRecommendationKindDto, HealthRecommendationSeverityDto, HealthRecommendationEvidenceDto } from "@ega/contracts";
 
 export type {
   ProjectViewFilter,

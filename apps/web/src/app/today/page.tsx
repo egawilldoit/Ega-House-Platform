@@ -64,7 +64,7 @@ export default async function TodayPage({
   const [todayResult, user, healthResult] = await Promise.all([
     getTodayPlannerData(),
     getCurrentUser(),
-    getHealthSnapshotData().catch(() => ({ errorMessage: "Unable to load health snapshot.", data: null as null })),
+    getHealthSnapshotData().catch(() => ({ errorMessage: "Unable to load health snapshot.", data: null as null, recommendations: [] as import("@ega/contracts/health").HealthRecommendationDto[] })),
   ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
@@ -149,7 +149,7 @@ export default async function TodayPage({
           trackedTodayLabel={todayData.summary.trackedTodayLabel}
         />
 
-        <HealthCoachSnapshot snapshot={healthResult.data as unknown as import("@ega/contracts/health").HealthWorkloadSnapshotDto | null} errorMessage={healthResult.errorMessage} />
+        <HealthCoachSnapshot snapshot={healthResult.data as unknown as import("@ega/contracts/health").HealthWorkloadSnapshotDto | null} recommendations={(healthResult as unknown as { recommendations?: import("@ega/contracts/health").HealthRecommendationDto[] }).recommendations ?? []} errorMessage={healthResult.errorMessage} />
 
         <div className="today-cockpit-grid">
           <StartHerePanel

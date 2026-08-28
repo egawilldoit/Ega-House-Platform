@@ -117,6 +117,30 @@ export function HealthCoachSnapshot({ response, errorMessage }: Props) {
       <Text style={styles.footnote}>
         Window {snap.window.startIso.slice(0, 10)} → {snap.window.endIso.slice(0, 10)} · {snap.quality.reasons.join(", ") || "ok"}
       </Text>
+
+      {response.recommendations && response.recommendations.length > 0 ? (
+        <View style={styles.recommendations} testID="health-coach-recommendations">
+          <Text style={styles.sectionTitle}>Workload guidance</Text>
+          {response.recommendations.map((rec) => (
+            <View key={rec.id} style={styles.recommendationCard} testID={`health-recommendation-${rec.kind}`}>
+              <View style={styles.recBadgeRow}>
+                <View style={[styles.badge, rec.severity === "guide" ? styles.badgeWarn : rec.severity === "nudge" ? styles.badgeInfo : styles.badgeMuted]}>
+                  <Text style={styles.badgeText}>{rec.severity}</Text>
+                </View>
+                <View style={[styles.badge, styles.badgeMuted]}>
+                  <Text style={styles.badgeText}>{rec.kind}</Text>
+                </View>
+                <Text style={styles.recEvidence} testID="health-recommendation-evidence">{rec.evidence.label}</Text>
+              </View>
+              <Text style={styles.recTitle}>{rec.title}</Text>
+              <Text style={styles.recMessage}>{rec.message}</Text>
+              <Text style={styles.recEvidenceSmall}>Evidence: {rec.evidence.metric} {rec.evidence.value} (threshold {rec.evidence.threshold}) · {rec.copyKey}</Text>
+            </View>
+          ))}
+        </View>
+      ) : snap.quality.quality === "sufficient" ? (
+        <Text style={styles.body} testID="health-coach-no-recommendations">Workload looks balanced this week — keep your current rhythm and adjust as needed.</Text>
+      ) : null}
     </Card>
   );
 }
@@ -124,6 +148,51 @@ export function HealthCoachSnapshot({ response, errorMessage }: Props) {
 const styles = StyleSheet.create({
   card: {
     marginTop: mobileTheme.spacing.md,
+  },
+  recommendations: {
+    marginTop: mobileTheme.spacing.md,
+    gap: 8,
+  },
+  sectionTitle: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.semibold,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  recommendationCard: {
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.md,
+    padding: 10,
+    marginTop: 8,
+  },
+  recBadgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    alignItems: "center",
+  },
+  recTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 13,
+    fontWeight: mobileTheme.font.bold,
+    marginTop: 6,
+  },
+  recMessage: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  recEvidence: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  recEvidenceSmall: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 10,
+    marginTop: 4,
   },
   title: {
     color: mobileTheme.colors.text,

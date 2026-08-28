@@ -1,13 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import { getHealthWorkloadSnapshot, type HealthWorkloadSnapshot } from "@ega/application/health/workload-snapshot";
+import { getHealthRecommendations, type HealthRecommendation } from "@ega/application/health/recommendations";
 import { SupabaseExecutionEvidenceRepository, SupabaseTimeContextRepository } from "@ega/data-access";
 import { createAuthenticatedActorFromIdentity } from "@ega/application";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export type HealthSnapshotServiceResult =
-  | { errorMessage: string | null; data: HealthWorkloadSnapshot }
-  | { errorMessage: string; data: null };
+  | { errorMessage: string | null; data: HealthWorkloadSnapshot; recommendations: HealthRecommendation[] }
+  | { errorMessage: string; data: null; recommendations: HealthRecommendation[] };
 
 export async function getHealthSnapshotData(options?: {
   supabase?: SupabaseClient;
@@ -23,7 +24,7 @@ export async function getHealthSnapshotData(options?: {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { errorMessage: "Authentication required.", data: null };
+    return { errorMessage: "Authentication required.", data: null, recommendations: [] };
   }
 
   const actor = createAuthenticatedActorFromIdentity({ id: user.id, email: user.email ?? "" });
@@ -40,8 +41,9 @@ export async function getHealthSnapshotData(options?: {
   });
 
   if (!result.ok) {
-    return { errorMessage: result.errorMessage, data: null };
+    return { errorMessage: result.errorMessage, data: null, recommendations: [] };
   }
 
-  return { errorMessage: null, data: result.data };
+  const recommendations = getHealthRecommendations(result.data);
+  return { errorMessage: null, data: result.data, recommendations };
 }
