@@ -11,6 +11,7 @@
     "./goals": "./src/goals.ts",
     "./tasks": "./src/tasks.ts",
     "./today": "./src/today.ts",
+    "./time-context": "./src/time-context.ts",
     "./notifications": "./src/notifications.ts",
     "./weekly-review": "./src/weekly-review.ts"
   },
