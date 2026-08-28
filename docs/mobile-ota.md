@@ -34,7 +34,7 @@ APK contains:  expo_runtime_version = 1.0.1 + update URL + expo-channel-name: pr
                 └── only builds with same runtimeVersion receive the OTA (EAS protocol)
 ```
 
-Additional client-side guard: before EAS, the app fetches the latest `release-manifest.json` from GitHub Releases. If that manifest differs in version or runtime, OTA is blocked.
+Additional client-side guard: before EAS, the app fetches the **latest stable mobile release** (`mobile-vX.Y.Z` with `release-manifest.json`) via a deterministic selector (highest semver among `draft==false` && `prerelease==false` && tag `^mobile-vX.Y.Z$`, paginated `per_page=100`), validates `release-manifest.json`, and blocks OTA if version/runtime differ. Repo-wide `releases/latest` (e.g. `architecture-wave-2-complete`) is **never** used.
 
 ## 3. Native vs OTA decision (fail-closed)
 
@@ -167,7 +167,7 @@ Only `refs/heads/main` may publish production OTA.
 4. `EXPO_TOKEN` present.
 5. EAS project ID `73d127b6…` matches `app.json`.
 6. `requestHeaders` production present.
-7. Latest `release-manifest.json` asset exists in latest GitHub Release.
+7. Latest **stable mobile** `mobile-vX.Y.Z` release selected deterministically (highest semver, `draft==false`/`prerelease==false`, `release-manifest.json` present, `per_page=100` pagination) via `mobile-release-selector.mjs`; **not** repo-wide `releases/latest`.
 8. `androidPackage == com.ega_house.mobile`.
 9. `channel == production`.
 10. `runtimeVersion == version` (appVersion equality) and `version == app.json expo.version` (same native baseline).
@@ -236,7 +236,9 @@ node scripts/ci/guard-ota-native.mjs --base <LAST_NATIVE_APK_SHA> --head <OTA_SH
 node scripts/ci/guard-ota-native.mjs --base origin/main --head HEAD --json   # local preview
 ```
 
-Where `LAST_NATIVE_APK_SHA = manifest.gitSha` from latest `release-manifest.json` (`gh api repos/.../releases/latest --jq '.assets[]|select(.name=="release-manifest.json")|...'`).
+Where `LAST_NATIVE_APK_SHA = manifest.gitSha` from the **highest valid stable `mobile-vX.Y.Z` release** (`scripts/ci/mobile-release-selector.mjs`, `per_page=100`, strict semver, `draft==false`/`prerelease==false`, `release-manifest.json` required, `manifest.version == tag version` && `runtimeVersion == version`).
+
+Production native baseline is **not** repo-wide `releases/latest` (which may be `architecture-wave-2-complete`).
 
 If blocked → **do not OTA** → bump `expo.version` (e.g. `1.0.1` → `1.0.2`), commit, trigger Mobile Delivery (`gh workflow run mobile-delivery.yml --ref main` or tag `mobile-v1.0.2`), wait for Blacksmith APK + `release-manifest.json`, install new APK once, then future JS-only changes may use OTA again:
 

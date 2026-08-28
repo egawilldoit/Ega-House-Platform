@@ -51,9 +51,9 @@ export function compareVersions(a, b) {
 }
 
 export function isNativeSensitive(base, head) {
-  // Use guard's classifyFromFiles via spawnSync to check diff
-  const res = spawnSync('node', ['scripts/ci/guard-ota-native.mjs', '--base', base, '--head', head, '--json'], {
-    cwd: REPO_ROOT,
+  const guardPath = path.join(REPO_ROOT, 'scripts/ci/guard-ota-native.mjs');
+  const res = spawnSync('node', [guardPath, '--base', base, '--head', head, '--json'], {
+    cwd: process.cwd(),
     encoding: 'utf8',
   });
   if (res.status !== 0 && !res.stdout) {

@@ -125,49 +125,53 @@ jobs:
           fi
           echo "Project ID and channel header OK"
 
-      - name: Fetch latest native release-manifest
+      - name: Fetch latest native release-manifest (deterministic stable mobile selector)
         id: native_manifest
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          echo "Fetching latest release manifest via gh api"
-          # Try GH releases latest asset via API
-          gh api repos/${{ github.repository }}/releases/latest --jq '.assets[] | select(.name=="release-manifest.json") | .browser_download_url' > /tmp/manifest_url.txt || true
-          MANIFEST_URL="$(cat /tmp/manifest_url.txt | head -n1)"
-          if [ -z "$MANIFEST_URL" ]; then
-            # fallback: try gitHub API json directly for artifact list
-            echo "::error::No release-manifest.json asset found in latest release — has a native APK been built yet?"
-            gh api repos/${{ github.repository }}/releases/latest --jq '.' | head -n 100 || true
+          echo "Fetching latest stable mobile release via deterministic selector (not repo-wide latest)"
+          if ! node scripts/ci/mobile-release-selector.mjs --json --token "$GH_TOKEN" > /tmp/selector.json 2> /tmp/selector.err; then
+            echo "::error::Failed to select stable mobile release — fail closed"
+            cat /tmp/selector.err || true
+            cat /tmp/selector.json || true
             exit 1
           fi
-          echo "Manifest URL: $MANIFEST_URL"
-          curl -fsSL -H "Accept: application/json" -H "Authorization: Bearer $GH_TOKEN" "$MANIFEST_URL" -o /tmp/release-manifest.json
-          cat /tmp/release-manifest.json
-          MANIFEST_SHA="$(jq -r .gitSha /tmp/release-manifest.json)"
-          MANIFEST_VER="$(jq -r .version /tmp/release-manifest.json)"
-          MANIFEST_RT="$(jq -r .runtimeVersion /tmp/release-manifest.json)"
-          MANIFEST_PKG="$(jq -r .androidPackage /tmp/release-manifest.json)"
-          MANIFEST_CH="$(jq -r .channel /tmp/release-manifest.json)"
-          MANIFEST_REF="$(jq -r .gitRef /tmp/release-manifest.json)"
+          if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
+            echo "::error::No stable mobile APK baseline exists — OTA requires an already-released native APK. Build mobile-v1.0.1 stable release first."
+            cat /tmp/selector.json
+            exit 1
+          fi
+          cat /tmp/selector.json
+          MANIFEST_SHA="$(jq -r .gitSha /tmp/selector.json)"
+          MANIFEST_VER="$(jq -r .version /tmp/selector.json)"
+          MANIFEST_RT="$(jq -r .runtimeVersion /tmp/selector.json)"
+          MANIFEST_PKG="$(jq -r .androidPackage /tmp/selector.json)"
+          MANIFEST_CH="$(jq -r .channel /tmp/selector.json)"
+          MANIFEST_REF="$(jq -r .gitRef /tmp/selector.json)"
           if [ -z "$MANIFEST_SHA" ] || [ "$MANIFEST_SHA" = "null" ]; then
-            echo "::error::manifest gitSha missing"
+            echo "::error::manifest gitSha missing — fail closed"
             exit 1
           fi
           echo "manifest_sha=$MANIFEST_SHA" >> "$GITHUB_OUTPUT"
           echo "manifest_version=$MANIFEST_VER" >> "$GITHUB_OUTPUT"
           cat <<EOF >> "$GITHUB_STEP_SUMMARY"
-          ## Native baseline (latest APK)
+          ## Native baseline (latest stable mobile APK)
           - gitSha: \`$MANIFEST_SHA\`
           - gitRef: \`$MANIFEST_REF\`
           - version: \`$MANIFEST_VER\`
           - runtimeVersion: \`$MANIFEST_RT\`
           - package: \`$MANIFEST_PKG\`
           - channel: \`$MANIFEST_CH\`
+          - tag: \`$(jq -r .tagName /tmp/selector.json)\`
+          - releaseUrl: \`$(jq -r .releaseUrl /tmp/selector.json)\`
           EOF
-          # Save for later steps
+          # Save validated manifest for later steps (extract from selector)
+          jq .manifest /tmp/selector.json > /tmp/release-manifest.json
           cp /tmp/release-manifest.json release-manifest.snapshot.json
+          cat /tmp/release-manifest.json
 
       - name: Validate manifest fields vs current build
         shell: bash
