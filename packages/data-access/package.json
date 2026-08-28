@@ -8,7 +8,9 @@
     "./projects": "./src/projects/repository.ts",
     "./goals": "./src/goals/repository.ts",
     "./tasks": "./src/tasks/repository.ts",
-    "./friction": "./src/friction/repository.ts"
+    "./friction": "./src/friction/repository.ts",
+    "./time-context": "./src/time-context/repository.ts",
+    "./execution-evidence": "./src/execution-evidence/repository.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

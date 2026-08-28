@@ -22,7 +22,10 @@
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts",
     "./friction/ports": "./src/friction/ports.ts",
-    "./friction/stale-blocked-signals": "./src/friction/stale-blocked-signals.ts"
+    "./friction/stale-blocked-signals": "./src/friction/stale-blocked-signals.ts",
+    "./shared/time-context": "./src/shared/time-context.ts",
+    "./shared/duration": "./src/shared/duration.ts",
+    "./shared/execution-evidence": "./src/shared/execution-evidence.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
