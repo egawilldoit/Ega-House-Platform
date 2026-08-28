@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { mobileTheme } from "@/components/mobile/theme";
 import { AppScreen } from "@/components/mobile/ui/AppScreen";
 import { Button } from "@/components/mobile/ui/Button";
 import { Card } from "@/components/mobile/ui/Card";
 import { FeedbackBanner } from "@/components/mobile/ui/FeedbackBanner";
+import { FloatingActionButton } from "@/components/mobile/ui/FloatingActionButton";
 import { ScreenHeader } from "@/components/mobile/ui/ScreenHeader";
+import { useBottomChromeMetrics } from "@/components/mobile/navigation/bottomChrome";
+import { InboxCaptureSheet } from "@/features/inbox/components/InboxCaptureSheet";
 import { useInboxListQuery, useArchiveInboxMutation, useCreateInboxMutation, useRestoreInboxMutation } from "@/features/inbox/query";
 
 export default function InboxScreen() {
@@ -14,25 +17,37 @@ export default function InboxScreen() {
   const createMutation = useCreateInboxMutation();
   const archiveMutation = useArchiveInboxMutation();
   const restoreMutation = useRestoreInboxMutation();
-  const [title, setTitle] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [captureVisible, setCaptureVisible] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+  const { contentBottomPadding } = useBottomChromeMetrics();
 
   const items = (inboxQuery.data as any)?.items ?? [];
   const isLoading = inboxQuery.isPending && !inboxQuery.data;
   const isError = inboxQuery.isError && !inboxQuery.data;
 
-  async function handleCreate() {
-    const trimmed = title.trim();
-    if (!trimmed) {
-      setError("Title is required.");
-      return;
-    }
+  async function handleCaptureSubmit(input: { title: string; body: string | null; idempotencyKey: string }) {
+    // Preserve draft until success; do not clear on failure (retry-safe)
+    setDraftTitle(input.title);
+    setDraftBody(input.body ?? "");
     setError(null);
     try {
-      await createMutation.mutateAsync({ title: trimmed });
-      setTitle("");
+      await createMutation.mutateAsync({
+        title: input.title,
+        body: input.body,
+        idempotencyKey: input.idempotencyKey,
+      });
+      // Success: clear draft, close sheet, invalidate handled by mutation
+      setDraftTitle("");
+      setDraftBody("");
+      setCaptureVisible(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to create idea.");
+      // Preserve draft for retry; surface error without false success
+      const message = e instanceof Error ? e.message : "Unable to create idea.";
+      setError(message);
+      // Keep sheet open and retain draft + key for retry
+      throw e;
     }
   }
 
@@ -76,60 +91,65 @@ export default function InboxScreen() {
 
   return (
     <AppScreen testID="inbox-screen" padded={false}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={<RefreshControl refreshing={inboxQuery.isRefetching} onRefresh={() => inboxQuery.refetch()} />}
-      >
-        <ScreenHeader eyebrow="Capture" title="Inbox" description="Loose ideas before they become tasks." />
+      <View style={styles.screenWrap}>
+        <ScrollView
+          contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
+          refreshControl={<RefreshControl refreshing={inboxQuery.isRefetching} onRefresh={() => inboxQuery.refetch()} />}
+        >
+          <ScreenHeader eyebrow="Capture" title="Inbox" description="Loose ideas before they become tasks." />
 
-        {error ? <FeedbackBanner tone="danger" message={error} /> : null}
+          {error ? <FeedbackBanner tone="danger" message={error} testID="inbox-error-banner" /> : null}
 
-        <Card style={styles.createCard}>
-          <Text style={styles.createTitle}>Capture idea</Text>
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Follow up on onboarding insight"
-            placeholderTextColor={mobileTheme.colors.textMuted}
-            style={styles.input}
-            testID="inbox-title-input"
-          />
-          <Button
-            title={createMutation.isPending ? "Capturing..." : "Capture idea"}
-            onPress={handleCreate}
-            disabled={createMutation.isPending}
-            testID="inbox-create-button"
-          />
-        </Card>
-
-        {items.length === 0 ? (
-          <Card style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>No ideas yet</Text>
-            <Text style={styles.emptyText}>Capture a thought to keep it separate from tasks until you are ready to process it.</Text>
+          <Card style={styles.hintCard} testID="inbox-hint-card">
+            <Text style={styles.hintTitle}>Quick capture</Text>
+            <Text style={styles.hintText}>Tap Capture to save a raw thought without choosing a Project. Retry is safe — same tap won&apos;t duplicate.</Text>
           </Card>
-        ) : (
-          <View style={styles.list}>
-            {items.map((item: any) => (
-              <Card key={item.id} style={styles.itemCard}>
-                <Text style={styles.itemTitle}>{item.title}</Text>
-                <Text style={styles.itemMeta}>
-                  {item.type} · {item.status}
-                  {item.projectName ? ` · ${item.projectName}` : " · No project"}
-                </Text>
-                {item.body ? <Text style={styles.itemBody}>{item.body}</Text> : null}
-                {item.tags?.length ? <Text style={styles.itemTags}>{item.tags.join(", ")}</Text> : null}
-                <View style={styles.itemActions}>
-                  {item.status === "archived" ? (
-                    <Button title="Restore" variant="secondary" size="sm" onPress={() => handleRestore(item.id)} testID={`inbox-restore-${item.id}`} />
-                  ) : (
-                    <Button title="Archive" variant="secondary" size="sm" onPress={() => handleArchive(item.id)} testID={`inbox-archive-${item.id}`} />
-                  )}
-                </View>
-              </Card>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+
+          {items.length === 0 ? (
+            <Card style={styles.emptyCard}>
+              <Text style={styles.emptyTitle}>No ideas yet</Text>
+              <Text style={styles.emptyText}>Capture a thought to keep it separate from tasks until you are ready to process it.</Text>
+            </Card>
+          ) : (
+            <View style={styles.list}>
+              {items.map((item: any) => (
+                <Card key={item.id} style={styles.itemCard}>
+                  <Text style={styles.itemTitle}>{item.title}</Text>
+                  <Text style={styles.itemMeta}>
+                    {item.type} · {item.status}
+                    {item.projectName ? ` · ${item.projectName}` : " · No project"}
+                  </Text>
+                  {item.body ? <Text style={styles.itemBody}>{item.body}</Text> : null}
+                  {item.tags?.length ? <Text style={styles.itemTags}>{item.tags.join(", ")}</Text> : null}
+                  <View style={styles.itemActions}>
+                    {item.status === "archived" ? (
+                      <Button title="Restore" variant="secondary" size="sm" onPress={() => handleRestore(item.id)} testID={`inbox-restore-${item.id}`} />
+                    ) : (
+                      <Button title="Archive" variant="secondary" size="sm" onPress={() => handleArchive(item.id)} testID={`inbox-archive-${item.id}`} />
+                    )}
+                  </View>
+                </Card>
+              ))}
+            </View>
+          )}
+        </ScrollView>
+
+        <FloatingActionButton
+          label="Capture idea"
+          icon="add"
+          onPress={() => setCaptureVisible(true)}
+          testID="inbox-fab-capture"
+          accessibilityLabel="Capture idea to Inbox"
+        />
+
+        <InboxCaptureSheet
+          visible={captureVisible}
+          onClose={() => setCaptureVisible(false)}
+          onSubmit={handleCaptureSubmit}
+          initialTitle={draftTitle}
+          initialBody={draftBody}
+        />
+      </View>
     </AppScreen>
   );
 }
@@ -137,16 +157,20 @@ export default function InboxScreen() {
 const styles = StyleSheet.create({
   content: {
     gap: mobileTheme.spacing.md,
-    paddingBottom: mobileTheme.layout.floatingTabClearance,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
-  createCard: {
-    gap: mobileTheme.spacing.sm,
+  hintCard: {
+    gap: 6,
   },
-  createTitle: {
+  hintText: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  hintTitle: {
     color: mobileTheme.colors.text,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: mobileTheme.font.extrabold,
   },
   emptyCard: {
@@ -163,14 +187,6 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 16,
     fontWeight: mobileTheme.font.semibold,
-  },
-  input: {
-    backgroundColor: mobileTheme.colors.surfaceMuted,
-    borderRadius: mobileTheme.radius.md,
-    color: mobileTheme.colors.text,
-    fontSize: 15,
-    paddingHorizontal: mobileTheme.spacing.md,
-    paddingVertical: 12,
   },
   itemActions: {
     flexDirection: "row",
@@ -201,5 +217,8 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: mobileTheme.spacing.md,
+  },
+  screenWrap: {
+    flex: 1,
   },
 });

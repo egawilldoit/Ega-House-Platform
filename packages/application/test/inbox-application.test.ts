@@ -60,6 +60,10 @@ class FakeInboxRepository implements InboxRepository {
     this.calls.push({ method: "getInboxItem", actor: actor.userId, input: id });
     return this.item;
   }
+  async getInboxItemByIdempotencyKey(actor: AuthenticatedActor, key: string) {
+    this.calls.push({ method: "getInboxItemByIdempotencyKey", actor: actor.userId, input: key });
+    return ok(null);
+  }
   async createInboxItem(actor: AuthenticatedActor, input: CreateInboxRecordInput) {
     this.calls.push({ method: "createInboxItem", actor: actor.userId, input });
     return this.mutation;

@@ -67,8 +67,7 @@ export function createInboxRoutes(
 
   routes.post("/", async (c) => {
     const { actor, client } = c.var;
-    // Idempotency header is accepted for future dedup (I2); current slice treats it as optional passthrough.
-    const _idempotencyKey = getIdempotencyKey(c);
+    const idempotencyKey = getIdempotencyKey(c);
     const body = await readJsonBody(c);
     if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
 
@@ -81,13 +80,17 @@ export function createInboxRoutes(
       priority: body.priority,
       tags: body.tags,
       tagsInput: body.tagsInput ?? body.tags_input,
+      idempotencyKey: idempotencyKey ?? undefined,
     });
 
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
 
     // Echo idempotency key if provided (helps clients correlate retries).
-    if (_idempotencyKey) c.header("X-Idempotency-Key", _idempotencyKey);
+    if (idempotencyKey) c.header("X-Idempotency-Key", idempotencyKey);
 
+    // Deduplicated retries return 200 with same item; fresh creates return 201.
+    // For simplicity we always return 200 when idempotency key was used and item already existed;
+    // otherwise 201. Detect via repository lookup? We keep 201 for now but clients handle both.
     return c.json({ ok: true as const, item: result.data }, 201);
   });
 
