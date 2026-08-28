@@ -13,12 +13,14 @@ import {
   type ApiResult,
   type EgaApiClient,
 } from '@ega/api-client';
-import type { MobileTodayResponse } from '@ega/contracts/mobile';
+import type { OperatorSnapshotDto } from '@ega/contracts/operator';
 
-const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
+const EMPTY_TODAY_RESPONSE: OperatorSnapshotDto = {
   ok: true,
   date: '2026-08-10',
   sections: { planned: [], inProgress: [], blocked: [], completed: [] },
+  focus: { startHere: null, queue: [] },
+  schedule: { blocks: [], flexible: [] },
   suggestions: { pinned: [], inProgress: [] },
   summary: {
     plannedCount: 0,
@@ -34,6 +36,7 @@ const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
     trackedTodayLabel: '0m',
   },
   activeTimer: null,
+  signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
 };
 
 function makeFakeClient(): EgaApiClient {
@@ -106,7 +109,7 @@ function makeFakeClient(): EgaApiClient {
       unpin: jest.fn(),
     },
     today: {
-      get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
+      get: jest.fn(async (): Promise<ApiResult<OperatorSnapshotDto>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
       plan: jest.fn(),
       remove: jest.fn(),
       updateStatus: jest.fn(),

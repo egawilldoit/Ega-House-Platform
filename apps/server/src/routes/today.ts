@@ -1,10 +1,11 @@
 import { Hono, type Context } from "hono";
 
 import type { MobileTodayResponse } from "@ega/contracts/mobile";
+import type { OperatorSnapshotDto } from "@ega/contracts/operator";
 import {
   clearCompletedToday,
+  getOperatorSnapshot,
   getTaskReadModel,
-  getTodayPlan,
   planTaskForToday,
   removeTaskFromToday,
   toLocalIsoDate,
@@ -45,21 +46,27 @@ export function createTodayRoutes(
 
   routes.get("/", async (c) => {
     const { actor, client } = c.var;
-    const result = await getTodayPlan(
+    const result = await getOperatorSnapshot(
       actor,
       new SupabaseTodayReadPort(client),
       { date: c.req.query("date"), now: dependencies.now?.() },
     );
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
 
+    // Operator snapshot is canonical; it extends the legacy MobileTodayResponse
+    // with focus/schedule/signals while preserving date/sections/suggestions/summary/activeTimer.
     const payload = {
       ok: true as const,
       date: result.data.date,
       sections: result.data.sections,
+      focus: result.data.focus,
+      schedule: result.data.schedule,
       suggestions: result.data.suggestions,
       summary: result.data.summary,
       activeTimer: result.data.activeTimer,
-    } satisfies MobileTodayResponse;
+      signals: result.data.signals,
+      plannedToday: result.data.plannedToday,
+    } satisfies OperatorSnapshotDto & MobileTodayResponse & { plannedToday: unknown };
     return c.json(payload);
   });
 

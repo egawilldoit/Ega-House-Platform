@@ -22,7 +22,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
-import { getTodayPlannerData } from "@/lib/services/today-planner-service";
+import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -59,7 +59,7 @@ export default async function TodayPage({
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
 
-  const [todayResult, user] = await Promise.all([getTodayPlannerData(), getCurrentUser()]);
+  const [todayResult, user] = await Promise.all([getOperatorSnapshotData(), getCurrentUser()]);
 
   if (todayResult.errorMessage || !todayResult.data) {
     return (
@@ -73,7 +73,51 @@ export default async function TodayPage({
     );
   }
 
-  const todayData = todayResult.data;
+  const snapshot = todayResult.data;
+  // Map canonical Operator snapshot to the legacy TodayPlannerData shape expected by existing UI.
+  // This keeps the web Today surface on shared semantics without forking ranking.
+  const allTasksForLookup = [
+    ...snapshot.sections.planned,
+    ...snapshot.sections.inProgress,
+    ...snapshot.sections.blocked,
+    ...snapshot.sections.completed,
+    ...snapshot.focus.queue,
+    ...snapshot.suggestions.pinned,
+    ...snapshot.suggestions.inProgress,
+  ];
+  const activeTaskForTimer = snapshot.activeTimer
+    ? allTasksForLookup.find((t) => t.id === snapshot.activeTimer!.taskId) ?? null
+    : null;
+  const enrichedActiveTimer = snapshot.activeTimer
+    ? {
+        sessionId: snapshot.activeTimer.sessionId,
+        taskId: snapshot.activeTimer.taskId,
+        startedAt: new Date().toISOString(),
+        elapsedLabel: snapshot.summary.trackedTodayLabel,
+        taskTitle: activeTaskForTimer?.title ?? "Active task",
+        taskStatus: activeTaskForTimer?.status ?? "in_progress",
+        taskPriority: activeTaskForTimer?.priority ?? "medium",
+        projectName: activeTaskForTimer?.projectName ?? "Unknown project",
+        projectSlug: activeTaskForTimer?.projectSlug ?? null,
+        goalTitle: activeTaskForTimer?.goalTitle ?? null,
+      }
+    : null;
+  const todayData = {
+    date: snapshot.date,
+    startHere: snapshot.focus.startHere,
+    focusQueue: snapshot.focus.queue,
+    plannedToday: snapshot.plannedToday,
+    scheduledBlocks: snapshot.schedule.blocks,
+    flexibleTasks: snapshot.schedule.flexible,
+    planned: snapshot.sections.planned,
+    inProgress: snapshot.sections.inProgress,
+    blocked: snapshot.sections.blocked,
+    completed: snapshot.sections.completed,
+    suggestions: snapshot.suggestions,
+    summary: snapshot.summary,
+    activeTimer: enrichedActiveTimer,
+    signals: snapshot.signals,
+  };
   const returnTo = "/today";
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
