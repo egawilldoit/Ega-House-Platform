@@ -288,6 +288,7 @@ export const inboxIdempotencyKeys = pgTable(
     inboxItemId: uuid("inbox_item_id")
       .notNull()
       .references(() => ideaNotes.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
