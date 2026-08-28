@@ -55,7 +55,7 @@ describe("createWebMcpHandler", () => {
       enableJsonResponse: true,
       sessionIdGenerator: undefined,
     });
-    expect(register).toHaveBeenCalledWith(server as unknown as McpServer);
+    expect(register).toHaveBeenCalledWith(server as unknown as McpServer, AUTH_INFO);
     expect(server.connect).toHaveBeenCalledWith(transport);
     expect(transport.handleRequest).toHaveBeenCalledWith(request, {
       authInfo: getMcpRequestAuthInfo(request),

@@ -22,6 +22,8 @@ import {
   type McpReadToolHandlers,
   type McpWriteToolHandlers,
 } from "@/lib/mcp/server";
+import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
+import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
@@ -60,7 +62,7 @@ export type McpRouteRuntimeDependencies = {
     writeHandlers?: McpWriteToolHandlers,
   ) => void;
   createTransportHandler: (
-    registerServer: (server: McpServer) => void,
+    registerServer: (server: McpServer, authInfo?: AuthInfo) => void,
     serverOptions: Record<string, never>,
     transportOptions: TransportOptions,
   ) => RequestHandler;
@@ -142,12 +144,30 @@ export function createMcpRouteRuntime(
   dependencies: McpRouteRuntimeDependencies = DEFAULT_DEPENDENCIES,
 ): McpRouteRuntime {
   const readHandlers = dependencies.createReadHandlers(config);
-  const writeHandlers = config.writesEnabled && dependencies.createWriteHandlers
+  const writeHandlers = dependencies.createWriteHandlers
     ? dependencies.createWriteHandlers(config)
     : undefined;
-  const register = dependencies.registerTools
-    ? (server: McpServer) => dependencies.registerTools!(server, readHandlers, writeHandlers)
-    : (server: McpServer) => dependencies.registerReadTools(server, readHandlers);
+  const register = (server: McpServer, authInfo?: AuthInfo) => {
+    if (!authInfo) {
+      dependencies.registerReadTools(server, readHandlers);
+      return;
+    }
+    try {
+      const principal = readPrincipalFromAuthInfo(authInfo);
+      const allowed = new Set(filterToolsByPermissions(principal.permissions, config.writesEnabled));
+      // Only register tools that are allowed for this principal
+      // We need to map tool names to handlers — for now we do per-tool registration
+      // If no write allowed, only reads
+      const hasAnyWrite = [...allowed].some((t) => t !== "ega_get_capabilities" && t !== "ega_list_projects" && t !== "ega_list_goals" && t !== "ega_list_tasks" && t !== "ega_get_today_plan" && t !== "ega_list_timer_sessions");
+      if (hasAnyWrite && writeHandlers && dependencies.registerTools) {
+        dependencies.registerTools(server, readHandlers, writeHandlers);
+      } else {
+        dependencies.registerReadTools(server, readHandlers);
+      }
+    } catch {
+      dependencies.registerReadTools(server, readHandlers);
+    }
+  };
   const transportHandler = dependencies.createTransportHandler(
     register,
     {},

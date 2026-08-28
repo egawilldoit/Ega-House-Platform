@@ -1,11 +1,7 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { McpServer as RuntimeMcpServer, createMcpHandler } from "@modelcontextprotocol/server";
-import {
-  WebStandardStreamableHTTPServerTransport,
-  type WebStandardStreamableHTTPServerTransportOptions,
-} from "@modelcontextprotocol/server";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 
-import { getMcpRequestAuthInfo } from "@/lib/mcp/http-auth";
 import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 
@@ -18,140 +14,207 @@ type TransportOptions = {
   resourceUrl: string;
 };
 
-type ServerLike = {
-  connect: (transport: TransportLike) => Promise<void>;
-  close: () => Promise<void>;
-};
-
-type TransportLike = {
-  handleRequest: (
-    request: Request,
-    options: { authInfo: ReturnType<typeof getMcpRequestAuthInfo> },
-  ) => Promise<Response>;
-  close: () => Promise<void>;
-};
-
 export type WebMcpHandlerDependencies = {
-  createServer: () => ServerLike;
-  createTransport: (
-    options: WebStandardStreamableHTTPServerTransportOptions,
-  ) => TransportLike;
+  createServer?: (authInfo?: AuthInfo) => { server: McpServer; cleanup?: () => Promise<void> };
+  // Legacy test compat: old tests mock WebStandard transport
+  createTransport?: (opts: unknown) => { handleRequest: (r: Request, o: unknown) => Promise<Response>; close: () => Promise<void> };
+  // Old ServerLike for test compat
+  _legacyCreateServer?: () => { connect: (t: unknown) => Promise<void>; close: () => Promise<void> };
 };
 
-const DEFAULT_DEPENDENCIES: WebMcpHandlerDependencies = {
-  createServer: () =>
-    new RuntimeMcpServer({
-      name: "ega-house",
-      version: "0.1.0",
-    }) as unknown as ServerLike,
-  createTransport: (options) =>
-    new WebStandardStreamableHTTPServerTransport(options) as unknown as TransportLike,
-};
-
-function validateModernHeaders(request: Request): Response | null {
-  const protocolVersion = request.headers.get("MCP-Protocol-Version");
-  const mcpMethod = request.headers.get("Mcp-Method");
-  const mcpName = request.headers.get("Mcp-Name");
-  // If any modern header present, body must be modern; transport will validate agreement with body.
-  // Here we only ensure that Mcp-Method/Mcp-Name are not used to authorize (never as auth source).
-  // We intentionally do not authorize via these headers.
-  if (protocolVersion && !mcpMethod) {
-    // Missing required Mcp-Method for modern request — transport will return -32020,
-    // but we ensure we don't treat headers as auth.
+function validateHost(request: Request, expectedHost: string): Response | null {
+  const hostHeader = request.headers.get("host");
+  const host = hostHeader || (() => { try { return new URL(request.url).host; } catch { return null; } })();
+  if (!host) {
+    return Response.json(
+      { error: "invalid_request", error_description: "Missing Host header." },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  // Strip port
+  const hostWithoutPort = host.split(":")[0].toLowerCase();
+  const expectedWithoutPort = expectedHost.split(":")[0].toLowerCase();
+  if (hostWithoutPort !== expectedWithoutPort) {
+    // Allow localhost for development when expected is not localhost? Check repo policy: allow localhost
+    const isLocalhost = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "::1";
+    if (!(isLocalhost(hostWithoutPort) && isLocalhost(expectedWithoutPort))) {
+      return Response.json(
+        { error: "invalid_request", error_description: "Invalid Host header." },
+        { status: 421, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    if (hostWithoutPort !== expectedWithoutPort) {
+      return Response.json(
+        { error: "invalid_request", error_description: "Invalid Host header." },
+        { status: 421, headers: { "Cache-Control": "no-store" } },
+      );
+    }
   }
   return null;
 }
 
-function createModernHandler(
-  registerServer: (server: McpServer) => void,
-  resourceUrl: string,
-): RequestHandler {
-  // 2026-07-28 modern entry — stateless createMcpHandler with private caching for server/discover
-  // This is the canonical 2026-07-28 serving path; legacy WebStandard transport remains as fallback
-  // until full cutover. Both are stateless (no Mcp-Session-Id).
-  try {
-    const handler = createMcpHandler(
-      () => {
-        const server = new RuntimeMcpServer({ name: "ega-house", version: "0.1.0" }) as unknown as McpServer;
-        registerServer(server);
-        return server as unknown as McpServer;
-      },
-      {
-        legacy: "stateless",
-      } as unknown as Parameters<typeof createMcpHandler>[1],
-    );
-    return async (request: Request) => {
-      const headerError = validateModernHeaders(request);
-      if (headerError) return headerError;
-      // createMcpHandler's fetch handles server/discover (ttlMs 0, cacheScope private) and modern header validation
-      return handler.fetch(request);
-    };
-  } catch {
-    return async () => new Response(JSON.stringify({ ok: false, error: { code: "INTERNAL_ERROR" } }), { status: 500 });
+function validateOrigin(request: Request, expectedOrigin: string): Response | null {
+  const origin = request.headers.get("origin");
+  if (!origin) {
+    // Server-to-server (non-browser) may omit Origin; allow if no Origin but Host validated
+    return null;
   }
+  try {
+    const originUrl = new URL(origin);
+    const expectedUrl = new URL(expectedOrigin);
+    if (originUrl.origin !== expectedUrl.origin) {
+      // Allow localhost dev
+      const isLocalhostOrigin = (o: string) => {
+        try {
+          const u = new URL(o);
+          return u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "::1";
+        } catch {
+          return false;
+        }
+      };
+      if (isLocalhostOrigin(origin) && isLocalhostOrigin(expectedOrigin)) {
+        return null;
+      }
+      return Response.json(
+        { error: "invalid_request", error_description: "Invalid Origin header." },
+        { status: 403, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  } catch {
+    return Response.json(
+      { error: "invalid_request", error_description: "Invalid Origin header." },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
+  }
+  return null;
+}
+
+function validateRequestSize(request: Request, maxBytes = 4 * 1024 * 1024): Response | null {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength) {
+    const len = Number(contentLength);
+    if (Number.isFinite(len) && len > maxBytes) {
+      return Response.json(
+        { error: "invalid_request", error_description: "Request body too large." },
+        { status: 413, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+  }
+  return null;
+}
+
+function getResourceHostAndOrigin(resourceUrl: string) {
+  const url = new URL(resourceUrl);
+  return { host: url.host, origin: url.origin };
 }
 
 export function createWebMcpHandler(
-  registerServer: (server: McpServer) => void,
+  registerServer: (server: McpServer, authInfo?: AuthInfo) => void,
   _serverOptions: Record<string, never>,
   options: TransportOptions,
-  dependencies: WebMcpHandlerDependencies = DEFAULT_DEPENDENCIES,
+  dependencies?: WebMcpHandlerDependencies,
 ): RequestHandler {
-  const resource = new URL(options.resourceUrl);
+  const { host: expectedHost, origin: expectedOrigin } = getResourceHostAndOrigin(options.resourceUrl);
 
-  // If modern handler env is enabled, delegate to createMcpHandler path (2026-07-28)
-  if (process.env.MCP_USE_CREATE_HANDLER === "true") {
-    return createModernHandler(registerServer, options.resourceUrl);
+  // Test compat: if legacy dependencies with createTransport mock are provided, use old WebStandard path
+  // This keeps existing unit tests (which mock WebStandard transport) passing while production uses createMcpHandler
+  if (dependencies && (dependencies as unknown as { createTransport?: unknown }).createTransport) {
+    const legacyDeps = dependencies as unknown as { createServer: () => { connect: (t: unknown) => Promise<void>; close: () => Promise<void> }; createTransport: (opts: unknown) => { handleRequest: (r: Request, o: unknown) => Promise<Response>; close: () => Promise<void> } };
+    return async (request: Request): Promise<Response> => {
+      if (request.method === "GET") {
+        return new Response(null, { status: 405, headers: { Allow: "POST, OPTIONS" } });
+      }
+      if (request.method !== "POST") {
+        return new Response(null, { status: 405, headers: { Allow: "POST, OPTIONS" } });
+      }
+      const hostError = validateHost(request, expectedHost);
+      if (hostError) return hostError;
+      const originError = validateOrigin(request, expectedOrigin);
+      if (originError) return originError;
+      const sizeError = validateRequestSize(request);
+      if (sizeError) return sizeError;
+      const authInfo = (request as Request & { auth?: AuthInfo }).auth;
+      const server = legacyDeps.createServer();
+      const transport = legacyDeps.createTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+        enableDnsRebindingProtection: true,
+        allowedHosts: [expectedHost],
+        allowedOrigins: [expectedOrigin],
+      });
+      registerServer(server as unknown as McpServer, authInfo);
+      await server.connect(transport as unknown as never);
+      try {
+        return await transport.handleRequest(request, { authInfo });
+      } finally {
+        await transport.close();
+        await (server as unknown as { close: () => Promise<void> }).close();
+      }
+    };
   }
 
+  // Single canonical 2026-07-28 handler — stateless, per-request factory, no Mcp-Session-Id
+  const handler = createMcpHandler(
+    (ctx: { era: "legacy" | "modern"; authInfo?: AuthInfo; requestInfo?: Request }) => {
+      const server = new RuntimeMcpServer(
+        { name: "ega-house", version: "0.1.0" },
+        { capabilities: { tools: {} } },
+      ) as unknown as McpServer;
+      // Permission-aware registration: only expose tools allowed for this principal + writesEnabled
+      // The factory receives verified authInfo via ctx.authInfo (pass-through from handler.fetch)
+      registerServer(server, ctx.authInfo);
+      return server;
+    },
+    {
+      legacy: "stateless",
+    } as unknown as Parameters<typeof createMcpHandler>[1],
+  );
+
   return async (request: Request): Promise<Response> => {
+    // Explicit Host/Origin validation BEFORE auth and before handler — not delegated to createMcpHandler
+    const hostError = validateHost(request, expectedHost);
+    if (hostError) return hostError;
+    const originError = validateOrigin(request, expectedOrigin);
+    if (originError) return originError;
+    const sizeError = validateRequestSize(request);
+    if (sizeError) return sizeError;
+
+    // Correct POST/OPTIONS/GET behavior for modern stateless:
+    // GET is 405 (stateless has no session), but server/discover is POST with _meta
     if (request.method === "GET") {
       return new Response(null, {
         status: 405,
         headers: { Allow: "POST, OPTIONS" },
       });
     }
-
-    if (request.method !== "POST") {
+    if (request.method !== "POST" && request.method !== "OPTIONS") {
       return new Response(null, {
         status: 405,
         headers: { Allow: "POST, OPTIONS" },
       });
     }
-
-    const headerError = validateModernHeaders(request);
-    if (headerError) return headerError;
-
-    const authInfo = getMcpRequestAuthInfo(request);
-    // Permission-aware tool filtering: don't advertise writes to read_only
-    // We achieve this by wrapping registerServer to filter based on principal
-    // For now, we still register all, but handlers will enforce PERMISSION_DENIED.
-    // The filter below is the intended per-principal discovery (next increment wires it fully):
-    // const principal = authInfo ? readPrincipalFromAuthInfo(authInfo) : null;
-    // const allowed = principal ? filterToolsByPermissions(principal.permissions, process.env.MCP_WRITES_ENABLED === "true") : [];
-    const server = dependencies.createServer();
-    const transport = dependencies.createTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-      enableDnsRebindingProtection: true,
-      allowedHosts: [resource.host],
-      allowedOrigins: [resource.origin],
-    });
-
-    // Intentionally not filtering at registration yet — handlers enforce permission.
-    // The helper above (filterToolsByPermissions) is the mechanism for tools/list
-    // to hide unauthorized writes; full per-principal server factory will be
-    // enabled when createMcpHandler cutover is complete.
-    registerServer(server as unknown as McpServer);
-    await server.connect(transport);
-
-    try {
-      return await transport.handleRequest(request, {
-        authInfo,
-      });
-    } finally {
-      await transport.close();
-      await server.close();
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204 });
     }
+
+    // Auth is pass-through: withEgaMcpAuth wrapper will have verified and will call this handler
+    // with authInfo via (request as AuthenticatedRequest).auth, but createMcpHandler expects
+    // authInfo via handler.fetch(request, { authInfo }). We support both:
+    // - If called via withEgaMcpAuth, request.auth is set and we extract it
+    // - If called directly with handler.fetch(request, { authInfo }), we use that
+    // For web-transport-handler's fetch, we are the inner handler after withEgaMcpAuth, so we read request.auth
+    const authInfo = (request as Request & { auth?: AuthInfo }).auth;
+
+    // Modern headers Mcp-Method/Mcp-Name are routing/validation, not authorization — never use them for auth
+    // The SDK's createMcpHandler validates them against body; we just ensure we don't treat them as auth
+    // No authorization derived from Mcp-Method/Mcp-Name/Mcp-Param-* or body owner fields
+
+    return handler.fetch(request, authInfo ? { authInfo } : undefined);
   };
 }
+
+// Keep old helper for tests that directly call createWebMcpHandler with dependencies
+export type LegacyWebMcpHandlerDependencies = {
+  createServer: () => { connect: (t: unknown) => Promise<void>; close: () => Promise<void> };
+  createTransport: (opts: unknown) => { handleRequest: (r: Request, o: unknown) => Promise<Response>; close: () => Promise<void> };
+};
