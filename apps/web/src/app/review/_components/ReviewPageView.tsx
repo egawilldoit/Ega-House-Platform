@@ -4,6 +4,7 @@ import { WeekBarChart } from "@/components/review/week-bar-chart";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatDateTime, formatIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
+import { ReviewEmailPreviewForm } from "../review-email-preview-form";
 import { ReviewForm } from "../review-form";
 import type { ReviewFormValues } from "../review-form-state";
 import { WeekSelector } from "../week-selector";
@@ -68,6 +69,18 @@ export function ReviewPageView({ model }: { model: ReviewPageModel }) {
               </div>
             </div>
             <ReviewForm key={`${selectedWeekOf}:${selectedReview?.id ?? "new"}:${shouldUseGeneratedDraft ? "generated" : "saved"}`} defaultValues={reviewFormDefaults} />
+          </CardContent>
+        </Card>
+        <Card className="border-[var(--border)] bg-white">
+          <CardContent className="px-6 pb-6 pt-6">
+            <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Email Preview</h2>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">Send current saved weekly review through Resend without changing official send state.</p>
+              </div>
+              <Badge tone="muted">Manual test</Badge>
+            </div>
+            <ReviewEmailPreviewForm reviewId={selectedReview?.id ?? null} />
           </CardContent>
         </Card>
         <Card className="border-[var(--border)] bg-white">

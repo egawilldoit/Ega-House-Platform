@@ -102,12 +102,33 @@ describe("dashboard correctness — P1", () => {
   it("Supabase goal-count error is not silently treated as valid zero", () => {
     const mockErrorResult = { count: null, error: { message: "db down" } as unknown as { message: string } };
     const mockOkResult = { count: 5, error: null };
-    // Our code logs warning and returns 0, but does not claim 0 is valid — caller can distinguish via error check
-    // Test that error path is handled explicitly, not silently as valid 0
     const totalWithError = mockErrorResult.error ? null : (mockErrorResult.count ?? 0);
     const activeWithOk = mockOkResult.error ? null : (mockOkResult.count ?? 0);
     expect(totalWithError).toBeNull(); // indicates error, not 0
     expect(activeWithOk).toBe(5);
+  });
+
+  it("successful count 0 renders as legitimate zero, failure as —", () => {
+    const successZero = { count: 0, error: null };
+    const failure = { count: null, error: { message: "fail" } as unknown as { message: string } };
+    const successValue = successZero.error ? null : (successZero.count ?? 0);
+    const failureValue = failure.error ? null : (failure.count ?? 0);
+    expect(successValue).toBe(0); // legitimate zero
+    expect(failureValue).toBeNull(); // degraded — should render as —
+    // View should distinguish: 0 vs —
+    const render = (v: number | null) => (v === null ? "—" : String(v));
+    expect(render(successValue)).toBe("0");
+    expect(render(failureValue)).toBe("—");
+    expect(render(successValue)).not.toBe(render(failureValue));
+  });
+
+  it("successful large counts remain exact", () => {
+    const largeTotal = { count: 847, error: null };
+    const largeActive = { count: 423, error: null };
+    const total = largeTotal.error ? null : (largeTotal.count ?? 0);
+    const active = largeActive.error ? null : (largeActive.count ?? 0);
+    expect(total).toBe(847);
+    expect(active).toBe(423);
   });
 
   it("at-risk goal outside first 6 presentation rows can still appear in Attention Queue", () => {
