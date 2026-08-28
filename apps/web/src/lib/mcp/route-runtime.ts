@@ -129,7 +129,7 @@ const PREFLIGHT_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, Mcp-Method, Mcp-Name, Mcp-Param-*",
+    "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
   "Access-Control-Max-Age": "86400",
 };
 

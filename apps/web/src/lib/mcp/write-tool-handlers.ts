@@ -67,18 +67,16 @@ async function checkIdempotency(
   args: unknown,
 ): Promise<{ replay?: Record<string, unknown>; conflict?: boolean }> {
   const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
-  try {
-    const { data, error } = await (client as unknown as SupabaseClient).rpc("mcp_claim_mutation_receipt", {
-      p_tool_name: toolName,
-      p_operation_id: operationId,
-      p_args_hash: argsHash,
-    });
-    if (error) return {};
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row) return {};
-    if ((row as { is_conflict?: boolean }).is_conflict) return { conflict: true };
-    if ((row as { is_replay?: boolean }).is_replay) return { replay: (row as { existing_result?: Record<string, unknown> }).existing_result };
-  } catch {}
+  const { data, error } = await (client as unknown as SupabaseClient).rpc("mcp_claim_mutation_receipt", {
+    p_tool_name: toolName,
+    p_operation_id: operationId,
+    p_args_hash: argsHash,
+  });
+  if (error) throw new Error(`Idempotency ledger unavailable: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error("Idempotency ledger failed to claim");
+  if ((row as { is_conflict?: boolean }).is_conflict) return { conflict: true };
+  if ((row as { is_replay?: boolean }).is_replay) return { replay: (row as { existing_result?: Record<string, unknown> }).existing_result };
   return {};
 }
 
@@ -88,13 +86,12 @@ async function storeIdempotencyResult(
   operationId: string,
   payload: Record<string, unknown>,
 ): Promise<void> {
-  try {
-    await (client as unknown as SupabaseClient).rpc("mcp_store_mutation_result", {
-      p_tool_name: toolName,
-      p_operation_id: operationId,
-      p_result_payload: payload,
-    });
-  } catch {}
+  const { error } = await (client as unknown as SupabaseClient).rpc("mcp_store_mutation_result", {
+    p_tool_name: toolName,
+    p_operation_id: operationId,
+    p_result_payload: payload,
+  });
+  if (error) throw new Error(`Failed to persist idempotency result: ${error.message}`);
 }
 
 export function createMcpWriteToolHandlers(

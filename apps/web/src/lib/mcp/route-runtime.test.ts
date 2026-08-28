@@ -116,7 +116,7 @@ describe("createMcpRouteRuntime", () => {
       "POST, OPTIONS",
     );
     expect(response.headers.get("access-control-allow-headers")).toBe(
-      "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id, Mcp-Method, Mcp-Name, Mcp-Param-*",
+      "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
     );
   });
 });
