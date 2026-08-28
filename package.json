@@ -57,6 +57,7 @@
     "verify:mobile": "node scripts/ci/mobile-verification-ladder.mjs",
     "web:build": "npm run build --workspace @ega/web",
     "web:test": "npm run test --workspace @ega/web",
+    "web:test:visual": "npm run test:visual --workspace @ega/web",
     "web:typecheck": "npm run typecheck --workspace @ega/web"
   },
   "dependencies": {
