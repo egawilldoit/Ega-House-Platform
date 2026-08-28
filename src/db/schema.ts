@@ -480,3 +480,10 @@ export const agentIntegrationTokens = pgTable(
     index("agent_tokens_owner_idx").on(table.ownerUserId),
   ],
 );
+
+export const userTimeContext = pgTable("user_time_context", {
+  userId: uuid("user_id").default(sql`auth.uid()`).primaryKey(),
+  ianaTimezone: varchar("iana_timezone", { length: 128 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
