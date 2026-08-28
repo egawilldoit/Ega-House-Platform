@@ -19,8 +19,7 @@ function shiftIsoDateByDays(isoDate: string, days: number) {
 }
 
 export default function WeeklyReviewScreen() {
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const [selectedWeekOf, setSelectedWeekOf] = useState<string>(todayIso);
+  const [selectedWeekOf, setSelectedWeekOf] = useState<string | undefined>(undefined);
   const { data, isLoading, isError, error, refetch, isFetching } = useWeeklyReviewQuery(selectedWeekOf);
 
   if (isLoading) {
@@ -65,7 +64,11 @@ export default function WeeklyReviewScreen() {
         <View style={styles.weekSelector}>
           <Pressable
             style={styles.selectorBtn}
-            onPress={() => setSelectedWeekOf(shiftIsoDateByDays(selectedWeekOf, -7))}
+            onPress={() =>
+              setSelectedWeekOf(
+                selectedWeekOf ? shiftIsoDateByDays(selectedWeekOf, -7) : shiftIsoDateByDays(window.weekStart, -7),
+              )
+            }
           >
             <Text style={styles.selectorBtnText}>‹ Previous</Text>
           </Pressable>
@@ -78,7 +81,11 @@ export default function WeeklyReviewScreen() {
           </View>
           <Pressable
             style={styles.selectorBtn}
-            onPress={() => setSelectedWeekOf(shiftIsoDateByDays(selectedWeekOf, 7))}
+            onPress={() =>
+              setSelectedWeekOf(
+                selectedWeekOf ? shiftIsoDateByDays(selectedWeekOf, 7) : shiftIsoDateByDays(window.weekStart, 7),
+              )
+            }
           >
             <Text style={styles.selectorBtnText}>Next ›</Text>
           </Pressable>
@@ -173,7 +180,7 @@ export default function WeeklyReviewScreen() {
           )}
         </View>
 
-        <Pressable style={styles.button} onPress={() => setSelectedWeekOf(todayIso)}>
+        <Pressable style={styles.button} onPress={() => setSelectedWeekOf(undefined)}>
           <Text style={styles.buttonText}>Back to this week</Text>
         </Pressable>
       </ScrollView>

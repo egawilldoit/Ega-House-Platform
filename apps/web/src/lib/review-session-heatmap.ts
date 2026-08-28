@@ -1,10 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/database.types";
-import { getTodayIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
+import { shiftIsoDateByDays } from "@/lib/review-week";
 import {
   calculateExecutionEvidenceForWindow,
   type ExecutionEvidenceSessionRow,
 } from "@ega/application/shared/execution-evidence";
+import { getLocalDateInTimezone } from "@ega/domain";
+import { SupabaseTimeContextRepository } from "@ega/data-access";
+import { createAuthenticatedActor } from "@ega/application/auth/actor";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -39,24 +42,19 @@ function toUtcDateStartMs(isoDate: string) {
   return parseIso(`${isoDate}T00:00:00.000Z`);
 }
 
-function startOfUtcDayMs(ms: number) {
-  const date = new Date(ms);
-  date.setUTCHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
 export function getDailyTrackedWindow(
   days = DEFAULT_DAILY_TRACKED_WINDOW_DAYS,
-  endDate = getTodayIsoDate(),
+  endDate?: string,
 ): DailyTrackedWindow {
+  const effectiveEndDate = endDate && /^\d{4}-\d{2}-\d{2}$/.test(endDate) ? endDate : getLocalDateInTimezone(new Date(), "UTC");
   const safeDays = Number.isFinite(days) ? Math.max(1, Math.floor(days)) : DEFAULT_DAILY_TRACKED_WINDOW_DAYS;
-  const startDate = shiftIsoDateByDays(endDate, -(safeDays - 1));
+  const startDate = shiftIsoDateByDays(effectiveEndDate, -(safeDays - 1));
 
   return {
     startDate,
-    endDate,
+    endDate: effectiveEndDate,
     startIso: `${startDate}T00:00:00.000Z`,
-    endExclusiveIso: `${shiftIsoDateByDays(endDate, 1)}T00:00:00.000Z`,
+    endExclusiveIso: `${shiftIsoDateByDays(effectiveEndDate, 1)}T00:00:00.000Z`,
   };
 }
 
@@ -116,17 +114,39 @@ export async function getRecentDailyTrackedTime(
   supabase: SupabaseServerClient,
   {
     days = DEFAULT_DAILY_TRACKED_WINDOW_DAYS,
-    endDate = getTodayIsoDate(),
+    endDate,
     nowIso = new Date().toISOString(),
     ownerUserId,
+    now,
   }: {
     days?: number;
     endDate?: string;
     nowIso?: string;
     ownerUserId?: string;
+    now?: Date;
   } = {},
 ): Promise<DailyTrackedTime[]> {
-  const window = getDailyTrackedWindow(days, endDate);
+  let effectiveEndDate = endDate;
+  if (!effectiveEndDate && ownerUserId) {
+    try {
+      const actor = createAuthenticatedActor(ownerUserId);
+      const timeContextRepo = new SupabaseTimeContextRepository(
+        supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
+      );
+      const tzResult = await timeContextRepo.getTimezone(actor);
+      const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
+      const nowDate = now ?? (nowIso ? new Date(nowIso) : new Date());
+      const safeNow = Number.isNaN(nowDate.getTime()) ? new Date() : nowDate;
+      effectiveEndDate = getLocalDateInTimezone(safeNow, effectiveTz);
+    } catch {
+      // Fallback to UTC local date on failure; weekly review page will still render.
+      effectiveEndDate = getLocalDateInTimezone(now ?? new Date(), "UTC");
+    }
+  }
+  if (!effectiveEndDate) {
+    effectiveEndDate = getLocalDateInTimezone(now ?? new Date(), "UTC");
+  }
+  const window = getDailyTrackedWindow(days, effectiveEndDate);
   let query = supabase
     .from("task_sessions")
     .select("started_at, ended_at")

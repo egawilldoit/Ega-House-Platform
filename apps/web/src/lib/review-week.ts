@@ -5,14 +5,26 @@
  * path but delegates to the domain so no second source exists.
  */
 
-import { getWeekWindow as getDomainWeekWindow } from "@ega/domain";
+import { getLocalDateInTimezone, getWeekWindow as getDomainWeekWindow } from "@ega/domain";
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * @deprecated Use `getLocalDateInTimezone` with the user's canonical Time Context timezone.
+ * This UTC helper is retained for non-review surfaces and legacy callers but must not be
+ * used as the canonical user-day authority for Weekly Review. Weekly Review must derive
+ * `today` via the stored `user_time_context.iana_timezone` through the canonical domain
+ * Time Context helpers so that early-morning Asia/Tokyo (and other offsets) does not
+ * collapse to the previous UTC day.
+ */
 export function getTodayIsoDate() {
   return toIsoDate(new Date());
+}
+
+export function getLocalTodayIsoDate(timezone: string, now: Date = new Date()): string {
+  return getLocalDateInTimezone(now, timezone);
 }
 
 export function isIsoDate(value: string) {

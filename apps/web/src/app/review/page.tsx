@@ -9,7 +9,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   formatDateTime,
   formatIsoDate,
-  getTodayIsoDate,
   isIsoDate,
   shiftIsoDateByDays,
 } from "@/lib/review-week";
@@ -18,6 +17,9 @@ import {
   getWeeklyReviewPageData,
   type WeeklyReviewPageData,
 } from "@/lib/services/weekly-review-page-service";
+import { getLocalDateInTimezone } from "@ega/domain";
+import { SupabaseTimeContextRepository } from "@ega/data-access";
+import { createAuthenticatedActor } from "@ega/application/auth/actor";
 
 import { ReviewEmailPreviewForm } from "./review-email-preview-form";
 import { ReviewForm } from "./review-form";
@@ -159,16 +161,32 @@ function MostTrackedSection({
 
 export default async function ReviewPage({ searchParams }: ReviewPageProps) {
   const resolvedSearchParams = await searchParams;
-  const selectedWeekOf =
-    resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)
-      ? resolvedSearchParams.weekOf
-      : getTodayIsoDate();
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError || !authData.user) {
     throw new Error("You must be signed in to review weekly activity.");
   }
   const ownerUserId = authData.user.id;
+  let selectedWeekOf: string;
+  if (resolvedSearchParams.weekOf && isIsoDate(resolvedSearchParams.weekOf)) {
+    selectedWeekOf = resolvedSearchParams.weekOf;
+  } else {
+    // Canonical Time Context: derive local calendar date for current week,
+    // not UTC. This ensures Asia/Tokyo 01:00 (UTC previous day) shows the
+    // correct local week (Monday boundary correct).
+    try {
+      const repo = new SupabaseTimeContextRepository(
+        supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
+      );
+      const actor = createAuthenticatedActor(ownerUserId);
+      const tzResult = await repo.getTimezone(actor);
+      const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
+      selectedWeekOf = getLocalDateInTimezone(new Date(), effectiveTz);
+      if (!isIsoDate(selectedWeekOf)) selectedWeekOf = getLocalDateInTimezone(new Date(), "UTC");
+    } catch {
+      selectedWeekOf = getLocalDateInTimezone(new Date(), "UTC");
+    }
+  }
   const shouldUseGeneratedDraft = resolvedSearchParams.draft === "generated";
   const {
     bounds,
