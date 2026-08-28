@@ -23,6 +23,8 @@
     "./today/service": "./src/today/service.ts",
     "./friction/ports": "./src/friction/ports.ts",
     "./friction/stale-blocked-signals": "./src/friction/stale-blocked-signals.ts",
+    "./friction/estimate-accuracy": "./src/friction/estimate-accuracy.ts",
+    "./friction/context-switch": "./src/friction/context-switch.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts"

@@ -40,6 +40,18 @@ test("friction radar maps GET /api/friction/radar with auth", async () => {
     blocked: [],
     staleTasks: [],
     staleGoals: [],
+    estimateSignals: [],
+    contextSwitch: {
+      switchCount: 0,
+      threshold: 6,
+      highThreshold: 10,
+      severity: "none",
+      isFriction: false,
+      transitionsCount: 0,
+      distinctTaskCount: 0,
+      window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+    },
+    evidenceWindow: null,
   };
   const { client, calls } = makeHarness(200, radar);
   const result = await client.friction.radar();

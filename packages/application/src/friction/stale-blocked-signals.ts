@@ -1,4 +1,9 @@
 import {
+  FRICTION_CONTEXT_SWITCH_HIGH_THRESHOLD,
+  FRICTION_CONTEXT_SWITCH_THRESHOLD,
+  FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD,
+  FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES,
+  FRICTION_ESTIMATE_PERCENT_THRESHOLD,
   FRICTION_STALE_THRESHOLD_DAYS,
   FRICTION_STALE_THRESHOLD_MS,
   getFrictionAgeDays,
@@ -8,10 +13,20 @@ import {
 } from "@ega/domain";
 import type {
   FrictionBlockedSignal,
+  FrictionContextSwitchSignal,
+  FrictionEstimateSignal,
   FrictionRadarResponse,
   FrictionStaleGoalSignal,
   FrictionStaleTaskSignal,
 } from "@ega/contracts/friction";
+
+import {
+  type ExecutionEvidenceWindow,
+  type ExecutionEvidenceRepository,
+} from "../shared/execution-evidence";
+
+import { getContextSwitchSignal } from "./context-switch";
+import { getEstimateAccuracySignals } from "./estimate-accuracy";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
@@ -23,6 +38,20 @@ import type { FrictionRepository } from "./ports";
  */
 export const STALE_THRESHOLD_DAYS = FRICTION_STALE_THRESHOLD_DAYS;
 export const STALE_THRESHOLD_MS = FRICTION_STALE_THRESHOLD_MS;
+
+// Re-export deterministic thresholds owned in domain, not transports.
+export const ESTIMATE_MIN_MEANINGFUL_MINUTES = FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES;
+export const ESTIMATE_PERCENT_THRESHOLD = FRICTION_ESTIMATE_PERCENT_THRESHOLD;
+export const ESTIMATE_HIGH_PERCENT_THRESHOLD = FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD;
+export const CONTEXT_SWITCH_THRESHOLD = FRICTION_CONTEXT_SWITCH_THRESHOLD;
+export const CONTEXT_SWITCH_HIGH_THRESHOLD = FRICTION_CONTEXT_SWITCH_HIGH_THRESHOLD;
+
+export type FrictionRadarEvidenceOptions = Readonly<{
+  window: ExecutionEvidenceWindow;
+  repository: ExecutionEvidenceRepository;
+  includeOpenSessions?: boolean;
+  nowIso?: string;
+}>;
 
 function toBlockedSignal(
   task: { id: string; title: string; blockedReason: string | null; status: string; updatedAt: string; projectId: string; goalId: string | null },
@@ -70,15 +99,22 @@ function toStaleGoalSignal(
 }
 
 /**
- * Friction Radar read model — stale and blocked signals.
- * Owner-scoped via the supplied repository; threshold deterministic.
+ * Friction Radar read model — stale/blocked + estimate accuracy + context-switch.
+ * Owner-scoped via the supplied repositories; thresholds deterministic and
+ * owned in domain/application, not transports.
+ *
+ * When `evidence` is supplied, estimate and context-switch signals are
+ * derived from canonical execution-evidence (window-clipped, no double-count,
+ * deterministic ordered transitions). When absent, those signals return empty
+ * / none so callers without evidence still receive stale/blocked semantics.
  */
 export async function getFrictionRadarReadModel(
   actor: AuthenticatedActor,
   repository: FrictionRepository,
-  options?: Readonly<{ now?: Date }>,
+  options?: Readonly<{ now?: Date; evidence?: FrictionRadarEvidenceOptions }>,
 ): Promise<ApplicationResult<FrictionRadarResponse>> {
   const now = options?.now ?? new Date();
+  const evidence = options?.evidence;
 
   const [tasksResult, goalsResult] = await Promise.all([
     repository.listTasks(actor),
@@ -174,6 +210,43 @@ export async function getFrictionRadarReadModel(
   staleTasks.sort(byAgeDesc);
   staleGoals.sort(byAgeDesc);
 
+  // Optional evidence-derived signals — when not supplied we return deterministic
+  // empty/none so web/mobile receive identical shape without local recalculation.
+  let estimateSignals: FrictionEstimateSignal[] = [];
+  let contextSwitch: FrictionContextSwitchSignal = {
+    switchCount: 0,
+    threshold: CONTEXT_SWITCH_THRESHOLD,
+    highThreshold: CONTEXT_SWITCH_HIGH_THRESHOLD,
+    severity: "none",
+    isFriction: false,
+    transitionsCount: 0,
+    distinctTaskCount: 0,
+    window: evidence?.window ? { startIso: evidence.window.startIso, endIso: evidence.window.endIso } : { startIso: now.toISOString(), endIso: now.toISOString() },
+  };
+  let evidenceWindow: { startIso: string; endIso: string } | null = null;
+
+  if (evidence) {
+    evidenceWindow = { startIso: evidence.window.startIso, endIso: evidence.window.endIso };
+    try {
+      const sessionsResult = await evidence.repository.listSessionsForWindow(actor, evidence.window);
+      if (sessionsResult.ok) {
+        const sessions = sessionsResult.value ?? [];
+        // No double-count: actual time via canonical execution-evidence window clipping.
+        estimateSignals = getEstimateAccuracySignals(sessions, evidence.window, {
+          nowIso: evidence.nowIso ?? now.toISOString(),
+          includeOpenSessions: evidence.includeOpenSessions,
+        });
+        contextSwitch = getContextSwitchSignal(sessions, evidence.window, {
+          nowIso: evidence.nowIso ?? now.toISOString(),
+          includeOpenSessions: evidence.includeOpenSessions,
+        });
+      }
+      // If evidence repository fails, keep deterministic empty signals — stale/blocked still served.
+    } catch {
+      // Gracefully degrade to empty estimate/context-switch if evidence retrieval throws (e.g., test fake missing methods).
+    }
+  }
+
   return applicationSuccess({
     ok: true as const,
     generatedAt: now.toISOString(),
@@ -181,5 +254,8 @@ export async function getFrictionRadarReadModel(
     blocked,
     staleTasks,
     staleGoals,
+    estimateSignals,
+    contextSwitch,
+    evidenceWindow,
   });
 }

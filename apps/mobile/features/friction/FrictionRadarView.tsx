@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from "react-native";
 import type {
   FrictionBlockedSignal,
+  FrictionContextSwitchSignal,
+  FrictionEstimateSignal,
   FrictionStaleGoalSignal,
   FrictionStaleTaskSignal,
 } from "@ega/contracts/friction";
@@ -12,6 +14,9 @@ type Props = {
   staleTasks: FrictionStaleTaskSignal[];
   staleGoals: FrictionStaleGoalSignal[];
   thresholdDays: number;
+  estimateSignals: FrictionEstimateSignal[];
+  contextSwitch: FrictionContextSwitchSignal;
+  evidenceWindow: { startIso: string; endIso: string } | null;
 };
 
 function SignalRow({
@@ -36,15 +41,20 @@ function SignalRow({
   );
 }
 
-export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDays }: Props) {
-  const hasAny = blocked.length > 0 || staleTasks.length > 0 || staleGoals.length > 0;
+export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDays, estimateSignals, contextSwitch }: Props) {
+  const hasAny =
+    blocked.length > 0 ||
+    staleTasks.length > 0 ||
+    staleGoals.length > 0 ||
+    estimateSignals.length > 0 ||
+    contextSwitch.isFriction;
 
   if (!hasAny) {
     return (
       <Card style={styles.card}>
         <Text style={styles.emptyTitle}>No friction detected</Text>
         <Text style={styles.emptySubtitle}>
-          No blocked or stale work found. Your active tasks and goals are fresh.
+          No blocked, stale, estimate, or context-switch friction found.
         </Text>
       </Card>
     );
@@ -103,6 +113,42 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
             />
           ))
         )}
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Estimate Accuracy ({estimateSignals.length})</Text>
+        <Text style={styles.sectionSubtitle}>Tasks with estimate ≥5m where actual deviates &gt;50% (medium) or &gt;100% (high). Window-clipped, no double-count.</Text>
+        {estimateSignals.length === 0 ? (
+          <Text style={styles.emptyInline}>No estimate friction in window.</Text>
+        ) : (
+          estimateSignals.map((sig) => (
+            <View key={sig.id} style={styles.row}>
+              <View style={styles.rowCopy}>
+                <Text style={styles.rowTitle}>{sig.title}</Text>
+                <Text style={styles.rowSubtitle}>
+                  Est {sig.estimateMinutes}m · Actual {sig.actualMinutes}m · Δ {sig.deltaMinutes}m
+                </Text>
+              </View>
+              <View style={styles.ageBadge}>
+                <Text style={styles.ageText}>
+                  {sig.percentError}% {sig.severity}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </Card>
+
+      <Card style={styles.card}>
+        <Text style={styles.sectionTitle}>Context Switches ({contextSwitch.switchCount})</Text>
+        <Text style={styles.sectionSubtitle}>
+          Transitions between different Tasks in ordered sessions (repeat not a switch). Threshold {contextSwitch.threshold}
+          (med), {contextSwitch.highThreshold} (high).
+        </Text>
+        <Text style={styles.emptyInline}>
+          {contextSwitch.transitionsCount} sessions · {contextSwitch.distinctTaskCount} tasks · {contextSwitch.switchCount} switches · {contextSwitch.severity}
+          {contextSwitch.isFriction ? " · Friction" : " · No friction"}
+        </Text>
       </Card>
     </View>
   );
