@@ -322,14 +322,17 @@ jobs:
             exit 1
           fi
           echo "EXPO_UPDATE_URL OK: $EMBEDDED_URL"
-          CHANNEL_HEADER="$(grep -o '"expo-channel-name":"production"' "$ANDROID_MANIFEST" || echo "")"
-          if [ -z "$CHANNEL_HEADER" ]; then
+          # expo prebuild XML-escapes the request-headers JSON in AndroidManifest.xml
+          # (&quot;), so accept both the escaped and literal forms of the channel header.
+          CHANNEL_ESCAPED="$(grep -c 'expo-channel-name&quot;:&quot;production' "$ANDROID_MANIFEST" || true)"
+          CHANNEL_LITERAL="$(grep -c '"expo-channel-name":"production"' "$ANDROID_MANIFEST" || true)"
+          if [ "${CHANNEL_ESCAPED:-0}" -eq 0 ] && [ "${CHANNEL_LITERAL:-0}" -eq 0 ]; then
             echo "::error::expo-channel-name=production not found in AndroidManifest"
             grep -n "UPDATES_CONFIGURATION_REQUEST_HEADERS" "$ANDROID_MANIFEST" || true
             cat "$ANDROID_MANIFEST" | grep -A2 -B2 "updates" || true
             exit 1
           fi
-          echo "Channel header OK: production"
+          echo "Channel header OK: production (escaped=$CHANNEL_ESCAPED literal=$CHANNEL_LITERAL)"
           cat > dist-apk/release-manifest.json <<EOF
           {
             "repository": "egawilldoit/Ega-House-Platform",
