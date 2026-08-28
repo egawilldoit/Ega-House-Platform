@@ -651,18 +651,18 @@ jobs:
           - APK: $(cat apk-dist/SHA256SUMS)
           - Runner: blacksmith-2vcpu-ubuntu-2404"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view -R "$GITHUB_REPOSITORY" "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — uploading assets"
-            gh release upload "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
+            gh release upload -R "$GITHUB_REPOSITORY" "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
+            gh release edit -R "$GITHUB_REPOSITORY" "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
           else
             echo "Creating release $TAG"
-            gh release create "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
+            gh release create -R "$GITHUB_REPOSITORY" "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
               --title "$TITLE" \
               --notes "$NOTES" \
               $PRERELEASE_FLAG
           fi
-          gh release view "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
+          gh release view -R "$GITHUB_REPOSITORY" "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
 
   delivery-summary:
     name: Delivery summary
