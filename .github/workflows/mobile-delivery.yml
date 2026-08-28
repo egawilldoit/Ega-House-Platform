@@ -78,6 +78,48 @@ jobs:
           - API_BASE_URL: \`$API_BASE_URL\`
           EOF
 
+      - name: Enforce native version bump if native changes (appVersion policy)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_SHA="${{ steps.identity.outputs.source_sha }}"
+          CANDIDATE_VER="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          echo "Candidate SHA: $CANDIDATE_SHA"
+          echo "Candidate version (app.json): $CANDIDATE_VER"
+          # Fetch latest stable baseline manifest (if any)
+          BASELINE_URL=""
+          if gh api repos/${{ github.repository }}/releases/latest --jq '.assets[] | select(.name=="release-manifest.json") | .browser_download_url' > /tmp/baseline_url.txt 2>/dev/null; then
+            BASELINE_URL="$(cat /tmp/baseline_url.txt | head -n1)"
+          fi
+          if [ -z "$BASELINE_URL" ]; then
+            echo "No baseline manifest asset found — bootstrap first native release, allowing $CANDIDATE_VER"
+            echo "If this is not the intended bootstrap (1.0.1), ensure a stable release-manifest.json exists"
+            exit 0
+          fi
+          echo "Baseline manifest URL: $BASELINE_URL"
+          if ! curl -fsSL -H "Accept: application/json" -H "Authorization: Bearer $GH_TOKEN" "$BASELINE_URL" -o /tmp/baseline-manifest.json; then
+            echo "::error::Failed to fetch baseline manifest from $BASELINE_URL"
+            exit 1
+          fi
+          cat /tmp/baseline-manifest.json
+          BASELINE_VER="$(jq -r .version /tmp/baseline-manifest.json)"
+          BASELINE_SHA="$(jq -r .gitSha /tmp/baseline-manifest.json)"
+          BASELINE_RT="$(jq -r .runtimeVersion /tmp/baseline-manifest.json)"
+          echo "Baseline version: $BASELINE_VER runtime: $BASELINE_RT sha: $BASELINE_SHA"
+          if [ -z "$BASELINE_VER" ] || [ "$BASELINE_VER" = "null" ] || [ -z "$BASELINE_SHA" ] || [ "$BASELINE_SHA" = "null" ]; then
+            echo "::error::Malformed baseline manifest — missing version/gitSha — fail closed"
+            cat /tmp/baseline-manifest.json
+            exit 1
+          fi
+          # Strict semver compare via helper; allow JS-only same version, block native diff without bump
+          node scripts/ci/check-native-version-bump.mjs \
+            --baseline-manifest /tmp/baseline-manifest.json \
+            --candidate-version "$CANDIDATE_VER" \
+            --base "$BASELINE_SHA" \
+            --head "$CANDIDATE_SHA"
+
       - name: Validate source ref is main or mobile-v* tag
         shell: bash
         run: |

@@ -264,28 +264,35 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       - name: Verify Expo project and production channel exists
+        working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
           echo "EXPO_PROJECT_ID $EXPO_PROJECT_ID"
-          # Verify eas config is valid
+          # Verify eas config is valid (project-scoped, must run from apps/mobile)
           eas config --platform android --json --non-interactive > eas-config.json
           cat eas-config.json | head -n 100
-          # Verify channel exists server-side
+          # Verify channel exists server-side (project-scoped)
           eas channel:view production --json --non-interactive > channel.json
           cat channel.json
           jq -e '.name == "production" or .channel == "production" or .branch // empty' channel.json || jq -e . channel.json
           echo "Channel production exists"
           # Also ensure app.json runtime policy is appVersion
-          POLICY="$(node -p "require('./apps/mobile/app.json').expo.runtimeVersion.policy")"
+          POLICY="$(node -p "require('./app.json').expo.runtimeVersion.policy")"
           if [ "$POLICY" != "appVersion" ]; then
             echo "::error::runtimeVersion policy must be appVersion got $POLICY"
             exit 1
           fi
-          APP_VER="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          APP_VER="$(node -p "require('./app.json').expo.version")"
           echo "App version $APP_VER policy $POLICY OK"
+
+      - name: Download native baseline snapshot (preflight)
+        uses: actions/download-artifact@v5
+        with:
+          name: ota-native-baseline-${{ needs.preflight.outputs.source_sha }}
+          path: .
 
       - name: Publish OTA update via EAS (exactly once)
         id: publish
@@ -300,6 +307,7 @@ jobs:
           FULL_MESSAGE="$MESSAGE (sha $SHA, production, ${{ needs.preflight.outputs.source_ref }})"
           echo "Publishing EAS update --channel production --platform android --message \"$FULL_MESSAGE\""
           rm -f eas-update.json eas-update.stderr.log
+          set +e
           eas update \
             --channel production \
             --platform android \
@@ -309,6 +317,7 @@ jobs:
             > eas-update.json \
             2> eas-update.stderr.log
           STATUS=$?
+          set -e
           echo "EAS exit status: $STATUS"
           echo "--- stdout json ---"
           cat eas-update.json || true
@@ -355,12 +364,8 @@ jobs:
           path: |
             apps/mobile/eas-update.json
             apps/mobile/eas-update.stderr.log
-            eas-update.json
-            eas-update.stderr.log
             apps/mobile/eas-config.json
             apps/mobile/channel.json
-            eas-config.json
-            channel.json
             eas-cli-version.txt
             release-manifest.snapshot.json
           if-no-files-found: warn

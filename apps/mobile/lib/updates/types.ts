@@ -43,6 +43,7 @@ export type UpdateServiceState = {
   appVersion: string;
   runtimeVersion: string;
   channel: string | null;
+  downloadedUpdateReady: boolean;
 };
 
 export type ReleaseManifest = {
