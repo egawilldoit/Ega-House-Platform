@@ -40,6 +40,7 @@ const mockState: {
   appVersion: string;
   runtimeVersion: string;
   channel: string | null;
+  downloadedUpdateReady: boolean;
   info: {
     appVersion: string;
     runtimeVersion: string;
@@ -68,6 +69,7 @@ const mockState: {
   appVersion: '1.0.1',
   runtimeVersion: '1.0.1',
   channel: 'production',
+  downloadedUpdateReady: false,
   info: {
     appVersion: '1.0.1',
     runtimeVersion: '1.0.1',
@@ -112,6 +114,7 @@ describe('UpdatesScreen', () => {
     mockState.status = 'IDLE';
     mockState.isChecking = false;
     mockState.error = null;
+    mockState.downloadedUpdateReady = false;
   });
 
   it('renders installed version and channel', async () => {
@@ -152,5 +155,17 @@ describe('UpdatesScreen', () => {
       component = create(<UpdatesScreenContent />);
     });
     expect(findText(component!, 'offline')).toBe(true);
+  });
+
+  it('shows Retry restart when reload fails and downloaded update is ready', async () => {
+    mockState.status = 'ERROR';
+    mockState.error = 'Unable to restart and apply update: reload failed';
+    mockState.downloadedUpdateReady = true;
+    let component: ReturnType<typeof create>;
+    await act(async () => {
+      component = create(<UpdatesScreenContent />);
+    });
+    expect(findText(component!, 'Retry restart')).toBe(true);
+    expect(findText(component!, 'Unable to restart')).toBe(true);
   });
 });

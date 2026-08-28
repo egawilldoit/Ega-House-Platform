@@ -239,10 +239,30 @@ describe('createUpdateService state machine', () => {
     await svc2.check();
     await svc2.download();
     expect(svc2.getState().status).toBe('OTA_READY');
+    expect(svc2.getState().downloadedUpdateReady).toBe(true);
     await expect(svc2.reload()).rejects.toThrow(/Unable to restart/);
     expect(svc2.getState().status).toBe('ERROR');
     expect(svc2.getState().error).toMatch(/Unable to restart/);
-    // retry remains possible: status is ERROR but OTA_READY info still implies retry? For V1 we keep ERROR with message
+    expect(svc2.getState().downloadedUpdateReady).toBe(true);
+  });
+
+  it('reload failure leaves downloadedUpdateReady true and retry does not redownload', async () => {
+    mockCheckNative.mockResolvedValue({ status: 'UP_TO_DATE', localVersion: '1.0.1', localRuntime: '1.0.1', remoteVersion: '1.0.1', remoteRuntime: '1.0.1' });
+    const updates = makeUpdates({
+      checkForUpdateAsync: jest.fn().mockResolvedValue({ isAvailable: true }),
+      fetchUpdateAsync: jest.fn().mockResolvedValue({ isNew: true }),
+      reloadAsync: jest.fn().mockRejectedValueOnce(new Error('reload failed')).mockResolvedValueOnce(undefined),
+    });
+    const svc = createUpdateService({ updates: updates as never, constants: makeConstants() as never });
+    await svc.check();
+    await svc.download();
+    expect(svc.getState().downloadedUpdateReady).toBe(true);
+    await expect(svc.reload()).rejects.toThrow(/Unable to restart/);
+    expect(svc.getState().downloadedUpdateReady).toBe(true);
+    expect(svc.getState().status).toBe('ERROR');
+    await expect(svc.reload()).resolves.toBeUndefined();
+    expect(updates.fetchUpdateAsync).toHaveBeenCalledTimes(1);
+    expect(updates.reloadAsync).toHaveBeenCalledTimes(2);
   });
 
   it('download after OTA_AVAILABLE => OTA_READY', async () => {
