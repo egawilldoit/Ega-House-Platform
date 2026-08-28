@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
 
 // Mock next/navigation and supabase
 vi.mock("next/navigation", () => ({

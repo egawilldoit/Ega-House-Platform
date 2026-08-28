@@ -145,7 +145,7 @@ export function createMcpWriteToolHandlers(
         const projRepo2 = new SPR2(client as unknown as never);
         const actor2 = { userId: principal.ownerUserId } as unknown as never;
         const updRes = await projRepo2.updateProjectStatus(actor2 as never, { projectId: input.projectId, status: input.status as never, updatedAt: new Date().toISOString() } as never);
-        if (!updRes.ok) throw new Error(updRes.error.message ?? "Failed to update project");
+        if (!updRes.ok) throw new Error((updRes.error as { message?: string })?.message ?? "Failed to update project");
         const { data, error } = await (client as unknown as SupabaseClient).from("projects").select("id, name, slug, status").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
         if (error) throw new Error(`Failed to update project: ${error.message}`);
         const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
