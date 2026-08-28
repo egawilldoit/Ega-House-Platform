@@ -25,6 +25,7 @@ export * from "./shared/execution-evidence";
 export * from "./weekly-review/ports";
 export * from "./weekly-review/read-model";
 export * from "./weekly-review/draft";
+export * from "./weekly-review/comparison";
 
 export type {
   GoalHealth,

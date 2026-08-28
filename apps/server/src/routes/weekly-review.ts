@@ -94,6 +94,7 @@ export function createWeeklyReviewRoutes(
         evidence: evidenceDto,
         mostTracked: data.mostTracked,
         generatedDraft: data.generatedDraft,
+        comparison: data.comparison,
       },
     };
 

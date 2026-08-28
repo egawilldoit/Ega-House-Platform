@@ -67,6 +67,25 @@ export type WeeklyReviewDraftDto = Readonly<{
   nextSteps: string;
 }>;
 
+export type WeeklyReviewMetricComparisonDto = Readonly<{
+  current: number;
+  previous: number | null;
+  delta: number | null;
+  percentChange: number | null;
+}>;
+
+export type WeeklyReviewComparisonDto = Readonly<{
+  currentWindow: WeeklyReviewWeekWindowDto;
+  previousWindow: WeeklyReviewWeekWindowDto;
+  metrics: Readonly<{
+    trackedSeconds: WeeklyReviewMetricComparisonDto;
+    sessionCount: WeeklyReviewMetricComparisonDto;
+    tasksCreated: WeeklyReviewMetricComparisonDto;
+    goalsTouched: WeeklyReviewMetricComparisonDto;
+    completedTasks: WeeklyReviewMetricComparisonDto;
+  }>;
+}>;
+
 export type WeeklyReviewReadModelDto = Readonly<{
   window: WeeklyReviewWeekWindowDto;
   savedReview: WeeklyReviewSavedReviewDto | null;
@@ -75,6 +94,7 @@ export type WeeklyReviewReadModelDto = Readonly<{
   evidence: ExecutionEvidenceSummaryDto;
   mostTracked: WeeklyReviewMostTrackedDto;
   generatedDraft: WeeklyReviewDraftDto;
+  comparison: WeeklyReviewComparisonDto;
 }>;
 
 export type GetWeeklyReviewRequest = Readonly<{

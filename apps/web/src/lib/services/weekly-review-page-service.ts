@@ -12,6 +12,7 @@ import { getRecentDailyTrackedTime, type DailyTrackedTime } from "@/lib/review-s
 import { createClient } from "@/lib/supabase/server";
 import { createAuthenticatedActor } from "@ega/application/auth/actor";
 import { getWeeklyReviewReadModel, resolveWeeklyReviewFormDefaults } from "@ega/application/weekly-review/read-model";
+import type { WeeklyReviewComparison } from "@ega/application";
 import {
   SupabaseWeeklyReviewRepository,
   SupabaseWeeklyReviewTaskRepository,
@@ -77,6 +78,7 @@ export type WeeklyReviewPageData = {
   mostTrackedInsights: MostTrackedInsights;
   generatedDraft: WeeklyReviewDraft;
   reviewFormDefaults: WeeklyReviewPageFormDefaults;
+  comparison: WeeklyReviewComparison;
 };
 
 export function resolveWeeklyReviewPageFormDefaults({
@@ -233,5 +235,6 @@ export async function getWeeklyReviewPageData({
     mostTrackedInsights,
     generatedDraft,
     reviewFormDefaults,
+    comparison: model.comparison,
   };
 }

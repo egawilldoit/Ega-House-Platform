@@ -21,6 +21,12 @@ import type {
   WeeklyReviewTaskRepository,
   WeeklyReviewTaskActivityRow,
 } from "./ports";
+import {
+  buildWeeklyReviewComparison,
+  getPreviousExecutionWindow,
+  getPreviousWeekWindow,
+  type WeeklyReviewComparison,
+} from "./comparison";
 
 // ---------------------------------------------------------------------------
 // Types exposed by the read model (owner-scoped, canonical timezone)
@@ -84,6 +90,7 @@ export type WeeklyReviewReadModel = Readonly<{
   evidence: ReturnType<typeof calculateExecutionEvidenceForWindow>;
   mostTracked: WeeklyReviewMostTracked;
   generatedDraft: WeeklyReviewDraft;
+  comparison: WeeklyReviewComparison;
 }>;
 
 // ---------------------------------------------------------------------------
@@ -363,19 +370,41 @@ async function buildModel(
 ): Promise<ApplicationResult<WeeklyReviewReadModel>> {
   const nowIso = (now ?? new Date()).toISOString();
 
-  const [savedReviewRes, pastReviewsRes, tasksCreatedRes, goalsTouchedRes, blockedTasksRes, sessionsRes, completedRes, carriedRes, blockedForDraftRes, previousRes] =
-    await Promise.all([
-      deps.weeklyReview.getSavedReview(actor, window.weekStart, window.weekEnd),
-      deps.weeklyReview.listPastReviews(actor, 100),
-      deps.weeklyTasks.countTasksCreatedForWindow(actor, execWindow),
-      deps.weeklyTasks.listGoalsTouchedForWindow(actor, execWindow),
-      deps.weeklyTasks.listBlockedTasks(actor, 6),
-      deps.executionEvidence.listSessionsForWindow(actor, execWindow, { limit: 2000 }),
-      deps.weeklyTasks.listCompletedTasksForWindow(actor, execWindow, 80),
-      deps.weeklyTasks.listCarriedTasksForWindow(actor, execWindow, 120),
-      deps.weeklyTasks.listBlockedTasksForWindow(actor, execWindow, 80),
-      deps.weeklyReview.getPreviousReview(actor, window.weekStart),
-    ]);
+  // Previous window is adjacent and uses identical boundary rules (same timezone)
+  const previousWindow = getPreviousWeekWindow(window);
+  const previousExecWindow = getPreviousExecutionWindow(previousWindow);
+
+  const [
+    savedReviewRes,
+    pastReviewsRes,
+    tasksCreatedRes,
+    goalsTouchedRes,
+    blockedTasksRes,
+    sessionsRes,
+    completedRes,
+    carriedRes,
+    blockedForDraftRes,
+    previousRes,
+    prevTasksCreatedRes,
+    prevGoalsTouchedRes,
+    prevSessionsRes,
+    prevCompletedRes,
+  ] = await Promise.all([
+    deps.weeklyReview.getSavedReview(actor, window.weekStart, window.weekEnd),
+    deps.weeklyReview.listPastReviews(actor, 100),
+    deps.weeklyTasks.countTasksCreatedForWindow(actor, execWindow),
+    deps.weeklyTasks.listGoalsTouchedForWindow(actor, execWindow),
+    deps.weeklyTasks.listBlockedTasks(actor, 6),
+    deps.executionEvidence.listSessionsForWindow(actor, execWindow, { limit: 2000 }),
+    deps.weeklyTasks.listCompletedTasksForWindow(actor, execWindow, 80),
+    deps.weeklyTasks.listCarriedTasksForWindow(actor, execWindow, 120),
+    deps.weeklyTasks.listBlockedTasksForWindow(actor, execWindow, 80),
+    deps.weeklyReview.getPreviousReview(actor, window.weekStart),
+    deps.weeklyTasks.countTasksCreatedForWindow(actor, previousExecWindow),
+    deps.weeklyTasks.listGoalsTouchedForWindow(actor, previousExecWindow),
+    deps.executionEvidence.listSessionsForWindow(actor, previousExecWindow, { limit: 2000 }),
+    deps.weeklyTasks.listCompletedTasksForWindow(actor, previousExecWindow, 80),
+  ]);
 
   if (!savedReviewRes.ok) return applicationFailure("Unable to load review right now.");
   if (!pastReviewsRes.ok) return applicationFailure("Unable to load review history right now.");
@@ -387,8 +416,16 @@ async function buildModel(
   if (!carriedRes.ok) return applicationFailure("Unable to load carried tasks.");
   if (!blockedForDraftRes.ok) return applicationFailure("Unable to load blocked tasks.");
   if (!previousRes.ok) return applicationFailure("Unable to load previous review.");
+  if (!prevTasksCreatedRes.ok) return applicationFailure("Unable to load weekly task stats.");
+  if (!prevGoalsTouchedRes.ok) return applicationFailure("Unable to load weekly goal stats.");
+  if (!prevSessionsRes.ok) return applicationFailure("Unable to load execution evidence right now.");
+  if (!prevCompletedRes.ok) return applicationFailure("Unable to load completed tasks.");
 
   const evidence = calculateExecutionEvidenceForWindow(sessionsRes.value, execWindow, {
+    nowIso,
+    includeOpenSessions: false,
+  });
+  const previousEvidence = calculateExecutionEvidenceForWindow(prevSessionsRes.value, previousExecWindow, {
     nowIso,
     includeOpenSessions: false,
   });
@@ -498,6 +535,25 @@ async function buildModel(
     officialEmailSentAt: row.officialEmailSentAt,
   }));
 
+  const comparison = buildWeeklyReviewComparison({
+    currentWindow: window,
+    previousWindow,
+    current: {
+      trackedSeconds: evidence.totalTrackedSeconds,
+      sessionCount: evidence.sessionCount,
+      tasksCreated: tasksCreatedRes.value ?? 0,
+      goalsTouched: goalsTouchedRes.value.length ?? 0,
+      completedTasks: completedRes.value.length,
+    },
+    previous: {
+      trackedSeconds: previousEvidence.totalTrackedSeconds,
+      sessionCount: previousEvidence.sessionCount,
+      tasksCreated: prevTasksCreatedRes.value ?? 0,
+      goalsTouched: prevGoalsTouchedRes.value.length ?? 0,
+      completedTasks: prevCompletedRes.value.length,
+    },
+  });
+
   return applicationSuccess({
     window,
     savedReview,
@@ -506,6 +562,7 @@ async function buildModel(
     evidence,
     mostTracked,
     generatedDraft,
+    comparison,
   });
 }
 
