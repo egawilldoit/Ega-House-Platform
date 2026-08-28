@@ -1,0 +1,5 @@
+-- Pending: MCP RLS least privilege — remove broad DELETE
+-- Current 0046 allows OAuth DELETE where only archive/UPDATE is exposed.
+-- Correct: only INSERT/UPDATE (and SELECT) for MCP; DELETE should be removed for projects/goals/tasks
+-- Keep 0048 split for task_sessions INSERT vs UPDATE.
+-- Will be renumbered after integration.

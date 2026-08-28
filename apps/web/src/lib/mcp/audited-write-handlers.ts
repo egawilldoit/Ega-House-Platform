@@ -86,8 +86,9 @@ export function createAuditedMcpWriteHandlers(
         errorCode: outcome === "error" ? "INTERNAL_ERROR" : undefined,
         metadata: {},
       });
-    } catch {
-      // audit unavailable but mutation already ledgered — return mutation result, not audit error
+    } catch (auditError) {
+      // Mutation already durable via ledger, but audit failure is observable via operational logging
+      console.error("[mcp-audit] failed to persist audit event", { toolName, outcome, error: String(auditError) });
     }
     return result;
   }
