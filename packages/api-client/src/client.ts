@@ -19,6 +19,7 @@ import { createProjectsApi, type ProjectsApi } from "./projects";
 import { createTasksApi, type TasksApi } from "./tasks";
 import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
+import { createWeeklyReviewApi, type WeeklyReviewApi } from "./weekly-review";
 import type { ApiErrorPayload, ApiResult } from "./errors";
 import type { HealthResponse } from "./types";
 
@@ -46,6 +47,7 @@ export type EgaApiClient = {
   tasks: TasksApi;
   today: TodayApi;
   timer: TimerApi;
+  weeklyReview: WeeklyReviewApi;
   auth: AuthApi;
 };
 
@@ -70,6 +72,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     tasks: createTasksApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    weeklyReview: createWeeklyReviewApi(http),
     auth: createAuthApi(http),
   };
 }

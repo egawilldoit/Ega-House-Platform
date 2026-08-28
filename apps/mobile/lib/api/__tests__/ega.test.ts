@@ -112,6 +112,9 @@ function makeFakeClient(): EgaApiClient {
       updateStatus: jest.fn(),
       clearCompleted: jest.fn(),
     },
+    weeklyReview: {
+      get: jest.fn(),
+    },
   };
 }
 

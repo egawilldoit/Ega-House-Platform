@@ -21,6 +21,9 @@
     "./tasks/recurrence": "./src/tasks/recurrence.ts",
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts",
+    "./weekly-review/ports": "./src/weekly-review/ports.ts",
+    "./weekly-review/read-model": "./src/weekly-review/read-model.ts",
+    "./weekly-review/draft": "./src/weekly-review/draft.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts"

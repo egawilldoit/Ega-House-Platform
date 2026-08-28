@@ -10,7 +10,8 @@
     "./projects": "./src/projects.ts",
     "./goals": "./src/goals.ts",
     "./tasks": "./src/tasks.ts",
-    "./today": "./src/today.ts"
+    "./today": "./src/today.ts",
+    "./weekly-review": "./src/weekly-review.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
