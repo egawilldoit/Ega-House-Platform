@@ -82,6 +82,20 @@ export default function ProtectedLayout() {
           title: 'Task',
         }}
       />
+      <Stack.Screen
+        name="notifications"
+        options={{
+          headerShown: true,
+          title: 'Notifications',
+        }}
+      />
+      <Stack.Screen
+        name="settings/notifications"
+        options={{
+          headerShown: true,
+          title: 'Notification Settings',
+        }}
+      />
     </Stack>
   );
 }

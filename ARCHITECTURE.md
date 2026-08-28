@@ -1,6 +1,6 @@
 # EGA House Architecture
 
-**Living current-system map. Last code-truth refresh: 2026-08-25.**
+**Living current-system map. Last code-truth refresh: 2026-08-27 (notification subsystem V1 on `feat/notification-system-v1`, migration 0045 not yet applied to prod, no real-device push proof yet).**
 
 This document describes the repository architecture that is currently present. Executable code, migrations, runtime evidence, and external-system evidence outrank this map when the repository changes. Normative requirements live in the authority chain defined by [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md).
 
@@ -44,14 +44,16 @@ Autonomous delivery: scripts/ega-runner + automation.* + PGMQ + Hermes/GitHub
 |---|---|---|
 | Web product | CURRENT | `apps/web`: Next.js routes, Server Components/Actions, UI, integrations, and compatibility APIs |
 | Mobile product | CURRENT | `apps/mobile`: Expo Router native client, authenticated API consumption, local session/navigation/presentation |
-| Standalone API | CURRENT | `apps/server`: Hono routes for auth, timer, projects, goals, tasks, and today; separate Vercel deployment |
+| Standalone API | CURRENT | `apps/server`: Hono routes for auth, timer, projects, goals, tasks, today, and **notifications** (history, read/unread, devices, preferences); separate Vercel deployment |
 | Domain package | CURRENT | `packages/domain`: platform-neutral task/project/goal rules/constants |
-| Contracts package | CURRENT | `packages/contracts`: transport-neutral mobile/agent/common contracts |
-| Application package | CURRENT | `packages/application`: projects/goals/tasks/today use cases, read models, recurrence/focus logic, repository ports |
-| Data-access package | CURRENT | `packages/data-access`: Supabase-backed repository adapters |
-| API client | CURRENT | `packages/api-client`: typed cross-platform Projects/Goals/Tasks/Today HTTP mechanics |
-| Database/schema | CURRENT | root `src/db`, `drizzle/`, `drizzle.config.ts` remain the single schema/migration authority |
-| Web compatibility APIs | CURRENT | `apps/web/src/app/api/{agent,mcp,oauth,integrations,cron}` |
+| Contracts package | CURRENT | `packages/contracts`: transport-neutral mobile/agent/common contracts (now includes `notifications`) |
+| Application package | CURRENT | `packages/application`: projects/goals/tasks/today **plus notifications** use cases (canonical notification, delivery policy, preferences, device claim, due-reminder orchestration), read models, recurrence/focus logic, repository ports |
+| Data-access package | CURRENT | `packages/data-access`: Supabase-backed repository adapters (now includes `notifications` repositories + `FcmPushProvider` via `google-auth-library` + FCM HTTP v1 and `ResendEmailProvider`) |
+| API client | CURRENT | `packages/api-client`: typed cross-platform Projects/Goals/Tasks/Today **and Notifications** HTTP mechanics |
+| Database/schema | CURRENT | root `src/db`, `drizzle/`, `drizzle.config.ts` remain the single schema/migration authority (now includes `notifications`, `notification_devices`, `notification_deliveries`, `notification_preferences` via `0045_notification_subsystem`; `task_reminders` evolved with `delivery_mode`/`processed_at`) |
+| Notifications | CURRENT (feature) / EXTERNAL_UNVERIFIED (device push) | Canonical notification + per-device/per-email deliveries, FCM HTTP v1 (direct, not Expo Push or EAS), preferences, Android channel `task-reminders`, deep-typed `task` targets; `apps/web` cron `POST /api/cron/task-reminders` is thin orchestration via `@ega/application` |
+| Mobile notifications | CURRENT (code) / EXTERNAL_UNVERIFIED (runtime) | `apps/mobile` `expo-notifications` + `expo-crypto`, persistent `installation_id` in `SecureStore`, `getDevicePushTokenAsync()` (never `getExpoPushTokenAsync`), `NotificationProvider` (permission, channel, registration, rotation, foreground/tap/cold-start, target mapper), bell + notification center + settings + reminder Push/Email/Both selector; no `eas.json`/EAS |
+| Web compatibility APIs | CURRENT | `apps/web/src/app/api/{agent,mcp,oauth,integrations,cron}` (cron `task-reminders` now thin over notification delivery) |
 | Autonomous Runner | CURRENT / PARTIAL | `scripts/ega-runner`: PGMQ claim/lease, Hermes execution, Git/GitHub evidence, PR-monitor/repair work |
 | Reconciliation | ABSENT / GAP | No proven canonical owner repairs every partial external side effect idempotently |
 
