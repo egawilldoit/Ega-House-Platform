@@ -58,7 +58,8 @@ export type MobileTaskReminder = {
   taskId: string;
   remindAt: string;
   channel: "email";
-  status: "pending" | "processing" | "sent" | "failed" | "cancelled";
+  deliveryMode?: "push" | "email" | "both";
+  status: "pending" | "processing" | "sent" | "failed" | "cancelled" | "processed";
   sentAt: string | null;
   failureReason: string | null;
   createdAt: string;
@@ -209,7 +210,7 @@ export type UpdateTaskInput = {
   recurrenceTimezone?: string | null;
 };
 
-export type CreateTaskReminderInput = { remindAt: string };
+export type CreateTaskReminderInput = { remindAt: string; deliveryMode?: "push" | "email" | "both" };
 export type CancelTaskReminderInput = { reminderId: string };
 
 export type TimerSessionSummary = {
