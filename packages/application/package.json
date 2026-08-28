@@ -20,7 +20,9 @@
     "./tasks/focus-queue": "./src/tasks/focus-queue.ts",
     "./tasks/recurrence": "./src/tasks/recurrence.ts",
     "./today/read-model": "./src/today/read-model.ts",
-    "./today/service": "./src/today/service.ts"
+    "./today/service": "./src/today/service.ts",
+    "./friction/ports": "./src/friction/ports.ts",
+    "./friction/stale-blocked-signals": "./src/friction/stale-blocked-signals.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
