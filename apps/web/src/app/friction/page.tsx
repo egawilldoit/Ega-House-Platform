@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
-import { AlertTriangle, PauseCircle, Clock3, Timer, Shuffle } from "lucide-react";
+import { AlertTriangle, PauseCircle, Clock3, Timer, Shuffle, Flag, BarChart3 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -25,20 +25,20 @@ export default async function FrictionRadarPage() {
     return <div className="p-6">Failed to load friction signals: {result.errorMessage}</div>;
   }
 
-  const { blocked, staleTasks, staleGoals, thresholdDays, generatedAt, estimateSignals, contextSwitch, evidenceWindow } = result.data;
-  const hasAny = blocked.length > 0 || staleTasks.length > 0 || staleGoals.length > 0 || estimateSignals.length > 0 || contextSwitch.isFriction;
+  const { blocked, staleTasks, staleGoals, thresholdDays, generatedAt, estimateSignals, contextSwitch, neglectedGoals, workloadImbalance, evidenceWindow } = result.data;
+  const hasAny = blocked.length > 0 || staleTasks.length > 0 || staleGoals.length > 0 || estimateSignals.length > 0 || contextSwitch.isFriction || neglectedGoals.length > 0 || workloadImbalance.isImbalance;
 
   return (
     <AppShell
       eyebrow="Friction Radar"
       title="Workflow Friction"
-      description={`Deterministic stale (${thresholdDays}d), estimate, and context-switch signals. Generated ${new Date(generatedAt).toLocaleString()}${evidenceWindow ? ` · Window ${new Date(evidenceWindow.startIso).toLocaleDateString()} → ${new Date(evidenceWindow.endIso).toLocaleDateString()}` : ""}.`}
+      description={`Deterministic stale (${thresholdDays}d), estimate, context-switch, neglected-goal, and imbalance signals. Generated ${new Date(generatedAt).toLocaleString()}${evidenceWindow ? ` · Window ${new Date(evidenceWindow.startIso).toLocaleDateString()} → ${new Date(evidenceWindow.endIso).toLocaleDateString()}` : ""}.`}
     >
-      {!hasAny ? (
+        {!hasAny ? (
         <EmptyState
           icon={Clock3}
           title="No friction detected"
-          description="No blocked, stale, estimate, or context-switch friction found."
+          description="No blocked, stale, estimate, context-switch, neglected-goal, or imbalance friction found."
         />
       ) : null}
 
@@ -201,6 +201,56 @@ export default async function FrictionRadarPage() {
           <CardContent>
             <p className="text-sm text-[color:var(--muted-foreground)]">
               {contextSwitch.transitionsCount} sessions · {contextSwitch.distinctTaskCount} tasks · {contextSwitch.switchCount} switches · Severity {contextSwitch.severity} {contextSwitch.isFriction ? "· Friction detected" : "· No friction"}
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Neglected Goals */}
+      <section className="mt-4">
+        <Card className="ega-glass rounded-[1.35rem]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Flag className="h-5 w-5" aria-hidden="true" />
+              Neglected Goals ({neglectedGoals.length})
+            </CardTitle>
+            <CardDescription>Active goals with no tracked execution in window (rolling window from time-context, actual Task/session activity, not just Goal updated_at).</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {neglectedGoals.length === 0 ? (
+              <p className="text-sm text-[color:var(--muted-foreground)]">No neglected goals in window.</p>
+            ) : (
+              <ul className="space-y-3">
+                {neglectedGoals.map((goal) => (
+                  <li key={goal.id} className="ega-glass-soft flex flex-col gap-1 rounded-[1rem] px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-medium text-[color:var(--foreground)]">{goal.title}</span>
+                      <Badge tone="warn">{goal.daysSinceActivity === null ? "no activity" : `${goal.daysSinceActivity}d`}</Badge>
+                    </div>
+                    <p className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">Status {goal.status} · Window {new Date(goal.window.startIso).toLocaleDateString()} → {new Date(goal.window.endIso).toLocaleDateString()}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Workload Imbalance */}
+      <section className="mt-4">
+        <Card className="ega-glass rounded-[1.35rem]">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" aria-hidden="true" />
+              Workload Imbalance ({workloadImbalance.isImbalance ? workloadImbalance.severity : "none"})
+            </CardTitle>
+            <CardDescription>Project share from canonical tracked-time aggregation. Threshold {workloadImbalance.threshold}% (med), {workloadImbalance.highThreshold}% (high). Min {workloadImbalance.minTotalMinutes}m total, {workloadImbalance.minForHighMinutes}m for high. Sparse cannot trigger high.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[color:var(--muted-foreground)]">
+              {workloadImbalance.projectCount === 0
+                ? "No tracked work in window."
+                : `${workloadImbalance.totalTrackedMinutes}m total · ${workloadImbalance.projectCount} projects · Dominant ${workloadImbalance.dominantProjectName ?? workloadImbalance.dominantProjectId ?? "—"} ${workloadImbalance.dominantSharePercent}% (${Math.floor(workloadImbalance.dominantTrackedSeconds / 60)}m) · Severity ${workloadImbalance.severity} ${workloadImbalance.isImbalance ? "· Imbalance" : "· Balanced"}`}
             </p>
           </CardContent>
         </Card>

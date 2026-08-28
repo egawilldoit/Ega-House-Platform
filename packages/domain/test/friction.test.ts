@@ -7,20 +7,30 @@ import {
   FRICTION_ESTIMATE_HIGH_PERCENT_THRESHOLD,
   FRICTION_ESTIMATE_MIN_MEANINGFUL_MINUTES,
   FRICTION_ESTIMATE_PERCENT_THRESHOLD,
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
+  FRICTION_NEGLECTED_GOAL_WINDOW_MS,
   FRICTION_STALE_THRESHOLD_DAYS,
   FRICTION_STALE_THRESHOLD_MS,
+  FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES,
+  FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES,
+  FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD,
   getFrictionAgeDays,
   getFrictionAgeMs,
   getFrictionContextSwitchCount,
   getFrictionContextSwitchSeverity,
   getFrictionEstimatePercentError,
   getFrictionEstimateSeverity,
+  getFrictionNeglectedDaysSinceActivity,
+  getFrictionWorkloadImbalanceSeverity,
+  getFrictionWorkloadSharePercent,
   isActiveFrictionGoal,
   isActiveFrictionTask,
   isBlockedFrictionTask,
   isFrictionContextSwitchFriction,
   isFrictionEstimateMismatch,
   isFrictionStale,
+  isFrictionWorkloadImbalance,
   isMeaningfulFrictionEstimate,
   isStaleFrictionGoal,
   isStaleFrictionTask,
@@ -134,4 +144,48 @@ test("context-switch thresholds are deterministic and owned in domain", () => {
   assert.equal(isFrictionContextSwitchFriction(5), false);
   assert.equal(isFrictionContextSwitchFriction(6), true);
   assert.equal(isFrictionContextSwitchFriction(10), true);
+});
+
+test("neglected-goal window and helpers are deterministic", () => {
+  assert.equal(FRICTION_NEGLECTED_GOAL_WINDOW_DAYS, 14);
+  assert.equal(FRICTION_NEGLECTED_GOAL_WINDOW_MS, 14 * 24 * 60 * 60 * 1000);
+  assert.equal(getFrictionNeglectedDaysSinceActivity(null, NOW), null);
+  assert.equal(getFrictionNeglectedDaysSinceActivity(undefined, NOW), null);
+  const twoDaysAgo = new Date(NOW.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString();
+  assert.equal(getFrictionNeglectedDaysSinceActivity(twoDaysAgo, NOW), 2);
+  const future = new Date(NOW.getTime() + 1000).toISOString();
+  assert.equal(getFrictionNeglectedDaysSinceActivity(future, NOW), 0);
+});
+
+test("workload imbalance thresholds and share math deterministic", () => {
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_SHARE_THRESHOLD, 60);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_HIGH_SHARE_THRESHOLD, 75);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_MIN_TOTAL_MINUTES, 120);
+  assert.equal(FRICTION_WORKLOAD_IMBALANCE_MIN_FOR_HIGH_MINUTES, 240);
+  // Share math
+  assert.equal(getFrictionWorkloadSharePercent(0, 0), 0);
+  assert.equal(getFrictionWorkloadSharePercent(0, 100), 0);
+  assert.equal(getFrictionWorkloadSharePercent(60, 100), 60);
+  assert.equal(getFrictionWorkloadSharePercent(75, 100), 75);
+  assert.equal(getFrictionWorkloadSharePercent(100, 100), 100);
+  assert.equal(getFrictionWorkloadSharePercent(1, 3), 33); // 33.33 -> 33
+  assert.equal(getFrictionWorkloadSharePercent(2, 3), 67); // 66.66 -> 67
+  assert.equal(getFrictionWorkloadSharePercent(50, 100), 50);
+  // zero-data and single-project: projectCount guard
+  assert.equal(getFrictionWorkloadImbalanceSeverity(100, 0, 0), "none"); // zero total
+  assert.equal(getFrictionWorkloadImbalanceSeverity(100, 300, 1), "none"); // single project
+  assert.equal(getFrictionWorkloadImbalanceSeverity(100, 60, 2), "none"); // sparse <120
+  // thresholds
+  assert.equal(getFrictionWorkloadImbalanceSeverity(59, 300, 2), "low");
+  assert.equal(getFrictionWorkloadImbalanceSeverity(60, 300, 2), "medium");
+  assert.equal(getFrictionWorkloadImbalanceSeverity(74, 300, 2), "medium");
+  assert.equal(getFrictionWorkloadImbalanceSeverity(75, 300, 2), "high");
+  // sparse guard: high requires 240, otherwise capped at medium
+  assert.equal(getFrictionWorkloadImbalanceSeverity(90, 120, 2), "medium");
+  assert.equal(getFrictionWorkloadImbalanceSeverity(90, 239, 2), "medium");
+  assert.equal(getFrictionWorkloadImbalanceSeverity(90, 240, 2), "high");
+  assert.equal(isFrictionWorkloadImbalance("high"), true);
+  assert.equal(isFrictionWorkloadImbalance("medium"), true);
+  assert.equal(isFrictionWorkloadImbalance("low"), false);
+  assert.equal(isFrictionWorkloadImbalance("none"), false);
 });

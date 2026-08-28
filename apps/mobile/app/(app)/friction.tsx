@@ -65,7 +65,7 @@ export default function FrictionRadarScreen() {
             style={styles.screenHeader}
           />
           <Text style={styles.description}>
-            Deterministic stale ({data.thresholdDays}d), estimate, and context-switch signals. Generated{" "}
+            Deterministic stale ({data.thresholdDays}d), estimate, context-switch, neglected-goal, and imbalance signals. Generated{" "}
             {new Date(data.generatedAt).toLocaleString()}
             {data.evidenceWindow ? ` · Window ${new Date(data.evidenceWindow.startIso).toLocaleDateString()} → ${new Date(data.evidenceWindow.endIso).toLocaleDateString()}` : ""}.
           </Text>
@@ -79,6 +79,8 @@ export default function FrictionRadarScreen() {
             thresholdDays={data.thresholdDays}
             estimateSignals={data.estimateSignals}
             contextSwitch={data.contextSwitch}
+            neglectedGoals={data.neglectedGoals}
+            workloadImbalance={data.workloadImbalance}
             evidenceWindow={data.evidenceWindow}
           />
         </View>
