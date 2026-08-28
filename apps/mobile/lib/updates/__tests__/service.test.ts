@@ -36,7 +36,7 @@ function makeConstants(version = '1.0.1') {
 describe('getAppUpdateInfo', () => {
   it('exposes version/runtime/channel/updateId', () => {
     const updates = makeUpdates({ updateId: 'update-123', channel: 'production', runtimeVersion: '1.0.1' });
-    const constants = makeConstants('1.0.1', '1.0.1');
+    const constants = makeConstants('1.0.1');
     const info = getAppUpdateInfo({ updates: updates as never, constants: constants as never });
     expect(info.appVersion).toBe('1.0.1');
     expect(info.runtimeVersion).toBe('1.0.1');
