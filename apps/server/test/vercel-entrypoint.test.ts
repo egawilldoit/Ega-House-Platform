@@ -29,12 +29,15 @@ test("native Hono deployment uses the project-root index.ts entrypoint", () => {
 // Supabase env pair. Proven in a child process because env vars are read at
 // module scope and must be absent there.
 test("index.ts fails fast without SUPABASE_URL/SUPABASE_ANON_KEY", async () => {
-  const candidatePaths = [
+  const candidates = [
     path.join(serverRoot, "..", "..", "node_modules", ".bin", "tsx"),
-    path.join(serverRoot, "..", "..", "..", "ega-house", "node_modules", ".bin", "tsx"),
-    "/home/ubuntu/ega-house/node_modules/.bin/tsx",
+    path.join(serverRoot, "..", "..", "..", "node_modules", ".bin", "tsx"),
+    path.join(serverRoot, "..", "..", "..", "..", "node_modules", ".bin", "tsx"),
+    path.join("/home/ubuntu/ega-house", "node_modules", ".bin", "tsx"),
+    path.join("/home/ubuntu/ega-house/.worktrees/daily-operator/node_modules", ".bin", "tsx"),
+    path.join(process.cwd(), "node_modules", ".bin", "tsx"),
   ];
-  const tsxBin = candidatePaths.find((p) => fs.existsSync(p)) ?? candidatePaths[0];
+  const tsxBin = candidates.find((p) => fs.existsSync(p)) ?? candidates[0];
   await assert.rejects(
     () =>
       execFileAsync(tsxBin, ["--eval", `import("./${path.relative(serverRoot, entrypointPath)}")`], {

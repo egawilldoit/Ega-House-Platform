@@ -25,8 +25,11 @@ export type TodayPlanTask = Readonly<{
   dueDate: string | null;
   estimateMinutes: number | null;
   updatedAt: string;
+  completedAt: string | null;
   focusRank: number | null;
   plannedForDate: string | null;
+  scheduledStartAt: string | null;
+  scheduledEndAt: string | null;
   projectName: string;
   projectSlug: string | null;
   goalTitle: string | null;
@@ -87,8 +90,11 @@ function toPlanTask(
     dueDate: row.dueDate,
     estimateMinutes: row.estimateMinutes,
     updatedAt: row.updatedAt,
+    completedAt: row.completedAt,
     focusRank: row.focusRank,
     plannedForDate: row.plannedForDate,
+    scheduledStartAt: row.scheduledStartAt,
+    scheduledEndAt: row.scheduledEndAt,
     projectName: row.projectName ?? "Unknown project",
     projectSlug: row.projectSlug ?? null,
     goalTitle: row.goalTitle ?? null,

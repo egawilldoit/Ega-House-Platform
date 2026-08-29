@@ -1,15 +1,15 @@
 import type {
   MobileTodayClearCompletedResponse,
-  MobileTodayResponse,
   MobileTodayTaskMutationResponse,
   MobileTodayTaskStatusMutationResponse,
   TaskStatus,
 } from "@ega/contracts/mobile";
+import type { OperatorSnapshotDto } from "@ega/contracts/operator";
 import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 
 export type TodayApi = {
-  get(date?: string): Promise<ApiResult<MobileTodayResponse>>;
+  get(date?: string): Promise<ApiResult<OperatorSnapshotDto>>;
   plan(
     taskId: string,
     date?: string,
@@ -30,7 +30,7 @@ function encodedId(taskId: string) {
 export function createTodayApi(http: HttpClient): TodayApi {
   return {
     get(date) {
-      return http.request<MobileTodayResponse>({
+      return http.request<OperatorSnapshotDto>({
         path: "/api/today",
         query: date ? { date } : undefined,
       });

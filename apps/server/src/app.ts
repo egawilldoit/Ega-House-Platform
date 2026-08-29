@@ -21,6 +21,7 @@ import { createGoalsRoutes } from "./routes/goals";
 import { createHealthRoutes } from "./routes/health";
 import { createInboxRoutes } from "./routes/inbox";
 import { createNotificationsRoutes } from "./routes/notifications";
+import { createOperatorRoutes } from "./routes/operator";
 import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
 import { createTimeContextRoutes } from "./routes/time-context";
@@ -128,6 +129,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/inbox", createInboxRoutes(dependencies));
   app.route("/api/today", createTodayRoutes(dependencies));
   app.route("/api/timer", createTimerRoutes(dependencies));
+  app.route("/api/operator", createOperatorRoutes(dependencies));
   app.route("/api/health", createHealthRoutes(dependencies));
   app.route("/api/friction", createFrictionRoutes(dependencies));
   app.route("/api/time-context", createTimeContextRoutes(dependencies));
