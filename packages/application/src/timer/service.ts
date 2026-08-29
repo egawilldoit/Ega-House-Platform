@@ -8,6 +8,7 @@ import {
 } from "../shared/duration";
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import { resolveTimeContext, type TimeContextRepository } from "../shared/time-context";
 import type { TimerSessionRecord, TimerSessionRepository } from "./ports";
 
 export type TimerActiveSession = Readonly<{
@@ -107,10 +108,30 @@ function toActiveSession(
 export async function getTimerWorkspace(
   actor: AuthenticatedActor,
   repository: TimerSessionRepository,
-  input: Readonly<{ now?: Date }> = {},
+  timeContextRepository: TimeContextRepository,
+  input: Readonly<{ now?: Date; timezone?: unknown }> = {},
 ): Promise<ApplicationResult<TimerWorkspace>> {
   const now = input.now ?? new Date();
   const nowIso = now.toISOString();
+  if (Number.isNaN(now.getTime())) {
+    return applicationFailure("Current time is invalid.");
+  }
+  const requestedTimezone =
+    typeof input.timezone === "string" ? input.timezone.trim() : null;
+
+  const timeContextResult = await resolveTimeContext(actor, timeContextRepository, {
+    requestedTimezone: requestedTimezone ?? undefined,
+    now,
+  });
+  if (!timeContextResult.ok) {
+    return applicationFailure("Unable to load the timer workspace right now.");
+  }
+
+  const dayWindow = timeContextResult.data.dayWindow;
+  const window: DayWindow = {
+    startIso: dayWindow.startUtcIso,
+    endIso: nowIso < dayWindow.endUtcIso ? nowIso : dayWindow.endUtcIso,
+  };
 
   const [openResult, recentResult] = await Promise.all([
     repository.listOpenSessions(actor),
@@ -127,7 +148,7 @@ export async function getTimerWorkspace(
 
   return applicationSuccess({
     activeSession,
-    summary: summarizeTimerSessions(recentResult.value, nowIso),
+    summary: summarizeTimerSessions(recentResult.value, nowIso, window),
   });
 }
 
