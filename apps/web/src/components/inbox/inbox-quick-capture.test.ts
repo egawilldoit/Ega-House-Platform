@@ -72,7 +72,8 @@ test("inbox capture keyboard accessibility: focus, Esc, shortcut", () => {
 
 test("sidebar preserves QuickTaskSheet and adds InboxQuickCapture without ambiguity", () => {
   assert.match(sidebarSource, /InboxQuickCapture/);
-  assert.match(sidebarSource, /QuickTaskSheet/);
+  assert.match(captureSource, /QuickTaskSheet/);
+  assert.match(captureSource, /showTrigger=\{false\}/);
   // Shortcuts remain distinct: N for task, I for inbox
   assert.match(shortcutSource, /key: "n"/);
   assert.match(shortcutSource, /QUICK_TASK_EVENT/);

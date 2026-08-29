@@ -1,4 +1,4 @@
-export type ShortcutRouteId = "dashboard" | "tasks" | "goals" | "timer" | "review" | "apps";
+export type ShortcutRouteId = "today" | "tasks" | "goals" | "timer" | "review" | "apps";
 
 export type ShortcutDefinition = {
   id: string;
@@ -8,7 +8,7 @@ export type ShortcutDefinition = {
 };
 
 export const SHORTCUT_ROUTE_MAP: Record<ShortcutRouteId, `/${string}`> = {
-  dashboard: "/dashboard",
+  today: "/today",
   tasks: "/tasks",
   goals: "/goals",
   timer: "/timer",
@@ -23,7 +23,7 @@ export const SHORTCUT_HELP_SECTIONS: Array<{
   {
     title: "Navigation",
     shortcuts: [
-      { id: "go-dashboard", description: "Go to Dashboard", combo: "G then D", group: "Navigation" },
+      { id: "go-today", description: "Go to Today", combo: "G then D", group: "Navigation" },
       { id: "go-tasks", description: "Go to Tasks", combo: "G then T", group: "Navigation" },
       { id: "go-goals", description: "Go to Goals", combo: "G then O", group: "Navigation" },
       { id: "go-timer", description: "Go to Timer", combo: "G then I", group: "Navigation" },
@@ -54,7 +54,7 @@ export const SHORTCUT_ROUTE_SEQUENCE = "g";
 export const SHORTCUT_SEQUENCE_TIMEOUT_MS = 1200;
 export const SHORTCUT_NAV_KEY_MAP: Record<string, ShortcutRouteId> = {
   a: "apps",
-  d: "dashboard",
+  d: "today",
   g: "goals",
   i: "timer",
   o: "goals",

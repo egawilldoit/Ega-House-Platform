@@ -47,6 +47,7 @@ type QuickTaskSheetProps = {
   projects: QuickTaskSheetProject[];
   goals: QuickTaskSheetGoal[];
   initialMode?: "single" | "multi";
+  showTrigger?: boolean;
 };
 
 type QuickTaskSheetPanelProps = {
@@ -1134,6 +1135,7 @@ export function QuickTaskSheet({
   projects,
   goals,
   initialMode = "single",
+  showTrigger = true,
 }: QuickTaskSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -1178,7 +1180,7 @@ export function QuickTaskSheet({
         setOpen(true);
       }}
     >
-      <SheetTrigger asChild>
+      {showTrigger ? <SheetTrigger asChild>
         <Button className="mx-2.5 mt-3 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 rounded-xl border border-[rgba(8,120,78,0.3)] bg-[linear-gradient(135deg,#169463,#0f7a52)] px-3 py-2.5 text-left text-white shadow-[0_12px_26px_rgba(23,123,82,0.22),inset_0_1px_0_rgba(255,255,255,0.18)] hover:border-[rgba(8,120,78,0.42)] hover:bg-[linear-gradient(135deg,#137e55,#0b6945)]">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/16 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
             <Plus className="h-3.5 w-3.5" />
@@ -1190,7 +1192,7 @@ export function QuickTaskSheet({
             </span>
           </span>
         </Button>
-      </SheetTrigger>
+      </SheetTrigger> : null}
 
       <SheetContent className="flex flex-col">
         {open ? (

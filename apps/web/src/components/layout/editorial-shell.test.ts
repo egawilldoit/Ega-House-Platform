@@ -25,18 +25,19 @@ describe("editorial authenticated workspace shell", () => {
     const routeMeta = read("src/components/layout/shell-route-meta.ts");
 
     for (const entry of [
-      ["01", "Dashboard", "/dashboard"],
-      ["02", "Today", "/today"],
-      ["03", "Tasks", "/tasks"],
-      ["04", "Goals", "/goals"],
-      ["05", "Timer", "/timer"],
-      ["06", "Review", "/review"],
-      ["07", "Analytics", "/work-analytics"],
+      ["01", "Today", "/today"],
+      ["02", "Tasks", "/tasks"],
+      ["03", "Goals", "/goals"],
+      ["04", "Timer", "/timer"],
+      ["05", "Review", "/review"],
+      ["06", "Analytics", "/work-analytics"],
     ]) {
       expect(routeMeta).toContain(`index: "${entry[0]}"`);
       expect(routeMeta).toContain(`label: "${entry[1]}"`);
       expect(routeMeta).toContain(`href: "${entry[2]}"`);
     }
+
+    expect(routeMeta).not.toContain('href: "/dashboard"');
 
     expect(routeMeta).toContain("getShellRouteMeta");
   });
