@@ -161,7 +161,12 @@ export function createMcpTimerModuleHandlers(
         const actor = createAuthenticatedActor(principal.ownerUserId);
         const repository = createRepository(authInfo as AuthInfo);
 
-        const result = await startTaskSession(actor, repository, { taskId: input.taskId });
+        const result = await startTaskSession(actor, repository, {
+          taskId: input.taskId,
+          ...(input.operationId
+            ? { mcpOperationId: input.operationId, mcpClientId: principal.oauthClientId }
+            : {}),
+        });
         if (!result.ok) {
           return errorResult(mapCanonicalTimerFailure(result.errorMessage));
         }
