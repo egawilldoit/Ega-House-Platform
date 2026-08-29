@@ -17,7 +17,7 @@ permissions:
 
 env:
   EXPO_PROJECT_ID: 0dafbb64-7c1e-49b1-aea1-de1f8159a5e6
-  EAS_CLI_VERSION: 13.5.1
+  EAS_CLI_VERSION: 13.4.2
 
 jobs:
   preflight:
@@ -140,7 +140,7 @@ jobs:
             exit 1
           fi
           if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
-            echo "::error::No stable mobile APK baseline exists — OTA requires an already-released native APK. Build mobile-v1.0.2 stable release from the canonical Expo project first."
+            echo "::error::No stable mobile APK baseline exists — OTA requires an already-released native APK. Build mobile-v1.0.1 stable release first."
             cat /tmp/selector.json
             exit 1
           fi

@@ -157,7 +157,7 @@ gh workflow run mobile-ota.yml --ref main -f message="fix: login alignment"
 
 Only `refs/heads/main` may publish production OTA.
 
-### Workflow `mobile-ota.yml` (EAS CLI pinned `13.5.1`)
+### Workflow `mobile-ota.yml` (EAS CLI pinned `13.4.2`)
 
 **Preflight** (12 checks, all must pass, no override-by-warning):
 
@@ -165,7 +165,7 @@ Only `refs/heads/main` may publish production OTA.
 2. Unified Platform Validation `success` for exact `SHA`.
 3. Clean `npm ci --no-audit --no-fund`.
 4. `EXPO_TOKEN` present.
-5. EAS project ID `73d127b6…` matches `app.json`.
+5. EAS project ID `0dafbb64…` matches `app.json`.
 6. `requestHeaders` production present.
 7. Latest **stable mobile** `mobile-vX.Y.Z` release selected deterministically (highest semver, `draft==false`/`prerelease==false`, `release-manifest.json` present, `per_page=100` pagination) via `mobile-release-selector.mjs`; **not** repo-wide `releases/latest`.
 8. `androidPackage == com.ega_house.mobile`.
@@ -198,7 +198,7 @@ eas update \
 jq -e . eas-update.json   # prove JSON
 ```
 
-Extract `updateId`/`group` from **stdout** JSON only. Upload `eas-update.json`, `eas-update.stderr.log`, `eas-config.json`, `channel.json`, `eas-cli-version.txt`, `release-manifest.snapshot.json` (7d). Record `EAS_CLI_VERSION=13.5.1` in summary.
+Extract `updateId`/`group` from **stdout** JSON only. Upload `eas-update.json`, `eas-update.stderr.log`, `eas-config.json`, `channel.json`, `eas-cli-version.txt`, `release-manifest.snapshot.json` (7d). Record `EAS_CLI_VERSION=13.4.2` in summary.
 
 ## 8. Rollback (current EAS CLI)
 
@@ -258,7 +258,7 @@ APK at A → C (native) => OTA BLOCKED → new APK at C → D (JS only) => OTA a
 
 Changing the Expo project ID and update URL changes the native embedded configuration and therefore requires a **NATIVE RELEASE**.
 
-- `mobile-v1.0.1` belongs to the old Expo project and remains the old-project baseline; it must not be reused for the canonical project.
+- `mobile-v1.0.1` is the one true bootstrap/version baseline. It belongs to the old Expo project and cannot be reused as the canonical project's APK because the relink changes native embedded configuration.
 - New `expo.version` (`1.0.2`) → a new Blacksmith APK must be built from merged `main`.
 - That APK must be installed once by users.
 - `release-manifest.json` for `mobile-v1.0.2` must exist in GitHub Release.
