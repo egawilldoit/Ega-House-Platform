@@ -76,6 +76,160 @@ test("rolling workload, active days, density, longest/avg derive from sessions",
   assert.equal(snap.quality.quality, "sufficient");
 });
 
+test("active days follow Tokyo local midnights while the equivalent New York instant stays on one day", async () => {
+  const session = row({
+    task_id: "t-midnight",
+    started_at: "2026-04-20T14:30:00.000Z",
+    ended_at: "2026-04-20T15:30:00.000Z",
+  });
+
+  const tokyoResult = await getHealthWorkloadSnapshot(
+    ACTOR,
+    makeTimeRepo("Asia/Tokyo"),
+    makeEvidenceRepo([session]),
+    { now: new Date("2026-04-20T16:00:00.000Z") },
+  );
+  const newYorkResult = await getHealthWorkloadSnapshot(
+    ACTOR,
+    makeTimeRepo("America/New_York"),
+    makeEvidenceRepo([session]),
+    { now: new Date("2026-04-20T16:00:00.000Z") },
+  );
+
+  assert.equal(tokyoResult.ok, true);
+  assert.equal(newYorkResult.ok, true);
+  assert.equal((tokyoResult as { ok: true; data: HealthWorkloadSnapshot }).data.activeDays, 2);
+  assert.equal((newYorkResult as { ok: true; data: HealthWorkloadSnapshot }).data.activeDays, 1);
+});
+
+test("active days treat the New York DST spring transition as one 23-hour local day", async () => {
+  const result = await getHealthWorkloadSnapshot(
+    ACTOR,
+    makeTimeRepo("America/New_York"),
+    makeEvidenceRepo([
+      row({
+        task_id: "t-spring",
+        started_at: "2026-03-08T05:00:00.000Z",
+        ended_at: "2026-03-09T04:00:00.000Z",
+      }),
+    ]),
+    { now: new Date("2026-03-09T03:59:59.000Z") },
+  );
+
+  assert.equal(result.ok, true);
+  const snapshot = (result as { ok: true; data: HealthWorkloadSnapshot }).data;
+  assert.equal(snapshot.rollingWorkload.totalTrackedSeconds, 82_800);
+  assert.equal(snapshot.activeDays, 1);
+});
+
+test("active days treat the New York DST fall transition as one 25-hour local day", async () => {
+  const result = await getHealthWorkloadSnapshot(
+    ACTOR,
+    makeTimeRepo("America/New_York"),
+    makeEvidenceRepo([
+      row({
+        task_id: "t-fall",
+        started_at: "2026-11-01T04:00:00.000Z",
+        ended_at: "2026-11-02T05:00:00.000Z",
+      }),
+    ]),
+    { now: new Date("2026-11-02T04:59:59.000Z") },
+  );
+
+  assert.equal(result.ok, true);
+  const snapshot = (result as { ok: true; data: HealthWorkloadSnapshot }).data;
+  assert.equal(snapshot.rollingWorkload.totalTrackedSeconds, 90_000);
+  assert.equal(snapshot.activeDays, 1);
+});
+
+test("included open sessions contribute to every overlapped local day", async () => {
+  const result = await getHealthWorkloadSnapshot(
+    ACTOR,
+    makeTimeRepo("Asia/Tokyo"),
+    makeEvidenceRepo([
+      {
+        task_id: "t-open-midnight",
+        started_at: "2026-04-20T14:30:00.000Z",
+        ended_at: null,
+        duration_seconds: null,
+        tasks: null,
+      },
+    ]),
+    {
+      now: new Date("2026-04-20T15:30:00.000Z"),
+      includeOpenSessions: true,
+    },
+  );
+
+  assert.equal(result.ok, true);
+  const snapshot = (result as { ok: true; data: HealthWorkloadSnapshot }).data;
+  assert.equal(snapshot.rollingWorkload.totalTrackedSeconds, 3_600);
+  assert.equal(snapshot.activeDays, 2);
+  assert.equal(snapshot.quality.quality, "provisional");
+});
+
+test("local active-day evidence clips sessions to the health evidence window", async () => {
+  const result = await getHealthWorkloadSnapshot(
+    ACTOR,
+    makeTimeRepo("Asia/Tokyo"),
+    makeEvidenceRepo([
+      row({
+        task_id: "t-clipped",
+        started_at: "2026-04-14T14:30:00.000Z",
+        ended_at: "2026-04-14T15:30:00.000Z",
+      }),
+    ]),
+    { now: new Date("2026-04-20T16:00:00.000Z") },
+  );
+
+  assert.equal(result.ok, true);
+  const snapshot = (result as { ok: true; data: HealthWorkloadSnapshot }).data;
+  assert.equal(snapshot.window.startIso, "2026-04-14T15:00:00.000Z");
+  assert.equal(snapshot.rollingWorkload.totalTrackedSeconds, 1_800);
+  assert.equal(snapshot.activeDays, 1);
+});
+
+test("local active-day aggregation is independent of the server process timezone", async () => {
+  const originalTimezone = process.env.TZ;
+  const session = row({
+    task_id: "t-process-tz",
+    started_at: "2026-04-20T14:30:00.000Z",
+    ended_at: "2026-04-20T15:30:00.000Z",
+  });
+
+  try {
+    process.env.TZ = "America/Los_Angeles";
+    const losAngelesProcess = await getHealthWorkloadSnapshot(
+      ACTOR,
+      makeTimeRepo("Asia/Tokyo"),
+      makeEvidenceRepo([session]),
+      { now: new Date("2026-04-20T16:00:00.000Z") },
+    );
+
+    process.env.TZ = "UTC";
+    const utcProcess = await getHealthWorkloadSnapshot(
+      ACTOR,
+      makeTimeRepo("Asia/Tokyo"),
+      makeEvidenceRepo([session]),
+      { now: new Date("2026-04-20T16:00:00.000Z") },
+    );
+
+    assert.equal(losAngelesProcess.ok, true);
+    assert.equal(utcProcess.ok, true);
+    assert.equal(
+      (losAngelesProcess as { ok: true; data: HealthWorkloadSnapshot }).data.activeDays,
+      2,
+    );
+    assert.equal(
+      (utcProcess as { ok: true; data: HealthWorkloadSnapshot }).data.activeDays,
+      2,
+    );
+  } finally {
+    if (originalTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimezone;
+  }
+});
+
 test("snapshot includes evidence quality for UI to distinguish insufficient vs zero vs provisional vs suspect", async () => {
   const now = new Date("2026-04-20T12:00:00.000Z");
 
