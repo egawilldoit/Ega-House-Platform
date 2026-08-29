@@ -170,8 +170,11 @@ test("GET /api/today returns the rich mobile read model", async () => {
     dueDate: null,
     estimateMinutes: null,
     updatedAt: "2026-08-10T10:00:00.000Z",
+    completedAt: null,
     focusRank: null,
     plannedForDate: "2026-08-10",
+    scheduledStartAt: null,
+    scheduledEndAt: null,
     projectName: "Unknown project",
     projectSlug: null,
     goalTitle: null,
@@ -195,10 +198,13 @@ test("GET /api/today returns the rich mobile read model", async () => {
   });
   assert.deepEqual(body.suggestions, { pinned: [], inProgress: [] });
   assert.equal(body.activeTimer, null);
-  const todayTasksCall = fake.calls.find((call) => call.table === "tasks");
-  assert.ok(todayTasksCall?.steps.some(
-    (step) => step.method === "or" && String(step.args[0]).includes("planned_for_date.eq.2026-08-10"),
-  ));
+  assert.ok(
+    fake.calls.some(
+      (call) =>
+        call.table === "tasks" &&
+        call.steps.some((step) => step.method === "or" && String(step.args[0]).includes("planned_for_date.eq.2026-08-10")),
+    ),
+  );
 });
 
 test("POST /api/tasks/:id/reminders validates future time and uses owner-scoped persistence", async () => {

@@ -13,12 +13,18 @@ import {
   type ApiResult,
   type EgaApiClient,
 } from '@ega/api-client';
-import type { MobileTodayResponse } from '@ega/contracts/mobile';
+import type { OperatorSnapshotDto } from '@ega/contracts/operator';
 
-const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
+const EMPTY_TODAY_RESPONSE: OperatorSnapshotDto = {
   ok: true,
   date: '2026-08-10',
+  timezone: 'UTC',
+  timeContextId: '2026-08-10::UTC::2026-08-10T00:00:00.000Z',
+  dayWindow: { startUtcIso: '2026-08-10T00:00:00.000Z', endUtcIso: '2026-08-11T00:00:00.000Z' },
+  plannedToday: [],
   sections: { planned: [], inProgress: [], blocked: [], completed: [] },
+  focus: { startHere: null, queue: [] },
+  schedule: { blocks: [], flexible: [] },
   suggestions: { pinned: [], inProgress: [] },
   summary: {
     plannedCount: 0,
@@ -34,6 +40,7 @@ const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
     trackedTodayLabel: '0m',
   },
   activeTimer: null,
+  signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
 };
 
 function makeFakeClient(): EgaApiClient {
@@ -115,11 +122,20 @@ function makeFakeClient(): EgaApiClient {
       convert: jest.fn(),
     },
     today: {
-      get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
+      get: jest.fn(async (): Promise<ApiResult<OperatorSnapshotDto>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
       plan: jest.fn(),
       remove: jest.fn(),
       updateStatus: jest.fn(),
       clearCompleted: jest.fn(),
+    },
+    operator: {
+      create: jest.fn(),
+      revise: jest.fn(),
+      approve: jest.fn(),
+      apply: jest.fn(),
+      dismiss: jest.fn(),
+      get: jest.fn(),
+      list: jest.fn(),
     },
     weeklyReview: {
       get: jest.fn(),

@@ -24,11 +24,28 @@ const update = jest.fn();
 const createReminder = jest.fn();
 const cancelReminder = jest.fn();
 
+function makeFullFakeClient(): EgaApiClient {
+  return {
+    health: jest.fn(),
+    auth: { login: jest.fn(), refresh: jest.fn(), logout: jest.fn() },
+    projects: { list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn() },
+    goals: { list: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), updateHealth: jest.fn(), updateNextStep: jest.fn(), archive: jest.fn(), unarchive: jest.fn() },
+    tasks: { list, get, create, update, archive: jest.fn(), unarchive: jest.fn(), createReminder, cancelReminder, setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn() },
+    inbox: { list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn() },
+    today: { get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn() },
+    operator: { create: jest.fn(), revise: jest.fn(), approve: jest.fn(), apply: jest.fn(), dismiss: jest.fn(), get: jest.fn(), list: jest.fn() },
+    weeklyReview: { get: jest.fn() },
+    healthSnapshot: { getSnapshot: jest.fn() },
+    friction: { radar: jest.fn() },
+    timeContext: { get: jest.fn() },
+    timer: { workspace: jest.fn(), start: jest.fn(), stop: jest.fn() },
+    notifications: { list: jest.fn(), unreadCount: jest.fn(), markRead: jest.fn(), markOpened: jest.fn(), markAllRead: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn(), preferences: jest.fn(), updatePreferences: jest.fn() },
+  };
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
-  setMobileEgaApiClientForTesting({
-    tasks: { list, get, create, update, createReminder, cancelReminder },
-  } as unknown as EgaApiClient);
+  setMobileEgaApiClientForTesting(makeFullFakeClient());
 });
 
 afterEach(() => {
