@@ -7,8 +7,11 @@
     ".": "./src/index.ts",
     "./mobile": "./src/mobile.ts",
     "./agent": "./src/agent.ts",
+    "./inbox": "./src/inbox.ts",
+    "./inbox-ai": "./src/inbox-ai.ts",
     "./notifications": "./src/notifications.ts",
     "./common/task-list": "./src/common/task-list.ts",
+    "./friction": "./src/friction.ts",
     "./time-context": "./src/time-context.ts",
     "./execution-evidence": "./src/execution-evidence.ts",
     "./health": "./src/health.ts"

@@ -96,6 +96,13 @@ export default function ProtectedLayout() {
           title: 'Notification Settings',
         }}
       />
+      <Stack.Screen
+        name="updates"
+        options={{
+          headerShown: true,
+          title: 'App Updates',
+        }}
+      />
     </Stack>
   );
 }

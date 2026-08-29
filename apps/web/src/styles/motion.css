@@ -1,0 +1,38 @@
+/* EGA Command OS — Motion System
+ * Uses `motion` (framer-motion) only. No GSAP/Three.
+ * Respects prefers-reduced-motion via MotionConfig `reducedMotion="user"`.
+ */
+
+:root {
+  --motion-fast: var(--duration-fast) var(--ease-default);
+  --motion-base: var(--duration-base) var(--ease-default);
+  --motion-slow: var(--duration-slow) var(--ease-default);
+  --motion-enter: var(--duration-enter) var(--ease-spring);
+}
+
+/* Base transitions for compositor-friendly properties only */
+.motion-fade {
+  transition: opacity var(--duration-base) var(--ease-default);
+}
+
+.motion-scale {
+  transition:
+    opacity var(--duration-base) var(--ease-default),
+    transform var(--duration-base) var(--ease-spring);
+}
+
+.motion-slide {
+  transition: transform var(--duration-enter) var(--ease-spring);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

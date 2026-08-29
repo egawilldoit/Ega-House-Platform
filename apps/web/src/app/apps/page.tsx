@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 export default async function AppsIndexPage() {
   return (
     <AppShell
-      eyebrow="Execution Workspace"
-      title="Apps Launcher"
-      description="Open the workspace module you need without leaving the shell context."
+      eyebrow="Surfaces"
+      title="Apps"
+      description="Open the module you need without leaving context."
     >
       <div className="space-y-4">
         <p className="glass-label text-etch">
