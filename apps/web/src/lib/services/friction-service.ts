@@ -1,7 +1,7 @@
-import { createAuthenticatedActorFromIdentity } from "@ega/application";
+import { createAuthenticatedActorFromIdentity, resolveFrictionEvidenceWindow } from "@ega/application";
 import { getFrictionRadarReadModel } from "@ega/application/friction/stale-blocked-signals";
 import { SupabaseExecutionEvidenceRepository, SupabaseFrictionRepository, SupabaseTimeContextRepository } from "@ega/data-access";
-import { getLocalDateInTimezone, getWeekWindow } from "@ega/domain/time-context";
+import { FRICTION_NEGLECTED_GOAL_WINDOW_DAYS } from "@ega/domain/friction";
 
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/services/auth-service";
@@ -22,22 +22,17 @@ export async function getFrictionRadar(options?: {
   const repository = new SupabaseFrictionRepository(supabase);
   const now = options?.now ?? new Date();
 
-  let timezone = "UTC";
-  try {
-    const tzRepo = new SupabaseTimeContextRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient);
-    const tzResult = await tzRepo.getTimezone(actor);
-    if (tzResult.ok && tzResult.value) timezone = String(tzResult.value).trim() || "UTC";
-  } catch {
-    // fallback UTC
-  }
-
   let evidenceWindow: { startIso: string; endIso: string };
   try {
-    const localDate = getLocalDateInTimezone(now, timezone);
-    const week = getWeekWindow(timezone, localDate);
-    evidenceWindow = { startIso: week.weekStartUtcIso, endIso: now.toISOString() };
+    const tzRepo = new SupabaseTimeContextRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient);
+    const windowResult = await resolveFrictionEvidenceWindow(actor, tzRepo, { now });
+    if (windowResult.ok) {
+      evidenceWindow = { startIso: windowResult.data.startIso, endIso: windowResult.data.endIso };
+    } else {
+      throw new Error(windowResult.errorMessage);
+    }
   } catch {
-    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const start = new Date(now.getTime() - FRICTION_NEGLECTED_GOAL_WINDOW_DAYS * 24 * 60 * 60 * 1000);
     evidenceWindow = { startIso: start.toISOString(), endIso: now.toISOString() };
   }
 
