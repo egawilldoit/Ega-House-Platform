@@ -127,7 +127,7 @@ for (const file of allTracked) {
   const hasVerifiedWebSession = source.includes('requireAuthenticatedUser');
   const hasVerifiedMcpPrincipal =
     file.startsWith('apps/web/src/lib/mcp/') &&
-    source.includes('readPrincipalFromAuthInfo') &&
+    (source.includes('readPrincipalFromAuthInfo') || source.includes('requireMcpPermission')) &&
     source.includes('authInfo');
   assert(
     hasVerifiedWebSession || hasVerifiedMcpPrincipal,

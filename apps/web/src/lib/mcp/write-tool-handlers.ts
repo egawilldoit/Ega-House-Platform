@@ -143,7 +143,10 @@ async function withExclusiveMutation(
   try {
     const result = await mutate();
     if (result.isError) {
-      await failMcpMutation(client, toolName, operationId, claim.claimToken, true);
+      const errorCode = (result.structuredContent as Record<string, unknown> | undefined)?.error as { code?: string } | undefined;
+      const code = errorCode?.code;
+      const isPermanent = code ? ["INVALID_ARGUMENT", "PERMISSION_DENIED", "CONFLICT", "FAILED_FINAL", "CONFIRMATION_DECLINED", "WRITES_DISABLED"].includes(code) : false;
+      await failMcpMutation(client, toolName, operationId, claim.claimToken, isPermanent);
       return result;
     }
     await storeMcpMutationResult(
@@ -155,7 +158,7 @@ async function withExclusiveMutation(
     );
     return result;
   } catch (error) {
-    await failMcpMutation(client, toolName, operationId, claim.claimToken, true).catch(() => {});
+    await failMcpMutation(client, toolName, operationId, claim.claimToken, false).catch(() => {});
     throw error;
   }
 }
