@@ -187,6 +187,23 @@ class InMemoryOperatorProposalRepository implements OperatorProposalRepository {
     return ok(deleted);
   }
 
+  async claimApprovedProposalForApply(
+    actor: AuthenticatedActor,
+    proposalId: string,
+  ): Promise<RepositoryResult<OperatorProposalRecord | null>> {
+    const existing = this.proposals.get(proposalId) ?? null;
+    if (!existing) return ok(null);
+    if (existing.ownerUserId !== actor.userId) return ok(null);
+    if (existing.status !== "approved") return ok(null);
+    const updated: OperatorProposalRecord = {
+      ...existing,
+      status: "applying",
+      updatedAt: new Date().toISOString(),
+    };
+    this.proposals.set(proposalId, updated);
+    return ok(updated);
+  }
+
   // Test helpers
   getAllForOwner(actor: AuthenticatedActor): OperatorProposalRecord[] {
     return [...this.proposals.values()].filter((p) => p.ownerUserId === actor.userId);
@@ -195,6 +212,11 @@ class InMemoryOperatorProposalRepository implements OperatorProposalRepository {
   setCreatedAt(id: string, iso: string) {
     const rec = this.proposals.get(id);
     if (rec) this.proposals.set(id, { ...rec, createdAt: iso });
+  }
+  // Helper to simulate crash after claim (set to applying without result)
+  setStatus(id: string, status: OperatorProposalRecord["status"], result: OperatorProposalRecord["result"] = null) {
+    const rec = this.proposals.get(id);
+    if (rec) this.proposals.set(id, { ...rec, status, result, updatedAt: new Date().toISOString() });
   }
 }
 
@@ -1312,4 +1334,164 @@ test("Fingerprint is deterministic and stable across task order shuffle (no time
     aiRef: "ref-2",
   });
   assert.notEqual(fp1, fp3);
+});
+
+// ---------------------------------------------------------------------------
+// Atomic claim: concurrent applyA / applyB — only winner mutates, one wins
+// ---------------------------------------------------------------------------
+
+test("Atomic claim: concurrent Promise.all apply — one wins claim, one cannot mutate, Tasks once, valid final state", async () => {
+  const id1 = randomUUID();
+  const id2 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  for (const id of [id1, id2]) tasks.set(id, makeTaskRow({ id, ownerUserId: ACTOR_A.userId, plannedForDate: null }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+  const todayA = new FakeTodayMutation(tasks);
+  const todayB = new FakeTodayMutation(tasks);
+  // Use shared tasks map but distinct mutation counters to prove only winner mutated
+  // To share, we use same map but each FakeTodayMutation wraps same map; we will count total calls across both
+  // Better: use two mutation ports that both write to same map, but we can track combined calls
+  let totalMutationCalls = 0;
+  const originalSetA = todayA.setPlannedDate.bind(todayA);
+  const originalSetB = todayB.setPlannedDate.bind(todayB);
+  todayA.setPlannedDate = async (actor, input) => {
+    totalMutationCalls += 1;
+    return originalSetA(actor, input);
+  };
+  todayB.setPlannedDate = async (actor, input) => {
+    totalMutationCalls += 1;
+    return originalSetB(actor, input);
+  };
+
+  const created = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1, id2],
+    idempotencyKey: "concurrent-claim-1",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const approved = await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id });
+  assert.equal(approved.ok, true);
+  if (!approved.ok) return;
+
+  const [resA, resB] = await Promise.all([
+    applyOperatorProposal(ACTOR_A, repo, lookup, todayA, { proposalId: created.data.id }),
+    applyOperatorProposal(ACTOR_A, repo, lookup, todayB, { proposalId: created.data.id }),
+  ]);
+
+  const successes = [resA, resB].filter((r) => r.ok);
+  const failures = [resA, resB].filter((r) => !r.ok);
+  // Exactly one winner, one loser (already being applied)
+  assert.equal(successes.length, 1, `expected one success got ${successes.length} resA ok ${resA.ok} resB ok ${resB.ok}`);
+  assert.equal(failures.length, 1);
+  assert.match((failures[0] as { ok: false; errorMessage: string }).errorMessage, /already being applied/i);
+
+  const winner = successes[0] as { ok: true; data: OperatorProposalRecord };
+  assert.equal(winner.data.status, "applied");
+  assert.deepEqual(winner.data.result?.appliedTaskIds.sort(), [id1, id2].sort());
+  // Tasks mutated once (winner mutated 2, loser did not mutate)
+  assert.equal(totalMutationCalls, 2, `expected 2 mutation calls (once per task) got ${totalMutationCalls}`);
+  assert.equal(tasks.get(id1)?.plannedForDate, "2026-08-10");
+  assert.equal(tasks.get(id2)?.plannedForDate, "2026-08-10");
+
+  // Final proposal state is valid terminal
+  const final = await getOperatorStoredProposal(ACTOR_A, repo, created.data.id);
+  assert.equal(final.ok, true);
+  if (!final.ok) return;
+  assert.equal(final.data.status, "applied");
+  assert.equal(final.data.result?.staleDetected, false);
+});
+
+// ---------------------------------------------------------------------------
+// Crash-safe recovery: claim → crash → retry must not double-mutate, idempotent
+// ---------------------------------------------------------------------------
+
+test("Crash recovery: approved → claim applying → crash → retry resumes idempotently, no double mutation", async () => {
+  const id1 = randomUUID();
+  const id2 = randomUUID();
+  const id3 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  for (const id of [id1, id2, id3]) tasks.set(id, makeTaskRow({ id, ownerUserId: ACTOR_A.userId, plannedForDate: null }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+  const today = new FakeTodayMutation(tasks);
+
+  const created = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1, id2, id3],
+    idempotencyKey: "crash-recovery-1",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const approved = await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id });
+  assert.equal(approved.ok, true);
+  if (!approved.ok) return;
+
+  // Simulate crash after atomic claim but before mutations: manually claim to applying, mutate first task, then crash
+  const claim = await repo.claimApprovedProposalForApply(ACTOR_A, created.data.id);
+  assert.equal(claim.ok, true);
+  assert.equal(claim.value?.status, "applying");
+  // Mutate first task as if winner had started but crashed after one
+  const firstMut = await today.setPlannedDate(ACTOR_A, { taskId: id1, plannedForDate: "2026-08-10" });
+  assert.equal(firstMut.ok, true);
+  assert.equal(today.calls.length, 1);
+  assert.equal(tasks.get(id1)?.plannedForDate, "2026-08-10");
+  assert.equal(tasks.get(id2)?.plannedForDate, null);
+  // Proposal still in applying with no result — simulates crash before finalization
+  const afterCrash = await repo.findById(ACTOR_A, created.data.id);
+  assert.equal(afterCrash.ok && afterCrash.value?.status, "applying");
+  assert.equal(afterCrash.ok && afterCrash.value?.result, null);
+
+  // Retry — same proposalId, should resume without double-mutating id1, and complete id2/id3
+  const retry = await applyOperatorProposal(ACTOR_A, repo, lookup, today, { proposalId: created.data.id });
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.data.status, "applied");
+  // id1 should be counted as applied via receipt (plannedForDate already equals target, no duplicate write)
+  assert.deepEqual(retry.data.result?.appliedTaskIds.sort(), [id1, id2, id3].sort());
+  // Total mutation calls: 1 (pre-crash) + 2 (retry for id2,id3) = 3, not 4 (no double for id1)
+  assert.equal(today.calls.length, 3, `expected 3 total calls (id1 pre-crash + id2/id3 retry), got ${today.calls.length}`);
+  assert.equal(tasks.get(id1)?.plannedForDate, "2026-08-10");
+  assert.equal(tasks.get(id2)?.plannedForDate, "2026-08-10");
+  assert.equal(tasks.get(id3)?.plannedForDate, "2026-08-10");
+
+  // Idempotent second retry after finalization returns same result, no extra mutations
+  const secondRetry = await applyOperatorProposal(ACTOR_A, repo, lookup, today, { proposalId: created.data.id });
+  assert.equal(secondRetry.ok, true);
+  if (!secondRetry.ok) return;
+  assert.equal(secondRetry.data.result?.appliedAt, retry.data.result?.appliedAt);
+  assert.equal(today.calls.length, 3);
+});
+
+test("Crash recovery: retry after stale would not be polluted by own mutations (applying skips stale check)", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId, plannedForDate: null, updatedAt: "2026-08-10T08:00:00.000Z" }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+  const today = new FakeTodayMutation(tasks);
+
+  const created = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "crash-stale-skip",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id });
+
+  // Claim then mutate, leaving applying with plannedForDate changed (which would look stale if re-checked)
+  const claim = await repo.claimApprovedProposalForApply(ACTOR_A, created.data.id);
+  assert.equal(claim.ok, true);
+  await today.setPlannedDate(ACTOR_A, { taskId: id1, plannedForDate: "2026-08-10" });
+  // Now retry — if stale check were re-run, it would see plannedForDate mismatch (stored null vs now 2026-08-10) and mark stale incorrectly
+  const retry = await applyOperatorProposal(ACTOR_A, repo, lookup, today, { proposalId: created.data.id });
+  assert.equal(retry.ok, true);
+  if (!retry.ok) return;
+  assert.equal(retry.data.status, "applied", "resume should not be marked stale due to own mutation");
+  assert.equal(retry.data.result?.staleDetected, false);
 });
