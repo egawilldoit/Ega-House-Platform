@@ -45,7 +45,6 @@ import {
   McpToolAuthorizationError,
   requireMcpPermission,
 } from "@/lib/mcp/tool-authorization";
-import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import { z } from "zod-v4";
 
 export type McpWriteToolDependencies = {
@@ -307,7 +306,7 @@ export function createMcpWriteToolHandlers(
         requireMcpPermission(authInfo, "goals.create");
         const client = dependencies.createUserClient(authInfo!.token);
         return await withExclusiveMutation(client, "ega_create_goal", input.operationId, { title: input.title, projectId: input.projectId, description: input.description ?? null, status: input.status ?? null, slug: input.slug ?? null, nextStep: input.nextStep ?? null, health: input.health ?? null }, () =>
-          createGoal(authInfo, { title: input.title, projectId: input.projectId, description: input.description ?? null, status: input.status, slug: input.slug ?? null, nextStep: input.nextStep ?? null, health: input.health ?? null }, moduleDeps),
+          createGoal(authInfo, { title: input.title, projectId: input.projectId, description: input.description ?? null, status: input.status, slug: input.slug ?? null, nextStep: input.nextStep ?? null, health: input.health ?? null, operationId: input.operationId }, moduleDeps),
         );
       } catch (error) {
         return errorResult(error);
@@ -426,6 +425,7 @@ export function createMcpWriteToolHandlers(
             priority: input.priority,
             dueDate: input.dueDate ?? null,
             estimateMinutes: input.estimateMinutes ?? null,
+            operationId: input.operationId,
           }),
         );
       } catch (error) {
@@ -516,7 +516,7 @@ export function createMcpWriteToolHandlers(
         requireMcpPermission(authInfo, "tasks.update");
         const client = dependencies.createUserClient(authInfo!.token);
         return await withExclusiveMutation(client, "ega_create_task_reminder", input.operationId, { taskId: input.taskId, remindAt: input.remindAt }, () =>
-          taskHandlers.createTaskReminder(authInfo, { taskId: input.taskId, remindAt: input.remindAt }),
+          taskHandlers.createTaskReminder(authInfo, { taskId: input.taskId, remindAt: input.remindAt, operationId: input.operationId }),
         );
       } catch (error) {
         return errorResult(error);
@@ -660,7 +660,7 @@ export function createMcpWriteToolHandlers(
         requireMcpPermission(authInfo, "timer.create");
         const client = dependencies.createUserClient(authInfo!.token);
         return await withExclusiveMutation(client, "ega_start_timer", input.operationId, { taskId: input.taskId }, () =>
-          timerHandlers.startTimer(authInfo, { taskId: input.taskId }),
+          timerHandlers.startTimer(authInfo, { taskId: input.taskId, operationId: input.operationId }),
         );
       } catch (error) {
         return errorResult(error);

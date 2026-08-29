@@ -61,10 +61,12 @@ export async function createGoal(
     health?: string | null;
     status?: string;
     slug?: string | null;
+    operationId?: string;
   },
   deps: McpWriteModuleDeps,
 ): Promise<CallToolResult> {
-  const actor = resolveActor(authInfo, "goals.create");
+  const principal = requireMcpPermission(authInfo, "goals.create");
+  const actor: AuthenticatedActor = { userId: principal.ownerUserId };
   const repository = createRepository(deps, authInfo!);
 
   const result = await createGoalInApplication(actor, repository, {
@@ -75,13 +77,16 @@ export async function createGoal(
     health: input.health,
     status: input.status,
     slug: input.slug,
+    ...(input.operationId
+      ? { mcpOperationId: input.operationId, mcpClientId: principal.oauthClientId }
+      : {}),
   });
 
   if (!result.ok) {
     return applicationErrorResult(result.errorMessage);
   }
 
-  return toCallToolResult({ ok: true, goal: result.values });
+  return toCallToolResult({ ok: true, goal: result.data ?? result.values });
 }
 
 export async function updateGoalStatus(

@@ -11,7 +11,11 @@ import {
 } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sanitizeSupabaseError } from "../supabase/errors";
+import {
+  isSupabaseUniqueConstraintViolation,
+  mcpOperationIdentity,
+  sanitizeSupabaseError,
+} from "../supabase/errors";
 
 const GOAL_SELECT =
   "id, project_id, title, slug, description, next_step, health, status, created_at, updated_at";
@@ -154,8 +158,9 @@ export class SupabaseGoalsRepository implements GoalsRepository {
   async createGoal(
     actor: AuthenticatedActor,
     input: CreateGoalRecordInput,
-  ): Promise<RepositoryResult<null>> {
-    const { error } = await this.supabase.from("goals").insert({
+  ): Promise<RepositoryResult<GoalRecord | null>> {
+    const identity = mcpOperationIdentity(input);
+    const payload = {
       title: input.title,
       project_id: input.projectId,
       description: input.description,
@@ -164,7 +169,43 @@ export class SupabaseGoalsRepository implements GoalsRepository {
       status: input.status,
       slug: input.slug,
       owner_user_id: actor.userId,
-    });
+      ...(identity
+        ? {
+            mcp_operation_id: identity.mcpOperationId,
+            mcp_client_id: identity.mcpClientId,
+          }
+        : {}),
+    };
+
+    if (identity) {
+      const result = await this.supabase
+        .from("goals")
+        .insert(payload)
+        .select(GOAL_SELECT)
+        .single();
+
+      if (!result.error && result.data) {
+        return { ok: true, value: mapGoalRow(result.data as GoalRow) };
+      }
+
+      if (isSupabaseUniqueConstraintViolation(result.error, "goals_mcp_operation_unique")) {
+        const replay = await this.supabase
+          .from("goals")
+          .select(GOAL_SELECT)
+          .eq("owner_user_id", actor.userId)
+          .eq("mcp_client_id", identity.mcpClientId)
+          .eq("mcp_operation_id", identity.mcpOperationId)
+          .maybeSingle();
+
+        if (replay.error) return { ok: false, error: sanitizeSupabaseError(replay.error) };
+        if (!replay.data) return { ok: false, error: sanitizeSupabaseError(result.error) };
+        return { ok: true, value: mapGoalRow(replay.data as GoalRow) };
+      }
+
+      return { ok: false, error: sanitizeSupabaseError(result.error) };
+    }
+
+    const { error } = await this.supabase.from("goals").insert(payload);
 
     if (error) {
       return { ok: false, error: sanitizeSupabaseError(error) };
