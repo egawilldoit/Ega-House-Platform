@@ -178,6 +178,7 @@ function sessionRow(overrides: Record<string, unknown> = {}) {
 
 test("GET /api/timer/workspace returns active session and summary", async () => {
   const fake = new FakeSupabase();
+  fake.push("user_time_context", { data: null, error: null });
   fake.push("task_sessions", { data: [sessionRow()], error: null });
   fake.push("task_sessions", {
     data: [
@@ -208,9 +209,9 @@ test("GET /api/timer/workspace returns active session and summary", async () => 
   assert.equal(body.summary.trackedTodaySeconds, 7200);
   assert.equal(body.summary.trackedTodayLabel, "2h 0m 0s");
 
-  const firstCall = fake.calls[0];
-  assert.ok(firstCall?.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id"));
-  assert.ok(firstCall?.steps.some((step) => step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null));
+  const timerCall = fake.calls.find((call) => call.table === "task_sessions");
+  assert.ok(timerCall?.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id"));
+  assert.ok(timerCall?.steps.some((step) => step.method === "is" && step.args[0] === "ended_at" && step.args[1] === null));
 });
 
 test("POST /api/timer/start enforces single-active and inserts an owned open session", async () => {
