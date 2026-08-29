@@ -3,37 +3,27 @@ import { Suspense } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
-import { Badge } from "@/components/ui/badge";
-import { StatusBadge } from "@/components/ui/status-badge";
 import { getCurrentUser } from "@/lib/services/auth-service";
 
 import {
-  CommandCenterAsync,
+  AttentionQueueAsync,
   FocusAsync,
-  GoalsAsync,
-  HeroPanelAsync,
   PlannerAsync,
   ProjectsAsync,
   ReviewPulseAsync,
-  TimerSummaryAsync,
+  SummaryStripAsync,
 } from "./_components/dashboard-async-panels";
 import { McpComingSoonAnnouncement } from "./_components/McpComingSoonAnnouncement";
 import { PanelErrorBoundary } from "./_components/PanelErrorBoundary";
 import {
-  CommandCenterSkeleton,
   FocusSkeleton,
-  GoalsSkeleton,
-  HeroSkeleton,
   PlannerSkeleton,
   ProjectsSkeleton,
   ReviewPulseSkeleton,
-  TimerSummarySkeleton,
 } from "./_components/skeletons";
 import {
   getActiveTimer,
   getTodayPlanner,
-  getTimerSummary,
-  getDashboardHealthData,
   getDashboardData,
 } from "./_lib/dashboard-data";
 import "./_components/dashboard.css";
@@ -41,7 +31,7 @@ import "./_components/dashboard-editorial.css";
 
 export const metadata = {
   title: "Dashboard",
-  description: "Read-only operational snapshot across health, tasks, and timer.",
+  description: "What needs your attention, what you are doing today, and what to do next.",
 };
 
 export default async function DashboardPage({
@@ -66,12 +56,7 @@ export default async function DashboardPage({
     );
   }
 
-  const [activeTimer, todayPlanner, timerSummary, health] = await Promise.all([
-    getActiveTimer(),
-    getTodayPlanner(),
-    getTimerSummary(),
-    getDashboardHealthData(),
-  ]);
+  const [activeTimer, todayPlanner] = await Promise.all([getActiveTimer(), getTodayPlanner()]);
 
   const tasks = todayPlanner.data?.all ?? [];
   const stoppedTaskTitle =
@@ -81,23 +66,10 @@ export default async function DashboardPage({
 
   return (
     <AppShell
-      eyebrow="Operational Command"
+      eyebrow="Command"
       title="Dashboard"
-      description="A live snapshot of task pressure, goal movement, project health, timer activity, and review momentum."
-      contentClassName="pb-20"
-      actions={
-        <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite" aria-atomic="true">
-          <StatusBadge
-            status={health.state === "healthy" ? "done" : "blocked"}
-            label={health.state === "healthy" ? "System healthy" : "Probe degraded"}
-          />
-          <Badge tone="muted">
-            {timerSummary.data
-              ? `${timerSummary.data.sessionsTodayCount} sessions today`
-              : "Timer summary pending"}
-          </Badge>
-        </div>
-      }
+      description="What needs your attention, what you are doing today, and what to do next."
+      contentClassName="pb-10"
     >
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
@@ -121,57 +93,64 @@ export default async function DashboardPage({
       </a>
 
       <main id="dashboard-main" aria-label="Dashboard main content" className="flex flex-col gap-6">
-        <McpComingSoonAnnouncement />
-
-        <PanelErrorBoundary panelName="Hero">
-          <Suspense fallback={<HeroSkeleton />}>
-            <HeroPanelAsync />
+        <PanelErrorBoundary panelName="Summary">
+          <Suspense
+            fallback={
+              <div className="grid grid-cols-12 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="col-span-12 sm:col-span-6 lg:col-span-3 h-[110px] animate-pulse rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[var(--ega-skeleton)]" />
+                ))}
+              </div>
+            }
+          >
+            <SummaryStripAsync />
           </Suspense>
         </PanelErrorBoundary>
 
-        <section className="workspace-main-rail-grid">
-          <PanelErrorBoundary panelName="Command center">
-            <Suspense fallback={<CommandCenterSkeleton />}>
-              <CommandCenterAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-          <PanelErrorBoundary panelName="Review pulse">
-            <Suspense fallback={<ReviewPulseSkeleton />}>
-              <ReviewPulseAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-        </section>
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12 lg:col-span-5">
+            <PanelErrorBoundary panelName="Today planner">
+              <Suspense fallback={<PlannerSkeleton />}>
+                <PlannerAsync />
+              </Suspense>
+            </PanelErrorBoundary>
+          </div>
+          <div className="col-span-12 lg:col-span-7">
+            <PanelErrorBoundary panelName="Focus panel">
+              <Suspense fallback={<FocusSkeleton />}>
+                <FocusAsync />
+              </Suspense>
+            </PanelErrorBoundary>
+          </div>
+        </div>
 
-        <section className="grid items-start gap-6 xl:grid-cols-2">
-          <PanelErrorBoundary panelName="Today planner">
-            <Suspense fallback={<PlannerSkeleton />}>
-              <PlannerAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-          <PanelErrorBoundary panelName="Focus panel">
-            <Suspense fallback={<FocusSkeleton />}>
-              <FocusAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-          <PanelErrorBoundary panelName="Goal movement">
-            <Suspense fallback={<GoalsSkeleton />}>
-              <GoalsAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-        </section>
+        <div className="grid grid-cols-12 gap-6">
+          <div className="col-span-12 lg:col-span-4">
+            <PanelErrorBoundary panelName="Attention queue">
+              <Suspense
+                fallback={<div className="h-[320px] animate-pulse rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[var(--ega-skeleton)]" />}
+              >
+                <AttentionQueueAsync />
+              </Suspense>
+            </PanelErrorBoundary>
+          </div>
+          <div className="col-span-12 lg:col-span-5">
+            <PanelErrorBoundary panelName="Project state">
+              <Suspense fallback={<ProjectsSkeleton />}>
+                <ProjectsAsync />
+              </Suspense>
+            </PanelErrorBoundary>
+          </div>
+          <div className="col-span-12 lg:col-span-3">
+            <PanelErrorBoundary panelName="Review pulse">
+              <Suspense fallback={<ReviewPulseSkeleton />}>
+                <ReviewPulseAsync />
+              </Suspense>
+            </PanelErrorBoundary>
+          </div>
+        </div>
 
-        <section className="grid items-start gap-6 xl:grid-cols-[0.96fr_1.04fr]">
-          <PanelErrorBoundary panelName="Project state">
-            <Suspense fallback={<ProjectsSkeleton />}>
-              <ProjectsAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-          <PanelErrorBoundary panelName="Timer summary">
-            <Suspense fallback={<TimerSummarySkeleton />}>
-              <TimerSummaryAsync />
-            </Suspense>
-          </PanelErrorBoundary>
-        </section>
+        <McpComingSoonAnnouncement />
       </main>
     </AppShell>
   );

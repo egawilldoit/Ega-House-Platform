@@ -13,6 +13,7 @@ import { useCanonicalUrl } from "@/lib/use-canonical-url";
 import {
   buildWorkspaceSections,
   filterNavigationItems,
+  filterQuickActionItems,
   flattenPaletteSections,
   nextActiveIndex,
   type CommandPaletteSection,
@@ -162,7 +163,14 @@ export function CommandPalette() {
   const navigationItems = filterNavigationItems(trimmedQuery);
   const navigationSection: CommandPaletteSection | null =
     navigationItems.length > 0 ? { id: "go-to", title: "Go to", items: navigationItems } : null;
-  const allSections = [...(navigationSection ? [navigationSection] : []), ...workspaceSections];
+  const quickActionItems = filterQuickActionItems(trimmedQuery);
+  const quickActionSection: CommandPaletteSection | null =
+    quickActionItems.length > 0 ? { id: "quick-actions", title: "Quick actions", items: quickActionItems } : null;
+  const allSections = [
+    ...(navigationSection ? [navigationSection] : []),
+    ...workspaceSections,
+    ...(quickActionSection ? [quickActionSection] : []),
+  ];
   const items = flattenPaletteSections(allSections);
   const itemCount = items.length;
   const clampedRequestedIndex =
@@ -222,7 +230,7 @@ export function CommandPalette() {
       <button
         type="button"
         aria-label="Close command palette"
-        className="absolute inset-0 bg-[rgba(20,32,19,0.24)] backdrop-blur-[2px]"
+        className="absolute inset-0 bg-[var(--ega-overlay-soft)] backdrop-blur-[2px]"
         onClick={closePalette}
       />
       <div
@@ -230,10 +238,10 @@ export function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="Search tasks, goals, and projects"
-        className="absolute inset-x-4 top-[12vh] mx-auto max-w-xl overflow-hidden rounded-2xl border border-[var(--border)] bg-white shadow-[0_24px_64px_rgba(20,32,19,0.22)]"
+        className="absolute inset-x-4 top-[12vh] mx-auto max-w-xl overflow-hidden rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[var(--ega-shadow-lg)]"
       >
-        <div className="flex items-center gap-3 border-b border-[var(--border)] px-4 py-3">
-          <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-[color:var(--muted-foreground)]" />
+        <div className="flex items-center gap-3 border-b border-[var(--ega-border)] px-4 py-3">
+          <Search aria-hidden="true" className="h-4 w-4 shrink-0 text-[var(--ega-text-secondary)]" />
           <input
             ref={inputRef}
             type="text"
@@ -250,10 +258,10 @@ export function CommandPalette() {
             }
             onKeyDown={handleInputKeyDown}
             placeholder="Search tasks, goals, projects…"
-            className="w-full bg-transparent text-[0.95rem] text-[color:var(--foreground)] outline-none placeholder:text-[color:var(--muted-foreground)]"
+            className="w-full bg-transparent text-[0.95rem] text-[var(--ega-text)] outline-none placeholder:text-[var(--ega-text-tertiary)]"
           />
           {status.kind === "loading" ? (
-            <span className="shrink-0 text-xs text-[color:var(--muted-foreground)]" role="status">
+            <span className="shrink-0 text-xs text-[var(--ega-text-secondary)]" role="status">
               Searching…
             </span>
           ) : null}
@@ -261,13 +269,13 @@ export function CommandPalette() {
 
         <div id={listId} role="listbox" aria-label="Search results" className="max-h-[46vh] overflow-y-auto p-2">
           {hasNoResults ? (
-            <p className="px-3 py-6 text-sm text-[color:var(--muted-foreground)]">
+            <p className="px-3 py-6 text-sm text-[var(--ega-text-secondary)]">
               No matches for “{trimmedQuery}”.
             </p>
           ) : null}
 
           {status.kind === "error" && status.query === trimmedQuery ? (
-            <p className="px-3 py-6 text-sm text-[color:var(--muted-foreground)]" role="alert">
+            <p className="px-3 py-6 text-sm text-[var(--ega-text-secondary)]" role="alert">
               Search is unavailable right now. Try again in a moment.
             </p>
           ) : null}
@@ -277,7 +285,7 @@ export function CommandPalette() {
 
             return (
               <div key={section.id} className="mb-1 last:mb-0">
-                <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-[var(--ega-text-tertiary)]">
                   {section.title}
                 </p>
                 {section.items.map((item, indexInSection) => {
@@ -293,12 +301,12 @@ export function CommandPalette() {
                       aria-selected={isActive}
                       onClick={() => goToItem(item)}
                       onMouseEnter={() => setRequestedActiveIndex(flatIndex)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm ${
-                        isActive ? "bg-[color:var(--instrument)]" : ""
-                      } text-[color:var(--foreground)]`}
+                      className={`flex w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm ${
+                        isActive ? "bg-[var(--ega-gold-soft)] text-[var(--ega-text)]" : "text-[var(--ega-text)]"
+                      }`}
                     >
                       <span className="min-w-0 truncate">{item.label}</span>
-                      <span className="flex shrink-0 items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
+                      <span className="flex shrink-0 items-center gap-2 text-xs text-[var(--ega-text-secondary)]">
                         {item.hint ? <span className="truncate">{item.hint}</span> : null}
                         {isActive ? <CornerDownLeft aria-hidden="true" className="h-3.5 w-3.5" /> : null}
                       </span>
@@ -310,7 +318,7 @@ export function CommandPalette() {
           })}
         </div>
 
-        <div className="flex items-center gap-4 border-t border-[var(--border)] px-4 py-2 text-[11px] text-[color:var(--muted-foreground)]">
+        <div className="flex items-center gap-4 border-t border-[var(--ega-border)] px-4 py-2 text-[11px] text-[var(--ega-text-tertiary)]">
           <span>
             <kbd>↑</kbd> <kbd>↓</kbd> navigate
           </span>
