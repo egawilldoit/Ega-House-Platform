@@ -1,6 +1,7 @@
 export * from "./auth";
 export * from "./agent";
 export * from "./mobile";
+export * from "./friction";
 export * from "./inbox";
 export * from "./inbox-ai";
 export * from "./notifications";
