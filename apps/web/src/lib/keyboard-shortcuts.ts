@@ -37,7 +37,7 @@ export const SHORTCUT_HELP_SECTIONS: Array<{
       { id: "open-search", description: "Search workspace", combo: "Ctrl/Cmd + K", group: "Actions" },
       { id: "open-apps", description: "Open Apps launcher", combo: "Ctrl/Cmd + Shift + A", group: "Actions" },
       { id: "open-quick-task", description: "Open Quick task", combo: "Ctrl/Cmd + Shift + N", group: "Actions" },
-      { id: "open-inbox-capture", description: "Capture idea to Inbox", combo: "Ctrl/Cmd + Shift + I", group: "Actions" },
+      { id: "open-inbox-capture", description: "Capture to Inbox", combo: "Ctrl/Cmd + Shift + I", group: "Actions" },
       { id: "open-timer", description: "Go to Timer", combo: "Ctrl/Cmd + Shift + T", group: "Actions" },
     ],
   },
