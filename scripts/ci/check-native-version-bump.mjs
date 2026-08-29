@@ -5,7 +5,7 @@
  * For runtimeVersion policy appVersion, any native change MUST bump app.json expo.version.
  *
  * Usage:
- *   node scripts/ci/check-native-version-bump.mjs --baseline-manifest /tmp/release-manifest.json --candidate-version 1.0.1 --base <baselineSha> --head <candidateSha>
+ *   node scripts/ci/check-native-version-bump.mjs --baseline-manifest /tmp/release-manifest.json --candidate-version 1.0.2 --base <baselineSha> --head <candidateSha>
  *
  * Exits 0 if:
  *   - no native-sensitive diff → allow (JS-only)
