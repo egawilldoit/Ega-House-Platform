@@ -44,6 +44,7 @@ export type HttpRequestOptions = {
   body?: unknown;
   /** Requests outside `/api/*` (e.g. `/health`) do not carry a token. */
   authenticated?: boolean;
+  headers?: Record<string, string>;
 };
 
 export class HttpClient {
@@ -84,7 +85,7 @@ export class HttpClient {
     options: HttpRequestOptions,
     allowRefresh: boolean,
   ): Promise<ApiResult<T>> {
-    const { path, method = "GET", query, body, authenticated = true } = options;
+    const { path, method = "GET", query, body, authenticated = true, headers: extraHeaders } = options;
 
     let token: string | null = null;
     if (authenticated) {
@@ -102,7 +103,7 @@ export class HttpClient {
       }
     }
 
-    const headers: Record<string, string> = { Accept: "application/json" };
+    const headers: Record<string, string> = { Accept: "application/json", ...(extraHeaders ?? {}) };
     if (authenticated && token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
 
