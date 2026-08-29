@@ -1285,6 +1285,154 @@ select {
   gap: 1.25rem;
 }
 
+.today-operator-brief {
+  display: grid;
+  gap: 1rem;
+  border-top: 3px solid var(--workspace-black);
+  border-bottom: 1px solid var(--border-strong);
+  padding: 0.95rem 0 1rem;
+}
+
+.today-operator-state-strip {
+  display: grid;
+  gap: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  border: 1px solid var(--border-strong);
+  background: var(--workspace-black);
+  color: var(--workspace-cream);
+}
+
+.today-operator-state-strip span {
+  min-width: 0;
+  border-right: 1px solid rgba(244, 239, 227, 0.18);
+  padding: 0.7rem 0.8rem;
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.today-operator-state-strip span:last-child {
+  border-right: 0;
+}
+
+.today-operator-state-strip strong {
+  display: block;
+  color: var(--workspace-citrus);
+  font-size: 1rem;
+  letter-spacing: -0.03em;
+  text-transform: none;
+}
+
+.today-intelligence-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.today-intelligence-panel {
+  border-color: var(--border-strong);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.today-intelligence-unavailable {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.today-operator-plan-panel {
+  border-color: var(--border-strong);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.today-operator-plan-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0.7rem 0;
+}
+
+.today-operator-plan-row:last-child {
+  border-bottom: 0;
+}
+
+.review-intelligence-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.review-intelligence-panel {
+  border-color: var(--border-strong);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.review-intelligence-unavailable {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  color: var(--muted-foreground);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.analytics-workspace {
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.analytics-filter-band {
+  border-top: 3px solid var(--workspace-black);
+  border-bottom: 1px solid var(--border-strong);
+  padding: 0.85rem 0 1rem;
+}
+
+.analytics-filter-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.analytics-filter-controls fieldset {
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  padding-right: 1rem;
+}
+
+.analytics-filter-controls fieldset:last-of-type {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.analytics-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.analytics-summary-grid > .ega-glass,
+.analytics-accuracy-card {
+  min-width: 0;
+  border-color: var(--border-strong);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.88);
+}
+
+.analytics-summary-grid .text-2xl {
+  overflow-wrap: anywhere;
+}
+
 .today-work-grid {
   display: grid;
   align-items: start;
@@ -1792,6 +1940,18 @@ select {
 }
 
 @media (max-width: 1180px) {
+  .analytics-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .today-operator-state-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .today-operator-state-strip span:nth-child(3) {
+    border-right: 0;
+  }
+
   .tasks-kanban-board {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1813,6 +1973,44 @@ select {
 }
 
 @media (max-width: 640px) {
+  .review-intelligence-grid,
+  .analytics-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-filter-controls {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .analytics-filter-controls fieldset,
+  .analytics-filter-controls fieldset:last-of-type {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 0.8rem;
+  }
+
+  .analytics-filter-controls fieldset:last-of-type {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .today-intelligence-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .today-operator-state-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .today-operator-state-strip span:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .today-operator-state-strip span:nth-child(3) {
+    border-right: 1px solid rgba(244, 239, 227, 0.18);
+  }
+
   .tasks-kanban-board {
     grid-template-columns: 1fr;
   }

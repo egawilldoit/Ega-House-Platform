@@ -8,7 +8,7 @@ import {
 } from "./keyboard-shortcuts";
 
 test("maps go-to sequence keys to workspace routes", () => {
-  assert.equal(getShortcutRouteFromSequenceKey("d"), "dashboard");
+  assert.equal(getShortcutRouteFromSequenceKey("d"), "today");
   assert.equal(getShortcutRouteFromSequenceKey("T"), "tasks");
   assert.equal(getShortcutRouteFromSequenceKey("o"), "goals");
   assert.equal(getShortcutRouteFromSequenceKey("i"), "timer");

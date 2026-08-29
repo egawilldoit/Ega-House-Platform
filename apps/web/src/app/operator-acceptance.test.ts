@@ -25,6 +25,9 @@ describe("EGA-516 Operator acceptance", () => {
     // Must use canonical operator service, not web-local planner service
     expect(todayPage).toContain("getOperatorSnapshotData");
     expect(todayPage).toContain('from "@/lib/services/operator-service"');
+    expect(todayPage).toContain("TodayIntelligencePanel");
+    expect(todayPage).toContain("getHealthSnapshotData");
+    expect(todayPage).toContain("getFrictionRadar");
     // Should delegate ranking to shared @ega/application, not web's buildTodayPlan
     expect(todayPage).not.toContain("getTodayPlannerData");
     // The operator service itself must be thin and delegate to @ega/application
@@ -41,6 +44,14 @@ describe("EGA-516 Operator acceptance", () => {
     expect(appSnapshot).toContain("friction");
     expect(appSnapshot).toContain("inbox");
     expect(appSnapshot).toContain("weeklyObjective");
+  });
+
+  it("keeps one canonical daily entry in visible shell navigation", () => {
+    const routeMeta = read("src/components/layout/shell-route-meta.ts");
+    const sidebar = read("src/components/layout/sidebar-navigation.tsx");
+    expect(routeMeta).toContain('href: "/today"');
+    expect(routeMeta).not.toContain('href: "/dashboard"');
+    expect(sidebar).not.toContain('href === "/dashboard"');
   });
 
   it("Operator can load when optional signal providers are absent", async () => {
