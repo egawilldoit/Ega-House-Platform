@@ -11,7 +11,11 @@ import {
 } from "@ega/application";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sanitizeSupabaseError } from "../supabase/errors";
+import {
+  isSupabaseUniqueConstraintViolation,
+  mcpOperationIdentity,
+  sanitizeSupabaseError,
+} from "../supabase/errors";
 
 const PROJECT_SELECT = "id, name, slug, description, status, created_at, updated_at";
 
@@ -184,21 +188,45 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
   async createProject(
     actor: AuthenticatedActor,
-    input: CreateProjectRecordInput & { mcpOperationId?: string; mcpClientId?: string },
+    input: CreateProjectRecordInput,
   ): Promise<RepositoryResult<null>> {
+    const identity = mcpOperationIdentity(input);
     const { error } = await this.supabase.from("projects").insert({
       name: input.name,
       slug: input.slug,
       description: input.description,
       owner_user_id: actor.userId,
-      mcp_operation_id: (input as unknown as { mcpOperationId?: string }).mcpOperationId ?? null,
-      mcp_client_id: (input as unknown as { mcpClientId?: string }).mcpClientId ?? null,
+      ...(identity
+        ? {
+            mcp_operation_id: identity.mcpOperationId,
+            mcp_client_id: identity.mcpClientId,
+          }
+        : {}),
     });
 
     if (error) {
-      // Domain fencing: duplicate mcp_operation_id → idempotent replay (exactly-once)
-      if ((error as { code?: string }).code === "23505" && String((error as { message?: string }).message ?? "").includes("projects_mcp_operation_unique")) {
-        return { ok: true, value: null };
+      // PostgreSQL may report the owner+slug unique index before the 0054
+      // operation index when a crashed retry repeats identical project args.
+      // Only a collision followed by an exact owner/client/operation lookup
+      // is a replay; a different project's slug conflict remains a failure.
+      const operationCollision = identity && isSupabaseUniqueConstraintViolation(
+        error,
+        "projects_mcp_operation_unique",
+      );
+      const slugCollision = identity && isSupabaseUniqueConstraintViolation(
+        error,
+        "projects_owner_user_id_slug_unique",
+      );
+      if (identity && (operationCollision || slugCollision)) {
+        const replay = await this.supabase
+          .from("projects")
+          .select("id")
+          .eq("owner_user_id", actor.userId)
+          .eq("mcp_client_id", identity.mcpClientId)
+          .eq("mcp_operation_id", identity.mcpOperationId)
+          .maybeSingle();
+        if (replay.error) return { ok: false, error: sanitizeSupabaseError(replay.error) };
+        if (replay.data) return { ok: true, value: null };
       }
       return {
         ok: false,

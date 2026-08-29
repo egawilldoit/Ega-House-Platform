@@ -99,6 +99,8 @@ export type CreateTaskRecordInput = Readonly<{
   scheduledEndAt?: string | null;
   calendarSyncEnabled?: boolean;
   calendarReminderMinutes?: number;
+  mcpOperationId?: string;
+  mcpClientId?: string;
   recurrence?: Readonly<{
     rule: TaskRecurrenceRule;
     anchorDate: string;
@@ -140,8 +142,19 @@ export interface TasksRepository {
   ): Promise<RepositoryResult<TaskRecord>>;
   createReminder(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; remindAt: string; channel: "email"; status: "pending" }>,
+    input: Readonly<{
+      taskId: string;
+      remindAt: string;
+      channel: "email";
+      status: "pending";
+      mcpOperationId?: string;
+      mcpClientId?: string;
+    }>,
   ): Promise<RepositoryResult<TaskRecord>>;
+  findReminderByOperation(
+    actor: AuthenticatedActor,
+    input: Readonly<{ mcpOperationId: string; mcpClientId: string }>,
+  ): Promise<RepositoryResult<TaskRecord | null>>;
   cancelReminder(
     actor: AuthenticatedActor,
     input: Readonly<{ taskId: string; reminderId: string; status: "cancelled" }>,

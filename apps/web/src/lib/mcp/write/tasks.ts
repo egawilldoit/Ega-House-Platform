@@ -131,6 +131,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
         priority?: string;
         dueDate?: string | null;
         estimateMinutes?: number | null;
+        operationId?: string;
       },
     ): Promise<CallToolResult> {
       try {
@@ -150,6 +151,9 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
           priority: input.priority,
           dueDate: input.dueDate,
           estimateMinutes: input.estimateMinutes,
+          ...(input.operationId
+            ? { mcpOperationId: input.operationId, mcpClientId: principal.oauthClientId }
+            : {}),
         });
         if (!result.ok) return invalidArgumentResult(result.errorMessage);
         return okPayload({ ok: true, task: result.data });
@@ -270,7 +274,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
 
     async createTaskReminder(
       authInfo: AuthInfo | undefined,
-      input: { taskId: string; remindAt: string },
+      input: { taskId: string; remindAt: string; operationId?: string },
     ): Promise<CallToolResult> {
       try {
         const principal = requireMcpPermission(authInfo, "tasks.update");
@@ -282,6 +286,9 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
         const result = await createTaskReminderService(actor, repository, {
           taskId: input.taskId,
           remindAt: input.remindAt,
+          ...(input.operationId
+            ? { mcpOperationId: input.operationId, mcpClientId: principal.oauthClientId }
+            : {}),
         });
         if (!result.ok) return invalidArgumentResult(result.errorMessage);
         return okPayload({ ok: true, task: result.data });

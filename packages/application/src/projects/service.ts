@@ -30,7 +30,13 @@ export function normalizeProjectSlug(value: string) {
 export async function createProject(
   actor: AuthenticatedActor,
   repository: ProjectsRepository,
-  input: { name: unknown; slug: unknown; description: unknown },
+  input: {
+    name: unknown;
+    slug: unknown;
+    description: unknown;
+    mcpOperationId?: string;
+    mcpClientId?: string;
+  },
 ): Promise<CreateProjectResult> {
   const name = String(input.name ?? "").trim();
   const slug = normalizeProjectSlug(String(input.slug ?? ""));
@@ -47,15 +53,15 @@ export async function createProject(
     };
   }
 
-  const mcpOperationId = (input as unknown as { mcpOperationId?: string }).mcpOperationId;
-  const mcpClientId = (input as unknown as { mcpClientId?: string }).mcpClientId;
-  const result = await repository.createProject(actor, {
+  const createInput = {
     name,
     slug,
     description: description || null,
-    mcpOperationId,
-    mcpClientId,
-  } as unknown as { name: string; slug: string; description: string | null });
+    ...(input.mcpOperationId && input.mcpClientId
+      ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
+      : {}),
+  };
+  const result = await repository.createProject(actor, createInput);
 
   if (!result.ok) {
     return {
