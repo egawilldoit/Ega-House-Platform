@@ -77,11 +77,18 @@ function makeWave2Apis() {
       list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
       createReminder: jest.fn(), cancelReminder: jest.fn(), setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(),
     },
+    inbox: {
+      list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn(),
+    },
     today: {
       get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn(),
     },
     healthSnapshot: {
       getSnapshot: jest.fn(),
+    },
+    friction: {
+      radar: jest.fn(),
+    },
     },
     timeContext: {
       get: jest.fn(),
