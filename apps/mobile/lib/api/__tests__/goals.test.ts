@@ -82,7 +82,6 @@ function makeWave2Apis() {
     friction: {
       radar: jest.fn(),
     },
-    },
     timeContext: {
       get: jest.fn(),
     },
