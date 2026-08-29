@@ -65,7 +65,8 @@ describe("CommandPalette", () => {
     await openViaShortcut();
 
     const options = document.body.querySelectorAll('[role="option"]');
-    expect(options.length).toBe(7);
+    // 13 nav + 6 quick actions = 19 when query empty
+    expect(options.length).toBe(19);
     expect(options[0].textContent).toContain("Dashboard");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
 
