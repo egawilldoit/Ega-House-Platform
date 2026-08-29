@@ -93,11 +93,11 @@ jobs:
             if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
               echo "No stable mobile baseline found — bootstrap case"
               cat /tmp/selector.json
-              if [ "$CANDIDATE_VER" = "1.0.2" ]; then
-                echo "Bootstrap allowed: candidate is 1.0.2 (first APK for the canonical Expo project)"
+              if [ "$CANDIDATE_VER" = "1.0.1" ]; then
+                echo "Bootstrap allowed: candidate is 1.0.1 (first OTA-enabled APK)"
                 exit 0
               else
-                echo "::error::BOOTSTRAP_VERSION_UNEXPECTED: no stable mobile baseline but candidate $CANDIDATE_VER != 1.0.2 → BLOCK"
+                echo "::error::BOOTSTRAP_VERSION_UNEXPECTED: no stable mobile baseline but candidate $CANDIDATE_VER != 1.0.1 → BLOCK"
                 exit 1
               fi
             fi

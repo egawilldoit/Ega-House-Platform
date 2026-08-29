@@ -186,7 +186,7 @@ export async function fetchLatestReleaseManifest(opts: {
   const releases = await fetchReleasesPaginated({ fetchImpl, timeoutMs, perPage: 100, maxPages: 2 });
   const stableTags = releases.filter(isStableMobileTagRelease);
   if (stableTags.length === 0) {
-    throw new Error('ZERO_STABLE_MOBILE_RELEASES: no stable mobile tag releases — bootstrap only for 1.0.2');
+    throw new Error('ZERO_STABLE_MOBILE_RELEASES: no stable mobile tag releases — bootstrap only for 1.0.1');
   }
   stableTags.sort((a, b) => {
     const va = parseMobileVersionFromTag(a.tag_name) as string;
