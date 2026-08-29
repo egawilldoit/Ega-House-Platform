@@ -26,6 +26,7 @@ import {
   useTaskByIdQuery,
   useUpdateTaskMutation,
 } from '@/features/tasks/query';
+import { useNotifications } from '@/lib/notifications/provider';
 import type { MobileTaskReminder } from '@/types/tasks';
 
 import {
@@ -60,11 +61,13 @@ export function TaskDetailScreen() {
   const [draft, setDraft] = useState<EditableTaskFields | null>(null);
   const [prevTaskId, setPrevTaskId] = useState<string | null>(null);
   const [reminderDate, setReminderDate] = useState<Date | null>(createDefaultReminderDate);
+  const [reminderDeliveryMode, setReminderDeliveryMode] = useState<'push' | 'email' | 'both'>('email');
   const [reminderError, setReminderError] = useState<string | null>(null);
   const [reminderSuccess, setReminderSuccess] = useState<string | null>(null);
   const [isReminderPickerVisible, setIsReminderPickerVisible] = useState(false);
   const [reminderPickerMode, setReminderPickerMode] = useState<ReminderPickerMode>('date');
   const [cancellingReminderId, setCancellingReminderId] = useState<string | null>(null);
+  const { permissionStatus, requestPermissionAndRegister } = useNotifications();
 
   const task = taskQuery.data ?? null;
   const reminders = useMemo(() => sortReminders(task?.reminders ?? []), [task?.reminders]);
@@ -218,6 +221,12 @@ export function TaskDetailScreen() {
       return;
     }
 
+    const needsPush = reminderDeliveryMode === 'push' || reminderDeliveryMode === 'both';
+    if (needsPush && permissionStatus !== 'granted') {
+      setReminderError('Push notifications are off. Enable notifications to receive this reminder on your phone.');
+      return;
+    }
+
     setReminderError(null);
     setReminderSuccess(null);
 
@@ -225,6 +234,7 @@ export function TaskDetailScreen() {
       await createReminderMutation.mutateAsync({
         taskId,
         remindAt: reminderDate.toISOString(),
+        deliveryMode: reminderDeliveryMode,
       });
       setReminderDate(createDefaultReminderDate());
       setIsReminderPickerVisible(false);
@@ -233,7 +243,7 @@ export function TaskDetailScreen() {
       const message = error instanceof Error ? error.message : 'Unable to schedule reminder right now.';
       setReminderError(message);
     }
-  }, [createReminderMutation, reminderDate, taskId]);
+  }, [createReminderMutation, reminderDate, reminderDeliveryMode, permissionStatus, taskId]);
 
   const onCancelReminder = useCallback(
     async (reminderId: string) => {
@@ -336,6 +346,10 @@ export function TaskDetailScreen() {
 
             <TaskReminderSection
               reminderDate={reminderDate}
+              reminderDeliveryMode={reminderDeliveryMode}
+              onDeliveryModeChange={setReminderDeliveryMode}
+              permissionStatus={permissionStatus}
+              onRequestPermission={requestPermissionAndRegister}
               reminderPickerVisible={isReminderPickerVisible}
               reminderPickerMode={reminderPickerMode}
               pendingReminders={pendingReminders as MobileTaskReminder[]}

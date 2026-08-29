@@ -10,12 +10,24 @@ import {
   type AuthenticatedActor,
   type RepositoryResult,
   type StartableTask,
+  type TimeContextRepository,
   type TimerSessionRecord,
   type TimerSessionRepository,
 } from "../src/index";
 
 function ok<T>(value: T): RepositoryResult<T> {
   return { ok: true, value };
+}
+
+class FakeTimeContextRepo implements TimeContextRepository {
+  constructor(private stored: string | null = null) {}
+  async getTimezone(): Promise<RepositoryResult<string | null>> {
+    return ok(this.stored);
+  }
+  async setTimezone(_actor: AuthenticatedActor, timezone: string): Promise<RepositoryResult<string>> {
+    this.stored = timezone;
+    return ok(timezone);
+  }
 }
 
 class FakeTimerRepository implements TimerSessionRepository {
@@ -185,7 +197,7 @@ test("workspace exposes the newest open session and summary aggregates", async (
     taskTitle: "Morning run",
   });
 
-  const result = await getTimerWorkspace(actor, repository, { now: NOW });
+  const result = await getTimerWorkspace(actor, repository, new FakeTimeContextRepo(null), { now: NOW });
   assert.equal(result.ok, true);
   if (!result.ok) return;
 

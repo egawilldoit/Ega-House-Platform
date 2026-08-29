@@ -61,6 +61,7 @@ export function toMobileTaskListItem(record: TaskRecord): MobileTaskListItem {
       taskId: reminder.taskId,
       remindAt: reminder.remindAt,
       channel: reminder.channel,
+      deliveryMode: reminder.deliveryMode ?? "email",
       status: reminder.status,
       sentAt: reminder.sentAt,
       failureReason: reminder.failureReason,

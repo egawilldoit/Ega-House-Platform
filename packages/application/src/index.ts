@@ -13,6 +13,9 @@ export * from "./tasks/list-view";
 export * from "./tasks/focus-queue";
 export * from "./tasks/service";
 export * from "./tasks/recurrence";
+export * from "./notifications/ports";
+export * from "./notifications/service";
+export * from "./notifications/delivery";
 export * from "./today/read-model";
 export * from "./today/ports";
 export * from "./today/plan";
@@ -20,6 +23,8 @@ export * from "./today/service";
 export * from "./timer/ports";
 export * from "./timer/service";
 export * from "./shared/duration";
+export * from "./shared/time-context";
+export * from "./shared/execution-evidence";
 
 export type {
   GoalHealth,
