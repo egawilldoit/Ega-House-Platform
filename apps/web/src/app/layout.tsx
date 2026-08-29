@@ -1,5 +1,28 @@
 import type { Metadata } from "next";
+import { Instrument_Sans, Sora, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { MotionProvider } from "@/components/motion-provider";
+
+const instrumentSans = Instrument_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-body-next",
+  display: "swap",
+});
+
+const sora = Sora({
+  subsets: ["latin"],
+  weight: ["500", "600", "700", "800"],
+  variable: "--font-display-next",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-mono-next",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://egawilldoit.online"),
@@ -31,9 +54,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
+    <html
+      lang="en"
+      className={`h-full antialiased ${instrumentSans.variable} ${sora.variable} ${jetbrainsMono.variable}`}
+    >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        {children}
+        <MotionProvider>{children}</MotionProvider>
       </body>
     </html>
   );
