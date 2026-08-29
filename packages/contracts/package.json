@@ -7,6 +7,8 @@
     ".": "./src/index.ts",
     "./mobile": "./src/mobile.ts",
     "./agent": "./src/agent.ts",
+    "./inbox": "./src/inbox.ts",
+    "./inbox-ai": "./src/inbox-ai.ts",
     "./notifications": "./src/notifications.ts",
     "./common/task-list": "./src/common/task-list.ts",
     "./friction": "./src/friction.ts",

@@ -1,3 +1,5 @@
+import { cache } from "react";
+
 import { createClient } from "@/lib/supabase/server";
 import { getWeekBounds, getTodayIsoDate } from "@/lib/review-week";
 import { getTodayLocalIsoDate } from "@/lib/task-due-date";
@@ -117,7 +119,7 @@ async function getActiveTaskCountOrThrow(
   return getCountOrThrow(buildQuery(false), message);
 }
 
-export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics> {
+async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics> {
   try {
     const supabase = await createClient();
     const today = getTodayLocalIsoDate();
@@ -205,3 +207,7 @@ export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics>
     return buildWorkspaceShellMetrics(FALLBACK_WORKSPACE_SHELL_SNAPSHOT);
   }
 }
+
+// Request-level memoization only — not cross-navigation persistence.
+// See docs/ui-web-v2/SHELL-PERSISTENCE-EVALUATION.md for precise claims.
+export const getWorkspaceShellMetrics = cache(getWorkspaceShellMetricsUncached);
