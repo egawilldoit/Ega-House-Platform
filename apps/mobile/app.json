@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "mobile",
-    "slug": "mobile",
+    "slug": "ega-house",
     "version": "1.0.2",
     "runtimeVersion": {
       "policy": "appVersion"
