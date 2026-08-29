@@ -302,3 +302,22 @@ export function getCurrentWeekWindow(
   }
   return window;
 }
+
+export function getRollingLocalWindow(
+  requestedTimezone: string | null | undefined,
+  now: Date,
+  windowDays: number,
+): { startIso: string; endIso: string } {
+  if (!Number.isInteger(windowDays) || windowDays <= 0) {
+    throw new Error(`Invalid windowDays: expected positive integer, got "${String(windowDays)}"`);
+  }
+  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
+    throw new Error("Invalid now date");
+  }
+  const resolved = resolveEffectiveTimezone(requestedTimezone);
+  const effective = resolved.effective;
+  const localDate = getLocalDateInTimezone(now, effective);
+  const startDate = addDaysToIsoDate(localDate, -windowDays);
+  const startWindow = getLocalDayWindow(effective, startDate);
+  return { startIso: startWindow.startUtcIso, endIso: now.toISOString() };
+}
