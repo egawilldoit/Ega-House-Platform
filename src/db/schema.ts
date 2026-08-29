@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -676,5 +677,10 @@ export const operatorProposals = pgTable(
       "operator_proposals_idempotency_key_not_blank",
       sql`length(btrim(${table.idempotencyKey})) > 0`,
     ),
+    foreignKey({
+      columns: [table.parentProposalId],
+      foreignColumns: [table.id],
+      name: "operator_proposals_parent_proposal_id_fkey",
+    }).onDelete("set null"),
   ],
 );
