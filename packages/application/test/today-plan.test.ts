@@ -7,12 +7,22 @@ import {
   getTodayPlan,
   type AuthenticatedActor,
   type RepositoryResult,
+  type TimeContextRepository,
   type TodayReadPort,
   type TodaySourceTask,
 } from "../src/index";
 
 function ok<T>(value: T): RepositoryResult<T> {
   return { ok: true, value };
+}
+
+class FakeTimeContextRepo implements TimeContextRepository {
+  async getTimezone(): Promise<RepositoryResult<string | null>> {
+    return ok(null);
+  }
+  async setTimezone(_actor: AuthenticatedActor, timezone: string): Promise<RepositoryResult<string>> {
+    return ok(timezone);
+  }
 }
 
 function task(overrides: Partial<TodaySourceTask> & { id: string }): TodaySourceTask {
@@ -107,7 +117,7 @@ test("Today plan sections, suggestions, summary, and active timer match the mobi
     trackedTodaySeconds: 1500,
   });
 
-  const result = await getTodayPlan(createAuthenticatedActor("user-today"), port, {
+  const result = await getTodayPlan(createAuthenticatedActor("user-today"), port, new FakeTimeContextRepo(), {
     date: TODAY,
     now: new Date("2026-08-10T12:00:00"),
   });

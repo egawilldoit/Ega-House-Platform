@@ -1,13 +1,15 @@
-import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain";
+import { getLocalDayWindow } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import { resolveTimeContext, type TimeContextRepository } from "../shared/time-context";
 import type { TodayReadPort } from "./ports";
 import { buildTodayPlan, type TodayPlan } from "./plan";
 
 export async function getTodayPlan(
   actor: AuthenticatedActor,
   port: TodayReadPort,
+  timeContextRepository: TimeContextRepository,
   input: Readonly<{ date?: unknown; now?: Date; timezone?: unknown }> = {},
 ): Promise<ApplicationResult<TodayPlan>> {
   const now = input.now ?? new Date();
@@ -17,17 +19,23 @@ export async function getTodayPlan(
   const rawDate = String(input.date ?? "").trim();
   const requestedTimezone =
     typeof input.timezone === "string" ? input.timezone.trim() : null;
-  // Canonical Today derivation: explicit date wins, otherwise derive local date in requested timezone (or UTC).
-  // This is server-TZ independent via getLocalDateInTimezone / getLocalDayWindow.
+
+  const timeContextResult = await resolveTimeContext(actor, timeContextRepository, {
+    requestedTimezone: requestedTimezone ?? undefined,
+    now,
+  });
+  if (!timeContextResult.ok) {
+    return applicationFailure("Unable to load Today right now.");
+  }
+
   let today: string;
   if (rawDate) {
-    today = rawDate;
-  } else {
-    try {
-      today = getLocalDateInTimezone(now, requestedTimezone ?? "UTC");
-    } catch {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
       return applicationFailure("Today date is invalid.");
     }
+    today = rawDate;
+  } else {
+    today = timeContextResult.data.localDate;
   }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
@@ -38,7 +46,8 @@ export async function getTodayPlan(
   let windowStartIso: string;
   let windowEndIso: string;
   try {
-    const dayWindow = getLocalDayWindow(requestedTimezone ?? null, today);
+    const effective = timeContextResult.data.timezone;
+    const dayWindow = getLocalDayWindow(effective, today);
     windowStartIso = dayWindow.startUtcIso;
     windowEndIso = dayWindow.endUtcIso;
   } catch {
