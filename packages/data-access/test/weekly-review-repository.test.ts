@@ -140,11 +140,50 @@ test("listPastReviews respects limit and owner", async () => {
   assert.ok(steps.some((s) => s.method === "limit" && s.args[0] === 100));
 });
 
-test("getPreviousReview uses lt week_start and owner", async () => {
+test("getPreviousReview uses strict exact W-1 adjacency (eq week_start = W-7)", async () => {
   const fake = new FakeSupabase([{ data: null, error: null }]);
-  await weeklyReviewRepo(fake).getPreviousReview(ACTOR, "2026-01-12");
+  await weeklyReviewRepo(fake).getPreviousReview(ACTOR, "2026-01-19");
   const steps = fake.calls[0].steps;
-  assert.ok(steps.some((s) => s.method === "lt" && s.args[0] === "week_start"));
+  assert.ok(steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
+  const eqWeekStart = steps.find((s) => s.method === "eq" && s.args[0] === "week_start");
+  assert.ok(eqWeekStart, "should query eq week_start for strict adjacency");
+  assert.equal(eqWeekStart!.args[1], "2026-01-12", "previous week is exactly 7 days before");
+  assert.ok(!steps.some((s) => s.method === "lt"), "must not use lt newest arbitrary older review");
+  assert.ok(!steps.some((s) => s.method === "order"), "strict eq does not need ordering by newest");
+});
+
+test("getPreviousReview strict: W-1 missing returns null even if W-2 exists (never newest arbitrary)", async () => {
+  // Simulate DB has review for 2026-01-05 (W-2) but not 2026-01-12 (W-1) when querying for 2026-01-19 (W)
+  // Repository does eq 2026-01-12, so fake returns null, proving it does not fallback to W-2.
+  const fakeMissing = new FakeSupabase([{ data: null, error: null }]);
+  const missingResult = await weeklyReviewRepo(fakeMissing).getPreviousReview(ACTOR, "2026-01-19");
+  assert.equal(missingResult.ok, true);
+  if (missingResult.ok) assert.equal(missingResult.value, null);
+  const stepsMissing = fakeMissing.calls[0].steps;
+  const queriedStart = stepsMissing.find((s) => s.method === "eq" && s.args[0] === "week_start")?.args[1];
+  assert.equal(queriedStart, "2026-01-12");
+  // If it were lt, it would have returned the W-2 row; strict ensures null
+  const fakeFound = new FakeSupabase([
+    {
+      data: {
+        id: "prev-1",
+        week_start: "2026-01-12",
+        week_end: "2026-01-18",
+        summary: "Prev",
+        wins: null,
+        blockers: null,
+        next_steps: null,
+        created_at: "2026-01-18T12:00:00.000Z",
+        updated_at: null,
+        official_email_status: null,
+        official_email_sent_at: null,
+      },
+      error: null,
+    },
+  ]);
+  const foundResult = await weeklyReviewRepo(fakeFound).getPreviousReview(ACTOR, "2026-01-19");
+  assert.equal(foundResult.ok, true);
+  if (foundResult.ok) assert.equal(foundResult.value?.id, "prev-1");
 });
 
 test("countTasksCreatedForWindow uses head:true count and owner + window bounds", async () => {

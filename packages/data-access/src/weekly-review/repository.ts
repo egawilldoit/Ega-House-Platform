@@ -62,6 +62,13 @@ function mapTaskActivity(row: Row): WeeklyReviewTaskActivityRow {
   };
 }
 
+function previousWeekStart(weekStart: string): string {
+  const date = new Date(`${weekStart}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return weekStart;
+  date.setUTCDate(date.getUTCDate() - 7);
+  return date.toISOString().slice(0, 10);
+}
+
 export class SupabaseWeeklyReviewRepository implements WeeklyReviewRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -108,15 +115,14 @@ export class SupabaseWeeklyReviewRepository implements WeeklyReviewRepository {
     actor: AuthenticatedActor,
     weekStart: string,
   ): Promise<RepositoryResult<WeeklyReviewRow | null>> {
+    const previousStart = previousWeekStart(weekStart);
     const result = await this.supabase
       .from("week_reviews")
       .select(
         "id, week_start, week_end, summary, wins, blockers, next_steps, created_at, updated_at, official_email_status, official_email_sent_at",
       )
       .eq("owner_user_id", actor.userId)
-      .lt("week_start", weekStart)
-      .order("week_start", { ascending: false })
-      .limit(1)
+      .eq("week_start", previousStart)
       .maybeSingle();
 
     if (result.error) return failure(result.error);
