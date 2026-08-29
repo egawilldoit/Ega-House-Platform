@@ -15,6 +15,18 @@ export type EgaMcpAuthOptions = {
 
 type AuthenticatedRequest = Request & { auth?: AuthInfo };
 
+function isValidAuthInfo(value: unknown): value is AuthInfo {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const authInfo = value as Record<string, unknown>;
+  return typeof authInfo.token === "string"
+    && authInfo.token.length > 0
+    && typeof authInfo.clientId === "string"
+    && authInfo.clientId.length > 0
+    && Array.isArray(authInfo.scopes)
+    && authInfo.scopes.every((scope) => typeof scope === "string" && scope.length > 0)
+    && (authInfo.expiresAt === undefined || (typeof authInfo.expiresAt === "number" && Number.isFinite(authInfo.expiresAt)));
+}
+
 function challenge(
   options: EgaMcpAuthOptions,
   error: "invalid_token" | "insufficient_scope",
@@ -82,7 +94,7 @@ export function withEgaMcpAuth(
       );
     }
 
-    if (!authInfo) {
+    if (!isValidAuthInfo(authInfo)) {
       return oauthError(
         401,
         options,

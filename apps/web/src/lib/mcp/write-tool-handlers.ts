@@ -2,15 +2,51 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
-import { createHash } from "node:crypto";
-import { inputRequired, acceptedContent } from "@modelcontextprotocol/server";
-import { SupabaseGoalsRepository } from "@ega/data-access";
+import {
+  acceptedContent,
+  inputRequired,
+} from "@modelcontextprotocol/server";
+import {
+  canonicalMutationFingerprint,
+  claimMcpMutation,
+  failMcpMutation,
+  storeMcpMutationResult,
+} from "@/lib/mcp/mutation-idempotency";
+import {
+  assertVerifiedMcpMutationState,
+  McpMutationStateError,
+  mintMcpMutationState,
+  type McpMutationBinding,
+} from "@/lib/mcp/mrtr-binding";
+import {
+  createRequestStateCodec,
+  getRequestStateSecret,
+  McpRequestStateConfigurationError,
+} from "@/lib/mcp/request-state";
+import {
+  createGoal,
+  unarchiveGoal,
+  updateGoalHealth,
+  updateGoalNextStep,
+  updateGoalStatus,
+  archiveGoal,
+} from "@/lib/mcp/write/goals";
+import { createMcpTodayWriteHandlers } from "@/lib/mcp/write/today";
+import {
+  archiveProject,
+  createProject,
+  unarchiveProject,
+  updateProjectStatus,
+} from "@/lib/mcp/write/projects";
+import { createTaskMcpWriteHandlers } from "@/lib/mcp/write/tasks";
+import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
 } from "@/lib/mcp/tool-authorization";
+import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
+import { z } from "zod-v4";
 
 export type McpWriteToolDependencies = {
   createUserClient: (accessToken: string) => SupabaseClient<McpDatabase>;
@@ -32,6 +68,16 @@ function errorResult(error: unknown): CallToolResult {
   let payload: ToolErrorPayload;
   if (error instanceof McpToolAuthorizationError) {
     payload = { ok: false, error: { code: error.code, message: error.message } };
+  } else if (error instanceof McpMutationStateError) {
+    payload = {
+      ok: false,
+      error: { code: "INVALID_ARGUMENT", message: "MCP confirmation state is missing, invalid, or expired." },
+    };
+  } else if (error instanceof McpRequestStateConfigurationError) {
+    payload = {
+      ok: false,
+      error: { code: "DEPENDENCY_UNAVAILABLE", message: "EGA MCP confirmation signing is not configured." },
+    };
   } else if (error instanceof Error && error.message.includes("writes are disabled")) {
     payload = { ok: false, error: { code: "WRITES_DISABLED", message: error.message } };
   } else if (error instanceof Error && error.message.startsWith("Failed to")) {
@@ -42,89 +88,158 @@ function errorResult(error: unknown): CallToolResult {
   return { ...resultFromPayload(payload as unknown as Record<string, unknown>), isError: true };
 }
 
-function requirePrincipal(authInfo: AuthInfo | undefined) {
-  if (!authInfo) throw new McpToolAuthorizationError("UNAUTHENTICATED", "Authentication is required for this tool.");
-  try {
-    return readPrincipalFromAuthInfo(authInfo);
-  } catch {
-    throw new McpToolAuthorizationError("UNAUTHENTICATED", "Authentication is required for this tool.");
-  }
-}
-
-function createClient(deps: McpWriteToolDependencies, authInfo: AuthInfo): SupabaseClient<McpDatabase> {
-  return deps.createUserClient(authInfo.token);
-}
-
 function assertWritesEnabled(writesEnabled: boolean) {
   if (!writesEnabled) throw new Error("MCP writes are disabled by server configuration (MCP_WRITES_ENABLED).");
 }
 
-async function checkIdempotency(
-  client: SupabaseClient<McpDatabase>,
-  toolName: string,
-  operationId: string,
-  args: unknown,
-): Promise<{ replay?: Record<string, unknown>; conflict?: boolean }> {
-  const argsHash = createHash("sha256").update(JSON.stringify(args)).digest("hex");
-  const { data, error } = await (client as unknown as SupabaseClient).rpc("mcp_claim_mutation_receipt", {
-    p_tool_name: toolName,
-    p_operation_id: operationId,
-    p_args_hash: argsHash,
-  });
-  if (error) throw new Error(`Idempotency ledger unavailable: ${error.message}`);
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) throw new Error("Idempotency ledger failed to claim");
-  if ((row as { is_conflict?: boolean }).is_conflict) return { conflict: true };
-  if ((row as { is_replay?: boolean }).is_replay) return { replay: (row as { existing_result?: Record<string, unknown> }).existing_result };
-  return {};
+type McpRequestView = {
+  inputResponses?: unknown;
+  requestState?: <T>() => T | undefined;
+};
+
+function requestViewOf(ctx: unknown): McpRequestView | undefined {
+  const view = (ctx as { mcpReq?: McpRequestView } | undefined)?.mcpReq;
+  return view ?? undefined;
 }
 
-async function storeIdempotencyResult(
+const CONFIRMATION_SCHEMA = z.object({ confirm: z.boolean() });
+
+/**
+ * Exclusive-execution wrapper (A1 contract):
+ * CLAIM_GRANTED → mutate → store with claim token; handler-reported errors and
+ * thrown errors mark FAILED_FINAL so the row is re-claimable; IN_PROGRESS and
+ * REPLAY and CONFLICT never mutate. Ledger failures throw (fail closed).
+ */
+async function withExclusiveMutation(
   client: SupabaseClient<McpDatabase>,
   toolName: string,
   operationId: string,
-  payload: Record<string, unknown>,
-): Promise<void> {
-  const { error } = await (client as unknown as SupabaseClient).rpc("mcp_store_mutation_result", {
-    p_tool_name: toolName,
-    p_operation_id: operationId,
-    p_result_payload: payload,
-  });
-  if (error) throw new Error(`Failed to persist idempotency result: ${error.message}`);
+  semanticInput: Record<string, unknown>,
+  mutate: () => Promise<CallToolResult>,
+): Promise<CallToolResult> {
+  const fingerprint = canonicalMutationFingerprint(toolName, semanticInput);
+  const claim = await claimMcpMutation(client, toolName, operationId, fingerprint);
+  if (claim.outcome === "IN_PROGRESS") {
+    return {
+      ...resultFromPayload({
+        ok: false,
+        error: { code: "IN_PROGRESS", message: "This operation is already executing; retry shortly." },
+      } as unknown as Record<string, unknown>),
+      isError: true,
+    };
+  }
+  if (claim.outcome === "REPLAY") {
+    return resultFromPayload(claim.result);
+  }
+  if (claim.outcome === "CONFLICT") {
+    return {
+      ...resultFromPayload({
+        ok: false,
+        error: { code: "CONFLICT", message: "operationId reused with different arguments." },
+      } as unknown as Record<string, unknown>),
+      isError: true,
+    };
+  }
+  try {
+    const result = await mutate();
+    if (result.isError) {
+      await failMcpMutation(client, toolName, operationId, claim.claimToken, true);
+      return result;
+    }
+    await storeMcpMutationResult(
+      client,
+      toolName,
+      operationId,
+      claim.claimToken,
+      (result.structuredContent ?? {}) as Record<string, unknown>,
+    );
+    return result;
+  } catch (error) {
+    await failMcpMutation(client, toolName, operationId, claim.claimToken, true).catch(() => {});
+    throw error;
+  }
 }
 
 export function createMcpWriteToolHandlers(
   dependencies: McpWriteToolDependencies,
   writesEnabled = false,
+  resource = "https://ega.example.com/api/mcp",
 ) {
+  const moduleDeps = {
+    createUserClient: dependencies.createUserClient,
+  };
+
+  const todayHandlers = createMcpTodayWriteHandlers({
+    createUserClient: dependencies.createUserClient,
+    clearCompletedMrtr: {
+      async firstRound(input, principal) {
+        // Fail closed when the signing secret is missing/short: no input_required, no mutation path.
+        const secret = getRequestStateSecret();
+        const codec = createRequestStateCodec<McpMutationBinding>({ key: secret, ttlSeconds: 300 });
+        const argsHash = canonicalMutationFingerprint("ega_clear_completed_today", { date: input.date });
+        const requestState = await mintMcpMutationState(codec, {
+          user: principal.ownerUserId,
+          client: principal.oauthClientId,
+          grantId: principal.grantId,
+          grantVersion: principal.permissionsVersion,
+          resource,
+          tool: "ega_clear_completed_today",
+          operationId: input.operationId,
+          argsHash,
+          phase: "awaiting_confirmation",
+          targetDate: input.date,
+        });
+        return inputRequired({
+          inputRequests: {
+            confirm: inputRequired.elicit({
+              message: `Clear completed tasks planned for ${input.date}?`,
+              requestedSchema: CONFIRMATION_SCHEMA,
+            }),
+          },
+          requestState,
+        }) as unknown;
+      },
+      async verifySecondRound(ctx, input, principal) {
+        const view = requestViewOf(ctx);
+        const verifiedState = view?.requestState?.<McpMutationBinding>();
+        assertVerifiedMcpMutationState(
+          {
+            principal: {
+              ownerUserId: principal.ownerUserId,
+              oauthClientId: principal.oauthClientId,
+              grantId: principal.grantId,
+              permissionsVersion: principal.permissionsVersion,
+            },
+            resource,
+            tool: "ega_clear_completed_today",
+            operationId: input.operationId,
+            argsHash: canonicalMutationFingerprint("ega_clear_completed_today", { date: input.date }),
+            expectedPhase: "awaiting_confirmation",
+            targetDate: input.date,
+          },
+          verifiedState,
+        );
+      },
+    },
+    readVerifiedClearCompletedState: (ctx: unknown) => requestViewOf(ctx)?.requestState?.<McpMutationBinding>(),
+  });
+
+  const taskHandlers = createTaskMcpWriteHandlers(moduleDeps);
+  const timerHandlers = createMcpTimerModuleHandlers(moduleDeps, writesEnabled);
+
   return {
+    // Projects
     async createProject(
       authInfo: AuthInfo | undefined,
       input: { name: string; slug?: string; description?: string | null; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "projects.create");
-        requirePrincipal(authInfo);
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_create_project", input.operationId, { name: input.name, slug: input.slug, description: input.description });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        // Use canonical slug normalization (same as @ega/application normalizeProjectSlug)
-        const { normalizeProjectSlug } = await import("@ega/application");
-        const slug = input.slug ? normalizeProjectSlug(input.slug) : normalizeProjectSlug(input.name);
-        if (!input.name?.trim()) throw new Error("Project name is required.");
-        if (!slug) throw new Error("Project slug is required.");
-        const { data, error } = await (client as unknown as SupabaseClient).from("projects").insert({
-          owner_user_id: principal.ownerUserId,
-          name: input.name.trim(),
-          slug,
-          description: input.description ?? null,
-        }).select("id, name, slug, description, status, created_at, updated_at").single();
-        if (error) throw new Error(`Failed to create project: ${error.message}`);
-        const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_create_project", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "projects.create");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_create_project", input.operationId, { name: input.name, slug: input.slug ?? null, description: input.description ?? null }, () =>
+          createProject(authInfo, { name: input.name, slug: input.slug ?? null, description: input.description ?? null }, moduleDeps),
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -136,55 +251,152 @@ export function createMcpWriteToolHandlers(
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "projects.update");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_update_project_status", input.operationId, { projectId: input.projectId, status: input.status });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const { SupabaseProjectsRepository: SPR2 } = await import("@ega/data-access");
-        const projRepo2 = new SPR2(client as unknown as never);
-        const actor2 = { userId: principal.ownerUserId } as unknown as never;
-        const updRes = await projRepo2.updateProjectStatus(actor2 as never, { projectId: input.projectId, status: input.status as never, updatedAt: new Date().toISOString() } as never);
-        if (!updRes.ok) throw new Error((updRes.error as { message?: string })?.message ?? "Failed to update project");
-        const { data, error } = await (client as unknown as SupabaseClient).from("projects").select("id, name, slug, status").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
-        if (error) throw new Error(`Failed to update project: ${error.message}`);
-        const payload = { ok: true, project: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_update_project_status", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "projects.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_update_project_status", input.operationId, { projectId: input.projectId, status: input.status }, () =>
+          updateProjectStatus(authInfo, { projectId: input.projectId, status: input.status }, moduleDeps),
+        );
       } catch (error) {
         return errorResult(error);
       }
     },
 
-    async createGoal(
+    async archiveProject(
       authInfo: AuthInfo | undefined,
-      input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; operationId: string },
+      input: { projectId: string; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "goals.create");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_create_goal", input.operationId, { title: input.title, projectId: input.projectId, status: input.status });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        // Use canonical Goals repository via SupabaseGoalsRepository (preserves project ownership checks)
-        // Using SupabaseGoalsRepository pattern for future delegation — currently direct, but validates project ownership above
-        void SupabaseGoalsRepository;
-        // Validate project belongs to actor via goalsRepo's underlying check (or direct)
-        const { data: projCheck } = await (client as unknown as SupabaseClient).from("projects").select("id").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
-        if (!projCheck) throw new Error("Project not found or not owned");
-        const { data, error } = await (client as unknown as SupabaseClient).from("goals").insert({
-          owner_user_id: principal.ownerUserId,
-          project_id: input.projectId,
-          title: input.title.trim(),
-          description: input.description ?? null,
-          status: input.status ?? "draft",
-          slug: input.slug ?? null,
-        }).select("id, project_id, title, status, created_at").single();
-        if (error) throw new Error(`Failed to create goal: ${error.message}`);
-        const payload = { ok: true, goal: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_create_goal", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "projects.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_archive_project", input.operationId, { projectId: input.projectId }, () =>
+          archiveProject(authInfo, { projectId: input.projectId }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async unarchiveProject(
+      authInfo: AuthInfo | undefined,
+      input: { projectId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "projects.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_unarchive_project", input.operationId, { projectId: input.projectId }, () =>
+          unarchiveProject(authInfo, { projectId: input.projectId }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Goals
+    async createGoal(
+      authInfo: AuthInfo | undefined,
+      input: { title: string; projectId: string; description?: string | null; status?: string; slug?: string | null; nextStep?: string | null; health?: string | null; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "goals.create");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_create_goal", input.operationId, { title: input.title, projectId: input.projectId, description: input.description ?? null, status: input.status ?? null, slug: input.slug ?? null, nextStep: input.nextStep ?? null, health: input.health ?? null }, () =>
+          createGoal(authInfo, { title: input.title, projectId: input.projectId, description: input.description ?? null, status: input.status, slug: input.slug ?? null, nextStep: input.nextStep ?? null, health: input.health ?? null }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateGoalStatus(
+      authInfo: AuthInfo | undefined,
+      input: { goalId: string; status: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "goals.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_update_goal_status", input.operationId, { goalId: input.goalId, status: input.status }, () =>
+          updateGoalStatus(authInfo, { goalId: input.goalId, status: input.status }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateGoalHealth(
+      authInfo: AuthInfo | undefined,
+      input: { goalId: string; health: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "goals.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_update_goal_health", input.operationId, { goalId: input.goalId, health: input.health }, () =>
+          updateGoalHealth(authInfo, { goalId: input.goalId, health: input.health }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateGoalNextStep(
+      authInfo: AuthInfo | undefined,
+      input: { goalId: string; nextStep: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "goals.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_update_goal_next_step", input.operationId, { goalId: input.goalId, nextStep: input.nextStep }, () =>
+          updateGoalNextStep(authInfo, { goalId: input.goalId, nextStep: input.nextStep }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async archiveGoal(
+      authInfo: AuthInfo | undefined,
+      input: { goalId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "goals.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_archive_goal", input.operationId, { goalId: input.goalId }, () =>
+          archiveGoal(authInfo, { goalId: input.goalId }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async unarchiveGoal(
+      authInfo: AuthInfo | undefined,
+      input: { goalId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "goals.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_unarchive_goal", input.operationId, { goalId: input.goalId }, () =>
+          unarchiveGoal(authInfo, { goalId: input.goalId }, moduleDeps),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Tasks (read via canonical task read model)
+    async getTask(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string },
+    ): Promise<CallToolResult> {
+      try {
+        return await taskHandlers.getTask(authInfo, { taskId: input.taskId });
       } catch (error) {
         return errorResult(error);
       }
@@ -192,40 +404,26 @@ export function createMcpWriteToolHandlers(
 
     async createTask(
       authInfo: AuthInfo | undefined,
-      input: { title: string; projectId: string; goalId?: string | null; description?: string | null; status?: string; priority?: string; dueDate?: string | null; estimateMinutes?: number | null; operationId: string },
+      input: { title: string; projectId: string; goalId?: string | null; description?: string | null; blockedReason?: string | null; status?: string; priority?: string; dueDate?: string | null; estimateMinutes?: number | null; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "tasks.create");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_create_task", input.operationId, { title: input.title, projectId: input.projectId, goalId: input.goalId });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        // Canonical validation: ensure project belongs to actor before insert (via RLS + app-level check)
-        const { data: projectCheck, error: projectError } = await (client as unknown as SupabaseClient).from("projects").select("id").eq("id", input.projectId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
-        if (projectError) throw new Error(`Failed to validate project: ${projectError.message}`);
-        if (!projectCheck) throw new Error("Project not found or not owned by actor");
-        if (input.goalId) {
-          const { data: goalCheck, error: goalError } = await (client as unknown as SupabaseClient).from("goals").select("id, project_id").eq("id", input.goalId).eq("owner_user_id", principal.ownerUserId).maybeSingle();
-          if (goalError) throw new Error(`Failed to validate goal: ${goalError.message}`);
-          if (!goalCheck) throw new Error("Goal not found or not owned by actor");
-          if ((goalCheck as { project_id: string }).project_id !== input.projectId) throw new Error("Goal does not belong to selected project");
-        }
-        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").insert({
-          owner_user_id: principal.ownerUserId,
-          project_id: input.projectId,
-          goal_id: input.goalId ?? null,
-          title: input.title.trim(),
-          description: input.description ?? null,
-          status: input.status ?? "todo",
-          priority: input.priority ?? "medium",
-          due_date: input.dueDate ?? null,
-          estimate_minutes: input.estimateMinutes ?? null,
-        }).select("id, project_id, title, status, priority, created_at").single();
-        if (error) throw new Error(`Failed to create task: ${error.message}`);
-        const payload = { ok: true, task: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_create_task", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "tasks.create");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semantic = { title: input.title, projectId: input.projectId, goalId: input.goalId ?? null, description: input.description ?? null, blockedReason: input.blockedReason ?? null, status: input.status ?? null, priority: input.priority ?? null, dueDate: input.dueDate ?? null, estimateMinutes: input.estimateMinutes ?? null };
+        return await withExclusiveMutation(client, "ega_create_task", input.operationId, semantic, () =>
+          taskHandlers.createTask(authInfo, {
+            title: input.title,
+            projectId: input.projectId,
+            goalId: input.goalId ?? null,
+            description: input.description ?? null,
+            blockedReason: input.blockedReason ?? null,
+            status: input.status,
+            priority: input.priority,
+            dueDate: input.dueDate ?? null,
+            estimateMinutes: input.estimateMinutes ?? null,
+          }),
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -233,72 +431,233 @@ export function createMcpWriteToolHandlers(
 
     async updateTask(
       authInfo: AuthInfo | undefined,
-      input: { taskId: string; title?: string; status?: string; priority?: string; description?: string | null; operationId: string },
+      input: { taskId: string; title?: string; description?: string | null; blockedReason?: string | null; status?: string; priority?: string; dueDate?: string | null; estimateMinutes?: number | null; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "tasks.update");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_update_task", input.operationId, { taskId: input.taskId, title: input.title, status: input.status });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
-        if (input.title !== undefined) patch.title = input.title;
-        if (input.status !== undefined) patch.status = input.status;
-        if (input.priority !== undefined) patch.priority = input.priority;
-        if (input.description !== undefined) patch.description = input.description;
-        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update(patch).eq("id", input.taskId).eq("owner_user_id", principal.ownerUserId).select("id, title, status, priority, updated_at").single();
-        if (error) throw new Error(`Failed to update task: ${error.message}`);
-        const payload = { ok: true, task: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_update_task", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "tasks.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        const semantic = { taskId: input.taskId, title: input.title ?? null, description: input.description ?? null, blockedReason: input.blockedReason ?? null, status: input.status ?? null, priority: input.priority ?? null, dueDate: input.dueDate ?? null, estimateMinutes: input.estimateMinutes ?? null };
+        return await withExclusiveMutation(client, "ega_update_task", input.operationId, semantic, () =>
+          taskHandlers.updateTask(authInfo, {
+            taskId: input.taskId,
+            title: input.title,
+            description: input.description ?? null,
+            blockedReason: input.blockedReason ?? null,
+            status: input.status,
+            priority: input.priority,
+            dueDate: input.dueDate ?? null,
+            estimateMinutes: input.estimateMinutes ?? null,
+          }),
+        );
       } catch (error) {
         return errorResult(error);
       }
     },
 
+    async archiveTask(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "tasks.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_archive_task", input.operationId, { taskId: input.taskId }, () =>
+          taskHandlers.archiveTask(authInfo, { taskId: input.taskId }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async unarchiveTask(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "tasks.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_unarchive_task", input.operationId, { taskId: input.taskId }, () =>
+          taskHandlers.unarchiveTask(authInfo, { taskId: input.taskId }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async setTaskFocusRank(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; pinned: boolean; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "tasks.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_set_task_focus_rank", input.operationId, { taskId: input.taskId, pinned: input.pinned }, () =>
+          taskHandlers.setTaskFocusRank(authInfo, { taskId: input.taskId, pinned: input.pinned }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async createTaskReminder(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; remindAt: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "tasks.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_create_task_reminder", input.operationId, { taskId: input.taskId, remindAt: input.remindAt }, () =>
+          taskHandlers.createTaskReminder(authInfo, { taskId: input.taskId, remindAt: input.remindAt }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async cancelTaskReminder(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; reminderId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "tasks.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_cancel_task_reminder", input.operationId, { taskId: input.taskId, reminderId: input.reminderId }, () =>
+          taskHandlers.cancelTaskReminder(authInfo, { taskId: input.taskId, reminderId: input.reminderId }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Today (projection over tasks)
     async planTaskForToday(
       authInfo: AuthInfo | undefined,
       input: { taskId: string; date: string; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "today.update");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_plan_task_for_today", input.operationId, { taskId: input.taskId, date: input.date });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update({ planned_for_date: input.date, updated_at: new Date().toISOString() }).eq("id", input.taskId).eq("owner_user_id", principal.ownerUserId).select("id, planned_for_date").single();
-        if (error) throw new Error(`Failed to plan task: ${error.message}`);
-        const payload = { ok: true, task: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_plan_task_for_today", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "today.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_plan_task_for_today", input.operationId, { taskId: input.taskId, date: input.date }, () =>
+          todayHandlers.planTaskForToday(authInfo, { taskId: input.taskId, date: input.date }),
+        );
       } catch (error) {
         return errorResult(error);
       }
     },
 
+    async removeTaskFromToday(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "today.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_remove_task_from_today", input.operationId, { taskId: input.taskId }, () =>
+          todayHandlers.removeTaskFromToday(authInfo, { taskId: input.taskId }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async updateTodayTaskStatus(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string; status: string; blockedReason?: string | null; operationId: string },
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        requireMcpPermission(authInfo, "today.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_update_today_task_status", input.operationId, { taskId: input.taskId, status: input.status, blockedReason: input.blockedReason ?? null }, () =>
+          todayHandlers.updateTodayTaskStatus(authInfo, { taskId: input.taskId, status: input.status, blockedReason: input.blockedReason ?? null }),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    /**
+     * MRTR-protected destructive clear. Round 1 (no verified state) returns a
+     * real `input_required` without claiming or mutating. Round 2 requires the
+     * SDK-verified requestState to match the full authorization binding AND an
+     * explicit accepted `confirm` — a declined or cancelled answer NEVER
+     * mutates (fail closed).
+     */
+    async clearCompletedToday(
+      authInfo: AuthInfo | undefined,
+      input: { date: string; operationId: string },
+      ctx?: unknown,
+    ): Promise<CallToolResult> {
+      try {
+        assertWritesEnabled(writesEnabled);
+        const principal = requireMcpPermission(authInfo, "today.update");
+        const view = requestViewOf(ctx);
+        const verifiedState = view?.requestState?.<McpMutationBinding>();
+        if (!verifiedState) {
+          // Round 1 — no claim, no mutation.
+          return await todayHandlers.clearCompletedToday(authInfo, input, ctx);
+        }
+        assertVerifiedMcpMutationState(
+          {
+            principal: {
+              ownerUserId: principal.ownerUserId,
+              oauthClientId: principal.oauthClientId,
+              grantId: principal.grantId,
+              permissionsVersion: principal.permissionsVersion,
+            },
+            resource,
+            tool: "ega_clear_completed_today",
+            operationId: input.operationId,
+            argsHash: canonicalMutationFingerprint("ega_clear_completed_today", { date: input.date }),
+            expectedPhase: "awaiting_confirmation",
+            targetDate: input.date,
+          },
+          verifiedState,
+        );
+        const confirmed = acceptedContent(
+          view?.inputResponses as Record<string, unknown>,
+          "confirm",
+          CONFIRMATION_SCHEMA,
+        ) as { confirm?: boolean } | undefined;
+        if (!confirmed || confirmed.confirm !== true) {
+          // Declined / cancelled / missing → zero mutation, fail closed.
+          return {
+            ...resultFromPayload({
+              ok: false,
+              error: { code: "CONFIRMATION_DECLINED", message: "The operator declined this destructive operation; nothing was changed." },
+            } as unknown as Record<string, unknown>),
+            isError: true,
+          };
+        }
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_clear_completed_today", input.operationId, { date: input.date }, () =>
+          todayHandlers.clearCompletedToday(authInfo, input, ctx),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    // Timer
     async startTimer(
       authInfo: AuthInfo | undefined,
       input: { taskId: string; operationId: string },
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "timer.create");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_start_timer", input.operationId, { taskId: input.taskId });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const startedAt = new Date().toISOString();
-        const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").insert({
-          owner_user_id: principal.ownerUserId,
-          task_id: input.taskId,
-          started_at: startedAt,
-        }).select("id, task_id, started_at").single();
-        if (error) throw new Error(`Failed to start timer: ${error.message}`);
-        const payload = { ok: true, session: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_start_timer", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "timer.create");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_start_timer", input.operationId, { taskId: input.taskId }, () =>
+          timerHandlers.startTimer(authInfo, { taskId: input.taskId }),
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -310,88 +669,11 @@ export function createMcpWriteToolHandlers(
     ): Promise<CallToolResult> {
       try {
         assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "timer.update");
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_stop_timer", input.operationId, { sessionId: input.sessionId });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        const endedAt = new Date().toISOString();
-        const { data: existing, error: fetchError } = await (client as unknown as SupabaseClient).from("task_sessions").select("started_at").eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).maybeSingle();
-        if (fetchError) throw new Error(`Failed to stop timer: ${fetchError.message}`);
-        if (!existing) throw new Error("No open timer session found.");
-        const started = new Date((existing as { started_at: string }).started_at).getTime();
-        const ended = new Date(endedAt).getTime();
-        const durationSeconds = Math.max(0, Math.round((ended - started) / 1000));
-        const { data, error } = await (client as unknown as SupabaseClient).from("task_sessions").update({ ended_at: endedAt, duration_seconds: durationSeconds, updated_at: endedAt }).eq("id", input.sessionId).eq("owner_user_id", principal.ownerUserId).is("ended_at", null).select("id, ended_at, duration_seconds").single();
-        if (error) throw new Error(`Failed to stop timer: ${error.message}`);
-        const payload = { ok: true, session: data } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_stop_timer", input.operationId, payload);
-        return resultFromPayload(payload);
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
-
-    async clearCompletedToday(
-      authInfo: AuthInfo | undefined,
-      input: { date: string; operationId: string },
-      ctx?: { requestId?: string | number; mcpReq?: { inputResponses?: unknown; requestState?: <T>() => T | undefined } },
-    ): Promise<CallToolResult> {
-      try {
-        assertWritesEnabled(writesEnabled);
-        const principal = requireMcpPermission(authInfo, "today.update");
-        const mcpReq = (ctx as unknown as { mcpReq?: { inputResponses?: unknown; requestState?: <T>() => T } })?.mcpReq;
-        const confirmed = mcpReq ? (acceptedContent as unknown as (ir: unknown, k: string, s: unknown) => { confirm?: boolean } | undefined)(mcpReq.inputResponses, "confirm", { parse: (v: unknown) => v } as unknown) : undefined;
-        // Use SDK's acceptedContent with proper schema
-        const { z } = await import("zod-v4");
-        const confirmationSchema = z.object({ confirm: z.boolean() });
-        const verifiedState = mcpReq?.requestState?.<{ phase: string; argsHash: string; targetDate: string }>();
-        const argsHash = createHash("sha256").update(JSON.stringify({ date: input.date, operationId: input.operationId })).digest("hex");
-        if (!verifiedState && (!confirmed || confirmed.confirm !== true)) {
-          const argsHash = createHash("sha256").update(JSON.stringify({ date: input.date, operationId: input.operationId })).digest("hex");
-          const { createRequestStateCodec } = await import("@/lib/mcp/request-state");
-          const secret = process.env.MCP_REQUEST_STATE_SECRET || "test-secret-32-bytes-long-for-dev-only-1234";
-          const codec = createRequestStateCodec({ key: secret, ttlSeconds: 300 });
-          const requestState = await codec.mint({
-            user: principal.ownerUserId,
-            client: principal.oauthClientId,
-            grantId: principal.grantId,
-            grantVersion: principal.permissionsVersion,
-            resource: "https://ega.example.com/api/mcp",
-            tool: "ega_clear_completed_today",
-            operationId: input.operationId,
-            argsHash,
-            targetDate: input.date,
-            phase: "awaiting_confirmation",
-          } as unknown as Record<string, unknown>);
-          return inputRequired({
-            inputRequests: {
-              confirm: inputRequired.elicit({
-                message: `Clear completed tasks for ${input.date}?`,
-                requestedSchema: confirmationSchema,
-              }),
-            },
-            requestState,
-          }) as unknown as CallToolResult;
-        }
-        // Verify requestState binding on retry
-        if (verifiedState) {
-          if (verifiedState.argsHash !== argsHash || verifiedState.targetDate !== input.date) {
-            return resultFromPayload({ ok: false, error: { code: "INVALID_ARGUMENT", message: "Arguments changed between MRTR rounds." } } as unknown as Record<string, unknown>);
-          }
-        }
-        // Idempotency check
-        const client = createClient(dependencies, authInfo!);
-        const idempotency = await checkIdempotency(client, "ega_clear_completed_today", input.operationId, { date: input.date });
-        if (idempotency.conflict) return resultFromPayload({ ok: false, error: { code: "CONFLICT", message: "operationId reused with different args." } } as unknown as Record<string, unknown>);
-        if (idempotency.replay) return resultFromPayload(idempotency.replay);
-        // TOCTOU revalidation: reload grant would happen here (principal already validated at call time; second round would re-resolve via verifyMcpHandlerToken)
-        // Perform mutation: update tasks where planned_for_date = date and status completed and owner = principal.ownerUserId
-        const { data, error } = await (client as unknown as SupabaseClient).from("tasks").update({ planned_for_date: null, updated_at: new Date().toISOString() }).eq("owner_user_id", principal.ownerUserId).eq("planned_for_date", input.date).eq("status", "completed").select("id");
-        if (error) throw new Error(`Failed to clear completed: ${error.message}`);
-        const payload = { ok: true, clearedCount: (data as unknown[])?.length ?? 0 } as unknown as Record<string, unknown>;
-        await storeIdempotencyResult(client, "ega_clear_completed_today", input.operationId, payload);
-        return resultFromPayload(payload);
+        requireMcpPermission(authInfo, "timer.update");
+        const client = dependencies.createUserClient(authInfo!.token);
+        return await withExclusiveMutation(client, "ega_stop_timer", input.operationId, { sessionId: input.sessionId }, () =>
+          timerHandlers.stopTimer(authInfo, { sessionId: input.sessionId }),
+        );
       } catch (error) {
         return errorResult(error);
       }

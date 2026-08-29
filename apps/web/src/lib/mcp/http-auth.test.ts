@@ -91,4 +91,31 @@ describe("withEgaMcpAuth", () => {
       error_description: "Invalid access token.",
     });
   });
+
+  it("fails closed when a verifier returns malformed auth info", async () => {
+    const handler = vi.fn();
+    const verify = vi.fn().mockResolvedValue({ scopes: ["ega.mcp.authorized"], expiresAt: Number.NaN });
+    const protectedHandler = withEgaMcpAuth(handler, verify, OPTIONS);
+
+    const response = await protectedHandler(new Request("https://ega.example.com/api/mcp", {
+      headers: { Authorization: "Bearer signed-token", "Mcp-Method": "ega_create_project", "Mcp-Name": "ega_create_project" },
+    }));
+
+    expect(response.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not treat MCP routing headers as authorization", async () => {
+    const handler = vi.fn();
+    const verify = vi.fn();
+    const protectedHandler = withEgaMcpAuth(handler, verify, OPTIONS);
+
+    const response = await protectedHandler(new Request("https://ega.example.com/api/mcp", {
+      headers: { "Mcp-Method": "ega_create_project", "Mcp-Name": "ega_create_project" },
+    }));
+
+    expect(response.status).toBe(401);
+    expect(verify).not.toHaveBeenCalled();
+    expect(handler).not.toHaveBeenCalled();
+  });
 });

@@ -96,6 +96,25 @@ function permissionsMatchProfile(
   );
 }
 
+export function isValidMcpPrincipal(value: unknown): value is McpPrincipal {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const principal = value as Record<string, unknown>;
+  if (
+    typeof principal.ownerUserId !== "string" || principal.ownerUserId.trim() === ""
+    || typeof principal.oauthClientId !== "string" || principal.oauthClientId.trim() === ""
+    || typeof principal.grantId !== "string" || principal.grantId.trim() === ""
+    || !Number.isInteger(principal.permissionsVersion) || (principal.permissionsVersion as number) < 1
+  ) return false;
+
+  let profile: McpPermissionProfile;
+  try {
+    profile = parsePermissionProfile(principal.permissionProfile);
+  } catch {
+    return false;
+  }
+  return permissionsMatchProfile(principal.permissions, getPermissionsForProfile(profile));
+}
+
 export function resolveMcpPrincipal(
   claims: Record<string, unknown>,
   grant: McpGrantRecord | null,

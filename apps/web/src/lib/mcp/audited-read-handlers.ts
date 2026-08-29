@@ -255,6 +255,19 @@ export function createAuditedMcpReadHandlers(
       );
     },
 
+    getTask(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["getTask"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_get_task",
+        authInfo,
+        context,
+        () => handlers.getTask(authInfo, input),
+      );
+    },
+
     getTodayPlan(
       authInfo: AuthInfo | undefined,
       input: Parameters<BaseReadHandlers["getTodayPlan"]>[1],

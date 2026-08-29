@@ -29,15 +29,10 @@ describe("MCP permission profiles", () => {
     expect(hasMcpPermission(permissions, "tasks.archive")).toBe(false);
   });
 
-  it("maps delivery_observer to delivery reads without task writes", () => {
-    const permissions = getPermissionsForProfile("delivery_observer");
-
-    expect(permissions).toEqual([
-      "delivery_runs.read",
-      "delivery_events.read",
-      "delivery_artifacts.read",
-    ]);
-    expect(hasMcpPermission(permissions, "tasks.update")).toBe(false);
+  it("rejects the retired delivery_observer profile with no registered tools", () => {
+    expect(() => parsePermissionProfile("delivery_observer")).toThrow(
+      "Unsupported MCP permission profile.",
+    );
   });
 
   it("rejects unknown profiles instead of granting a default profile", () => {

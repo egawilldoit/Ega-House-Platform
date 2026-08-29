@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/server";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { MCP_AUTHORIZED_SCOPE } from "@/lib/mcp/auth-info";
@@ -60,11 +61,12 @@ describe("createMcpRouteRuntime", () => {
     );
   });
 
-  it("registers the configured read handlers on the transport server", () => {
-    let registerServer: ((server: McpServer) => void) | undefined;
+  it("registers no fallback tools when auth information is absent or malformed", () => {
+    let registerServer: ((server: McpServer, authInfo?: AuthInfo) => void) | undefined;
     const dependencies: McpRouteRuntimeDependencies = {
       createReadHandlers: vi.fn().mockReturnValue({ marker: "handlers" }),
       registerReadTools: vi.fn(),
+      registerToolsForPrincipal: vi.fn(),
       createTransportHandler: vi.fn((register) => {
         registerServer = register;
         return vi.fn();
@@ -76,11 +78,10 @@ describe("createMcpRouteRuntime", () => {
     createMcpRouteRuntime(CONFIG, dependencies);
     const server = {} as McpServer;
     registerServer!(server);
+    registerServer!(server, { token: "token", clientId: "client", scopes: [], extra: { principal: { ownerUserId: "owner" } } });
 
-    expect(dependencies.registerReadTools).toHaveBeenCalledWith(
-      server,
-      { marker: "handlers" },
-    );
+    expect(dependencies.registerReadTools).not.toHaveBeenCalled();
+    expect(dependencies.registerToolsForPrincipal).not.toHaveBeenCalled();
   });
 
   it("uses the same authenticated boundary for GET and POST", () => {

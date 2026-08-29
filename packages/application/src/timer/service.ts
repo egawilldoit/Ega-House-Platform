@@ -9,6 +9,18 @@ import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
 import type { TimerSessionRecord, TimerSessionRepository } from "./ports";
 
+/**
+ * Canonical timer failure messages. Transport layers map these to protocol
+ * error codes without duplicating the wording.
+ */
+export const TIMER_ALREADY_RUNNING_MESSAGE =
+  "A timer is already running. Stop it before starting a new one.";
+export const TIMER_TASK_UNAVAILABLE_MESSAGE = "Task is unavailable.";
+export const TIMER_NO_OPEN_SESSION_MATCH_MESSAGE =
+  "No running timer session matches this request.";
+export const TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE =
+  "That timer session is no longer running.";
+
 export type TimerActiveSession = Readonly<{
   sessionId: string;
   taskId: string;
@@ -127,7 +139,7 @@ export async function startTaskSession(
 
   const taskResult = await repository.getStartableTask(actor, { taskId });
   if (!taskResult.ok) return applicationFailure("Unable to verify the task right now.");
-  if (!taskResult.value) return applicationFailure("Task is unavailable.");
+  if (!taskResult.value) return applicationFailure(TIMER_TASK_UNAVAILABLE_MESSAGE);
   if (!taskResult.value.eligible) {
     return applicationFailure(taskResult.value.reason ?? "This task cannot start a timer.");
   }
@@ -135,14 +147,14 @@ export async function startTaskSession(
   const openResult = await repository.listOpenSessions(actor);
   if (!openResult.ok) return applicationFailure("Unable to verify running timers right now.");
   if (openResult.value.length > 0) {
-    return applicationFailure("A timer is already running. Stop it before starting a new one.");
+    return applicationFailure(TIMER_ALREADY_RUNNING_MESSAGE);
   }
 
   const insertResult = await repository.insertOpenSession(actor, { taskId, startedAtIso });
   if (!insertResult.ok) {
     return applicationFailure(
       insertResult.error.code === "conflict"
-        ? "A timer is already running. Stop it before starting a new one."
+        ? TIMER_ALREADY_RUNNING_MESSAGE
         : "Unable to start the timer right now.",
     );
   }
@@ -170,7 +182,7 @@ export async function stopTaskSession(
     : openSessions[0];
 
   if (!target) {
-    return applicationFailure("No running timer session matches this request.");
+    return applicationFailure(TIMER_NO_OPEN_SESSION_MATCH_MESSAGE);
   }
 
   const endedAtIso = (options.now ?? new Date()).toISOString();
@@ -183,7 +195,7 @@ export async function stopTaskSession(
   });
   if (!finalizeResult.ok) return applicationFailure("Unable to stop the timer right now.");
   if (!finalizeResult.value) {
-    return applicationFailure("That timer session is no longer running.");
+    return applicationFailure(TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE);
   }
 
   return applicationSuccess({ sessionId: target.id, taskId: target.taskId });

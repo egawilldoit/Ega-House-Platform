@@ -17,13 +17,13 @@ import {
 } from "@/lib/mcp/read-repository";
 import { createMcpHandlerTokenVerifier } from "@/lib/mcp/runtime-auth";
 import {
-  registerMcpReadTools,
-  registerMcpTools,
+  registerMcpToolsForPrincipal,
   type McpReadToolHandlers,
   type McpWriteToolHandlers,
 } from "@/lib/mcp/server";
 import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
+import { isValidMcpPrincipal } from "@/lib/mcp/principal";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
@@ -52,14 +52,16 @@ type AuthOptions = {
 export type McpRouteRuntimeDependencies = {
   createReadHandlers: (config: McpRuntimeConfig) => McpReadToolHandlers;
   createWriteHandlers?: (config: McpRuntimeConfig) => McpWriteToolHandlers;
-  registerReadTools: (
+  /** @deprecated Compatibility-only; never used as a registration fallback. */
+  registerReadTools?: (
     server: McpServer,
     handlers: McpReadToolHandlers,
   ) => void;
-  registerTools?: (
+  registerToolsForPrincipal?: (
     server: McpServer,
     readHandlers: McpReadToolHandlers,
-    writeHandlers?: McpWriteToolHandlers,
+    writeHandlers: McpWriteToolHandlers | undefined,
+    allowedNames: ReadonlySet<string>,
   ) => void;
   createTransportHandler: (
     registerServer: (server: McpServer, authInfo?: AuthInfo) => void,
@@ -105,7 +107,7 @@ function createWriteHandlers(config: McpRuntimeConfig): McpWriteToolHandlers {
       supabaseUrl: config.supabaseUrl,
       publishableKey: config.publishableKey,
     });
-  const baseHandlers = createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled);
+  const baseHandlers = createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled, config.resource);
   return createAuditedMcpWriteHandlers(baseHandlers, {
     createUserClient,
     consumeRateLimit: consumeMcpRateLimit,
@@ -118,8 +120,7 @@ function createWriteHandlers(config: McpRuntimeConfig): McpWriteToolHandlers {
 const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
   createReadHandlers,
   createWriteHandlers,
-  registerReadTools: registerMcpReadTools,
-  registerTools: registerMcpTools,
+  registerToolsForPrincipal: registerMcpToolsForPrincipal,
   createTransportHandler: createWebMcpHandler,
   createTokenVerifier: createMcpHandlerTokenVerifier,
   wrapAuth: withEgaMcpAuth,
@@ -148,29 +149,16 @@ export function createMcpRouteRuntime(
     ? dependencies.createWriteHandlers(config)
     : undefined;
   const register = (server: McpServer, authInfo?: AuthInfo) => {
-    if (!authInfo) {
-      dependencies.registerReadTools(server, readHandlers);
-      return;
-    }
+    if (!authInfo) return;
     try {
       const principal = readPrincipalFromAuthInfo(authInfo);
+      if (!isValidMcpPrincipal(principal)) return;
+      // Permission-aware discovery: only tools whose required permission the
+      // principal holds (and the global kill switch permits) are advertised.
       const allowed = new Set(filterToolsByPermissions(principal.permissions, config.writesEnabled));
-      // Only register tools that are allowed for this principal
-      // We need to map tool names to handlers — for now we do per-tool registration
-      // If no write allowed, only reads
-        // Per-tool filtering: only register tools whose required permission is in allowed
-      // Map tool names to required permissions (from tool-discovery.ts)
-      const allowedWrites = [...allowed].filter((t) => !["ega_get_capabilities","ega_list_projects","ega_list_goals","ega_list_tasks","ega_get_today_plan","ega_list_timer_sessions"].includes(t));
-      if (allowedWrites.length > 0 && writeHandlers && dependencies.registerTools) {
-        // For now, still register all writes if any write allowed — next step is per-tool register
-        // But we can at least ensure read_only (which has no writes) only gets reads
-        dependencies.registerTools(server, readHandlers, writeHandlers);
-      } else {
-        dependencies.registerReadTools(server, readHandlers);
-      }
-    } catch {
-      dependencies.registerReadTools(server, readHandlers);
-    }
+      if (!dependencies.registerToolsForPrincipal) return;
+      dependencies.registerToolsForPrincipal(server, readHandlers, writeHandlers, allowed);
+    } catch { /* Fail closed: an invalid principal receives no registered tools. */ }
   };
   const transportHandler = dependencies.createTransportHandler(
     register,

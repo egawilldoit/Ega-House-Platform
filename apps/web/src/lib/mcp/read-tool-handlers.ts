@@ -14,8 +14,15 @@ import {
   type McpTask,
   type McpTaskFilters,
 } from "@/lib/mcp/read-repository";
-import { SupabaseTodayReadPort } from "@ega/data-access";
-import { SupabaseTimerSessionRepository } from "@ega/data-access";
+import {
+  getTaskReadModel,
+  getTodayPlan as getTodayPlanFromApplication,
+} from "@ega/application";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimerSessionRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -26,6 +33,11 @@ export type McpReadToolDependencies = {
   listProjects: typeof listMcpProjects;
   listGoals: typeof listMcpGoals;
   listTasks: typeof listMcpTasks;
+  getTask?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    taskId: string,
+  ) => ReturnType<typeof getTaskReadModel>;
   getTodayPlan?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, date: string) => Promise<unknown>;
   listTimerSessions?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, limit: number) => Promise<unknown>;
 };
@@ -37,11 +49,18 @@ const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
   listProjects: listMcpProjects,
   listGoals: listMcpGoals,
   listTasks: listMcpTasks,
+  getTask: (client, ownerUserId, taskId) =>
+    getTaskReadModel(
+      { userId: ownerUserId },
+      new SupabaseTasksRepository(client as never),
+      taskId,
+    ),
 };
 
 type ToolErrorCode =
   | "UNAUTHENTICATED"
   | "PERMISSION_DENIED"
+  | "NOT_FOUND"
   | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
@@ -197,39 +216,72 @@ export function createMcpReadToolHandlers(
       }
     },
 
+    async getTask(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "tasks.read");
+        const result = await (dependencies.getTask ?? DEFAULT_DEPENDENCIES.getTask!)(
+          createClient(dependencies, authInfo!),
+          principal.ownerUserId,
+          input.taskId,
+        );
+        if (!result.ok) {
+          throw new Error("Failed to load EGA task.");
+        }
+        if (!result.data) {
+          return {
+            ...resultFromPayload({
+              ok: false,
+              error: { code: "NOT_FOUND", message: "Task not found." },
+            }),
+            isError: true,
+          };
+        }
+        return resultFromPayload({ ok: true, task: result.data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
     async getTodayPlan(
       authInfo: AuthInfo | undefined,
       input: { date?: string },
     ): Promise<CallToolResult> {
       try {
-        requireMcpPermission(authInfo, "today.read");
-        const principal = requirePrincipal(authInfo);
+        const principal = requireMcpPermission(authInfo, "today.read");
         const client = createClient(dependencies, authInfo!);
-        const date = input.date ?? new Date().toISOString().slice(0, 10);
-        // Use canonical Today read port
-        const todayPort = new SupabaseTodayReadPort(client as unknown as never);
-        // For now, return projection via port if available, else fallback
-        try {
-          const actor = { userId: principal.ownerUserId } as unknown as never;
-          // Use listSelectedTasks as proxy for Today plan
-          const result = await todayPort.listSelectedTasks(actor as never, date as never);
-          const typed = result as unknown as { ok: boolean; value?: unknown[]; error?: unknown };
-          if (typed.ok) {
-            return resultFromPayload({
-              ok: true,
-              today: date,
-              selectedCount: (typed.value as unknown[])?.length ?? 0,
-              tasks: typed.value ?? [],
-              ownerUserId: principal.ownerUserId,
-            });
-          }
-        } catch {}
+        const port = new SupabaseTodayReadPort(client as unknown as never);
+        const result = await getTodayPlanFromApplication(
+          { userId: principal.ownerUserId } as never,
+          port as never,
+          { date: input.date },
+        );
+        if (!result.ok) {
+          return resultFromPayload({
+            ok: false,
+            error: { code: "DEPENDENCY_UNAVAILABLE", message: "EGA House data is temporarily unavailable." },
+          });
+        }
+        const plan = result.data as unknown as {
+          date?: string;
+          sections?: { planned?: unknown[]; inProgress?: unknown[]; blocked?: unknown[] };
+          suggestions?: { pinned?: unknown[]; inProgress?: unknown[] };
+          summary?: unknown;
+          activeTimer?: unknown;
+        };
+        const planned = plan.sections?.planned ?? [];
+        const inProgress = plan.sections?.inProgress ?? [];
+        const blocked = plan.sections?.blocked ?? [];
         return resultFromPayload({
           ok: true,
-          today: date,
-          selectedCount: 0,
-          tasks: [],
-          ownerUserId: principal.ownerUserId,
+          today: plan.date ?? input.date ?? new Date().toISOString().slice(0, 10),
+          selectedCount: planned.length + inProgress.length + blocked.length,
+          sections: plan.sections ?? { planned: [], inProgress: [], blocked: [] },
+          suggestions: plan.suggestions ?? { pinned: [], inProgress: [] },
+          summary: plan.summary ?? null,
+          activeTimer: plan.activeTimer ?? null,
         });
       } catch (error) {
         return errorResult(error);
