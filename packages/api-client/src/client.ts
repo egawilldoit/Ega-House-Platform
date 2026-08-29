@@ -24,6 +24,7 @@ import { createTasksApi, type TasksApi } from "./tasks";
 import { createTimeContextApi, type TimeContextApi } from "./time-context";
 import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
+import { createWeeklyReviewApi, type WeeklyReviewApi } from "./weekly-review";
 import type { ApiErrorPayload, ApiResult } from "./errors";
 import type { HealthResponse } from "./types";
 
@@ -52,6 +53,7 @@ export type EgaApiClient = {
   inbox: InboxApi;
   today: TodayApi;
   timer: TimerApi;
+  weeklyReview: WeeklyReviewApi;
   healthSnapshot: HealthApi;
   friction: FrictionApi;
   timeContext: TimeContextApi;
@@ -81,6 +83,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     inbox: createInboxApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    weeklyReview: createWeeklyReviewApi(http),
     healthSnapshot: createHealthApi(http),
     friction: createFrictionApi(http),
     timeContext: createTimeContextApi(http),

@@ -12,6 +12,7 @@ export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
 export type { InboxApi, InboxListQuery, CreateInboxInput, UpdateInboxInput } from "./inbox";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
+export type { WeeklyReviewApi } from "./weekly-review";
 export type { HealthApi } from "./health";
 export type { FrictionApi } from "./friction";
 export type { TimeContextApi, TimeContextQuery } from "./time-context";

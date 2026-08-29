@@ -1,17 +1,16 @@
 import { getReviewFormValuesFromRecord } from "@/app/review/review-form-state";
-import { buildMostTrackedInsights, type MostTrackedInsights } from "@/lib/review-most-tracked";
-import { getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
-import { getWeekWindow } from "@/lib/review-week";
+import type { MostTrackedInsights } from "@/lib/review-most-tracked";
+import { getDailyTrackedWindow, getRecentDailyTrackedTime } from "@/lib/review-session-heatmap";
 import { createClient } from "@/lib/supabase/server";
-import { getTasksForReview } from "@/lib/services/task-read-service";
-import { generateWeeklyReviewDraftForUser } from "@/lib/services/weekly-review-draft-service";
-import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
-import { calculateWorkAnalytics } from "@/lib/services/work-analytics-service";
 import type { WeeklyReviewDraft } from "@/lib/weekly-review-generator";
-import { resolveHistoricalTimeContext } from "@ega/application";
-import { getWeekWindow as getDomainWeekWindow } from "@ega/domain";
-
-const PAST_REVIEW_LIMIT = 100;
+import { createAuthenticatedActor, getWeeklyReviewReadModel } from "@ega/application";
+import {
+  SupabaseExecutionEvidenceRepository,
+  SupabaseTimeContextRepository,
+  SupabaseWeeklyReviewRepository,
+  SupabaseWeeklyReviewTaskRepository,
+} from "@ega/data-access";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 type ReviewPageSupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -93,238 +92,88 @@ export function resolveWeeklyReviewPageFormDefaults({
     : getReviewFormValuesFromRecord(selectedReview, selectedWeekOf);
 }
 
-async function getPastReviews(supabase: ReviewPageSupabaseClient, ownerUserId: string) {
-  const { data, error } = await supabase
-    .from("week_reviews")
-    .select("id, week_start, week_end, summary, created_at, updated_at")
-    .eq("owner_user_id", ownerUserId)
-    .order("week_start", { ascending: false })
-    .limit(PAST_REVIEW_LIMIT);
-
-  if (error) {
-    throw new Error(`Failed to load reviews: ${error.message}`);
-  }
-
-  return data ?? [];
-}
-
-async function getSelectedWeekReview(
-  supabase: ReviewPageSupabaseClient,
-  weekStart: string,
-  weekEnd: string,
-  ownerUserId: string,
-) {
-  const { data, error } = await supabase
-    .from("week_reviews")
-    .select("id, summary, wins, blockers, next_steps, created_at, updated_at")
-    .eq("owner_user_id", ownerUserId)
-    .eq("week_start", weekStart)
-    .eq("week_end", weekEnd)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-
-  if (error) {
-    throw new Error(`Failed to load selected week reviews: ${error.message}`);
-  }
-
-  return data?.[0] ?? null;
-}
-
-async function getUserTimezoneForReview(
-  supabase: ReviewPageSupabaseClient,
-  ownerUserId: string,
-): Promise<string | null> {
-  try {
-    const { data } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
-      "user_time_context",
-    )
-      .select("iana_timezone")
-      .eq("user_id", ownerUserId)
-      .maybeSingle();
-    const tz = (data as { iana_timezone?: string | null } | null)?.iana_timezone;
-    return typeof tz === "string" && tz.trim() ? tz.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
-function isValidWindowIso(value: unknown): boolean {
-  if (typeof value !== "string" || value.length === 0) return false;
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
-  return Number.isFinite(Date.parse(value));
-}
-
-function resolveWeeklyWindow(
-  weekStart: string,
-  weekEnd: string,
-  timezone: string | null,
-): { startIso: string; endExclusiveIso: string } {
-  // Canonical via resolveHistoricalTimeContext — historical reproducibility and DST-aware.
-  const tz = timezone ?? "UTC";
-  try {
-    const result = resolveHistoricalTimeContext({ timezone: tz, date: weekStart });
-    if (result.ok) {
-      // result's weekWindow is for the week containing weekStart; weekStart/weekEnd are Monday/Sunday of that week,
-      // so weekStart's window should match week bounds. Use domain directly for explicit weekStart/weekEnd pair.
-      const startWindow = getDomainWeekWindow(tz, weekStart);
-      const domainEnd = getDomainWeekWindow(tz, weekEnd);
-      const candidate = { startIso: startWindow.weekStartUtcIso, endExclusiveIso: domainEnd.weekEndExclusiveUtcIso };
-      if (isValidWindowIso(candidate.startIso) && isValidWindowIso(candidate.endExclusiveIso)) return candidate;
-    }
-  } catch {}
-  // Fallback to UTC legacy helper
-  const fallback = getWeekWindow(weekStart, weekEnd);
-  if (!isValidWindowIso(fallback.startIso) || !isValidWindowIso(fallback.endExclusiveIso)) {
-    throw new Error("Invalid window for weekly review.");
-  }
-  return fallback;
-}
-
-async function getWeeklyStats(
-  supabase: ReviewPageSupabaseClient,
-  weekStart: string,
-  weekEnd: string,
-  ownerUserId: string,
-  timezone: string | null,
-): Promise<WeeklyStats> {
-  const { startIso, endExclusiveIso } = resolveWeeklyWindow(weekStart, weekEnd, timezone);
-  const nowIso = new Date().toISOString();
-  const sessionNowIso = nowIso < endExclusiveIso ? nowIso : endExclusiveIso;
-  const [tasksResult, sessionsResult, goalsResult, blockedTasksResult, analyticsSessionsResult] = await Promise.all([
-    supabase
-      .from("tasks")
-      .select("id", { count: "exact", head: true })
-      .eq("owner_user_id", ownerUserId)
-      .gte("created_at", startIso)
-      .lt("created_at", endExclusiveIso),
-    supabase
-      .from("task_sessions")
-      .select("id, task_id, started_at, ended_at, duration_seconds")
-      .eq("owner_user_id", ownerUserId)
-      .gte("started_at", startIso)
-      .lt("started_at", endExclusiveIso),
-    supabase
-      .from("goals")
-      .select("id, status")
-      .eq("owner_user_id", ownerUserId)
-      .gte("updated_at", startIso)
-      .lt("updated_at", endExclusiveIso),
-    getTasksForReview({ supabase, ownerUserId, limit: 6 }),
-    getWorkAnalyticsSessionsForWindow({
-      ownerUserId,
-      supabase,
-      window: { startIso, endIso: endExclusiveIso },
-    }),
-  ]);
-
-  if (tasksResult.error) {
-    throw new Error(`Failed to load weekly task stats: ${tasksResult.error.message}`);
-  }
-  if (sessionsResult.error) {
-    throw new Error(`Failed to load weekly session stats: ${sessionsResult.error.message}`);
-  }
-  if (goalsResult.error) {
-    throw new Error(`Failed to load weekly goal stats: ${goalsResult.error.message}`);
-  }
-  if (blockedTasksResult.errorMessage) {
-    throw new Error(`Failed to load blocked tasks: ${blockedTasksResult.errorMessage}`);
-  }
-  if (analyticsSessionsResult.errorMessage || !analyticsSessionsResult.data) {
-    throw new Error(analyticsSessionsResult.errorMessage ?? "Failed to load weekly analytics sessions.");
-  }
-
-  const analyticsPeriod = calculateWorkAnalytics(
-    analyticsSessionsResult.data,
-    { startIso, endIso: endExclusiveIso },
-    { nowIso: sessionNowIso },
-  );
-  const trackedSeconds = analyticsPeriod.totalWorkedMinutes * 60;
-  const goalStatusCounts = Array.from(
-    (goalsResult.data ?? []).reduce<Map<string, number>>((counts, goal) => {
-      counts.set(goal.status, (counts.get(goal.status) ?? 0) + 1);
-      return counts;
-    }, new Map()),
-  )
-    .map(([status, count]) => ({ status, count }))
-    .sort((left, right) => right.count - left.count || left.status.localeCompare(right.status))
-    .slice(0, 3);
-
-  return {
-    tasksCreated: tasksResult.count ?? 0,
-    sessionsLogged: sessionsResult.data?.length ?? 0,
-    trackedSeconds,
-    goalsTouched: goalsResult.data?.length ?? 0,
-    goalStatusCounts,
-    blockedTasks: (blockedTasksResult.data ?? []).map((task) => ({
-      id: task.id,
-      title: task.title,
-      blockedReason: task.blocked_reason,
-      updatedAt: task.updated_at,
-    })),
-  };
-}
-
-async function getMostTrackedInsights(
-  supabase: ReviewPageSupabaseClient,
-  weekStart: string,
-  weekEnd: string,
-  ownerUserId: string,
-  timezone: string | null,
-): Promise<MostTrackedInsights> {
-  const { startIso, endExclusiveIso } = resolveWeeklyWindow(weekStart, weekEnd, timezone);
-  if (!isValidWindowIso(startIso) || !isValidWindowIso(endExclusiveIso)) {
-    throw new Error("Invalid window for most tracked insights.");
-  }
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select(
-      "task_id, started_at, ended_at, duration_seconds, tasks(id, title, projects(id, name, slug), goals(id, title))",
-    )
-    .eq("owner_user_id", ownerUserId)
-    .lt("started_at", endExclusiveIso)
-    .or(`ended_at.is.null,ended_at.gte.${startIso}`);
-
-  if (error) {
-    throw new Error(`Failed to load most tracked insights: ${error.message}`);
-  }
-
-  return buildMostTrackedInsights(data ?? [], {
-    startIso,
-    endIso: endExclusiveIso,
-  });
-}
-
+/**
+ * Shared read-model adapter: web delegates all business evidence semantics
+ * (saved review, Task/session/Goal/blocker stats, tracked summary, most-tracked,
+ * generated draft, week boundaries) to the canonical getWeeklyReviewReadModel.
+ * Web-specific concerns remain: form defaults, heatmap window, presentation mapping.
+ * Business semantics are not duplicated.
+ */
 export async function getWeeklyReviewPageData({
   ownerUserId,
   selectedWeekOf,
   useGeneratedDraft,
 }: WeeklyReviewPageDataParams): Promise<WeeklyReviewPageData> {
   const supabase = await createClient();
-  const timezone = await getUserTimezoneForReview(supabase, ownerUserId);
-  // Canonical historical window via resolveHistoricalTimeContext (timezone-aware, DST-aware, reproducible)
-  const historical = resolveHistoricalTimeContext({ timezone: timezone ?? "UTC", date: selectedWeekOf });
-  if (!historical.ok) {
-    throw new Error("Failed to resolve selected week.");
+  const actor = createAuthenticatedActor(ownerUserId);
+
+  const timeContext = new SupabaseTimeContextRepository(supabase as unknown as SupabaseClient);
+  const weeklyReview = new SupabaseWeeklyReviewRepository(supabase as unknown as SupabaseClient);
+  const weeklyTasks = new SupabaseWeeklyReviewTaskRepository(supabase as unknown as SupabaseClient);
+  const executionEvidence = new SupabaseExecutionEvidenceRepository(supabase as unknown as SupabaseClient);
+
+  const result = await getWeeklyReviewReadModel(
+    actor,
+    { timeContext, weeklyReview, weeklyTasks, executionEvidence },
+    { weekOf: selectedWeekOf },
+  );
+
+  if (!result.ok) {
+    throw new Error(result.errorMessage);
   }
+
+  const data = result.data;
   const bounds = {
-    weekStart: historical.data.weekWindow.weekStart,
-    weekEnd: historical.data.weekWindow.weekEnd,
+    weekStart: data.window.weekStart,
+    weekEnd: data.window.weekEnd,
   };
 
-  const [pastReviews, selectedReview, weeklyStats, sessionHeatmap, mostTrackedInsights, generatedDraft] =
-    await Promise.all([
-      getPastReviews(supabase, ownerUserId),
-      getSelectedWeekReview(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId),
-      getWeeklyStats(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId, timezone),
-      getRecentDailyTrackedTime(supabase, { ownerUserId, timezone: timezone ?? "UTC" }),
-      getMostTrackedInsights(supabase, bounds.weekStart, bounds.weekEnd, ownerUserId, timezone),
-      generateWeeklyReviewDraftForUser({
-        supabase,
-        ownerUserId,
-        weekStart: bounds.weekStart,
-        weekEnd: bounds.weekEnd,
-      }),
-    ]);
+  // Historical heatmap: selected week + canonical timezone → exact historical window → heatmap
+  // Not from now / current recent period. Uses getDailyTrackedWindow (timezone-aware, DST-aware).
+  const heatmapWindow = getDailyTrackedWindow(7, data.window.weekEnd, data.window.timezone);
+  const sessionHeatmap = await getRecentDailyTrackedTime(supabase as unknown as ReviewPageSupabaseClient, {
+    ownerUserId,
+    window: heatmapWindow,
+  });
+
+  const mostTrackedInsights = data.mostTracked as unknown as MostTrackedInsights;
+
+  const pastReviews = data.pastReviews.map((row) => ({
+    id: row.id,
+    week_start: row.weekStart,
+    week_end: row.weekEnd,
+    summary: row.summary,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+  }));
+
+  const selectedReview: WeeklyReviewPageSelectedReview | null = data.savedReview
+    ? {
+        id: data.savedReview.id,
+        summary: data.savedReview.summary,
+        wins: data.savedReview.wins,
+        blockers: data.savedReview.blockers,
+        next_steps: data.savedReview.nextSteps,
+        created_at: data.savedReview.createdAt,
+        updated_at: data.savedReview.updatedAt,
+      }
+    : null;
+
+  const weeklyStats: WeeklyStats = {
+    tasksCreated: data.stats.tasksCreated,
+    sessionsLogged: data.stats.sessionsLogged,
+    trackedSeconds: data.stats.trackedSeconds,
+    goalsTouched: data.stats.goalsTouched,
+    goalStatusCounts: data.stats.goalStatusCounts,
+    blockedTasks: data.stats.blockedTasks.map((task) => ({
+      id: task.id,
+      title: task.title,
+      blockedReason: task.blockedReason,
+      updatedAt: task.updatedAt,
+    })),
+  };
+
+  const generatedDraft = data.generatedDraft as unknown as WeeklyReviewDraft;
 
   const reviewFormDefaults = resolveWeeklyReviewPageFormDefaults({
     generatedDraft,

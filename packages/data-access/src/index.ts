@@ -8,3 +8,4 @@ export * from "./friction/repository";
 export * from "./inbox/repository";
 export * from "./time-context/repository";
 export * from "./execution-evidence/repository";
+export * from "./weekly-review/repository";
