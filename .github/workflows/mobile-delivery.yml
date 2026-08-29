@@ -34,7 +34,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: Determine source identity
         id: identity
@@ -47,20 +47,20 @@ jobs:
           echo "source_sha=$SOURCE_SHA"
           echo "source_ref=$SOURCE_REF"
 
-          APP_VERSION="$(node -p "require('./apps/mobile/package.json').version" 2>/dev/null || node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || echo "0.0.0")"
-          if [[ "$SOURCE_REF" =~ refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
-            APP_VERSION="${BASH_REMATCH[1]}"
+          APP_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version" 2>/dev/null || echo "")"
+          if [ -z "$APP_VERSION" ]; then
+            echo "::error::Failed to read apps/mobile/app.json expo.version — app.json is the ONLY native version authority"
+            exit 1
           fi
+          REF_META="$(node scripts/ci/validate-mobile-delivery-ref.mjs \
+            --ref "$SOURCE_REF" \
+            --app-version "$APP_VERSION" \
+            --json)"
+          echo "Mobile delivery ref metadata: $REF_META"
+          IS_TAG="$(printf '%s' "$REF_META" | jq -r '.isTag')"
+          IS_RC="$(printf '%s' "$REF_META" | jq -r '.isRc')"
 
           API_BASE_URL="https://ega-api.egawilldoit.online"
-          IS_TAG="false"
-          IS_RC="false"
-          if [[ "$SOURCE_REF" == refs/tags/mobile-v* ]]; then
-            IS_TAG="true"
-            if [[ "$SOURCE_REF" == *"-rc."* ]]; then
-              IS_RC="true"
-            fi
-          fi
 
           echo "source_sha=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
           echo "source_ref=$SOURCE_REF" >> "$GITHUB_OUTPUT"
@@ -78,6 +78,51 @@ jobs:
           - API_BASE_URL: \`$API_BASE_URL\`
           EOF
 
+      - name: Enforce native version bump if native changes (appVersion policy)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          CANDIDATE_SHA="${{ steps.identity.outputs.source_sha }}"
+          CANDIDATE_VER="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          echo "Candidate SHA: $CANDIDATE_SHA"
+          echo "Candidate version (app.json): $CANDIDATE_VER"
+          # Deterministic stable mobile release selector (not repo-wide latest)
+          if node scripts/ci/mobile-release-selector.mjs --json --token "$GH_TOKEN" > /tmp/selector.json 2> /tmp/selector.err; then
+            if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
+              echo "No stable mobile baseline found — bootstrap case"
+              cat /tmp/selector.json
+              if [ "$CANDIDATE_VER" = "1.0.1" ]; then
+                echo "Bootstrap allowed: candidate is 1.0.1 (first OTA-enabled APK)"
+                exit 0
+              else
+                echo "::error::BOOTSTRAP_VERSION_UNEXPECTED: no stable mobile baseline but candidate $CANDIDATE_VER != 1.0.1 → BLOCK"
+                exit 1
+              fi
+            fi
+            cat /tmp/selector.json
+            BASELINE_SHA="$(jq -r .gitSha /tmp/selector.json)"
+            BASELINE_VER="$(jq -r .version /tmp/selector.json)"
+            echo "Baseline SHA: $BASELINE_SHA version: $BASELINE_VER"
+            jq .manifest /tmp/selector.json > /tmp/baseline-manifest.json
+            if [ -z "$BASELINE_SHA" ] || [ "$BASELINE_SHA" = "null" ] || [ -z "$BASELINE_VER" ] || [ "$BASELINE_VER" = "null" ]; then
+              echo "::error::Malformed baseline selector output — fail closed"
+              cat /tmp/selector.json
+              exit 1
+            fi
+            node scripts/ci/check-native-version-bump.mjs \
+              --baseline-manifest /tmp/baseline-manifest.json \
+              --candidate-version "$CANDIDATE_VER" \
+              --base "$BASELINE_SHA" \
+              --head "$CANDIDATE_SHA"
+          else
+            echo "::error::Failed to select stable mobile release — fail closed"
+            cat /tmp/selector.err || true
+            cat /tmp/selector.json || true
+            exit 1
+          fi
+
       - name: Validate source ref is main or mobile-v* tag
         shell: bash
         run: |
@@ -85,8 +130,8 @@ jobs:
           REF="${{ steps.identity.outputs.source_ref }}"
           if [[ "$REF" == "refs/heads/main" ]]; then
             echo "Source is main — allowed."
-          elif [[ "$REF" == refs/tags/mobile-v* ]]; then
-            echo "Source is mobile tag — allowed."
+          elif [[ "$REF" =~ ^refs/tags/mobile-v([0-9]+\.[0-9]+\.[0-9]+)(-rc\.[0-9]+)?$ ]]; then
+            echo "Source is valid mobile tag — allowed."
             TAG="${REF#refs/tags/}"
             TAG_SHA="$(git rev-list -n 1 "$TAG" 2>/dev/null || echo "")"
             HEAD_SHA="$(git rev-parse HEAD)"
@@ -95,8 +140,11 @@ jobs:
               echo "::error::Tag $TAG does not point to HEAD $HEAD_SHA (points to $TAG_SHA)"
               exit 1
             fi
+          elif [[ "$REF" == refs/tags/mobile-v* ]]; then
+            echo "::error::INVALID_MOBILE_TAG: $REF"
+            exit 1
           else
-            echo "::error::Source $REF is not refs/heads/main nor refs/tags/mobile-v* — failing before Blacksmith"
+            echo "::error::Source $REF is not refs/heads/main nor a valid mobile-vX.Y.Z(-rc.N) tag — failing before Blacksmith"
             exit 1
           fi
 
@@ -238,12 +286,59 @@ jobs:
           echo "APK_FILENAME=$APK_FILENAME"
 
           BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # Extract actual embedded runtimeVersion from generated native config (appVersion policy)
+          APP_JSON_VERSION="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          if [ "$APP_JSON_VERSION" != "$VERSION" ]; then
+            echo "::error::APK version mismatch: app.json $APP_JSON_VERSION != preflight $VERSION"
+            exit 1
+          fi
+          STRINGS_XML="apps/mobile/android/app/src/main/res/values/strings.xml"
+          ANDROID_MANIFEST="apps/mobile/android/app/src/main/AndroidManifest.xml"
+          if [ ! -f "$STRINGS_XML" ]; then
+            echo "::error::Missing strings.xml at $STRINGS_XML — prebuild did not run"
+            exit 1
+          fi
+          if [ ! -f "$ANDROID_MANIFEST" ]; then
+            echo "::error::Missing AndroidManifest.xml at $ANDROID_MANIFEST"
+            exit 1
+          fi
+          EMBEDDED_RUNTIME="$(grep -oP '(?<=<string name="expo_runtime_version">)[^<]+' "$STRINGS_XML" | head -n1 | tr -d '\r' || echo "")"
+          if [ -z "$EMBEDDED_RUNTIME" ]; then
+            echo "::error::Failed to extract expo_runtime_version from $STRINGS_XML"
+            cat "$STRINGS_XML"
+            exit 1
+          fi
+          echo "Embedded runtimeVersion: $EMBEDDED_RUNTIME"
+          echo "App.json version: $APP_JSON_VERSION"
+          if [ "$EMBEDDED_RUNTIME" != "$APP_JSON_VERSION" ]; then
+            echo "::error::FAIL BUILD: embeddedRuntimeVersion ($EMBEDDED_RUNTIME) != app.json expo.version ($APP_JSON_VERSION) — appVersion policy requires equality"
+            exit 1
+          fi
+          EMBEDDED_URL="$(grep -oP 'EXPO_UPDATE_URL.*?value="\K[^"]+' "$ANDROID_MANIFEST" | head -n1 || echo "")"
+          EXPECTED_URL="https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6"
+          if [ "$EMBEDDED_URL" != "$EXPECTED_URL" ]; then
+            echo "::error::EXPO_UPDATE_URL mismatch: got $EMBEDDED_URL expected $EXPECTED_URL"
+            grep -n "EXPO_UPDATE" "$ANDROID_MANIFEST" || true
+            exit 1
+          fi
+          echo "EXPO_UPDATE_URL OK: $EMBEDDED_URL"
+          # expo prebuild XML-escapes the request-headers JSON in AndroidManifest.xml
+          # (&quot;), so accept both the escaped and literal forms of the channel header.
+          CHANNEL_ESCAPED="$(grep -c 'expo-channel-name&quot;:&quot;production' "$ANDROID_MANIFEST" || true)"
+          CHANNEL_LITERAL="$(grep -c '"expo-channel-name":"production"' "$ANDROID_MANIFEST" || true)"
+          if [ "${CHANNEL_ESCAPED:-0}" -eq 0 ] && [ "${CHANNEL_LITERAL:-0}" -eq 0 ]; then
+            echo "::error::expo-channel-name=production not found in AndroidManifest"
+            grep -n "UPDATES_CONFIGURATION_REQUEST_HEADERS" "$ANDROID_MANIFEST" || true
+            cat "$ANDROID_MANIFEST" | grep -A2 -B2 "updates" || true
+            exit 1
+          fi
+          echo "Channel header OK: production (escaped=$CHANNEL_ESCAPED literal=$CHANNEL_LITERAL)"
           cat > dist-apk/release-manifest.json <<EOF
           {
             "repository": "egawilldoit/Ega-House-Platform",
             "gitSha": "${{ needs.preflight.outputs.source_sha }}",
             "gitRef": "${{ needs.preflight.outputs.source_ref }}",
-            "version": "$VERSION",
+            "version": "$APP_JSON_VERSION",
             "variant": "release",
             "androidPackage": "com.ega_house.mobile",
             "apiBaseUrl": "${{ needs.preflight.outputs.api_base_url }}",
@@ -251,7 +346,9 @@ jobs:
             "runner": "blacksmith-2vcpu-ubuntu-2404",
             "architectures": ["arm64-v8a", "x86_64"],
             "apkFile": "$APK_FILENAME",
-            "apkSha256": "$APK_SHA256"
+            "apkSha256": "$APK_SHA256",
+            "runtimeVersion": "$EMBEDDED_RUNTIME",
+            "channel": "production"
           }
           EOF
           cat dist-apk/release-manifest.json
@@ -554,18 +651,18 @@ jobs:
           - APK: $(cat apk-dist/SHA256SUMS)
           - Runner: blacksmith-2vcpu-ubuntu-2404"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view -R "$GITHUB_REPOSITORY" "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — uploading assets"
-            gh release upload "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
+            gh release upload -R "$GITHUB_REPOSITORY" "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
+            gh release edit -R "$GITHUB_REPOSITORY" "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
           else
             echo "Creating release $TAG"
-            gh release create "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
+            gh release create -R "$GITHUB_REPOSITORY" "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
               --title "$TITLE" \
               --notes "$NOTES" \
               $PRERELEASE_FLAG
           fi
-          gh release view "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
+          gh release view -R "$GITHUB_REPOSITORY" "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
 
   delivery-summary:
     name: Delivery summary

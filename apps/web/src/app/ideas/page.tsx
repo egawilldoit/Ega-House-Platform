@@ -140,9 +140,9 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
 
   return (
     <AppShell
-      eyebrow="Ideas Inbox"
+      eyebrow="Capture"
       title="Ideas"
-      description="Capture loose thoughts, opportunities, and follow-ups before deciding what they become."
+      description="Frictionless capture, triage, and conversion."
     >
       <div className="grid gap-5 xl:grid-cols-[minmax(320px,420px)_1fr]">
         <Card className="border-[var(--border)] bg-white">

@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
-import { router } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
@@ -107,6 +107,28 @@ export default function ProfileStackScreen() {
             />
           </View>
         </Card>
+
+        <Link href="/(app)/updates" asChild>
+          <Pressable testID="profile-updates-link">
+            <Card style={styles.updatesCard} testID="profile-updates-card">
+              <View style={styles.updatesRow}>
+                <View style={styles.updatesIcon}>
+                  <Ionicons name="cloud-download-outline" size={18} color={mobileTheme.colors.accent} />
+                </View>
+                <View style={styles.updatesCopy}>
+                  <Text style={styles.updatesTitle}>App Updates</Text>
+                  <Text style={styles.updatesHint} numberOfLines={2}>
+                    OTA LIVE · v1.0.2 proof
+                  </Text>
+                  <Text style={styles.updatesMeta} testID="profile-version-channel">
+                    {`v${Constants.expoConfig?.version ?? '1.0.0'} · ${(Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ? 'EAS' : 'standalone'}`}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+              </View>
+            </Card>
+          </Pressable>
+        </Link>
 
         <Text style={styles.versionText} testID="profile-version">{`EGA House · v${Constants.expoConfig?.version ?? '1.0.0'}`}</Text>
       </ScrollView>
@@ -235,4 +257,39 @@ const styles = StyleSheet.create({
   notificationTitle: { fontSize: 14, fontWeight: mobileTheme.font.semibold as never, color: mobileTheme.colors.text },
   notificationDesc: { fontSize: 12, color: mobileTheme.colors.textMuted },
   pressed: { opacity: 0.7 },
+  updatesCard: {
+    marginTop: mobileTheme.spacing.sm,
+  },
+  updatesCopy: {
+    flex: 1,
+  },
+  updatesHint: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  updatesIcon: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.primaryContainer,
+    borderRadius: 10,
+    height: 36,
+    justifyContent: 'center',
+    width: 36,
+  },
+  updatesMeta: {
+    color: mobileTheme.colors.textSubtle,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.semibold,
+    marginTop: 4,
+  },
+  updatesRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  updatesTitle: {
+    color: mobileTheme.colors.text,
+    fontSize: 14,
+    fontWeight: mobileTheme.font.bold,
+  },
 });
