@@ -147,6 +147,7 @@ test("POST /api/tasks derives owner from the verified bearer identity", async ()
 
 test("GET /api/today returns the rich mobile read model", async () => {
   const fake = new FakeSupabase();
+  fake.push("user_time_context", { data: null, error: null });
   fake.push("tasks", { data: [taskRow()], error: null });
   fake.push("tasks", { data: [], error: null });
   fake.push("tasks", { data: [], error: null });
@@ -194,7 +195,8 @@ test("GET /api/today returns the rich mobile read model", async () => {
   });
   assert.deepEqual(body.suggestions, { pinned: [], inProgress: [] });
   assert.equal(body.activeTimer, null);
-  assert.ok(fake.calls[0]?.steps.some(
+  const todayTasksCall = fake.calls.find((call) => call.table === "tasks");
+  assert.ok(todayTasksCall?.steps.some(
     (step) => step.method === "or" && String(step.args[0]).includes("planned_for_date.eq.2026-08-10"),
   ));
 });
