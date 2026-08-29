@@ -30,7 +30,7 @@ const REPO_API = `https://api.github.com/repos/${REPO}/releases`;
 const EXPECTED_REPO = 'egawilldoit/Ega-House-Platform';
 const EXPECTED_PACKAGE = 'com.ega_house.mobile';
 const EXPECTED_CHANNEL = 'production';
-const BOOTSTRAP_VERSION = '1.0.1';
+const BOOTSTRAP_VERSION = '1.0.2';
 
 export function semverValidateStrict(v) {
   const re = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;

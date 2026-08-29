@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 env:
-  EXPO_PROJECT_ID: 73d127b6-c8f6-450c-8d97-2dca8434cd59
+  EXPO_PROJECT_ID: 0dafbb64-7c1e-49b1-aea1-de1f8159a5e6
   EAS_CLI_VERSION: 13.5.1
 
 jobs:
@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="73d127b6-c8f6-450c-8d97-2dca8434cd59"
+          EXPECTED="0dafbb64-7c1e-49b1-aea1-de1f8159a5e6"
           ACTUAL="$(node -p "require('./apps/mobile/app.json').expo.extra.eas.projectId")"
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "::error::EAS projectId mismatch: got $ACTUAL expected $EXPECTED"
@@ -140,7 +140,7 @@ jobs:
             exit 1
           fi
           if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
-            echo "::error::No stable mobile APK baseline exists — OTA requires an already-released native APK. Build mobile-v1.0.1 stable release first."
+            echo "::error::No stable mobile APK baseline exists — OTA requires an already-released native APK. Build mobile-v1.0.2 stable release from the canonical Expo project first."
             cat /tmp/selector.json
             exit 1
           fi

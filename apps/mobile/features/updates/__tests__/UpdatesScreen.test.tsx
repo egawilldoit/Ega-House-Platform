@@ -7,7 +7,7 @@ jest.mock('expo-constants', () => ({
     expoConfig: {
       version: '1.0.1',
       runtimeVersion: { policy: 'appVersion' },
-      extra: { eas: { projectId: '73d127b6-c8f6-450c-8d97-2dca8434cd59' } },
+      extra: { eas: { projectId: '0dafbb64-7c1e-49b1-aea1-de1f8159a5e6' } },
     },
   },
 }));

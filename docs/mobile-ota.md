@@ -4,7 +4,7 @@ This document is the authoritative guide for OTA updates for `apps/mobile` via *
 
 > **Invariants**
 > - Android package `com.ega_house.mobile` unchanged.
-> - Expo project ID `73d127b6-c8f6-450c-8d97-2dca8434cd59` (`extra.eas.projectId`) unchanged.
+> - Expo project ID `0dafbb64-7c1e-49b1-aea1-de1f8159a5e6` (`extra.eas.projectId`) is canonical.
 > - APKs remain built by `mobile-delivery.yml` → Blacksmith `assembleRelease` + GitHub Releases.
 > - **V1 = production channel only**. No `preview` OTA until a real preview APK exists.
 > - No EAS Build, no custom OTA server. EAS Update only serves compatible JS/assets.
@@ -29,7 +29,7 @@ Every native change (SDK, native dep, plugin, permission, `runtimeVersion`, pack
 ```
 Expo JS + assets  ──appVersion runtimeVersion──>  EAS Update (u.expo.dev)
                                 ▲ runtimeVersion == app.json version (string)
-APK contains:  expo_runtime_version = 1.0.1 + update URL + expo-channel-name: production
+APK contains:  expo_runtime_version = 1.0.2 + update URL + expo-channel-name: production
                 │
                 └── only builds with same runtimeVersion receive the OTA (EAS protocol)
 ```
@@ -41,8 +41,8 @@ Additional client-side guard: before EAS, the app fetches the **latest stable mo
 Inputs:
 
 ```text
-local:  Constants.expoConfig.version (e.g. 1.0.1)
-        Updates.runtimeVersion (should == 1.0.1 for appVersion policy)
+local:  Constants.expoConfig.version (e.g. 1.0.2)
+        Updates.runtimeVersion (should == 1.0.2 for appVersion policy)
 
 remote: manifest.version
         manifest.runtimeVersion
@@ -80,15 +80,15 @@ States: `IDLE`, `CHECKING`, `UP_TO_DATE`, `OTA_AVAILABLE`, `DOWNLOADING`, `OTA_R
 ```json
 {
   "expo": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "runtimeVersion": { "policy": "appVersion" },
     "updates": {
-      "url": "https://u.expo.dev/73d127b6-c8f6-450c-8d97-2dca8434cd59",
+      "url": "https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6",
       "fallbackToCacheTimeout": 0,
       "checkAutomatically": "ON_ERROR_RECOVERY",
       "requestHeaders": { "expo-channel-name": "production" }
     },
-    "extra": { "eas": { "projectId": "73d127b6-c8f6-450c-8d97-2dca8434cd59" } }
+    "extra": { "eas": { "projectId": "0dafbb64-7c1e-49b1-aea1-de1f8159a5e6" } }
   }
 }
 ```
@@ -115,8 +115,8 @@ eas channel:view production --json --non-interactive
 
 After `npx expo prebuild --platform android --clean --no-install`, the generated `android/` contains:
 
-- `android/app/src/main/res/values/strings.xml` → `<string name="expo_runtime_version">1.0.1</string>` (must equal `expo.version`)
-- `android/app/src/main/AndroidManifest.xml` → `EXPO_RUNTIME_VERSION`, `EXPO_UPDATE_URL=https://u.expo.dev/73d127b6...`, `UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY={"expo-channel-name":"production"}`
+- `android/app/src/main/res/values/strings.xml` → `<string name="expo_runtime_version">1.0.2</string>` (must equal `expo.version`)
+- `android/app/src/main/AndroidManifest.xml` → `EXPO_RUNTIME_VERSION`, `EXPO_UPDATE_URL=https://u.expo.dev/0dafbb64...`, `UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY={"expo-channel-name":"production"}`
 
 ## 5. Update service (`apps/mobile/lib/updates/`)
 
@@ -131,7 +131,7 @@ After `npx expo prebuild --platform android --clean --no-install`, the generated
 - Route `app/(app)/updates.tsx` → `UpdatesScreenContent` (consistent with `mobileTheme`).
 - Profile entry `app/(app)/profile.tsx` links to `/updates`.
 - Shows `App version` (`appVersion`), `Runtime version` (`runtimeVersion`), `Channel`, `Update ID`, `Launch` (embedded/update), status badge.
-- **Native-required state:** `New app version required — Installed: 1.0.1 · Available: 1.0.2 (runtime 1.0.2). A full APK update is required.` Button `Open official release` → `WebBrowser` to APK URL or `https://github.com/egawilldoit/Ega-House-Platform/releases` (never auto-download).
+- **Native-required state:** `New app version required — Installed: 1.0.2 · Available: 1.0.3 (runtime 1.0.3). A full APK update is required.` Button `Open official release` → `WebBrowser` to APK URL or `https://github.com/egawilldoit/Ega-House-Platform/releases` (never auto-download).
 - **Error state:** if `native release status unavailable` → `Couldn't verify the latest app version. Check your connection and retry.` Otherwise `offline: …` or `Unable to restart…`. No silent “Up to date”.
 - **Reload failure:** `service.reload()` on `OTA_READY` that throws → service transitions to `ERROR` with `Unable to restart and apply update. Retry restart.` UI shows banner and keeps retry possible.
 
@@ -240,7 +240,7 @@ Where `LAST_NATIVE_APK_SHA = manifest.gitSha` from the **highest valid stable `m
 
 Production native baseline is **not** repo-wide `releases/latest` (which may be `architecture-wave-2-complete`).
 
-If blocked → **do not OTA** → bump `expo.version` (e.g. `1.0.1` → `1.0.2`), commit, trigger Mobile Delivery (`gh workflow run mobile-delivery.yml --ref main` or tag `mobile-v1.0.2`), wait for Blacksmith APK + `release-manifest.json`, install new APK once, then future JS-only changes may use OTA again:
+If blocked → **do not OTA** → bump `expo.version` (e.g. `1.0.2` → `1.0.3`), commit, trigger Mobile Delivery (`gh workflow run mobile-delivery.yml --ref main` or tag `mobile-v1.0.3`), wait for Blacksmith APK + `release-manifest.json`, install new APK once, then future JS-only changes may use OTA again:
 
 ```text
 APK at A → B (JS only) => OTA allowed
@@ -254,16 +254,17 @@ APK at A → C (native) => OTA BLOCKED → new APK at C → D (JS only) => OTA a
 | JS/TSX, styling, copy, translations, screen layouts, non-native logic | Expo SDK, RN, native deps, `expo-updates`, `expo-constants`, `reanimated`, etc. |
 | Assets (images/fonts) via OTA | Permissions, entitlements, `app.json` native config, package id, Gradle, `android/`/`ios/` files, new native modules |
 
-## 11. Initial bootstrap (this PR)
+## 11. Expo project relink baseline (this PR)
 
-PR #184 adds `expo-updates` and therefore is a **NATIVE RELEASE**. After merge:
+Changing the Expo project ID and update URL changes the native embedded configuration and therefore requires a **NATIVE RELEASE**.
 
-- New `expo.version` (`1.0.1`) → new Blacksmith APK must be built from merged `main`.
+- `mobile-v1.0.1` belongs to the old Expo project and remains the old-project baseline; it must not be reused for the canonical project.
+- New `expo.version` (`1.0.2`) → a new Blacksmith APK must be built from merged `main`.
 - That APK must be installed once by users.
-- `release-manifest.json` for `1.0.1` must exist in GitHub Release.
-- Future compatible `1.0.1` JS changes may then be delivered via OTA.
+- `release-manifest.json` for `mobile-v1.0.2` must exist in GitHub Release.
+- Future compatible `1.0.2` JS changes may then be delivered via OTA on the new project.
 
-Do **not** publish an OTA from PR #184 as substitute for the first OTA-enabled APK.
+Do **not** publish an OTA before the new-project `mobile-v1.0.2` APK exists.
 
 ## 12. Verification (clean checkout)
 
@@ -275,8 +276,8 @@ npm run mobile:doctor                         # 18/18 PASS
 npm run mobile:bundle                         # expo export android PASS
 npm run mobile:prebuild:android               # prebuild PASS
 # prove generated config
-grep 'expo_runtime_version' apps/mobile/android/app/src/main/res/values/strings.xml  # == 1.0.1
-grep 'EXPO_UPDATE_URL' apps/mobile/android/app/src/main/AndroidManifest.xml           # https://u.expo.dev/73d127b6...
+grep 'expo_runtime_version' apps/mobile/android/app/src/main/res/values/strings.xml  # == 1.0.2
+grep 'EXPO_UPDATE_URL' apps/mobile/android/app/src/main/AndroidManifest.xml           # https://u.expo.dev/0dafbb64...
 grep 'expo-channel-name.*production' apps/mobile/android/app/src/main/AndroidManifest.xml
 npm run check:architecture                    # 21 PASS
 npm run ci:purity                             # PASS
@@ -289,9 +290,9 @@ npm run lint:changed -- --base origin/main    # 0 regressions
 
 ## 13. Current external-unproven items (honest)
 
-- Real `eas update --channel production --platform android` publish requires `EXPO_TOKEN` + `u.expo.dev` — not run in this PR; workflow code-reviewed, `eas config`/`channel:view` dry-run validated locally without token where possible.
-- Device proof that an OTA-enabled `1.0.1` APK receives a later OTA requires two sequential APK builds with same version/runtime + intermediate `eas update` + emulator/physical load (ladder L6 `NOT PROVEN` without KVM).
-- `release-manifest.json` authority requires at least one post-merge tag `mobile-v1.0.1` build; until then updater correctly reports `native release status unavailable` rather than `UP_TO_DATE`.
+- Real `eas update --channel production --platform android` publish requires `EXPO_TOKEN` + `u.expo.dev` — not run in this PR; the new-project channel must be verified before publishing.
+- Device proof that a new-project OTA-enabled `1.0.2` APK receives a later OTA requires a new `mobile-v1.0.2` APK, an intermediate `eas update`, and emulator/physical load (ladder L6 remains **NOT PROVEN**).
+- `release-manifest.json` authority requires at least one post-merge tag `mobile-v1.0.2` build; until then updater correctly reports `native release status unavailable` rather than `UP_TO_DATE`.
 
 ## 14. References (current docs as authority)
 
