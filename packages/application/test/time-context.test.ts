@@ -4,6 +4,7 @@ import test from "node:test";
 import { createAuthenticatedActor, type AuthenticatedActor } from "../src/auth/actor";
 import type { RepositoryResult } from "../src/shared/result";
 import {
+  resolveEffectiveTimezone,
   resolveHistoricalTimeContext,
   resolveTimeContext,
   setTimeContextTimezone,
@@ -256,4 +257,111 @@ test("resolveTimeContext trims whitespace timezone", async () => {
   });
   assert.equal(result.ok && result.data.timezone, "UTC");
   assert.equal(result.ok && result.data.fallback, "none");
+});
+
+// ---------------------------------------------------------------------------
+// Shared helper: resolveEffectiveTimezone isolates timezone selection policy
+// without "today" / now semantics (used by Weekly Review historical path)
+// ---------------------------------------------------------------------------
+
+test("resolveEffectiveTimezone valid requested overrides stored", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo("Asia/Tokyo");
+  const result = await resolveEffectiveTimezone(actor, repo, "America/New_York");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.timezone, "America/New_York");
+  assert.equal(result.data.requestedTimezone, "America/New_York");
+  assert.equal(result.data.fallback, "none");
+});
+
+test("resolveEffectiveTimezone invalid requested falls back to UTC and preserves requested", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo("America/New_York");
+  const result = await resolveEffectiveTimezone(actor, repo, "Bad/Zone");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.timezone, "UTC");
+  assert.equal(result.data.fallback, "invalid_timezone");
+  assert.equal(result.data.requestedTimezone, "Bad/Zone");
+});
+
+test("resolveEffectiveTimezone missing requested uses stored valid", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo("Asia/Tokyo");
+  const result = await resolveEffectiveTimezone(actor, repo, undefined);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.timezone, "Asia/Tokyo");
+  assert.equal(result.data.fallback, "none");
+  assert.equal(result.data.requestedTimezone, null);
+});
+
+test("resolveEffectiveTimezone missing requested and no stored => missing_timezone UTC", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo(null);
+  const result = await resolveEffectiveTimezone(actor, repo, null);
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.timezone, "UTC");
+  assert.equal(result.data.fallback, "missing_timezone");
+  assert.equal(result.data.requestedTimezone, null);
+});
+
+test("resolveEffectiveTimezone missing requested with stored invalid => invalid_timezone UTC", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo("Invalid/Zone");
+  const result = await resolveEffectiveTimezone(actor, repo, "");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.data.timezone, "UTC");
+  assert.equal(result.data.fallback, "invalid_timezone");
+  assert.equal(result.data.requestedTimezone, "Invalid/Zone");
+});
+
+test("resolveEffectiveTimezone trims whitespace requested and stored", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repoValid = new FakeTimeContextRepo("  UTC  ");
+  const r1 = await resolveEffectiveTimezone(actor, repoValid, "  Asia/Tokyo  ");
+  assert.equal(r1.ok && r1.data.timezone, "Asia/Tokyo");
+  assert.equal(r1.ok && r1.data.fallback, "none");
+  // whitespace requested treated as missing -> uses trimmed stored valid
+  const repoStoredTrim = new FakeTimeContextRepo("  Asia/Tokyo  ");
+  const r2 = await resolveEffectiveTimezone(actor, repoStoredTrim, "   ");
+  assert.equal(r2.ok && r2.data.timezone, "Asia/Tokyo");
+  // invalid stored with whitespace
+  const repoInvalidTrim = new FakeTimeContextRepo("  Bad/Zone  ");
+  const r3 = await resolveEffectiveTimezone(actor, repoInvalidTrim, undefined);
+  assert.equal(r3.ok && r3.data.fallback, "invalid_timezone");
+  assert.equal(r3.ok && r3.data.requestedTimezone, "Bad/Zone");
+});
+
+test("resolveEffectiveTimezone non-string requested treated as missing and uses stored", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo("Asia/Tokyo");
+  const result = await resolveEffectiveTimezone(actor, repo, 123 as unknown as string);
+  assert.equal(result.ok && result.data.timezone, "Asia/Tokyo");
+  const result2 = await resolveEffectiveTimezone(actor, repo, {} as unknown as string);
+  assert.equal(result2.ok && result2.data.timezone, "Asia/Tokyo");
+});
+
+test("resolveEffectiveTimezone repository failure returns application failure", async () => {
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo(null, true);
+  const result = await resolveEffectiveTimezone(actor, repo, undefined);
+  assert.equal(result.ok, false);
+});
+
+test("resolveEffectiveTimezone explicit override works for historical review without now", async () => {
+  // This proves historical path can resolve timezone without depending on current wall-clock day
+  const actor = createAuthenticatedActor("user-1");
+  const repo = new FakeTimeContextRepo("America/New_York");
+  const r1 = await resolveEffectiveTimezone(actor, repo, "Asia/Tokyo");
+  assert.equal(r1.ok && r1.data.timezone, "Asia/Tokyo");
+  // Same call must be reproducible regardless of now – helper is pure timezone policy
+  const r2 = await resolveEffectiveTimezone(actor, repo, "Asia/Tokyo");
+  assert.deepEqual(r1, r2);
+  // Missing explicit should fall back to stored without needing now
+  const r3 = await resolveEffectiveTimezone(actor, repo, undefined);
+  assert.equal(r3.ok && r3.data.timezone, "America/New_York");
 });

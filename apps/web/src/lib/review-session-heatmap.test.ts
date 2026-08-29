@@ -205,3 +205,88 @@ test("isValidWindowIso hardening: getRecentDailyTrackedTime rejects invalid wind
     }),
   );
 });
+
+// ---------------------------------------------------------------------------
+// Historical heatmap binding: selected week + canonical timezone → exact historical window → heatmap
+// Covers B: week 8 weeks ago not current period, Tokyo, New York, DST
+// ---------------------------------------------------------------------------
+
+test("historical heatmap: 8 weeks ago window != current 28-day window (not current recent period)", () => {
+  // Now is 2026-04-16, selected historical week 8 weeks ago is 2026-02-16 (Mon)
+  const nowIso = "2026-04-16T12:00:00.000Z";
+  const tz = "UTC";
+  // Historical week Mon 2026-02-16 - Sun 2026-02-22
+  const historicalWeekWindow = getDailyTrackedWindow(7, "2026-02-22", tz);
+  // Default current recent 28-day window ending 2026-04-16 would be 2026-03-20 to 2026-04-16
+  const currentWindow = getDailyTrackedWindow(28, "2026-04-16", tz);
+  assert.notEqual(historicalWeekWindow.startIso, currentWindow.startIso);
+  assert.notEqual(historicalWeekWindow.endExclusiveIso, currentWindow.endExclusiveIso);
+  // Session inside historical week (2026-02-18) must count for historical, not current
+  const session = [{ started_at: "2026-02-18T10:00:00.000Z", ended_at: "2026-02-18T11:00:00.000Z" }];
+  const historicalData = aggregateDailyTrackedSeconds(session, historicalWeekWindow, nowIso);
+  const currentData = aggregateDailyTrackedSeconds(session, currentWindow, nowIso);
+  assert.equal(historicalData.find((d) => d.date === "2026-02-18")?.trackedSeconds, 3600);
+  assert.equal(currentData.find((d) => d.date === "2026-02-18"), undefined);
+  assert.ok(currentData.every((d) => d.trackedSeconds === 0 || d.date > "2026-03-19"));
+});
+
+test("historical heatmap Tokyo: 8 weeks ago week shows Tokyo local dates not UTC current", () => {
+  const tz = "Asia/Tokyo";
+  // Selected historical week 2026-02-16 Mon JST: week 2026-02-16-22 local, UTC window Sun 02-15 15:00Z -> Sun 02-22 15:00Z
+  const historicalWeeklyWindow = getDailyTrackedWindow(7, "2026-02-22", tz);
+  assert.equal(historicalWeeklyWindow.startIso, "2026-02-15T15:00:00.000Z");
+  assert.equal(historicalWeeklyWindow.endExclusiveIso, "2026-02-22T15:00:00.000Z");
+  // Session at 2026-02-18 00:30 JST = 2026-02-17T15:30Z should bucket to 02-18 Tokyo local
+  const session = [{ started_at: "2026-02-17T15:30:00.000Z", ended_at: "2026-02-17T16:30:00.000Z" }];
+  const data = aggregateDailyTrackedSeconds(session, historicalWeeklyWindow, "2026-04-16T12:00:00.000Z");
+  assert.equal(data.find((d) => d.date === "2026-02-18")?.trackedSeconds, 3600);
+  // Same session under UTC window for same dates would bucket to 02-17 UTC, not 02-18
+  const utcWindow = getDailyTrackedWindow(7, "2026-02-22", "UTC");
+  const utcData = aggregateDailyTrackedSeconds(session, utcWindow, "2026-04-16T12:00:00.000Z");
+  assert.equal(utcData.find((d) => d.date === "2026-02-17")?.trackedSeconds, 3600);
+  assert.equal(utcData.find((d) => d.date === "2026-02-18")?.trackedSeconds ?? 0, 0);
+});
+
+test("historical heatmap New York: selected historical week 8 weeks ago respects EST offset", () => {
+  const tz = "America/New_York";
+  // Week Mon 2026-02-16 EST (UTC-5): start 2026-02-16T05:00Z, end 2026-02-23T05:00Z (next Mon)
+  const historicalWeeklyWindow = getDailyTrackedWindow(7, "2026-02-22", tz);
+  assert.equal(historicalWeeklyWindow.startIso, "2026-02-16T05:00:00.000Z");
+  assert.equal(historicalWeeklyWindow.endExclusiveIso, "2026-02-23T05:00:00.000Z");
+  // Session at 2026-02-18 23:30 EST = 2026-02-19T04:30Z should bucket to 02-18 local, not 02-19 UTC
+  const session = [{ started_at: "2026-02-19T04:30:00.000Z", ended_at: "2026-02-19T05:30:00.000Z" }];
+  const data = aggregateDailyTrackedSeconds(session, historicalWeeklyWindow, "2026-04-16T12:00:00.000Z");
+  // Only 30m before window next-day split counted for 02-18, remaining 30m for 02-19
+  const feb18 = data.find((d) => d.date === "2026-02-18")?.trackedSeconds ?? 0;
+  const feb19 = data.find((d) => d.date === "2026-02-19")?.trackedSeconds ?? 0;
+  assert.equal(feb18, 1800);
+  assert.equal(feb19, 1800);
+});
+
+test("historical heatmap DST: spring forward New York historical week spanning DST still correct", () => {
+  const tz = "America/New_York";
+  // Historical week spanning DST spring 2026-03-02 to 2026-03-08 (DST Sun Mar 8)
+  const w = getDailyTrackedWindow(7, "2026-03-08", tz);
+  // Week start Mon 03-02 05:00Z, end Mon 03-09 04:00Z (23h Sunday)
+  assert.equal(w.startIso, "2026-03-02T05:00:00.000Z");
+  assert.equal(w.endExclusiveIso, "2026-03-09T04:00:00.000Z");
+  const durationHours = (new Date(w.endExclusiveIso).getTime() - new Date(w.startIso).getTime()) / 3600000;
+  assert.equal(durationHours, 167);
+  // Session on DST Sunday 00:30 EST = 05:30Z Mar 8 should count for Mar 8 local
+  const session = [{ started_at: "2026-03-08T05:30:00.000Z", ended_at: "2026-03-08T06:00:00.000Z" }];
+  const data = aggregateDailyTrackedSeconds(session, w, "2026-04-16T12:00:00.000Z");
+  assert.equal(data.find((d) => d.date === "2026-03-08")?.trackedSeconds, 1800);
+});
+
+test("historical heatmap DST: fall back New York historical week spanning DST 25h Sunday", () => {
+  const tz = "America/New_York";
+  const w = getDailyTrackedWindow(7, "2026-11-01", tz);
+  // Week Mon 2026-10-26 to Sun 2026-11-01 includes fall back Nov 1 (25h)
+  assert.equal(w.startIso, "2026-10-26T04:00:00.000Z");
+  assert.equal(w.endExclusiveIso, "2026-11-02T05:00:00.000Z");
+  const durationHours = (new Date(w.endExclusiveIso).getTime() - new Date(w.startIso).getTime()) / 3600000;
+  assert.equal(durationHours, 169); // 7 days +1h fall back in that week
+  const session = [{ started_at: "2026-11-01T04:30:00.000Z", ended_at: "2026-11-01T05:30:00.000Z" }];
+  const data = aggregateDailyTrackedSeconds(session, w, "2026-11-02T06:00:00.000Z");
+  assert.equal(data.find((d) => d.date === "2026-11-01")?.trackedSeconds, 3600);
+});
