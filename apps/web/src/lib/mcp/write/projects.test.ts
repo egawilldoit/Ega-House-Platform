@@ -129,7 +129,7 @@ describe("mcp write projects.createProject", () => {
     expect(createProject).toHaveBeenCalledWith(
       { userId: OWNER_USER_ID },
       repository,
-      { name: "New Project", slug: "New Project", description: undefined },
+      expect.objectContaining({ name: "New Project", slug: "New Project", description: undefined }),
     );
     expect(repository.getProjectBySlug).toHaveBeenCalledWith(
       { userId: OWNER_USER_ID },

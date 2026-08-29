@@ -111,41 +111,6 @@ const CONFIRMATION_SCHEMA = z.object({ confirm: z.boolean() });
  * REPLAY and CONFLICT never mutate. Ledger failures throw (fail closed).
  */
 
-function principalFromAuthInfo(authInfo: AuthInfo | undefined): { ownerUserId: string; oauthClientId: string } | null {
-  try {
-    const p = requireMcpPermission(authInfo, "projects.read");
-    return { ownerUserId: p.ownerUserId, oauthClientId: p.oauthClientId };
-  } catch {
-    return null;
-  }
-}
-
-async function tryDomainReplay(
-  client: SupabaseClient<McpDatabase>,
-  toolName: string,
-  operationId: string,
-  principal: { ownerUserId: string; oauthClientId: string } | null,
-): Promise<Record<string, unknown> | null> {
-  if (!principal) return null;
-  const tableMap: Record<string, string> = {
-    ega_create_project: "projects",
-    ega_create_goal: "goals",
-    ega_create_task: "tasks",
-    ega_create_task_reminder: "task_reminders",
-    ega_start_timer: "task_sessions",
-  };
-  const table = tableMap[toolName];
-  if (!table) return null;
-  try {
-    const { data, error } = await (client as unknown as SupabaseClient).from(table).select("*" ).eq("owner_user_id", principal.ownerUserId).eq("mcp_client_id", principal.oauthClientId).eq("mcp_operation_id", operationId).maybeSingle();
-    if (error || !data) return null;
-    // Return a synthetic success payload for replay; the receipt will store the real payload after this, but for now return the row.
-    return { ok: true, replayedFromDomain: true, [table.slice(0,-1)]: data } as unknown as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 async function withExclusiveMutation(
   client: SupabaseClient<McpDatabase>,
   toolName: string,
@@ -177,14 +142,6 @@ async function withExclusiveMutation(
     };
   }
   try {
-    // Domain-level fencing for high-risk inserts: if a previous worker already
-    // committed the domain row with this operationId, return it as replay instead
-    // of re-inserting. The unique partial index on (owner, client, operation)
-    // guarantees no duplicate even if two workers race after lease expiry.
-    // This makes the effect exactly-once for inserts; updates remain at-least-once idempotent.
-    const domainReplay = await tryDomainReplay(client, toolName, operationId, principalFromAuthInfo(authInfo));
-    if (domainReplay) return resultFromPayload(domainReplay as Record<string, unknown>);
-
     const result = await mutate();
     if (result.isError) {
       const errorCode = (result.structuredContent as Record<string, unknown> | undefined)?.error as { code?: string } | undefined;
