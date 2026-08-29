@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 env:
-  EXPO_PROJECT_ID: 73d127b6-c8f6-450c-8d97-2dca8434cd59
-  EAS_CLI_VERSION: 13.5.1
+  EXPO_PROJECT_ID: 0dafbb64-7c1e-49b1-aea1-de1f8159a5e6
+  EAS_CLI_VERSION: 13.4.2
 
 jobs:
   preflight:
@@ -112,7 +112,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED="73d127b6-c8f6-450c-8d97-2dca8434cd59"
+          EXPECTED="0dafbb64-7c1e-49b1-aea1-de1f8159a5e6"
           ACTUAL="$(node -p "require('./apps/mobile/app.json').expo.extra.eas.projectId")"
           if [ "$ACTUAL" != "$EXPECTED" ]; then
             echo "::error::EAS projectId mismatch: got $ACTUAL expected $EXPECTED"
