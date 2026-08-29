@@ -26,6 +26,7 @@ import { createTasksRoutes } from "./routes/tasks";
 import { createTimeContextRoutes } from "./routes/time-context";
 import { createTimerRoutes } from "./routes/timer";
 import { createTodayRoutes } from "./routes/today";
+import { createWeeklyReviewRoutes } from "./routes/weekly-review";
 
 export type AuthOutcome =
   | {
@@ -131,6 +132,7 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/friction", createFrictionRoutes(dependencies));
   app.route("/api/time-context", createTimeContextRoutes(dependencies));
   app.route("/api/notifications", createNotificationsRoutes());
+  app.route("/api/review", createWeeklyReviewRoutes(dependencies));
   app.route("/api/auth", createAuthRoutes(dependencies));
 
   app.notFound((c) =>

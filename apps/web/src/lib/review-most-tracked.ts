@@ -1,4 +1,15 @@
-import { getSessionDurationWithinWindowSeconds } from "@/lib/task-session";
+/**
+ * Most-tracked insights — canonical delegation.
+ * Preserves web import path but delegates to shared execution evidence so no
+ * second source of truth exists. Historic default included open sessions; the
+ * shared model defaults to includeOnlyClosed (exclude open). This wrapper
+ * preserves backward compatibility by defaulting to includeOpenSessions: true.
+ */
+import {
+  getExecutionEvidenceSessionOverlapSeconds as getSharedOverlap,
+  type ExecutionEvidenceSessionRow,
+  type ExecutionEvidenceWindow,
+} from "@ega/application/shared/execution-evidence";
 
 type SessionWindow = {
   startIso: string;
@@ -97,12 +108,16 @@ export function buildMostTrackedInsights(
   nowIso = new Date().toISOString(),
   limit = 5,
 ): MostTrackedInsights {
+  const execWindow: ExecutionEvidenceWindow = { startIso: window.startIso, endIso: window.endIso };
   const taskBuckets = new Map<string, Omit<MostTrackedInsightRow, "trackedLabel">>();
   const projectBuckets = new Map<string, Omit<MostTrackedInsightRow, "trackedLabel">>();
   const goalBuckets = new Map<string, Omit<MostTrackedInsightRow, "trackedLabel">>();
 
   for (const session of sessions) {
-    const trackedSeconds = getSessionDurationWithinWindowSeconds(session, window, nowIso);
+    const trackedSeconds = getSharedOverlap(session as ExecutionEvidenceSessionRow, execWindow, {
+      nowIso,
+      includeOpenSessions: true,
+    });
 
     if (trackedSeconds <= 0 || !session.tasks?.id) {
       continue;

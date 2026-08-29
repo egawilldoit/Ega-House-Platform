@@ -14,6 +14,7 @@
     "./friction": "./src/friction.ts",
     "./time-context": "./src/time-context.ts",
     "./execution-evidence": "./src/execution-evidence.ts",
+    "./weekly-review": "./src/weekly-review.ts",
     "./health": "./src/health.ts"
   },
   "scripts": {

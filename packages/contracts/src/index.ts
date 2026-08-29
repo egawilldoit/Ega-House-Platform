@@ -8,4 +8,5 @@ export * from "./notifications";
 export * from "./common/task-list";
 export * from "./time-context";
 export * from "./execution-evidence";
+export * from "./weekly-review";
 export * from "./health";
