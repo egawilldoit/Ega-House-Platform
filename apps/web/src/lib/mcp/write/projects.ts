@@ -54,7 +54,7 @@ function createRepository(deps: McpWriteModuleDeps, authInfo: AuthInfo) {
 
 export async function createProject(
   authInfo: AuthInfo | undefined,
-  input: { name?: string; slug?: string | null; description?: string | null },
+  input: { name?: string; slug?: string | null; description?: string | null; operationId?: string },
   deps: McpWriteModuleDeps,
 ): Promise<CallToolResult> {
   const principal = requireMcpPermission(authInfo, "projects.create");
@@ -65,7 +65,9 @@ export async function createProject(
     name: input.name,
     slug: input.slug ?? input.name,
     description: input.description,
-  });
+    mcpOperationId: input.operationId ?? null,
+    mcpClientId: principal.oauthClientId,
+  } as unknown as { name: unknown; slug: unknown; description: unknown });
 
   if (!result.ok) {
     return applicationErrorResult(result.errorMessage);
