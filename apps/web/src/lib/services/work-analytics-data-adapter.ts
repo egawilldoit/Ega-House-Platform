@@ -8,11 +8,20 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   return createClient();
 }
 
+function isValidWindowIso(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
 export async function getWorkAnalyticsSessionsForWindow(args: {
   ownerUserId: string;
   window: ExecutionEvidenceWindow;
   supabase?: SupabaseServerClient;
 }) {
+  if (!isValidWindowIso(args.window.startIso) || !isValidWindowIso(args.window.endIso)) {
+    return { data: null, errorMessage: "Invalid window for work analytics." };
+  }
   const supabase = await resolveSupabaseClient(args.supabase);
   const { data, error } = await supabase
     .from("task_sessions")
@@ -43,7 +52,7 @@ export async function getWorkAnalyticsTaskCounts(args: {
   const supabase = await resolveSupabaseClient(args.supabase);
 
   // Count tasks created within the window: created_at >= start AND created_at < end
-  const { data: createdData, error: createdError } = await supabase
+  const { count: createdCountRaw, error: createdError } = await supabase
     .from("tasks")
     .select("id", { count: "exact", head: true })
     .eq("owner_user_id", args.ownerUserId)
@@ -53,10 +62,10 @@ export async function getWorkAnalyticsTaskCounts(args: {
   if (createdError) {
     return { data: null, errorMessage: `Failed to load work analytics task counts: ${createdError.message}` };
   }
-  const createdCount = createdData?.length ?? 0;
+  const createdCount = createdCountRaw ?? 0;
 
   // Count tasks completed within the window: completed_at >= start AND completed_at < end AND status = 'done'
-  const { data: completedData, error: completedError } = await supabase
+  const { count: completedCountRaw, error: completedError } = await supabase
     .from("tasks")
     .select("id", { count: "exact", head: true })
     .eq("owner_user_id", args.ownerUserId)
@@ -67,12 +76,12 @@ export async function getWorkAnalyticsTaskCounts(args: {
   if (completedError) {
     return { data: null, errorMessage: `Failed to load work analytics task counts: ${completedError.message}` };
   }
-  const completedCount = completedData?.length ?? 0;
+  const completedCount = completedCountRaw ?? 0;
 
   // Count tasks that are currently blocked within scope:
   // completed_at IS NULL AND (blocked_reason IS NOT NULL OR status = 'blocked')
   // AND created_at < window.endIso (tasks that existed within the window)
-  const { data: blockedData, error: blockedError } = await supabase
+  const { count: blockedCountRaw, error: blockedError } = await supabase
     .from("tasks")
     .select("id", { count: "exact", head: true })
     .eq("owner_user_id", args.ownerUserId)
@@ -83,7 +92,7 @@ export async function getWorkAnalyticsTaskCounts(args: {
   if (blockedError) {
     return { data: null, errorMessage: `Failed to load work analytics task counts: ${blockedError.message}` };
   }
-  const blockedCount = blockedData?.length ?? 0;
+  const blockedCount = blockedCountRaw ?? 0;
 
   return { data: { completedCount, createdCount, blockedCount }, errorMessage: null };
 }

@@ -70,6 +70,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
+      // Best-effort detach push endpoint before token invalidation
+      const { bestEffortUnregisterBeforeLogout } = await import('@/lib/notifications/registration');
+      await bestEffortUnregisterBeforeLogout();
+    } catch {
+      // never block logout on notification cleanup
+    }
+
+    try {
       if (sessionBundleRef.current?.session.accessToken) {
         await logoutApiSession();
       }

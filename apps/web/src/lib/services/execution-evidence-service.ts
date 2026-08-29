@@ -1,37 +1,34 @@
+/**
+ * Execution Evidence Service — web compatibility adapter.
+ *
+ * Canonical logic lives in @ega/application/shared/execution-evidence.
+ * This module preserves existing web import paths while delegating to the
+ * shared implementation so behavior is not forked.
+ *
+ * The adapter intentionally preserves the historic default:
+ * `includeOpenSessions` defaults to `true` (include open sessions) for
+ * backwards compatibility. New callers should import from
+ * `@ega/application/shared/execution-evidence` directly and rely on its
+ * documented `includeOnlyClosed` default (`false`).
+ */
 import {
-  getSessionDurationWithinWindowSeconds,
-  getTaskSessionDurationSeconds,
-} from "@/lib/task-session";
+  calculateExecutionEvidenceForWindow as calculateSharedEvidenceForWindow,
+  calculateTotalTrackedSeconds as calculateSharedTotalTrackedSeconds,
+  getExecutionEvidenceSessionDurationSeconds as getSharedDurationSeconds,
+  getExecutionEvidenceSessionOverlapSeconds as getSharedOverlapSeconds,
+  type ExecutionEvidenceSessionRow as SharedRow,
+  type ExecutionEvidenceSummary as SharedSummary,
+  type ExecutionEvidenceTimeBucket as SharedBucket,
+  type ExecutionEvidenceWindow as SharedWindow,
+} from "@ega/application/shared/execution-evidence";
 
-export type ExecutionEvidenceWindow = {
-  startIso: string;
-  endIso: string;
-};
+export type ExecutionEvidenceWindow = SharedWindow;
 
-export type ExecutionEvidenceSessionTask = {
-  id?: string | null;
-  title?: string | null;
-  project_id?: string | null;
-  goal_id?: string | null;
-  estimate_minutes?: number | null;
-  projects?: { id?: string | null; name?: string | null } | null;
-  goals?: { id?: string | null; title?: string | null } | null;
-} | null;
+export type ExecutionEvidenceSessionTask = NonNullable<SharedRow["tasks"]>;
 
-export type ExecutionEvidenceSessionRow = {
-  task_id: string;
-  started_at: string;
-  ended_at: string | null;
-  duration_seconds: number | null;
-  tasks?: ExecutionEvidenceSessionTask;
-};
+export type ExecutionEvidenceSessionRow = SharedRow;
 
-export type ExecutionEvidenceTimeBucket = {
-  id: string;
-  label: string;
-  trackedSeconds: number;
-  sessionCount: number;
-};
+export type ExecutionEvidenceTimeBucket = SharedBucket;
 
 export type ExecutionEvidenceSummary = {
   trackedSecondsByTask: Map<string, number>;
@@ -43,27 +40,16 @@ export type ExecutionEvidenceSummary = {
   sessionCount: number;
 };
 
-function getTaskId(session: ExecutionEvidenceSessionRow) {
-  return session.tasks?.id ?? session.task_id;
-}
-
-function addTimeBucket(
-  buckets: Map<string, ExecutionEvidenceTimeBucket>,
-  id: string | null | undefined,
-  label: string | null | undefined,
-  trackedSeconds: number,
-) {
-  if (!id || !label || trackedSeconds <= 0) {
-    return;
-  }
-
-  const existing = buckets.get(id);
-  buckets.set(id, {
-    id,
-    label,
-    trackedSeconds: (existing?.trackedSeconds ?? 0) + trackedSeconds,
-    sessionCount: (existing?.sessionCount ?? 0) + 1,
-  });
+function toAdapterSummary(shared: SharedSummary): ExecutionEvidenceSummary {
+  return {
+    trackedSecondsByTask: shared.trackedSecondsByTask,
+    totalTrackedSeconds: shared.totalTrackedSeconds,
+    taskTimeBuckets: [...shared.taskTimeBuckets],
+    projectTimeBuckets: [...shared.projectTimeBuckets],
+    touchedProjectNames: [...shared.touchedProjectNames],
+    touchedGoalTitles: [...shared.touchedGoalTitles],
+    sessionCount: shared.sessionCount,
+  };
 }
 
 export function getExecutionEvidenceSessionOverlapSeconds(
@@ -74,15 +60,13 @@ export function getExecutionEvidenceSessionOverlapSeconds(
     includeOpenSessions?: boolean;
   },
 ) {
-  if (options?.includeOpenSessions === false && !session.ended_at) {
-    return 0;
-  }
-
-  return getSessionDurationWithinWindowSeconds(
-    session,
-    window,
-    options?.nowIso ?? new Date().toISOString(),
-  );
+  // Historic web helper included open sessions by default; shared defaults to
+  // exclude. Preserve historic behavior at the adapter boundary.
+  const normalized = {
+    nowIso: options?.nowIso,
+    includeOpenSessions: options?.includeOpenSessions ?? true,
+  };
+  return getSharedOverlapSeconds(session, window, normalized);
 }
 
 export function calculateExecutionEvidenceForWindow(
@@ -93,68 +77,24 @@ export function calculateExecutionEvidenceForWindow(
     includeOpenSessions?: boolean;
   },
 ): ExecutionEvidenceSummary {
-  const nowIso = options?.nowIso ?? new Date().toISOString();
-  const trackedSecondsByTask = new Map<string, number>();
-  const taskTimeBuckets = new Map<string, ExecutionEvidenceTimeBucket>();
-  const projectTimeBuckets = new Map<string, ExecutionEvidenceTimeBucket>();
-  const touchedProjectNames = new Set<string>();
-  const touchedGoalTitles = new Set<string>();
-  let totalTrackedSeconds = 0;
-  let sessionCount = 0;
-
-  for (const session of sessions) {
-    const trackedSeconds = getExecutionEvidenceSessionOverlapSeconds(session, window, {
-      nowIso,
-      includeOpenSessions: options?.includeOpenSessions,
-    });
-
-    if (trackedSeconds <= 0) {
-      continue;
-    }
-
-    const task = session.tasks;
-    const taskId = getTaskId(session);
-
-    totalTrackedSeconds += trackedSeconds;
-    sessionCount += 1;
-    trackedSecondsByTask.set(
-      session.task_id,
-      (trackedSecondsByTask.get(session.task_id) ?? 0) + trackedSeconds,
-    );
-    addTimeBucket(taskTimeBuckets, taskId, task?.title ?? "Untitled task", trackedSeconds);
-
-    if (task?.projects?.name) {
-      touchedProjectNames.add(task.projects.name);
-      addTimeBucket(
-        projectTimeBuckets,
-        task.projects.id ?? task.project_id,
-        task.projects.name,
-        trackedSeconds,
-      );
-    }
-
-    if (task?.goals?.title) {
-      touchedGoalTitles.add(task.goals.title);
-    }
-  }
-
-  return {
-    trackedSecondsByTask,
-    totalTrackedSeconds,
-    taskTimeBuckets: Array.from(taskTimeBuckets.values()),
-    projectTimeBuckets: Array.from(projectTimeBuckets.values()),
-    touchedProjectNames: Array.from(touchedProjectNames),
-    touchedGoalTitles: Array.from(touchedGoalTitles),
-    sessionCount,
+  const normalized = {
+    nowIso: options?.nowIso,
+    includeOpenSessions: options?.includeOpenSessions ?? true,
   };
+  const shared = calculateSharedEvidenceForWindow(sessions, window, normalized);
+  return toAdapterSummary(shared);
 }
 
 export function calculateTotalTrackedSeconds(
   sessions: ExecutionEvidenceSessionRow[],
   nowIso = new Date().toISOString(),
 ) {
-  return sessions.reduce(
-    (total, session) => total + getTaskSessionDurationSeconds(session, nowIso),
-    0,
-  );
+  // Delegate to shared total helper (handles duration_seconds fallback).
+  return calculateSharedTotalTrackedSeconds(sessions, nowIso);
 }
+
+// Re-export canonical helpers under explicit names for new web code that
+// wants richer evidence without importing @ega/application directly.
+export const calculateCanonicalExecutionEvidenceForWindow = calculateSharedEvidenceForWindow;
+export const getCanonicalSessionDurationSeconds = getSharedDurationSeconds;
+export const getCanonicalSessionOverlapSeconds = getSharedOverlapSeconds;
