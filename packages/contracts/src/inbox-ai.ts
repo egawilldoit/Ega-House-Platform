@@ -170,7 +170,7 @@ export const inboxAiGenerationRecordSchema = {
     }
     const tokenUsage = (obj.tokenUsage ?? null) as InboxAiTokenUsage | null;
     if (tokenUsage !== null) {
-      if (typeof tokenUsage !== "object" || tokenUsage === null) return fail("Invalid tokenUsage", ["tokenUsage"]);
+      if (typeof tokenUsage !== "object") return fail("Invalid tokenUsage", ["tokenUsage"]);
     }
     const estimatedCostUsd = obj.estimatedCostUsd ?? null;
     if (estimatedCostUsd !== null && typeof estimatedCostUsd !== "number") {
