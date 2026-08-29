@@ -1,10 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createAuthenticatedActor, getTodayPlan, type AuthenticatedActor, type TodayReadPort, type RepositoryResult, type TodaySourceTask } from "../src/index";
+import { createAuthenticatedActor, getTodayPlan, type AuthenticatedActor, type TodayReadPort, type RepositoryResult, type TimeContextRepository, type TodaySourceTask } from "../src/index";
 
 function ok<T>(value: T): RepositoryResult<T> {
   return { ok: true, value };
+}
+
+class FakeTimeContextRepo implements TimeContextRepository {
+  constructor(private stored: string | null = null) {}
+  async getTimezone(): Promise<RepositoryResult<string | null>> {
+    return ok(this.stored);
+  }
+  async setTimezone(_actor: AuthenticatedActor, timezone: string): Promise<RepositoryResult<string>> {
+    this.stored = timezone;
+    return ok(timezone);
+  }
 }
 
 function task(overrides: Partial<TodaySourceTask> & { id: string }): TodaySourceTask {
@@ -64,7 +75,8 @@ test("getTodayPlan server TZ Asia/Tokyo vs UTC yields same canonical Today (C1)"
   try {
     process.env.TZ = "Asia/Tokyo";
     const portTokyo = new FakeTodayPort([task({ id: "t1" })]);
-    const resultTokyo = await getTodayPlan(createAuthenticatedActor("user-tz"), portTokyo, {
+    const timeRepo = new FakeTimeContextRepo(null);
+    const resultTokyo = await getTodayPlan(createAuthenticatedActor("user-tz"), portTokyo, timeRepo, {
       now,
       timezone: "Asia/Tokyo",
     } as any);
@@ -77,7 +89,8 @@ test("getTodayPlan server TZ Asia/Tokyo vs UTC yields same canonical Today (C1)"
 
     process.env.TZ = "UTC";
     const portUTC = new FakeTodayPort([task({ id: "t1" })]);
-    const resultUTC = await getTodayPlan(createAuthenticatedActor("user-tz"), portUTC, {
+    const timeRepo2 = new FakeTimeContextRepo(null);
+    const resultUTC = await getTodayPlan(createAuthenticatedActor("user-tz"), portUTC, timeRepo2, {
       now,
       timezone: "Asia/Tokyo",
     } as any);
@@ -101,13 +114,15 @@ test("getTodayPlan defaults to UTC and is server TZ independent when no timezone
   try {
     process.env.TZ = "Asia/Tokyo";
     const port1 = new FakeTodayPort([task({ id: "t1" })]);
-    const r1 = await getTodayPlan(createAuthenticatedActor("u1"), port1, { now } as any);
+    const repo1 = new FakeTimeContextRepo(null);
+    const r1 = await getTodayPlan(createAuthenticatedActor("u1"), port1, repo1, { now } as any);
     assert.equal(r1.ok && r1.data.date, "2026-01-15");
     assert.equal(port1.capturedWindowStart, "2026-01-15T00:00:00.000Z");
 
     process.env.TZ = "UTC";
     const port2 = new FakeTodayPort([task({ id: "t1" })]);
-    const r2 = await getTodayPlan(createAuthenticatedActor("u1"), port2, { now } as any);
+    const repo2 = new FakeTimeContextRepo(null);
+    const r2 = await getTodayPlan(createAuthenticatedActor("u1"), port2, repo2, { now } as any);
     assert.equal(r2.ok && r2.data.date, "2026-01-15");
     assert.equal(port2.capturedWindowStart, "2026-01-15T00:00:00.000Z");
     assert.equal(port1.capturedToday, port2.capturedToday);
