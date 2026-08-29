@@ -154,35 +154,49 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
   let downloadedUpdateReady = false;
 
   const listeners = new Set<() => void>();
-  function notify() {
-    listeners.forEach((l) => l());
-  }
+  let snapshot: UpdateServiceState | null = null;
 
   function getInfo() {
     return getAppUpdateInfo(deps);
   }
 
+  function buildSnapshot(): UpdateServiceState {
+    const info = getInfo();
+    return {
+      status: currentStatus,
+      isChecking: checking,
+      isDownloading: downloading,
+      isReady: downloadedUpdateReady,
+      error: lastError,
+      lastCheckedAt,
+      availableUpdateId,
+      latestNativeVersion,
+      latestNativeRuntimeVersion,
+      latestNativeReleaseUrl: latestReleaseUrl,
+      latestApkUrl,
+      currentUpdateId: info.updateId,
+      appVersion: info.appVersion,
+      runtimeVersion: info.runtimeVersion,
+      channel: info.channel,
+      downloadedUpdateReady,
+    };
+  }
+
+  function syncSnapshot() {
+    snapshot = buildSnapshot();
+  }
+
+  // initial snapshot
+  syncSnapshot();
+
+  function notify() {
+    listeners.forEach((l) => l());
+  }
+
   return {
     getState(): UpdateServiceState {
-      const info = getInfo();
-      return {
-        status: currentStatus,
-        isChecking: checking,
-        isDownloading: downloading,
-        isReady: downloadedUpdateReady,
-        error: lastError,
-        lastCheckedAt,
-        availableUpdateId,
-        latestNativeVersion,
-        latestNativeRuntimeVersion,
-        latestNativeReleaseUrl: latestReleaseUrl,
-        latestApkUrl,
-        currentUpdateId: info.updateId,
-        appVersion: info.appVersion,
-        runtimeVersion: info.runtimeVersion,
-        channel: info.channel,
-        downloadedUpdateReady,
-      };
+      if (!snapshot) syncSnapshot();
+      return snapshot!;
     },
     subscribe(fn: () => void) {
       listeners.add(fn);
@@ -194,6 +208,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       checking = true;
       currentStatus = 'CHECKING';
       lastError = null;
+      syncSnapshot();
       notify();
       const result = await checkForUpdate(deps, opts);
       checking = false;
@@ -212,6 +227,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       }
       availableUpdateId = result.availableUpdateId ?? null;
       lastCheckedAt = new Date().toISOString();
+      syncSnapshot();
       notify();
       return result;
     },
@@ -224,6 +240,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       downloading = true;
       currentStatus = 'DOWNLOADING';
       lastError = null;
+      syncSnapshot();
       notify();
       const result = await downloadUpdate(deps, opts);
       downloading = false;
@@ -231,6 +248,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       if (result.status === 'OTA_READY') downloadedUpdateReady = true;
       else downloadedUpdateReady = false;
       lastError = result.error ?? null;
+      syncSnapshot();
       notify();
       return result;
     },
@@ -245,6 +263,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
         lastError = `Unable to restart and apply update: ${msg}`;
         currentStatus = 'ERROR';
         // keep downloadedUpdateReady true for retry, do not redownload
+        syncSnapshot();
         notify();
         throw new Error(lastError);
       }
@@ -259,6 +278,7 @@ export function createUpdateService(deps: ServiceDeps = getDefaultDeps()) {
       latestApkUrl = null;
       latestReleaseUrl = null;
       downloadedUpdateReady = false;
+      syncSnapshot();
       notify();
     },
   };
