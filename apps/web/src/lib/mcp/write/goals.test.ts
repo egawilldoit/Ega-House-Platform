@@ -140,6 +140,57 @@ describe("mcp write goals.createGoal", () => {
     expect(result.structuredContent).toEqual({ ok: true, goal: goalValues });
   });
 
+  it("binds createGoal to the verified MCP client and operation", async () => {
+    const repository = makeRepository();
+    const { deps } = makeDeps();
+    const authInfo = createMcpAuthInfo("token-123", WORKSPACE_MANAGER_PRINCIPAL);
+    const goalRecord = {
+      id: "goal-1",
+      projectId: "project-1",
+      title: "Ship MCP writes",
+      slug: "ship-mcp-writes",
+      description: null,
+      nextStep: null,
+      health: null,
+      status: "draft",
+      createdAt: "2026-08-28T00:00:00.000Z",
+      updatedAt: "2026-08-28T00:00:00.000Z",
+    };
+    vi.mocked(createGoal).mockResolvedValue({
+      ok: true,
+      data: goalRecord,
+      values: {
+        title: "Ship MCP writes",
+        projectId: "project-1",
+        description: "",
+        nextStep: "",
+        health: "",
+        status: "draft",
+        slug: "ship-mcp-writes",
+      },
+    });
+
+    const result = await goalsWrite.createGoal(
+      authInfo,
+      {
+        title: "Ship MCP writes",
+        projectId: "project-1",
+        operationId: "550e8400-e29b-41d4-a716-446655440000",
+      },
+      deps,
+    );
+
+    expect(createGoal).toHaveBeenCalledWith(
+      { userId: OWNER_USER_ID },
+      repository,
+      expect.objectContaining({
+        mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+        mcpClientId: "hermes-client",
+      }),
+    );
+    expect(result.structuredContent).toEqual({ ok: true, goal: goalRecord });
+  });
+
   it("keeps goal-project relationship authority inside the canonical service", async () => {
     makeRepository();
     const { deps, client } = makeDeps();

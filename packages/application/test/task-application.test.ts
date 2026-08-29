@@ -20,6 +20,7 @@ import {
 } from "../src/index";
 
 const ACTOR = createAuthenticatedActor("user-123");
+const NOW = new Date("2026-08-10T12:00:00.000Z");
 
 function ok<T>(value: T): RepositoryResult<T> {
   return { ok: true, value };
@@ -33,6 +34,7 @@ class FakeTasksRepository implements TasksRepository {
   });
   list: RepositoryResult<TaskRecord[]> = ok([]);
   task: RepositoryResult<TaskRecord | null> = ok(null);
+  reminder: RepositoryResult<TaskRecord | null> = ok(null);
   mutation: RepositoryResult<TaskRecord> = ok({
     id: "task-1",
     title: "Ship Wave 2",
@@ -100,6 +102,10 @@ class FakeTasksRepository implements TasksRepository {
     this.calls.push({ method: "createReminder", actor: actor.userId, input });
     return this.mutation;
   }
+  async findReminderByOperation(actor: AuthenticatedActor, input: unknown) {
+    this.calls.push({ method: "findReminderByOperation", actor: actor.userId, input });
+    return this.reminder;
+  }
   async cancelReminder(actor: AuthenticatedActor, input: unknown) {
     this.calls.push({ method: "cancelReminder", actor: actor.userId, input });
     return this.mutation;
@@ -134,6 +140,33 @@ test("createTask validates scope and delegates normalized task data with the tru
     priority: "high",
     dueDate: null,
     estimateMinutes: 30,
+  });
+});
+
+test("createTask propagates the server-bound MCP operation identity", async () => {
+  const repository = new FakeTasksRepository();
+  const result = await createTask(ACTOR, repository, {
+    title: "Ship Wave 2",
+    projectId: "project-1",
+    status: "todo",
+    priority: "high",
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(repository.calls[1]?.input, {
+    title: "Ship Wave 2",
+    projectId: "project-1",
+    goalId: null,
+    description: null,
+    blockedReason: null,
+    status: "todo",
+    priority: "high",
+    dueDate: null,
+    estimateMinutes: null,
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
   });
 });
 
@@ -215,6 +248,44 @@ test("reminder policy rejects past times and delegates future reminder create/ca
   });
   assert.equal(cancelled.ok, true);
   assert.deepEqual(repository.calls.map((call) => call.method), ["createReminder", "cancelReminder"]);
+});
+
+test("createTaskReminder propagates the server-bound MCP operation identity", async () => {
+  const repository = new FakeTasksRepository();
+  const result = await createTaskReminder(ACTOR, repository, {
+    taskId: "task-1",
+    remindAt: "2026-08-10T13:00:00.000Z",
+    now: NOW,
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
+  });
+
+  assert.equal(result.ok, true);
+  const reminderCall = repository.calls.find((call) => call.method === "createReminder");
+  assert.deepEqual(reminderCall?.input, {
+    taskId: "task-1",
+    remindAt: "2026-08-10T13:00:00.000Z",
+    channel: "email",
+    status: "pending",
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
+  });
+});
+
+test("createTaskReminder replays before time validation after a crash", async () => {
+  const repository = new FakeTasksRepository();
+  repository.reminder = repository.mutation;
+
+  const result = await createTaskReminder(ACTOR, repository, {
+    taskId: "task-1",
+    remindAt: "2026-08-10T12:01:00.000Z",
+    now: new Date("2026-08-10T12:10:00.000Z"),
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
+  });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(repository.calls.map((call) => call.method), ["findReminderByOperation"]);
 });
 
 test("task read models preserve actor scoping and missing-task semantics", async () => {

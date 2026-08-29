@@ -459,10 +459,6 @@ const clearCompletedTodayInputSchema = z.object({
   operationId: z.string().uuid(),
 }).strict();
 
-const genericSuccessOutputSchema = z.object({
-  ok: z.literal(true),
-}).passthrough();
-
 const genericWriteOutputSchema = z
   .union([
     z.object({ ok: z.literal(true) }).passthrough(),

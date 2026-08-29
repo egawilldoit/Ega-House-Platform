@@ -24,6 +24,7 @@ class FakeTimerRepository implements TimerSessionRepository {
   nextId = 1;
   startableOverride: StartableTask | null = null;
   insertFailure: { code: "conflict" | "unknown" } | null = null;
+  operationSessions = new Map<string, TimerSessionRecord>();
 
   seed(session: Partial<TimerSessionRecord> & { id: string }) {
     this.sessions.push({
@@ -53,12 +54,32 @@ class FakeTimerRepository implements TimerSessionRepository {
     return ok({ eligible: true, reason: null, taskTitle: "Seeded task" });
   }
 
+  async findSessionByOperation(
+    actor: AuthenticatedActor,
+    input: { mcpOperationId: string; mcpClientId: string },
+  ) {
+    void actor;
+    return ok(this.operationSessions.get(`${input.mcpClientId}:${input.mcpOperationId}`) ?? null);
+  }
+
   async insertOpenSession(
     actor: AuthenticatedActor,
-    input: { taskId: string; startedAtIso: string },
+    input: {
+      taskId: string;
+      startedAtIso: string;
+      mcpOperationId?: string;
+      mcpClientId?: string;
+    },
   ) {
     void actor;
     if (this.insertFailure) return { ok: false as const, error: this.insertFailure };
+    const operationKey = input.mcpOperationId && input.mcpClientId
+      ? `${input.mcpClientId}:${input.mcpOperationId}`
+      : null;
+    if (operationKey) {
+      const existing = this.operationSessions.get(operationKey);
+      if (existing) return ok(existing);
+    }
     const session: TimerSessionRecord = {
       id: `session-${this.nextId++}`,
       taskId: input.taskId,
@@ -68,6 +89,7 @@ class FakeTimerRepository implements TimerSessionRepository {
       taskTitle: "Seeded task",
     };
     this.sessions.push(session);
+    if (operationKey) this.operationSessions.set(operationKey, session);
     return ok(session);
   }
 
@@ -118,6 +140,28 @@ test("start maps a repository insert conflict to the already-running domain mess
   if (!result.ok) {
     assert.equal(result.errorMessage, "A timer is already running. Stop it before starting a new one.");
   }
+});
+
+test("fenced timer start retries return the original session without a second effect", async () => {
+  const repository = new FakeTimerRepository();
+  const actor = createAuthenticatedActor("user-timer");
+  const identity = {
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
+  };
+
+  const first = await startTaskSession(actor, repository, { taskId: "task-1", ...identity }, { now: NOW });
+  repository.startableOverride = {
+    eligible: false,
+    reason: "This task is archived.",
+    taskTitle: "Archived",
+  };
+  const retry = await startTaskSession(actor, repository, { taskId: "task-1", ...identity }, { now: NOW });
+
+  assert.equal(first.ok, true);
+  assert.equal(retry.ok, true);
+  if (first.ok && retry.ok) assert.equal(retry.data.sessionId, first.data.sessionId);
+  assert.equal(repository.sessions.length, 1);
 });
 
 test("start keeps the generic failure message for non-conflict insert failures", async () => {

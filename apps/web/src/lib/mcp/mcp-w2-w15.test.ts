@@ -116,7 +116,7 @@ describe("W3 Host/Origin", () => {
 
 // W5 discovery
 describe("W5 permission-aware discovery", () => {
-  it("read_only sees 6 reads, no writes", () => {
+  it("read_only sees seven reads, no writes", () => {
     const allowed = filterToolsByPermissions(["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"], true);
     expect(allowed).toEqual(expect.arrayContaining(["ega_list_projects", "ega_get_today_plan"]));
     expect(allowed.includes("ega_create_project")).toBe(false);

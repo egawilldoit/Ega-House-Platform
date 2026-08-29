@@ -190,6 +190,25 @@ describe("MCP createTask handler", () => {
     expect(result.isError).toBeUndefined();
   });
 
+  it("binds createTask to the verified MCP client and operation", async () => {
+    const { handlers } = createHandlers();
+    serviceMock("createTask").mockResolvedValue(applicationSuccess(TASK_RECORD));
+
+    const result = await handlers.createTask(authInfoFor(), {
+      title: "Repair the greenhouse door",
+      projectId: "project-1",
+      operationId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    const createTaskMock = serviceMock("createTask");
+    expect(createTaskMock).toHaveBeenCalledTimes(1);
+    expect(createTaskMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+      mcpClientId: "hermes-client",
+    }));
+    expect(structured(result)).toEqual({ ok: true, task: TASK_RECORD });
+  });
+
   it("maps canonical foreign-project rejection to INVALID_ARGUMENT with the canonical message", async () => {
     const { handlers } = createHandlers();
     serviceMock("createTask").mockResolvedValue(
@@ -421,6 +440,25 @@ describe("MCP reminder handlers", () => {
     expect(repository).toBeInstanceOf(SupabaseTasksRepository);
     expect(input).toEqual({ taskId: "task-1", remindAt: "2026-09-01T09:00:00.000Z" });
     expect(structured(result)).toEqual({ ok: true, task: withReminder });
+  });
+
+  it("binds reminder creation to the verified MCP client and operation", async () => {
+    const { handlers } = createHandlers();
+    serviceMock("createTaskReminder").mockResolvedValue(applicationSuccess(TASK_RECORD));
+
+    const result = await handlers.createTaskReminder(authInfoFor(), {
+      taskId: "task-1",
+      remindAt: "2026-09-01T09:00:00.000Z",
+      operationId: "550e8400-e29b-41d4-a716-446655440000",
+    });
+
+    const reminderMock = serviceMock("createTaskReminder");
+    expect(reminderMock).toHaveBeenCalledTimes(1);
+    expect(reminderMock.mock.calls[0]?.[2]).toEqual(expect.objectContaining({
+      mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+      mcpClientId: "hermes-client",
+    }));
+    expect(structured(result)).toEqual({ ok: true, task: TASK_RECORD });
   });
 
   it("maps canonical reminder-time rejection to INVALID_ARGUMENT", async () => {

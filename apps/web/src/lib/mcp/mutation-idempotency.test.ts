@@ -42,6 +42,14 @@ function concurrentClaimClient() {
   return { client: { rpc } as unknown as SupabaseClient<McpDatabase>, rpc, complete: (result: Record<string, unknown>) => { if (state) state.result = result; } };
 }
 
+const FENCED_CREATE_TOOLS = [
+  "ega_create_project",
+  "ega_create_goal",
+  "ega_create_task",
+  "ega_create_task_reminder",
+  "ega_start_timer",
+] as const;
+
 describe("canonicalMutationFingerprint determinism", () => {
   it("hashes identically regardless of key insertion order", () => {
     const a = canonicalMutationFingerprint("ega_create_task", { title: "T", projectId: "p1", status: "todo" });
@@ -190,6 +198,17 @@ describe("claimMcpMutation", () => {
     const { client } = concurrentClaimClient();
     await claimMcpMutation(client, "ega_create_task", "op-1", "fingerprint-a");
     await expect(claimMcpMutation(client, "ega_create_task", "op-1", "fingerprint-b")).resolves.toEqual({
+      outcome: "CONFLICT",
+    });
+  });
+
+  it.each(FENCED_CREATE_TOOLS)("returns CONFLICT for %s when the operation arguments change", async (tool) => {
+    const { client } = concurrentClaimClient();
+    const firstFingerprint = canonicalMutationFingerprint(tool, { title: "first" });
+    const changedFingerprint = canonicalMutationFingerprint(tool, { title: "changed" });
+
+    await claimMcpMutation(client, tool, "op-1", firstFingerprint);
+    await expect(claimMcpMutation(client, tool, "op-1", changedFingerprint)).resolves.toEqual({
       outcome: "CONFLICT",
     });
   });
