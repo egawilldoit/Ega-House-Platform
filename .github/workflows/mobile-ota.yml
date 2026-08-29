@@ -118,9 +118,9 @@ jobs:
             echo "::error::EAS projectId mismatch: got $ACTUAL expected $EXPECTED"
             exit 1
           fi
-          ACTUAL2="$(grep -o '"expo-channel-name":"production"' apps/mobile/app.json || echo "")"
-          if [ -z "$ACTUAL2" ]; then
-            echo "::error::app.json must contain requestHeaders expo-channel-name production"
+          ACTUAL2="$(node -p "require('./apps/mobile/app.json').expo.updates.requestHeaders['expo-channel-name']" 2>/dev/null || echo "")"
+          if [ "$ACTUAL2" != "production" ]; then
+            echo "::error::app.json must contain requestHeaders expo-channel-name production (got '$ACTUAL2')"
             exit 1
           fi
           echo "Project ID and channel header OK"
