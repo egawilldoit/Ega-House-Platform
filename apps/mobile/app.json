@@ -2,14 +2,14 @@
   "expo": {
     "name": "mobile",
     "slug": "ega-house",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
       "url": "https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "checkAutomatically": "ON_LOAD",
       "requestHeaders": {
         "expo-channel-name": "production"
       }
