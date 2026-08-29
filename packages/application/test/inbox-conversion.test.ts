@@ -333,7 +333,6 @@ test("retry after link failure reuses deterministic task (no duplicate) - determ
   assert.equal(second.ok, true);
   assert.equal((second as any).data.inboxItem.status, "converted");
   assert.equal((second as any).data.task.id, orphanTaskId, "retry should reuse deterministic task id, not create second");
-  const createCountAfterSecond = tasksRepo.calls.filter((c) => c.method === "createTask").length;
   // Second attempt will try to getTask deterministic first, then attempt create which will duplicate, then fetch existing. So create count may be 1 or 2 depending on path, but task count should remain 1 deterministic
   assert.ok(tasksRepo.taskStore.size === 2 || tasksRepo.taskStore.size === 3, "task store should not have extra orphan beyond deterministic");
   assert.equal(inboxRepo.taskLink, orphanTaskId);
