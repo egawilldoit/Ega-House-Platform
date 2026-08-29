@@ -9,11 +9,9 @@ export function useAppUpdateInfo() {
 }
 
 export function useUpdateService(service = getUpdateService()) {
-  const state = useSyncExternalStore(
-    (cb) => service.subscribe(cb),
-    () => service.getState(),
-    () => service.getState()
-  );
+  const subscribe = useCallback((cb: () => void) => service.subscribe(cb), [service]);
+  const getSnapshot = useCallback(() => service.getState(), [service]);
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   const check = useCallback(() => service.check(), [service]);
   const download = useCallback(() => service.download(), [service]);
