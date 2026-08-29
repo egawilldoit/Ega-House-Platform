@@ -100,6 +100,16 @@ export interface OperatorProposalRepository {
     actor: AuthenticatedActor,
     cutoffIso: string,
   ): Promise<RepositoryResult<number>>;
+  /**
+   * Atomic claim: transition approved → applying exactly once per proposal.
+   * Implementation must be WHERE id = :id AND owner_user_id = :actor.userId AND status = 'approved'
+   * returning the claimed row only for the winner. Losers receive null.
+   * Only winner may mutate Tasks; losers must not mutate.
+   */
+  claimApprovedProposalForApply(
+    actor: AuthenticatedActor,
+    proposalId: string,
+  ): Promise<RepositoryResult<OperatorProposalRecord | null>>;
   // For testing: list all for owner
   findByLocalDate?(
     actor: AuthenticatedActor,
@@ -624,6 +634,21 @@ export async function approveOperatorProposal(
   return applicationSuccess(updated.value);
 }
 
+/**
+ * Invariant — atomic claim + crash-safe recovery + idempotent Task application:
+ * - Atomic claim: approved → applying via `claimApprovedProposalForApply` WHERE status='approved'.
+ *   Only winner receives mutation authority; losers observe applying/terminal and do not mutate.
+ * - `applying` is durable recoverable state. Crash after claim before finalization leaves
+ *   proposal in `applying` with no `result`. Retry with same proposalId resumes deterministically:
+ *   each Task is checked for `plannedForDate === localDate` before mutating, so already-applied
+ *   tasks are counted as applied without duplicate writes (mutation receipt = Task state).
+ * - Stale detection is evaluated only before claim (when status `approved`), not on `applying`
+ *   resume, because own prior mutations change `plannedForDate` and would otherwise appear stale.
+ * - Finalization writes `result` + `applied`/`partially_applied`; retry after finalization is
+ *   idempotent returning same `result` without extra mutations.
+ * - Operation identity is `proposalId` (single writer per proposal); Task application is
+ *   deterministic idempotent via `plannedForDate` equality.
+ */
 export async function applyOperatorProposal(
   actor: AuthenticatedActor,
   proposalRepo: OperatorProposalRepository,
@@ -648,46 +673,56 @@ export async function applyOperatorProposal(
     return applicationFailure(`Cannot apply proposal in ${proposal.status} state. Approve first.`);
   }
 
-  // If status is already applying, treat as idempotent in-progress — return current
-  if (proposal.status === "applying" && proposal.result) {
-    return applicationSuccess(proposal);
-  }
-
   // Explicit partial apply: validate requested subset is within proposal (LLM cannot inject arbitrary ids)
   const explicitValidation = validateExplicitTaskIds(proposal.proposedTaskIds, input.taskIds);
   if (!explicitValidation.ok) return applicationFailure(explicitValidation.message);
   const explicitTaskIds = explicitValidation.value;
 
-  // Stale detection before mutation (compare taskVersions vs current) — scoped to explicit ids
-  const staleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
-  if (staleCheck.stale) {
-    const nowIso = new Date().toISOString();
-    const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
-    const updated = await proposalRepo.updateProposal(actor, proposal.id, {
-      status: "stale",
-      updatedAt: nowIso,
-      appliedAt: nowIso,
-      result: {
-        appliedTaskIds: [],
-        skippedTaskIds: [],
-        failedTaskIds: targetIds.map((id) => ({ id, reason: staleCheck.reason ?? "stale" })),
-        staleDetected: true,
-        appliedAt: nowIso,
+  if (proposal.status === "approved") {
+    // Stale detection before claim — compares stored taskVersions vs current, scoped to explicit ids.
+    // Evaluated only before claim; resume after crash skips this because own mutations would appear stale.
+    const staleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
+    if (staleCheck.stale) {
+      const nowIso = new Date().toISOString();
+      const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
+      const updated = await proposalRepo.updateProposal(actor, proposal.id, {
         status: "stale",
-      },
-    });
-    if (!updated.ok) return applicationFailure("Unable to mark proposal as stale.");
-    return applicationSuccess(updated.value);
-  }
+        updatedAt: nowIso,
+        appliedAt: nowIso,
+        result: {
+          appliedTaskIds: [],
+          skippedTaskIds: [],
+          failedTaskIds: targetIds.map((id) => ({ id, reason: staleCheck.reason ?? "stale" })),
+          staleDetected: true,
+          appliedAt: nowIso,
+          status: "stale",
+        },
+      });
+      if (!updated.ok) return applicationFailure("Unable to mark proposal as stale.");
+      return applicationSuccess(updated.value);
+    }
 
-  // Transition to applying
-  const applyingIso = new Date().toISOString();
-  const applyingUpdate = await proposalRepo.updateProposal(actor, proposal.id, {
-    status: "applying",
-    updatedAt: applyingIso,
-  });
-  if (!applyingUpdate.ok) return applicationFailure("Unable to transition proposal to applying.");
-  proposal = applyingUpdate.value;
+    // Atomic claim: approved → applying. Only winner may mutate Tasks.
+    const claim = await proposalRepo.claimApprovedProposalForApply(actor, proposal.id);
+    if (!claim.ok) return applicationFailure("Unable to claim proposal for apply.");
+    if (!claim.value) {
+      // Lost race — another device claimed, or status no longer approved
+      const latest = await proposalRepo.findById(actor, proposal.id);
+      if (latest.ok && latest.value) {
+        if (isTerminalStatus(latest.value.status)) return applicationSuccess(latest.value);
+        if (latest.value.status === "applying") return applicationFailure("Proposal is already being applied.");
+      }
+      return applicationFailure("Proposal is already being applied.");
+    }
+    proposal = claim.value;
+  } else {
+    // Status is `applying` — recoverable in-progress. Crash after claim leaves no `result`.
+    // Resume deterministically without re-evaluating stale (own `plannedForDate` mutations would pollute check).
+    if (proposal.result) {
+      return applicationSuccess(proposal);
+    }
+    // No result yet → resume mutations idempotently; explicitTaskIds already validated.
+  }
 
   // Partial apply: attempt each task's plannedForDate mutation — explicit subset when provided
   const targetIds = explicitTaskIds;

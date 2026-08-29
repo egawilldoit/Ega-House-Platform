@@ -181,6 +181,39 @@ export class SupabaseOperatorProposalRepository implements OperatorProposalRepos
     return { ok: true, value: mapRow(asRow(result.data)) };
   }
 
+  async claimApprovedProposalForApply(
+    actor: AuthenticatedActor,
+    proposalId: string,
+  ): Promise<RepositoryResult<OperatorProposalRecord | null>> {
+    const nowIso = new Date().toISOString();
+    const result = await (this.supabase as unknown as {
+      from: (table: string) => {
+        update: (payload: unknown) => {
+          eq: (col: string, val: unknown) => {
+            eq: (col2: string, val2: unknown) => {
+              eq: (col3: string, val3: unknown) => {
+                select: (cols: string) => {
+                  maybeSingle: () => Promise<{ data: unknown; error: unknown | null }>;
+                };
+              };
+            };
+          };
+        };
+      };
+    })
+      .from("operator_proposals")
+      .update({ status: "applying", updated_at: nowIso } as never)
+      .eq("id", proposalId)
+      .eq("owner_user_id", actor.userId)
+      .eq("status", "approved")
+      .select("*")
+      .maybeSingle();
+
+    if ((result as unknown as { error: unknown }).error) return failure((result as unknown as { error: unknown }).error as never);
+    if (!result.data) return { ok: true, value: null };
+    return { ok: true, value: mapRow(asRow(result.data)) };
+  }
+
   async listProposals(
     actor: AuthenticatedActor,
     filter?: { localDate?: string; status?: string; limit?: number },
