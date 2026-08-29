@@ -146,6 +146,36 @@ describe("MCP timer write module handlers", () => {
       });
     });
 
+    it("binds timer start to the verified MCP client and operation", async () => {
+      const handlers = createMcpTimerModuleHandlers(dependencies, true);
+      mocks.startTaskSession.mockResolvedValue({
+        ok: true,
+        data: {
+          sessionId: OPEN_SESSION.id,
+          taskId: OPEN_SESSION.taskId,
+          startedAt: OPEN_SESSION.startedAt,
+          elapsedLabel: "0m",
+          taskTitle: "Open work",
+        },
+      });
+
+      const result = await handlers.startTimer(
+        createMcpAuthInfo("test-bearer", PRINCIPAL),
+        {
+          taskId: OPEN_SESSION.taskId,
+          operationId: "550e8400-e29b-41d4-a716-446655440000",
+        },
+      );
+
+      expect(mocks.startTaskSession).toHaveBeenCalledTimes(1);
+      expect(mocks.startTaskSession.mock.calls[0]?.[2]).toEqual({
+        taskId: OPEN_SESSION.taskId,
+        mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+        mcpClientId: "hermes-client",
+      });
+      expect(structured(result)).toMatchObject({ ok: true, session: { id: OPEN_SESSION.id } });
+    });
+
     it("maps a foreign or unknown task to the canonical rejection", async () => {
       const handlers = createMcpTimerModuleHandlers(dependencies, true);
       mocks.startTaskSession.mockResolvedValue({

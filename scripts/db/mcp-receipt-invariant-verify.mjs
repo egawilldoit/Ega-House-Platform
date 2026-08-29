@@ -1,9 +1,12 @@
 #!/usr/bin/env node
 /**
  * Ephemeral-database migration proof for the MCP mutation-receipt fenced claim
- * API (drizzle/0047_mcp_mutation_receipts.sql). The proof covers the ledger's
- * idempotency contract; it does not claim distributed exactly-once business
- * effects across a worker and the database.
+ * API (drizzle/0047_mcp_mutation_receipts.sql). The receipt phases cover the
+ * ledger's idempotency contract. The domain phase proves the 0054 operation
+ * fences at the database boundary, including a receipt claim, domain commit,
+ * lost receipt, lease expiry, fresh claim, and canonical replay for all five
+ * create tables. Application/repository replay mapping is covered by the
+ * package tests.
  *
  * Applies the full drizzle migration journal (plus a minimal Supabase shim:
  * auth schema, GUC-backed auth.uid()/auth.jwt() stubs, Supabase roles, one
@@ -30,6 +33,12 @@
  *                   resets to CLAIM_GRANTED with a fresh token (safe retry).
  *   FAIL-CLOSED   - missing auth context or a revoked grant raises SQLSTATE
  *                   42501 (no receipt is created).
+ *   DOMAIN-FENCE  - each of projects, goals, tasks, task_reminders, and
+ *                   task_sessions claims a receipt, commits once, loses the
+ *                   receipt before store, expires the lease, reclaims with a
+ *                   fresh token, and resolves the retry to the original row;
+ *                   two-way and representative ten-way concurrent inserts are
+ *                   also fenced.
  *
  * Usage:
  *   node scripts/db/mcp-receipt-invariant-verify.mjs --url <postgres-url>
@@ -187,11 +196,28 @@ const OP_FIRST = "66666666-6666-4666-8666-666666666661";
 const OP_TOKEN_GUARD = "66666666-6666-4666-8666-666666666662";
 const OP_FAIL_FINAL = "66666666-6666-4666-8666-666666666663";
 const OP_FAIL_RETRY = "66666666-6666-4666-8666-666666666664";
+const DOMAIN_PROJECT_OP = "88888888-8888-4888-8888-888888888801";
+const DOMAIN_GOAL_OP = "88888888-8888-4888-8888-888888888802";
+const DOMAIN_TASK_OP = "88888888-8888-4888-8888-888888888803";
+const DOMAIN_REMINDER_OP = "88888888-8888-4888-8888-888888888804";
+const DOMAIN_SESSION_OP = "88888888-8888-4888-8888-888888888805";
+const DOMAIN_CONCURRENT_PROJECT_OP = "88888888-8888-4888-8888-888888888811";
+const DOMAIN_CONCURRENT_GOAL_OP = "88888888-8888-4888-8888-888888888812";
+const DOMAIN_CONCURRENT_TASK_OP = "88888888-8888-4888-8888-888888888813";
+const DOMAIN_CONCURRENT_REMINDER_OP = "88888888-8888-4888-8888-888888888814";
+const DOMAIN_CONCURRENT_SESSION_OP = "88888888-8888-4888-8888-888888888815";
+const DOMAIN_CONCURRENT_TASK_TEN_OP = "88888888-8888-4888-8888-888888888816";
 
-function fingerprint(args) {
+const DOMAIN_PROJECT_ID = "88888888-8888-4888-8888-888888888821";
+const DOMAIN_GOAL_ID = "88888888-8888-4888-8888-888888888822";
+const DOMAIN_TASK_ID = "88888888-8888-4888-8888-888888888823";
+const DOMAIN_REMINDER_ID = "88888888-8888-4888-8888-888888888824";
+const DOMAIN_SESSION_ID = "88888888-8888-4888-8888-888888888825";
+
+function fingerprint(args, tool = TOOL) {
   // Mirrors canonicalMutationFingerprint's hashed shape ({tool, args}); the
   // invariants under proof only need stable, distinct, argument-derived hashes.
-  return createHash("sha256").update(JSON.stringify({ tool: TOOL, args })).digest("hex");
+  return createHash("sha256").update(JSON.stringify({ tool, args })).digest("hex");
 }
 
 async function seedActiveGrant(sql) {
@@ -366,6 +392,357 @@ async function capturePostgresError(fn) {
   }
 }
 
+async function capturePostgresErrorObject(fn) {
+  try {
+    await fn();
+    return null;
+  } catch (error) {
+    return error;
+  }
+}
+
+function postgresErrorText(error) {
+  return [error?.constraint, error?.message, error?.detail, error?.details, error?.hint]
+    .filter((value) => typeof value === "string")
+    .join("\n");
+}
+
+async function proveDomainCrashReplay(
+  sql,
+  {
+    label,
+    table,
+    indexNames,
+    toolName,
+    operationId,
+    insertSql,
+    firstParams,
+    retryParams,
+  },
+) {
+  const session = mcpSession(sql);
+  const argsHash = fingerprint({ domain: label, operationId }, toolName);
+  const firstClaim = await session.run((tx) => claimReceipt(tx, toolName, operationId, argsHash));
+  assert(firstClaim?.claim_outcome === "CLAIM_GRANTED", `${label} crash setup must claim the receipt`);
+  assert(typeof firstClaim.claim_token === "string", `${label} crash setup must receive a claim token`);
+
+  const firstRows = await session.run((tx) => tx.unsafe(insertSql, firstParams));
+  const firstId = firstRows[0]?.id;
+  assert(typeof firstId === "string", `${label} first INSERT must return an id`);
+
+  // The domain transaction committed, then the process crashed before the
+  // receipt store. Expire the uncompleted lease and let a fresh executor
+  // reclaim the operation under a new token.
+  const [expired] = await sql.unsafe(
+    `UPDATE public.mcp_mutation_receipts
+     SET lease_expires_at = now() - interval '1 second'
+     WHERE owner_user_id = $1::uuid
+       AND oauth_client_id = $2
+       AND tool_name = $3
+       AND operation_id = $4::uuid
+       AND status = 'EXECUTING'
+     RETURNING operation_id`,
+    [OWNER_A, CLIENT_ID, toolName, operationId],
+  );
+  assert(expired?.operation_id === operationId, `${label} crash setup must expire the claimed receipt`);
+  const recoveredClaim = await session.run((tx) => claimReceipt(tx, toolName, operationId, argsHash));
+  assert(recoveredClaim?.claim_outcome === "CLAIM_GRANTED", `${label} expired receipt must be reclaimable`);
+  assert(recoveredClaim.claim_token !== firstClaim.claim_token, `${label} recovery must rotate the claim token`);
+
+  // The fresh executor repeats the same domain INSERT. The named operation
+  // fence rejects the duplicate; the repository can then load the canonical
+  // row and store its result under the recovered receipt claim.
+  const retryError = await capturePostgresErrorObject(() =>
+    session.run((tx) => tx.unsafe(insertSql, retryParams)),
+  );
+  assert(retryError?.code === "23505", `${label} retry must hit SQLSTATE 23505`);
+  assert(
+    indexNames.some((indexName) => postgresErrorText(retryError).includes(indexName)),
+    `${label} retry must identify one of ${indexNames.join(", ")}; got ${postgresErrorText(retryError)}`,
+  );
+
+  const [canonical] = await session.run((tx) =>
+    tx.unsafe(
+      `SELECT id, owner_user_id, mcp_client_id, mcp_operation_id
+       FROM public.${table}
+       WHERE owner_user_id = $1::uuid
+         AND mcp_client_id = $2
+         AND mcp_operation_id = $3::uuid`,
+      [OWNER_A, CLIENT_ID, operationId],
+    ),
+  );
+  assert(canonical?.id === firstId, `${label} replay must return the original row`);
+  assert(canonical.owner_user_id === OWNER_A, `${label} replay must remain owner scoped`);
+  assert(canonical.mcp_client_id === CLIENT_ID, `${label} replay must remain client scoped`);
+
+  const [count] = await sql.unsafe(
+    `SELECT count(*)::int AS count
+     FROM public.${table}
+     WHERE owner_user_id = $1::uuid
+       AND mcp_client_id = $2
+       AND mcp_operation_id = $3::uuid`,
+    [OWNER_A, CLIENT_ID, operationId],
+  );
+  assert(Number(count?.count) === 1, `${label} must leave exactly one domain row`);
+
+  await session.run((tx) => storeResult(tx, toolName, operationId, recoveredClaim.claim_token, {
+    ok: true,
+    domain: label,
+    id: firstId,
+  }));
+  const replay = await session.run((tx) => claimReceipt(tx, toolName, operationId, argsHash));
+  const replayPayload = typeof replay?.existing_result === "string"
+    ? JSON.parse(replay.existing_result)
+    : replay?.existing_result;
+  assert(replay?.claim_outcome === "REPLAY", `${label} recovered receipt must replay after store`);
+  assert(replayPayload?.id === firstId, `${label} receipt replay must carry the original row id`);
+  log("DOMAIN-CRASH", `${label}: claim → commit → lease expiry → fresh claim → canonical replay left one row.`);
+  return firstId;
+}
+
+async function proveDomainConcurrency(
+  sql,
+  {
+    label,
+    table,
+    indexNames,
+    operationId,
+    attemptIds,
+    insertSql,
+    paramsForAttempt,
+  },
+) {
+  const outcomes = await Promise.all(
+    attemptIds.map(async (attemptId, ordinal) => {
+      try {
+        await sql.unsafe(insertSql, paramsForAttempt(attemptId, ordinal));
+        return { ok: true, error: null };
+      } catch (error) {
+        return { ok: false, error };
+      }
+    }),
+  );
+  const winners = outcomes.filter((outcome) => outcome.ok);
+  const losers = outcomes.filter((outcome) => !outcome.ok);
+  assert(winners.length === 1, `${label} concurrency must have one winner`);
+  assert(losers.length === attemptIds.length - 1, `${label} concurrency must fence all other attempts`);
+  for (const loser of losers) {
+    assert(loser.error?.code === "23505", `${label} loser must hit SQLSTATE 23505`);
+    assert(
+      indexNames.some((indexName) => postgresErrorText(loser.error).includes(indexName)),
+      `${label} loser must identify an expected unique index; got ${postgresErrorText(loser.error)}`,
+    );
+  }
+
+  const [count] = await sql.unsafe(
+    `SELECT count(*)::int AS count
+     FROM public.${table}
+     WHERE owner_user_id = $1::uuid
+       AND mcp_client_id = $2
+       AND mcp_operation_id = $3::uuid`,
+    [OWNER_A, CLIENT_ID, operationId],
+  );
+  assert(Number(count?.count) === 1, `${label} concurrency must leave one domain row`);
+  log("DOMAIN-CONCURRENCY", `${label}: ${attemptIds.length} simultaneous inserts left one domain row.`);
+}
+
+async function runDomainFencingProof(sql) {
+  const expectedIndexes = [
+    "projects_mcp_operation_unique",
+    "goals_mcp_operation_unique",
+    "tasks_mcp_operation_unique",
+    "task_reminders_mcp_operation_unique",
+    "task_sessions_mcp_operation_unique",
+  ];
+  const indexes = await sql`
+    SELECT indexname
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = ANY(${sql.array(expectedIndexes)})
+  `;
+  for (const indexName of expectedIndexes) {
+    assert(indexes.some((row) => row.indexname === indexName), `0054 must create ${indexName}`);
+  }
+  log("DOMAIN-SCHEMA", "0054 operation indexes exist for all five create tables.");
+
+  const projectInsert = `
+    INSERT INTO public.projects
+      (id, name, slug, description, owner_user_id, mcp_operation_id, mcp_client_id)
+    VALUES ($1::uuid, 'Domain fenced project', 'domain-fenced-project', NULL, $2::uuid, $3::uuid, $4)
+    RETURNING id
+  `;
+  const goalInsert = `
+    INSERT INTO public.goals
+      (id, project_id, title, owner_user_id, mcp_operation_id, mcp_client_id)
+    VALUES ($1::uuid, $2::uuid, 'Domain fenced goal', $3::uuid, $4::uuid, $5)
+    RETURNING id
+  `;
+  const taskInsert = `
+    INSERT INTO public.tasks
+      (id, project_id, goal_id, title, owner_user_id, mcp_operation_id, mcp_client_id)
+    VALUES ($1::uuid, $2::uuid, NULL, 'Domain fenced task', $3::uuid, $4::uuid, $5)
+    RETURNING id
+  `;
+  const reminderInsert = `
+    INSERT INTO public.task_reminders
+      (id, owner_user_id, task_id, remind_at, mcp_operation_id, mcp_client_id)
+    VALUES ($1::uuid, $2::uuid, $3::uuid, '2030-08-29T10:00:00Z', $4::uuid, $5)
+    RETURNING id
+  `;
+  const sessionInsert = `
+    INSERT INTO public.task_sessions
+      (id, owner_user_id, task_id, started_at, mcp_operation_id, mcp_client_id)
+    VALUES ($1::uuid, $2::uuid, $3::uuid, '2026-08-29T10:00:00Z', $4::uuid, $5)
+    RETURNING id
+  `;
+
+  await proveDomainCrashReplay(sql, {
+    label: "PROJECT_CREATE",
+    table: "projects",
+    indexNames: ["projects_mcp_operation_unique", "projects_owner_user_id_slug_unique"],
+    toolName: "ega_create_project",
+    operationId: DOMAIN_PROJECT_OP,
+    insertSql: projectInsert,
+    firstParams: [DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_PROJECT_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888826", OWNER_A, DOMAIN_PROJECT_OP, CLIENT_ID],
+  });
+  await proveDomainCrashReplay(sql, {
+    label: "GOAL_CREATE",
+    table: "goals",
+    indexNames: ["goals_mcp_operation_unique"],
+    toolName: "ega_create_goal",
+    operationId: DOMAIN_GOAL_OP,
+    insertSql: goalInsert,
+    firstParams: [DOMAIN_GOAL_ID, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888827", DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
+  });
+  await proveDomainCrashReplay(sql, {
+    label: "TASK_CREATE",
+    table: "tasks",
+    indexNames: ["tasks_mcp_operation_unique"],
+    toolName: "ega_create_task",
+    operationId: DOMAIN_TASK_OP,
+    insertSql: taskInsert,
+    firstParams: [DOMAIN_TASK_ID, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888828", DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
+  });
+  await proveDomainCrashReplay(sql, {
+    label: "REMINDER_CREATE",
+    table: "task_reminders",
+    indexNames: ["task_reminders_mcp_operation_unique"],
+    toolName: "ega_create_task_reminder",
+    operationId: DOMAIN_REMINDER_OP,
+    insertSql: reminderInsert,
+    firstParams: [DOMAIN_REMINDER_ID, OWNER_A, DOMAIN_TASK_ID, DOMAIN_REMINDER_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888829", OWNER_A, DOMAIN_TASK_ID, DOMAIN_REMINDER_OP, CLIENT_ID],
+  });
+  await proveDomainCrashReplay(sql, {
+    label: "SESSION_CREATE",
+    table: "task_sessions",
+    indexNames: ["task_sessions_mcp_operation_unique", "task_sessions_owner_open_unique"],
+    toolName: "ega_start_timer",
+    operationId: DOMAIN_SESSION_OP,
+    insertSql: sessionInsert,
+    firstParams: [DOMAIN_SESSION_ID, OWNER_A, DOMAIN_TASK_ID, DOMAIN_SESSION_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888830", OWNER_A, DOMAIN_TASK_ID, DOMAIN_SESSION_OP, CLIENT_ID],
+  });
+
+  const concurrentProjectInsert = projectInsert.replace("domain-fenced-project", "domain-concurrent-project");
+  await proveDomainConcurrency(sql, {
+    label: "PROJECT_CREATE",
+    table: "projects",
+    indexNames: ["projects_mcp_operation_unique", "projects_owner_user_id_slug_unique"],
+    operationId: DOMAIN_CONCURRENT_PROJECT_OP,
+    attemptIds: [
+      "88888888-8888-4888-8888-888888888831",
+      "88888888-8888-4888-8888-888888888832",
+    ],
+    insertSql: concurrentProjectInsert,
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_CONCURRENT_PROJECT_OP, CLIENT_ID],
+  });
+
+  await proveDomainConcurrency(sql, {
+    label: "GOAL_CREATE",
+    table: "goals",
+    indexNames: ["goals_mcp_operation_unique"],
+    operationId: DOMAIN_CONCURRENT_GOAL_OP,
+    attemptIds: [
+      "88888888-8888-4888-8888-888888888833",
+      "88888888-8888-4888-8888-888888888834",
+    ],
+    insertSql: goalInsert,
+    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_GOAL_OP, CLIENT_ID],
+  });
+
+  await proveDomainConcurrency(sql, {
+    label: "TASK_CREATE",
+    table: "tasks",
+    indexNames: ["tasks_mcp_operation_unique"],
+    operationId: DOMAIN_CONCURRENT_TASK_OP,
+    attemptIds: [
+      "88888888-8888-4888-8888-888888888835",
+      "88888888-8888-4888-8888-888888888836",
+    ],
+    insertSql: taskInsert,
+    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_TASK_OP, CLIENT_ID],
+  });
+
+  await proveDomainConcurrency(sql, {
+    label: "REMINDER_CREATE",
+    table: "task_reminders",
+    indexNames: ["task_reminders_mcp_operation_unique"],
+    operationId: DOMAIN_CONCURRENT_REMINDER_OP,
+    attemptIds: [
+      "88888888-8888-4888-8888-888888888837",
+      "88888888-8888-4888-8888-888888888838",
+    ],
+    insertSql: reminderInsert,
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_TASK_ID, DOMAIN_CONCURRENT_REMINDER_OP, CLIENT_ID],
+  });
+
+  // Close the crash-proof session before exercising the owner-open invariant
+  // with a distinct operation. The operation fence remains persisted.
+  await sql.unsafe(
+    `UPDATE public.task_sessions
+     SET ended_at = '2026-08-29T11:00:00Z', duration_seconds = 3600
+     WHERE id = $1::uuid`,
+    [DOMAIN_SESSION_ID],
+  );
+  await proveDomainConcurrency(sql, {
+    label: "SESSION_CREATE",
+    table: "task_sessions",
+    indexNames: ["task_sessions_mcp_operation_unique", "task_sessions_owner_open_unique"],
+    operationId: DOMAIN_CONCURRENT_SESSION_OP,
+    attemptIds: [
+      "88888888-8888-4888-8888-888888888839",
+      "88888888-8888-4888-8888-888888888840",
+    ],
+    insertSql: sessionInsert,
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_TASK_ID, DOMAIN_CONCURRENT_SESSION_OP, CLIENT_ID],
+  });
+
+  await proveDomainConcurrency(sql, {
+    label: "TASK_CREATE_10_WAY",
+    table: "tasks",
+    indexNames: ["tasks_mcp_operation_unique"],
+    operationId: DOMAIN_CONCURRENT_TASK_TEN_OP,
+    attemptIds: [
+      "88888888-8888-4888-8888-888888888841",
+      "88888888-8888-4888-8888-888888888842",
+      "88888888-8888-4888-8888-888888888843",
+      "88888888-8888-4888-8888-888888888844",
+      "88888888-8888-4888-8888-888888888845",
+      "88888888-8888-4888-8888-888888888846",
+      "88888888-8888-4888-8888-888888888847",
+      "88888888-8888-4888-8888-888888888848",
+      "88888888-8888-4888-8888-888888888849",
+      "88888888-8888-4888-8888-888888888850",
+    ],
+    insertSql: taskInsert,
+    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_TASK_TEN_OP, CLIENT_ID],
+  });
+}
+
 async function receiptStatus(sql, operationId) {
   const [row] = await sql`
     SELECT status FROM public.mcp_mutation_receipts WHERE operation_id = ${operationId}::uuid
@@ -531,6 +908,7 @@ async function main() {
     log("RLS", "mcp_mutation_receipts keeps its RESTRICTIVE deny-all policy with RLS enabled.");
 
     await runProofPhases(sql);
+    await runDomainFencingProof(sql);
     await runConcurrencyProof(sql, mcpSession(sql));
     await runRlsProof(sql);
 

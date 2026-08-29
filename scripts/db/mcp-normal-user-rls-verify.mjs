@@ -29,8 +29,6 @@ function directSession(sql, userId){
 }
 
 async function expectAllowed(label, fn){ try{ await fn(); log("DIRECT", label+" PASS"); } catch(e){ console.error(`[PROOF] FAILED: ${label} should be allowed but got ${e.code} ${e.message}`); exit(1); } }
-async function expectDenied(label, fn){ try{ await fn(); console.error(`[PROOF] FAILED: ${label} should be denied`); exit(1); } catch(e){ log("DIRECT", label+` denied (${e.code})`); } }
-
 async function main(){
   const {url}=parseArgs();
   const tags=await readJournal();
