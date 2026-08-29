@@ -22,6 +22,12 @@ export * from "./today/plan";
 export * from "./today/service";
 export * from "./timer/ports";
 export * from "./timer/service";
+export * from "./friction/ports";
+export * from "./friction/stale-blocked-signals";
+export * from "./friction/estimate-accuracy";
+export * from "./friction/context-switch";
+export * from "./friction/neglected-goal";
+export * from "./friction/workload-imbalance";
 export * from "./shared/duration";
 export * from "./shared/time-context";
 export * from "./shared/execution-evidence";
@@ -29,6 +35,15 @@ export * from "./weekly-review/ports";
 export * from "./weekly-review/read-model";
 export * from "./weekly-review/draft";
 export * from "./weekly-review/comparison";
+export * from "./health/workload-snapshot";
+export * from "./health/recommendations";
+export * from "./inbox/ports";
+export * from "./inbox/service";
+export * from "./inbox/read-model";
+export * from "./inbox/convert";
+export * from "./inbox/ai-classification-port";
+export * from "./inbox/ai-suggest";
+export * from "./ai/structured-suggestion-port";
 
 export type {
   GoalHealth,

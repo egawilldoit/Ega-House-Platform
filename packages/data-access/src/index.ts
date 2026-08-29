@@ -4,6 +4,8 @@ export * from "./goals/repository";
 export * from "./tasks/repository";
 export * from "./timer/repository";
 export * from "./today/repository";
+export * from "./friction/repository";
+export * from "./inbox/repository";
 export * from "./time-context/repository";
 export * from "./execution-evidence/repository";
 export * from "./weekly-review/repository";
