@@ -151,6 +151,22 @@ class InMemoryOperatorProposalRepository implements OperatorProposalRepository {
     }
     return ok(deleted);
   }
+  async claimApprovedProposalForApply(
+    actor: AuthenticatedActor,
+    proposalId: string,
+  ): Promise<RepositoryResult<OperatorProposalRecord | null>> {
+    const existing = this.proposals.get(proposalId) ?? null;
+    if (!existing) return ok(null);
+    if (existing.ownerUserId !== actor.userId) return ok(null);
+    if (existing.status !== "approved") return ok(null);
+    const updated: OperatorProposalRecord = {
+      ...existing,
+      status: "applying",
+      updatedAt: new Date().toISOString(),
+    };
+    this.proposals.set(proposalId, updated);
+    return ok(updated);
+  }
 }
 
 function makeTaskRow(overrides: Partial<TaskRow> & { id: string; ownerUserId: string }): TaskRow {

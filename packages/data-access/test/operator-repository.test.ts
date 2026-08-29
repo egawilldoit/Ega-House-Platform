@@ -146,6 +146,29 @@ test("operator deleteOlderThan scopes to owner and uses lt on created_at", async
   assert.ok(steps.includes("delete"));
 });
 
+test("operator claim atomically scopes to owner and status approved", async () => {
+  const fake = new FakeOperatorSupabase([
+    { data: { id: "prop-1", revision: 1, owner_user_id: "user-a", local_date: "2026-08-10", time_context_id: "2026-08-10::UTC", baseline_hash: "abc", proposed_task_ids: [], task_versions: [], parent_proposal_id: null, idempotency_key: "k1", status: "applying", created_at: new Date().toISOString(), updated_at: new Date().toISOString(), approved_at: new Date().toISOString(), applied_at: null, dismissed_at: null, result: null, ai_ref: null }, error: null },
+  ]);
+  const result = await repo(fake).claimApprovedProposalForApply(ACTOR_A, "prop-1");
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value?.status, "applying");
+  const steps = fake.calls[0]?.steps ?? [];
+  assert.ok(steps.some((s) => s === "eq:id=prop-1"), `expected eq id, got ${steps.join(",")}`);
+  assert.ok(steps.some((s) => s === "eq:owner_user_id=user-a"), `expected owner filter, got ${steps.join(",")}`);
+  assert.ok(steps.some((s) => s === "eq:status=approved"), `expected status approved filter, got ${steps.join(",")}`);
+  assert.ok(steps.some((s) => s.startsWith(`update:{"status":"applying"`)), `expected update to applying, got ${steps.join(",")}`);
+  assert.ok(steps.includes("maybeSingle"), `expected maybeSingle for atomic claim, got ${steps.join(",")}`);
+});
+
+test("operator claim returns null when already applying (lost race)", async () => {
+  const fake = new FakeOperatorSupabase([{ data: null, error: null }]);
+  const result = await repo(fake).claimApprovedProposalForApply(ACTOR_A, "prop-1");
+  assert.equal(result.ok, true);
+  assert.equal(result.value, null);
+});
+
 test("operator repository returns unknown on persistence error", async () => {
   const fake = new FakeOperatorSupabase([{ data: null, error: { message: "boom" } }]);
   const result = await repo(fake).findById(ACTOR_A, "prop-1");
