@@ -3,11 +3,17 @@ import { act, create } from 'react-test-renderer';
 
 jest.mock('expo-router', () => ({
   router: { replace: jest.fn() },
+  Link: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 jest.mock('@expo/vector-icons/Ionicons', () => ({
   __esModule: true,
   default: () => null,
+}));
+
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: { version: '1.0.0', extra: { eas: { projectId: 'test' } } } },
 }));
 
 const mockSignOut = jest.fn();

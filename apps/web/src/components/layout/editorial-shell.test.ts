@@ -93,15 +93,29 @@ describe("editorial authenticated workspace shell", () => {
 
   it("preserves the dashboard data and failure-isolation boundaries", () => {
     const dashboard = read("src/app/dashboard/page.tsx");
-    // EGA-516: dashboard is now a compatibility redirect to the canonical Operator (Today)
-    expect(dashboard).toContain('redirect("/today")');
-    expect(dashboard).not.toContain("CommandCenterAsync");
-    expect(dashboard).not.toContain("getDashboardData");
+
+    for (const contract of [
+      "OwnerScopedRealtimeRefresh",
+      "TimerStopOutcomePrompt",
+      "PanelErrorBoundary",
+      "Suspense",
+      "SummaryStripAsync",
+      "AttentionQueueAsync",
+      "ReviewPulseAsync",
+      "PlannerAsync",
+      "FocusAsync",
+      "ProjectsAsync",
+      "McpComingSoonAnnouncement",
+    ]) {
+      expect(dashboard).toContain(contract);
+    }
   });
 
   it("turns the dashboard into an editorial control board without replacing panels", () => {
+    const dashboard = read("src/app/dashboard/page.tsx");
     const css = read("src/app/dashboard/_components/dashboard-editorial.css");
-    // Dashboard page is now a redirect, but editorial CSS remains for future Operator theming
+
+    expect(dashboard).toContain('import "./_components/dashboard-editorial.css"');
     expect(css).toContain('[data-workspace-theme="editorial"] .ega-dashboard-hero');
     expect(css).toContain('[data-workspace-theme="editorial"] .workspace-main-rail-grid');
     expect(css).toContain('[data-workspace-theme="editorial"] .ega-dashboard-metric');

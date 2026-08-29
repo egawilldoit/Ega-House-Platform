@@ -1,12 +1,15 @@
 import {
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
   getLocalDateInTimezone,
   getLocalDayWindow,
+  getRollingLocalWindow,
   getWeekWindow,
   isValidIANATimeZone,
   type LocalDayWindow,
   type LocalWeekWindow,
   type TimeContextFallback,
 } from "@ega/domain";
+import type { ExecutionEvidenceWindow } from "./execution-evidence";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult, type RepositoryResult } from "../shared/result";
@@ -25,9 +28,37 @@ export type ResolvedTimeContext = Readonly<{
   weekWindow: LocalWeekWindow;
 }>;
 
-function normalizeRequestedTimezone(value: unknown): string | null {
-  const raw = typeof value === "string" ? value.trim() : "";
-  return raw ? raw : null;
+export type EffectiveTimeContext = Readonly<{
+  timezone: string;
+  requestedTimezone: string | null;
+  fallback: TimeContextFallback;
+}>;
+
+export async function resolveEffectiveTimezone(
+  actor: AuthenticatedActor,
+  repository: TimeContextRepository,
+  requestedTimezone: unknown,
+): Promise<ApplicationResult<EffectiveTimeContext>> {
+  const rawRequested = typeof requestedTimezone === "string" ? requestedTimezone.trim() : "";
+  if (rawRequested) {
+    if (isValidIANATimeZone(rawRequested)) {
+      return applicationSuccess({ timezone: rawRequested, requestedTimezone: rawRequested, fallback: "none" });
+    }
+    return applicationSuccess({ timezone: "UTC", requestedTimezone: rawRequested, fallback: "invalid_timezone" });
+  }
+
+  const storedResult = await repository.getTimezone(actor);
+  if (!storedResult.ok) {
+    return applicationFailure("Unable to load time context right now.");
+  }
+  const stored = storedResult.value ? String(storedResult.value).trim() : null;
+  if (stored && isValidIANATimeZone(stored)) {
+    return applicationSuccess({ timezone: stored, requestedTimezone: null, fallback: "none" });
+  }
+  if (stored) {
+    return applicationSuccess({ timezone: "UTC", requestedTimezone: stored, fallback: "invalid_timezone" });
+  }
+  return applicationSuccess({ timezone: "UTC", requestedTimezone: null, fallback: "missing_timezone" });
 }
 
 export async function resolveTimeContext(
@@ -35,46 +66,16 @@ export async function resolveTimeContext(
   repository: TimeContextRepository,
   input: Readonly<{ requestedTimezone?: unknown; now?: Date }> = {},
 ): Promise<ApplicationResult<ResolvedTimeContext>> {
-  const requestedRaw = normalizeRequestedTimezone(input.requestedTimezone);
   const now = input.now ?? new Date();
   if (Number.isNaN(now.getTime())) {
     return applicationFailure("Current time is invalid.");
   }
 
-  let effective: string;
-  let fallback: TimeContextFallback;
-  let requested: string | null;
-
-  if (requestedRaw !== null) {
-    if (isValidIANATimeZone(requestedRaw)) {
-      effective = requestedRaw;
-      fallback = "none";
-      requested = requestedRaw;
-    } else {
-      effective = "UTC";
-      fallback = "invalid_timezone";
-      requested = requestedRaw;
-    }
-  } else {
-    const storedResult = await repository.getTimezone(actor);
-    if (!storedResult.ok) {
-      return applicationFailure("Unable to load time context right now.");
-    }
-    const stored = storedResult.value ? String(storedResult.value).trim() : null;
-    if (stored && isValidIANATimeZone(stored)) {
-      effective = stored;
-      fallback = "none";
-      requested = null;
-    } else if (stored) {
-      effective = "UTC";
-      fallback = "invalid_timezone";
-      requested = stored;
-    } else {
-      effective = "UTC";
-      fallback = "missing_timezone";
-      requested = null;
-    }
+  const effectiveResult = await resolveEffectiveTimezone(actor, repository, input.requestedTimezone);
+  if (!effectiveResult.ok) {
+    return applicationFailure(effectiveResult.errorMessage);
   }
+  const { timezone: effective, requestedTimezone: requested, fallback } = effectiveResult.data;
 
   let localDate: string;
   try {
@@ -157,6 +158,32 @@ export function resolveHistoricalTimeContext(
     if (message.includes("Invalid date")) {
       return applicationFailure("Date is invalid. Expected YYYY-MM-DD.");
     }
+    return applicationFailure(message);
+  }
+}
+
+export async function resolveFrictionEvidenceWindow(
+  actor: AuthenticatedActor,
+  repository: TimeContextRepository,
+  input: Readonly<{ now?: Date }> = {},
+): Promise<ApplicationResult<ExecutionEvidenceWindow>> {
+  const now = input.now ?? new Date();
+  if (Number.isNaN(now.getTime())) {
+    return applicationFailure("Current time is invalid.");
+  }
+  const timeCtx = await resolveTimeContext(actor, repository, { now });
+  if (!timeCtx.ok) {
+    return applicationFailure(timeCtx.errorMessage);
+  }
+  try {
+    const window = getRollingLocalWindow(
+      timeCtx.data.timezone,
+      now,
+      FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
+    );
+    return applicationSuccess({ startIso: window.startIso, endIso: window.endIso });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to resolve neglected window.";
     return applicationFailure(message);
   }
 }

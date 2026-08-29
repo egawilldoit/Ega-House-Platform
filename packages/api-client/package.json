@@ -13,7 +13,8 @@
     "./inbox": "./src/inbox.ts",
     "./today": "./src/today.ts",
     "./time-context": "./src/time-context.ts",
-    "./notifications": "./src/notifications.ts"
+    "./notifications": "./src/notifications.ts",
+    "./weekly-review": "./src/weekly-review.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

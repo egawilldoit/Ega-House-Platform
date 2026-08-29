@@ -38,7 +38,7 @@
   .ega-dashboard-hero-copy {
     padding: 1.75rem;
     background:
-      radial-gradient(circle at top right, rgba(23, 123, 82, 0.12), transparent 28%),
+      radial-gradient(circle at top right, rgba(62, 143, 107, 0.12), transparent 28%),
       rgba(255, 255, 255, 0.84);
   }
 
@@ -78,8 +78,8 @@
   }
 
   .ega-dashboard-metric.is-accent {
-    background: linear-gradient(180deg, rgba(23, 123, 82, 0.12), rgba(255, 255, 255, 0.94));
-    border-color: rgba(23, 123, 82, 0.16);
+    background: linear-gradient(180deg, rgba(62, 143, 107, 0.12), rgba(255, 255, 255, 0.94));
+    border-color: rgba(62, 143, 107, 0.16);
   }
 
   .ega-dashboard-metric-value {
@@ -107,7 +107,7 @@
     border-radius: calc(var(--radius-card) + 0.25rem);
     background:
       radial-gradient(circle at top left, rgba(255, 255, 255, 0.14), transparent 22%),
-      linear-gradient(145deg, #173b2d 0%, #0f241c 50%, #177b52 150%);
+      linear-gradient(145deg, #161F2C 0%, #161F2C 50%, #3E8F6B 150%);
   }
 
   .ega-dashboard-spotlight-stat {
@@ -159,7 +159,7 @@
     border-radius: calc(var(--radius-card) + 0.25rem);
     background:
       linear-gradient(135deg, rgba(247, 250, 246, 0.98), rgba(251, 250, 246, 0.96)) padding-box,
-      linear-gradient(120deg, rgba(23, 123, 82, 0), rgba(23, 123, 82, 0.3), rgba(23, 123, 82, 0.04)) border-box;
+      linear-gradient(120deg, rgba(62, 143, 107, 0), rgba(62, 143, 107, 0.3), rgba(62, 143, 107, 0.04)) border-box;
     box-shadow: var(--shadow-card);
   }
 
@@ -230,7 +230,7 @@
 
   .mcp-flow-node-gateway {
     isolation: isolate;
-    border-color: rgba(23, 123, 82, 0.18);
+    border-color: rgba(62, 143, 107, 0.18);
     background: linear-gradient(135deg, rgba(232, 245, 233, 0.92), rgba(245, 250, 246, 0.88));
   }
 
@@ -240,7 +240,7 @@
   }
 
   .mcp-flow-node-icon-gateway {
-    background: rgba(23, 123, 82, 0.12);
+    background: rgba(62, 143, 107, 0.12);
     color: #0f6f49;
   }
 
@@ -250,7 +250,7 @@
     z-index: -1;
     pointer-events: none;
     border-radius: 999px;
-    background: radial-gradient(circle, rgba(23, 123, 82, 0.16), rgba(23, 123, 82, 0) 68%);
+    background: radial-gradient(circle, rgba(62, 143, 107, 0.16), rgba(62, 143, 107, 0) 68%);
     filter: blur(10px);
   }
 
@@ -266,12 +266,12 @@
     display: block;
     width: 100%;
     height: 1px;
-    background: linear-gradient(90deg, rgba(23, 123, 82, 0.18), rgba(23, 123, 82, 0.55));
+    background: linear-gradient(90deg, rgba(62, 143, 107, 0.18), rgba(62, 143, 107, 0.55));
   }
 
   .mcp-connector-arrow {
     position: absolute;
-    color: rgba(23, 123, 82, 0.68);
+    color: rgba(62, 143, 107, 0.68);
   }
 
   .mcp-connector-arrow-horizontal {
@@ -293,8 +293,8 @@
     border-radius: 999px;
     background: var(--signal-live);
     box-shadow:
-      0 0 0 4px rgba(23, 123, 82, 0.09),
-      0 0 16px rgba(23, 123, 82, 0.32);
+      0 0 0 4px rgba(62, 143, 107, 0.09),
+      0 0 16px rgba(62, 143, 107, 0.32);
     transform: translateY(-50%);
     animation: mcp-signal-travel 5.4s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   }
@@ -370,7 +370,7 @@
   .mcp-connector-line {
     width: 1px;
     height: 100%;
-    background: linear-gradient(180deg, rgba(23, 123, 82, 0.18), rgba(23, 123, 82, 0.55));
+    background: linear-gradient(180deg, rgba(62, 143, 107, 0.18), rgba(62, 143, 107, 0.55));
   }
 
   .mcp-connector-arrow-horizontal {
