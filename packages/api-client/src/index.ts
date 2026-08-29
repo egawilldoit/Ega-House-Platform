@@ -12,6 +12,7 @@ export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
 export type { InboxApi, InboxListQuery, CreateInboxInput, UpdateInboxInput } from "./inbox";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
+export type { OperatorApi } from "./operator";
 export type { WeeklyReviewApi } from "./weekly-review";
 export type { HealthApi } from "./health";
 export type { FrictionApi } from "./friction";
@@ -39,6 +40,20 @@ export type {
   MobileTodayTaskStatusMutationResponse,
   MobileTodayClearCompletedResponse,
 } from "@ega/contracts/mobile";
+export type {
+  OperatorSnapshotDto,
+  OperatorSignalsDto,
+  OperatorFocusDto,
+  OperatorScheduleDto,
+  GetOperatorSnapshotResponse,
+  OperatorProposalDto,
+  OperatorProposalResultDto,
+  CreateOperatorProposalRequest,
+  CreateOperatorProposalResponse,
+  ApplyOperatorProposalRequest,
+  ApplyOperatorProposalResponse,
+  ApproveOperatorProposalResponse,
+} from "@ega/contracts/operator";
 export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 export type { TaskPriority, TaskStatus } from "@ega/domain";
 export type { HealthWorkloadSnapshotDto, HealthSnapshotResponse, HealthEvidenceQualityDto, HealthRecommendationDto, HealthRecommendationKindDto, HealthRecommendationSeverityDto, HealthRecommendationEvidenceDto } from "@ega/contracts";

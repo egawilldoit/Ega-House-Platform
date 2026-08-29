@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./auth": "./src/auth.ts",
     "./mobile": "./src/mobile.ts",
     "./agent": "./src/agent.ts",
     "./inbox": "./src/inbox.ts",
@@ -14,6 +15,7 @@
     "./friction": "./src/friction.ts",
     "./time-context": "./src/time-context.ts",
     "./execution-evidence": "./src/execution-evidence.ts",
+    "./operator": "./src/operator.ts",
     "./weekly-review": "./src/weekly-review.ts",
     "./health": "./src/health.ts"
   },

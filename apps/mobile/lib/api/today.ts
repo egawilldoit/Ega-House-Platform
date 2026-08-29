@@ -13,14 +13,14 @@
  */
 import type {
   MobileTodayClearCompletedResponse,
-  MobileTodayResponse,
   MobileTodayTaskMutationResponse,
   MobileTodayTaskStatusMutationResponse,
   TaskStatus,
+  OperatorSnapshotDto,
 } from '@ega/api-client';
 import { getMobileEgaApiClient, unwrapApiResult } from '@/lib/api/ega';
 
-export async function fetchMobileToday(): Promise<MobileTodayResponse> {
+export async function fetchMobileToday(): Promise<OperatorSnapshotDto> {
   return unwrapApiResult(await getMobileEgaApiClient().today.get());
 }
 
