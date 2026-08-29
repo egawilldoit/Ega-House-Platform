@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 
-import { getFrictionRadarReadModel } from "@ega/application";
+import { getFrictionRadarReadModel, resolveFrictionEvidenceWindow } from "@ega/application";
 import type { FrictionRadarResponse } from "@ega/contracts/friction";
 import { SupabaseExecutionEvidenceRepository, SupabaseFrictionRepository, SupabaseTimeContextRepository } from "@ega/data-access";
-import { getLocalDateInTimezone, getWeekWindow } from "@ega/domain/time-context";
+import { FRICTION_NEGLECTED_GOAL_WINDOW_DAYS } from "@ega/domain/friction";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 
@@ -16,29 +16,22 @@ export function createFrictionRoutes(
     const { actor, client } = c.var;
     const now = dependencies.now?.() ?? new Date();
 
-    // Derive evidence window from EGA-523 time-context boundaries so
-    // estimate-vs-actual and context-switch windows are bounded and
-    // timezone-aware, not arbitrary ad-hoc dates.
-    let timezone = "UTC";
-    try {
-      const tzRepo = new SupabaseTimeContextRepository(client);
-      const tzResult = await tzRepo.getTimezone(actor);
-      if (tzResult.ok && tzResult.value) {
-        const candidate = String(tzResult.value).trim();
-        if (candidate) timezone = candidate;
-      }
-    } catch {
-      // Fallback to UTC — window remains bounded and deterministic.
-    }
-
+    // Derive evidence window as rolling 14-day local window (EGA-498).
+    // Uses shared Time Context resolver and canonical day windows so the
+    // neglected-goal window is rolling, not calendar-week Monday→now,
+    // and remains correct across Tokyo/New York/DST and server TZ independence.
     let evidenceWindow: { startIso: string; endIso: string };
     try {
-      const localDate = getLocalDateInTimezone(now, timezone);
-      const week = getWeekWindow(timezone, localDate);
-      evidenceWindow = { startIso: week.weekStartUtcIso, endIso: now.toISOString() };
+      const tzRepo = new SupabaseTimeContextRepository(client);
+      const windowResult = await resolveFrictionEvidenceWindow(actor, tzRepo, { now });
+      if (windowResult.ok) {
+        evidenceWindow = { startIso: windowResult.data.startIso, endIso: windowResult.data.endIso };
+      } else {
+        throw new Error(windowResult.errorMessage);
+      }
     } catch {
-      // If timezone/date derivation fails, fallback to 7-day UTC window.
-      const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      // Fallback to UTC 14-day rolling window if time-context resolution fails.
+      const start = new Date(now.getTime() - FRICTION_NEGLECTED_GOAL_WINDOW_DAYS * 24 * 60 * 60 * 1000);
       evidenceWindow = { startIso: start.toISOString(), endIso: now.toISOString() };
     }
 

@@ -1,5 +1,6 @@
 import { isGoalArchivedStatus } from "../goals/archive";
 import { isTaskCompletedStatus } from "../tasks/status";
+import { getRollingLocalWindow } from "../time-context";
 
 export const FRICTION_STALE_THRESHOLD_DAYS = 7;
 export const FRICTION_STALE_THRESHOLD_MS =
@@ -183,6 +184,13 @@ export function isFrictionContextSwitchFriction(switchCount: number): boolean {
 export const FRICTION_NEGLECTED_GOAL_WINDOW_DAYS = 14;
 export const FRICTION_NEGLECTED_GOAL_WINDOW_MS =
   FRICTION_NEGLECTED_GOAL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+export function getFrictionNeglectedWindow(
+  requestedTimezone: string | null | undefined,
+  now: Date = new Date(),
+): { startIso: string; endIso: string } {
+  return getRollingLocalWindow(requestedTimezone, now, FRICTION_NEGLECTED_GOAL_WINDOW_DAYS);
+}
 
 // ---------------------------------------------------------------------------
 // Workload imbalance — tracked-time share with minimum-evidence guards.
