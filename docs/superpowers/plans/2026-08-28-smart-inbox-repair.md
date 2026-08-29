@@ -156,4 +156,3 @@ Additive repair commit: `fix(smart-inbox): repair conversion invariant, reminder
 - Single commit with all repair files + new tests + migration.
 - Push to origin/feat/smart-inbox.
 - Update Linear with canonical checkpoint (if Linear MCP available, post comment).
-
