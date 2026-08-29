@@ -26,6 +26,7 @@ jest.mock('@/components/mobile/navigation/bottomChrome', () => ({
 }));
 
 import { createUpdateService } from '../service';
+import * as Service from '../service';
 import { useUpdateService } from '../useAppUpdates';
 import * as Native from '../native';
 import { UpdatesScreenContent } from '../../../features/updates/UpdatesScreen';
@@ -83,9 +84,8 @@ describe('useUpdateService render loop regression', () => {
       return React.createElement('Text', null, status);
     }
 
-    let component: ReturnType<typeof create>;
     await act(async () => {
-      component = create(React.createElement(Probe));
+      create(React.createElement(Probe));
     });
 
     const initialRenders = renderCount;
@@ -108,9 +108,8 @@ describe('useUpdateService render loop regression', () => {
       const { status } = useUpdateService(svc);
       return React.createElement('Text', null, status);
     }
-    let comp2: ReturnType<typeof create>;
     await act(async () => {
-      comp2 = create(React.createElement(Probe2));
+      create(React.createElement(Probe2));
     });
     const beforeCheckRenders = probe2Renders;
     await act(async () => {
@@ -126,7 +125,7 @@ describe('useUpdateService render loop regression', () => {
 
   it('UpdatesScreen does not loop', async () => {
     const svc = createUpdateService({ updates: makeUpdates() as never, constants: makeConstants() as never });
-    jest.spyOn(require('../service'), 'getUpdateService').mockReturnValue(svc as never);
+    jest.spyOn(Service, 'getUpdateService').mockReturnValue(svc as never);
 
     let component: ReturnType<typeof create>;
     await act(async () => {
