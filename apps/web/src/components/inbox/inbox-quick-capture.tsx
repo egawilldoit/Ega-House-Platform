@@ -17,9 +17,12 @@ import {
 } from "@/components/ui/sheet";
 
 import { captureInboxIdea } from "./capture-action";
+import { QuickTaskSheet } from "@/components/tasks/quick-task-sheet";
+import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
+
+export { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
 const DRAFT_STORAGE_KEY = "ega:inbox-quick-capture-draft";
-export const INBOX_CAPTURE_EVENT = "ega:open-inbox-capture";
 
  type Draft = {
   title: string;
@@ -67,7 +70,12 @@ function clearDraftStorage() {
   } catch {}
 }
 
-export function InboxQuickCapture() {
+type InboxQuickCaptureProps = {
+  projects?: { id: string; name: string }[];
+  goals?: { id: string; title: string; project_id: string }[];
+};
+
+export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptureProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -194,20 +202,21 @@ export function InboxQuickCapture() {
   };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
         <Button
-          className="mx-2.5 mt-2 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 rounded-xl border border-[rgba(37,99,235,0.28)] bg-[linear-gradient(135deg,#2563EB,#1D4ED8)] px-3 py-2.5 text-left text-white shadow-[0_12px_26px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,0.18)] hover:border-[rgba(37,99,235,0.38)] hover:bg-[linear-gradient(135deg,#1D4ED8,#1E40AF)]"
-          aria-label="Capture idea to Inbox"
+          className="workspace-capture-trigger mx-2.5 mt-2 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 rounded-none border border-[var(--workspace-citrus)] bg-[var(--workspace-citrus)] px-3 py-2.5 text-left text-[var(--workspace-black)] shadow-none hover:bg-[#ffe566]"
+          aria-label="Capture to Inbox"
           data-testid="inbox-quick-capture-trigger"
         >
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/16 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
             <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
           </span>
           <span className="min-w-0">
-            <span className="block text-sm font-semibold leading-5 tracking-normal">Capture idea</span>
-            <span className="mt-0.5 block text-xs font-semibold leading-4 text-white/78">
-              Quick inbox, no project needed.
+            <span className="block text-sm font-semibold leading-5 tracking-normal">Capture</span>
+            <span className="mt-0.5 block text-xs font-semibold leading-4 text-black/65">
+              Idea, task, reminder, or note.
             </span>
           </span>
         </Button>
@@ -221,9 +230,9 @@ export function InboxQuickCapture() {
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
           <SheetHeader className="min-w-0">
             <p className="glass-label text-signal-live">Inbox Capture</p>
-            <SheetTitle>Capture idea</SheetTitle>
+            <SheetTitle>Capture</SheetTitle>
             <SheetDescription>
-              Save a raw thought to your Inbox without choosing a Project or priority. You can organize it later.
+              Write first. Smart Inbox keeps the raw capture intact while you decide what it becomes.
             </SheetDescription>
           </SheetHeader>
 
@@ -302,6 +311,18 @@ export function InboxQuickCapture() {
                 Cancel
               </Button>
               <Button
+                type="button"
+                variant="muted"
+                size="sm"
+                onClick={() => {
+                  closeSheet();
+                  window.dispatchEvent(new CustomEvent(QUICK_TASK_EVENT));
+                }}
+                data-testid="open-quick-task-from-capture"
+              >
+                Create a task
+              </Button>
+              <Button
                 type="submit"
                 disabled={pending}
                 data-testid="inbox-capture-submit"
@@ -313,7 +334,7 @@ export function InboxQuickCapture() {
                     Capturing...
                   </>
                 ) : (
-                  "Capture idea"
+                    "Capture"
                 )}
               </Button>
             </div>
@@ -326,5 +347,7 @@ export function InboxQuickCapture() {
         </div>
       </SheetContent>
     </Sheet>
+    <QuickTaskSheet projects={projects} goals={goals} showTrigger={false} />
+    </>
   );
 }
