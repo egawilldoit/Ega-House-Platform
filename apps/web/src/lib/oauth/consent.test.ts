@@ -21,7 +21,7 @@ describe("OAuth consent helpers", () => {
         authorization_id: "authorization-123",
         client: {
           client_id: "client-123",
-          name: "Hermes",
+          name: "Example App",
         },
         redirect_uri: "http://127.0.0.1:3210/callback",
         scope: "openid email profile email",
@@ -29,7 +29,7 @@ describe("OAuth consent helpers", () => {
     ).toEqual({
       authorizationId: "authorization-123",
       clientId: "client-123",
-      clientName: "Hermes",
+      clientName: "Example App",
       redirectUri: "http://127.0.0.1:3210/callback",
       scopes: ["openid", "email", "profile"],
     });

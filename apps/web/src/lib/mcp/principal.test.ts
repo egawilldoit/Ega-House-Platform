@@ -8,7 +8,7 @@ import {
 
 const CLAIMS = {
   sub: "00000000-0000-0000-0000-000000000001",
-  client_id: "hermes-client",
+  client_id: "test-mcp-client",
 };
 
 const ACTIVE_GRANT: McpGrantRecord = {

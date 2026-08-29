@@ -10,7 +10,7 @@ describe("createSupabaseAccessTokenVerifier", () => {
           iss: "https://example.supabase.co/auth/v1",
           aud: "https://ega.example.com/api/mcp",
           sub: "user-id",
-          client_id: "hermes-client",
+          client_id: "test-mcp-client",
           exp: 2_000_000_100,
         },
       },
@@ -24,7 +24,7 @@ describe("createSupabaseAccessTokenVerifier", () => {
     await expect(verify("signed-token")).resolves.toEqual(
       expect.objectContaining({
         sub: "user-id",
-        client_id: "hermes-client",
+        client_id: "test-mcp-client",
       }),
     );
     expect(getClaims).toHaveBeenCalledWith("signed-token");

@@ -5,7 +5,7 @@ import { loadActiveMcpGrant } from "@/lib/mcp/grant-repository";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 
 const OWNER_USER_ID = "00000000-0000-0000-0000-000000000001";
-const OAUTH_CLIENT_ID = "hermes-client";
+const OAUTH_CLIENT_ID = "test-mcp-client";
 const RESOURCE_URI = "https://ega.example.com/api/mcp";
 
 function createQueryClient(result: { data: unknown; error: unknown }) {

@@ -20,7 +20,7 @@ Read [`../../../docs/agent-context/product-authority.md`](../../../docs/agent-co
 2. Read the issue, relevant product context/ADR/architecture documents, scoped agent instructions, and existing related decision-log entries.
 3. Identify current behavior, canonical owner, callers, persistence, package/transport boundary, public exports, and tests.
 4. Separate already implemented behavior from missing work, defects, and unresolved authority conflicts.
-5. Create/use an authorized task branch or verified Runner worktree; never `main`.
+5. Create/use an authorized task branch/worktree; never `main`.
 6. Make the smallest coherent change through the canonical domain/application/persistence/transport boundary. Prefer an existing local pattern documented by the scoped `AGENTS.md` over a parallel abstraction.
 7. Add a behavior-focused test or executable guardrail at the closest reliable seam.
 8. Run the scoped validation in the nearest `AGENTS.md`, plus architecture/security/global gates when the change crosses those boundaries.
@@ -30,4 +30,4 @@ Read [`../../../docs/agent-context/product-authority.md`](../../../docs/agent-co
 
 ## Forbidden actions
 
-Do not choose another issue, implement a whole backlog, bypass state/queue/authorization owners, put shared workflow authority into transport/UI convenience code, ignore a deeper scoped `AGENTS.md`, weaken governance, force-reuse stale attempts, or claim runtime success from static checks.
+Do not choose another issue, implement a whole backlog, bypass state/authorization owners, put shared workflow authority into transport/UI convenience code, ignore a deeper scoped `AGENTS.md`, weaken governance, or claim runtime success from static checks.

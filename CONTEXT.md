@@ -49,7 +49,7 @@ The current monorepo gives the product model explicit implementation homes:
 | Native/external HTTP transport | `apps/server` |
 | Cross-platform HTTP client mechanics | `packages/api-client` (`@ega/api-client`) |
 | Schema/migration authority | root `src/db`, `drizzle/`, `drizzle.config.ts` |
-| Autonomous code-delivery system | `scripts/ega-runner` |
+| MCP / OAuth / integration surfaces | `apps/web/src/lib/mcp`, `apps/web/src/lib/oauth`, `apps/web/src/app/api/agent` |
 
 The architectural bias is **deep modules, thin transports**: workflow policy belongs in domain/application modules behind stable interfaces; transports authenticate/validate/compose; persistence adapters implement ports; views render projections.
 
