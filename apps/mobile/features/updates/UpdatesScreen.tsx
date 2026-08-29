@@ -126,7 +126,7 @@ export function UpdatesScreenContent() {
         contentContainerStyle={[styles.content, { paddingBottom: contentBottomPaddingNoFab }]}
         showsVerticalScrollIndicator={false}
       >
-        <ScreenHeader eyebrow="Settings" title="App Updates" description="OTA LIVE · v1.0.2 proof — production · 1.0.2" />
+        <ScreenHeader eyebrow="Settings" title="App Updates" description="OTA TEST #2 · v1.0.3 · LIVE — production" />
 
         <Card testID="updates-info-card">
           <Text style={styles.cardTitle}>Installed</Text>
@@ -257,7 +257,7 @@ export function UpdatesScreenContent() {
             Incompatible native/runtime changes require a new APK from GitHub Releases. OTA is never attempted when a
             native update is required.
           </Text>
-          <Text style={styles.helpText}>Flow: Checking → Update available → Downloading → Ready → Restart & update → Updated. OTA LIVE · v1.0.2 proof</Text>
+          <Text style={styles.helpText}>Flow: Checking → Update available → Downloading → Ready → Restart & update → Updated. OTA TEST #2 · v1.0.3 · LIVE</Text>
         </Card>
       </ScrollView>
     </AppScreen>
