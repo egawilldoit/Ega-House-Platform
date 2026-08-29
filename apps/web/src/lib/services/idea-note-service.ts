@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
+
 import { createClient } from "@/lib/supabase/server";
-import type { Tables, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
+import type { Tables, TablesUpdate } from "@/lib/supabase/database.types";
 import {
   DEFAULT_IDEA_NOTE_TYPE,
   type IdeaNotePriority,
@@ -17,6 +19,34 @@ import {
   validateManualIdeaNoteStatus,
   validateIdeaNoteType,
 } from "@/lib/idea-note-domain";
+
+function sha256HexWeb(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function deterministicInboxIdWeb(ownerId: string, key: string): string {
+  const input = `${ownerId}:${String(key).trim()}:inbox`;
+  const hash = sha256HexWeb(input);
+  const hex = hash.slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
+function computeFingerprintWeb(input: {
+  title: string;
+  body: string | null;
+  projectId: string | null;
+  tags: string[];
+  type: string;
+}): string {
+  const payload = {
+    title: String(input.title ?? "").trim(),
+    body: input.body != null ? String(input.body).trim() || null : null,
+    projectId: input.projectId ?? null,
+    tags: [...(input.tags ?? [])].sort(),
+    kind: String(input.type ?? DEFAULT_IDEA_NOTE_TYPE).trim(),
+  };
+  return sha256HexWeb(JSON.stringify(payload));
+}
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -66,6 +96,7 @@ export type CreateIdeaNoteInput = {
   priority?: unknown;
   tagsInput?: unknown;
   tags?: unknown;
+  idempotencyKey?: unknown;
 };
 
 export type UpdateIdeaNoteInput = CreateIdeaNoteInput & {
@@ -94,6 +125,19 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
   }
 
   return createClient();
+}
+
+async function getAuthenticatedUserId(supabase: SupabaseServerClient): Promise<string | null> {
+  if (!("auth" in supabase) || typeof (supabase as unknown as { auth?: { getUser?: () => unknown } }).auth?.getUser !== "function") {
+    return null;
+  }
+  try {
+    const { data, error } = await (supabase as unknown as { auth: { getUser: () => Promise<{ data: { user?: { id?: string } } | null; error: unknown }> } }).auth.getUser();
+    if (error) return null;
+    return (data as unknown as { user?: { id?: string } } | null)?.user?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeIdeaNoteInput(input: CreateIdeaNoteInput) {
@@ -208,7 +252,7 @@ async function ensureProjectVisible(
 
 export async function createIdeaNote(
   input: CreateIdeaNoteInput,
-  options?: { supabase?: SupabaseServerClient },
+  options?: { supabase?: SupabaseServerClient; idempotencyKey?: unknown },
 ): Promise<CreateIdeaNoteResult> {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const normalized = normalizeIdeaNoteInput(input);
@@ -227,6 +271,57 @@ export async function createIdeaNote(
     };
   }
 
+  const rawIdempotency = String(input.idempotencyKey ?? options?.idempotencyKey ?? "").trim();
+  let idempotencyKey: string | null = null;
+  let fingerprint: string | null = null;
+  let deterministicId: string | null = null;
+  if (rawIdempotency) {
+    if (rawIdempotency.length > 128) {
+      return { errorMessage: "Idempotency key is too long.", data: null };
+    }
+    if (/[\0-\x1f\x7f]/.test(rawIdempotency)) {
+      return { errorMessage: "Idempotency key is invalid.", data: null };
+    }
+    idempotencyKey = rawIdempotency;
+    // Compute fingerprint early for compare (needs normalized fields)
+    fingerprint = computeFingerprintWeb({
+      title: normalized.title,
+      body: normalized.body,
+      projectId: normalized.projectId || null,
+      tags: normalized.tags,
+      type: normalized.type ?? DEFAULT_IDEA_NOTE_TYPE,
+    });
+    const ownerIdForLookup = await getAuthenticatedUserId(supabase);
+    if (ownerIdForLookup) deterministicId = deterministicInboxIdWeb(ownerIdForLookup, idempotencyKey);
+    // Check for existing mapping with fingerprint comparison (first-write-wins with payload check)
+    const existingLookup = (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> }; maybeSingle: () => Promise<{ data: unknown; error: unknown }> } } } }).from("inbox_idempotency_keys").select("inbox_item_id, fingerprint").eq("key", idempotencyKey);
+    const { data: existingKeyRow, error: existingKeyError } = await (ownerIdForLookup
+      ? existingLookup.eq("owner_user_id", ownerIdForLookup)
+      : existingLookup
+    ).maybeSingle();
+    if (existingKeyError) {
+      // best-effort: if lookup fails, proceed to create (will attempt insert dedup)
+    } else if (existingKeyRow) {
+      const storedFp = String((existingKeyRow as unknown as { fingerprint?: string | null })?.fingerprint ?? "") || null;
+      if (storedFp && fingerprint && storedFp !== fingerprint) {
+        return { errorMessage: "Idempotency key conflict: payload differs from original request.", data: null };
+      }
+      const inboxItemId = String(((existingKeyRow as unknown as { inbox_item_id?: string; inboxItemId?: string })?.inbox_item_id ?? (existingKeyRow as unknown as { inbox_item_id?: string; inboxItemId?: string })?.inboxItemId ?? ""));
+      if (inboxItemId) {
+        const { data: existingNote, error: existingNoteError } = await supabase
+          .from("idea_notes")
+          .select(
+            "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+          )
+          .eq("id", inboxItemId)
+          .maybeSingle();
+        if (!existingNoteError && existingNote) {
+          return { errorMessage: null, data: existingNote as IdeaNote };
+        }
+      }
+    }
+  }
+
   const projectError = await ensureProjectVisible(supabase, normalized.projectId || null);
   if (projectError) {
     return {
@@ -235,7 +330,21 @@ export async function createIdeaNote(
     };
   }
 
-  const row = {
+  if (!fingerprint && idempotencyKey) {
+    fingerprint = computeFingerprintWeb({
+      title: normalized.title,
+      body: normalized.body,
+      projectId: normalized.projectId || null,
+      tags: normalized.tags,
+      type: normalized.type ?? DEFAULT_IDEA_NOTE_TYPE,
+    });
+  }
+  if (!deterministicId && idempotencyKey) {
+    const ownerId = await getAuthenticatedUserId(supabase);
+    if (ownerId) deterministicId = deterministicInboxIdWeb(ownerId, idempotencyKey);
+  }
+
+  const row: Record<string, unknown> = {
     title: normalized.title,
     body: normalized.body,
     status: "inbox",
@@ -243,21 +352,100 @@ export async function createIdeaNote(
     project_id: normalized.projectId || null,
     priority: normalized.priority,
     tags: normalized.tags,
-  } satisfies TablesInsert<"idea_notes">;
+  };
+  if (deterministicId) (row as Record<string, unknown>).id = deterministicId;
 
-  const { data, error } = await supabase
-    .from("idea_notes")
-    .insert(row)
-    .select(
+  const { data, error } = await (supabase as unknown as { from: (t: string) => { insert: (r: unknown) => { select: (c: string) => { single: () => Promise<{ data: unknown; error: unknown }> } } } }).from("idea_notes").insert(row).select(
       "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
-    )
-    .single();
+    ).single();
 
   if (error) {
+    const code = String((error as unknown as { code?: string })?.code ?? "");
+    const msg = String((error as unknown as { message?: string })?.message ?? "");
+    const isDuplicate = code.includes("23505") || /duplicate|unique/i.test(msg);
+    if (isDuplicate && idempotencyKey) {
+      const ownerIdForDup = await getAuthenticatedUserId(supabase);
+      const dupLookup = (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> }; maybeSingle: () => Promise<{ data: unknown; error: unknown }> } } } }).from("inbox_idempotency_keys").select("inbox_item_id, fingerprint").eq("key", idempotencyKey);
+      const { data: dupRow } = await (ownerIdForDup ? dupLookup.eq("owner_user_id", ownerIdForDup) : dupLookup).maybeSingle();
+      const storedFp = String((dupRow as unknown as { fingerprint?: string | null })?.fingerprint ?? "") || null;
+      if (storedFp && fingerprint && storedFp !== fingerprint) {
+        return { errorMessage: "Idempotency key conflict: payload differs from original request.", data: null };
+      }
+      const dupId = String((dupRow as unknown as { inbox_item_id?: string })?.inbox_item_id ?? "");
+      if (dupId) {
+        const { data: dupNote } = await supabase
+          .from("idea_notes")
+          .select(
+            "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+          )
+          .eq("id", dupId)
+          .maybeSingle();
+        if (dupNote) return { errorMessage: null, data: dupNote as IdeaNote };
+      }
+      if (deterministicId) {
+        const { data: byId } = await supabase.from("idea_notes").select(
+          "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+        ).eq("id", deterministicId).maybeSingle();
+        if (byId) return { errorMessage: null, data: byId as IdeaNote };
+      }
+      return { errorMessage: "Idempotency key conflict: payload differs from original request.", data: null };
+    }
     return {
       errorMessage: "Unable to create idea right now.",
       data: null,
     };
+  }
+
+  if (idempotencyKey) {
+    const ownerIdForInsert = await getAuthenticatedUserId(supabase);
+    const insertPayload: Record<string, unknown> = {
+      key: idempotencyKey,
+      inbox_item_id: (data as unknown as { id: string }).id,
+    };
+    if (ownerIdForInsert) insertPayload.owner_user_id = ownerIdForInsert;
+    if (fingerprint) insertPayload.fingerprint = fingerprint;
+    const { error: linkError } = await (supabase as unknown as { from: (t: string) => { insert: (p: unknown) => Promise<{ error: unknown }> } }).from("inbox_idempotency_keys").insert(insertPayload);
+    if (linkError) {
+      const isDuplicate =
+        String((linkError as unknown as { code?: string })?.code ?? "").includes("23505") ||
+        /duplicate|unique/i.test(String((linkError as unknown as { message?: string })?.message ?? ""));
+      if (isDuplicate) {
+        const dupLookup = (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (k: string, v: string) => { eq: (k2: string, v2: string) => { maybeSingle: () => Promise<{ data: unknown; error: unknown }> }; maybeSingle: () => Promise<{ data: unknown; error: unknown }> } } } }).from("inbox_idempotency_keys").select("inbox_item_id, fingerprint").eq("key", idempotencyKey);
+        const { data: dupRow } = await (ownerIdForInsert ? dupLookup.eq("owner_user_id", ownerIdForInsert) : dupLookup).maybeSingle();
+        const storedFp = String((dupRow as unknown as { fingerprint?: string | null })?.fingerprint ?? "") || null;
+        if (storedFp && fingerprint && storedFp !== fingerprint) {
+          try {
+            await (supabase as unknown as { from: (t: string) => { delete: () => { eq: (k: string, v: string) => Promise<unknown> } } }).from("idea_notes").delete().eq("id", (data as unknown as { id: string }).id);
+          } catch {}
+          return { errorMessage: "Idempotency key conflict: payload differs from original request.", data: null };
+        }
+        const dupId = String((dupRow as unknown as { inbox_item_id?: string })?.inbox_item_id ?? "");
+        if (dupId) {
+          const { data: dupNote } = await supabase
+            .from("idea_notes")
+            .select(
+              "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)",
+            )
+            .eq("id", dupId)
+            .maybeSingle();
+          if (dupNote) {
+            // Cleanup duplicate we just created to avoid orphan
+            if ((data as unknown as { id: string }).id !== dupId) {
+              try {
+                await (supabase as unknown as { from: (t: string) => { delete: () => { eq: (k: string, v: string) => Promise<unknown> } } }).from("idea_notes").delete().eq("id", (data as unknown as { id: string }).id);
+              } catch {}
+            }
+            return { errorMessage: null, data: dupNote as IdeaNote };
+          }
+        }
+      } else {
+        // Non-duplicate mapping failure: cleanup orphan and return error (parity with data-access)
+        try {
+          await (supabase as unknown as { from: (t: string) => { delete: () => { eq: (k: string, v: string) => Promise<unknown> } } }).from("idea_notes").delete().eq("id", (data as unknown as { id: string }).id);
+        } catch {}
+        return { errorMessage: "Unable to create idea right now.", data: null };
+      }
+    }
   }
 
   return {

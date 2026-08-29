@@ -9,6 +9,7 @@ export type { EgaApiClient, EgaApiClientOptions } from "./client";
 export type { ProjectsApi } from "./projects";
 export type { GoalsApi } from "./goals";
 export type { TasksApi, TaskListQuery, SetTaskRecurrenceInput } from "./tasks";
+export type { InboxApi, InboxListQuery, CreateInboxInput, UpdateInboxInput } from "./inbox";
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
 export type { TimeContextApi, TimeContextQuery } from "./time-context";
