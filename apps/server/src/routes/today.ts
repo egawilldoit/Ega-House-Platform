@@ -6,6 +6,7 @@ import {
   getTaskReadModel,
   planTaskForToday,
   removeTaskFromToday,
+  resolveTimeContext,
   updateTodayTaskStatus,
 } from "@ega/application";
 import {
@@ -13,7 +14,6 @@ import {
   SupabaseTimeContextRepository,
   SupabaseTodayReadPort,
 } from "@ega/data-access";
-import { getLocalDateInTimezone } from "@ega/domain";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -73,18 +73,21 @@ export function createTodayRoutes(
     if (earlyResponse) return earlyResponse;
 
     const now = dependencies.now ? dependencies.now() : new Date();
-    let resolvedDate: string | undefined;
+    let resolvedDate: string;
     const rawDate = body?.date != null ? String(body.date).trim() : "";
     if (rawDate) {
       resolvedDate = rawDate;
-    } else if (typeof body?.timezone === "string" && body.timezone.trim()) {
-      try {
-        resolvedDate = getLocalDateInTimezone(now, body.timezone.trim());
-      } catch {
-        resolvedDate = now.toISOString().slice(0, 10);
-      }
     } else {
-      resolvedDate = now.toISOString().slice(0, 10);
+      const requested = typeof body?.timezone === "string" ? body.timezone.trim() : null;
+      const timeContextRepository = new SupabaseTimeContextRepository(client as never);
+      const ctx = await resolveTimeContext(actor, timeContextRepository, {
+        requestedTimezone: requested ?? undefined,
+        now,
+      });
+      if (!ctx.ok) {
+        return c.json({ error: { code: "INTERNAL", message: "Unable to resolve time context." } }, 500);
+      }
+      resolvedDate = ctx.data.localDate;
     }
     const result = await planTaskForToday(actor, repository, {
       taskId: c.req.param("id"),
@@ -135,14 +138,21 @@ export function createTodayRoutes(
     const rawDate = body.date != null ? String(body.date).trim() : "";
     if (rawDate) {
       fallbackClearDate = rawDate;
-    } else if (typeof (body as Record<string, unknown>).timezone === "string" && String((body as Record<string, unknown>).timezone).trim()) {
-      try {
-        fallbackClearDate = getLocalDateInTimezone(now, String((body as Record<string, unknown>).timezone).trim());
-      } catch {
-        fallbackClearDate = now.toISOString().slice(0, 10);
-      }
     } else {
-      fallbackClearDate = now.toISOString().slice(0, 10);
+      const requested =
+        typeof (body as Record<string, unknown>).timezone === "string" &&
+        String((body as Record<string, unknown>).timezone).trim()
+          ? String((body as Record<string, unknown>).timezone).trim()
+          : null;
+      const timeContextRepository = new SupabaseTimeContextRepository(client as never);
+      const ctx = await resolveTimeContext(actor, timeContextRepository, {
+        requestedTimezone: requested ?? undefined,
+        now,
+      });
+      if (!ctx.ok) {
+        return c.json({ error: { code: "INTERNAL", message: "Unable to resolve time context." } }, 500);
+      }
+      fallbackClearDate = ctx.data.localDate;
     }
     const result = await clearCompletedToday(actor, new SupabaseTasksRepository(client), {
       date: fallbackClearDate,

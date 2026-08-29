@@ -55,6 +55,23 @@ function escapePostgrestPattern(value: string): string {
   return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
+function escapePostgrestOrValue(value: string): string {
+  // Escape all PostgREST `or=` grammar characters so arbitrary search text cannot inject extra filters.
+  // Builds on pattern escaping (\ % _) plus or-separator grammar: , ( ) " ' . : = and control characters.
+  let out = escapePostgrestPattern(value);
+  out = out.replace(/,/g, "\\,");
+  out = out.replace(/\(/g, "\\(");
+  out = out.replace(/\)/g, "\\)");
+  out = out.replace(/"/g, '\\"');
+  out = out.replace(/'/g, "\\'");
+  out = out.replace(/\./g, "\\.");
+  out = out.replace(/:/g, "\\:");
+  out = out.replace(/=/g, "\\=");
+  // Control characters and DEL: escape as \xHH to avoid breaking URL/header parsing
+  out = out.replace(/[\0-\x1f\x7f]/g, (ch) => `\\x${ch.charCodeAt(0).toString(16).padStart(2, "0")}`);
+  return out;
+}
+
 export class SupabaseInboxRepository implements InboxRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -90,7 +107,11 @@ export class SupabaseInboxRepository implements InboxRepository {
     }
 
     if (query.search) {
-      const pattern = `%${escapePostgrestPattern(query.search)}%`;
+      // Harden: escape all PostgREST `or` grammar characters before raw interpolation.
+      // Covers , ( ) " ' \ % _ . : = and control characters so arbitrary search cannot inject extra filters.
+      // Keep owner filtering intact via prior eq("owner_user_id", actor.userId).
+      const escapedSearch = escapePostgrestOrValue(query.search);
+      const pattern = `%${escapedSearch}%`;
       request = request.or(`title.ilike.${pattern},body.ilike.${pattern}`);
     }
 

@@ -60,7 +60,10 @@ const JSON_HEADERS = { "content-type": "application/json" };
 test("POST /api/inbox creates inbox item scoped to verified actor and accepts idempotency header", async () => {
   const fake = fakeSupabase();
   fake.pushResult("projects", { data: [{ id: "project-1" }], error: null });
+  fake.pushResult("inbox_idempotency_keys", { data: null, error: null });
+  fake.pushResult("idea_notes", { data: null, error: null });
   fake.pushResult("idea_notes", { data: { id: "inbox-1", title: "Idea", body: null, status: "inbox", type: "idea", project_id: null, priority: null, tags: [], created_at: "2026-04-29T12:00:00.000Z", updated_at: "2026-04-29T12:00:00.000Z", projects: null }, error: null });
+  fake.pushResult("inbox_idempotency_keys", { data: null, error: null });
   const app = makeApp(fake);
   const response = await app.request("/api/inbox", {
     method: "POST",
@@ -72,7 +75,8 @@ test("POST /api/inbox creates inbox item scoped to verified actor and accepts id
   assert.equal(body.ok, true);
   assert.equal(body.item.title, "Idea");
   assert.equal(response.headers.get("x-idempotency-key"), "key-123");
-  const insert = fake.calls.find((c) => c.table === "idea_notes")?.steps.find((s) => s.method === "insert");
+  const insertCall = fake.calls.find((c) => c.table === "idea_notes" && c.steps.some((s) => s.method === "insert"));
+  const insert = insertCall?.steps.find((s) => s.method === "insert");
   assert.ok(insert);
   assert.equal((insert.args[0] as any).owner_user_id, "user-123");
   assert.equal((insert.args[0] as any).title, "Idea");

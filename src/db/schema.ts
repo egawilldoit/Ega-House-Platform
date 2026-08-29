@@ -301,6 +301,7 @@ export const inboxIdempotencyKeys = pgTable(
     ),
     index("inbox_idempotency_keys_owner_idx").on(table.ownerUserId),
     index("inbox_idempotency_keys_inbox_item_id_idx").on(table.inboxItemId),
+    check("inbox_idempotency_keys_key_not_blank", sql`length(btrim(${table.key})) > 0`),
   ],
 );
 
