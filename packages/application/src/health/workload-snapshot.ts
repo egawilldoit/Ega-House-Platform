@@ -19,13 +19,14 @@
  * (unless `suspect` outranks). Malformed rows → `suspect`.
  */
 
-import { getLocalDayWindow, type LocalDayWindow } from "@ega/domain";
+import { getLocalDateInTimezone, getLocalDayWindow, type LocalDayWindow } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import {
   calculateExecutionEvidenceForWindow,
   getExecutionEvidenceSessionOverlapSeconds,
   type ExecutionEvidenceRepository,
+  type ExecutionEvidenceSessionRow,
   type ExecutionEvidenceWindow,
   type EvidenceQuality,
 } from "../shared/execution-evidence";
@@ -171,7 +172,13 @@ export async function getHealthWorkloadSnapshot(
   // consistency with longest calculation.
   const totalTrackedSeconds = evidence.totalTrackedSeconds;
   const sessionCount = evidence.sessionCount;
-  const activeDays = evidence.trackedSecondsByDay.size; // distinct UTC days; window itself is local-derived
+  const activeDays = countLocalActiveDays({
+    sessions,
+    window,
+    timezone,
+    nowIso,
+    includeOpenSessions,
+  });
   const windowDays = HEALTH_ROLLING_WINDOW_DAYS;
   const sessionDensity = windowDays > 0 ? Number((sessionCount / windowDays).toFixed(2)) : 0;
 
@@ -210,6 +217,68 @@ export async function getHealthWorkloadSnapshot(
   };
 
   return applicationSuccess(snapshot);
+}
+
+function toMs(iso: string): number | null {
+  const value = new Date(iso).getTime();
+  return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Local-calendar active days: distinct user local dates touched by any
+ * contributing session overlap, clipped to the health window. Uses canonical
+ * `getLocalDayWindow` per day so DST 23h/25h windows and server TZ do not
+ * affect the count. Does NOT mutate shared UTC buckets in execution-evidence.
+ */
+function countLocalActiveDays(input: {
+  sessions: ReadonlyArray<ExecutionEvidenceSessionRow>;
+  window: ExecutionEvidenceWindow;
+  timezone: string;
+  nowIso: string;
+  includeOpenSessions: boolean;
+}): number {
+  const windowStartMs = toMs(input.window.startIso);
+  const windowEndMs = toMs(input.window.endIso);
+  if (windowStartMs === null || windowEndMs === null || windowEndMs <= windowStartMs) return 0;
+  const active = new Set<string>();
+  for (const session of input.sessions) {
+    const overlapSeconds = getExecutionEvidenceSessionOverlapSeconds(session, input.window, {
+      nowIso: input.nowIso,
+      includeOpenSessions: input.includeOpenSessions,
+    });
+    if (overlapSeconds <= 0) continue;
+    const sessionStartMs = toMs(session.started_at);
+    if (sessionStartMs === null) continue;
+    let sessionEndMs: number | null;
+    if (session.ended_at === null || session.ended_at === undefined) {
+      if (!input.includeOpenSessions) continue;
+      sessionEndMs = toMs(input.nowIso);
+    } else {
+      sessionEndMs = toMs(session.ended_at);
+    }
+    if (sessionEndMs === null || sessionEndMs < sessionStartMs) continue;
+    const overlapStartMs = Math.max(sessionStartMs, windowStartMs);
+    const overlapEndMs = Math.min(sessionEndMs, windowEndMs);
+    if (overlapEndMs <= overlapStartMs) continue;
+    let cursorMs = overlapStartMs;
+    let guard = 0;
+    while (cursorMs < overlapEndMs && guard < 100) {
+      guard += 1;
+      const localDate = getLocalDateInTimezone(new Date(cursorMs), input.timezone);
+      active.add(localDate);
+      const dayWindow = getLocalDayWindow(input.timezone, localDate);
+      const dayEndMs = toMs(dayWindow.endUtcIso);
+      if (dayEndMs === null || dayEndMs <= cursorMs) {
+        cursorMs += 60 * 60 * 1000;
+        if (cursorMs > overlapEndMs) cursorMs = overlapEndMs;
+      } else if (dayEndMs >= overlapEndMs) {
+        break;
+      } else {
+        cursorMs = dayEndMs;
+      }
+    }
+  }
+  return active.size;
 }
 
 // ---------------------------------------------------------------------------
