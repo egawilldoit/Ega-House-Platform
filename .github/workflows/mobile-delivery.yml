@@ -93,11 +93,11 @@ jobs:
             if jq -e '.bootstrap' /tmp/selector.json > /dev/null 2>&1; then
               echo "No stable mobile baseline found — bootstrap case"
               cat /tmp/selector.json
-              if [ "$CANDIDATE_VER" = "1.0.1" ]; then
-                echo "Bootstrap allowed: candidate is 1.0.1 (first OTA-enabled APK)"
+              if [ "$CANDIDATE_VER" = "1.0.2" ]; then
+                echo "Bootstrap allowed: candidate is 1.0.2 (first APK for the canonical Expo project)"
                 exit 0
               else
-                echo "::error::BOOTSTRAP_VERSION_UNEXPECTED: no stable mobile baseline but candidate $CANDIDATE_VER != 1.0.1 → BLOCK"
+                echo "::error::BOOTSTRAP_VERSION_UNEXPECTED: no stable mobile baseline but candidate $CANDIDATE_VER != 1.0.2 → BLOCK"
                 exit 1
               fi
             fi
@@ -315,7 +315,7 @@ jobs:
             exit 1
           fi
           EMBEDDED_URL="$(grep -oP 'EXPO_UPDATE_URL.*?value="\K[^"]+' "$ANDROID_MANIFEST" | head -n1 || echo "")"
-          EXPECTED_URL="https://u.expo.dev/73d127b6-c8f6-450c-8d97-2dca8434cd59"
+          EXPECTED_URL="https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6"
           if [ "$EMBEDDED_URL" != "$EXPECTED_URL" ]; then
             echo "::error::EXPO_UPDATE_URL mismatch: got $EMBEDDED_URL expected $EXPECTED_URL"
             grep -n "EXPO_UPDATE" "$ANDROID_MANIFEST" || true

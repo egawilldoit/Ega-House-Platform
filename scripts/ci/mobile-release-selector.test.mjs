@@ -179,11 +179,11 @@ test('GitHub API 500 → error', async () => {
   await assert.rejects(() => fetchReleasesPaginated({ fetchImpl, perPage: 100, maxPages: 1 }), /500/);
 });
 
-test('bootstrap: zero stable, candidate 1.0.1 → allowed, other → blocked', async () => {
+test('bootstrap: zero stable, candidate 1.0.2 → allowed, other → blocked', async () => {
   const { shouldBootstrapAllow } = await import('./mobile-release-selector.mjs');
-  assert.equal(shouldBootstrapAllow('1.0.1', false), true);
-  assert.equal(shouldBootstrapAllow('1.0.2', false), false);
-  assert.equal(shouldBootstrapAllow('1.0.1', true), false);
+  assert.equal(shouldBootstrapAllow('1.0.2', false), true);
+  assert.equal(shouldBootstrapAllow('1.0.1', false), false);
+  assert.equal(shouldBootstrapAllow('1.0.2', true), false);
 });
 
 test('OTA bootstrap must fail (no stable → OTA BLOCK)', () => {

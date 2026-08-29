@@ -5,7 +5,7 @@
  * For runtimeVersion policy appVersion, any native change MUST bump app.json expo.version.
  *
  * Usage:
- *   node scripts/ci/check-native-version-bump.mjs --baseline-manifest /tmp/release-manifest.json --candidate-version 1.0.1 --base <baselineSha> --head <candidateSha>
+ *   node scripts/ci/check-native-version-bump.mjs --baseline-manifest /tmp/release-manifest.json --candidate-version 1.0.2 --base <baselineSha> --head <candidateSha>
  *
  * Exits 0 if:
  *   - no native-sensitive diff → allow (JS-only)
@@ -16,7 +16,7 @@
  *   - native diff + missing candidate version → BLOCK
  *
  * Bootstrap: if baseline manifest missing/invalid and this is the first native release, allow only if candidate is bootstrap version and explicitly documented.
- * For now, if manifest file missing or 404, we treat as bootstrap and allow if candidate is 1.0.1 and file indicates no prior release. Malformed baseline still blocks.
+ * For now, if manifest file missing or 404, we treat as bootstrap and allow if candidate is 1.0.2 and file indicates no prior release. Malformed baseline still blocks.
  */
 
 import fs from 'node:fs';
