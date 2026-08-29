@@ -115,7 +115,7 @@ test("Today with stored Asia/Tokyo no explicit timezone resolves to Tokyo local 
   const now = new Date("2026-01-15T15:00:00.000Z"); // 00:00 2026-01-16 in Tokyo
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo("Asia/Tokyo");
-  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now } as any);
+  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(port.capturedToday, "2026-01-16");
@@ -128,7 +128,7 @@ test("Today with stored America/New_York no explicit timezone", async () => {
   const now = new Date("2026-01-15T12:00:00.000Z"); // 07:00 in NY on 2026-01-15
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo("America/New_York");
-  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now } as any);
+  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(port.capturedToday, "2026-01-15");
@@ -141,13 +141,13 @@ test("Today no explicit query timezone uses stored not UTC", async () => {
   // If stored is Tokyo, date must be 2026-01-16, not UTC 2026-01-15
   const portTokyo = new FakeTodayPort([task({ id: "t1" })]);
   const repoTokyo = new FakeTimeContextRepo("Asia/Tokyo");
-  const rTokyo = await getTodayPlan(createAuthenticatedActor("u1"), portTokyo, repoTokyo, { now } as any);
+  const rTokyo = await getTodayPlan(createAuthenticatedActor("u1"), portTokyo, repoTokyo, { now });
   assert.equal(rTokyo.ok && rTokyo.data.date, "2026-01-16");
 
   // If stored is UTC via missing, date is UTC
   const portUtc = new FakeTodayPort([task({ id: "t1" })]);
   const repoMissing = new FakeTimeContextRepo(null);
-  const rUtc = await getTodayPlan(createAuthenticatedActor("u1"), portUtc, repoMissing, { now } as any);
+  const rUtc = await getTodayPlan(createAuthenticatedActor("u1"), portUtc, repoMissing, { now });
   assert.equal(rUtc.ok && rUtc.data.date, "2026-01-15");
 });
 
@@ -157,14 +157,14 @@ test("Today midnight boundary in stored America/New_York", async () => {
   const at = new Date("2026-01-15T05:00:00.000Z"); // 2026-01-15 00:00 NY
 
   const portBefore = new FakeTodayPort([task({ id: "t1" })]);
-  const rBefore = await getTodayPlan(createAuthenticatedActor("u1"), portBefore, repo, { now: before } as any);
+  const rBefore = await getTodayPlan(createAuthenticatedActor("u1"), portBefore, repo, { now: before });
   assert.equal(rBefore.ok && rBefore.data.date, "2026-01-14");
   assert.equal(portBefore.capturedWindowStart, "2026-01-14T05:00:00.000Z");
 
   const portAt = new FakeTodayPort([task({ id: "t1" })]);
   // Need fresh repo with same stored value
   const repo2 = new FakeTimeContextRepo("America/New_York");
-  const rAt = await getTodayPlan(createAuthenticatedActor("u1"), portAt, repo2, { now: at } as any);
+  const rAt = await getTodayPlan(createAuthenticatedActor("u1"), portAt, repo2, { now: at });
   assert.equal(rAt.ok && rAt.data.date, "2026-01-15");
   assert.equal(portAt.capturedWindowStart, "2026-01-15T05:00:00.000Z");
 });
@@ -173,7 +173,7 @@ test("Today DST spring 23h window with stored America/New_York", async () => {
   const now = new Date("2026-03-08T12:00:00.000Z");
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo("America/New_York");
-  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now } as any);
+  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(port.capturedWindowStart, "2026-03-08T05:00:00.000Z");
@@ -186,7 +186,7 @@ test("Today DST fall 25h window with stored America/New_York", async () => {
   const now = new Date("2026-11-01T12:00:00.000Z");
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo("America/New_York");
-  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now } as any);
+  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(port.capturedWindowStart, "2026-11-01T04:00:00.000Z");
@@ -199,7 +199,7 @@ test("Today missing timezone fallback to UTC with missing_timezone", async () =>
   const now = new Date("2026-01-15T12:00:00.000Z");
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo(null);
-  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now } as any);
+  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(port.capturedWindowStart, "2026-01-15T00:00:00.000Z");
@@ -210,7 +210,7 @@ test("Today invalid timezone fallback to UTC with invalid_timezone", async () =>
   const now = new Date("2026-01-15T12:00:00.000Z");
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo("Invalid/Zone");
-  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now } as any);
+  const result = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(port.capturedWindowStart, "2026-01-15T00:00:00.000Z");
@@ -224,14 +224,14 @@ test("Today server TZ independence with stored timezone", async () => {
     process.env.TZ = "Asia/Tokyo";
     const port1 = new FakeTodayPort([task({ id: "t1" })]);
     const repo1 = new FakeTimeContextRepo("America/New_York");
-    const r1 = await getTodayPlan(createAuthenticatedActor("u1"), port1, repo1, { now } as any);
+    const r1 = await getTodayPlan(createAuthenticatedActor("u1"), port1, repo1, { now });
     assert.equal(r1.ok && r1.data.date, "2026-01-15");
     assert.equal(port1.capturedWindowStart, "2026-01-15T05:00:00.000Z");
 
     process.env.TZ = "UTC";
     const port2 = new FakeTodayPort([task({ id: "t1" })]);
     const repo2 = new FakeTimeContextRepo("America/New_York");
-    const r2 = await getTodayPlan(createAuthenticatedActor("u1"), port2, repo2, { now } as any);
+    const r2 = await getTodayPlan(createAuthenticatedActor("u1"), port2, repo2, { now });
     assert.equal(r2.ok && r2.data.date, "2026-01-15");
     assert.equal(port2.capturedWindowStart, "2026-01-15T05:00:00.000Z");
 
@@ -241,7 +241,7 @@ test("Today server TZ independence with stored timezone", async () => {
     process.env.TZ = "America/Los_Angeles";
     const port3 = new FakeTodayPort([task({ id: "t1" })]);
     const repo3 = new FakeTimeContextRepo("Asia/Tokyo");
-    const r3 = await getTodayPlan(createAuthenticatedActor("u1"), port3, repo3, { now } as any);
+    const r3 = await getTodayPlan(createAuthenticatedActor("u1"), port3, repo3, { now });
     assert.equal(r3.ok && r3.data.date, "2026-01-16");
     assert.equal(port3.capturedWindowStart, "2026-01-15T15:00:00.000Z");
   } finally {
@@ -262,7 +262,7 @@ test("Timer with stored Asia/Tokyo no explicit timezone uses Tokyo window", asyn
     { id: "b", taskId: "t1", startedAt: "2026-01-15T14:30:00.000Z", endedAt: "2026-01-15T14:40:00.000Z", durationSeconds: 600, taskTitle: "Outside" },
   ];
   const timerRepoInside = new FakeTimerRepository(sessionsInside);
-  const resultInside = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoInside, repo, { now } as any);
+  const resultInside = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoInside, repo, { now });
   assert.equal(resultInside.ok, true);
   if (!resultInside.ok) return;
   assert.equal(resultInside.data.summary.trackedTodaySeconds, 600);
@@ -270,7 +270,7 @@ test("Timer with stored Asia/Tokyo no explicit timezone uses Tokyo window", asyn
 
   const repo2 = new FakeTimeContextRepo("Asia/Tokyo");
   const timerRepoOutside = new FakeTimerRepository(sessionsOutside);
-  const resultOutside = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoOutside, repo2, { now } as any);
+  const resultOutside = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoOutside, repo2, { now });
   assert.equal(resultOutside.ok, true);
   if (!resultOutside.ok) return;
   assert.equal(resultOutside.data.summary.trackedTodaySeconds, 0);
@@ -285,7 +285,7 @@ test("Timer with stored America/New_York no explicit timezone", async () => {
     { id: "b", taskId: "t1", startedAt: "2026-01-15T04:00:00.000Z", endedAt: "2026-01-15T04:30:00.000Z", durationSeconds: 1800, taskTitle: "BeforeMidnight" },
   ];
   const timerRepo = new FakeTimerRepository(sessions);
-  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now } as any);
+  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   // BeforeMidnight session ends at 04:00Z, but NY midnight is 05:00Z, so it is before window start and should not count
@@ -300,7 +300,7 @@ test("Timer missing timezone fallback to UTC", async () => {
     { id: "a", taskId: "t1", startedAt: "2026-01-14T23:30:00.000Z", endedAt: "2026-01-15T00:30:00.000Z", durationSeconds: 3600, taskTitle: "CrossUTCmidnight" },
   ];
   const timerRepo = new FakeTimerRepository(sessions);
-  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now } as any);
+  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   // UTC window [00:00,12:00) => overlap is 00:00-00:30 = 1800s
@@ -314,7 +314,7 @@ test("Timer invalid timezone fallback to UTC", async () => {
     { id: "a", taskId: "t1", startedAt: "2026-01-15T01:00:00.000Z", endedAt: "2026-01-15T02:00:00.000Z", durationSeconds: 3600, taskTitle: "X" },
   ];
   const timerRepo = new FakeTimerRepository(sessions);
-  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now } as any);
+  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.data.summary.trackedTodaySeconds, 3600);
@@ -327,7 +327,7 @@ test("Timer DST spring 23h window", async () => {
     { id: "a", taskId: "t1", startedAt: "2026-03-08T06:00:00.000Z", endedAt: "2026-03-08T07:00:00.000Z", durationSeconds: 3600, taskTitle: "X" },
   ];
   const timerRepo = new FakeTimerRepository(sessions);
-  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now } as any);
+  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   // Verify window is 23h by checking overlap: session at 06Z is inside window [05:00,04:00 next day)
@@ -345,7 +345,7 @@ test("Timer DST fall 25h window", async () => {
     { id: "a", taskId: "t1", startedAt: "2026-11-01T05:00:00.000Z", endedAt: "2026-11-01T06:00:00.000Z", durationSeconds: 3600, taskTitle: "X" },
   ];
   const timerRepo = new FakeTimerRepository(sessions);
-  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now } as any);
+  const result = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo, { now });
   assert.equal(result.ok, true);
   if (!result.ok) return;
   assert.equal(result.data.summary.trackedTodaySeconds, 3600);
@@ -361,7 +361,7 @@ test("Timer midnight boundary with stored America/New_York", async () => {
     { id: "a", taskId: "t1", startedAt: "2026-01-15T04:30:00.000Z", endedAt: "2026-01-15T04:45:00.000Z", durationSeconds: 900, taskTitle: "X" },
   ];
   const timerRepoBefore = new FakeTimerRepository(sessions);
-  const resultBefore = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoBefore, repoBefore, { now: nowBefore } as any);
+  const resultBefore = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoBefore, repoBefore, { now: nowBefore });
   assert.equal(resultBefore.ok, true);
   if (!resultBefore.ok) return;
   // 04:30Z is still 2026-01-14 in NY, and window for 2026-01-14 is [2026-01-14T05:00Z, 2026-01-15T05:00Z)
@@ -371,7 +371,7 @@ test("Timer midnight boundary with stored America/New_York", async () => {
   const repoAt = new FakeTimeContextRepo("America/New_York");
   const nowAt = new Date("2026-01-15T05:00:00.000Z");
   const timerRepoAt = new FakeTimerRepository(sessions);
-  const resultAt = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoAt, repoAt, { now: nowAt } as any);
+  const resultAt = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepoAt, repoAt, { now: nowAt });
   assert.equal(resultAt.ok, true);
   if (!resultAt.ok) return;
   // Now window is 2026-01-15 [05:00, ...), session at 04:30Z is before window, should NOT count
@@ -388,12 +388,12 @@ test("Timer server TZ independence with stored timezone", async () => {
     process.env.TZ = "Asia/Tokyo";
     const repo1 = new FakeTimeContextRepo("America/New_York");
     const timerRepo1 = new FakeTimerRepository(sessions);
-    const r1 = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo1, repo1, { now } as any);
+    const r1 = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo1, repo1, { now });
 
     process.env.TZ = "UTC";
     const repo2 = new FakeTimeContextRepo("America/New_York");
     const timerRepo2 = new FakeTimerRepository(sessions);
-    const r2 = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo2, repo2, { now } as any);
+    const r2 = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo2, repo2, { now });
 
     assert.deepEqual(r1.ok && r1.data.summary, r2.ok && r2.data.summary);
   } finally {
@@ -407,13 +407,13 @@ test("Timer and Today explicit validated override still works over stored", asyn
   // Stored is NY, but requested is Tokyo -> should use Tokyo
   const port = new FakeTodayPort([task({ id: "t1" })]);
   const repo = new FakeTimeContextRepo("America/New_York");
-  const r = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now: nowToday, timezone: "Asia/Tokyo" } as any);
+  const r = await getTodayPlan(createAuthenticatedActor("u1"), port, repo, { now: nowToday, timezone: "Asia/Tokyo" });
   assert.equal(r.ok && r.data.date, "2026-01-16");
   assert.equal(port.capturedWindowStart, "2026-01-15T15:00:00.000Z");
 
   const nowTimer = new Date("2026-01-15T16:00:00.000Z");
   const timerRepo = new FakeTimerRepository([{ id: "a", taskId: "t1", startedAt: "2026-01-15T15:10:00.000Z", endedAt: "2026-01-15T15:20:00.000Z", durationSeconds: 600, taskTitle: "X" }]);
   const repo2 = new FakeTimeContextRepo("America/New_York");
-  const timerResult = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo2, { now: nowTimer, timezone: "Asia/Tokyo" } as any);
+  const timerResult = await getTimerWorkspace(createAuthenticatedActor("u1"), timerRepo, repo2, { now: nowTimer, timezone: "Asia/Tokyo" });
   assert.equal(timerResult.ok && timerResult.data.summary.trackedTodaySeconds, 600);
 });
