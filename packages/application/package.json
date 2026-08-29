@@ -37,7 +37,9 @@
     "./ai/structured-suggestion-port": "./src/ai/structured-suggestion-port.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
-    "./shared/execution-evidence": "./src/shared/execution-evidence.ts"
+    "./shared/execution-evidence": "./src/shared/execution-evidence.ts",
+    "./health/workload-snapshot": "./src/health/workload-snapshot.ts",
+    "./health/recommendations": "./src/health/recommendations.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

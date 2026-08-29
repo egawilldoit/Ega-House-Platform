@@ -19,6 +19,8 @@ import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
 import { DailyMomentum } from '@/features/today/components/DailyMomentum';
 import { TodaySectionEmpty, TodaySectionHeader } from '@/features/today/components/TodaySection';
 import { TodayTaskCard } from '@/features/today/components/TodayTaskCard';
+import { HealthCoachSnapshot } from '@/features/health/components/HealthCoachSnapshot';
+import { useHealthSnapshotQuery } from '@/features/health/query';
 import { useUnreadCountQuery } from '@/features/notifications/query';
 import {
   useAddTaskToTodayMutation,
@@ -167,6 +169,7 @@ export default function TodayScreen() {
   const router = useRouter();
   const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const todayQuery = useTodayWorkspaceQuery();
+  const healthQuery = useHealthSnapshotQuery();
   const updateTaskMutation = useUpdateTaskMutation();
   const statusMutation = useUpdateTodayTaskStatusMutation();
   const addTaskMutation = useAddTaskToTodayMutation();
@@ -561,6 +564,11 @@ export default function TodayScreen() {
               completedRatio={completedRatio}
               isClearing={clearCompletedMutation.isPending}
               onClearCompleted={runClearCompleted}
+            />
+
+            <HealthCoachSnapshot
+              response={healthQuery.data ?? null}
+              errorMessage={healthQuery.isError ? (healthQuery.error instanceof Error ? healthQuery.error.message : "Unable to load workload snapshot.") : null}
             />
 
             {actionError ? (

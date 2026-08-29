@@ -10,6 +10,7 @@
 import { createAuthApi, type AuthApi } from "./auth";
 import { createFrictionApi, type FrictionApi } from "./friction";
 import { createGoalsApi, type GoalsApi } from "./goals";
+import { createHealthApi, type HealthApi } from "./health";
 import {
   HttpClient,
   type AuthErrorHandler,
@@ -51,6 +52,7 @@ export type EgaApiClient = {
   inbox: InboxApi;
   today: TodayApi;
   timer: TimerApi;
+  healthSnapshot: HealthApi;
   friction: FrictionApi;
   timeContext: TimeContextApi;
   notifications: NotificationsApi;
@@ -79,6 +81,7 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     inbox: createInboxApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    healthSnapshot: createHealthApi(http),
     friction: createFrictionApi(http),
     timeContext: createTimeContextApi(http),
     notifications: createNotificationsApi(http),
