@@ -1,4 +1,4 @@
-# Runbook — MCP v2 read/write (2026-07-28)
+# Runbook — MCP v2 read/write (2026-08-29)
 
 **Branch:** `feat/mcp-v2-full-read-write`
 **SDK:** `@modelcontextprotocol/server` 2.0.0, `@modelcontextprotocol/client` 2.0.0, `@modelcontextprotocol/core` 2.0.0
@@ -15,7 +15,7 @@
 ## Authorization
 
 - **OAuth:** Supabase OAuth, `aud` = `resource` = `MCP_RESOURCE_URL`, `client_id` from JWT, `mcp_authorization_grants` (owner, client, resource, profile, permissions, version, status)
-- **Profiles:** `read_only` (5 reads), `task_manager` (reads + tasks.create/update), `delivery_observer`, `workspace_manager` (full 14). `MCP_WRITES_ENABLED` global kill switch gates all writes even when grant permits.
+- **Profiles:** `read_only` (7 read tools), `task_manager` (read tools + task-management writes), `workspace_manager` (all 30 tools when writes are enabled). `delivery_observer` is retired. `MCP_WRITES_ENABLED` global kill switch gates all writes even when grant permits.
 - **Consent:** `/oauth/consent?authorization_id=...` shows Read-only vs Workspace management when `MCP_WRITES_ENABLED=true`; otherwise only Read-only. User explicitly picks; no silent elevation of existing grants.
 - **RLS:** `private.has_active_mcp_permission(perm)` checks `auth.uid()`, `client_id`, `aud`, `status='active'`, `permissions @> [perm]`. Policies:
   - `*_select_access`: owner + (client null OR has read perm)
@@ -31,11 +31,15 @@
 - **Flow:** handler returns `inputRequired({ inputRequests: {confirm: inputRequired.elicit({message})}, requestState: await codec.mint(bound) })`; client retries with `inputResponses` + `requestState`; handler re-enters, reads `ctx.mcpReq.requestState<T>()` and `ctx.mcpReq.inputResponses`, revalidates grant/ownership/target before mutating. Decline → no mutation; tamper/expiry → `-32602`; grant revoked between rounds → `PERMISSION_DENIED`.
 - **Cross-instance:** stateless + HMAC → any instance can verify.
 
-## Idempotency
+## Idempotency and domain fencing
 
 - **Ledger:** `mcp_mutation_receipts(owner, client, tool, operation_id, args_hash, result_payload)` PK(owner,client,tool,opId). `mcp_claim_mutation_receipt(tool, opId, argsHash)` does `INSERT ON CONFLICT DO NOTHING` → fetch → if argsHash mismatch → conflict (409), if result present → replay, else proceed. Caller must then `mcp_store_mutation_result(tool, opId, result)` after mutation.
-- **Key:** `(owner, oauth_client_id, tool, operationId)` — same args → stable replay; different args → rejected; concurrent duplicates → exactly one effect (ON CONFLICT).
-- **All writes** require `operationId` (uuid v4) — `createTask`, `startTimer`, `stopTimer` enforce; others optional but recommended.
+- **Key:** `(owner, oauth_client_id, tool, operationId)` — same canonical args → stable replay; different args → rejected before the business mutation; concurrent duplicates → one receipt winner.
+- **All writes** require `operationId` (UUID v4). The server derives owner and client from the verified MCP principal; neither is accepted from tool arguments.
+- **Create-domain fence:** migration `0054_mcp_domain_operation_fencing` adds `(owner_user_id, mcp_client_id, mcp_operation_id)` partial unique indexes to `projects`, `goals`, `tasks`, `task_reminders`, and `task_sessions`. The application propagates the identity to the repository, and the repository recognizes only the matching named `23505` collision before loading the canonical row through the request-scoped RLS client.
+- **Crash boundary:** if the domain INSERT commits and the process dies before receipt storage, a fresh claim retries the INSERT, receives the named domain collision, and returns the original project, goal, task, reminder/task, or session. Unrelated unique violations remain failures.
+- **Create guarantee:** projects, goals, tasks, task reminders, and task sessions are exactly-once across normal retries, concurrency, receipt loss, lease expiry, and stale-worker recovery when the request uses the same authenticated owner, client, tool, operation ID, and canonical arguments.
+- **Update guarantee:** state/projection updates remain at-least-once but idempotent. This runbook makes no broader exactly-once claim for updates.
 
 ## Audit / Rate limits
 
@@ -49,9 +53,17 @@
 3. **Rollback app revision:** revert to previous `feat/mcp-v2-full-read-write` predecessor or `main` (no DB down migration). Write RLS policies remain but now gate (no writes).
 4. **No destructive down migration:** `mcp_mutation_receipts` and write policies stay; they are harmless when writes disabled.
 
+## Product client boundary
+
+MCP transport is web-only at `POST /api/mcp`. `apps/mobile` does not
+implement MCP transport or tool discovery. Mobile continues to use the shared
+product API through `@ega/api-client` → `apps/server`; MCP-created project,
+goal, task, reminder, and session rows are visible to the same authenticated
+mobile user through those owner-scoped APIs.
+
 ## Production actions NOT performed (per boundary)
 
-- Migrations `0045..0047` not applied to production DB (local/journal only).
+- Migrations `0047..0054` not applied to production DB (local/journal only).
 - `MCP_REQUEST_STATE_SECRET` not rotated in prod (to be set out-of-band before cutover).
 - PR not merged (`feat/mcp-v2-full-read-write` → `main`).
 
@@ -66,5 +78,5 @@
 - `apps/web/package.json`: `@modelcontextprotocol/server/client/core` 2.0.0
 - `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas
 - `apps/web/src/lib/mcp/request-state.ts`: `createRequestStateCodec`
-- `drizzle/` migrations: `0045..0047` + `meta/_journal.json`
-- `npm run web:typecheck` PASS, `web:test` 1009 PASS, `check:architecture` PASS
+- `drizzle/` migrations: `0047..0054` + `meta/_journal.json`
+- Final command results are recorded in the delivery report; this document does not substitute for executed evidence.
