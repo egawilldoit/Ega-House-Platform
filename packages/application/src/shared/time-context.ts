@@ -1,12 +1,15 @@
 import {
+  FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
   getLocalDateInTimezone,
   getLocalDayWindow,
+  getRollingLocalWindow,
   getWeekWindow,
   isValidIANATimeZone,
   type LocalDayWindow,
   type LocalWeekWindow,
   type TimeContextFallback,
 } from "@ega/domain";
+import type { ExecutionEvidenceWindow } from "./execution-evidence";
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult, type RepositoryResult } from "../shared/result";
@@ -157,6 +160,32 @@ export function resolveHistoricalTimeContext(
     if (message.includes("Invalid date")) {
       return applicationFailure("Date is invalid. Expected YYYY-MM-DD.");
     }
+    return applicationFailure(message);
+  }
+}
+
+export async function resolveFrictionEvidenceWindow(
+  actor: AuthenticatedActor,
+  repository: TimeContextRepository,
+  input: Readonly<{ now?: Date }> = {},
+): Promise<ApplicationResult<ExecutionEvidenceWindow>> {
+  const now = input.now ?? new Date();
+  if (Number.isNaN(now.getTime())) {
+    return applicationFailure("Current time is invalid.");
+  }
+  const timeCtx = await resolveTimeContext(actor, repository, { now });
+  if (!timeCtx.ok) {
+    return applicationFailure(timeCtx.errorMessage);
+  }
+  try {
+    const window = getRollingLocalWindow(
+      timeCtx.data.timezone,
+      now,
+      FRICTION_NEGLECTED_GOAL_WINDOW_DAYS,
+    );
+    return applicationSuccess({ startIso: window.startIso, endIso: window.endIso });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to resolve neglected window.";
     return applicationFailure(message);
   }
 }

@@ -11,6 +11,7 @@
     "./inbox-ai": "./src/inbox-ai.ts",
     "./notifications": "./src/notifications.ts",
     "./common/task-list": "./src/common/task-list.ts",
+    "./friction": "./src/friction.ts",
     "./time-context": "./src/time-context.ts",
     "./execution-evidence": "./src/execution-evidence.ts"
   },
