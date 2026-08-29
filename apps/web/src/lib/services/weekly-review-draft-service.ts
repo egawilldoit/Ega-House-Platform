@@ -94,16 +94,23 @@ function mapTimeBuckets(
   }));
 }
 
+function previousWeekStartForDraft(weekStart: string): string {
+  const date = new Date(`${weekStart}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return weekStart;
+  date.setUTCDate(date.getUTCDate() - 7);
+  return date.toISOString().slice(0, 10);
+}
+
 async function getPreviousWeekReview(
   supabase: ReviewDraftSupabaseClient,
   weekStart: string,
   ownerUserId: string,
 ): Promise<WeeklyReviewDraftInput["previousReview"]> {
+  const previousStart = previousWeekStartForDraft(weekStart);
   const { data, error } = await queryFrom(supabase, "week_reviews")
     .select("week_start, week_end, summary, next_steps")
     .eq("owner_user_id", ownerUserId)
-    .lt("week_start", weekStart)
-    .order("week_start", { ascending: false })
+    .eq("week_start", previousStart)
     .maybeSingle();
 
   if (error) {
