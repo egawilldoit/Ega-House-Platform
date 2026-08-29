@@ -42,8 +42,30 @@ const STOP_RESPONSE: TimerStopResponse = { ok: true, sessionId: 'session-1', tas
 
 function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiClient {
   return {
-    health: jest.fn(),
+    health: jest.fn(async () => ({ ok: true as const, data: { status: 'ok' as const } })),
     auth: { login: jest.fn(), refresh: jest.fn(), logout: jest.fn() },
+    projects: {
+      list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
+    },
+    goals: {
+      list: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), updateHealth: jest.fn(), updateNextStep: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
+    },
+    tasks: {
+      list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
+      createReminder: jest.fn(), cancelReminder: jest.fn(), setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn(),
+    },
+    inbox: {
+      list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn(),
+    },
+    today: {
+      get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn(),
+    },
+    operator: {
+      create: jest.fn(), revise: jest.fn(), approve: jest.fn(), apply: jest.fn(), dismiss: jest.fn(), get: jest.fn(), list: jest.fn(),
+    },
+    timeContext: {
+      get: jest.fn(),
+    },
     timer: {
       workspace: jest.fn(
         async (): Promise<ApiResult<TimerWorkspaceState>> => ({ ok: true, data: WORKSPACE }),
@@ -56,11 +78,10 @@ function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiC
       ),
       ...overrides,
     },
-    projects: {},
-    goals: {},
-    tasks: {},
-    today: {},
-  } as unknown as EgaApiClient;
+    notifications: {
+      list: jest.fn(), unreadCount: jest.fn(), markRead: jest.fn(), markOpened: jest.fn(), markAllRead: jest.fn(), registerDevice: jest.fn(), unregisterDevice: jest.fn(), preferences: jest.fn(), updatePreferences: jest.fn(),
+    },
+  };
 }
 
 describe('mobile timer api wrappers', () => {

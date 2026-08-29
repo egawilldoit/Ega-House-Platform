@@ -83,6 +83,9 @@ function makeWave2Apis() {
     today: {
       get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn(),
     },
+    operator: {
+      create: jest.fn(), revise: jest.fn(), approve: jest.fn(), apply: jest.fn(), dismiss: jest.fn(), get: jest.fn(), list: jest.fn(),
+    },
     weeklyReview: {
       get: jest.fn(),
     },
