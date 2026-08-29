@@ -28,6 +28,13 @@
     "./friction/stale-blocked-signals": "./src/friction/stale-blocked-signals.ts",
     "./friction/estimate-accuracy": "./src/friction/estimate-accuracy.ts",
     "./friction/context-switch": "./src/friction/context-switch.ts",
+    "./inbox/ports": "./src/inbox/ports.ts",
+    "./inbox/service": "./src/inbox/service.ts",
+    "./inbox/read-model": "./src/inbox/read-model.ts",
+    "./inbox/convert": "./src/inbox/convert.ts",
+    "./inbox/ai-classification-port": "./src/inbox/ai-classification-port.ts",
+    "./inbox/ai-suggest": "./src/inbox/ai-suggest.ts",
+    "./ai/structured-suggestion-port": "./src/ai/structured-suggestion-port.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
     "./shared/execution-evidence": "./src/shared/execution-evidence.ts"

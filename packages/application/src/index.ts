@@ -31,6 +31,13 @@ export * from "./friction/workload-imbalance";
 export * from "./shared/duration";
 export * from "./shared/time-context";
 export * from "./shared/execution-evidence";
+export * from "./inbox/ports";
+export * from "./inbox/service";
+export * from "./inbox/read-model";
+export * from "./inbox/convert";
+export * from "./inbox/ai-classification-port";
+export * from "./inbox/ai-suggest";
+export * from "./ai/structured-suggestion-port";
 
 export type {
   GoalHealth,

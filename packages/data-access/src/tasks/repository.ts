@@ -48,7 +48,7 @@ const TASK_SELECT = [
 ].join(",");
 
 const REMINDER_SELECT =
-  "id,task_id,remind_at,channel,delivery_mode,status,sent_at,failure_reason,created_at,updated_at";
+  "id,task_id,remind_at,channel,delivery_mode,status,sent_at,failure_reason,source,source_id,created_at,updated_at";
 const RECURRENCE_SELECT = "id,task_id,rule,anchor_date,timezone,next_occurrence_date,last_generated_at";
 const SESSION_TOTAL_SELECT = "task_id,duration_seconds";
 
@@ -80,6 +80,8 @@ function mapReminder(row: Row): TaskReminderRecord {
     status: String(row.status) as TaskReminderRecord["status"],
     sentAt: asNullableString(row.sent_at),
     failureReason: asNullableString(row.failure_reason),
+    source: asNullableString(row.source),
+    sourceId: asNullableString(row.source_id),
     createdAt: asNullableString(row.created_at) ?? undefined,
     updatedAt: asNullableString(row.updated_at) ?? undefined,
   };
@@ -249,6 +251,7 @@ export class SupabaseTasksRepository implements TasksRepository {
     const result = await this.supabase
       .from("tasks")
       .insert({
+        ...(input.id ? { id: input.id } : {}),
         owner_user_id: actor.userId,
         title: input.title,
         project_id: input.projectId,
@@ -344,7 +347,15 @@ export class SupabaseTasksRepository implements TasksRepository {
 
   async createReminder(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; remindAt: string; channel: "email"; status: "pending"; deliveryMode?: "push" | "email" | "both" }>,
+    input: Readonly<{
+      taskId: string;
+      remindAt: string;
+      channel: "email";
+      status: "pending";
+      deliveryMode?: "push" | "email" | "both";
+      source?: string | null;
+      sourceId?: string | null;
+    }>,
   ): Promise<RepositoryResult<TaskRecord>> {
     const result = await this.supabase.from("task_reminders").insert({
       owner_user_id: actor.userId,
@@ -353,8 +364,20 @@ export class SupabaseTasksRepository implements TasksRepository {
       channel: input.channel,
       delivery_mode: input.deliveryMode ?? "email",
       status: input.status,
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.sourceId ? { source_id: input.sourceId } : {}),
     });
-    if (result.error) return failure(result.error);
+    if (result.error) {
+      const code = String((result.error as unknown as { code?: string })?.code ?? "");
+      const msg = String((result.error as unknown as { message?: string })?.message ?? "");
+      const isDuplicate = code.includes("23505") || /duplicate|unique/i.test(msg);
+      // If duplicate due to source idempotency, treat as success: fetch existing task with reminders
+      if (isDuplicate && input.source && input.sourceId) {
+        const task = await this.getTask(actor, input.taskId);
+        return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
+      }
+      return failure(result.error);
+    }
 
     const task = await this.getTask(actor, input.taskId);
     return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
