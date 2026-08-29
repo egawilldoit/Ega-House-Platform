@@ -99,7 +99,22 @@ export async function convertInboxItemToTask(
     return applicationFailure("Archived ideas must be restored before conversion.");
   }
 
-  // 2. If already converted, return existing linked task (idempotency for completed)
+  // Validate remindAt BEFORE side effects and BEFORE converted early return - required for reminder replay invariant
+  const rawRemindAt = input.remindAt !== undefined ? String(input.remindAt ?? "").trim() : "";
+  let validatedRemindAtIso: string | null = null;
+  if (rawRemindAt) {
+    const remindDate = new Date(rawRemindAt);
+    const now = options?.now ?? new Date();
+    if (Number.isNaN(remindDate.getTime())) {
+      return applicationFailure("Reminder time is invalid.");
+    }
+    if (remindDate.getTime() <= now.getTime()) {
+      return applicationFailure("Reminder time must be in the future.");
+    }
+    validatedRemindAtIso = remindDate.toISOString();
+  }
+
+  // 2. If already converted, handle idempotency with reminder reconciliation (Defect B fix)
   if (inboxItem.status === "converted") {
     const linkResult = await inboxRepository.getTaskIdForInboxItem(actor, inboxItemId);
     if (!linkResult.ok) return applicationFailure("Unable to load conversion link right now.");
@@ -107,9 +122,59 @@ export async function convertInboxItemToTask(
       const taskResult = await tasksRepository.getTask(actor, linkResult.value);
       if (!taskResult.ok) return applicationFailure("Unable to load task right now.");
       if (taskResult.value) {
+        // Handle reminder reconciliation for converted items
+        if (validatedRemindAtIso) {
+          const existingReminder = getInboxReminder(taskResult.value, inboxItemId);
+          if (existingReminder) {
+            if (existingReminder.remindAt !== validatedRemindAtIso) {
+              return applicationFailure("Reminder time conflict: existing reminder differs from requested time.", "conflict");
+            }
+            return applicationSuccess({ inboxItem, task: taskResult.value });
+          }
+          // No existing reminder but one requested: reconcile exactly (create) or conflict, never silent success
+          const reminderResult = await tasksRepository.createReminder(actor, {
+            taskId: taskResult.value.id,
+            remindAt: validatedRemindAtIso,
+            channel: "email",
+            status: "pending",
+            source: SMART_INBOX_REMINDER_SOURCE,
+            sourceId: inboxItemId,
+          });
+          if (reminderResult.ok) {
+            // Verify reminder exists exactly once via source correlation
+            if (!hasInboxReminder(reminderResult.value, inboxItemId)) {
+              const verify = await tasksRepository.getTask(actor, taskResult.value.id);
+              if (!verify.ok || !verify.value || !hasInboxReminder(verify.value, inboxItemId)) {
+                return applicationFailure("Unable to create reminder right now.");
+              }
+              return applicationSuccess({ inboxItem, task: verify.value });
+            }
+            return applicationSuccess({ inboxItem, task: reminderResult.value });
+          }
+          const err = reminderResult.error as { code?: string };
+          const isDuplicate = err?.code === "conflict";
+          if (isDuplicate) {
+            const dupTask = await tasksRepository.getTask(actor, taskResult.value.id);
+            if (!dupTask.ok) return applicationFailure("Unable to load task right now.", "unknown");
+            if (dupTask.value && hasInboxReminder(dupTask.value, inboxItemId)) {
+              const existing = getInboxReminder(dupTask.value, inboxItemId);
+              if (existing && existing.remindAt !== validatedRemindAtIso) {
+                return applicationFailure("Reminder time conflict: existing reminder differs from requested time.", "conflict");
+              }
+              return applicationSuccess({ inboxItem, task: dupTask.value });
+            }
+            return applicationFailure("Unable to create reminder right now.", "unknown");
+          }
+          const mapped = (reminderResult.error as { code?: string })?.code === "conflict" ? "conflict" : "unknown";
+          return applicationFailure("Unable to create reminder right now.", mapped as never);
+        }
         return applicationSuccess({ inboxItem, task: taskResult.value });
       }
       return applicationFailure("Converted idea is missing its task.");
+    }
+    // Legacy converted without link: if reminder requested cannot reconcile without task, treat as conflict
+    if (validatedRemindAtIso) {
+      return applicationFailure("Converted idea is missing its task.", "conflict");
     }
     return applicationFailure("Idea is already converted.");
   }
@@ -145,20 +210,7 @@ export async function convertInboxItemToTask(
     return applicationFailure("Due date is invalid.");
   }
 
-  // Validate remindAt BEFORE side effects - required for invariant (never converted while reminder missing, never orphan on invalid)
-  const rawRemindAt = input.remindAt !== undefined ? String(input.remindAt ?? "").trim() : "";
-  let validatedRemindAtIso: string | null = null;
-  if (rawRemindAt) {
-    const remindDate = new Date(rawRemindAt);
-    const now = options?.now ?? new Date();
-    if (Number.isNaN(remindDate.getTime())) {
-      return applicationFailure("Reminder time is invalid.");
-    }
-    if (remindDate.getTime() <= now.getTime()) {
-      return applicationFailure("Reminder time must be in the future.");
-    }
-    validatedRemindAtIso = remindDate.toISOString();
-  }
+  // validatedRemindAtIso already computed before converted check (see above) - reuse for side-effect invariant
 
   // 4. Deterministic conversion correlation: preallocate exact Task ID
   const deterministicTaskId = deterministicTaskIdForInboxConversion(actor, inboxItemId);

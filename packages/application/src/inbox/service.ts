@@ -69,6 +69,16 @@ export function computeInboxFingerprint(input: {
   return sha256Hex(JSON.stringify(payload));
 }
 
+function fingerprintFromRecord(record: InboxRecord): string {
+  return computeInboxFingerprint({
+    title: record.title,
+    body: record.body,
+    projectId: record.projectId,
+    tags: record.tags,
+    type: record.type,
+  });
+}
+
 export async function createInboxItem(
   actor: AuthenticatedActor,
   repository: InboxRepository,
@@ -121,6 +131,7 @@ export async function createInboxItem(
     fingerprint = computeInboxFingerprint({ title, body, projectId, tags, type: resolvedType });
     deterministicId = deterministicInboxIdForCapture(actor, idempotencyKey);
     // Check existing mapping with fingerprint comparison (first-write-wins with payload check)
+    // Includes atomic race hardening: deterministic ID + fingerprint via note content as durable reservation.
     if (repository.getInboxIdempotencyEntry) {
       const entry = await repository.getInboxIdempotencyEntry(actor, idempotencyKey);
       if (!entry.ok) return applicationFailure("Unable to create idea right now.", "unknown");
@@ -134,17 +145,58 @@ export async function createInboxItem(
         }
         const existing = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
         if (!existing.ok) return applicationFailure("Unable to create idea right now.", "unknown");
-        if (existing.value) return applicationSuccess(existing.value);
+        if (existing.value) {
+          // When mapping exists, also verify fingerprint via note content as defense-in-depth
+          const existingFp = fingerprintFromRecord(existing.value);
+          if (existingFp !== fingerprint) {
+            return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+          }
+          return applicationSuccess(existing.value);
+        }
         // Mapping exists but note missing (orphan edge): fallback to fetch by deterministic id
         const byId = await repository.getInboxItem(actor, stored.inboxItemId);
-        if (byId.ok && byId.value) return applicationSuccess(byId.value);
+        if (byId.ok && byId.value) {
+          const existingFp = fingerprintFromRecord(byId.value);
+          if (existingFp !== fingerprint) {
+            return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+          }
+          return applicationSuccess(byId.value);
+        }
+      } else {
+        // No mapping yet — check deterministic note reservation (handles race where A created note before mapping)
+        if (deterministicId) {
+          const byDeterministic = await repository.getInboxItem(actor, deterministicId);
+          if (byDeterministic.ok && byDeterministic.value) {
+            const existingFp = fingerprintFromRecord(byDeterministic.value);
+            if (existingFp !== fingerprint) {
+              return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+            }
+            return applicationSuccess(byDeterministic.value);
+          }
+          if (!byDeterministic.ok) return applicationFailure("Unable to create idea right now.", "unknown");
+        }
       }
     } else {
       const existing = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
       if (!existing.ok) return applicationFailure("Unable to create idea right now.", "unknown");
       if (existing.value) {
         // Without fingerprint support, legacy replay; will be enhanced after repo upgrade
+        const existingFp = fingerprintFromRecord(existing.value);
+        if (existingFp !== fingerprint) {
+          return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+        }
         return applicationSuccess(existing.value);
+      }
+      if (deterministicId) {
+        const byDeterministic = await repository.getInboxItem(actor, deterministicId);
+        if (byDeterministic.ok && byDeterministic.value) {
+          const existingFp = fingerprintFromRecord(byDeterministic.value);
+          if (existingFp !== fingerprint) {
+            return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+          }
+          return applicationSuccess(byDeterministic.value);
+        }
+        if (!byDeterministic.ok) return applicationFailure("Unable to create idea right now.", "unknown");
       }
     }
   }
@@ -172,6 +224,7 @@ export async function createInboxItem(
   const result = await repository.createInboxItem(actor, record);
   if (result.ok) return applicationSuccess(result.value);
   // Handle race: duplicate PK or mapping inserted concurrently
+  // Uses atomic deterministic PK reservation + fingerprint via note content as durable check.
   if (idempotencyKey) {
     const errorCode = (result as unknown as { error?: { code?: string } }).error?.code ?? "";
     const isConflict = errorCode === "conflict";
@@ -187,29 +240,34 @@ export async function createInboxItem(
     } else if (entry && !entry.ok) {
       return applicationFailure("Unable to create idea right now.", "unknown");
     }
-    // If isConflict and fingerprint matches, replay; if fingerprint mismatched already returned above
+    // Prefer mapping-based replay but also verify fingerprint via note content
     const retry = await repository.getInboxItemByIdempotencyKey(actor, idempotencyKey);
     if (retry.ok && retry.value) {
-      if (isConflict) {
-        // Check fingerprint again if we have stored
-        if (entry && entry.ok && entry.value && entry.value.fingerprint && entry.value.fingerprint !== fingerprint) {
-          return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
-        }
-        return applicationSuccess(retry.value);
+      const existingFp = fingerprintFromRecord(retry.value);
+      if (existingFp !== fingerprint) {
+        return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
       }
-      // Non-conflict error but mapping now exists -> still replay
+      if (entry && entry.ok && entry.value && entry.value.fingerprint && entry.value.fingerprint !== fingerprint) {
+        return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+      }
       return applicationSuccess(retry.value);
     }
+    if (retry && !retry.ok) return applicationFailure("Unable to create idea right now.", "unknown");
     // If we have deterministic id, try direct fetch by id (handles PK race where mapping not yet visible)
+    // This is the critical atomic fallback: PK uniqueness on deterministicId is the durable reservation.
     if (deterministicId) {
       const byId = await repository.getInboxItem(actor, deterministicId);
       if (byId.ok && byId.value) {
-        // Fingerprint mismatch still conflict even via direct id fetch
+        const existingFp = fingerprintFromRecord(byId.value);
+        if (existingFp !== fingerprint) {
+          return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
+        }
         if (entry && entry.ok && entry.value && entry.value.fingerprint && entry.value.fingerprint !== fingerprint) {
           return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
         }
         return applicationSuccess(byId.value);
       }
+      if (byId && !byId.ok) return applicationFailure("Unable to create idea right now.", "unknown");
     }
     if (isConflict) {
       return applicationFailure("Idempotency key conflict: payload differs from original request.", "conflict");
