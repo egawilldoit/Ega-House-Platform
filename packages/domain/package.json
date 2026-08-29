@@ -8,6 +8,8 @@
     "./tasks": "./src/tasks/index.ts",
     "./projects": "./src/projects/index.ts",
     "./goals": "./src/goals/index.ts",
+    "./inbox": "./src/inbox/index.ts",
+    "./inbox-ai": "./src/inbox-ai/index.ts",
     "./time-context": "./src/time-context.ts"
   },
   "scripts": {

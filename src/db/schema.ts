@@ -279,6 +279,31 @@ export const ideaNotes = pgTable(
   ],
 );
 
+export const inboxIdempotencyKeys = pgTable(
+  "inbox_idempotency_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    key: varchar("key", { length: 128 }).notNull(),
+    inboxItemId: uuid("inbox_item_id")
+      .notNull()
+      .references(() => ideaNotes.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("inbox_idempotency_keys_owner_key_unique").on(
+      table.ownerUserId,
+      table.key,
+    ),
+    index("inbox_idempotency_keys_owner_idx").on(table.ownerUserId),
+    index("inbox_idempotency_keys_inbox_item_id_idx").on(table.inboxItemId),
+    check("inbox_idempotency_keys_key_not_blank", sql`length(btrim(${table.key})) > 0`),
+  ],
+);
+
 export const taskSessions = pgTable(
   "task_sessions",
   {
@@ -321,6 +346,8 @@ export const taskReminders = pgTable(
     failureReason: text("failure_reason"),
     processedAt: timestamp("processed_at", { withTimezone: true }),
     processingError: text("processing_error"),
+    source: varchar("source", { length: 64 }),
+    sourceId: varchar("source_id", { length: 256 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -337,6 +364,9 @@ export const taskReminders = pgTable(
     index("task_reminders_pending_by_remind_at_idx")
       .on(table.status, table.remindAt)
       .where(sql`${table.status} = 'pending'`),
+    uniqueIndex("task_reminders_owner_source_source_id_unique")
+      .on(table.ownerUserId, table.source, table.sourceId)
+      .where(sql`${table.source} is not null and ${table.sourceId} is not null`),
     check(
       "task_reminders_delivery_mode_check",
       sql`${table.deliveryMode} in ('push', 'email', 'both')`,
