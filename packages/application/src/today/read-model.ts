@@ -1,33 +1,61 @@
+import { getLocalDayWindow } from "@ega/domain";
+
 import type { AuthenticatedActor } from "../auth/actor";
-import { toLocalIsoDate } from "../shared/duration";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import { resolveTimeContext, type TimeContextRepository } from "../shared/time-context";
 import type { TodayReadPort } from "./ports";
 import { buildTodayPlan, type TodayPlan } from "./plan";
 
 export async function getTodayPlan(
   actor: AuthenticatedActor,
   port: TodayReadPort,
-  input: Readonly<{ date?: unknown; now?: Date }> = {},
+  timeContextRepository: TimeContextRepository,
+  input: Readonly<{ date?: unknown; now?: Date; timezone?: unknown }> = {},
 ): Promise<ApplicationResult<TodayPlan>> {
   const now = input.now ?? new Date();
+  if (Number.isNaN(now.getTime())) {
+    return applicationFailure("Today date is invalid.");
+  }
   const rawDate = String(input.date ?? "").trim();
-  const today = rawDate || toLocalIsoDate(now);
+  const requestedTimezone =
+    typeof input.timezone === "string" ? input.timezone.trim() : null;
+
+  const timeContextResult = await resolveTimeContext(actor, timeContextRepository, {
+    requestedTimezone: requestedTimezone ?? undefined,
+    now,
+  });
+  if (!timeContextResult.ok) {
+    return applicationFailure("Unable to load Today right now.");
+  }
+
+  let today: string;
+  if (rawDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+      return applicationFailure("Today date is invalid.");
+    }
+    today = rawDate;
+  } else {
+    today = timeContextResult.data.localDate;
+  }
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) {
     return applicationFailure("Today date is invalid.");
   }
 
   const nowIso = now.toISOString();
-  const dayWindowStart = new Date(`${today}T00:00:00`);
-  const windowStartIso = (() => {
-    const dayStart = new Date(dayWindowStart);
-    if (Number.isNaN(dayStart.valueOf())) return nowIso;
-    dayStart.setHours(0, 0, 0, 0);
-    return dayStart.toISOString();
-  })();
+  let windowStartIso: string;
+  let windowEndIso: string;
+  try {
+    const effective = timeContextResult.data.timezone;
+    const dayWindow = getLocalDayWindow(effective, today);
+    windowStartIso = dayWindow.startUtcIso;
+    windowEndIso = dayWindow.endUtcIso;
+  } catch {
+    return applicationFailure("Today date is invalid.");
+  }
 
   const [selectedResult, pinnedResult, inProgressResult, timerResult] = await Promise.all([
-    port.listSelectedTasks(actor, { today }),
+    port.listSelectedTasks(actor, { today, windowStartIso, windowEndIso }),
     port.listPinnedSuggestions(actor, { limit: 80 }),
     port.listInProgressSuggestions(actor, { limit: 80 }),
     port.getTodayTimerSnapshot(actor, { nowIso, windowStartIso }),

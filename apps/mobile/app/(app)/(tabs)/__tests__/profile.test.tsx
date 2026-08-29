@@ -52,8 +52,9 @@ describe('ProfileScreen', () => {
       component = create(<ProfileScreen />);
     });
 
-    for (const label of ['Account Settings', 'Notifications', 'Appearance', 'Privacy']) {
+    for (const label of ['Account Settings', 'Appearance', 'Privacy']) {
       expect(findText(component!, label)).toBe(false);
     }
+    expect(findText(component!, 'Notifications')).toBe(true);
   });
 });

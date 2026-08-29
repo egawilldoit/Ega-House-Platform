@@ -10,7 +10,6 @@ import {
   parseMobileTaskListQuery,
   pinTask,
   setTaskRecurrence,
-  toLocalIsoDate,
   toMobileTaskListItem,
   unarchiveTask,
   unpinTask,
@@ -32,7 +31,8 @@ function recurrenceFallbackAnchor(
   const candidate = String(bodyDueDate ?? "").trim();
   if (candidate) return candidate;
   if (effectiveDueDate) return effectiveDueDate;
-  return toLocalIsoDate(now);
+  // Canonical UTC fallback — server-TZ independent (Audit 1 C1)
+  return now.toISOString().slice(0, 10);
 }
 
 export function createTasksRoutes(
@@ -204,6 +204,7 @@ export function createTasksRoutes(
     const result = await createTaskReminder(actor, new SupabaseTasksRepository(client), {
       taskId: c.req.param("id"),
       remindAt: body.remindAt,
+      deliveryMode: body.deliveryMode,
       now: dependencies.now?.(),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
@@ -235,7 +236,7 @@ export function createTasksRoutes(
       recurrenceTimezone: body.recurrenceTimezone,
       fallbackAnchorDate:
         String(body.fallbackAnchorDate ?? "").trim() ||
-        toLocalIsoDate(dependencies.now?.() ?? new Date()),
+        (dependencies.now?.() ?? new Date()).toISOString().slice(0, 10),
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true as const, task: toMobileTaskListItem(result.data) });
