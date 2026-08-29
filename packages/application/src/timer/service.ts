@@ -129,13 +129,30 @@ export async function getTimerWorkspace(
 export async function startTaskSession(
   actor: AuthenticatedActor,
   repository: TimerSessionRepository,
-  input: Readonly<{ taskId: unknown }>,
+  input: Readonly<{
+    taskId: unknown;
+    mcpOperationId?: string;
+    mcpClientId?: string;
+  }>,
   options: Readonly<{ now?: Date }> = {},
 ): Promise<ApplicationResult<TimerActiveSession>> {
   const taskId = String(input.taskId ?? "").trim();
   if (!taskId) return applicationFailure("Task is required.");
 
   const startedAtIso = (options.now ?? new Date()).toISOString();
+
+  const operationIdentity = input.mcpOperationId && input.mcpClientId
+    ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
+    : null;
+
+  // A retry after the domain INSERT committed must replay before validating
+  // mutable task state. The operation index is the canonical proof that this
+  // is the original timer start, even if the task changed after the crash.
+  if (operationIdentity) {
+    const replayResult = await repository.findSessionByOperation(actor, operationIdentity);
+    if (!replayResult.ok) return applicationFailure("Unable to verify the timer operation right now.");
+    if (replayResult.value) return applicationSuccess(toActiveSession(replayResult.value, startedAtIso));
+  }
 
   const taskResult = await repository.getStartableTask(actor, { taskId });
   if (!taskResult.ok) return applicationFailure("Unable to verify the task right now.");
@@ -144,13 +161,22 @@ export async function startTaskSession(
     return applicationFailure(taskResult.value.reason ?? "This task cannot start a timer.");
   }
 
-  const openResult = await repository.listOpenSessions(actor);
-  if (!openResult.ok) return applicationFailure("Unable to verify running timers right now.");
-  if (openResult.value.length > 0) {
-    return applicationFailure(TIMER_ALREADY_RUNNING_MESSAGE);
+  // A fenced MCP create must reach the domain INSERT before the open-session
+  // pre-check. After a crash, the operation index is the canonical replay
+  // proof; the pre-check alone cannot distinguish replay from a new timer.
+  if (!operationIdentity) {
+    const openResult = await repository.listOpenSessions(actor);
+    if (!openResult.ok) return applicationFailure("Unable to verify running timers right now.");
+    if (openResult.value.length > 0) {
+      return applicationFailure(TIMER_ALREADY_RUNNING_MESSAGE);
+    }
   }
 
-  const insertResult = await repository.insertOpenSession(actor, { taskId, startedAtIso });
+  const insertResult = await repository.insertOpenSession(actor, {
+    taskId,
+    startedAtIso,
+    ...(operationIdentity ?? {}),
+  });
   if (!insertResult.ok) {
     return applicationFailure(
       insertResult.error.code === "conflict"

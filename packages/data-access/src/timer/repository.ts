@@ -8,7 +8,11 @@ import type {
 import { isTaskCanceledStatus, isTaskCompletedStatus } from "@ega/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sanitizeSupabaseError } from "../supabase/errors";
+import {
+  isSupabaseUniqueConstraintViolation,
+  mcpOperationIdentity,
+  sanitizeSupabaseError,
+} from "../supabase/errors";
 
 type Row = Record<string, unknown>;
 
@@ -91,21 +95,72 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
     return { ok: true, value: { eligible: true, reason: null, taskTitle: title } };
   }
 
+  async findSessionByOperation(
+    actor: AuthenticatedActor,
+    input: Readonly<{ mcpOperationId: string; mcpClientId: string }>,
+  ): Promise<RepositoryResult<TimerSessionRecord | null>> {
+    const result = await this.supabase
+      .from("task_sessions")
+      .select(SESSION_SELECT)
+      .eq("owner_user_id", actor.userId)
+      .eq("mcp_client_id", input.mcpClientId)
+      .eq("mcp_operation_id", input.mcpOperationId)
+      .maybeSingle();
+
+    if (result.error) return { ok: false, error: sanitizeSupabaseError(result.error) };
+    return { ok: true, value: result.data ? mapSession(asRow(result.data)) : null };
+  }
+
   async insertOpenSession(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; startedAtIso: string }>,
+    input: Readonly<{
+      taskId: string;
+      startedAtIso: string;
+      mcpOperationId?: string;
+      mcpClientId?: string;
+    }>,
   ): Promise<RepositoryResult<TimerSessionRecord>> {
+    const identity = mcpOperationIdentity(input);
     const result = await this.supabase
       .from("task_sessions")
       .insert({
         owner_user_id: actor.userId,
         task_id: input.taskId,
         started_at: input.startedAtIso,
+        ...(identity
+          ? {
+              mcp_operation_id: identity.mcpOperationId,
+              mcp_client_id: identity.mcpClientId,
+            }
+          : {}),
       })
       .select(SESSION_SELECT)
       .single();
 
     if (result.error || !result.data) {
+      const domainCollision =
+        identity && isSupabaseUniqueConstraintViolation(result.error, "task_sessions_mcp_operation_unique");
+      const openCollision =
+        identity && isSupabaseUniqueConstraintViolation(result.error, "task_sessions_owner_open_unique");
+
+      if (identity && (domainCollision || openCollision)) {
+        const replay = await this.supabase
+          .from("task_sessions")
+          .select(SESSION_SELECT)
+          .eq("owner_user_id", actor.userId)
+          .eq("mcp_client_id", identity.mcpClientId)
+          .eq("mcp_operation_id", identity.mcpOperationId)
+          .maybeSingle();
+
+        if (replay.error) return { ok: false, error: sanitizeSupabaseError(replay.error) };
+        if (replay.data) return { ok: true, value: mapSession(asRow(replay.data)) };
+
+        // A concurrent different operation can collide with the open-session
+        // invariant. Without an exact operation row, it is still a real
+        // already-running conflict, never a replay.
+        if (domainCollision) return { ok: false, error: sanitizeSupabaseError(result.error) };
+      }
+
       // A concurrent start by the same owner loses the race against the
       // partial unique index task_sessions_owner_open_unique; PostgREST
       // surfaces it as SQLSTATE 23505 (some versions only carry the

@@ -756,12 +756,50 @@ export class FakeSupabaseTimerSessionRepository {
     return { ok: true as const, value: task ? { eligible: true, reason: null, taskTitle: task.title as string } : null };
   }
 
-  async insertOpenSession(actor: { userId: string }, input: { taskId: string; startedAtIso: string }) {
-    const row = requireCurrentE2eStore().seed("task_sessions", {
+  async findSessionByOperation(
+    actor: { userId: string },
+    input: { mcpOperationId: string; mcpClientId: string },
+  ) {
+    const row = (requireCurrentE2eStore().tables.get("task_sessions") ?? []).find(
+      (candidate) => candidate.owner_user_id === actor.userId
+        && candidate.mcp_client_id === input.mcpClientId
+        && candidate.mcp_operation_id === input.mcpOperationId,
+    );
+    return { ok: true as const, value: row ? timerRecord(row) : null };
+  }
+
+  async insertOpenSession(
+    actor: { userId: string },
+    input: {
+      taskId: string;
+      startedAtIso: string;
+      mcpOperationId?: string;
+      mcpClientId?: string;
+    },
+  ) {
+    const store = requireCurrentE2eStore();
+    const rows = store.tables.get("task_sessions") ?? [];
+    const existing = input.mcpOperationId && input.mcpClientId
+      ? rows.find(
+          (candidate) => candidate.owner_user_id === actor.userId
+            && candidate.mcp_client_id === input.mcpClientId
+            && candidate.mcp_operation_id === input.mcpOperationId,
+        )
+      : undefined;
+    if (existing) return { ok: true as const, value: timerRecord(existing) };
+
+    if (rows.some((candidate) => candidate.owner_user_id === actor.userId && candidate.ended_at == null)) {
+      return { ok: false as const, error: { code: "conflict" as const } };
+    }
+
+    const row = store.seed("task_sessions", {
       owner_user_id: actor.userId,
       task_id: input.taskId,
       started_at: input.startedAtIso,
+      mcp_operation_id: input.mcpOperationId,
+      mcp_client_id: input.mcpClientId,
     });
+    store.mutations.push({ table: "task_sessions", op: "insert", rowIds: [row.id] });
     return { ok: true as const, value: timerRecord(row) };
   }
 
