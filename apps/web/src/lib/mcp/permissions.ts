@@ -1,7 +1,6 @@
 export const MCP_PERMISSION_PROFILES = [
   "read_only",
   "task_manager",
-  "delivery_observer",
   "workspace_manager",
 ] as const;
 
@@ -22,9 +21,6 @@ export const MCP_PERMISSIONS = [
   "timer.read",
   "timer.create",
   "timer.update",
-  "delivery_runs.read",
-  "delivery_events.read",
-  "delivery_artifacts.read",
 ] as const;
 
 export type McpPermission = (typeof MCP_PERMISSIONS)[number];
@@ -47,11 +43,6 @@ const PROFILE_PERMISSIONS: Readonly<
     "tasks.update",
     "today.read",
     "timer.read",
-  ],
-  delivery_observer: [
-    "delivery_runs.read",
-    "delivery_events.read",
-    "delivery_artifacts.read",
   ],
   workspace_manager: [
     "projects.read",

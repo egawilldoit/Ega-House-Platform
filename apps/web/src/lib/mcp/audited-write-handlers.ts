@@ -3,105 +3,223 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
+import { writeMcpAuditEvent, type McpAuditEventInput } from "@/lib/mcp/audit-repository";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
-import { consumeMcpRateLimit } from "@/lib/mcp/rate-limit-repository";
-import type { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
+import { consumeMcpRateLimit, type McpRateLimitResult } from "@/lib/mcp/rate-limit-repository";
+import type { McpWriteToolHandlers } from "@/lib/mcp/server";
 
-type BaseWriteHandlers = ReturnType<typeof createMcpWriteToolHandlers>;
-
-type ProtocolContext = { requestId?: string | number };
+type ProtocolContext = {
+  requestId?: string | number;
+};
 
 export type AuditedWriteHandlerDependencies = {
   createUserClient: (accessToken: string) => SupabaseClient<McpDatabase>;
-  consumeRateLimit: typeof consumeMcpRateLimit;
+  consumeRateLimit: (
+    client: SupabaseClient<McpDatabase>,
+    toolName: string,
+  ) => Promise<McpRateLimitResult>;
   writeAudit: typeof writeMcpAuditEvent;
   nowMs: () => number;
   createRequestId: () => string;
 };
 
-function getOutcome(result: CallToolResult) {
+function stableErrorResult(
+  code: "DEPENDENCY_UNAVAILABLE" | "RATE_LIMITED",
+  message: string,
+  extra: Record<string, unknown> = {},
+): CallToolResult {
+  const payload = {
+    ok: false,
+    error: { code, message },
+    ...extra,
+  };
+
+  return {
+    content: [{ type: "text", text: JSON.stringify(payload) }],
+    structuredContent: payload,
+    isError: true,
+  };
+}
+
+function rateLimitUnavailableResult(): CallToolResult {
+  return stableErrorResult(
+    "DEPENDENCY_UNAVAILABLE",
+    "EGA House rate limiting is temporarily unavailable.",
+  );
+}
+
+function rateLimitedResult(retryAfterSeconds: number): CallToolResult {
+  return stableErrorResult(
+    "RATE_LIMITED",
+    "EGA House MCP rate limit exceeded.",
+    { retryAfterSeconds },
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getRetryAfterSeconds(result: CallToolResult): number | undefined {
+  const structured = result.structuredContent;
+  if (!isRecord(structured)) return undefined;
+  const value = structured.retryAfterSeconds;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function getErrorCode(result: CallToolResult): string | undefined {
+  if (!result.isError || !isRecord(result.structuredContent)) return undefined;
+  const error = result.structuredContent.error;
+  if (!isRecord(error)) return undefined;
+  return typeof error.code === "string" ? error.code : undefined;
+}
+
+function getOutcome(result: CallToolResult, errorCode: string | undefined) {
   if (!result.isError) return "success" as const;
-  const err = (result.structuredContent as { error?: { code?: string } })?.error?.code;
-  if (err === "RATE_LIMITED" || err === "PERMISSION_DENIED" || err === "CONFLICT" || err === "INPUT_REQUIRED") return "denied" as const;
+  if (errorCode === "RATE_LIMITED" || errorCode === "PERMISSION_DENIED") {
+    return "denied" as const;
+  }
   return "error" as const;
 }
 
-export function createAuditedMcpWriteHandlers(
-  handlers: BaseWriteHandlers,
-  deps: AuditedWriteHandlerDependencies = {
-    createUserClient: () => { throw new Error("not configured"); },
-    consumeRateLimit: consumeMcpRateLimit,
-    writeAudit: writeMcpAuditEvent,
-    nowMs: () => performance.now(),
-    createRequestId: randomUUID,
+function normalizeRequestId(
+  context: ProtocolContext | undefined,
+  createRequestId: () => string,
+): string {
+  const requestId = context?.requestId;
+  if (typeof requestId === "string" && requestId.trim() !== "") {
+    return requestId.slice(0, 64);
+  }
+  if (typeof requestId === "number" && Number.isFinite(requestId)) {
+    return String(requestId).slice(0, 64);
+  }
+  return createRequestId().slice(0, 64);
+}
+
+function durationMs(start: number, end: number): number {
+  return Math.max(0, Math.round(end - start));
+}
+
+/**
+ * Mutation-safe audit: a failed audit write is logged but never converted into
+ * a client-visible error, because the idempotency ledger already holds the
+ * durable mutation result — surfacing an error would invite a duplicate retry.
+ */
+function buildAuditMetadata(
+  result: CallToolResult,
+): NonNullable<McpAuditEventInput["metadata"]> {
+  const retryAfterSeconds = getRetryAfterSeconds(result);
+  if (retryAfterSeconds !== undefined) return { retryAfterSeconds };
+  return {};
+}
+
+const DEFAULT_DEPENDENCIES: AuditedWriteHandlerDependencies = {
+  createUserClient: () => {
+    throw new Error("MCP audit user client dependency is not configured.");
   },
-) {
+  consumeRateLimit: consumeMcpRateLimit,
+  writeAudit: writeMcpAuditEvent,
+  nowMs: () => performance.now(),
+  createRequestId: randomUUID,
+};
+
+/** toolName per handler method — single source of truth for audit labels. */
+const HANDLER_TOOL_NAMES: Readonly<Record<keyof McpWriteToolHandlers, string>> = {
+  createProject: "ega_create_project",
+  updateProjectStatus: "ega_update_project_status",
+  archiveProject: "ega_archive_project",
+  unarchiveProject: "ega_unarchive_project",
+  createGoal: "ega_create_goal",
+  updateGoalStatus: "ega_update_goal_status",
+  updateGoalHealth: "ega_update_goal_health",
+  updateGoalNextStep: "ega_update_goal_next_step",
+  archiveGoal: "ega_archive_goal",
+  unarchiveGoal: "ega_unarchive_goal",
+  getTask: "ega_get_task",
+  createTask: "ega_create_task",
+  updateTask: "ega_update_task",
+  archiveTask: "ega_archive_task",
+  unarchiveTask: "ega_unarchive_task",
+  setTaskFocusRank: "ega_set_task_focus_rank",
+  createTaskReminder: "ega_create_task_reminder",
+  cancelTaskReminder: "ega_cancel_task_reminder",
+  planTaskForToday: "ega_plan_task_for_today",
+  removeTaskFromToday: "ega_remove_task_from_today",
+  updateTodayTaskStatus: "ega_update_today_task_status",
+  startTimer: "ega_start_timer",
+  stopTimer: "ega_stop_timer",
+  clearCompletedToday: "ega_clear_completed_today",
+};
+
+type WriteHandlerMethod = (authInfo: AuthInfo | undefined, input: never, context?: unknown) => Promise<CallToolResult>;
+
+export function createAuditedMcpWriteHandlers(
+  handlers: McpWriteToolHandlers,
+  dependencies: AuditedWriteHandlerDependencies = DEFAULT_DEPENDENCIES,
+): McpWriteToolHandlers {
   async function execute(
     toolName: string,
     authInfo: AuthInfo | undefined,
     context: ProtocolContext | undefined,
-    call: () => Promise<CallToolResult>,
+    callTool: () => Promise<CallToolResult>,
   ): Promise<CallToolResult> {
     let principal;
     try {
-      if (!authInfo) return await call();
+      if (!authInfo) return await callTool();
       principal = readPrincipalFromAuthInfo(authInfo);
     } catch {
-      return await call();
+      return await callTool();
     }
-    const client = deps.createUserClient(authInfo.token);
-    const started = deps.nowMs();
+
+    const client = dependencies.createUserClient(authInfo.token);
+    const startedAt = dependencies.nowMs();
     let result: CallToolResult;
+
     try {
-      const rate = await deps.consumeRateLimit(client, toolName);
-      if (!rate.allowed) {
-        result = {
-          content: [{ type: "text", text: JSON.stringify({ ok: false, error: { code: "RATE_LIMITED", message: "Rate limit exceeded", retryAfterSeconds: rate.retryAfterSeconds } }) }],
-          structuredContent: { ok: false, error: { code: "RATE_LIMITED" }, retryAfterSeconds: rate.retryAfterSeconds },
-          isError: true,
-        } as CallToolResult;
-      } else {
-        result = await call();
-      }
+      const rateLimit = await dependencies.consumeRateLimit(client, toolName);
+      result = rateLimit.allowed
+        ? await callTool()
+        : rateLimitedResult(rateLimit.retryAfterSeconds);
     } catch {
-      result = {
-        content: [{ type: "text", text: JSON.stringify({ ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } }) }],
-        structuredContent: { ok: false, error: { code: "DEPENDENCY_UNAVAILABLE" } },
-        isError: true,
-      } as CallToolResult;
+      result = rateLimitUnavailableResult();
     }
-    const ended = deps.nowMs();
-    const outcome = getOutcome(result);
-    // Mutation-safe: audit failure should not cause client to see failure and retry duplicating (ledger already protects)
-    // So we write audit but if it fails, we still return the mutation result (ledger holds it)
+
+    const endedAt = dependencies.nowMs();
+    const errorCode = getErrorCode(result);
+    const auditInput: McpAuditEventInput = {
+      principal,
+      requestId: normalizeRequestId(context, dependencies.createRequestId),
+      toolName,
+      outcome: getOutcome(result, errorCode),
+      durationMs: durationMs(startedAt, endedAt),
+      errorCode,
+      metadata: buildAuditMetadata(result),
+    };
+
     try {
-      await deps.writeAudit(client, {
-        principal,
-        requestId: (context?.requestId?.toString().slice(0,64) ?? deps.createRequestId().slice(0,64)),
-        toolName,
-        outcome,
-        durationMs: Math.max(0, Math.round(ended - started)),
-        errorCode: outcome === "error" ? "INTERNAL_ERROR" : undefined,
-        metadata: {},
-      });
+      await dependencies.writeAudit(client, auditInput);
     } catch (auditError) {
-      // Mutation already durable via ledger, but audit failure is observable via operational logging
-      console.error("[mcp-audit] failed to persist audit event", { toolName, outcome, error: String(auditError) });
+      console.error("[mcp-audit] failed to persist write audit event", {
+        toolName,
+        outcome: auditInput.outcome,
+        error: auditError instanceof Error ? auditError.message : String(auditError),
+      });
     }
+
     return result;
   }
 
-  return {
-    createProject: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["createProject"]>[1], c?: ProtocolContext) => execute("ega_create_project", a, c, () => handlers.createProject(a, i)),
-    updateProjectStatus: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["updateProjectStatus"]>[1], c?: ProtocolContext) => execute("ega_update_project_status", a, c, () => handlers.updateProjectStatus(a, i)),
-    createGoal: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["createGoal"]>[1], c?: ProtocolContext) => execute("ega_create_goal", a, c, () => handlers.createGoal(a, i)),
-    createTask: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["createTask"]>[1], c?: ProtocolContext) => execute("ega_create_task", a, c, () => handlers.createTask(a, i)),
-    updateTask: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["updateTask"]>[1], c?: ProtocolContext) => execute("ega_update_task", a, c, () => handlers.updateTask(a, i)),
-    planTaskForToday: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["planTaskForToday"]>[1], c?: ProtocolContext) => execute("ega_plan_task_for_today", a, c, () => handlers.planTaskForToday(a, i)),
-    startTimer: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["startTimer"]>[1], c?: ProtocolContext) => execute("ega_start_timer", a, c, () => handlers.startTimer(a, i)),
-    stopTimer: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["stopTimer"]>[1], c?: ProtocolContext) => execute("ega_stop_timer", a, c, () => handlers.stopTimer(a, i)),
-    clearCompletedToday: (a: AuthInfo | undefined, i: Parameters<BaseWriteHandlers["clearCompletedToday"]>[1], c?: ProtocolContext & { mcpReq?: unknown }) => execute("ega_clear_completed_today", a, c as unknown as ProtocolContext, () => handlers.clearCompletedToday(a, i, c as unknown as never)),
-  };
+  const wrapped = {} as Record<keyof McpWriteToolHandlers, WriteHandlerMethod>;
+  for (const method of Object.keys(HANDLER_TOOL_NAMES) as (keyof McpWriteToolHandlers)[]) {
+    const toolName = HANDLER_TOOL_NAMES[method];
+    const original = handlers[method].bind(handlers) as WriteHandlerMethod;
+    wrapped[method] = (authInfo, input, context) =>
+      execute(toolName, authInfo, context as ProtocolContext | undefined, () =>
+        original(authInfo, input, context),
+      );
+  }
+  return wrapped as unknown as McpWriteToolHandlers;
 }

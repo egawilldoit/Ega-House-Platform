@@ -5,6 +5,43 @@ type CodecOptions = {
   ttlSeconds?: number;
 };
 
+export class McpRequestStateConfigurationError extends Error {
+  constructor() {
+    super("MCP_REQUEST_STATE_SECRET must be configured with at least 32 bytes of entropy.");
+    this.name = "McpRequestStateConfigurationError";
+  }
+}
+
+const HEX_SECRET_PATTERN = /^(?:[0-9a-fA-F]{2})+$/;
+const BASE64_SECRET_PATTERN = /^[A-Za-z0-9+/=_-]+$/;
+const MIN_SECRET_BYTES = 32;
+
+function decodeSecretCandidates(raw: string): Uint8Array[] {
+  const candidates: Uint8Array[] = [];
+  if (HEX_SECRET_PATTERN.test(raw)) {
+    candidates.push(Buffer.from(raw, "hex"));
+  }
+  if (BASE64_SECRET_PATTERN.test(raw)) {
+    const normalized = raw.replace(/-/g, "+").replace(/_/g, "/");
+    candidates.push(Buffer.from(normalized, "base64"));
+  }
+  candidates.push(Buffer.from(raw, "utf8"));
+  return candidates;
+}
+
+export function getRequestStateSecret(
+  env: { MCP_REQUEST_STATE_SECRET?: string; [key: string]: string | undefined } = process.env,
+): Uint8Array {
+  const raw = env.MCP_REQUEST_STATE_SECRET;
+  if (typeof raw !== "string" || raw.trim() === "") {
+    throw new McpRequestStateConfigurationError();
+  }
+  for (const candidate of decodeSecretCandidates(raw)) {
+    if (candidate.length >= MIN_SECRET_BYTES) return candidate;
+  }
+  throw new McpRequestStateConfigurationError();
+}
+
 function getKeyBytes(key: string | Uint8Array): Buffer {
   if (typeof key !== "string") return Buffer.from(key);
   // Try base64url/base64, fallback utf8

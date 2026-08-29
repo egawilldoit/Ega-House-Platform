@@ -81,4 +81,21 @@ describe("MCP request authentication", () => {
       }),
     );
   });
+
+  it("fails closed when a verifier returns malformed claims", async () => {
+    const verifyAccessToken = vi.fn().mockResolvedValue(null);
+
+    await expect(
+      authenticateMcpRequest(createHeaders("Bearer signed-token"), {
+        issuer: ISSUER,
+        audience: AUDIENCE,
+        nowSeconds: NOW,
+        verifyAccessToken,
+      }),
+    ).rejects.toEqual(expect.objectContaining({
+      code: "UNAUTHENTICATED",
+      status: 401,
+      message: "Access token verification failed.",
+    }));
+  });
 });

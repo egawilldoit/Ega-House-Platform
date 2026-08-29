@@ -12,6 +12,16 @@ type TransportOptions = {
   resourceUrl: string;
 };
 
+const MCP_PROTOCOL_VERSION = "2026-07-28";
+const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
+
+function invalidRequest(description: string, status: 400 | 403 | 413 | 421 = 400): Response {
+  return Response.json(
+    { error: "invalid_request", error_description: description },
+    { status, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
 export type WebMcpHandlerDependencies = {
   createServer?: (authInfo?: AuthInfo) => { server: McpServer; cleanup?: () => Promise<void> };
   // Legacy test compat: old tests mock WebStandard transport
@@ -22,32 +32,18 @@ export type WebMcpHandlerDependencies = {
 
 function validateHost(request: Request, expectedHost: string): Response | null {
   const hostHeader = request.headers.get("host");
-  const host = hostHeader || (() => { try { return new URL(request.url).host; } catch { return null; } })();
-  if (!host) {
-    return Response.json(
-      { error: "invalid_request", error_description: "Missing Host header." },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
-    );
+  if (!hostHeader) return invalidRequest("Missing Host header.");
+  if (hostHeader.includes(",") || /[\s/#?@]/.test(hostHeader)) {
+    return invalidRequest("Invalid Host header.");
   }
-  // Strip port
-  const hostWithoutPort = host.split(":")[0].toLowerCase();
-  const expectedWithoutPort = expectedHost.split(":")[0].toLowerCase();
-  if (hostWithoutPort !== expectedWithoutPort) {
-    // Allow localhost for development when expected is not localhost? Check repo policy: allow localhost
-    const isLocalhost = (h: string) => h === "localhost" || h === "127.0.0.1" || h === "::1";
-    if (!(isLocalhost(hostWithoutPort) && isLocalhost(expectedWithoutPort))) {
-      return Response.json(
-        { error: "invalid_request", error_description: "Invalid Host header." },
-        { status: 421, headers: { "Cache-Control": "no-store" } },
-      );
-    }
-    if (hostWithoutPort !== expectedWithoutPort) {
-      return Response.json(
-        { error: "invalid_request", error_description: "Invalid Host header." },
-        { status: 421, headers: { "Cache-Control": "no-store" } },
-      );
-    }
+
+  let host: string;
+  try {
+    host = new URL(`http://${hostHeader}`).host;
+  } catch {
+    return invalidRequest("Invalid Host header.");
   }
+  if (host !== expectedHost) return invalidRequest("Invalid Host header.", 421);
   return null;
 }
 
@@ -60,29 +56,10 @@ function validateOrigin(request: Request, expectedOrigin: string): Response | nu
   try {
     const originUrl = new URL(origin);
     const expectedUrl = new URL(expectedOrigin);
-    if (originUrl.origin !== expectedUrl.origin) {
-      // Allow localhost dev
-      const isLocalhostOrigin = (o: string) => {
-        try {
-          const u = new URL(o);
-          return u.hostname === "localhost" || u.hostname === "127.0.0.1" || u.hostname === "::1";
-        } catch {
-          return false;
-        }
-      };
-      if (isLocalhostOrigin(origin) && isLocalhostOrigin(expectedOrigin)) {
-        return null;
-      }
-      return Response.json(
-        { error: "invalid_request", error_description: "Invalid Origin header." },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
-      );
-    }
+    if (origin !== originUrl.origin) return invalidRequest("Invalid Origin header.");
+    if (originUrl.origin !== expectedUrl.origin) return invalidRequest("Invalid Origin header.", 403);
   } catch {
-    return Response.json(
-      { error: "invalid_request", error_description: "Invalid Origin header." },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
-    );
+    return invalidRequest("Invalid Origin header.");
   }
   return null;
 }
@@ -91,12 +68,44 @@ function validateRequestSize(request: Request, maxBytes = 4 * 1024 * 1024): Resp
   const contentLength = request.headers.get("content-length");
   if (contentLength) {
     const len = Number(contentLength);
-    if (Number.isFinite(len) && len > maxBytes) {
-      return Response.json(
-        { error: "invalid_request", error_description: "Request body too large." },
-        { status: 413, headers: { "Cache-Control": "no-store" } },
-      );
+    if (!Number.isSafeInteger(len) || len < 0) return invalidRequest("Invalid Content-Length header.");
+    if (len > maxBytes) return invalidRequest("Request body too large.", 413);
+  }
+  return null;
+}
+
+async function limitRequestBody(request: Request): Promise<Request | Response> {
+  if (!request.body) return request;
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > MAX_REQUEST_BODY_BYTES) {
+      await reader.cancel();
+      return invalidRequest("Request body too large.", 413);
     }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new Request(request, { body });
+}
+
+function validateProtocolVersion(request: Request): Response | null {
+  if (request.method !== "POST") return null;
+  const header = request.headers.get("mcp-protocol-version");
+  if (header === null) return null;
+  if (header !== MCP_PROTOCOL_VERSION) {
+    return invalidRequest(`MCP-Protocol-Version must be ${MCP_PROTOCOL_VERSION}.`);
   }
   return null;
 }
@@ -129,8 +138,12 @@ export function createWebMcpHandler(
       if (hostError) return hostError;
       const originError = validateOrigin(request, expectedOrigin);
       if (originError) return originError;
+      const protocolError = validateProtocolVersion(request);
+      if (protocolError) return protocolError;
       const sizeError = validateRequestSize(request);
       if (sizeError) return sizeError;
+      const limitedRequest = await limitRequestBody(request);
+      if (limitedRequest instanceof Response) return limitedRequest;
       const authInfo = (request as Request & { auth?: AuthInfo }).auth;
       const server = legacyDeps.createServer();
       const transport = legacyDeps.createTransport({
@@ -143,7 +156,7 @@ export function createWebMcpHandler(
       registerServer(server as unknown as McpServer, authInfo);
       await server.connect(transport as unknown as never);
       try {
-        return await transport.handleRequest(request, { authInfo });
+        return await transport.handleRequest(limitedRequest, { authInfo });
       } finally {
         await transport.close();
         await (server as unknown as { close: () => Promise<void> }).close();
@@ -160,10 +173,8 @@ export function createWebMcpHandler(
           capabilities: { tools: {} },
           requestState: {
             verify: async (token: string) => {
-              const { createRequestStateCodec } = await import("@/lib/mcp/request-state");
-              const secret = process.env.MCP_REQUEST_STATE_SECRET;
-              if (!secret || secret.length < 32) throw new Error("MCP_REQUEST_STATE_SECRET not configured");
-              const codec = createRequestStateCodec({ key: secret, ttlSeconds: 300 });
+              const { createRequestStateCodec, getRequestStateSecret } = await import("@/lib/mcp/request-state");
+              const codec = createRequestStateCodec({ key: getRequestStateSecret(), ttlSeconds: 300 });
               return codec.verify(token);
             },
           },
@@ -183,6 +194,8 @@ export function createWebMcpHandler(
     if (hostError) return hostError;
     const originError = validateOrigin(request, expectedOrigin);
     if (originError) return originError;
+    const protocolError = validateProtocolVersion(request);
+    if (protocolError) return protocolError;
     const sizeError = validateRequestSize(request);
     if (sizeError) return sizeError;
 
@@ -211,12 +224,14 @@ export function createWebMcpHandler(
     // - If called directly with handler.fetch(request, { authInfo }), we use that
     // For web-transport-handler's fetch, we are the inner handler after withEgaMcpAuth, so we read request.auth
     const authInfo = (request as Request & { auth?: AuthInfo }).auth;
+    const limitedRequest = await limitRequestBody(request);
+    if (limitedRequest instanceof Response) return limitedRequest;
 
     // Modern headers Mcp-Method/Mcp-Name are routing/validation, not authorization — never use them for auth
     // The SDK's createMcpHandler validates them against body; we just ensure we don't treat them as auth
     // No authorization derived from Mcp-Method/Mcp-Name/Mcp-Param-* or body owner fields
 
-    return (handler.fetch as unknown as (r: Request, o?: unknown) => Promise<Response>)(request, authInfo ? { authInfo } : undefined);
+    return (handler.fetch as unknown as (r: Request, o?: unknown) => Promise<Response>)(limitedRequest, authInfo ? { authInfo } : undefined);
   };
 }
 

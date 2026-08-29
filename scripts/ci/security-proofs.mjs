@@ -124,7 +124,15 @@ for (const file of allTracked) {
     !source.includes('new SupabaseTasksRepository(')
   ) continue;
   webConstructionSitesChecked += 1;
-  assert(source.includes('requireAuthenticatedUser'), `${file}: web repository construction site verifies session user`);
+  const hasVerifiedWebSession = source.includes('requireAuthenticatedUser');
+  const hasVerifiedMcpPrincipal =
+    file.startsWith('apps/web/src/lib/mcp/') &&
+    source.includes('readPrincipalFromAuthInfo') &&
+    source.includes('authInfo');
+  assert(
+    hasVerifiedWebSession || hasVerifiedMcpPrincipal,
+    `${file}: repository construction site verifies authenticated identity`,
+  );
   assert(!source.includes('getSupabaseServiceClient') && !source.includes('SERVICE_ROLE'), `${file}: no web service-role authorization path`);
 }
 assert(webConstructionSitesChecked > 0, `checked current apps/web repository construction sites (${webConstructionSitesChecked})`);
