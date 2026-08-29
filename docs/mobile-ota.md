@@ -29,7 +29,7 @@ Every native change (SDK, native dep, plugin, permission, `runtimeVersion`, pack
 ```
 Expo JS + assets  ──appVersion runtimeVersion──>  EAS Update (u.expo.dev)
                                 ▲ runtimeVersion == app.json version (string)
-APK contains:  expo_runtime_version = 1.0.2 + update URL + expo-channel-name: production
+APK contains:  expo_runtime_version = 1.0.3 + update URL + expo-channel-name: production
                 │
                 └── only builds with same runtimeVersion receive the OTA (EAS protocol)
 ```
@@ -69,7 +69,7 @@ CHECKING
  → if UP_TO_DATE: Updates.checkForUpdateAsync() → OTA_AVAILABLE or UP_TO_DATE
 ```
 
-One `Check for updates` action → one manifest fetch → one EAS call at most. No duplicate fetches on status changes. `checkAutomatically: ON_ERROR_RECOVERY` prevents aggressive polling.
+One `Check for updates` action → one manifest fetch → one EAS call at most. No duplicate fetches on status changes. Native config uses `checkAutomatically: ON_LOAD` so every cold launch can fetch a newer fix even when a route-level React error boundary catches the current bundle's failure.
 
 States: `IDLE`, `CHECKING`, `UP_TO_DATE`, `OTA_AVAILABLE`, `DOWNLOADING`, `OTA_READY`, `NATIVE_UPDATE_REQUIRED`, `ERROR`.
 
@@ -85,7 +85,7 @@ States: `IDLE`, `CHECKING`, `UP_TO_DATE`, `OTA_AVAILABLE`, `DOWNLOADING`, `OTA_R
     "updates": {
       "url": "https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "checkAutomatically": "ON_LOAD",
       "requestHeaders": { "expo-channel-name": "production" }
     },
     "extra": { "eas": { "projectId": "0dafbb64-7c1e-49b1-aea1-de1f8159a5e6" } }
@@ -115,7 +115,7 @@ eas channel:view production --json --non-interactive
 
 After `npx expo prebuild --platform android --clean --no-install`, the generated `android/` contains:
 
-- `android/app/src/main/res/values/strings.xml` → `<string name="expo_runtime_version">1.0.2</string>` (must equal `expo.version`)
+- `android/app/src/main/res/values/strings.xml` → `<string name="expo_runtime_version">1.0.3</string>` (must equal `expo.version`)
 - `android/app/src/main/AndroidManifest.xml` → `EXPO_RUNTIME_VERSION`, `EXPO_UPDATE_URL=https://u.expo.dev/0dafbb64...`, `UPDATES_CONFIGURATION_REQUEST_HEADERS_KEY={"expo-channel-name":"production"}`
 
 ## 5. Update service (`apps/mobile/lib/updates/`)
@@ -123,7 +123,7 @@ After `npx expo prebuild --platform android --clean --no-install`, the generated
 - `types.ts` — `UpdateServiceState` with `appVersion`, `runtimeVersion`, `channel`, `currentUpdateId`, `latestNativeVersion`, `latestNativeRuntimeVersion`, `latestApkUrl`, `latestNativeReleaseUrl`, `lastCheckedAt`, etc.
 - `native.ts` — strict semver, `validateManifest`, `classifyNativeUpdate` (cases A-D), `fetchLatestReleaseManifest` (timeout 8s, fail closed), `buildApkUrlFromManifest`.
 - `service.ts` — `getAppUpdateInfo`, `checkForUpdate` (native-first, fail-closed), `downloadUpdate`, `reloadApp` (surfaces `Unable to restart…` and transitions to `ERROR` keeping retry possible), `createUpdateService` state machine (single owner, `isChecking`/`isDownloading`/`isReady`).
-- `useAppUpdates.ts` — hooks `useUpdateService`, `useAppUpdateInfo` (no duplicate manifest fetches; UI reads service state).
+- `useAppUpdates.ts` — hooks `useUpdateService`, `useAppUpdateInfo` (no duplicate manifest fetches; UI reads service state).\n- `recovery.ts` — root-route error recovery helper: check server, fetch a newer update or rollback directive, then reload.
 - Tests: `native.test.ts` (version/runtime cases, malformed, timeout), `service.test.ts` (native required/error → no EAS call, OTA flow, reload failure), `guard-ota-native.test.mjs` (JS-only vs native dep/SDK/app.json/permission/eas/gradle, lock-only not native).
 
 ## 6. UI (`apps/mobile/features/updates/`)
@@ -133,7 +133,7 @@ After `npx expo prebuild --platform android --clean --no-install`, the generated
 - Shows `App version` (`appVersion`), `Runtime version` (`runtimeVersion`), `Channel`, `Update ID`, `Launch` (embedded/update), status badge.
 - **Native-required state:** `New app version required — Installed: 1.0.2 · Available: 1.0.3 (runtime 1.0.3). A full APK update is required.` Button `Open official release` → `WebBrowser` to APK URL or `https://github.com/egawilldoit/Ega-House-Platform/releases` (never auto-download).
 - **Error state:** if `native release status unavailable` → `Couldn't verify the latest app version. Check your connection and retry.` Otherwise `offline: …` or `Unable to restart…`. No silent “Up to date”.
-- **Reload failure:** `service.reload()` on `OTA_READY` that throws → service transitions to `ERROR` with `Unable to restart and apply update. Retry restart.` UI shows banner and keeps retry possible.
+- **Reload failure:** `service.reload()` on `OTA_READY` that throws → service transitions to `ERROR` with `Unable to restart and apply update. Retry restart.` UI shows banner and keeps retry possible.\n- **Route crash recovery:** the root Expo Router `ErrorBoundary` offers `Recover latest update`, which directly checks/fetches/reloads through `expo-updates` instead of only re-rendering the broken route.
 
 ## 7. Publishing OTA (CI — production only)
 
@@ -276,7 +276,7 @@ npm run mobile:doctor                         # 18/18 PASS
 npm run mobile:bundle                         # expo export android PASS
 npm run mobile:prebuild:android               # prebuild PASS
 # prove generated config
-grep 'expo_runtime_version' apps/mobile/android/app/src/main/res/values/strings.xml  # == 1.0.2
+grep 'expo_runtime_version' apps/mobile/android/app/src/main/res/values/strings.xml  # == 1.0.3
 grep 'EXPO_UPDATE_URL' apps/mobile/android/app/src/main/AndroidManifest.xml           # https://u.expo.dev/0dafbb64...
 grep 'expo-channel-name.*production' apps/mobile/android/app/src/main/AndroidManifest.xml
 npm run check:architecture                    # 21 PASS
@@ -294,7 +294,18 @@ npm run lint:changed -- --base origin/main    # 0 regressions
 - Device proof that a new-project OTA-enabled `1.0.2` APK receives a later OTA requires a new `mobile-v1.0.2` APK, an intermediate `eas update`, and emulator/physical load (ladder L6 remains **NOT PROVEN**).
 - `release-manifest.json` authority requires at least one post-merge tag `mobile-v1.0.2` build; until then updater correctly reports `native release status unavailable` rather than `UP_TO_DATE`.
 
-## 14. References (current docs as authority)
+## 14. Broken-OTA recovery hardening (v1.0.3)
+
+The first production OTA exposed a recovery gap: Expo Router's route-level error boundary caught a React render loop and displayed its fallback, so the failure was no longer an uncaught fatal JS error. Meanwhile the native APK used `checkAutomatically: ON_ERROR_RECOVERY`, which disables normal startup update checks. A device that had already cached the broken bundle could therefore keep relaunching it even after a fixed OTA was published.
+
+v1.0.3 closes that gap in two layers:
+
+1. Native config uses `checkAutomatically: ON_LOAD`, so each app launch checks for a newer compatible update and downloads it for the next restart.
+2. The root route `ErrorBoundary` exposes an explicit recovery action that calls `checkForUpdateAsync()` → `fetchUpdateAsync()` → `reloadAsync()` for either a newer update or an embedded rollback directive.
+
+Because `checkAutomatically` is native configuration and `runtimeVersion.policy=appVersion`, this recovery hardening requires a new `mobile-v1.0.3` APK. It must not be shipped as an OTA to the existing 1.0.2 runtime.
+
+## 15. References (current docs as authority)
 
 - EAS Update: Getting Started — https://docs.expo.dev/eas-update/getting-started/
 - Using EAS Update without EAS Build — https://docs.expo.dev/eas-update/getting-started/#using-eas-update-without-eas-build
