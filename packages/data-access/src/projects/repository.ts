@@ -184,16 +184,22 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
 
   async createProject(
     actor: AuthenticatedActor,
-    input: CreateProjectRecordInput,
+    input: CreateProjectRecordInput & { mcpOperationId?: string; mcpClientId?: string },
   ): Promise<RepositoryResult<null>> {
     const { error } = await this.supabase.from("projects").insert({
       name: input.name,
       slug: input.slug,
       description: input.description,
       owner_user_id: actor.userId,
+      mcp_operation_id: (input as unknown as { mcpOperationId?: string }).mcpOperationId ?? null,
+      mcp_client_id: (input as unknown as { mcpClientId?: string }).mcpClientId ?? null,
     });
 
     if (error) {
+      // Domain fencing: duplicate mcp_operation_id → idempotent replay (exactly-once)
+      if ((error as { code?: string }).code === "23505" && String((error as { message?: string }).message ?? "").includes("projects_mcp_operation_unique")) {
+        return { ok: true, value: null };
+      }
       return {
         ok: false,
         error: sanitizeSupabaseError(error, {

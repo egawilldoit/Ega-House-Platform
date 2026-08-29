@@ -47,11 +47,15 @@ export async function createProject(
     };
   }
 
+  const mcpOperationId = (input as unknown as { mcpOperationId?: string }).mcpOperationId;
+  const mcpClientId = (input as unknown as { mcpClientId?: string }).mcpClientId;
   const result = await repository.createProject(actor, {
     name,
     slug,
     description: description || null,
-  });
+    mcpOperationId,
+    mcpClientId,
+  } as unknown as { name: string; slug: string; description: string | null });
 
   if (!result.ok) {
     return {
