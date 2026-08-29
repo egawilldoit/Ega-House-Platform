@@ -1,6 +1,7 @@
 export * from "./auth";
 export * from "./agent";
 export * from "./mobile";
+export * from "./friction";
 export * from "./inbox";
 export * from "./inbox-ai";
 export * from "./notifications";
@@ -8,3 +9,5 @@ export * from "./common/task-list";
 export * from "./time-context";
 export * from "./execution-evidence";
 export * from "./operator";
+export * from "./weekly-review";
+export * from "./health";

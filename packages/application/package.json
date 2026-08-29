@@ -24,6 +24,14 @@
     "./notifications/delivery": "./src/notifications/delivery.ts",
     "./today/read-model": "./src/today/read-model.ts",
     "./today/service": "./src/today/service.ts",
+    "./weekly-review/ports": "./src/weekly-review/ports.ts",
+    "./weekly-review/read-model": "./src/weekly-review/read-model.ts",
+    "./weekly-review/draft": "./src/weekly-review/draft.ts",
+    "./weekly-review/comparison": "./src/weekly-review/comparison.ts",
+    "./friction/ports": "./src/friction/ports.ts",
+    "./friction/stale-blocked-signals": "./src/friction/stale-blocked-signals.ts",
+    "./friction/estimate-accuracy": "./src/friction/estimate-accuracy.ts",
+    "./friction/context-switch": "./src/friction/context-switch.ts",
     "./inbox/ports": "./src/inbox/ports.ts",
     "./inbox/service": "./src/inbox/service.ts",
     "./inbox/read-model": "./src/inbox/read-model.ts",
@@ -36,7 +44,9 @@
     "./operator/lifecycle": "./src/operator/lifecycle.ts",
     "./shared/time-context": "./src/shared/time-context.ts",
     "./shared/duration": "./src/shared/duration.ts",
-    "./shared/execution-evidence": "./src/shared/execution-evidence.ts"
+    "./shared/execution-evidence": "./src/shared/execution-evidence.ts",
+    "./health/workload-snapshot": "./src/health/workload-snapshot.ts",
+    "./health/recommendations": "./src/health/recommendations.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

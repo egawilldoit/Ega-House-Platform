@@ -13,6 +13,9 @@ export type { InboxApi, InboxListQuery, CreateInboxInput, UpdateInboxInput } fro
 export type { TodayApi } from "./today";
 export type { TimerApi } from "./timer";
 export type { OperatorApi } from "./operator";
+export type { WeeklyReviewApi } from "./weekly-review";
+export type { HealthApi } from "./health";
+export type { FrictionApi } from "./friction";
 export type { TimeContextApi, TimeContextQuery } from "./time-context";
 export type { AuthApi } from "./auth";
 
@@ -53,6 +56,7 @@ export type {
 } from "@ega/contracts/operator";
 export type { TaskDueFilter, TaskSortValue } from "@ega/contracts/common/task-list";
 export type { TaskPriority, TaskStatus } from "@ega/domain";
+export type { HealthWorkloadSnapshotDto, HealthSnapshotResponse, HealthEvidenceQualityDto, HealthRecommendationDto, HealthRecommendationKindDto, HealthRecommendationSeverityDto, HealthRecommendationEvidenceDto } from "@ega/contracts";
 
 export type {
   ProjectViewFilter,

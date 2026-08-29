@@ -12,9 +12,12 @@
     "./inbox-ai": "./src/inbox-ai.ts",
     "./notifications": "./src/notifications.ts",
     "./common/task-list": "./src/common/task-list.ts",
+    "./friction": "./src/friction.ts",
     "./time-context": "./src/time-context.ts",
     "./execution-evidence": "./src/execution-evidence.ts",
-    "./operator": "./src/operator.ts"
+    "./operator": "./src/operator.ts",
+    "./weekly-review": "./src/weekly-review.ts",
+    "./health": "./src/health.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
