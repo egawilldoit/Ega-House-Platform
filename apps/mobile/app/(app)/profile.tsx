@@ -118,7 +118,7 @@ export default function ProfileStackScreen() {
                 <View style={styles.updatesCopy}>
                   <Text style={styles.updatesTitle}>App Updates</Text>
                   <Text style={styles.updatesHint} numberOfLines={2}>
-                    OTA LIVE · v1.0.2 proof
+                    OTA TEST #2 · v1.0.3 · LIVE
                   </Text>
                   <Text style={styles.updatesMeta} testID="profile-version-channel">
                     {`v${Constants.expoConfig?.version ?? '1.0.0'} · ${(Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ? 'EAS' : 'standalone'}`}
