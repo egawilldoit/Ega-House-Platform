@@ -1,9 +1,26 @@
+import {
+  getLocalDateInTimezone as getDomainLocalDate,
+  getWeekWindow as getDomainWeekWindow,
+  getLocalDayWindow as getDomainDayWindow,
+} from "@ega/domain";
+import { resolveHistoricalTimeContext } from "@ega/application";
+
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
 export function getTodayIsoDate() {
+  // Canonical UTC fallback; server-TZ independent via explicit UTC.
+  // For user-local Today, use getTodayIsoDateForTimezone.
   return toIsoDate(new Date());
+}
+
+export function getTodayIsoDateForTimezone(timezone: string | null | undefined, now = new Date()) {
+  try {
+    return getDomainLocalDate(now, timezone ?? "UTC");
+  } catch {
+    return toIsoDate(now);
+  }
 }
 
 export function isIsoDate(value: string) {
@@ -16,35 +33,74 @@ export function isIsoDate(value: string) {
 }
 
 export function getWeekBounds(weekOf: string) {
-  const parsed = new Date(`${weekOf}T00:00:00.000Z`);
-
-  if (Number.isNaN(parsed.getTime())) {
+  // Canonical via @ega/domain (UTC) — preserves existing UTC semantics but uses single owner.
+  // For timezone-aware bounds, use getWeekBoundsForTimezone.
+  try {
+    const w = getDomainWeekWindow("UTC", weekOf);
+    return { weekStart: w.weekStart, weekEnd: w.weekEnd };
+  } catch {
     return null;
   }
+}
 
-  const day = parsed.getUTCDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
-
-  const weekStart = new Date(parsed);
-  weekStart.setUTCDate(parsed.getUTCDate() + diffToMonday);
-
-  const weekEnd = new Date(weekStart);
-  weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
-
+export function getWeekBoundsForTimezone(weekOf: string, timezone: string | null | undefined) {
+  const result = resolveHistoricalTimeContext({ timezone: timezone ?? "UTC", date: weekOf });
+  if (!result.ok) return null;
   return {
-    weekStart: toIsoDate(weekStart),
-    weekEnd: toIsoDate(weekEnd),
+    weekStart: result.data.weekWindow.weekStart,
+    weekEnd: result.data.weekWindow.weekEnd,
   };
 }
 
 export function getWeekWindow(weekStart: string, weekEnd: string) {
-  const startIso = `${weekStart}T00:00:00.000Z`;
-  const endExclusiveDate = new Date(`${weekEnd}T00:00:00.000Z`);
-  endExclusiveDate.setUTCDate(endExclusiveDate.getUTCDate() + 1);
+  // UTC canonical via domain; caller should prefer getWeekWindowForTimezone for user-local.
+  try {
+    const startWindow = getDomainDayWindow("UTC", weekStart);
+    const endWindow = getDomainDayWindow("UTC", weekEnd);
+    // endExclusive is next day after weekEnd at 00:00 UTC
+    const endExclusiveIso = endWindow.endUtcIso;
+    return {
+      startIso: startWindow.startUtcIso,
+      endExclusiveIso,
+    };
+  } catch {
+    const startIso = `${weekStart}T00:00:00.000Z`;
+    const endExclusiveDate = new Date(`${weekEnd}T00:00:00.000Z`);
+    endExclusiveDate.setUTCDate(endExclusiveDate.getUTCDate() + 1);
+    return {
+      startIso,
+      endExclusiveIso: `${toIsoDate(endExclusiveDate)}T00:00:00.000Z`,
+    };
+  }
+}
 
+export function getWeekWindowForTimezone(
+  weekStart: string,
+  weekEnd: string,
+  timezone: string | null | undefined,
+) {
+  const tz = timezone ?? "UTC";
+  try {
+    const startWindow = getDomainDayWindow(tz, weekStart);
+    // endExclusive is start of day after weekEnd in that timezone
+    const weekEndDate = getDomainWeekWindow(tz, weekEnd);
+    return {
+      startIso: startWindow.startUtcIso,
+      endExclusiveIso: weekEndDate.weekEndExclusiveUtcIso,
+    };
+  } catch {
+    return getWeekWindow(weekStart, weekEnd);
+  }
+}
+
+export function getWeekWindowViaTimeContext(timezone: string | null | undefined, date: string) {
+  const result = resolveHistoricalTimeContext({ timezone: timezone ?? "UTC", date });
+  if (!result.ok) return null;
   return {
-    startIso,
-    endExclusiveIso: `${toIsoDate(endExclusiveDate)}T00:00:00.000Z`,
+    weekStart: result.data.weekWindow.weekStart,
+    weekEnd: result.data.weekWindow.weekEnd,
+    startIso: result.data.weekWindow.weekStartUtcIso,
+    endExclusiveIso: result.data.weekWindow.weekEndExclusiveUtcIso,
   };
 }
 

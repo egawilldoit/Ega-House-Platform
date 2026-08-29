@@ -1,13 +1,14 @@
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useState } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
 import { Chip } from '@/components/mobile/ui/Chip';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { FormSection } from '@/components/mobile/ui/FormSection';
+import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
 import type { MobileTaskReminder } from '@/types/tasks';
 
 import { createDefaultReminderDate, formatReminderDraft, formatReminderTimestamp } from './formatters';
@@ -17,6 +18,10 @@ type ReminderPickerMode = 'date' | 'time';
 
 type Props = {
   reminderDate: Date | null;
+  reminderDeliveryMode: 'push' | 'email' | 'both';
+  onDeliveryModeChange: (mode: 'push' | 'email' | 'both') => void;
+  permissionStatus: 'granted' | 'denied' | 'undetermined';
+  onRequestPermission: () => Promise<'granted' | 'denied' | 'undetermined'>;
   reminderPickerVisible: boolean;
   reminderPickerMode: ReminderPickerMode;
   pendingReminders: MobileTaskReminder[];
@@ -34,8 +39,18 @@ type Props = {
   onClearDate: () => void;
 };
 
+function deliveryLabel(mode: string | undefined): string {
+  if (mode === 'push') return 'Push';
+  if (mode === 'both') return 'Push + Email';
+  return 'Email';
+}
+
 export function TaskReminderSection({
   reminderDate,
+  reminderDeliveryMode,
+  onDeliveryModeChange,
+  permissionStatus,
+  onRequestPermission,
   reminderPickerVisible,
   reminderPickerMode,
   pendingReminders,
@@ -53,8 +68,10 @@ export function TaskReminderSection({
   onClearDate,
 }: Props) {
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(false);
+  const needsPush = reminderDeliveryMode === 'push' || reminderDeliveryMode === 'both';
+  const showPermissionHint = needsPush && permissionStatus !== 'granted';
   return (
-    <FormSection icon="notifications-outline" title="Reminder" description="Email reminder scheduling">
+    <FormSection icon="notifications-outline" title="Reminder" description="Schedule task reminders">
       <Pressable
         accessibilityRole="button"
         disabled={isReminderSubmitting}
@@ -65,8 +82,37 @@ export function TaskReminderSection({
         <Text style={[styles.dateFieldValue, !reminderDate ? styles.dateFieldPlaceholder : null]}>
           {formatReminderDraft(reminderDate)}
         </Text>
-        <Text style={styles.dateFieldMeta}>Email</Text>
+        <Text style={styles.dateFieldMeta}>{deliveryLabel(reminderDeliveryMode)}</Text>
       </Pressable>
+
+      <Text style={styles.deliveryLabel}>Deliver with</Text>
+      <SegmentedControl
+        value={reminderDeliveryMode}
+        onChange={onDeliveryModeChange}
+        options={[
+          { label: 'Push', value: 'push' },
+          { label: 'Email', value: 'email' },
+          { label: 'Both', value: 'both' },
+        ]}
+      />
+
+      {showPermissionHint ? (
+        <View style={styles.permissionHint}>
+          <Ionicons name="alert-circle-outline" size={14} color={mobileTheme.colors.warning} />
+          <Text style={styles.permissionHintText}>Push notifications are off. Enable notifications to receive this reminder on your phone.</Text>
+          <Button
+            title="Enable notifications"
+            size="sm"
+            variant="secondary"
+            onPress={async () => {
+              await onRequestPermission();
+            }}
+          />
+          <Pressable onPress={() => Linking.openSettings()} style={styles.openSettingsLink}>
+            <Text style={styles.openSettingsText}>Open settings</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <View style={styles.quickRow}>
         <Button
@@ -116,7 +162,7 @@ export function TaskReminderSection({
         loading={isReminderSubmitting}
         onPress={onCreateReminder}
         style={styles.scheduleButton}
-        title="Schedule email reminder"
+        title="Schedule reminder"
       />
 
       <Text style={styles.groupLabel}>Pending</Text>
@@ -126,7 +172,7 @@ export function TaskReminderSection({
             <View key={reminder.id} style={styles.row}>
               <View style={styles.rowText}>
                 <Text style={styles.reminderTime}>{formatReminderTimestamp(reminder.remindAt)}</Text>
-                <Text style={styles.reminderMeta}>Email · Pending</Text>
+                <Text style={styles.reminderMeta}>{deliveryLabel((reminder as unknown as { deliveryMode?: string }).deliveryMode)} · Pending</Text>
                 {reminder.failureReason ? (
                   <Text style={styles.failureText}>{reminder.failureReason}</Text>
                 ) : null}
@@ -167,7 +213,7 @@ export function TaskReminderSection({
                 <View key={reminder.id} style={[styles.row, styles.historyRow]}>
                   <View style={styles.rowText}>
                     <Text style={styles.reminderTimeMuted}>{formatReminderTimestamp(reminder.remindAt)}</Text>
-                    <Text style={styles.reminderMeta}>Email · {formatTaskToken(reminder.status)}</Text>
+                    <Text style={styles.reminderMeta}>{deliveryLabel((reminder as unknown as { deliveryMode?: string }).deliveryMode)} · {formatTaskToken(reminder.status)}</Text>
                     {reminder.failureReason ? (
                       <Text style={styles.failureText}>{reminder.failureReason}</Text>
                     ) : null}
@@ -218,6 +264,39 @@ const styles = StyleSheet.create({
     fontWeight: mobileTheme.font.bold,
     marginTop: 4,
   },
+  deliveryLabel: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold as never,
+    marginTop: 10,
+  },
+  deliveryRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 6,
+  },
+  permissionHint: {
+    backgroundColor: mobileTheme.colors.warningBg,
+    borderColor: mobileTheme.colors.warningMid,
+    borderRadius: mobileTheme.radius.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    alignItems: 'center',
+    marginTop: 10,
+    padding: 10,
+  },
+  permissionHintText: {
+    color: mobileTheme.colors.warning,
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 16,
+    minWidth: 120,
+  },
+  openSettingsLink: { paddingVertical: 4 },
+  openSettingsText: { fontSize: 12, color: mobileTheme.colors.accent, fontWeight: mobileTheme.font.semibold as never },
   emptyText: {
     color: mobileTheme.colors.textMuted,
     fontSize: 13,
