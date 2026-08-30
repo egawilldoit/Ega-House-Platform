@@ -157,15 +157,18 @@ export function FocusQueuePanel({
   returnTo: string;
   activeTimerSessionId: string | null;
 }) {
-  const queue = tasks.slice(0, 7);
+  const queue = tasks.slice(0, 6);
 
   return (
     <Card className="today-focus-panel">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="glass-label text-etch">Focus queue</p>
+            <p className="glass-label text-etch">Execution lane</p>
             <CardTitle className="mt-1 text-xl">Next up</CardTitle>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
+              Deterministic signals rank the next step. Starting work is always your call.
+            </p>
           </div>
           <Badge tone="muted">{queue.length}</Badge>
         </div>
@@ -182,6 +185,18 @@ export function FocusQueuePanel({
                 <p className="mt-1 truncate text-xs text-[color:var(--muted-foreground)]">
                   {task.projectName}
                   {task.goalTitle ? ` · ${task.goalTitle}` : ""}
+                </p>
+                <p className="mt-1 text-xs font-medium text-[color:var(--foreground)]">
+                  {task.hasActiveTimer
+                    ? "Already in motion"
+                    : task.dueBucket === "overdue"
+                      ? "Clear the overdue lane"
+                      : task.isPlannedForToday
+                        ? "Planned for today"
+                        : task.focusRank
+                          ? `Pinned focus #${task.focusRank}`
+                          : "Best available next step"}
+                  {task.estimateMinutes ? ` · ${formatTaskEstimate(task.estimateMinutes)}` : ""}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <Badge tone={task.hasActiveTimer ? "active" : "muted"}>

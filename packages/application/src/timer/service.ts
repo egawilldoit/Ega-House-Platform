@@ -1,12 +1,14 @@
+import { getLocalDayWindow } from "@ega/domain";
+
 import {
   formatDurationLabel,
   getSessionDurationSeconds,
   getSessionOverlapSeconds,
-  getLocalDayWindow,
   type DayWindow,
 } from "../shared/duration";
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import { resolveTimeContext, type TimeContextRepository } from "../shared/time-context";
 import type { TimerSessionRecord, TimerSessionRepository } from "./ports";
 
 /**
@@ -50,7 +52,23 @@ export function summarizeTimerSessions(
   nowIso: string,
   todayWindow?: DayWindow,
 ): TimerSummary {
-  const window = todayWindow ?? getLocalDayWindow(new Date(nowIso));
+  // Canonical Today window is ResolvedTimeContext.dayWindow or @ega/domain getLocalDayWindow.
+  // Fallback is UTC-based and server-TZ independent.
+  const window: DayWindow =
+    todayWindow ??
+    (() => {
+      const now = new Date(nowIso);
+      if (Number.isNaN(now.getTime())) return { startIso: nowIso, endIso: nowIso };
+      const dateStr = now.toISOString().slice(0, 10);
+      try {
+        const canonical = getLocalDayWindow("UTC", dateStr);
+        // Timer Today tracks [dayStart, now) within the canonical day, not full 24h.
+        const endIso = nowIso < canonical.endUtcIso ? nowIso : canonical.endUtcIso;
+        return { startIso: canonical.startUtcIso, endIso };
+      } catch {
+        return { startIso: nowIso, endIso: nowIso };
+      }
+    })();
   const durations = sessions.map(
     (session) => ({ session, seconds: getSessionDurationSeconds(session, nowIso) }),
   );
@@ -102,10 +120,30 @@ function toActiveSession(
 export async function getTimerWorkspace(
   actor: AuthenticatedActor,
   repository: TimerSessionRepository,
-  input: Readonly<{ now?: Date }> = {},
+  timeContextRepository: TimeContextRepository,
+  input: Readonly<{ now?: Date; timezone?: unknown }> = {},
 ): Promise<ApplicationResult<TimerWorkspace>> {
   const now = input.now ?? new Date();
+  if (Number.isNaN(now.getTime())) {
+    return applicationFailure("Current time is invalid.");
+  }
   const nowIso = now.toISOString();
+  const requestedTimezone =
+    typeof input.timezone === "string" ? input.timezone.trim() : null;
+
+  const timeContextResult = await resolveTimeContext(actor, timeContextRepository, {
+    requestedTimezone: requestedTimezone ?? undefined,
+    now,
+  });
+  if (!timeContextResult.ok) {
+    return applicationFailure("Unable to load the timer workspace right now.");
+  }
+
+  const dayWindow = timeContextResult.data.dayWindow;
+  const window: DayWindow = {
+    startIso: dayWindow.startUtcIso,
+    endIso: nowIso < dayWindow.endUtcIso ? nowIso : dayWindow.endUtcIso,
+  };
 
   const [openResult, recentResult] = await Promise.all([
     repository.listOpenSessions(actor),
@@ -122,7 +160,7 @@ export async function getTimerWorkspace(
 
   return applicationSuccess({
     activeSession,
-    summary: summarizeTimerSessions(recentResult.value, nowIso),
+    summary: summarizeTimerSessions(recentResult.value, nowIso, window),
   });
 }
 

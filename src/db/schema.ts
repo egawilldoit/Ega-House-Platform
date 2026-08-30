@@ -3,6 +3,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -279,6 +280,31 @@ export const ideaNotes = pgTable(
   ],
 );
 
+export const inboxIdempotencyKeys = pgTable(
+  "inbox_idempotency_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    key: varchar("key", { length: 128 }).notNull(),
+    inboxItemId: uuid("inbox_item_id")
+      .notNull()
+      .references(() => ideaNotes.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("inbox_idempotency_keys_owner_key_unique").on(
+      table.ownerUserId,
+      table.key,
+    ),
+    index("inbox_idempotency_keys_owner_idx").on(table.ownerUserId),
+    index("inbox_idempotency_keys_inbox_item_id_idx").on(table.inboxItemId),
+    check("inbox_idempotency_keys_key_not_blank", sql`length(btrim(${table.key})) > 0`),
+  ],
+);
+
 export const taskSessions = pgTable(
   "task_sessions",
   {
@@ -315,9 +341,14 @@ export const taskReminders = pgTable(
       .references(() => tasks.id, { onDelete: "cascade" }),
     remindAt: timestamp("remind_at", { withTimezone: true }).notNull(),
     channel: varchar("channel", { length: 32 }).notNull().default("email"),
+    deliveryMode: varchar("delivery_mode", { length: 32 }).notNull().default("email"),
     status: varchar("status", { length: 32 }).notNull().default("pending"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     failureReason: text("failure_reason"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+    processingError: text("processing_error"),
+    source: varchar("source", { length: 64 }),
+    sourceId: varchar("source_id", { length: 256 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -331,6 +362,144 @@ export const taskReminders = pgTable(
     index("task_reminders_pending_delivery_idx")
       .on(table.status, table.channel, table.remindAt)
       .where(sql`${table.status} = 'pending'`),
+    index("task_reminders_pending_by_remind_at_idx")
+      .on(table.status, table.remindAt)
+      .where(sql`${table.status} = 'pending'`),
+    uniqueIndex("task_reminders_owner_source_source_id_unique")
+      .on(table.ownerUserId, table.source, table.sourceId)
+      .where(sql`${table.source} is not null and ${table.sourceId} is not null`),
+    check(
+      "task_reminders_delivery_mode_check",
+      sql`${table.deliveryMode} in ('push', 'email', 'both')`,
+    ),
+  ],
+);
+
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    type: varchar("type", { length: 32 }).notNull(),
+    title: varchar("title", { length: 512 }).notNull(),
+    body: text("body"),
+    targetType: varchar("target_type", { length: 32 }),
+    targetId: uuid("target_id"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("notifications_owner_idempotency_unique").on(table.ownerUserId, table.idempotencyKey),
+    index("notifications_owner_created_idx").on(table.ownerUserId, table.createdAt.desc()),
+    index("notifications_owner_unread_idx")
+      .on(table.ownerUserId, table.createdAt.desc())
+      .where(sql`${table.readAt} is null`),
+    check("notifications_type_check", sql`${table.type} in ('task_reminder')`),
+    check(
+      "notifications_target_type_check",
+      sql`${table.targetType} is null or ${table.targetType} in ('task')`,
+    ),
+  ],
+);
+
+export const notificationDevices = pgTable(
+  "notification_devices",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    installationId: text("installation_id").notNull(),
+    platform: varchar("platform", { length: 16 }).notNull(),
+    provider: varchar("provider", { length: 16 }).notNull(),
+    providerToken: text("provider_token").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("notification_devices_installation_unique").on(table.installationId),
+    uniqueIndex("notification_devices_provider_token_active_unique")
+      .on(table.providerToken)
+      .where(sql`${table.isActive} = true`),
+    index("notification_devices_owner_idx").on(table.ownerUserId),
+    index("notification_devices_provider_token_idx").on(table.providerToken),
+    index("notification_devices_owner_active_idx")
+      .on(table.ownerUserId, table.isActive)
+      .where(sql`${table.isActive} = true`),
+    check("notification_devices_platform_check", sql`${table.platform} in ('android')`),
+    check("notification_devices_provider_check", sql`${table.provider} in ('fcm')`),
+  ],
+);
+
+export const notificationDeliveries = pgTable(
+  "notification_deliveries",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    notificationId: uuid("notification_id")
+      .notNull()
+      .references(() => notifications.id, { onDelete: "cascade" }),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    channel: varchar("channel", { length: 16 }).notNull(),
+    deviceId: uuid("device_id").references(() => notificationDevices.id, { onDelete: "set null" }),
+    provider: varchar("provider", { length: 16 }).notNull(),
+    status: varchar("status", { length: 16 }).notNull().default("queued"),
+    providerMessageId: text("provider_message_id"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    lastErrorReason: text("last_error_reason"),
+    providerAcceptedAt: timestamp("provider_accepted_at", { withTimezone: true }),
+    failedAt: timestamp("failed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("notification_deliveries_unique_per_target").on(
+      table.notificationId,
+      table.channel,
+      table.deviceId,
+    ),
+    index("notification_deliveries_status_retry_idx").on(table.status, table.nextAttemptAt),
+    index("notification_deliveries_notification_idx").on(table.notificationId),
+    index("notification_deliveries_owner_idx").on(table.ownerUserId),
+    check(
+      "notification_deliveries_channel_check",
+      sql`${table.channel} in ('push', 'email')`,
+    ),
+    check(
+      "notification_deliveries_provider_check",
+      sql`${table.provider} in ('fcm', 'resend')`,
+    ),
+    check(
+      "notification_deliveries_status_check",
+      sql`${table.status} in ('queued', 'sending', 'provider_accepted', 'retry_scheduled', 'invalid_endpoint', 'failed')`,
+    ),
+    check("notification_deliveries_attempts_check", sql`${table.attemptCount} >= 0`),
+  ],
+);
+
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    notificationType: varchar("notification_type", { length: 32 }).notNull(),
+    pushEnabled: boolean("push_enabled").notNull().default(true),
+    emailEnabled: boolean("email_enabled").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("notification_preferences_owner_type_unique").on(table.ownerUserId, table.notificationType),
+    index("notification_preferences_owner_idx").on(table.ownerUserId),
+    check(
+      "notification_preferences_type_check",
+      sql`${table.notificationType} in ('task_reminder')`,
+    ),
   ],
 );
 
@@ -455,5 +624,64 @@ export const agentIntegrationTokens = pgTable(
   (table) => [
     uniqueIndex("agent_token_prefix_unique").on(table.tokenPrefix),
     index("agent_tokens_owner_idx").on(table.ownerUserId),
+  ],
+);
+
+export const userTimeContext = pgTable("user_time_context", {
+  userId: uuid("user_id").default(sql`auth.uid()`).primaryKey(),
+  ianaTimezone: varchar("iana_timezone", { length: 128 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const operatorProposals = pgTable(
+  "operator_proposals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    revision: integer("revision").notNull(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    localDate: date("local_date").notNull(),
+    timeContextId: varchar("time_context_id", { length: 256 }).notNull(),
+    baselineHash: text("baseline_hash").notNull(),
+    proposedTaskIds: jsonb("proposed_task_ids").notNull().default(sql`'[]'::jsonb`),
+    taskVersions: jsonb("task_versions").notNull().default(sql`'[]'::jsonb`),
+    parentProposalId: uuid("parent_proposal_id"),
+    idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+    status: varchar("status", { length: 32 }).notNull().default("generated"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    appliedAt: timestamp("applied_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    result: jsonb("result"),
+    aiRef: text("ai_ref"),
+  },
+  (table) => [
+    index("operator_proposals_owner_user_id_idx").on(table.ownerUserId),
+    index("operator_proposals_owner_local_date_idx").on(table.ownerUserId, table.localDate),
+    index("operator_proposals_owner_status_idx").on(table.ownerUserId, table.status),
+    index("operator_proposals_owner_created_at_idx").on(table.ownerUserId, table.createdAt.desc()),
+    index("operator_proposals_parent_id_idx").on(table.parentProposalId),
+    uniqueIndex("operator_proposals_owner_idempotency_key_unique").on(
+      table.ownerUserId,
+      table.idempotencyKey,
+    ),
+    check(
+      "operator_proposals_revision_check",
+      sql`${table.revision} > 0`,
+    ),
+    check(
+      "operator_proposals_status_check",
+      sql`${table.status} in ('generated','revised','approved','applying','applied','partially_applied','stale','dismissed')`,
+    ),
+    check(
+      "operator_proposals_idempotency_key_not_blank",
+      sql`length(btrim(${table.idempotencyKey})) > 0`,
+    ),
+    foreignKey({
+      columns: [table.parentProposalId],
+      foreignColumns: [table.id],
+      name: "operator_proposals_parent_proposal_id_fkey",
+    }).onDelete("set null"),
   ],
 );

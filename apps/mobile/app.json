@@ -1,15 +1,15 @@
 {
   "expo": {
     "name": "mobile",
-    "slug": "mobile",
-    "version": "1.0.1",
+    "slug": "ega-house",
+    "version": "1.0.3",
     "runtimeVersion": {
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/73d127b6-c8f6-450c-8d97-2dca8434cd59",
+      "url": "https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6",
       "fallbackToCacheTimeout": 0,
-      "checkAutomatically": "ON_ERROR_RECOVERY",
+      "checkAutomatically": "ON_LOAD",
       "requestHeaders": {
         "expo-channel-name": "production"
       }
@@ -62,7 +62,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "73d127b6-c8f6-450c-8d97-2dca8434cd59"
+        "projectId": "0dafbb64-7c1e-49b1-aea1-de1f8159a5e6"
       }
     }
   }

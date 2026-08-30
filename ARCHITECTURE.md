@@ -1,6 +1,6 @@
 # EGA House Architecture
 
-**Living current-system map. Last code-truth refresh: 2026-08-25.**
+**Living current-system map. Last code-truth refresh: 2026-08-30 (current `main` product capabilities integrated with MCP V2; production deployment status is tracked separately in the final merge report).**
 
 This document describes the repository architecture that is currently present. Executable code, migrations, runtime evidence, and external-system evidence outrank this map when the repository changes. Normative requirements live in the authority chain defined by [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md).
 
@@ -44,14 +44,16 @@ Autonomous delivery: scripts/ega-runner + automation.* + PGMQ + Hermes/GitHub
 |---|---|---|
 | Web product | CURRENT | `apps/web`: Next.js routes, Server Components/Actions, UI, integrations, and compatibility APIs |
 | Mobile product | CURRENT | `apps/mobile`: Expo Router native client, authenticated API consumption, local session/navigation/presentation |
-| Standalone API | CURRENT | `apps/server`: Hono routes for auth, timer, projects, goals, tasks, and today; separate Vercel deployment |
+| Standalone API | CURRENT | `apps/server`: Hono routes for auth, timer, projects, goals, tasks, today, and **notifications** (history, read/unread, devices, preferences); separate Vercel deployment |
 | Domain package | CURRENT | `packages/domain`: platform-neutral task/project/goal rules/constants |
-| Contracts package | CURRENT | `packages/contracts`: transport-neutral mobile/agent/common contracts |
-| Application package | CURRENT | `packages/application`: projects/goals/tasks/today use cases, read models, recurrence/focus logic, repository ports |
-| Data-access package | CURRENT | `packages/data-access`: Supabase-backed repository adapters |
-| API client | CURRENT | `packages/api-client`: typed cross-platform Projects/Goals/Tasks/Today HTTP mechanics |
-| Database/schema | CURRENT | root `src/db`, `drizzle/`, `drizzle.config.ts` remain the single schema/migration authority |
-| Web compatibility APIs | CURRENT | `apps/web/src/app/api/{agent,mcp,oauth,integrations,cron}` |
+| Contracts package | CURRENT | `packages/contracts`: transport-neutral mobile/agent/common contracts (now includes `notifications`) |
+| Application package | CURRENT | `packages/application`: projects/goals/tasks/today **plus notifications** use cases (canonical notification, delivery policy, preferences, device claim, due-reminder orchestration), read models, recurrence/focus logic, repository ports |
+| Data-access package | CURRENT | `packages/data-access`: Supabase-backed repository adapters (now includes `notifications` repositories + `FcmPushProvider` via `google-auth-library` + FCM HTTP v1 and `ResendEmailProvider`) |
+| API client | CURRENT | `packages/api-client`: typed cross-platform Projects/Goals/Tasks/Today **and Notifications** HTTP mechanics |
+| Database/schema | CURRENT | root `src/db`, `drizzle/`, `drizzle.config.ts` remain the single schema/migration authority (now includes `notifications`, `notification_devices`, `notification_deliveries`, `notification_preferences` via `0045_notification_subsystem`; `task_reminders` evolved with `delivery_mode`/`processed_at`) |
+| Notifications | CURRENT (feature) / EXTERNAL_UNVERIFIED (device push) | Canonical notification + per-device/per-email deliveries, FCM HTTP v1 (direct, not Expo Push or EAS), preferences, Android channel `task-reminders`, deep-typed `task` targets; `apps/web` cron `POST /api/cron/task-reminders` is thin orchestration via `@ega/application` |
+| Mobile notifications | CURRENT (code) / EXTERNAL_UNVERIFIED (runtime) | `apps/mobile` `expo-notifications` + `expo-crypto`, persistent `installation_id` in `SecureStore`, `getDevicePushTokenAsync()` (never `getExpoPushTokenAsync`), `NotificationProvider` (permission, channel, registration, rotation, foreground/tap/cold-start, target mapper), bell + notification center + settings + reminder Push/Email/Both selector; no `eas.json`/EAS |
+| Web compatibility APIs | CURRENT | `apps/web/src/app/api/{agent,mcp,oauth,integrations,cron}` (cron `task-reminders` now thin over notification delivery) |
 | Autonomous Runner | CURRENT / PARTIAL | `scripts/ega-runner`: PGMQ claim/lease, Hermes execution, Git/GitHub evidence, PR-monitor/repair work |
 | Reconciliation | ABSENT / GAP | No proven canonical owner repairs every partial external side effect idempotently |
 
@@ -164,12 +166,13 @@ MCP client (SDK v2, 2026-07-28)
 - **SDK:** `@modelcontextprotocol/server` `2.0.0` / `client` `2.0.0` / `core` `2.0.0` (`zod` `^3.25.0` + `zod-v4` alias `npm:zod@^4.2.0` for MCP schemas per SDK guide), protocol `2026-07-28`, stateless per-request `createMcpHandler` → `handler.fetch(request,{authInfo})` → `ctx.http.authInfo`, `ServerContext` (`ctx.mcpReq.inputResponses`, `ctx.mcpReq.requestState<T>()`).
 - **Discovery:** `server/discover` via `createMcpHandler` (ttl 0, private), `MCP-Protocol-Version`/`Mcp-Method`/`Mcp-Name` validated against body (400 / `-32020`), never authorized; no `Mcp-Session-Id`.
 - **Auth/Host/Origin:** `withEgaMcpAuth` verifies bearer → `loadActiveMcpGrant` → `principal`; `web-transport-handler` does explicit `Host` (`request.url` host) and `Origin` (allow missing for server-to-server, else must match `resource.origin`, localhost dev allowed), bounded body, correct POST/OPTIONS/GET, CORS `Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name`.
-- **Reads runtime (6):** `ega_get_capabilities`, `ega_list_projects`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan` (via `SupabaseTodayReadPort`), `ega_list_timer_sessions` (via `SupabaseTimerSessionRepository`) — owner-scoped, bounded, strict `zod-v4` schemas, no `ownerUserId` from caller.
+- **Reads runtime:** `ega_get_capabilities`, `ega_list_projects`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan` (via `SupabaseTodayReadPort`), and `ega_list_timer_sessions` (via `SupabaseTimerSessionRepository`) — owner-scoped, bounded, strict `zod-v4` schemas, no `ownerUserId` from caller.
 - **Writes runtime (9):** `ega_create_project` (slug via `normalizeProjectSlug`), `ega_update_project_status`, `ega_create_goal`, `ega_create_task` (project/goal ownership validated), `ega_update_task`, `ega_plan_task_for_today`, `ega_start_timer`, `ega_stop_timer`, `ega_clear_completed_today` (MRTR `inputRequired` + `requestState`) — all `operationId: uuid` required, `workspace_manager` + `MCP_WRITES_ENABLED`, fail-closed ledger.
 - **MRTR:** `MCP_REQUEST_STATE_SECRET` (32+ bytes, shared) → `createRequestStateCodec({key, ttlSeconds:300})` HMAC-SHA256 `base64url(json{ p, exp })` `timingSafeEqual`, binding `{user,client,grantId/version,resource,tool,operationId,argsHash,targetDate,phase}`; `ServerOptions.requestState.verify` + `ctx.mcpReq.requestState<T>()` + `inputRequired`/`acceptedContent`; tamper/expiry/grant-revoked/args-changed → `-32602`/`INVALID_ARGUMENT`.
-- **Idempotency:** `mcp_mutation_receipts(owner,client,tool,opId,args_hash,result_payload)` PK + `mcp_claim_mutation_receipt`/`mcp_store_mutation_result` SECURITY DEFINER `ON CONFLICT` + `pg_advisory_xact_lock` pending hardening (see `drizzle/mcp_pending_idempotency_hardening.sql`), fail-closed, `createHash(sha256, canonical JSON)` for args.
+- **Idempotency:** `mcp_mutation_receipts(owner,client,tool,opId,args_hash,result_payload)` PK + `mcp_claim_mutation_receipt`/`mcp_store_mutation_result` SECURITY DEFINER with `ON CONFLICT` and `pg_advisory_xact_lock`, fail-closed, `createHash(sha256, canonical JSON)` for args. Create-domain fencing is complete for projects, goals, tasks, reminders, and sessions: domain inserts carry the authenticated owner/client operation identity, and only the matching named unique collision replays the canonical row through request-scoped RLS.
+- **Update guarantee:** status, archive, Today projection, and timer stop/clear mutations remain at-least-once but idempotent; the exactly-once claim is limited to insert-style create effects.
 - **Audit/Rate:** `agent_integration_events` + `consumeMcpRateLimit` (reads 120/min, writes 30/min) via `audited-read/write-handlers` (mutation-safe: ledger before success, audit failure logged not swallowed).
-- **Migrations (frozen per isolation directive, not yet renumbered, not applied to prod):** `0045_mcp_workspace_manager`, `0046_mcp_write_rls`, `0047_mcp_mutation_receipts`, `0048_mcp_task_sessions_split` + pending `mcp_pending_idempotency_hardening.sql` / `mcp_pending_rls_least_privilege.sql` (see repair ledger).
+- **Migrations:** current-main migrations `0045_notification_subsystem` through `0049_operator_proposals` are followed by MCP migrations `0050_mcp_workspace_manager` through `0059_mcp_domain_operation_fencing`; production application status is environment-specific and must be verified from migration history.
 - **Runbook:** `docs/implementation/2026-08-28-mcp-v2-read-write-runbook.md` (rollback `MCP_WRITES_ENABLED=false`, no destructive down migration).
 
 ## 7. Autonomous delivery architecture

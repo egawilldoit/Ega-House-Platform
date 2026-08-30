@@ -16,11 +16,18 @@ import {
 } from "./auth";
 import { getSupabaseEnv } from "./env";
 import { createAuthRoutes } from "./routes/auth";
+import { createFrictionRoutes } from "./routes/friction";
 import { createGoalsRoutes } from "./routes/goals";
+import { createHealthRoutes } from "./routes/health";
+import { createInboxRoutes } from "./routes/inbox";
+import { createNotificationsRoutes } from "./routes/notifications";
+import { createOperatorRoutes } from "./routes/operator";
 import { createProjectsRoutes } from "./routes/projects";
 import { createTasksRoutes } from "./routes/tasks";
+import { createTimeContextRoutes } from "./routes/time-context";
 import { createTimerRoutes } from "./routes/timer";
 import { createTodayRoutes } from "./routes/today";
+import { createWeeklyReviewRoutes } from "./routes/weekly-review";
 
 export type AuthOutcome =
   | {
@@ -119,8 +126,15 @@ export function createApp(dependencies: ServerDependencies): Hono<{ Variables: S
   app.route("/api/projects", createProjectsRoutes(dependencies));
   app.route("/api/goals", createGoalsRoutes(dependencies));
   app.route("/api/tasks", createTasksRoutes(dependencies));
+  app.route("/api/inbox", createInboxRoutes(dependencies));
   app.route("/api/today", createTodayRoutes(dependencies));
   app.route("/api/timer", createTimerRoutes(dependencies));
+  app.route("/api/operator", createOperatorRoutes(dependencies));
+  app.route("/api/health", createHealthRoutes(dependencies));
+  app.route("/api/friction", createFrictionRoutes(dependencies));
+  app.route("/api/time-context", createTimeContextRoutes(dependencies));
+  app.route("/api/notifications", createNotificationsRoutes());
+  app.route("/api/review", createWeeklyReviewRoutes(dependencies));
   app.route("/api/auth", createAuthRoutes(dependencies));
 
   app.notFound((c) =>

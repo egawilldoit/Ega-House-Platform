@@ -1,4 +1,5 @@
-import { getWeekWindow } from "@/lib/review-week";
+import { resolveHistoricalTimeContext } from "@ega/application";
+import { getWeekWindow as getDomainWeekWindow } from "@ega/domain";
 import {
   calculateExecutionEvidenceForWindow,
   type ExecutionEvidenceTimeBucket,
@@ -76,6 +77,12 @@ function mapTaskActivity(
   };
 }
 
+function isValidWindowIso(value: unknown): boolean {
+  if (typeof value !== "string" || value.length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
 function mapTimeBuckets(
   buckets: ExecutionEvidenceTimeBucket[],
 ): WeeklyReviewTimeBucket[] {
@@ -87,16 +94,23 @@ function mapTimeBuckets(
   }));
 }
 
+function previousWeekStartForDraft(weekStart: string): string {
+  const date = new Date(`${weekStart}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return weekStart;
+  date.setUTCDate(date.getUTCDate() - 7);
+  return date.toISOString().slice(0, 10);
+}
+
 async function getPreviousWeekReview(
   supabase: ReviewDraftSupabaseClient,
   weekStart: string,
   ownerUserId: string,
 ): Promise<WeeklyReviewDraftInput["previousReview"]> {
+  const previousStart = previousWeekStartForDraft(weekStart);
   const { data, error } = await queryFrom(supabase, "week_reviews")
     .select("week_start, week_end, summary, next_steps")
     .eq("owner_user_id", ownerUserId)
-    .lt("week_start", weekStart)
-    .order("week_start", { ascending: false })
+    .eq("week_start", previousStart)
     .maybeSingle();
 
   if (error) {
@@ -113,6 +127,27 @@ async function getPreviousWeekReview(
     : null;
 }
 
+async function getDraftTimezone(
+  supabase: ReviewDraftSupabaseClient,
+  ownerUserId: string,
+): Promise<string | null> {
+  try {
+    const result = await (supabase as unknown as {
+      from(t: string): {
+        select(c: string): { eq(a: string, b: string): { maybeSingle(): Promise<{ data: unknown; error: unknown }> } };
+      };
+    })
+      .from("user_time_context")
+      .select("iana_timezone")
+      .eq("user_id", ownerUserId)
+      .maybeSingle();
+    const tz = (result.data as { iana_timezone?: string | null } | null)?.iana_timezone;
+    return typeof tz === "string" && tz.trim() ? tz.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateWeeklyReviewDraftForUser({
   supabase,
   ownerUserId,
@@ -126,7 +161,33 @@ export async function generateWeeklyReviewDraftForUser({
   weekEnd: string;
   now?: Date;
 }) {
-  const { startIso, endExclusiveIso } = getWeekWindow(weekStart, weekEnd);
+  const draftTimezone = await getDraftTimezone(supabase, ownerUserId);
+  const tz = draftTimezone ?? "UTC";
+  // Canonical historical week window — timezone-aware, DST-aware, reproducible via resolveHistoricalTimeContext
+  const historical = resolveHistoricalTimeContext({ timezone: tz, date: weekStart });
+  let startIso: string;
+  let endExclusiveIso: string;
+  if (historical.ok) {
+    // Use domain's explicit weekStart/weekEnd windows for precise DST handling
+    try {
+      const startWindow = getDomainWeekWindow(tz, weekStart);
+      const endWindow = getDomainWeekWindow(tz, weekEnd);
+      startIso = startWindow.weekStartUtcIso;
+      endExclusiveIso = endWindow.weekEndExclusiveUtcIso;
+    } catch {
+      startIso = historical.data.weekWindow.weekStartUtcIso;
+      endExclusiveIso = historical.data.weekWindow.weekEndExclusiveUtcIso;
+    }
+  } else {
+    // Fallback to UTC legacy
+    const startWindow = getDomainWeekWindow("UTC", weekStart);
+    const endWindow = getDomainWeekWindow("UTC", weekEnd);
+    startIso = startWindow.weekStartUtcIso;
+    endExclusiveIso = endWindow.weekEndExclusiveUtcIso;
+  }
+  if (!isValidWindowIso(startIso) || !isValidWindowIso(endExclusiveIso)) {
+    throw new Error("Invalid window for weekly review draft.");
+  }
   const [completedResult, carriedResult, blockedResult, sessionsResult, goalsResult, previousReview] =
     await Promise.all([
       queryFrom(supabase, "tasks")

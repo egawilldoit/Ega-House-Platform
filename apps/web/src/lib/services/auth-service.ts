@@ -1,7 +1,8 @@
-import type { AuthenticatedIdentity } from "@ega/contracts";
 import type { Session, User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
+
+export type AuthenticatedIdentity = Readonly<{ id: string; email: string | null }>;
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 

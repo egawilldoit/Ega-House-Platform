@@ -267,6 +267,7 @@ test("createTaskReminder propagates the server-bound MCP operation identity", as
     remindAt: "2026-08-10T13:00:00.000Z",
     channel: "email",
     status: "pending",
+    deliveryMode: "email",
     mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
     mcpClientId: "mcp-client-a",
   });

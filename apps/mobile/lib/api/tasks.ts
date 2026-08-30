@@ -71,9 +71,9 @@ export async function updateMobileTask(
 
 export async function createMobileTaskReminder(
   taskId: string,
-  input: { remindAt: string },
+  input: { remindAt: string; deliveryMode?: 'push' | 'email' | 'both' },
 ): Promise<MobileTaskMutationResponse> {
-  return unwrapApiResult(await getMobileEgaApiClient().tasks.createReminder(taskId, input.remindAt));
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.createReminder(taskId, input.remindAt, input.deliveryMode));
 }
 
 export async function cancelMobileTaskReminder(

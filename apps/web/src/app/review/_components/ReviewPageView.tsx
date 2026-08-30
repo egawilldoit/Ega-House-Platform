@@ -10,6 +10,9 @@ import type { ReviewFormValues } from "../review-form-state";
 import { WeekSelector } from "../week-selector";
 import type { DailyTrackedTime } from "@/lib/review-session-heatmap";
 import type { ReviewPageModel } from "../_lib/review-page-model";
+import { WeeklyIntelligenceSummary } from "@/components/review/weekly-intelligence-summary";
+import type { HealthSnapshotServiceResult } from "@/lib/services/health-snapshot-service";
+import type { FrictionRadarResponse } from "@ega/contracts/friction";
 
 function toSummaryPreview(summary: string | null, maxLength = 200) {
   const normalized = summary?.trim() ?? "";
@@ -18,7 +21,15 @@ function toSummaryPreview(summary: string | null, maxLength = 200) {
   return `${normalized.slice(0, maxLength).trimEnd()}…`;
 }
 
-export function ReviewPageView({ model }: { model: ReviewPageModel }) {
+export function ReviewPageView({
+  model,
+  health,
+  friction,
+}: {
+  model: ReviewPageModel;
+  health?: HealthSnapshotServiceResult;
+  friction?: { data: FrictionRadarResponse | null; errorMessage: string | null };
+}) {
   const { data } = model;
   const {
     bounds,
@@ -55,6 +66,7 @@ export function ReviewPageView({ model }: { model: ReviewPageModel }) {
         nextWeekOf={nextWeekOf}
         existingReviewCount={selectedReview ? 1 : 0}
       />
+      {health && friction ? <WeeklyIntelligenceSummary health={health} friction={friction} /> : null}
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.6fr)_minmax(16rem,0.9fr)]">
         <Card className="border-[var(--border)] bg-white">
           <CardContent className="px-6 pb-6 pt-6">

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Ephemeral-database migration proof for the MCP mutation-receipt fenced claim
- * API (drizzle/0047_mcp_mutation_receipts.sql). The receipt phases cover the
- * ledger's idempotency contract. The domain phase proves the 0054 operation
+ * API (drizzle/0052_mcp_mutation_receipts.sql). The receipt phases cover the
+ * ledger's idempotency contract. The domain phase proves the 0059 operation
  * fences at the database boundary, including a receipt claim, domain commit,
  * lost receipt, lease expiry, fresh claim, and canonical replay for all five
  * create tables. Application/repository replay mapping is covered by the
@@ -561,9 +561,9 @@ async function runDomainFencingProof(sql) {
       AND indexname = ANY(${sql.array(expectedIndexes)})
   `;
   for (const indexName of expectedIndexes) {
-    assert(indexes.some((row) => row.indexname === indexName), `0054 must create ${indexName}`);
+    assert(indexes.some((row) => row.indexname === indexName), `0059 must create ${indexName}`);
   }
-  log("DOMAIN-SCHEMA", "0054 operation indexes exist for all five create tables.");
+  log("DOMAIN-SCHEMA", "0059 operation indexes exist for all five create tables.");
 
   const projectInsert = `
     INSERT INTO public.projects
@@ -864,8 +864,8 @@ async function runProofPhases(sql) {
 async function main() {
   const { url } = parseArgs();
   const tags = await readJournal();
-  if (!tags.includes("0047_mcp_mutation_receipts")) {
-    console.error("Journal does not contain 0047_mcp_mutation_receipts; cannot run the receipt proof.");
+  if (!tags.includes("0052_mcp_mutation_receipts")) {
+    console.error("Journal does not contain 0052_mcp_mutation_receipts; cannot run the receipt proof.");
     exit(2);
   }
 

@@ -16,9 +16,8 @@ import {
 import { ShortcutHelpSheet } from "./shortcut-help-sheet";
 import { CommandPalette, COMMAND_PALETTE_EVENT } from "./command-palette";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
+import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT, SHORTCUT_HELP_EVENT } from "@/lib/workspace-events";
 
-const QUICK_TASK_EVENT = "ega:open-quick-task";
-const SHORTCUT_HELP_EVENT = "ega:open-shortcut-help";
 const SHORTCUT_NAVIGATION_MARKER = "ega:shortcut-route-target";
 
 function dispatchShortcutEvent(eventName: string) {
@@ -136,6 +135,13 @@ export function WorkspaceKeyboardShortcuts() {
         return;
       }
 
+      if (isExactShortcutCombo(event, { key: "i", metaOrCtrl: true, shift: true })) {
+        event.preventDefault();
+        resetNavSequence();
+        dispatchShortcutEvent(INBOX_CAPTURE_EVENT);
+        return;
+      }
+
       if (isExactShortcutCombo(event, { key: "t", metaOrCtrl: true, shift: true })) {
         event.preventDefault();
         resetNavSequence();
@@ -179,4 +185,5 @@ export function WorkspaceKeyboardShortcuts() {
 export const workspaceShortcutEvents = {
   openHelp: SHORTCUT_HELP_EVENT,
   openQuickTask: QUICK_TASK_EVENT,
+  openInboxCapture: INBOX_CAPTURE_EVENT,
 };

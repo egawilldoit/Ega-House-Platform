@@ -205,7 +205,7 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     });
 
     if (error) {
-      // PostgreSQL may report the owner+slug unique index before the 0054
+      // PostgreSQL may report the owner+slug unique index before the 0059
       // operation index when a crashed retry repeats identical project args.
       // Only a collision followed by an exact owner/client/operation lookup
       // is a replay; a different project's slug conflict remains a failure.

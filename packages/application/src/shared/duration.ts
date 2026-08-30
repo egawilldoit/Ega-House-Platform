@@ -11,18 +11,10 @@ function toMs(iso: string): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-export function toLocalIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function getLocalDayWindow(now: Date): DayWindow {
-  const dayStart = new Date(now);
-  dayStart.setHours(0, 0, 0, 0);
-  return { startIso: dayStart.toISOString(), endIso: now.toISOString() };
-}
+// NOTE: toLocalIsoDate and getLocalDayWindow were removed as part of Audit 1 C1.
+// Canonical day-window ownership is @ega/domain time-context (getLocalDayWindow, getLocalDateInTimezone, getCurrentLocalDayWindow).
+// They are process-TZ independent via Intl and explicit IANA timezone. Any Today/Timer logic
+// must use ResolvedTimeContext.dayWindow or domain helpers directly, not process-local Date.
 
 export function getSessionDurationSeconds(
   session: SessionDurationRow,

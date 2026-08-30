@@ -72,6 +72,25 @@ export default function ProfileStackScreen() {
           </View>
         </Card>
 
+        <Pressable
+          onPress={() => router.push('/(app)/settings/notifications')}
+          style={({ pressed }: { pressed: boolean }) => [styles.notificationCard, pressed ? styles.pressed : null]}
+          accessibilityRole="button"
+        >
+          <Card style={styles.notificationInner}>
+            <View style={styles.notificationRow}>
+              <View style={styles.notificationIcon}>
+                <Ionicons name="notifications-outline" size={18} color={mobileTheme.colors.accent} />
+              </View>
+              <View style={styles.notificationCopy}>
+                <Text style={styles.notificationTitle}>Notifications</Text>
+                <Text style={styles.notificationDesc}>Push and email reminders</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+            </View>
+          </Card>
+        </Pressable>
+
         <Card style={styles.actionCard} testID="profile-actions-card">
           <View style={styles.actionRow}>
             <View style={styles.actionCopy}>
@@ -99,7 +118,7 @@ export default function ProfileStackScreen() {
                 <View style={styles.updatesCopy}>
                   <Text style={styles.updatesTitle}>App Updates</Text>
                   <Text style={styles.updatesHint} numberOfLines={2}>
-                    OTA updates & native release status
+                    OTA TEST #2 · v1.0.3 · LIVE
                   </Text>
                   <Text style={styles.updatesMeta} testID="profile-version-channel">
                     {`v${Constants.expoConfig?.version ?? '1.0.0'} · ${(Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ? 'EAS' : 'standalone'}`}
@@ -223,6 +242,21 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.md,
     textAlign: 'center',
   },
+  notificationCard: { marginTop: mobileTheme.spacing.sm },
+  notificationInner: { padding: 0 },
+  notificationRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
+  notificationIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationCopy: { flex: 1, gap: 1 },
+  notificationTitle: { fontSize: 14, fontWeight: mobileTheme.font.semibold as never, color: mobileTheme.colors.text },
+  notificationDesc: { fontSize: 12, color: mobileTheme.colors.textMuted },
+  pressed: { opacity: 0.7 },
   updatesCard: {
     marginTop: mobileTheme.spacing.sm,
   },
