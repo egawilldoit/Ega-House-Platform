@@ -9,7 +9,11 @@ import {
   removeTaskFromToday,
   updateTodayTaskStatus,
 } from "@ega/application";
-import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
 
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
@@ -31,6 +35,7 @@ vi.mock("@ega/application", async (importOriginal) => {
 
 vi.mock("@ega/data-access", () => ({
   SupabaseTasksRepository: vi.fn(),
+  SupabaseTimeContextRepository: vi.fn(),
   SupabaseTodayReadPort: vi.fn(),
 }));
 
@@ -67,6 +72,7 @@ const AUTH_INFO = createMcpAuthInfo("token-a", PRINCIPAL);
 
 const CLIENT = { marker: "user-client" } as unknown as SupabaseClient<McpDatabase>;
 const PORT_INSTANCE = { marker: "today-port" };
+const TIME_CONTEXT_INSTANCE = { marker: "time-context" };
 const REPOSITORY_INSTANCE = { marker: "today-repository" };
 
 const PLAN = {
@@ -136,6 +142,9 @@ describe("createMcpTodayWriteHandlers", () => {
     vi.mocked(SupabaseTodayReadPort).mockImplementation(function () {
       return PORT_INSTANCE as never;
     });
+    vi.mocked(SupabaseTimeContextRepository).mockImplementation(function () {
+      return TIME_CONTEXT_INSTANCE as never;
+    });
     vi.mocked(SupabaseTasksRepository).mockImplementation(function () {
       return REPOSITORY_INSTANCE as never;
     });
@@ -154,6 +163,7 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(getTodayPlan).toHaveBeenCalledWith(
         { userId: OWNER_A },
         PORT_INSTANCE,
+        TIME_CONTEXT_INSTANCE,
         { date: "2026-08-28" },
       );
       expect(result.structuredContent).toEqual({
@@ -184,12 +194,14 @@ describe("createMcpTodayWriteHandlers", () => {
         1,
         { userId: OWNER_A },
         PORT_INSTANCE,
+        TIME_CONTEXT_INSTANCE,
         { date: "2026-08-28" },
       );
       expect(getTodayPlan).toHaveBeenNthCalledWith(
         2,
         { userId: OWNER_B },
         PORT_INSTANCE,
+        TIME_CONTEXT_INSTANCE,
         { date: "2026-08-28" },
       );
     });
@@ -203,9 +215,12 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(Object.keys(result.structuredContent ?? {}).sort()).toEqual(
         ["activeTimer", "ok", "sections", "summary", "suggestions", "today"].sort(),
       );
-      expect(getTodayPlan).toHaveBeenCalledWith({ userId: OWNER_A }, PORT_INSTANCE, {
-        date: undefined,
-      });
+      expect(getTodayPlan).toHaveBeenCalledWith(
+        { userId: OWNER_A },
+        PORT_INSTANCE,
+        TIME_CONTEXT_INSTANCE,
+        { date: undefined },
+      );
     });
 
     it("maps canonical failure to a stable error result", async () => {

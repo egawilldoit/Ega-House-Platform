@@ -13,7 +13,11 @@ import {
   type TodayReadPort,
   type TodayTaskRepository,
 } from "@ega/application";
-import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
 
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
@@ -154,8 +158,14 @@ export function createMcpTodayWriteHandlers(deps: McpWriteModuleDeps) {
       try {
         const principal = requireMcpPermission(authInfo, "today.read");
         requirePrincipal(authInfo);
-        const port = readPortFor(deps, authInfo!);
-        const result = await getTodayPlan(actorFor(principal), port, { date: input.date });
+        const client = deps.createUserClient(authInfo!.token);
+        const port = new SupabaseTodayReadPort(client);
+        const result = await getTodayPlan(
+          actorFor(principal),
+          port,
+          new SupabaseTimeContextRepository(client as never),
+          { date: input.date },
+        );
         if (!result.ok) return applicationErrorResult(result.errorMessage);
         return resultFromPayload(toPlanPayload(result.data));
       } catch (error) {
