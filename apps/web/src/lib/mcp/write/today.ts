@@ -10,7 +10,6 @@ import {
   updateTodayTaskStatus,
   type TaskRecord,
   type TodayPlan,
-  type TodayReadPort,
   type TodayTaskRepository,
 } from "@ega/application";
 import {
@@ -139,10 +138,6 @@ function toTaskPayload(task: TaskRecord): ToolPayload {
     blockedReason: task.blockedReason,
     updatedAt: task.updatedAt,
   };
-}
-
-function readPortFor(deps: McpWriteModuleDeps, authInfo: AuthInfo): TodayReadPort {
-  return new SupabaseTodayReadPort(deps.createUserClient(authInfo.token));
 }
 
 function todayRepositoryFor(deps: McpWriteModuleDeps, authInfo: AuthInfo): TodayTaskRepository {
