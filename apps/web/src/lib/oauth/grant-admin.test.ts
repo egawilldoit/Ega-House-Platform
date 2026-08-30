@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  activateMcpGrant,
   activateReadOnlyMcpGrant,
   markMcpGrantFailed,
 } from "@/lib/oauth/grant-admin";
@@ -64,6 +65,45 @@ describe("OAuth MCP grant administration", () => {
         revoked_at: null,
         updated_at: "2026-08-01T18:00:00.000Z",
       },
+      { onConflict: "owner_user_id,oauth_client_id" },
+    );
+  });
+
+  it("activates the exact workspace-manager permission set", async () => {
+    const { client, upsert } = createAdminClient();
+
+    await expect(
+      activateMcpGrant(client, {
+        ownerUserId: "user-123",
+        oauthClientId: "client-123",
+        clientName: "Hermes",
+        resourceUri: "https://preview.example/api/mcp",
+        permissionProfile: "workspace_manager",
+        now: "2026-08-01T18:00:00.000Z",
+      }),
+    ).resolves.toBe("grant-123");
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        permission_profile: "workspace_manager",
+        permissions: [
+          "projects.read",
+          "projects.create",
+          "projects.update",
+          "goals.read",
+          "goals.create",
+          "goals.update",
+          "tasks.read",
+          "tasks.create",
+          "tasks.update",
+          "today.read",
+          "today.update",
+          "timer.read",
+          "timer.create",
+          "timer.update",
+        ],
+        permissions_version: 1,
+      }),
       { onConflict: "owner_user_id,oauth_client_id" },
     );
   });
