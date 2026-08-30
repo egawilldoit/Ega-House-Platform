@@ -42,6 +42,8 @@
  *
  * Usage:
  *   node scripts/db/mcp-receipt-invariant-verify.mjs --url <postgres-url>
+ *   node scripts/db/mcp-receipt-invariant-verify.mjs --url <postgres-url>
+ *     --upgrade-from 0049_operator_proposals
  *
  * The database identified by --url is destroyed by this script (DROP SCHEMA
  * public/auth CASCADE). Only point it at a throwaway container.
@@ -59,6 +61,7 @@ function parseArgs() {
   const rest = argv.slice(2);
   for (let i = 0; i < rest.length; i += 1) {
     if (rest[i] === "--url") args.url = rest[++i];
+    if (rest[i] === "--upgrade-from") args.upgradeFrom = rest[++i];
   }
   if (!args.url) {
     console.error("Missing required --url <postgres-url>");
@@ -97,6 +100,44 @@ async function applyFile(sql, tag) {
     await sql.unsafe(statement);
   }
   return statements.length;
+}
+
+async function assertCurrentMainBaseline(sql) {
+  const expectedTables = [
+    "notifications",
+    "notification_devices",
+    "notification_deliveries",
+    "notification_preferences",
+    "user_time_context",
+    "inbox_idempotency_keys",
+    "operator_proposals",
+  ];
+  const tables = await sql`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = ANY(${sql.array(expectedTables)})
+  `;
+  const actualTables = new Set(tables.map((row) => row.table_name));
+  assert(
+    expectedTables.every((table) => actualTables.has(table)),
+    `current-main baseline is missing expected tables: ${expectedTables.filter((table) => !actualTables.has(table)).join(", ")}`,
+  );
+
+  const columns = await sql`
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'task_reminders'
+      AND column_name = ANY(${sql.array(["delivery_mode", "processed_at", "processing_error", "source", "source_id"])})
+  `;
+  const actualColumns = new Set(columns.map((row) => row.column_name));
+  const expectedColumns = ["delivery_mode", "processed_at", "processing_error", "source", "source_id"];
+  assert(
+    expectedColumns.every((column) => actualColumns.has(column)),
+    `current-main baseline is missing task_reminders columns: ${expectedColumns.filter((column) => !actualColumns.has(column)).join(", ")}`,
+  );
+  log("MIGRATE-BASELINE", "0049 current-main schema verified before applying the MCP tail.");
 }
 
 async function applySupabaseShim(sql) {
@@ -862,10 +903,14 @@ async function runProofPhases(sql) {
 }
 
 async function main() {
-  const { url } = parseArgs();
+  const { url, upgradeFrom } = parseArgs();
   const tags = await readJournal();
   if (!tags.includes("0052_mcp_mutation_receipts")) {
     console.error("Journal does not contain 0052_mcp_mutation_receipts; cannot run the receipt proof.");
+    exit(2);
+  }
+  if (upgradeFrom && !tags.includes(upgradeFrom)) {
+    console.error(`Unknown --upgrade-from migration: ${upgradeFrom}`);
     exit(2);
   }
 
@@ -875,10 +920,19 @@ async function main() {
     await applySupabaseShim(sql);
 
     let applied = 0;
-    for (const tag of tags) {
+    const baselineIndex = upgradeFrom ? tags.indexOf(upgradeFrom) : tags.length - 1;
+    for (const tag of tags.slice(0, baselineIndex + 1)) {
       const statements = await applyFile(sql, tag);
       applied += 1;
       log("MIGRATE", `${tag}: ${statements} statement(s) applied`);
+    }
+    if (upgradeFrom) {
+      await assertCurrentMainBaseline(sql);
+      for (const tag of tags.slice(baselineIndex + 1)) {
+        const statements = await applyFile(sql, tag);
+        applied += 1;
+        log("MIGRATE", `${tag}: ${statements} statement(s) applied`);
+      }
     }
     log("MIGRATE", `${applied} journal migrations applied`);
 
