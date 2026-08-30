@@ -1,7 +1,7 @@
 # MCP Capability Coverage — 2026-08-29
 
 **Branch:** `feat/mcp-v2-full-read-write`
-**Reference checkpoint:** `5c5405f7f9a50de33308949f82de808607f2fba3`
+**Reference checkpoint:** integrated feature head is recorded in the final merge report
 **Protocol target:** `2026-07-28`, SDK v2 (`@modelcontextprotocol/server` 2.0.0)
 
 This living document defines the current **FULL READ/WRITE** EGA House MCP
@@ -135,7 +135,7 @@ task_reminders  exactly-once
 task_sessions   exactly-once
 ```
 
-Their `0054` partial unique indexes protect the business row after a process
+Their `0059` partial unique indexes protect the business row after a process
 crash between domain commit and receipt commit. Repository collision handling
 accepts the named MCP-operation constraint (or a known competing invariant
 index, such as project slug or open session) only after an exact
