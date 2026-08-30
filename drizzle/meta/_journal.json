@@ -421,6 +421,13 @@
       "when": 1787880000009,
       "tag": "0059_mcp_domain_operation_fencing",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1787880000010,
+      "tag": "0060_mcp_grant_resolution_rpc",
+      "breakpoints": true
     }
   ]
 }
