@@ -36,12 +36,32 @@ describe("W2 createMcpHandler auth propagation", () => {
         );
         return server;
       },
-      { legacy: "stateless" } as never,
+      { legacy: "reject" } as never,
     );
     const request = new Request("https://ega.example.com/api/mcp", {
       method: "POST",
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ping", arguments: {} } }),
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", host: "ega.example.com", origin: "https://ega.example.com" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "ping",
+          arguments: {},
+          _meta: {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+          },
+        },
+      }),
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        host: "ega.example.com",
+        origin: "https://ega.example.com",
+        "MCP-Protocol-Version": "2026-07-28",
+        "Mcp-Method": "tools/call",
+        "Mcp-Name": "ping",
+      },
     });
     // Simulate passing authInfo via handler.fetch
     const response = await handler.fetch(request, { authInfo });
@@ -52,7 +72,7 @@ describe("W2 createMcpHandler auth propagation", () => {
   it("server/discover is served without Mcp-Session-Id", async () => {
     const handler = createMcpHandler(
       () => new McpServer({ name: "test", version: "1.0.0" }, { capabilities: { tools: {} } }),
-      { legacy: "stateless" } as never,
+      { legacy: "reject" } as never,
     );
     const request = new Request("https://ega.example.com/api/mcp", {
       method: "POST",

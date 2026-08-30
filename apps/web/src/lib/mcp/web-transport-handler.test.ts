@@ -1,9 +1,7 @@
 import type { AuthInfo } from "@modelcontextprotocol/server";
-import type { McpServer } from "@modelcontextprotocol/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
-import { getMcpRequestAuthInfo } from "@/lib/mcp/http-auth";
 
 const AUTH_INFO: AuthInfo = {
   token: "signed-token",
@@ -17,118 +15,106 @@ const MCP_HEADERS = {
   "mcp-protocol-version": "2026-07-28",
 };
 
-function createLegacyHandler(transport = { handleRequest: vi.fn().mockResolvedValue(Response.json({ ok: true })), close: vi.fn().mockResolvedValue(undefined) }) {
-  const server = { connect: vi.fn().mockResolvedValue(undefined), close: vi.fn().mockResolvedValue(undefined) };
-  const dependencies = { createServer: vi.fn().mockReturnValue(server), createTransport: vi.fn().mockReturnValue(transport) };
-  return { handler: createWebMcpHandler(vi.fn(), {}, { basePath: "/api", maxDuration: 60, verboseLogs: false, resourceUrl: "https://ega.example.com/api/mcp" }, dependencies), transport };
+function createHandler() {
+  return createWebMcpHandler(
+    () => {},
+    {},
+    {
+      basePath: "/api",
+      maxDuration: 60,
+      verboseLogs: false,
+      resourceUrl: "https://ega.example.com/api/mcp",
+    },
+  );
+}
+
+function createRequest(body: unknown, headers: HeadersInit = MCP_HEADERS) {
+  const request = new Request("https://ega.example.com/api/mcp", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  Object.defineProperty(request, "auth", { value: AUTH_INFO });
+  return request;
 }
 
 describe("createWebMcpHandler", () => {
-  it("creates and closes a fresh stateless server and transport per POST", async () => {
-    const server = {
-      connect: vi.fn().mockResolvedValue(undefined),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-    const transport = {
-      handleRequest: vi.fn().mockResolvedValue(Response.json({ ok: true })),
-      close: vi.fn().mockResolvedValue(undefined),
-    };
-    const dependencies = {
-      createServer: vi.fn().mockReturnValue(server),
-      createTransport: vi.fn().mockReturnValue(transport),
-    };
-    const register = vi.fn();
-    const handler = createWebMcpHandler(
-      register,
-      {},
-      {
-        basePath: "/api",
-        maxDuration: 60,
-        verboseLogs: false,
-        resourceUrl: "https://ega.example.com/api/mcp",
-      },
-      dependencies,
-    );
-    const request = new Request("https://ega.example.com/api/mcp", {
-      method: "POST",
-      body: JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 }),
-      headers: MCP_HEADERS,
-    });
-    Object.defineProperty(request, "auth", { value: AUTH_INFO });
-
-    const response = await handler(request);
-
-    expect(response.status).toBe(200);
-    expect(dependencies.createServer).toHaveBeenCalledTimes(1);
-    expect(dependencies.createTransport).toHaveBeenCalledWith({
-      allowedHosts: ["ega.example.com"],
-      allowedOrigins: ["https://ega.example.com"],
-      enableDnsRebindingProtection: true,
-      enableJsonResponse: true,
-      sessionIdGenerator: undefined,
-    });
-    expect(register).toHaveBeenCalledWith(server as unknown as McpServer, AUTH_INFO);
-    expect(server.connect).toHaveBeenCalledWith(transport);
-    expect(transport.handleRequest).toHaveBeenCalledWith(expect.any(Request), {
-      authInfo: getMcpRequestAuthInfo(request),
-    });
-    expect(transport.close).toHaveBeenCalledTimes(1);
-    expect(server.close).toHaveBeenCalledTimes(1);
-  });
-
-  it("rejects GET because this deployment is stateless JSON-only", async () => {
-    const dependencies = {
-      createServer: vi.fn(),
-      createTransport: vi.fn(),
-    };
-    const handler = createWebMcpHandler(
-      vi.fn(),
-      {},
-      {
-        basePath: "/api",
-        maxDuration: 60,
-        verboseLogs: false,
-        resourceUrl: "https://ega.example.com/api/mcp",
-      },
-      dependencies,
-    );
-
-    const response = await handler(
-      new Request("https://ega.example.com/api/mcp", { method: "GET" }),
+  it("rejects GET because this deployment is modern stateless JSON-only", async () => {
+    const response = await createHandler()(
+      new Request("https://ega.example.com/api/mcp", {
+        method: "GET",
+        headers: { host: "ega.example.com" },
+      }),
     );
 
     expect(response.status).toBe(405);
     expect(response.headers.get("allow")).toBe("POST, OPTIONS");
-    expect(dependencies.createServer).not.toHaveBeenCalled();
   });
 
-  it("rejects a wrong MCP protocol version", async () => {
-    const { handler, transport } = createLegacyHandler();
-    const headers = new Headers({ "content-type": "application/json", host: "ega.example.com" });
-    headers.set("mcp-protocol-version", "2025-06-18");
+  it.each(["2025-06-18", "2025-11-25"])(
+    "rejects the unsupported MCP protocol version %s",
+    async (version) => {
+      const headers = new Headers(MCP_HEADERS);
+      headers.set("mcp-protocol-version", version);
 
-    const response = await handler(new Request("https://ega.example.com/api/mcp", {
-      method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
-    }));
+      const response = await createHandler()(createRequest(
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        headers,
+      ));
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "invalid_request" });
+    },
+  );
+
+  it("rejects a POST without MCP-Protocol-Version", async () => {
+    const headers = new Headers(MCP_HEADERS);
+    headers.delete("mcp-protocol-version");
+
+    const response = await createHandler()(createRequest(
+      { jsonrpc: "2.0", id: 1, method: "tools/list" },
+      headers,
+    ));
 
     expect(response.status).toBe(400);
-    expect(transport.handleRequest).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ error: "invalid_request" });
   });
 
-  it("allows legacy stateless request without MCP-Protocol-Version", async () => {
-    const { handler, transport } = createLegacyHandler();
-    const headers = new Headers({ "content-type": "application/json", host: "ega.example.com" });
+  it("accepts a modern protocol request", async () => {
+    const response = await createHandler()(createRequest({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "ping",
+      params: {
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+      },
+    }, new Headers({ ...MCP_HEADERS, "mcp-method": "ping" })));
 
-    const response = await handler(new Request("https://ega.example.com/api/mcp", {
-      method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+    expect(response.status).not.toBe(400);
+  });
+
+  it("rejects an unsupported subscription request without holding the function open", async () => {
+    const response = await createHandler()(createRequest({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "subscriptions/listen",
     }));
 
     expect(response.status).toBe(200);
-    expect(transport.handleRequest).toHaveBeenCalled();
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: 7,
+      error: {
+        code: -32601,
+        message: "Method not found: subscriptions/listen",
+      },
+    });
   });
 
   it("rejects an oversized streamed body without Content-Length", async () => {
-    const { handler, transport } = createLegacyHandler();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new Uint8Array(4 * 1024 * 1024));
@@ -137,12 +123,17 @@ describe("createWebMcpHandler", () => {
       },
     });
 
-    const response = await handler(new Request("https://ega.example.com/api/mcp", {
-      method: "POST", headers: MCP_HEADERS, body: stream, duplex: "half",
-    } as RequestInit & { duplex: "half" }));
+    const request = new Request("https://ega.example.com/api/mcp", {
+      method: "POST",
+      headers: MCP_HEADERS,
+      body: stream,
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+    Object.defineProperty(request, "auth", { value: AUTH_INFO });
+
+    const response = await createHandler()(request);
 
     expect(response.status).toBe(413);
-    expect(transport.handleRequest).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -151,93 +142,15 @@ describe("createWebMcpHandler", () => {
     ["ega.example.com", "https://ega.example.com/path", 400],
     ["ega.example.com", "null", 400],
   ])("strictly rejects malformed or mismatched Host/Origin values", async (host, origin, status) => {
-    const { handler } = createLegacyHandler();
     const headers = new Headers(MCP_HEADERS);
     headers.set("host", host);
     if (origin) headers.set("origin", origin);
 
-    const response = await handler(new Request("https://ega.example.com/api/mcp", {
-      method: "POST", headers, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
-    }));
+    const response = await createHandler()(createRequest(
+      { jsonrpc: "2.0", id: 1, method: "ping" },
+      headers,
+    ));
 
     expect(response.status).toBe(status);
-  });
-
-  describe("modern/legacy protocol version handling (production handler)", () => {
-    function createProductionHandler() {
-      return createWebMcpHandler(
-        () => {},
-        {},
-        { basePath: "/api", maxDuration: 60, verboseLogs: false, resourceUrl: "https://ega.example.com/api/mcp" },
-      );
-    }
-
-    it("modern + correct MCP-Protocol-Version → not rejected by pre-validation", async () => {
-      const handler = createProductionHandler();
-      const request = new Request("https://ega.example.com/api/mcp", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          host: "ega.example.com",
-          accept: "application/json, text/event-stream",
-          "mcp-protocol-version": "2026-07-28",
-          "mcp-method": "ping",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} } } }),
-      });
-      Object.defineProperty(request, "auth", { value: AUTH_INFO });
-      const response = await handler(request);
-      expect(response.status).not.toBe(400);
-    });
-
-    it("modern + wrong header → 400 from pre-validation", async () => {
-      const handler = createProductionHandler();
-      const request = new Request("https://ega.example.com/api/mcp", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          host: "ega.example.com",
-          accept: "application/json, text/event-stream",
-          "mcp-protocol-version": "2025-06-18",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping", params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} } } }),
-      });
-      Object.defineProperty(request, "auth", { value: AUTH_INFO });
-      const response = await handler(request);
-      expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ error: "invalid_request" });
-    });
-
-    it("legacy stateless without header or envelope → PASS (200)", async () => {
-      const handler = createProductionHandler();
-      const request = new Request("https://ega.example.com/api/mcp", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          host: "ega.example.com",
-          accept: "application/json, text/event-stream",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
-      });
-      Object.defineProperty(request, "auth", { value: AUTH_INFO });
-      const response = await handler(request);
-      expect([200, 202].includes(response.status)).toBe(true);
-    });
-
-    it("legacy notification without header → 202", async () => {
-      const handler = createProductionHandler();
-      const request = new Request("https://ega.example.com/api/mcp", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          host: "ega.example.com",
-          accept: "application/json, text/event-stream",
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1 } }),
-      });
-      Object.defineProperty(request, "auth", { value: AUTH_INFO });
-      const response = await handler(request);
-      expect(response.status).toBe(202);
-    });
   });
 });

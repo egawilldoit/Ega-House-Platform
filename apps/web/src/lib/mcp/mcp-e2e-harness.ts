@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 
 import { createAuditedMcpReadHandlers } from "@/lib/mcp/audited-read-handlers";
+import type { AuditedReadHandlerDependencies } from "@/lib/mcp/audited-read-handlers";
 import { createAuditedMcpWriteHandlers } from "@/lib/mcp/audited-write-handlers";
 import { authInfoForToken, createFakeSupabaseClient, createMcpE2eStore, setCurrentE2eStore, type McpE2eStore } from "@/lib/mcp/mcp-e2e-mocks";
 import type { McpRuntimeConfig } from "@/lib/mcp/config";
@@ -43,8 +44,8 @@ import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
  *   read_only/cross-owner/revoked/wrong-client/resource + receipt RLS).
  *   The in-memory ledger is intentionally simplified (no lease expiry,
  *   no `FAILED_FINAL` reset, single-process advisory lock).
- * - `consumeRateLimit` (always allowed) and `writeAudit` (noop) so the real
- *   audited wrappers still run.
+ * - `consumeRateLimit` (always allowed); audit writes use the fake Supabase
+ *   client's claim-bound RPC path and are recorded in `store.auditEvents`.
  * - `@ega/application` / `@ega/data-access` are vi.mock-ed in the test file
  *   via the leaf factories in mcp-e2e-mocks.ts.
  */
@@ -79,10 +80,19 @@ function createMcpE2eRuntime(): McpE2eRuntime {
 
   const createUserClient = (accessToken: string) => createFakeSupabaseClient(store, accessToken);
 
-  const auditedDeps = {
+  const auditedDeps: AuditedReadHandlerDependencies = {
     createUserClient,
     consumeRateLimit: async () => ({ allowed: true, retryAfterSeconds: 0 }),
-    writeAudit: async () => {},
+    writeAudit: async (client, input) => {
+      await client.rpc("record_mcp_audit_event", {
+        p_request_id: input.requestId,
+        p_tool_name: input.toolName,
+        p_outcome: input.outcome,
+        p_duration_ms: input.durationMs,
+        p_error_code: input.errorCode ?? null,
+        p_metadata: input.metadata ?? {},
+      });
+    },
     nowMs: () => performance.now(),
     createRequestId: randomUUID,
   };
@@ -137,6 +147,12 @@ export type EgaMcpClient = {
   elicitationLog: E2eElicitationLog;
 };
 
+type EgaMcpClientOptions = {
+  elicitationAction?: "accept" | "decline";
+  elicitationContent?: EgaElicitationContent;
+  protocolMode?: "legacy" | "auto" | { pin: "2026-07-28" };
+};
+
 export type EgaElicitationContent = {
   [key: string]: string | number | boolean | string[];
 };
@@ -144,17 +160,14 @@ export type EgaElicitationContent = {
 export function createEgaMcpClient(
   routeRuntime: McpRouteRuntime,
   bearerToken: string,
-  options?: {
-    elicitationAction?: "accept" | "decline";
-    elicitationContent?: EgaElicitationContent;
-  },
+  options?: EgaMcpClientOptions,
 ): EgaMcpClient {
   const elicitationLog: E2eElicitationLog = { requests: [] };
   const client = new Client(
     { name: "ega-e2e", version: "1.0.0" },
     {
       capabilities: { elicitation: {} },
-      versionNegotiation: { mode: { pin: "2026-07-28" } },
+      versionNegotiation: { mode: options?.protocolMode ?? { pin: "2026-07-28" } },
       inputRequired: { autoFulfill: true, maxRounds: 3 },
     },
   );
@@ -198,10 +211,7 @@ export function createEgaMcpClient(
 export async function connectEgaMcpClient(
   routeRuntime: McpRouteRuntime,
   bearerToken: string,
-  options?: {
-    elicitationAction?: "accept" | "decline";
-    elicitationContent?: EgaElicitationContent;
-  },
+  options?: EgaMcpClientOptions,
 ): Promise<EgaMcpClient & { close: () => Promise<void> }> {
   const { client, transport, elicitationLog } = createEgaMcpClient(routeRuntime, bearerToken, options);
   await client.connect(transport);

@@ -304,7 +304,7 @@ export function createMcpReadToolHandlers(
         const open = await timerRepo.listOpenSessions(actor as never);
         const recent = input.includeClosed ? await timerRepo.listRecentSessions(actor as never, { limit } as never) : { ok: true, value: [] } as unknown as { ok: boolean; value: unknown[] };
         const sessions = [...((open as unknown as { value?: unknown[] }).value ?? []), ...((recent as unknown as { value?: unknown[] }).value ?? [])].slice(0, limit);
-        return resultFromPayload({ ok: true, sessions, count: sessions.length, ownerUserId: principal.ownerUserId, limit });
+        return resultFromPayload({ ok: true, sessions, count: sessions.length });
       } catch (error) {
         return errorResult(error);
       }

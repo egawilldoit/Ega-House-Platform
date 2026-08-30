@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { vi } from "vitest";
 
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
+import type { McpAuditEventInput } from "@/lib/mcp/audit-repository";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import type { McpPrincipal } from "@/lib/mcp/principal";
@@ -102,6 +103,7 @@ export type McpE2eStore = {
   tables: Map<string, StoreRow[]>;
   mutations: RecordedMutation[];
   rpcCalls: RecordedRpcCall[];
+  auditEvents: McpAuditEventInput[];
   ledger: Map<string, { argsHash: string; claimToken: string; resultPayload?: StoreRow }>;
   seed: (table: string, row: StoreRow) => StoreRow;
 };
@@ -144,12 +146,14 @@ export function createMcpE2eStore(): McpE2eStore {
   const tables = new Map<string, StoreRow[]>();
   const mutations: RecordedMutation[] = [];
   const rpcCalls: RecordedRpcCall[] = [];
+  const auditEvents: McpAuditEventInput[] = [];
   const ledger = new Map<string, { argsHash: string; claimToken: string; resultPayload?: StoreRow }>();
 
   return {
     tables,
     mutations,
     rpcCalls,
+    auditEvents,
     ledger,
     seed(table, row) {
       const rows = tables.get(table) ?? [];
@@ -352,6 +356,34 @@ export function createFakeSupabaseClient(
       return Promise.resolve({ data: null, error: null });
     }
     if (fn === "mcp_fail_mutation_result") return Promise.resolve({ data: null, error: null });
+    if (fn === "record_mcp_audit_event") {
+      const authInfo = authInfoForToken(accessToken);
+      const principal = authInfo?.extra?.principal as McpPrincipal | undefined;
+      if (!principal) {
+        return Promise.resolve({ data: null, error: { message: "MCP authorization grant not found" } });
+      }
+      store.auditEvents.push({
+        principal,
+        requestId: String(args.p_request_id),
+        toolName: String(args.p_tool_name),
+        outcome: args.p_outcome as McpAuditEventInput["outcome"],
+        durationMs: Number(args.p_duration_ms),
+        errorCode: args.p_error_code == null ? undefined : String(args.p_error_code),
+        metadata: (args.p_metadata ?? {}) as McpAuditEventInput["metadata"],
+      });
+      const row = store.seed("agent_integration_events", {
+        owner_user_id: principal.ownerUserId,
+        oauth_client_id: principal.oauthClientId,
+        grant_id: principal.grantId,
+        request_id: String(args.p_request_id),
+        tool_name: String(args.p_tool_name),
+        outcome: args.p_outcome,
+        duration_ms: Number(args.p_duration_ms),
+        error_code: args.p_error_code ?? null,
+        metadata: args.p_metadata ?? {},
+      });
+      return Promise.resolve({ data: row.id, error: null });
+    }
     return Promise.resolve({ data: null, error: null });
   };
 
@@ -475,6 +507,15 @@ export function buildApplicationModuleMock(): Record<string, unknown> {
     },
   );
 
+  const getTaskReadModelInApplication = vi.fn(
+    async (actor: { userId: string }, repository: { getTask: (actor: { userId: string }, taskId: string) => Promise<{ ok: boolean; value?: StoreRow | null }> }, taskIdInput: unknown) => {
+      const result = await repository.getTask(actor, String(taskIdInput ?? "").trim());
+      return result.ok
+        ? { ok: true, data: result.value ?? null }
+        : { ok: false, errorMessage: "Unable to load task right now." };
+    },
+  );
+
   const clearCompletedTodayInApplication = vi.fn(
     (actor: { userId: string }, _repository: unknown, input: { date: string }) => {
       const rows = store().tables.get("tasks") ?? [];
@@ -578,7 +619,7 @@ export function buildApplicationModuleMock(): Record<string, unknown> {
 
     createTask: createTaskInApplication,
     updateTask: notReachedService("updateTask"),
-    getTaskReadModel: notReachedService("getTaskReadModel"),
+    getTaskReadModel: getTaskReadModelInApplication,
     pinTask: notReachedService("pinTask"),
     unpinTask: notReachedService("unpinTask"),
     archiveTask: notReachedService("archiveTask"),
@@ -681,6 +722,11 @@ export class FakeSupabaseTasksRepository {
     return { ok: true as const, value: taskRecord(row) };
   }
 
+  async getTask(actor: { userId: string }, taskId: string) {
+    const row = ownedTask(actor.userId, taskId);
+    return { ok: true as const, value: row ? taskRecord(row) : null };
+  }
+
   async setPlannedDate(actor: { userId: string }, input: { taskId: string; plannedForDate: string | null }) {
     const row = ownedTask(actor.userId, input.taskId);
     if (!row) return { ok: false as const, error: { code: "not_found" as const } };
@@ -715,15 +761,42 @@ export class FakeSupabaseTodayReadPort {
 
   async listSelectedTasks(
     actor: { userId: string },
-    date: string,
+    input: { today: string },
   ): Promise<{ ok: true; value: StoreRow[] }> {
     const rows = requireCurrentE2eStore().tables.get("tasks") ?? [];
     return {
       ok: true,
       value: rows.filter(
-        (row) => row.owner_user_id === actor.userId && row.planned_for_date === date,
+        (row) => row.owner_user_id === actor.userId && row.planned_for_date === input.today,
       ),
     };
+  }
+
+  async listPinnedSuggestions(
+    actor: { userId: string },
+    input: { limit: number },
+  ): Promise<{ ok: true; value: StoreRow[] }> {
+    void actor;
+    void input;
+    return { ok: true, value: [] };
+  }
+
+  async listInProgressSuggestions(
+    actor: { userId: string },
+    input: { limit: number },
+  ): Promise<{ ok: true; value: StoreRow[] }> {
+    void actor;
+    void input;
+    return { ok: true, value: [] };
+  }
+
+  async getTodayTimerSnapshot(
+    actor: { userId: string },
+    input: { nowIso: string; windowStartIso: string },
+  ): Promise<{ ok: true; value: { activeTimer: null; trackedTodaySeconds: number } }> {
+    void actor;
+    void input;
+    return { ok: true, value: { activeTimer: null, trackedTodaySeconds: 0 } };
   }
 }
 
