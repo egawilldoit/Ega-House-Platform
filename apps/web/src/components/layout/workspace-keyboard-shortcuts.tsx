@@ -16,10 +16,8 @@ import {
 import { ShortcutHelpSheet } from "./shortcut-help-sheet";
 import { CommandPalette, COMMAND_PALETTE_EVENT } from "./command-palette";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
+import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT, SHORTCUT_HELP_EVENT } from "@/lib/workspace-events";
 
-const QUICK_TASK_EVENT = "ega:open-quick-task";
-const INBOX_CAPTURE_EVENT = "ega:open-inbox-capture";
-const SHORTCUT_HELP_EVENT = "ega:open-shortcut-help";
 const SHORTCUT_NAVIGATION_MARKER = "ega:shortcut-route-target";
 
 function dispatchShortcutEvent(eventName: string) {

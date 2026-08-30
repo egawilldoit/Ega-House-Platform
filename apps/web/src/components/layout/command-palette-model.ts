@@ -9,6 +9,7 @@ export type CommandPaletteItem = {
   label: string;
   hint: string | null;
   href: `/${string}`;
+  action?: "capture";
 };
 
 export type CommandPaletteSection = {
@@ -26,8 +27,7 @@ const GROUP_TITLES: Record<CommandPaletteGroupId, string> = {
 };
 
 const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
-  { label: "Dashboard", href: SHORTCUT_ROUTE_MAP.dashboard },
-  { label: "Today", href: "/today" },
+  { label: "Today", href: SHORTCUT_ROUTE_MAP.today },
   { label: "Tasks", href: SHORTCUT_ROUTE_MAP.tasks },
   { label: "Goals", href: SHORTCUT_ROUTE_MAP.goals },
   { label: "Timer", href: SHORTCUT_ROUTE_MAP.timer },
@@ -41,7 +41,8 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
   { label: "Settings", href: "/settings/account" },
 ];
 
-const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint">> = [
+const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint" | "action">> = [
+  { label: "Capture to Inbox", href: "/ideas", hint: "Capture", action: "capture" },
   { label: "Open Tasks", href: "/tasks", hint: "Tasks" },
   { label: "New Project", href: "/tasks/projects/new", hint: "Project" },
   { label: "Open Goals", href: "/goals", hint: "Goals" },
@@ -77,6 +78,7 @@ function quickActionItems(): CommandPaletteItem[] {
     label: item.label,
     hint: item.hint ?? null,
     href: item.href,
+    action: item.action,
   }));
 }
 

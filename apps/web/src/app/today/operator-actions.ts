@@ -1,6 +1,8 @@
 "use server";
 
-import { applyApprovedOperatorProposalData, approveOperatorProposalData } from "@/lib/services/operator-proposal-service";
+import { randomUUID } from "node:crypto";
+
+import { applyApprovedOperatorProposalData, approveOperatorProposalData, createOperatorProposalData } from "@/lib/services/operator-proposal-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { redirectWithWorkspaceFeedback, revalidateWorkspaceFor } from "@/lib/workspace/workspace-navigation";
 
@@ -8,6 +10,32 @@ function getTodayReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
   if (returnTo.startsWith("/today")) return returnTo;
   return "/today";
+}
+
+export async function createOperatorProposalAction(formData: FormData) {
+  const returnPath = getTodayReturnPath(formData.get("returnTo"));
+  const proposedTaskIds = formData
+    .getAll("taskId")
+    .map((value) => String(value).trim())
+    .filter(Boolean)
+    .slice(0, 6);
+
+  if (proposedTaskIds.length === 0) {
+    redirectWithWorkspaceFeedback(returnPath, { errorMessage: "Add at least one actionable task before preparing a plan." });
+  }
+
+  const result = await createOperatorProposalData({
+    proposedTaskIds,
+    idempotencyKey: `today-plan:${randomUUID()}`,
+  });
+  if (result.errorMessage) redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
+
+  const proposalId = String((result.data as { id?: unknown } | null)?.id ?? "");
+  if (!proposalId) redirectWithWorkspaceFeedback(returnPath, { errorMessage: "The plan could not be prepared right now." });
+
+  redirectWithWorkspaceFeedback(`${returnPath}?operatorProposalId=${encodeURIComponent(proposalId)}`, {
+    successMessage: "Plan prepared for your approval.",
+  });
 }
 
 export async function approveOperatorProposalAction(formData: FormData) {

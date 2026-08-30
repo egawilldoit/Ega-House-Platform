@@ -7,6 +7,18 @@ type TimeContextRow = {
   iana_timezone: string;
 };
 
+function isMissingTimeContextTable(error: unknown): boolean {
+  const candidate = error as { code?: unknown; message?: unknown } | null;
+  const code = typeof candidate?.code === "string" ? candidate.code : "";
+  const message = typeof candidate?.message === "string" ? candidate.message : "";
+
+  return (
+    code === "42P01"
+    || code === "PGRST205"
+    || /user_time_context/.test(message) && /does not exist|schema cache|could not find/i.test(message)
+  );
+}
+
 export class SupabaseTimeContextRepository implements TimeContextRepository {
   constructor(private readonly supabase: SupabaseClient) {}
 
@@ -18,6 +30,11 @@ export class SupabaseTimeContextRepository implements TimeContextRepository {
       .maybeSingle();
 
     if (error) {
+      // The time-context migration is additive. Until it is present in a
+      // deployment, Today can safely use the documented UTC fallback.
+      if (isMissingTimeContextTable(error)) {
+        return { ok: true, value: null };
+      }
       return { ok: false, error: sanitizeSupabaseError(error) };
     }
 

@@ -91,6 +91,14 @@ test("getTimezone returns null when no row", async () => {
   if (result.ok) assert.equal(result.value, null);
 });
 
+test("getTimezone treats an unapplied additive migration as the UTC fallback", async () => {
+  const fake = new FakeTimeContextSupabase([
+    { data: null, error: { code: "PGRST205", message: "Could not find the table 'public.user_time_context' in the schema cache" } },
+  ]);
+  const result = await repo(fake).getTimezone(ACTOR);
+  assert.deepEqual(result, { ok: true, value: null });
+});
+
 test("getTimezone sanitizes errors", async () => {
   const fake = new FakeTimeContextSupabase([{ data: null, error: { code: "PGRST500" } }]);
   const result = await repo(fake).getTimezone(ACTOR);

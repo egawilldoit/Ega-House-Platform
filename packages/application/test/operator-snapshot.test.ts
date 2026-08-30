@@ -41,6 +41,7 @@ const TODAY = "2026-08-10";
 
 class FakeTodayPort implements TodayReadPort {
   actorIds: string[] = [];
+  selectedInputs: Array<{ today: string; windowStartIso?: string; windowEndIso?: string }> = [];
   constructor(
     private readonly selected: TodaySourceTask[],
     private readonly pinned: TodaySourceTask[] = [],
@@ -50,8 +51,9 @@ class FakeTodayPort implements TodayReadPort {
       trackedTodaySeconds: 0,
     },
   ) {}
-  async listSelectedTasks(actor: AuthenticatedActor) {
+  async listSelectedTasks(actor: AuthenticatedActor, input: { today: string; windowStartIso?: string; windowEndIso?: string }) {
     this.actorIds.push(actor.userId);
+    this.selectedInputs.push(input);
     return ok(this.selected);
   }
   async listPinnedSuggestions(actor: AuthenticatedActor) {
@@ -65,6 +67,16 @@ class FakeTodayPort implements TodayReadPort {
   async getTodayTimerSnapshot(actor: AuthenticatedActor) {
     this.actorIds.push(actor.userId);
     return ok(this.snapshot);
+  }
+}
+
+class SuggestionsFailingTodayPort extends FakeTodayPort {
+  async listPinnedSuggestions() {
+    return { ok: false as const, error: { code: "unknown" as const } };
+  }
+
+  async listInProgressSuggestions() {
+    return { ok: false as const, error: { code: "unknown" as const } };
   }
 }
 
@@ -113,6 +125,11 @@ test("Operator snapshot includes sections, focus, activeTimer, tracked time, blo
   assert.deepEqual(snap.signals, { health: null, friction: null, inbox: null, weeklyObjective: null });
   // RLS: actorId forwarded
   assert.deepEqual(port.actorIds, ["user-1", "user-1", "user-1", "user-1"]);
+  assert.deepEqual(port.selectedInputs, [{
+    today: TODAY,
+    windowStartIso: "2026-08-10T00:00:00.000Z",
+    windowEndIso: "2026-08-11T00:00:00.000Z",
+  }]);
 });
 
 test("Operator snapshot loads when optional signal providers are absent or throw", async () => {
@@ -134,6 +151,19 @@ test("Operator snapshot loads when optional signal providers are absent or throw
   assert.equal(r2.ok, true);
   if (!r2.ok) return;
   assert.equal(r2.data.signals.health, null);
+});
+
+test("Operator snapshot keeps core Today work when suggestion reads fail", async () => {
+  const port = new SuggestionsFailingTodayPort([task({ id: "core", plannedForDate: TODAY })]);
+  const result = await getOperatorSnapshot(createAuthenticatedActor("u-suggestions"), port, {
+    date: TODAY,
+    now: new Date("2026-08-10T12:00:00.000Z"),
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.data.sections.planned.map((item) => item.id), ["core"]);
+  assert.deepEqual(result.data.suggestions, { pinned: [], inProgress: [] });
 });
 
 test("Operator snapshot provider success populates signals and RLS preserved", async () => {
