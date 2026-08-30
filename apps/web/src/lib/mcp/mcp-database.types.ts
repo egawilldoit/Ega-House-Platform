@@ -143,6 +143,17 @@ export type McpDatabase = Omit<Database, "public"> & {
           permissions_version: number;
         }>;
       };
+      record_mcp_audit_event: {
+        Args: {
+          p_request_id: string;
+          p_tool_name: string;
+          p_outcome: string;
+          p_duration_ms: number;
+          p_error_code?: string | null;
+          p_metadata?: Json;
+        };
+        Returns: string;
+      };
     };
   };
 };

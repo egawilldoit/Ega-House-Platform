@@ -2,15 +2,14 @@
 
 **Branch:** `feat/mcp-v2-full-read-write`
 **SDK:** `@modelcontextprotocol/server` 2.0.0, `@modelcontextprotocol/client` 2.0.0, `@modelcontextprotocol/core` 2.0.0
-**Protocol:** `2026-07-28` (stateless `createMcpHandler`, `server/discover`, `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`)
+**Protocol:** `2026-07-28` only (stateless `createMcpHandler`, `legacy: 'reject'`, `server/discover`, `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`)
 
 ## Serving
 
 - **Endpoint:** `POST /api/mcp` — stateless, fresh `McpServer` per request, `sessionIdGenerator: undefined`, `enableDnsRebindingProtection: true`, `allowedHosts: [resource.host]`, `allowedOrigins: [resource.origin]`
 - **Headers validated, not authorized:** `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*` are checked against body by the transport/handler (400 + `-32020` on mismatch), never used as auth source. Auth is `Authorization: Bearer <Supabase JWT>` → `verifyAccessToken` → `loadActiveMcpGrant` → `principal` → `MCP_AUTHORIZED_SCOPE` + permission checks + RLS.
 - **No session id:** `Mcp-Session-Id` never required; `GET /api/mcp` returns 405 (stateless).
-- **Discovery:** `server/discover` is served by `createMcpHandler` (modern) with `ttlMs: 0`, `cacheScope: private` (most conservative). Client `getServerVersion()` reads `_meta['io.modelcontextprotocol/serverInfo']`. Until full `createMcpHandler` cutover, legacy `WebStandardStreamableHTTPServerTransport` serves 2025-era `initialize`; modern `server/discover` is handled by the new handler entry (see route-runtime).
-- **Legacy fallback:** `legacy: 'stateless'` (default) also serves 2025-era traffic stateless; `isLegacyRequest(request)` (no `_meta` envelope) routes to legacy path — modern malformed envelope → `-32020`.
+- **Discovery:** `server/discover` is served by the single modern `createMcpHandler` path with `legacy: 'reject'`, `ttlMs: 0`, and `cacheScope: private` (most conservative). Client `getServerVersion()` reads `_meta['io.modelcontextprotocol/serverInfo']`. `MCP-Protocol-Version` is required and must be `2026-07-28`; 2025-era initialize/stateless requests and missing-header requests are rejected.
 
 ## Authorization
 
@@ -43,7 +42,7 @@
 
 ## Audit / Rate limits
 
-- **Audit:** `agent_integration_events` with `grant_id`, `toolName`, `outcome`, `durationMs`, `metadata{resultCount, retryAfter, operationId}`. Mutation path writes receipt before success, so audit failure does not cause duplicate (retry replays receipt).
+- **Audit:** `agent_integration_events` with `grant_id`, `toolName`, `outcome`, `durationMs`, `metadata{resultCount, retryAfter, operationId}`. MCP OAuth audit persistence uses migration `0061_mcp_audit_event_rpc`: a claim-bound `SECURITY DEFINER` RPC derives owner/client/resource and the active grant from JWT context while direct OAuth table INSERT remains blocked. Mutation path writes receipt before success, so audit failure does not cause duplicate (retry replays receipt).
 - **Rate limits:** `consume_mcp_rate_limit(tool, limit, window)` SECURITY DEFINER, checks grant existence, fixed window per (owner,client,tool). Default: reads 120/60s, writes 30/60s. `auditedReadHandlers` already wraps reads; writes to use same.
 
 ## Rollback
@@ -61,11 +60,11 @@ product API through `@ega/api-client` → `apps/server`; MCP-created project,
 goal, task, reminder, and session rows are visible to the same authenticated
 mobile user through those owner-scoped APIs.
 
-## Production actions NOT performed (per boundary)
+## Production deployment notes
 
-- Migrations `0050..0059` are the MCP tail after current-main migrations `0045..0049`; production application status is verified from the target database migration history before deployment.
+- Migrations `0050..0061` are the MCP tail after current-main migrations `0045..0049`; production application status is verified from the target database migration history before deployment.
 - `MCP_REQUEST_STATE_SECRET` not rotated in prod (to be set out-of-band before cutover).
-- PR not merged (`feat/mcp-v2-full-read-write` → `main`).
+- Production deployment and migration status are operational evidence, not inferred from this runbook; verify the target database and Vercel deployment before declaring rollout complete.
 
 ## Monitoring
 
@@ -78,5 +77,5 @@ mobile user through those owner-scoped APIs.
 - `apps/web/package.json`: `@modelcontextprotocol/server/client/core` 2.0.0
 - `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas
 - `apps/web/src/lib/mcp/request-state.ts`: `createRequestStateCodec`
-- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0059` + `meta/_journal.json`
+- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0061` + `meta/_journal.json`
 - Final command results are recorded in the delivery report; this document does not substitute for executed evidence.

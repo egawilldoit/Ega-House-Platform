@@ -22,14 +22,6 @@ function invalidRequest(description: string, status: 400 | 403 | 413 | 421 = 400
   );
 }
 
-export type WebMcpHandlerDependencies = {
-  createServer?: (authInfo?: AuthInfo) => { server: McpServer; cleanup?: () => Promise<void> };
-  // Legacy test compat: old tests mock WebStandard transport
-  createTransport?: (opts: unknown) => { handleRequest: (r: Request, o: unknown) => Promise<Response>; close: () => Promise<void> };
-  // Old ServerLike for test compat
-  _legacyCreateServer?: () => { connect: (t: unknown) => Promise<void>; close: () => Promise<void> };
-};
-
 function validateHost(request: Request, expectedHost: string): Response | null {
   const hostHeader = request.headers.get("host");
   if (!hostHeader) return invalidRequest("Missing Host header.");
@@ -103,11 +95,29 @@ async function limitRequestBody(request: Request): Promise<Request | Response> {
 function validateProtocolVersion(request: Request): Response | null {
   if (request.method !== "POST") return null;
   const header = request.headers.get("mcp-protocol-version");
-  if (header === null) return null;
+  if (header === null) {
+    return invalidRequest(`MCP-Protocol-Version must be ${MCP_PROTOCOL_VERSION}.`);
+  }
   if (header !== MCP_PROTOCOL_VERSION) {
     return invalidRequest(`MCP-Protocol-Version must be ${MCP_PROTOCOL_VERSION}.`);
   }
   return null;
+}
+
+async function rejectUnsupportedSubscription(request: Request): Promise<Response | null> {
+  const body = await request.clone().json().catch(() => null) as { id?: unknown; method?: unknown } | null;
+  if (!body || body.method !== "subscriptions/listen") return null;
+
+  if (!("id" in body)) return new Response(null, { status: 202 });
+
+  return Response.json({
+    jsonrpc: "2.0",
+    id: body.id,
+    error: {
+      code: -32601,
+      message: "Method not found: subscriptions/listen",
+    },
+  });
 }
 
 function getResourceHostAndOrigin(resourceUrl: string) {
@@ -119,54 +129,12 @@ export function createWebMcpHandler(
   registerServer: (server: McpServer, authInfo?: AuthInfo) => void,
   _serverOptions: Record<string, never>,
   options: TransportOptions,
-  dependencies?: WebMcpHandlerDependencies,
 ): RequestHandler {
   const { host: expectedHost, origin: expectedOrigin } = getResourceHostAndOrigin(options.resourceUrl);
 
-  // Test compat: if legacy dependencies with createTransport mock are provided, use old WebStandard path
-  // This keeps existing unit tests (which mock WebStandard transport) passing while production uses createMcpHandler
-  if (dependencies && (dependencies as unknown as { createTransport?: unknown }).createTransport) {
-    const legacyDeps = dependencies as unknown as { createServer: () => { connect: (t: unknown) => Promise<void>; close: () => Promise<void> }; createTransport: (opts: unknown) => { handleRequest: (r: Request, o: unknown) => Promise<Response>; close: () => Promise<void> } };
-    return async (request: Request): Promise<Response> => {
-      if (request.method === "GET") {
-        return new Response(null, { status: 405, headers: { Allow: "POST, OPTIONS" } });
-      }
-      if (request.method !== "POST") {
-        return new Response(null, { status: 405, headers: { Allow: "POST, OPTIONS" } });
-      }
-      const hostError = validateHost(request, expectedHost);
-      if (hostError) return hostError;
-      const originError = validateOrigin(request, expectedOrigin);
-      if (originError) return originError;
-      const protocolError = validateProtocolVersion(request);
-      if (protocolError) return protocolError;
-      const sizeError = validateRequestSize(request);
-      if (sizeError) return sizeError;
-      const limitedRequest = await limitRequestBody(request);
-      if (limitedRequest instanceof Response) return limitedRequest;
-      const authInfo = (request as Request & { auth?: AuthInfo }).auth;
-      const server = legacyDeps.createServer();
-      const transport = legacyDeps.createTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true,
-        enableDnsRebindingProtection: true,
-        allowedHosts: [expectedHost],
-        allowedOrigins: [expectedOrigin],
-      });
-      registerServer(server as unknown as McpServer, authInfo);
-      await server.connect(transport as unknown as never);
-      try {
-        return await transport.handleRequest(limitedRequest, { authInfo });
-      } finally {
-        await transport.close();
-        await (server as unknown as { close: () => Promise<void> }).close();
-      }
-    };
-  }
-
-  // Single canonical 2026-07-28 handler — stateless, per-request factory, no Mcp-Session-Id
+  // Single canonical modern handler — stateless, per-request factory, no Mcp-Session-Id.
   const handler = createMcpHandler(
-    (ctx: { era: "legacy" | "modern"; authInfo?: AuthInfo; requestInfo?: Request }) => {
+    (ctx) => {
       const server = new RuntimeMcpServer(
         { name: "ega-house", version: "0.1.0" },
         {
@@ -184,8 +152,8 @@ export function createWebMcpHandler(
       return server;
     },
     {
-      legacy: "stateless",
-    } as unknown as Parameters<typeof createMcpHandler>[1],
+      legacy: "reject",
+    },
   );
 
   return async (request: Request): Promise<Response> => {
@@ -227,6 +195,9 @@ export function createWebMcpHandler(
     const limitedRequest = await limitRequestBody(request);
     if (limitedRequest instanceof Response) return limitedRequest;
 
+    const unsupportedSubscription = await rejectUnsupportedSubscription(limitedRequest);
+    if (unsupportedSubscription) return unsupportedSubscription;
+
     // Modern headers Mcp-Method/Mcp-Name are routing/validation, not authorization — never use them for auth
     // The SDK's createMcpHandler validates them against body; we just ensure we don't treat them as auth
     // No authorization derived from Mcp-Method/Mcp-Name/Mcp-Param-* or body owner fields
@@ -234,9 +205,3 @@ export function createWebMcpHandler(
     return (handler.fetch as unknown as (r: Request, o?: unknown) => Promise<Response>)(limitedRequest, authInfo ? { authInfo } : undefined);
   };
 }
-
-// Keep old helper for tests that directly call createWebMcpHandler with dependencies
-export type LegacyWebMcpHandlerDependencies = {
-  createServer: () => { connect: (t: unknown) => Promise<void>; close: () => Promise<void> };
-  createTransport: (opts: unknown) => { handleRequest: (r: Request, o: unknown) => Promise<Response>; close: () => Promise<void> };
-};

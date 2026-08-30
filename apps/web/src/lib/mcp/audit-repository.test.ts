@@ -14,19 +14,17 @@ const PRINCIPAL: McpPrincipal = {
   permissions: ["projects.read", "goals.read", "tasks.read"],
 };
 
-function createClient(result: { error: unknown }) {
-  const insert = vi.fn().mockResolvedValue(result);
-  const from = vi.fn().mockReturnValue({ insert });
+function createClient(result: { data?: unknown; error: unknown }) {
+  const rpc = vi.fn().mockResolvedValue(result);
   return {
-    client: { from } as unknown as SupabaseClient<McpDatabase>,
-    from,
-    insert,
+    client: { rpc } as unknown as SupabaseClient<McpDatabase>,
+    rpc,
   };
 }
 
 describe("writeMcpAuditEvent", () => {
   it("writes a successful token-free MCP invocation event", async () => {
-    const mock = createClient({ error: null });
+    const mock = createClient({ data: "20000000-0000-0000-0000-000000000001", error: null });
 
     await expect(
       writeMcpAuditEvent(mock.client, {
@@ -39,22 +37,13 @@ describe("writeMcpAuditEvent", () => {
       }),
     ).resolves.toBeUndefined();
 
-    expect(mock.from).toHaveBeenCalledWith("agent_integration_events");
-    expect(mock.insert).toHaveBeenCalledWith({
-      owner_user_id: PRINCIPAL.ownerUserId,
-      token_id: null,
-      oauth_client_id: PRINCIPAL.oauthClientId,
-      grant_id: PRINCIPAL.grantId,
-      action: "mcp_tool_call",
-      resource_type: "mcp_tool",
-      resource_id: null,
-      outcome: "success",
-      ip_address: null,
-      request_id: "request-1",
-      tool_name: "ega_list_projects",
-      metadata: { resultCount: 3 },
-      duration_ms: 12,
-      error_code: null,
+    expect(mock.rpc).toHaveBeenCalledWith("record_mcp_audit_event", {
+      p_request_id: "request-1",
+      p_tool_name: "ega_list_projects",
+      p_outcome: "success",
+      p_duration_ms: 12,
+      p_error_code: null,
+      p_metadata: { resultCount: 3 },
     });
   });
 
@@ -70,13 +59,51 @@ describe("writeMcpAuditEvent", () => {
       errorCode: "DEPENDENCY_UNAVAILABLE",
     });
 
-    expect(mock.insert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outcome: "error",
-        error_code: "DEPENDENCY_UNAVAILABLE",
-        metadata: {},
+    expect(mock.rpc).toHaveBeenCalledWith("record_mcp_audit_event", expect.objectContaining({
+      p_outcome: "error",
+      p_error_code: "DEPENDENCY_UNAVAILABLE",
+      p_metadata: {},
+    }));
+  });
+
+  it("does not send caller-controlled principal identity to the RPC", async () => {
+    const mock = createClient({ data: "20000000-0000-0000-0000-000000000002", error: null });
+
+    await writeMcpAuditEvent(mock.client, {
+      principal: PRINCIPAL,
+      requestId: "request-identity",
+      toolName: "ega_list_tasks",
+      outcome: "success",
+      durationMs: 1,
+    });
+
+    expect(mock.rpc.mock.calls[0]?.[1]).not.toEqual(expect.objectContaining({
+      owner_user_id: expect.anything(),
+      oauth_client_id: expect.anything(),
+      grant_id: expect.anything(),
+      resource_uri: expect.anything(),
+    }));
+    expect(mock.rpc.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      p_request_id: "request-identity",
+      p_tool_name: "ega_list_tasks",
+      p_outcome: "success",
+    }));
+  });
+
+  it("rejects an RPC failure without exposing database details", async () => {
+    const mock = createClient({
+      error: { message: "permission denied: sensitive database detail" },
+    });
+
+    await expect(
+      writeMcpAuditEvent(mock.client, {
+        principal: PRINCIPAL,
+        requestId: "request-rpc-error",
+        toolName: "ega_list_tasks",
+        outcome: "success",
+        durationMs: 1,
       }),
-    );
+    ).rejects.toThrow("Failed to persist EGA MCP audit event.");
   });
 
   it("rejects negative or non-integer durations before writing", async () => {
@@ -91,22 +118,6 @@ describe("writeMcpAuditEvent", () => {
         durationMs: -1,
       }),
     ).rejects.toThrow("MCP audit duration must be a non-negative integer.");
-    expect(mock.from).not.toHaveBeenCalled();
-  });
-
-  it("redacts database write errors", async () => {
-    const mock = createClient({
-      error: { message: "sensitive database detail" },
-    });
-
-    await expect(
-      writeMcpAuditEvent(mock.client, {
-        principal: PRINCIPAL,
-        requestId: "request-4",
-        toolName: "ega_list_tasks",
-        outcome: "success",
-        durationMs: 1,
-      }),
-    ).rejects.toThrow("Failed to persist EGA MCP audit event.");
+    expect(mock.rpc).not.toHaveBeenCalled();
   });
 });

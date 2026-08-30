@@ -78,6 +78,55 @@ function textPayload(result: { content: Array<{ type: string; text?: string }> }
 }
 
 describe("MCP v2 real client E2E over the production route", () => {
+  it("rejects the official SDK legacy default and accepts the pinned modern client", async () => {
+    const legacy = createEgaMcpClient(runtime.runtime, "ro-token", { protocolMode: "legacy" });
+    await expect(legacy.client.connect(legacy.transport)).rejects.toThrow();
+    await legacy.client.close().catch(() => undefined);
+
+    const modern = await connectEgaMcpClient(runtime.runtime, "ro-token");
+    await modern.close();
+  });
+
+  it("modern read calls return every registered output contract and persist audit events", async () => {
+    const project = runtime.store.seed("projects", {
+      owner_user_id: OWNER_USER_IDS.readOnly,
+      name: "Contract Project",
+      slug: "contract-project",
+      description: null,
+    });
+    const task = runtime.store.seed("tasks", {
+      owner_user_id: OWNER_USER_IDS.readOnly,
+      project_id: project.id,
+      title: "Contract Task",
+      status: "todo",
+      priority: "medium",
+    });
+
+    const { client, close } = await connectEgaMcpClient(runtime.runtime, "ro-token");
+    try {
+      const calls = [
+        ["ega_get_capabilities", {}],
+        ["ega_list_projects", {}],
+        ["ega_list_goals", {}],
+        ["ega_list_tasks", {}],
+        ["ega_get_task", { taskId: task.id }],
+        ["ega_get_today_plan", { date: "2026-08-28" }],
+        ["ega_list_timer_sessions", {}],
+      ] as const;
+
+      for (const [name, args] of calls) {
+        const result = await client.callTool({ name, arguments: args });
+        expect(result.isError, `${name} should succeed`).toBeFalsy();
+        expect(result.structuredContent, `${name} should have structuredContent`).toMatchObject({ ok: true });
+      }
+
+      expect(runtime.store.auditEvents.map((event) => event.toolName)).toEqual(calls.map(([name]) => name));
+      expect(runtime.store.tables.get("agent_integration_events")).toHaveLength(calls.length);
+    } finally {
+      await close();
+    }
+  });
+
   it("read-only principal: real client negotiates, lists reads, and every write attempt is refused", async () => {
     runtime.store.seed("projects", {
       owner_user_id: OWNER_USER_IDS.readOnly,
