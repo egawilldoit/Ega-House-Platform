@@ -731,6 +731,7 @@ export class FakeSupabaseTimeContextRepository {
   constructor(private readonly client: SupabaseClient<McpDatabase>) {}
 
   async getTimezone(_actor: { userId: string }): Promise<{ ok: true; value: null }> {
+    void _actor;
     return { ok: true, value: null };
   }
 
