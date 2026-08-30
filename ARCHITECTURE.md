@@ -145,7 +145,7 @@ Root database ownership is intentionally separate from `apps/web` and `apps/serv
 
 Do not infer that physical app placement owns schema authority.
 
-## 6. MCP v2 (2026-07-28) — stateless agent interface
+## 6. MCP v2 (2026-07-28) — modern-only stateless agent interface
 
 `apps/web` hosts the MCP endpoint at `POST /api/mcp` (stateless, `createMcpHandler`-style).
 
@@ -163,16 +163,16 @@ MCP client (SDK v2, 2026-07-28)
   → PostgREST/RLS
 ```
 
-- **SDK:** `@modelcontextprotocol/server` `2.0.0` / `client` `2.0.0` / `core` `2.0.0` (`zod` `^3.25.0` + `zod-v4` alias `npm:zod@^4.2.0` for MCP schemas per SDK guide), protocol `2026-07-28`, stateless per-request `createMcpHandler` → `handler.fetch(request,{authInfo})` → `ctx.http.authInfo`, `ServerContext` (`ctx.mcpReq.inputResponses`, `ctx.mcpReq.requestState<T>()`).
-- **Discovery:** `server/discover` via `createMcpHandler` (ttl 0, private), `MCP-Protocol-Version`/`Mcp-Method`/`Mcp-Name` validated against body (400 / `-32020`), never authorized; no `Mcp-Session-Id`.
+- **SDK:** `@modelcontextprotocol/server` `2.0.0` / `client` `2.0.0` / `core` `2.0.0` (`zod` `^3.25.0` + `zod-v4` alias `npm:zod@^4.2.0` for MCP schemas per SDK guide), protocol `2026-07-28` only, stateless per-request `createMcpHandler` with `legacy: "reject"` → `handler.fetch(request,{authInfo})` → `ctx.http.authInfo`, `ServerContext` (`ctx.mcpReq.inputResponses`, `ctx.mcpReq.requestState<T>()`).
+- **Discovery:** `server/discover` via `createMcpHandler` (ttl 0, private); `MCP-Protocol-Version` is required and must be `2026-07-28`, while `Mcp-Method`/`Mcp-Name` are validated against body (400 / `-32020`) and never authorized; no `Mcp-Session-Id`.
 - **Auth/Host/Origin:** `withEgaMcpAuth` verifies bearer → `loadActiveMcpGrant` → `principal`; `web-transport-handler` does explicit `Host` (`request.url` host) and `Origin` (allow missing for server-to-server, else must match `resource.origin`, localhost dev allowed), bounded body, correct POST/OPTIONS/GET, CORS `Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name`.
 - **Reads runtime:** `ega_get_capabilities`, `ega_list_projects`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan` (via `SupabaseTodayReadPort`), and `ega_list_timer_sessions` (via `SupabaseTimerSessionRepository`) — owner-scoped, bounded, strict `zod-v4` schemas, no `ownerUserId` from caller.
 - **Writes runtime (23):** the catalog covers project, goal, task/reminder, Today, and timer create/update/archive operations; `ega_clear_completed_today` uses MRTR `inputRequired` + `requestState`. All writes require `operationId: uuid`, `workspace_manager` permission where applicable, `MCP_WRITES_ENABLED`, and the fail-closed ledger. The complete runtime catalog and profile matrix live in [`docs/implementation/2026-08-28-mcp-capability-coverage.md`](docs/implementation/2026-08-28-mcp-capability-coverage.md).
 - **MRTR:** `MCP_REQUEST_STATE_SECRET` (32+ bytes, shared) → `createRequestStateCodec({key, ttlSeconds:300})` HMAC-SHA256 `base64url(json{ p, exp })` `timingSafeEqual`, binding `{user,client,grantId/version,resource,tool,operationId,argsHash,targetDate,phase}`; `ServerOptions.requestState.verify` + `ctx.mcpReq.requestState<T>()` + `inputRequired`/`acceptedContent`; tamper/expiry/grant-revoked/args-changed → `-32602`/`INVALID_ARGUMENT`.
 - **Idempotency:** `mcp_mutation_receipts(owner,client,tool,opId,args_hash,result_payload)` PK + `mcp_claim_mutation_receipt`/`mcp_store_mutation_result` SECURITY DEFINER with `ON CONFLICT` and `pg_advisory_xact_lock`, fail-closed, `createHash(sha256, canonical JSON)` for args. Create-domain fencing is complete for projects, goals, tasks, reminders, and sessions: domain inserts carry the authenticated owner/client operation identity, and only the matching named unique collision replays the canonical row through request-scoped RLS.
 - **Update guarantee:** status, archive, Today projection, and timer stop/clear mutations remain at-least-once but idempotent; the exactly-once claim is limited to insert-style create effects.
-- **Audit/Rate:** `agent_integration_events` + `consumeMcpRateLimit` (reads 120/min, writes 30/min) via `audited-read/write-handlers` (mutation-safe: ledger before success, audit failure logged not swallowed).
-- **Migrations:** current-main migrations `0045_notification_subsystem` through `0049_operator_proposals` are followed by MCP migrations `0050_mcp_workspace_manager` through `0059_mcp_domain_operation_fencing`; production application status is environment-specific and must be verified from migration history.
+- **Audit/Rate:** `agent_integration_events` is written by `record_mcp_audit_event` (0061), a claim-bound `SECURITY DEFINER` RPC that derives OAuth owner/client/resource and active-grant identity from the verified JWT; `consumeMcpRateLimit` (reads 120/min, writes 30/min) remains RPC-backed. Audited handlers stay fail-closed for required read audit persistence.
+- **Migrations:** current-main migrations `0045_notification_subsystem` through `0049_operator_proposals` are followed by MCP migrations `0050_mcp_workspace_manager` through `0061_mcp_audit_event_rpc`; production application status is environment-specific and must be verified from migration history.
 - **Runbook:** `docs/implementation/2026-08-28-mcp-v2-read-write-runbook.md` (rollback `MCP_WRITES_ENABLED=false`, no destructive down migration).
 
 ## 7. Autonomous delivery architecture

@@ -108,7 +108,7 @@ export type McpWriteToolHandlers = {
     input: { goalId: string; operationId: string },
     context?: McpProtocolContext,
   ) => Promise<CallToolResult>;
-  /** Legacy handler compatibility; ega_get_task is registered exclusively as a read tool. */
+  /** Read-handler compatibility; ega_get_task is registered exclusively as a read tool. */
   getTask: (
     authInfo: AuthInfo | undefined,
     input: { taskId: string },

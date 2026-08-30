@@ -583,6 +583,20 @@ async function resolveActiveGrant(conn) {
   return conn.unsafe(`SELECT * FROM public.resolve_active_mcp_grant()`);
 }
 
+async function recordAuditEvent(conn, requestId = "audit-proof-request") {
+  const [row] = await conn.unsafe(`
+    SELECT public.record_mcp_audit_event(
+      $1,
+      'ega_list_projects',
+      'success',
+      12,
+      NULL,
+      '{"resultCount":1}'::jsonb
+    ) AS event_id
+  `, [requestId]);
+  return row?.event_id;
+}
+
 async function assertGrantResolutionRpc(sql) {
   await insertGrant(sql, RPC_REVOKED_GRANT, "revoked", "read_only", CURRENT_READ_ONLY_PERMISSIONS);
   await insertGrant(sql, RPC_FAILED_GRANT, "failed", "read_only", CURRENT_READ_ONLY_PERMISSIONS);
@@ -619,6 +633,74 @@ async function assertGrantResolutionRpc(sql) {
   `, [GRANT_ID]));
   assert(directRows.length === 0, "OAuth direct grant-table SELECT must remain hidden by RLS");
   log("GRANT-RPC", "Matching OAuth claims resolved exactly one grant; mismatched, terminal, anonymous, and direct-table paths resolved none.");
+}
+
+async function assertAuditEventRpc(sql) {
+  const before = await sql`
+    SELECT count(*)::int AS count
+    FROM public.agent_integration_events
+    WHERE action = 'mcp_tool_call' AND request_id = 'audit-proof-request'
+  `;
+  const eventId = await mcpSession(sql).run((tx) => recordAuditEvent(tx));
+  assert(typeof eventId === "string", "claim-bound audit RPC must return the inserted event id");
+
+  const [event] = await sql`
+    SELECT owner_user_id, oauth_client_id, grant_id, action, resource_type, outcome,
+           request_id, tool_name, metadata, duration_ms, error_code
+    FROM public.agent_integration_events
+    WHERE id = ${eventId}::uuid
+  `;
+  assert(
+    event?.owner_user_id === OWNER_A
+      && event.oauth_client_id === CLIENT_ID
+      && event.grant_id === GRANT_ID
+      && event.action === "mcp_tool_call"
+      && event.resource_type === "mcp_tool"
+      && event.outcome === "success"
+      && event.request_id === "audit-proof-request"
+      && event.tool_name === "ega_list_projects"
+      && event.duration_ms === 12
+      && event.error_code === null
+      && JSON.stringify(event.metadata) === JSON.stringify({ resultCount: 1 }),
+    `audit RPC stored unexpected identity or event fields: ${JSON.stringify(event)}`,
+  );
+
+  await expectDenied("OAuth direct audit-event INSERT", () => mcpSession(sql).run((tx) => tx.unsafe(`
+    INSERT INTO public.agent_integration_events (owner_user_id, action, outcome)
+    VALUES ($1::uuid, 'mcp_tool_call', 'success')
+  `, [OWNER_A])));
+
+  const [after] = await sql`
+    SELECT count(*)::int AS count
+    FROM public.agent_integration_events
+    WHERE action = 'mcp_tool_call' AND request_id = 'audit-proof-request'
+  `;
+  assert(after.count === before[0].count + 1, "direct OAuth audit INSERT must not create an additional row");
+
+  const deniedBefore = await sql`
+    SELECT count(*)::int AS count
+    FROM public.agent_integration_events
+    WHERE action = 'mcp_tool_call' AND request_id LIKE 'audit-denied-%'
+  `;
+  const deniedContexts = [
+    ["wrong owner", mcpSession(sql, { userId: OWNER_B })],
+    ["wrong client", mcpSession(sql, { clientId: "wrong-audit-client" })],
+    ["wrong resource", mcpSession(sql, { resource: "https://evil.example.com/api/mcp" })],
+    ["revoked grant", mcpSession(sql, { clientId: RPC_REVOKED_GRANT.client })],
+    ["failed grant", mcpSession(sql, { clientId: RPC_FAILED_GRANT.client })],
+    ["pending grant", mcpSession(sql, { clientId: RPC_PENDING_GRANT.client })],
+    ["anonymous", mcpSession(sql, { userId: null })],
+  ];
+  for (const [label, session] of deniedContexts) {
+    await expectDenied(`audit RPC ${label}`, () => session.run((tx) => recordAuditEvent(tx, `audit-denied-${label.replaceAll(" ", "-")}`)));
+  }
+  const [deniedAfter] = await sql`
+    SELECT count(*)::int AS count
+    FROM public.agent_integration_events
+    WHERE action = 'mcp_tool_call' AND request_id LIKE 'audit-denied-%'
+  `;
+  assert(deniedAfter.count === deniedBefore[0].count, "denied audit contexts must not insert events");
+  log("AUDIT-RPC", "Claim-bound audit RPC inserted the exact event; direct OAuth table INSERT remained denied.");
 }
 
 async function expectDenied(label, fn) {
@@ -1106,6 +1188,7 @@ async function receiptStatus(sql, operationId) {
 async function runProofPhases(sql) {
   await seedActiveGrant(sql);
   await assertGrantResolutionRpc(sql);
+  await assertAuditEventRpc(sql);
   const session = mcpSession(sql);
   const fpA = fingerprint({ title: "Proof task", projectId: "p1" });
   const fpB = fingerprint({ title: "Different task", projectId: "p1" });
