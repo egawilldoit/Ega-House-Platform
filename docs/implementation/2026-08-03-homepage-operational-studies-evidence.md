@@ -1,8 +1,8 @@
 # Homepage, Auth, and Scrollytelling Polish — Implementation Evidence
 
-**Date:** 2026-08-03  
-**Branch:** `feat/homepage-operational-studies`  
-**Pull request:** `#117`  
+**Date:** 2026-08-03
+**Branch:** `feat/homepage-operational-studies`
+**Pull request:** `#117`
 **Verified scrollytelling implementation head:** `76909066cdc89ee23a0d4ddb592ae8a8cbff4500`
 
 ## Delivered scope

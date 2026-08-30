@@ -2,8 +2,41 @@ import type { RepositoryFailure } from "@ega/application";
 
 type SupabaseErrorLike = {
   code?: string;
+  constraint?: string;
+  details?: string;
+  hint?: string;
   message?: string;
 };
+
+export type McpOperationIdentity = Readonly<{
+  mcpOperationId: string;
+  mcpClientId: string;
+}>;
+
+export function mcpOperationIdentity(
+  input: Readonly<{ mcpOperationId?: string | null; mcpClientId?: string | null }>,
+): McpOperationIdentity | null {
+  if (!input.mcpOperationId || !input.mcpClientId) return null;
+  return {
+    mcpOperationId: input.mcpOperationId,
+    mcpClientId: input.mcpClientId,
+  };
+}
+
+/**
+ * Recognize one expected domain-fencing collision without turning unrelated
+ * unique violations into successful replays.
+ */
+export function isSupabaseUniqueConstraintViolation(
+  error: SupabaseErrorLike | null,
+  constraintName: string,
+): boolean {
+  if (!error || error.code !== "23505") return false;
+
+  return [error.constraint, error.message, error.details, error.hint]
+    .filter((value): value is string => Boolean(value))
+    .some((value) => value.includes(constraintName));
+}
 
 /**
  * Translate a raw Supabase persistence error into the deliberately small,

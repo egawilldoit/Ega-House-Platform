@@ -17,7 +17,11 @@ import type {
 import type { TaskRecurrenceRule } from "@ega/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { sanitizeSupabaseError } from "../supabase/errors";
+import {
+  isSupabaseUniqueConstraintViolation,
+  mcpOperationIdentity,
+  sanitizeSupabaseError,
+} from "../supabase/errors";
 
 /** Hard ceiling on task rows fetched per list request; keeps payloads bounded. */
 const TASK_LIST_ROW_CAP = 500;
@@ -248,6 +252,7 @@ export class SupabaseTasksRepository implements TasksRepository {
   }
 
   async createTask(actor: AuthenticatedActor, input: CreateTaskRecordInput): Promise<RepositoryResult<TaskRecord>> {
+    const identity = mcpOperationIdentity(input);
     const result = await this.supabase
       .from("tasks")
       .insert({
@@ -267,11 +272,25 @@ export class SupabaseTasksRepository implements TasksRepository {
         scheduled_end_at: input.scheduledEndAt ?? null,
         calendar_sync_enabled: input.calendarSyncEnabled ?? false,
         calendar_reminder_minutes: input.calendarReminderMinutes ?? 10,
+        ...(identity
+          ? {
+              mcp_operation_id: identity.mcpOperationId,
+              mcp_client_id: identity.mcpClientId,
+            }
+          : {}),
       })
       .select(TASK_SELECT)
       .single();
 
-    if (result.error || !result.data) return failure(result.error);
+    if (result.error) {
+      if (identity && isSupabaseUniqueConstraintViolation(result.error, "tasks_mcp_operation_unique")) {
+        const replay = await this.findTaskByOperation(actor, identity);
+        if (replay.ok && replay.value) return { ok: true, value: replay.value };
+        if (!replay.ok) return replay;
+      }
+      return failure(result.error);
+    }
+    if (!result.data) return failure(null);
     const createdRow = asRow(result.data);
 
     if (input.recurrence) {
@@ -352,11 +371,14 @@ export class SupabaseTasksRepository implements TasksRepository {
       remindAt: string;
       channel: "email";
       status: "pending";
+      mcpOperationId?: string;
+      mcpClientId?: string;
       deliveryMode?: "push" | "email" | "both";
       source?: string | null;
       sourceId?: string | null;
     }>,
   ): Promise<RepositoryResult<TaskRecord>> {
+    const identity = mcpOperationIdentity(input);
     const result = await this.supabase.from("task_reminders").insert({
       owner_user_id: actor.userId,
       task_id: input.taskId,
@@ -366,13 +388,26 @@ export class SupabaseTasksRepository implements TasksRepository {
       status: input.status,
       ...(input.source ? { source: input.source } : {}),
       ...(input.sourceId ? { source_id: input.sourceId } : {}),
+      ...(identity
+        ? {
+            mcp_operation_id: identity.mcpOperationId,
+            mcp_client_id: identity.mcpClientId,
+        }
+        : {}),
     });
     if (result.error) {
-      const code = String((result.error as unknown as { code?: string })?.code ?? "");
-      const msg = String((result.error as unknown as { message?: string })?.message ?? "");
-      const isDuplicate = code.includes("23505") || /duplicate|unique/i.test(msg);
-      // If duplicate due to source idempotency, treat as success: fetch existing task with reminders
-      if (isDuplicate && input.source && input.sourceId) {
+      if (identity && isSupabaseUniqueConstraintViolation(result.error, "task_reminders_mcp_operation_unique")) {
+        const replay = await this.findReminderByOperation(actor, identity);
+        if (replay.ok && replay.value) return { ok: true, value: replay.value };
+        if (!replay.ok) return replay;
+      }
+      if (
+        input.source &&
+        input.sourceId &&
+        isSupabaseUniqueConstraintViolation(result.error, "task_reminders_owner_source_source_id_unique")
+      ) {
+        // Smart Inbox/source idempotency is a separate invariant from MCP
+        // operation fencing. Only its named unique index can replay here.
         const task = await this.getTask(actor, input.taskId);
         return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
       }
@@ -380,6 +415,24 @@ export class SupabaseTasksRepository implements TasksRepository {
     }
 
     const task = await this.getTask(actor, input.taskId);
+    return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
+  }
+
+  async findReminderByOperation(
+    actor: AuthenticatedActor,
+    identity: { mcpOperationId: string; mcpClientId: string },
+  ): Promise<RepositoryResult<TaskRecord | null>> {
+    const result = await this.supabase
+      .from("task_reminders")
+      .select("task_id")
+      .eq("owner_user_id", actor.userId)
+      .eq("mcp_client_id", identity.mcpClientId)
+      .eq("mcp_operation_id", identity.mcpOperationId)
+      .maybeSingle();
+    if (result.error) return failure(result.error);
+    if (!result.data) return { ok: true, value: null };
+
+    const task = await this.getTask(actor, String((result.data as Row).task_id));
     return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
   }
 
@@ -430,6 +483,26 @@ export class SupabaseTasksRepository implements TasksRepository {
 
     const task = await this.getTask(actor, input.taskId);
     return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
+  }
+
+  private async findTaskByOperation(
+    actor: AuthenticatedActor,
+    identity: { mcpOperationId: string; mcpClientId: string },
+  ): Promise<RepositoryResult<TaskRecord | null>> {
+    const result = await this.supabase
+      .from("tasks")
+      .select(TASK_SELECT)
+      .eq("owner_user_id", actor.userId)
+      .eq("mcp_client_id", identity.mcpClientId)
+      .eq("mcp_operation_id", identity.mcpOperationId)
+      .maybeSingle();
+
+    if (result.error) return failure(result.error);
+    if (!result.data) return { ok: true, value: null };
+
+    const hydrated = await this.hydrateTasks(actor, [asRow(result.data)]);
+    if (!hydrated.ok) return hydrated;
+    return { ok: true, value: hydrated.value[0] ?? null };
   }
 
   async setPlannedDate(

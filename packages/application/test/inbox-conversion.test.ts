@@ -249,6 +249,7 @@ class FakeTasksRepository implements TasksRepository {
     this.taskStore.set(input.taskId, updated);
     return ok(updated);
   }
+  async findReminderByOperation() { return ok(null as TaskRecord | null); }
   async cancelReminder() { return ok(taskRecord()); }
   async getFocusRank() { return ok({ exists: true, focusRank: null }); }
   async getMaxFocusRank() { return ok(0); }

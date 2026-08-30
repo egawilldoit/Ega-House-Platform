@@ -1,5 +1,5 @@
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
@@ -15,6 +15,16 @@ import {
   type McpTaskFilters,
 } from "@/lib/mcp/read-repository";
 import {
+  getTaskReadModel,
+  getTodayPlan as getTodayPlanFromApplication,
+} from "@ega/application";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+  SupabaseTimerSessionRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
+import {
   McpToolAuthorizationError,
   requireMcpPermission,
 } from "@/lib/mcp/tool-authorization";
@@ -24,6 +34,13 @@ export type McpReadToolDependencies = {
   listProjects: typeof listMcpProjects;
   listGoals: typeof listMcpGoals;
   listTasks: typeof listMcpTasks;
+  getTask?: (
+    client: SupabaseClient<McpDatabase>,
+    ownerUserId: string,
+    taskId: string,
+  ) => ReturnType<typeof getTaskReadModel>;
+  getTodayPlan?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, date: string) => Promise<unknown>;
+  listTimerSessions?: (client: SupabaseClient<McpDatabase>, ownerUserId: string, limit: number) => Promise<unknown>;
 };
 
 const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
@@ -33,11 +50,18 @@ const DEFAULT_DEPENDENCIES: McpReadToolDependencies = {
   listProjects: listMcpProjects,
   listGoals: listMcpGoals,
   listTasks: listMcpTasks,
+  getTask: (client, ownerUserId, taskId) =>
+    getTaskReadModel(
+      { userId: ownerUserId },
+      new SupabaseTasksRepository(client as never),
+      taskId,
+    ),
 };
 
 type ToolErrorCode =
   | "UNAUTHENTICATED"
   | "PERMISSION_DENIED"
+  | "NOT_FOUND"
   | "DEPENDENCY_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
@@ -188,6 +212,99 @@ export function createMcpReadToolHandlers(
           input,
         );
         return resultFromPayload({ ok: true, tasks, count: tasks.length });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async getTask(
+      authInfo: AuthInfo | undefined,
+      input: { taskId: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "tasks.read");
+        const result = await (dependencies.getTask ?? DEFAULT_DEPENDENCIES.getTask!)(
+          createClient(dependencies, authInfo!),
+          principal.ownerUserId,
+          input.taskId,
+        );
+        if (!result.ok) {
+          throw new Error("Failed to load EGA task.");
+        }
+        if (!result.data) {
+          return {
+            ...resultFromPayload({
+              ok: false,
+              error: { code: "NOT_FOUND", message: "Task not found." },
+            }),
+            isError: true,
+          };
+        }
+        return resultFromPayload({ ok: true, task: result.data });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async getTodayPlan(
+      authInfo: AuthInfo | undefined,
+      input: { date?: string },
+    ): Promise<CallToolResult> {
+      try {
+        const principal = requireMcpPermission(authInfo, "today.read");
+        const client = createClient(dependencies, authInfo!);
+        const port = new SupabaseTodayReadPort(client as unknown as never);
+        const result = await getTodayPlanFromApplication(
+          { userId: principal.ownerUserId } as never,
+          port as never,
+          new SupabaseTimeContextRepository(client as never),
+          { date: input.date },
+        );
+        if (!result.ok) {
+          return resultFromPayload({
+            ok: false,
+            error: { code: "DEPENDENCY_UNAVAILABLE", message: "EGA House data is temporarily unavailable." },
+          });
+        }
+        const plan = result.data as unknown as {
+          date?: string;
+          sections?: { planned?: unknown[]; inProgress?: unknown[]; blocked?: unknown[] };
+          suggestions?: { pinned?: unknown[]; inProgress?: unknown[] };
+          summary?: unknown;
+          activeTimer?: unknown;
+        };
+        const planned = plan.sections?.planned ?? [];
+        const inProgress = plan.sections?.inProgress ?? [];
+        const blocked = plan.sections?.blocked ?? [];
+        return resultFromPayload({
+          ok: true,
+          today: plan.date ?? input.date ?? new Date().toISOString().slice(0, 10),
+          selectedCount: planned.length + inProgress.length + blocked.length,
+          sections: plan.sections ?? { planned: [], inProgress: [], blocked: [] },
+          suggestions: plan.suggestions ?? { pinned: [], inProgress: [] },
+          summary: plan.summary ?? null,
+          activeTimer: plan.activeTimer ?? null,
+        });
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+
+    async listTimerSessions(
+      authInfo: AuthInfo | undefined,
+      input: { limit?: number; includeClosed?: boolean },
+    ): Promise<CallToolResult> {
+      try {
+        requireMcpPermission(authInfo, "timer.read");
+        const principal = requirePrincipal(authInfo);
+        const client = createClient(dependencies, authInfo!);
+        const limit = input.limit ?? 25;
+        const timerRepo = new SupabaseTimerSessionRepository(client as unknown as never);
+        const actor = { userId: principal.ownerUserId } as unknown as never;
+        const open = await timerRepo.listOpenSessions(actor as never);
+        const recent = input.includeClosed ? await timerRepo.listRecentSessions(actor as never, { limit } as never) : { ok: true, value: [] } as unknown as { ok: boolean; value: unknown[] };
+        const sessions = [...((open as unknown as { value?: unknown[] }).value ?? []), ...((recent as unknown as { value?: unknown[] }).value ?? [])].slice(0, limit);
+        return resultFromPayload({ ok: true, sessions, count: sessions.length, ownerUserId: principal.ownerUserId, limit });
       } catch (error) {
         return errorResult(error);
       }

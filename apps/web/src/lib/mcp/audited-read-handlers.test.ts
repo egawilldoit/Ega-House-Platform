@@ -1,4 +1,4 @@
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,7 +16,7 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
 };
 
 const AUTH_INFO = createMcpAuthInfo("test-bearer", PRINCIPAL);
@@ -45,6 +45,9 @@ function createBaseHandlers() {
     listProjects: vi.fn().mockResolvedValue(successResult(3)),
     listGoals: vi.fn().mockResolvedValue(successResult(2)),
     listTasks: vi.fn().mockResolvedValue(successResult(1)),
+    getTask: vi.fn().mockResolvedValue(successResult()),
+    getTodayPlan: vi.fn().mockResolvedValue(successResult(0)),
+    listTimerSessions: vi.fn().mockResolvedValue(successResult(0)),
   };
 }
 
@@ -150,6 +153,24 @@ describe("createAuditedMcpReadHandlers", () => {
         outcome: "error",
         errorCode: "DEPENDENCY_UNAVAILABLE",
       }),
+    );
+  });
+
+  it("rate limits and audits ega_get_task as a read tool", async () => {
+    const handlers = createBaseHandlers();
+    const dependencies = createDependencies();
+    const audited = createAuditedMcpReadHandlers(handlers, dependencies);
+
+    await audited.getTask(AUTH_INFO, { taskId: "task-1" });
+
+    expect(handlers.getTask).toHaveBeenCalledWith(AUTH_INFO, { taskId: "task-1" });
+    expect(dependencies.consumeRateLimit).toHaveBeenCalledWith(
+      expect.anything(),
+      "ega_get_task",
+    );
+    expect(dependencies.writeAudit).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ toolName: "ega_get_task", outcome: "success" }),
     );
   });
 

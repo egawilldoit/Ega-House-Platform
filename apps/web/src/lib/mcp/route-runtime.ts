@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
+import type { McpServer } from "@modelcontextprotocol/server";
 
 import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
 import { createAuditedMcpReadHandlers } from "@/lib/mcp/audited-read-handlers";
@@ -17,11 +17,17 @@ import {
 } from "@/lib/mcp/read-repository";
 import { createMcpHandlerTokenVerifier } from "@/lib/mcp/runtime-auth";
 import {
-  registerMcpReadTools,
+  registerMcpToolsForPrincipal,
   type McpReadToolHandlers,
+  type McpWriteToolHandlers,
 } from "@/lib/mcp/server";
+import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
+import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
+import { isValidMcpPrincipal } from "@/lib/mcp/principal";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
+import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
+import { createAuditedMcpWriteHandlers } from "@/lib/mcp/audited-write-handlers";
 
 type RequestHandler = (request: Request) => Response | Promise<Response>;
 type TokenVerifier = (
@@ -45,12 +51,20 @@ type AuthOptions = {
 
 export type McpRouteRuntimeDependencies = {
   createReadHandlers: (config: McpRuntimeConfig) => McpReadToolHandlers;
-  registerReadTools: (
+  createWriteHandlers?: (config: McpRuntimeConfig) => McpWriteToolHandlers;
+  /** @deprecated Compatibility-only; never used as a registration fallback. */
+  registerReadTools?: (
     server: McpServer,
     handlers: McpReadToolHandlers,
   ) => void;
+  registerToolsForPrincipal?: (
+    server: McpServer,
+    readHandlers: McpReadToolHandlers,
+    writeHandlers: McpWriteToolHandlers | undefined,
+    allowedNames: ReadonlySet<string>,
+  ) => void;
   createTransportHandler: (
-    registerServer: (server: McpServer) => void,
+    registerServer: (server: McpServer, authInfo?: AuthInfo) => void,
     serverOptions: Record<string, never>,
     transportOptions: TransportOptions,
   ) => RequestHandler;
@@ -87,9 +101,26 @@ function createReadHandlers(config: McpRuntimeConfig): McpReadToolHandlers {
   });
 }
 
+function createWriteHandlers(config: McpRuntimeConfig): McpWriteToolHandlers {
+  const createUserClient = (accessToken: string) =>
+    createMcpSupabaseClient(accessToken, {
+      supabaseUrl: config.supabaseUrl,
+      publishableKey: config.publishableKey,
+    });
+  const baseHandlers = createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled, config.resource);
+  return createAuditedMcpWriteHandlers(baseHandlers, {
+    createUserClient,
+    consumeRateLimit: consumeMcpRateLimit,
+    writeAudit: writeMcpAuditEvent,
+    nowMs: () => performance.now(),
+    createRequestId: randomUUID,
+  });
+}
+
 const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
   createReadHandlers,
-  registerReadTools: registerMcpReadTools,
+  createWriteHandlers,
+  registerToolsForPrincipal: registerMcpToolsForPrincipal,
   createTransportHandler: createWebMcpHandler,
   createTokenVerifier: createMcpHandlerTokenVerifier,
   wrapAuth: withEgaMcpAuth,
@@ -99,7 +130,7 @@ const PREFLIGHT_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers":
-    "Authorization, Content-Type, MCP-Protocol-Version, MCP-Session-Id",
+    "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -114,8 +145,23 @@ export function createMcpRouteRuntime(
   dependencies: McpRouteRuntimeDependencies = DEFAULT_DEPENDENCIES,
 ): McpRouteRuntime {
   const readHandlers = dependencies.createReadHandlers(config);
+  const writeHandlers = dependencies.createWriteHandlers
+    ? dependencies.createWriteHandlers(config)
+    : undefined;
+  const register = (server: McpServer, authInfo?: AuthInfo) => {
+    if (!authInfo) return;
+    try {
+      const principal = readPrincipalFromAuthInfo(authInfo);
+      if (!isValidMcpPrincipal(principal)) return;
+      // Permission-aware discovery: only tools whose required permission the
+      // principal holds (and the global kill switch permits) are advertised.
+      const allowed = new Set(filterToolsByPermissions(principal.permissions, config.writesEnabled));
+      if (!dependencies.registerToolsForPrincipal) return;
+      dependencies.registerToolsForPrincipal(server, readHandlers, writeHandlers, allowed);
+    } catch { /* Fail closed: an invalid principal receives no registered tools. */ }
+  };
   const transportHandler = dependencies.createTransportHandler(
-    (server) => dependencies.registerReadTools(server, readHandlers),
+    register,
     {},
     {
       basePath: "/api",

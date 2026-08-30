@@ -32,6 +32,8 @@ export type CreateProjectRecordInput = {
   name: string;
   slug: string;
   description: string | null;
+  mcpOperationId?: string;
+  mcpClientId?: string;
 };
 
 export interface ProjectsRepository {

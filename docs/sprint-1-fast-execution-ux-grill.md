@@ -1,7 +1,7 @@
 # Sprint 1 Fast Execution UX - Grill Review and Recommended Release Plan
 
-Source plan: `C:\Users\abmor\Downloads\ega_productivity_features_sprint_plan.md`  
-Repo inspected: `https://github.com/MORTAKI0/Ega-House-Platform` from local checkout on `main`  
+Source plan: `C:\Users\abmor\Downloads\ega_productivity_features_sprint_plan.md`
+Repo inspected: `https://github.com/MORTAKI0/Ega-House-Platform` from local checkout on `main`
 Date: 2026-04-30
 
 ## Scope

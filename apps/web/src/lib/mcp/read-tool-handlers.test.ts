@@ -1,4 +1,4 @@
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,7 +16,7 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
 };
 
 function createDependencies(): McpReadToolDependencies {
@@ -35,6 +35,10 @@ function createDependencies(): McpReadToolDependencies {
     ]),
     listGoals: vi.fn().mockResolvedValue([]),
     listTasks: vi.fn().mockResolvedValue([]),
+    getTask: vi.fn().mockResolvedValue({
+      ok: true,
+      data: { id: "task-1", title: "Ship MCP reads" },
+    }),
   };
 }
 
@@ -54,7 +58,7 @@ describe("MCP read tool handlers", () => {
       ok: true,
       permissionProfile: "read_only",
       permissionsVersion: 1,
-      permissions: ["projects.read", "goals.read", "tasks.read"],
+      permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
       writesEnabled: false,
     });
     expect(dependencies.createUserClient).not.toHaveBeenCalled();
@@ -119,6 +123,41 @@ describe("MCP read tool handlers", () => {
         limit: 20,
       },
     );
+  });
+
+  it("gets one task through the canonical owner-scoped read model", async () => {
+    const dependencies = createDependencies();
+    const handlers = createMcpReadToolHandlers(dependencies, false);
+    const authInfo = createMcpAuthInfo("test-bearer", PRINCIPAL);
+
+    const result = await handlers.getTask(authInfo, { taskId: "task-1" });
+
+    expect(dependencies.getTask).toHaveBeenCalledWith(
+      expect.anything(),
+      PRINCIPAL.ownerUserId,
+      "task-1",
+    );
+    expect(readStructuredContent(result)).toEqual({
+      ok: true,
+      task: { id: "task-1", title: "Ship MCP reads" },
+    });
+  });
+
+  it("returns NOT_FOUND when the canonical read model has no task in scope", async () => {
+    const dependencies = createDependencies();
+    vi.mocked(dependencies.getTask!).mockResolvedValue({ ok: true, data: null });
+    const handlers = createMcpReadToolHandlers(dependencies, false);
+
+    const result = await handlers.getTask(
+      createMcpAuthInfo("test-bearer", PRINCIPAL),
+      { taskId: "task-1" },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(readStructuredContent(result)).toEqual({
+      ok: false,
+      error: { code: "NOT_FOUND", message: "Task not found." },
+    });
   });
 
   it("returns a structured permission error before creating a client", async () => {

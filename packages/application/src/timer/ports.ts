@@ -26,9 +26,18 @@ export interface TimerSessionRepository {
     actor: AuthenticatedActor,
     input: Readonly<{ taskId: string }>,
   ): Promise<RepositoryResult<StartableTask | null>>;
+  findSessionByOperation(
+    actor: AuthenticatedActor,
+    input: Readonly<{ mcpOperationId: string; mcpClientId: string }>,
+  ): Promise<RepositoryResult<TimerSessionRecord | null>>;
   insertOpenSession(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; startedAtIso: string }>,
+    input: Readonly<{
+      taskId: string;
+      startedAtIso: string;
+      mcpOperationId?: string;
+      mcpClientId?: string;
+    }>,
   ): Promise<RepositoryResult<TimerSessionRecord>>;
   finalizeOpenSession(
     actor: AuthenticatedActor,

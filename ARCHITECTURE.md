@@ -1,6 +1,6 @@
 # EGA House Architecture
 
-**Living current-system map. Last code-truth refresh: 2026-08-27 (notification subsystem V1 on `feat/notification-system-v1`, migration 0045 not yet applied to prod, no real-device push proof yet).**
+**Living current-system map. Last code-truth refresh: 2026-08-30 (current `main` product capabilities integrated with MCP V2; production deployment status is tracked separately in the final merge report).**
 
 This document describes the repository architecture that is currently present. Executable code, migrations, runtime evidence, and external-system evidence outrank this map when the repository changes. Normative requirements live in the authority chain defined by [`docs/agent-context/product-authority.md`](docs/agent-context/product-authority.md).
 
@@ -145,7 +145,37 @@ Root database ownership is intentionally separate from `apps/web` and `apps/serv
 
 Do not infer that physical app placement owns schema authority.
 
-## 6. Autonomous delivery architecture
+## 6. MCP v2 (2026-07-28) — stateless agent interface
+
+`apps/web` hosts the MCP endpoint at `POST /api/mcp` (stateless, `createMcpHandler`-style).
+
+```text
+MCP client (SDK v2, 2026-07-28)
+  → POST /api/mcp
+  → Authorization: Bearer <Supabase JWT> (aud=resource, client_id)
+  → verifyAccessToken → loadActiveMcpGrant → principal (owner, client, grant, permissionsVersion, permissions)
+  → MCP_AUTHORIZED_SCOPE + has_active_mcp_permission(perm) + RLS (private.has_active_mcp_permission)
+  → permission-aware tool catalog (read vs workspace_manager)
+  → audited handler (rate limit + audit)
+  → AuthenticatedActor{userId: principal.ownerUserId}
+  → @ega/application (workflow authority, no duplication)
+  → @ega/data-access (Supabase adapter, request-scoped client)
+  → PostgREST/RLS
+```
+
+- **SDK:** `@modelcontextprotocol/server` `2.0.0` / `client` `2.0.0` / `core` `2.0.0` (`zod` `^3.25.0` + `zod-v4` alias `npm:zod@^4.2.0` for MCP schemas per SDK guide), protocol `2026-07-28`, stateless per-request `createMcpHandler` → `handler.fetch(request,{authInfo})` → `ctx.http.authInfo`, `ServerContext` (`ctx.mcpReq.inputResponses`, `ctx.mcpReq.requestState<T>()`).
+- **Discovery:** `server/discover` via `createMcpHandler` (ttl 0, private), `MCP-Protocol-Version`/`Mcp-Method`/`Mcp-Name` validated against body (400 / `-32020`), never authorized; no `Mcp-Session-Id`.
+- **Auth/Host/Origin:** `withEgaMcpAuth` verifies bearer → `loadActiveMcpGrant` → `principal`; `web-transport-handler` does explicit `Host` (`request.url` host) and `Origin` (allow missing for server-to-server, else must match `resource.origin`, localhost dev allowed), bounded body, correct POST/OPTIONS/GET, CORS `Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name`.
+- **Reads runtime:** `ega_get_capabilities`, `ega_list_projects`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan` (via `SupabaseTodayReadPort`), and `ega_list_timer_sessions` (via `SupabaseTimerSessionRepository`) — owner-scoped, bounded, strict `zod-v4` schemas, no `ownerUserId` from caller.
+- **Writes runtime (23):** the catalog covers project, goal, task/reminder, Today, and timer create/update/archive operations; `ega_clear_completed_today` uses MRTR `inputRequired` + `requestState`. All writes require `operationId: uuid`, `workspace_manager` permission where applicable, `MCP_WRITES_ENABLED`, and the fail-closed ledger. The complete runtime catalog and profile matrix live in [`docs/implementation/2026-08-28-mcp-capability-coverage.md`](docs/implementation/2026-08-28-mcp-capability-coverage.md).
+- **MRTR:** `MCP_REQUEST_STATE_SECRET` (32+ bytes, shared) → `createRequestStateCodec({key, ttlSeconds:300})` HMAC-SHA256 `base64url(json{ p, exp })` `timingSafeEqual`, binding `{user,client,grantId/version,resource,tool,operationId,argsHash,targetDate,phase}`; `ServerOptions.requestState.verify` + `ctx.mcpReq.requestState<T>()` + `inputRequired`/`acceptedContent`; tamper/expiry/grant-revoked/args-changed → `-32602`/`INVALID_ARGUMENT`.
+- **Idempotency:** `mcp_mutation_receipts(owner,client,tool,opId,args_hash,result_payload)` PK + `mcp_claim_mutation_receipt`/`mcp_store_mutation_result` SECURITY DEFINER with `ON CONFLICT` and `pg_advisory_xact_lock`, fail-closed, `createHash(sha256, canonical JSON)` for args. Create-domain fencing is complete for projects, goals, tasks, reminders, and sessions: domain inserts carry the authenticated owner/client operation identity, and only the matching named unique collision replays the canonical row through request-scoped RLS.
+- **Update guarantee:** status, archive, Today projection, and timer stop/clear mutations remain at-least-once but idempotent; the exactly-once claim is limited to insert-style create effects.
+- **Audit/Rate:** `agent_integration_events` + `consumeMcpRateLimit` (reads 120/min, writes 30/min) via `audited-read/write-handlers` (mutation-safe: ledger before success, audit failure logged not swallowed).
+- **Migrations:** current-main migrations `0045_notification_subsystem` through `0049_operator_proposals` are followed by MCP migrations `0050_mcp_workspace_manager` through `0059_mcp_domain_operation_fencing`; production application status is environment-specific and must be verified from migration history.
+- **Runbook:** `docs/implementation/2026-08-28-mcp-v2-read-write-runbook.md` (rollback `MCP_WRITES_ENABLED=false`, no destructive down migration).
+
+## 7. Autonomous delivery architecture
 
 The Runner is a separate control plane from the productivity product. Its durable run state belongs to the automation database; queue/Git/Hermes/GitHub/Slack are execution and evidence systems around that state.
 
@@ -182,7 +212,7 @@ Subsystem documents:
 - [`docs/architecture/runner-and-worktrees.md`](docs/architecture/runner-and-worktrees.md)
 - [`docs/architecture/hermes-execution.md`](docs/architecture/hermes-execution.md)
 
-## 7. Current known gaps
+## 8. Current known gaps
 
 ### Platform
 
@@ -203,7 +233,7 @@ The current agent-context authority records these important delivery gaps until 
 
 Do not preserve a gap just because it is written here: if current code/runtime now proves it closed, update this map and the decision/evidence trail in the same bounded change.
 
-## 8. Architecture change protocol
+## 9. Architecture change protocol
 
 For architecture or governance changes:
 

@@ -20,7 +20,6 @@
     "@ega/contracts": "0.1.0",
     "@ega/data-access": "0.1.0",
     "@ega/domain": "0.1.0",
-    "@modelcontextprotocol/sdk": "1.30.0",
     "@sentry/nextjs": "10.68.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",
@@ -33,7 +32,11 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "resend": "^6.12.2",
-    "zod": "^3.25.0"
+    "zod": "^3.25.0",
+    "zod-v4": "npm:zod@^4.2.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "@modelcontextprotocol/client": "2.0.0",
+    "@modelcontextprotocol/core": "2.0.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.53.2",

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import type { AuthInfo } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
@@ -252,6 +252,45 @@ export function createAuditedMcpReadHandlers(
         authInfo,
         context,
         () => handlers.listTasks(authInfo, input),
+      );
+    },
+
+    getTask(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["getTask"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_get_task",
+        authInfo,
+        context,
+        () => handlers.getTask(authInfo, input),
+      );
+    },
+
+    getTodayPlan(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["getTodayPlan"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_get_today_plan",
+        authInfo,
+        context,
+        () => handlers.getTodayPlan(authInfo, input),
+      );
+    },
+
+    listTimerSessions(
+      authInfo: AuthInfo | undefined,
+      input: Parameters<BaseReadHandlers["listTimerSessions"]>[1],
+      context?: ProtocolContext,
+    ): Promise<CallToolResult> {
+      return execute(
+        "ega_list_timer_sessions",
+        authInfo,
+        context,
+        () => handlers.listTimerSessions(authInfo, input),
       );
     },
   };

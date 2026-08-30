@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
-import { getPermissionsForProfile } from "@/lib/mcp/permissions";
+import {
+  getPermissionsForProfile,
+  type McpPermissionProfile,
+} from "@/lib/mcp/permissions";
 
 type GrantIdentity = {
   ownerUserId: string;
@@ -11,6 +14,7 @@ type GrantIdentity = {
 type ActivateGrantInput = GrantIdentity & {
   clientName: string;
   resourceUri: string;
+  permissionProfile?: McpPermissionProfile;
   now?: string;
 };
 
@@ -22,10 +26,11 @@ function resolveTimestamp(now?: string): string {
   return now ?? new Date().toISOString();
 }
 
-export async function activateReadOnlyMcpGrant(
+export async function activateMcpGrant(
   admin: SupabaseClient<McpDatabase>,
   input: ActivateGrantInput,
 ): Promise<string> {
+  const profile: McpPermissionProfile = input.permissionProfile ?? "read_only";
   const timestamp = resolveTimestamp(input.now);
   const { data, error } = await admin
     .from("mcp_authorization_grants")
@@ -36,8 +41,8 @@ export async function activateReadOnlyMcpGrant(
         client_name: input.clientName,
         resource_uri: input.resourceUri,
         status: "active",
-        permission_profile: "read_only",
-        permissions: getPermissionsForProfile("read_only"),
+        permission_profile: profile,
+        permissions: getPermissionsForProfile(profile),
         permissions_version: 1,
         approved_at: timestamp,
         revoked_at: null,
@@ -53,6 +58,13 @@ export async function activateReadOnlyMcpGrant(
   }
 
   return data.id;
+}
+
+export async function activateReadOnlyMcpGrant(
+  admin: SupabaseClient<McpDatabase>,
+  input: ActivateGrantInput,
+): Promise<string> {
+  return activateMcpGrant(admin, { ...input, permissionProfile: "read_only" });
 }
 
 export async function markMcpGrantFailed(

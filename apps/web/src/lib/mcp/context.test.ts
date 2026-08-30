@@ -31,7 +31,7 @@ describe("createAuthenticatedMcpContext", () => {
       resourceUri: AUDIENCE,
       status: "active",
       permissionProfile: "read_only",
-      permissions: ["projects.read", "goals.read", "tasks.read"],
+      permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
       permissionsVersion: 1,
     });
 
@@ -52,7 +52,7 @@ describe("createAuthenticatedMcpContext", () => {
         grantId: "10000000-0000-0000-0000-000000000001",
         permissionProfile: "read_only",
         permissionsVersion: 1,
-        permissions: ["projects.read", "goals.read", "tasks.read"],
+        permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
       },
     });
 
