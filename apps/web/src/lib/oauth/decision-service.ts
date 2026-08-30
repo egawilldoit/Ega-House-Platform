@@ -6,7 +6,6 @@ import {
 } from "@/lib/oauth/consent";
 import {
   activateMcpGrant,
-  activateReadOnlyMcpGrant,
   markMcpGrantFailed,
 } from "@/lib/oauth/grant-admin";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
@@ -23,7 +22,7 @@ export type OAuthDecisionClient = {
   denyAuthorization(authorizationId: string): OAuthMethodResult;
 };
 
-type ActivateGrant = typeof activateReadOnlyMcpGrant;
+type ActivateGrant = typeof activateMcpGrant;
 type FailGrant = typeof markMcpGrantFailed;
 
 type ProcessConsentInput = {
@@ -66,7 +65,7 @@ function parseRedirectUrl(value: unknown): string {
 export async function processOAuthConsentDecision(
   input: ProcessConsentInput,
 ): Promise<string> {
-  const activateGrant = input.activateGrant ?? activateReadOnlyMcpGrant;
+  const activateGrant = input.activateGrant ?? activateMcpGrant;
   const failGrant = input.failGrant ?? markMcpGrantFailed;
   const authorizationResult = await input.oauth.getAuthorizationDetails(
     input.authorizationId,
@@ -101,12 +100,7 @@ export async function processOAuthConsentDecision(
       ? "read_only" as const
       : requestedProfile;
 
-  const grantActivator =
-    effectiveProfile === "read_only" && input.activateGrant === undefined
-      ? activateMcpGrant
-      : (activateGrant as unknown as typeof activateMcpGrant);
-
-  await grantActivator(admin, {
+  await activateGrant(admin, {
     ownerUserId: input.ownerUserId,
     oauthClientId: details.clientId,
     clientName: details.clientName,
