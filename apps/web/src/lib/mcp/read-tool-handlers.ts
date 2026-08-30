@@ -20,6 +20,7 @@ import {
 } from "@ega/application";
 import {
   SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
   SupabaseTimerSessionRepository,
   SupabaseTodayReadPort,
 } from "@ega/data-access";
@@ -256,6 +257,7 @@ export function createMcpReadToolHandlers(
         const result = await getTodayPlanFromApplication(
           { userId: principal.ownerUserId } as never,
           port as never,
+          new SupabaseTimeContextRepository(client as never),
           { date: input.date },
         );
         if (!result.ok) {

@@ -24,6 +24,7 @@ vi.mock("@ega/data-access", async () => {
     SupabaseTasksRepository: mocks.FakeSupabaseTasksRepository,
     SupabaseGoalsRepository: mocks.FakeSupabaseGoalsRepository,
     SupabaseTodayReadPort: mocks.FakeSupabaseTodayReadPort,
+    SupabaseTimeContextRepository: mocks.FakeSupabaseTimeContextRepository,
     SupabaseTimerSessionRepository: mocks.FakeSupabaseTimerSessionRepository,
   };
 });

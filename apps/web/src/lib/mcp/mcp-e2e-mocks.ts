@@ -727,6 +727,21 @@ export class FakeSupabaseTodayReadPort {
   }
 }
 
+export class FakeSupabaseTimeContextRepository {
+  constructor(private readonly client: SupabaseClient<McpDatabase>) {}
+
+  async getTimezone(_actor: { userId: string }): Promise<{ ok: true; value: null }> {
+    return { ok: true, value: null };
+  }
+
+  async setTimezone(
+    _actor: { userId: string },
+    timezone: string,
+  ): Promise<{ ok: true; value: string }> {
+    return { ok: true, value: timezone };
+  }
+}
+
 export class FakeSupabaseTimerSessionRepository {
   constructor(private readonly client: SupabaseClient<McpDatabase>) {}
 
