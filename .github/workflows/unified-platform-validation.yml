@@ -489,6 +489,14 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MCP upgrade from the current-main 0049 baseline with legacy grants
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL" --upgrade-from 0049_operator_proposals
+      - name: Prove unknown pre-0050 permission shapes fail closed atomically
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL" --upgrade-from 0049_operator_proposals --expect-unknown-shape-failure
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]

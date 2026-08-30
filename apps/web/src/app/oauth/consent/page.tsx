@@ -123,7 +123,7 @@ export default async function OAuthConsentPage({
             <p className="mt-5 max-w-md leading-7 text-[#f4ed9a]/70">
               {writesEnabled
                 ? "Grant read-only inspection or full workspace management. Workspace management can create and update projects, goals, tasks, Today and timers — still scoped to your account and client."
-                : "The requesting client will be able to inspect your projects, goals, and tasks. It cannot create, edit, archive, merge, deploy, or run commands through this authorization."}
+                : "The requesting client will be able to inspect your projects, goals, tasks, Today plan, and timer sessions. It cannot create, edit, archive, merge, deploy, or run commands through this authorization."}
             </p>
           </div>
 
@@ -178,6 +178,8 @@ export default async function OAuthConsentPage({
                     ["Projects", "List projects that belong to your account"],
                     ["Goals", "List goals that belong to your account"],
                     ["Tasks", "List and filter tasks that belong to your account"],
+                    ["Today plan", "Inspect the plan for your account's current day"],
+                    ["Timer sessions", "Inspect timer sessions that belong to your account"],
                   ].map(([label, description]) => (
                     <li key={label} className="rounded-2xl border border-black/10 bg-white/60 p-4">
                       <p className="font-semibold">Read {label}</p>
