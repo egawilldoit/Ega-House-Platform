@@ -44,24 +44,14 @@ export async function writeMcpAuditEvent(
     ? requireBoundedValue(input.errorCode, "MCP error code", 64)
     : null;
 
-  const { error } = await client
-    .from("agent_integration_events")
-    .insert({
-      owner_user_id: input.principal.ownerUserId,
-      token_id: null,
-      oauth_client_id: input.principal.oauthClientId,
-      grant_id: input.principal.grantId,
-      action: "mcp_tool_call",
-      resource_type: "mcp_tool",
-      resource_id: null,
-      outcome: input.outcome,
-      ip_address: null,
-      request_id: requestId,
-      tool_name: toolName,
-      metadata: input.metadata ?? {},
-      duration_ms: input.durationMs,
-      error_code: errorCode,
-    });
+  const { error } = await client.rpc("record_mcp_audit_event", {
+    p_request_id: requestId,
+    p_tool_name: toolName,
+    p_outcome: input.outcome,
+    p_duration_ms: input.durationMs,
+    p_error_code: errorCode,
+    p_metadata: input.metadata ?? {},
+  });
 
   if (error) {
     throw new Error("Failed to persist EGA MCP audit event.");

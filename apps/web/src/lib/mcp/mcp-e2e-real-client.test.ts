@@ -36,7 +36,7 @@ describe("W15 real MCP client E2E", () => {
         server.registerTool("ega_list_projects", { title: "list", description: "list", inputSchema: z.object({}) } as unknown as never, async () => ({ content: [{ type: "text", text: "ok" }] }) as unknown as never);
         return server;
       },
-      { legacy: "stateless" } as never,
+      { legacy: "reject" } as never,
     );
 
     // Simulate client via fetch

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "ega-house": {
+      "type": "streamable-http",
+      "url": "https://www.egawilldoit.online/api/mcp",
+      "protocolEra": "modern"
+    }
+  }
+}
