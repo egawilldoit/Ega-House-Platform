@@ -343,6 +343,23 @@ const LEGACY_DELIVERY_REVOKED_GRANT = {
   client: "legacy-delivery-revoked",
   revokedAt: "2026-08-30T00:00:00.000Z",
 };
+const RPC_REVOKED_GRANT = {
+  id: "55555555-5555-4555-8555-555555555631",
+  owner: OWNER_A,
+  client: "rpc-revoked-client",
+  revokedAt: "2026-08-30T00:00:00.000Z",
+};
+const RPC_FAILED_GRANT = {
+  id: "55555555-5555-4555-8555-555555555632",
+  owner: OWNER_A,
+  client: "rpc-failed-client",
+  revokedAt: "2026-08-30T00:00:00.000Z",
+};
+const RPC_PENDING_GRANT = {
+  id: "55555555-5555-4555-8555-555555555633",
+  owner: OWNER_A,
+  client: "rpc-pending-client",
+};
 const TOOL = "ega_create_task";
 const OP_FIRST = "66666666-6666-4666-8666-666666666661";
 const OP_TOKEN_GUARD = "66666666-6666-4666-8666-666666666662";
@@ -560,6 +577,48 @@ function mcpSession(sql, { userId = OWNER_A, clientId = CLIENT_ID, resource = RE
       });
     },
   };
+}
+
+async function resolveActiveGrant(conn) {
+  return conn.unsafe(`SELECT * FROM public.resolve_active_mcp_grant()`);
+}
+
+async function assertGrantResolutionRpc(sql) {
+  await insertGrant(sql, RPC_REVOKED_GRANT, "revoked", "read_only", CURRENT_READ_ONLY_PERMISSIONS);
+  await insertGrant(sql, RPC_FAILED_GRANT, "failed", "read_only", CURRENT_READ_ONLY_PERMISSIONS);
+  await insertGrant(sql, RPC_PENDING_GRANT, "pending", "read_only", CURRENT_READ_ONLY_PERMISSIONS);
+
+  const [matching] = await mcpSession(sql).run((tx) => resolveActiveGrant(tx));
+  assert(matching?.id === GRANT_ID, "claim-bound RPC must return the matching active grant");
+  assert(
+    matching.owner_user_id === OWNER_A
+      && matching.oauth_client_id === CLIENT_ID
+      && matching.resource_uri === RESOURCE_URI
+      && matching.status === "active",
+    `claim-bound RPC returned an unexpected grant: ${JSON.stringify(matching)}`,
+  );
+
+  const deniedContexts = [
+    ["wrong owner", mcpSession(sql, { userId: OWNER_B })],
+    ["wrong client", mcpSession(sql, { clientId: "wrong-client" })],
+    ["wrong resource", mcpSession(sql, { resource: "https://evil.example.com/api/mcp" })],
+    ["revoked grant", mcpSession(sql, { clientId: RPC_REVOKED_GRANT.client })],
+    ["failed grant", mcpSession(sql, { clientId: RPC_FAILED_GRANT.client })],
+    ["pending grant", mcpSession(sql, { clientId: RPC_PENDING_GRANT.client })],
+    ["anonymous", mcpSession(sql, { userId: null })],
+  ];
+  for (const [label, session] of deniedContexts) {
+    const rows = await session.run((tx) => resolveActiveGrant(tx));
+    assert(rows.length === 0, `${label} must not resolve an active MCP grant`);
+  }
+
+  const directRows = await mcpSession(sql).run((tx) => tx.unsafe(`
+    SELECT id
+    FROM public.mcp_authorization_grants
+    WHERE id = $1::uuid
+  `, [GRANT_ID]));
+  assert(directRows.length === 0, "OAuth direct grant-table SELECT must remain hidden by RLS");
+  log("GRANT-RPC", "Matching OAuth claims resolved exactly one grant; mismatched, terminal, anonymous, and direct-table paths resolved none.");
 }
 
 async function expectDenied(label, fn) {
@@ -1046,6 +1105,7 @@ async function receiptStatus(sql, operationId) {
 
 async function runProofPhases(sql) {
   await seedActiveGrant(sql);
+  await assertGrantResolutionRpc(sql);
   const session = mcpSession(sql);
   const fpA = fingerprint({ title: "Proof task", projectId: "p1" });
   const fpB = fingerprint({ title: "Different task", projectId: "p1" });

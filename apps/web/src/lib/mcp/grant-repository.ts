@@ -3,17 +3,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import type { McpGrantRecord } from "@/lib/mcp/principal";
 
-const GRANT_COLUMNS = [
-  "id",
-  "owner_user_id",
-  "oauth_client_id",
-  "resource_uri",
-  "status",
-  "permission_profile",
-  "permissions",
-  "permissions_version",
-].join(",");
-
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim() !== "";
 }
@@ -62,22 +51,32 @@ export async function loadActiveMcpGrant(
   oauthClientId: string,
   resourceUri: string,
 ): Promise<McpGrantRecord | null> {
-  const { data, error } = await client
-    .from("mcp_authorization_grants")
-    .select(GRANT_COLUMNS)
-    .eq("owner_user_id", ownerUserId)
-    .eq("oauth_client_id", oauthClientId)
-    .eq("resource_uri", resourceUri)
-    .eq("status", "active")
-    .maybeSingle();
+  const { data, error } = await client.rpc("resolve_active_mcp_grant");
 
   if (error) {
     throw new Error("Failed to load EGA MCP authorization grant.");
   }
 
-  if (!data) {
+  if (!Array.isArray(data)) {
+    throw new Error("Invalid EGA MCP authorization grant response.");
+  }
+
+  if (data.length === 0) {
     return null;
   }
 
-  return mapGrantRow(data as unknown);
+  if (data.length !== 1) {
+    throw new Error("Invalid EGA MCP authorization grant response.");
+  }
+
+  const grant = mapGrantRow(data[0] as unknown);
+  if (
+    grant.ownerUserId !== ownerUserId
+    || grant.oauthClientId !== oauthClientId
+    || grant.resourceUri !== resourceUri
+  ) {
+    throw new Error("MCP authorization grant does not match request context.");
+  }
+
+  return grant;
 }
