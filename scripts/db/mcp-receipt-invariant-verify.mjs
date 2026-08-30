@@ -44,6 +44,8 @@
  *   node scripts/db/mcp-receipt-invariant-verify.mjs --url <postgres-url>
  *   node scripts/db/mcp-receipt-invariant-verify.mjs --url <postgres-url>
  *     --upgrade-from 0049_operator_proposals
+ *   node scripts/db/mcp-receipt-invariant-verify.mjs --url <postgres-url>
+ *     --upgrade-from 0049_operator_proposals --expect-unknown-shape-failure
  *
  * The database identified by --url is destroyed by this script (DROP SCHEMA
  * public/auth CASCADE). Only point it at a throwaway container.
@@ -62,9 +64,14 @@ function parseArgs() {
   for (let i = 0; i < rest.length; i += 1) {
     if (rest[i] === "--url") args.url = rest[++i];
     if (rest[i] === "--upgrade-from") args.upgradeFrom = rest[++i];
+    if (rest[i] === "--expect-unknown-shape-failure") args.expectUnknownShapeFailure = true;
   }
   if (!args.url) {
     console.error("Missing required --url <postgres-url>");
+    exit(2);
+  }
+  if (args.expectUnknownShapeFailure && !args.upgradeFrom) {
+    console.error("--expect-unknown-shape-failure requires --upgrade-from");
     exit(2);
   }
   return args;
@@ -99,6 +106,17 @@ async function applyFile(sql, tag) {
   for (const statement of statements) {
     await sql.unsafe(statement);
   }
+  return statements.length;
+}
+
+async function applyFileTransaction(sql, tag) {
+  const text = await readFile(new URL(`${tag}.sql`, DRIZZLE_DIR), "utf8");
+  const statements = splitStatements(text);
+  await sql.begin(async (transaction) => {
+    for (const statement of statements) {
+      await transaction.unsafe(statement);
+    }
+  });
   return statements.length;
 }
 
@@ -232,6 +250,12 @@ const READ_GRANT_ID = "55555555-5555-4555-8555-555555555552";
 const CLIENT_ID = "hermes-client";
 const READ_CLIENT_ID = "read-only-client";
 const RESOURCE_URI = "https://ega.example.com/api/mcp";
+const UNKNOWN_SHAPE_GRANT = {
+  id: "55555555-5555-4555-8555-555555555624",
+  owner: "55555555-5555-4555-8555-555555555634",
+  client: "unknown-active-client",
+};
+const UNKNOWN_SHAPE_PERMISSIONS = ["projects.read", "unknown.permission"];
 
 const LEGACY_READ_ONLY_PERMISSIONS = [
   "projects.read",
@@ -375,23 +399,11 @@ async function seedActiveGrant(sql) {
 }
 
 async function insertGrant(sql, grant, status, permissionProfile, permissions) {
-  await sql.unsafe(
-    `
+  await sql`
     INSERT INTO public.mcp_authorization_grants
       (id, owner_user_id, oauth_client_id, resource_uri, client_name, status, permission_profile, permissions, permissions_version, revoked_at)
-    VALUES ($1::uuid, $2::uuid, $3, $4, 'Migration fixture', $5, $6, $7::jsonb, 1, $8::timestamptz)
-    `,
-    [
-      grant.id,
-      grant.owner,
-      grant.client,
-      RESOURCE_URI,
-      status,
-      permissionProfile,
-      JSON.stringify(permissions),
-      grant.revokedAt ?? null,
-    ],
-  );
+    VALUES (${grant.id}::uuid, ${grant.owner}::uuid, ${grant.client}, ${RESOURCE_URI}, 'Migration fixture', ${status}, ${permissionProfile}, ${sql.json(permissions)}, 1, ${grant.revokedAt ?? null}::timestamptz)
+  `;
 }
 
 async function seedLegacyGrantFixture(sql) {
@@ -444,6 +456,36 @@ async function assertLegacyGrantMigration(sql) {
   await assertGrant(sql, LEGACY_DELIVERY_PENDING_GRANT, "failed", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
   await assertGrant(sql, LEGACY_DELIVERY_REVOKED_GRANT, "revoked", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
   log("LEGACY-UPGRADE", "Known legacy active grants were revoked, pending grants failed, and permission documents were preserved.");
+}
+
+async function assertUnknownShapeMigrationFailsClosed(sql) {
+  // A normally constrained pre-0050 database cannot contain this row. Drop
+  // only the old document check in this disposable proof so the migration is
+  // tested against the corruption/drift case it must reject atomically.
+  await sql.unsafe(`
+    ALTER TABLE public.mcp_authorization_grants
+      DROP CONSTRAINT IF EXISTS mcp_authorization_grants_profile_permissions_check
+  `);
+  await insertGrant(sql, UNKNOWN_SHAPE_GRANT, "active", "read_only", UNKNOWN_SHAPE_PERMISSIONS);
+
+  const errorCode = await capturePostgresError(() =>
+    applyFileTransaction(sql, "0050_mcp_workspace_manager"),
+  );
+  assert(errorCode === "23514", `unknown pre-0050 permission shape must fail closed with 23514, got ${errorCode}`);
+
+  const [row] = await sql`
+    SELECT status, permission_profile, permissions, permissions_version
+    FROM public.mcp_authorization_grants
+    WHERE id = ${UNKNOWN_SHAPE_GRANT.id}::uuid
+  `;
+  assert(row?.status === "active", "failed 0050 must not partially terminalize an unknown grant");
+  assert(row?.permission_profile === "read_only", "failed 0050 must not rewrite an unknown grant profile");
+  assert(
+    JSON.stringify(row?.permissions) === JSON.stringify(UNKNOWN_SHAPE_PERMISSIONS),
+    "failed 0050 must not normalize an unknown permission document",
+  );
+  assert(row?.permissions_version === 1, "failed 0050 must not change an unknown grant version");
+  log("UNKNOWN-GRANT", "Unknown pre-0050 permission shape failed closed and 0050 rolled back atomically.");
 }
 
 async function assertCurrentGrantConstraints(sql) {
@@ -1114,7 +1156,7 @@ async function runProofPhases(sql) {
 }
 
 async function main() {
-  const { url, upgradeFrom } = parseArgs();
+  const { url, upgradeFrom, expectUnknownShapeFailure } = parseArgs();
   const tags = await readJournal();
   if (!tags.includes("0052_mcp_mutation_receipts")) {
     console.error("Journal does not contain 0052_mcp_mutation_receipts; cannot run the receipt proof.");
@@ -1140,6 +1182,10 @@ async function main() {
     if (upgradeFrom) {
       await assertCurrentMainBaseline(sql);
       await seedLegacyGrantFixture(sql);
+      if (expectUnknownShapeFailure) {
+        await assertUnknownShapeMigrationFailsClosed(sql);
+        return;
+      }
       for (const tag of tags.slice(baselineIndex + 1)) {
         const statements = await applyFile(sql, tag);
         applied += 1;
