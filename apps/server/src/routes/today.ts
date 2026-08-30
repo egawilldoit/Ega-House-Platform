@@ -1,16 +1,19 @@
 import { Hono, type Context } from "hono";
 
-import type { MobileTodayResponse } from "@ega/contracts/mobile";
 import {
   clearCompletedToday,
+  getOperatorSnapshot,
   getTaskReadModel,
-  getTodayPlan,
   planTaskForToday,
   removeTaskFromToday,
-  toLocalIsoDate,
+  resolveTimeContext,
   updateTodayTaskStatus,
 } from "@ega/application";
-import { SupabaseTasksRepository, SupabaseTodayReadPort } from "@ega/data-access";
+import {
+  SupabaseTasksRepository,
+  SupabaseTimeContextRepository,
+  SupabaseTodayReadPort,
+} from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
 import { readJsonBody } from "../app";
@@ -45,22 +48,21 @@ export function createTodayRoutes(
 
   routes.get("/", async (c) => {
     const { actor, client } = c.var;
-    const result = await getTodayPlan(
+    const requestedTimezone = c.req.query("timezone") ?? c.req.query("tz") ?? null;
+    // Canonical Operator snapshot (EGA-516): mobile Today consumes the same
+    // shared snapshot as web; OperatorSnapshotDto satisfies MobileTodayResponse.
+    const result = await getOperatorSnapshot(
       actor,
       new SupabaseTodayReadPort(client),
-      { date: c.req.query("date"), now: dependencies.now?.() },
+      new SupabaseTimeContextRepository(client),
+      {
+        now: dependencies.now?.(),
+        requestedTimezone: requestedTimezone ?? undefined,
+        date: c.req.query("date"),
+      },
     );
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
-
-    const payload = {
-      ok: true as const,
-      date: result.data.date,
-      sections: result.data.sections,
-      suggestions: result.data.suggestions,
-      summary: result.data.summary,
-      activeTimer: result.data.activeTimer,
-    } satisfies MobileTodayResponse;
-    return c.json(payload);
+    return c.json({ ok: true as const, ...result.data });
   });
 
   routes.post("/tasks/:id", async (c) => {
@@ -70,9 +72,26 @@ export function createTodayRoutes(
     const earlyResponse = await resolveOwnedTaskOr404(c, actor, repository, c.req.param("id"));
     if (earlyResponse) return earlyResponse;
 
+    const now = dependencies.now ? dependencies.now() : new Date();
+    let resolvedDate: string;
+    const rawDate = body?.date != null ? String(body.date).trim() : "";
+    if (rawDate) {
+      resolvedDate = rawDate;
+    } else {
+      const requested = typeof body?.timezone === "string" ? body.timezone.trim() : null;
+      const timeContextRepository = new SupabaseTimeContextRepository(client as never);
+      const ctx = await resolveTimeContext(actor, timeContextRepository, {
+        requestedTimezone: requested ?? undefined,
+        now,
+      });
+      if (!ctx.ok) {
+        return c.json({ error: { code: "INTERNAL", message: "Unable to resolve time context." } }, 500);
+      }
+      resolvedDate = ctx.data.localDate;
+    }
     const result = await planTaskForToday(actor, repository, {
       taskId: c.req.param("id"),
-      date: body?.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : undefined),
+      date: resolvedDate,
     });
     if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     return c.json({ ok: true, taskId: result.data.id });
@@ -114,8 +133,29 @@ export function createTodayRoutes(
   routes.post("/clear-completed", async (c) => {
     const { actor, client } = c.var;
     const body = (await readJsonBody(c)) ?? {};
+    const now = dependencies.now ? dependencies.now() : new Date();
+    let fallbackClearDate: string;
+    const rawDate = body.date != null ? String(body.date).trim() : "";
+    if (rawDate) {
+      fallbackClearDate = rawDate;
+    } else {
+      const requested =
+        typeof (body as Record<string, unknown>).timezone === "string" &&
+        String((body as Record<string, unknown>).timezone).trim()
+          ? String((body as Record<string, unknown>).timezone).trim()
+          : null;
+      const timeContextRepository = new SupabaseTimeContextRepository(client as never);
+      const ctx = await resolveTimeContext(actor, timeContextRepository, {
+        requestedTimezone: requested ?? undefined,
+        now,
+      });
+      if (!ctx.ok) {
+        return c.json({ error: { code: "INTERNAL", message: "Unable to resolve time context." } }, 500);
+      }
+      fallbackClearDate = ctx.data.localDate;
+    }
     const result = await clearCompletedToday(actor, new SupabaseTasksRepository(client), {
-      date: body.date ?? (dependencies.now ? toLocalIsoDate(dependencies.now()) : new Date().toISOString().slice(0, 10)),
+      date: fallbackClearDate,
     });
     if (!result.ok) return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     return c.json({ ok: true });

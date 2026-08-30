@@ -18,7 +18,7 @@ const motionLayer = read("src/app/home/components/home-motion.tsx");
 
 describe("homepage operational studies", () => {
   it("keeps authentication server-owned", () => {
-    expect(page).toContain('redirect("/dashboard")');
+    expect(page).toContain('redirect("/today")');
     expect(page).toContain("<HomePage />");
   });
 

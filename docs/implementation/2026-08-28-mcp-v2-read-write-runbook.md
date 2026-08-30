@@ -36,7 +36,7 @@
 - **Ledger:** `mcp_mutation_receipts(owner, client, tool, operation_id, args_hash, result_payload)` PK(owner,client,tool,opId). `mcp_claim_mutation_receipt(tool, opId, argsHash)` does `INSERT ON CONFLICT DO NOTHING` → fetch → if argsHash mismatch → conflict (409), if result present → replay, else proceed. Caller must then `mcp_store_mutation_result(tool, opId, result)` after mutation.
 - **Key:** `(owner, oauth_client_id, tool, operationId)` — same canonical args → stable replay; different args → rejected before the business mutation; concurrent duplicates → one receipt winner.
 - **All writes** require `operationId` (UUID v4). The server derives owner and client from the verified MCP principal; neither is accepted from tool arguments.
-- **Create-domain fence:** migration `0054_mcp_domain_operation_fencing` adds `(owner_user_id, mcp_client_id, mcp_operation_id)` partial unique indexes to `projects`, `goals`, `tasks`, `task_reminders`, and `task_sessions`. The application propagates the identity to the repository, and the repository recognizes only the matching named `23505` collision before loading the canonical row through the request-scoped RLS client.
+- **Create-domain fence:** migration `0059_mcp_domain_operation_fencing` adds `(owner_user_id, mcp_client_id, mcp_operation_id)` partial unique indexes to `projects`, `goals`, `tasks`, `task_reminders`, and `task_sessions`. The application propagates the identity to the repository, and the repository recognizes only the matching named `23505` collision before loading the canonical row through the request-scoped RLS client.
 - **Crash boundary:** if the domain INSERT commits and the process dies before receipt storage, a fresh claim retries the INSERT, receives the named domain collision, and returns the original project, goal, task, reminder/task, or session. Unrelated unique violations remain failures.
 - **Create guarantee:** projects, goals, tasks, task reminders, and task sessions are exactly-once across normal retries, concurrency, receipt loss, lease expiry, and stale-worker recovery when the request uses the same authenticated owner, client, tool, operation ID, and canonical arguments.
 - **Update guarantee:** state/projection updates remain at-least-once but idempotent. This runbook makes no broader exactly-once claim for updates.
@@ -63,7 +63,7 @@ mobile user through those owner-scoped APIs.
 
 ## Production actions NOT performed (per boundary)
 
-- Migrations `0047..0054` not applied to production DB (local/journal only).
+- Migrations `0050..0059` are the MCP tail after current-main migrations `0045..0049`; production application status is verified from the target database migration history before deployment.
 - `MCP_REQUEST_STATE_SECRET` not rotated in prod (to be set out-of-band before cutover).
 - PR not merged (`feat/mcp-v2-full-read-write` → `main`).
 
@@ -78,5 +78,5 @@ mobile user through those owner-scoped APIs.
 - `apps/web/package.json`: `@modelcontextprotocol/server/client/core` 2.0.0
 - `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas
 - `apps/web/src/lib/mcp/request-state.ts`: `createRequestStateCodec`
-- `drizzle/` migrations: `0047..0054` + `meta/_journal.json`
+- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0059` + `meta/_journal.json`
 - Final command results are recorded in the delivery report; this document does not substitute for executed evidence.

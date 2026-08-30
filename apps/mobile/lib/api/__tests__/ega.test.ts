@@ -13,12 +13,18 @@ import {
   type ApiResult,
   type EgaApiClient,
 } from '@ega/api-client';
-import type { MobileTodayResponse } from '@ega/contracts/mobile';
+import type { OperatorSnapshotDto } from '@ega/contracts/operator';
 
-const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
+const EMPTY_TODAY_RESPONSE: OperatorSnapshotDto = {
   ok: true,
   date: '2026-08-10',
+  timezone: 'UTC',
+  timeContextId: '2026-08-10::UTC::2026-08-10T00:00:00.000Z',
+  dayWindow: { startUtcIso: '2026-08-10T00:00:00.000Z', endUtcIso: '2026-08-11T00:00:00.000Z' },
+  plannedToday: [],
   sections: { planned: [], inProgress: [], blocked: [], completed: [] },
+  focus: { startHere: null, queue: [] },
+  schedule: { blocks: [], flexible: [] },
   suggestions: { pinned: [], inProgress: [] },
   summary: {
     plannedCount: 0,
@@ -34,6 +40,7 @@ const EMPTY_TODAY_RESPONSE: MobileTodayResponse = {
     trackedTodayLabel: '0m',
   },
   activeTimer: null,
+  signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
 };
 
 function makeFakeClient(): EgaApiClient {
@@ -105,12 +112,92 @@ function makeFakeClient(): EgaApiClient {
       pin: jest.fn(),
       unpin: jest.fn(),
     },
+    inbox: {
+      list: jest.fn(),
+      get: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+      archive: jest.fn(),
+      restore: jest.fn(),
+      convert: jest.fn(),
+    },
     today: {
-      get: jest.fn(async (): Promise<ApiResult<MobileTodayResponse>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
+      get: jest.fn(async (): Promise<ApiResult<OperatorSnapshotDto>> => ({ ok: true as const, data: EMPTY_TODAY_RESPONSE })),
       plan: jest.fn(),
       remove: jest.fn(),
       updateStatus: jest.fn(),
       clearCompleted: jest.fn(),
+    },
+    operator: {
+      create: jest.fn(),
+      revise: jest.fn(),
+      approve: jest.fn(),
+      apply: jest.fn(),
+      dismiss: jest.fn(),
+      get: jest.fn(),
+      list: jest.fn(),
+    },
+    weeklyReview: {
+      get: jest.fn(),
+    },
+    healthSnapshot: {
+      getSnapshot: jest.fn(),
+    },
+    friction: {
+      radar: jest.fn(async () => ({
+        ok: true as const,
+        data: {
+          ok: true as const,
+          generatedAt: "2026-08-27T12:00:00.000Z",
+          thresholdDays: 7,
+          blocked: [],
+          staleTasks: [],
+          staleGoals: [],
+          estimateSignals: [],
+          contextSwitch: {
+            switchCount: 0,
+            threshold: 6,
+            highThreshold: 10,
+            severity: "none" as const,
+            isFriction: false,
+            transitionsCount: 0,
+            distinctTaskCount: 0,
+            window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+          },
+          neglectedGoals: [],
+          workloadImbalance: {
+            isImbalance: false,
+            severity: "none" as const,
+            totalTrackedSeconds: 0,
+            totalTrackedMinutes: 0,
+            projectCount: 0,
+            dominantProjectId: null,
+            dominantProjectName: null,
+            dominantTrackedSeconds: 0,
+            dominantSharePercent: 0,
+            threshold: 60,
+            highThreshold: 75,
+            minTotalMinutes: 120,
+            minForHighMinutes: 240,
+            window: { startIso: "2026-08-27T00:00:00.000Z", endIso: "2026-08-27T12:00:00.000Z" },
+          },
+          evidenceWindow: null,
+        },
+      })),
+    },
+    timeContext: {
+      get: jest.fn(),
+    },
+    notifications: {
+      list: jest.fn(),
+      unreadCount: jest.fn(),
+      markRead: jest.fn(),
+      markOpened: jest.fn(),
+      markAllRead: jest.fn(),
+      registerDevice: jest.fn(),
+      unregisterDevice: jest.fn(),
+      preferences: jest.fn(),
+      updatePreferences: jest.fn(),
     },
   };
 }

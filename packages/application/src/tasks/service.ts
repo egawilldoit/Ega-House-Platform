@@ -27,8 +27,12 @@ function normalizeEstimate(value: unknown): number | null {
   return Math.round(parsed);
 }
 
-function mutationFailure(message: string): ApplicationResult<TaskRecord> {
-  return applicationFailure(message);
+function mutationFailure(message: string, code: "conflict" | "unknown" = "unknown"): ApplicationResult<TaskRecord> {
+  return applicationFailure(message, code);
+}
+
+function toAppErrorCode(repoCode?: string): "conflict" | "unknown" {
+  return repoCode === "conflict" ? "conflict" : "unknown";
 }
 
 export async function createTask(
@@ -47,6 +51,7 @@ export async function createTask(
     mcpOperationId?: string;
     mcpClientId?: string;
   },
+  options?: { preallocatedId?: string },
 ): Promise<ApplicationResult<TaskRecord>> {
   const title = String(input.title ?? "").trim();
   const projectId = String(input.projectId ?? "").trim();
@@ -68,18 +73,19 @@ export async function createTask(
   if (!scopeResult.ok) return applicationFailure("Unable to validate task scope right now.");
 
   if (!scopeResult.value.projectIds.includes(projectId)) {
-    return applicationFailure("Selected project is unavailable.");
+    return applicationFailure("Selected project is unavailable.", "validation");
   }
 
   if (goalId) {
     const goal = scopeResult.value.goals.find((candidate) => candidate.id === goalId);
-    if (!goal) return applicationFailure("Selected goal is unavailable.");
+    if (!goal) return applicationFailure("Selected goal is unavailable.", "validation");
     if (goal.projectId !== projectId) {
-      return applicationFailure("Selected goal does not belong to the chosen project.");
+      return applicationFailure("Selected goal does not belong to the chosen project.", "validation");
     }
   }
 
   const record: CreateTaskRecordInput = {
+    ...(options?.preallocatedId ? { id: String(options.preallocatedId).trim() } : {}),
     title,
     projectId,
     goalId,
@@ -95,9 +101,8 @@ export async function createTask(
   };
 
   const result = await repository.createTask(actor, record);
-  return result.ok
-    ? applicationSuccess(result.value)
-    : mutationFailure("Unable to create task right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  return mutationFailure("Unable to create task right now.", toAppErrorCode((result.error as { code?: string })?.code));
 }
 
 export async function updateTask(
@@ -151,9 +156,8 @@ export async function updateTask(
   if (input.goalId !== undefined) Object.assign(update, { goalId: optionalTrimmedString(input.goalId) });
 
   const result = await repository.updateTask(actor, update);
-  return result.ok
-    ? applicationSuccess(result.value)
-    : mutationFailure("Unable to update task right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  return mutationFailure("Unable to update task right now.", toAppErrorCode((result.error as { code?: string })?.code));
 }
 
 export async function archiveTask(
@@ -167,9 +171,8 @@ export async function archiveTask(
     taskId,
     archivedAt: (input.now ?? new Date()).toISOString(),
   });
-  return result.ok
-    ? applicationSuccess(result.value)
-    : mutationFailure("Unable to archive task right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  return mutationFailure("Unable to archive task right now.", toAppErrorCode((result.error as { code?: string })?.code));
 }
 
 export async function unarchiveTask(
@@ -180,9 +183,8 @@ export async function unarchiveTask(
   const taskId = String(input.taskId ?? "").trim();
   if (!taskId) return applicationFailure("Task unarchive request is invalid.");
   const result = await repository.setTaskArchived(actor, { taskId, archivedAt: null });
-  return result.ok
-    ? applicationSuccess(result.value)
-    : mutationFailure("Unable to unarchive task right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  return mutationFailure("Unable to unarchive task right now.", toAppErrorCode((result.error as { code?: string })?.code));
 }
 
 export async function createTaskReminder(
@@ -191,6 +193,7 @@ export async function createTaskReminder(
   input: {
     taskId: unknown;
     remindAt: unknown;
+    deliveryMode?: unknown;
     now?: Date;
     mcpOperationId?: string;
     mcpClientId?: string;
@@ -218,16 +221,23 @@ export async function createTaskReminder(
   if (!raw || Number.isNaN(remindAt.getTime())) return applicationFailure("Reminder time is required.");
   if (remindAt.getTime() <= now.getTime()) return applicationFailure("Reminder time must be in the future.");
 
+  const rawMode = String(input.deliveryMode ?? "email").trim().toLowerCase();
+  const allowedModes = new Set(["push", "email", "both"]);
+  const deliveryMode = allowedModes.has(rawMode) ? (rawMode as "push" | "email" | "both") : "email";
+  if (input.deliveryMode !== undefined && !allowedModes.has(rawMode)) {
+    return applicationFailure("Delivery mode is invalid.");
+  }
+
   const result = await repository.createReminder(actor, {
     taskId,
     remindAt: remindAt.toISOString(),
     channel: "email",
     status: "pending",
+    deliveryMode,
     ...(operationIdentity ?? {}),
   });
-  return result.ok
-    ? applicationSuccess(result.value)
-    : mutationFailure("Unable to create reminder right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  return mutationFailure("Unable to create reminder right now.", toAppErrorCode((result.error as { code?: string })?.code));
 }
 
 export async function cancelTaskReminder(
@@ -244,7 +254,6 @@ export async function cancelTaskReminder(
     reminderId,
     status: "cancelled",
   });
-  return result.ok
-    ? applicationSuccess(result.value)
-    : mutationFailure("Unable to cancel reminder right now.");
+  if (result.ok) return applicationSuccess(result.value);
+  return mutationFailure("Unable to cancel reminder right now.", toAppErrorCode((result.error as { code?: string })?.code));
 }

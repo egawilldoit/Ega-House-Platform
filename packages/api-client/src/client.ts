@@ -8,17 +8,24 @@
  */
 
 import { createAuthApi, type AuthApi } from "./auth";
+import { createFrictionApi, type FrictionApi } from "./friction";
 import { createGoalsApi, type GoalsApi } from "./goals";
+import { createHealthApi, type HealthApi } from "./health";
 import {
   HttpClient,
   type AuthErrorHandler,
   type RefreshAccessToken,
   type TokenProvider,
 } from "./http";
+import { createInboxApi, type InboxApi } from "./inbox";
+import { createNotificationsApi, type NotificationsApi } from "./notifications";
 import { createProjectsApi, type ProjectsApi } from "./projects";
+import { createOperatorApi, type OperatorApi } from "./operator";
 import { createTasksApi, type TasksApi } from "./tasks";
+import { createTimeContextApi, type TimeContextApi } from "./time-context";
 import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
+import { createWeeklyReviewApi, type WeeklyReviewApi } from "./weekly-review";
 import type { ApiErrorPayload, ApiResult } from "./errors";
 import type { HealthResponse } from "./types";
 
@@ -44,8 +51,15 @@ export type EgaApiClient = {
   projects: ProjectsApi;
   goals: GoalsApi;
   tasks: TasksApi;
+  inbox: InboxApi;
   today: TodayApi;
   timer: TimerApi;
+  operator: OperatorApi;
+  weeklyReview: WeeklyReviewApi;
+  healthSnapshot: HealthApi;
+  friction: FrictionApi;
+  timeContext: TimeContextApi;
+  notifications: NotificationsApi;
   auth: AuthApi;
 };
 
@@ -68,8 +82,15 @@ export function createEgaApiClient(options: EgaApiClientOptions): EgaApiClient {
     projects: createProjectsApi(http),
     goals: createGoalsApi(http),
     tasks: createTasksApi(http),
+    inbox: createInboxApi(http),
     today: createTodayApi(http),
     timer: createTimerApi(http),
+    operator: createOperatorApi(http),
+    weeklyReview: createWeeklyReviewApi(http),
+    healthSnapshot: createHealthApi(http),
+    friction: createFrictionApi(http),
+    timeContext: createTimeContextApi(http),
+    notifications: createNotificationsApi(http),
     auth: createAuthApi(http),
   };
 }

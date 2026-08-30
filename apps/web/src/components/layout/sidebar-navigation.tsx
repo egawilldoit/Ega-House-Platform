@@ -12,7 +12,6 @@ import {
   FileText,
   Flag,
   Grid2X2,
-  LayoutDashboard,
   Lightbulb,
   Plus,
   Power,
@@ -55,7 +54,6 @@ type SidebarNavigationProps = {
 };
 
 const ROUTE_ICONS: Record<string, LucideIcon> = {
-  "/dashboard": LayoutDashboard,
   "/today": CalendarCheck2,
   "/tasks": CheckSquare,
   "/goals": Flag,

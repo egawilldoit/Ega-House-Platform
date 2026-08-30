@@ -315,21 +315,24 @@ jobs:
             exit 1
           fi
           EMBEDDED_URL="$(grep -oP 'EXPO_UPDATE_URL.*?value="\K[^"]+' "$ANDROID_MANIFEST" | head -n1 || echo "")"
-          EXPECTED_URL="https://u.expo.dev/73d127b6-c8f6-450c-8d97-2dca8434cd59"
+          EXPECTED_URL="https://u.expo.dev/0dafbb64-7c1e-49b1-aea1-de1f8159a5e6"
           if [ "$EMBEDDED_URL" != "$EXPECTED_URL" ]; then
             echo "::error::EXPO_UPDATE_URL mismatch: got $EMBEDDED_URL expected $EXPECTED_URL"
             grep -n "EXPO_UPDATE" "$ANDROID_MANIFEST" || true
             exit 1
           fi
           echo "EXPO_UPDATE_URL OK: $EMBEDDED_URL"
-          CHANNEL_HEADER="$(grep -o '"expo-channel-name":"production"' "$ANDROID_MANIFEST" || echo "")"
-          if [ -z "$CHANNEL_HEADER" ]; then
+          # expo prebuild XML-escapes the request-headers JSON in AndroidManifest.xml
+          # (&quot;), so accept both the escaped and literal forms of the channel header.
+          CHANNEL_ESCAPED="$(grep -c 'expo-channel-name&quot;:&quot;production' "$ANDROID_MANIFEST" || true)"
+          CHANNEL_LITERAL="$(grep -c '"expo-channel-name":"production"' "$ANDROID_MANIFEST" || true)"
+          if [ "${CHANNEL_ESCAPED:-0}" -eq 0 ] && [ "${CHANNEL_LITERAL:-0}" -eq 0 ]; then
             echo "::error::expo-channel-name=production not found in AndroidManifest"
             grep -n "UPDATES_CONFIGURATION_REQUEST_HEADERS" "$ANDROID_MANIFEST" || true
             cat "$ANDROID_MANIFEST" | grep -A2 -B2 "updates" || true
             exit 1
           fi
-          echo "Channel header OK: production"
+          echo "Channel header OK: production (escaped=$CHANNEL_ESCAPED literal=$CHANNEL_LITERAL)"
           cat > dist-apk/release-manifest.json <<EOF
           {
             "repository": "egawilldoit/Ega-House-Platform",
@@ -648,18 +651,18 @@ jobs:
           - APK: $(cat apk-dist/SHA256SUMS)
           - Runner: blacksmith-2vcpu-ubuntu-2404"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view -R "$GITHUB_REPOSITORY" "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG exists — uploading assets"
-            gh release upload "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
+            gh release upload -R "$GITHUB_REPOSITORY" "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS --clobber
+            gh release edit -R "$GITHUB_REPOSITORY" "$TAG" --title "$TITLE" --notes "$NOTES" $PRERELEASE_FLAG || true
           else
             echo "Creating release $TAG"
-            gh release create "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
+            gh release create -R "$GITHUB_REPOSITORY" "$TAG" apk-dist/*.apk apk-dist/release-manifest.json apk-dist/SHA256SUMS \
               --title "$TITLE" \
               --notes "$NOTES" \
               $PRERELEASE_FLAG
           fi
-          gh release view "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
+          gh release view -R "$GITHUB_REPOSITORY" "$TAG" --json url,assets --jq "{url: .url, assets: [.assets[].name]}"
 
   delivery-summary:
     name: Delivery summary

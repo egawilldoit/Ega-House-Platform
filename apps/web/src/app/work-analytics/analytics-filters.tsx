@@ -63,7 +63,7 @@ export function AnalyticsFilters() {
   );
 
   return (
-    <div className="flex flex-wrap items-start gap-4">
+    <div className="analytics-filter-controls">
       {/* Range selector */}
       <fieldset>
         <legend className="mb-1 text-xs font-medium text-[color:var(--muted-foreground)]">

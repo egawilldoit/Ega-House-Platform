@@ -8,50 +8,43 @@ export type ShellRouteMeta = {
 
 export const COMMAND_ROUTES = [
   {
-    href: "/dashboard",
-    index: "01",
-    label: "Dashboard",
-    group: "command",
-    eyebrow: "Command center",
-  },
-  {
     href: "/today",
-    index: "02",
+    index: "01",
     label: "Today",
     group: "command",
     eyebrow: "Daily execution",
   },
   {
     href: "/tasks",
-    index: "03",
+    index: "02",
     label: "Tasks",
     group: "command",
     eyebrow: "Work inventory",
   },
   {
     href: "/goals",
-    index: "04",
+    index: "03",
     label: "Goals",
     group: "command",
     eyebrow: "Direction",
   },
   {
     href: "/timer",
-    index: "05",
+    index: "04",
     label: "Timer",
     group: "command",
     eyebrow: "Focus session",
   },
   {
     href: "/review",
-    index: "06",
+    index: "05",
     label: "Review",
     group: "command",
     eyebrow: "Feedback loop",
   },
   {
     href: "/work-analytics",
-    index: "07",
+    index: "06",
     label: "Analytics",
     group: "command",
     eyebrow: "Operational evidence",
@@ -110,7 +103,7 @@ export function getShellRouteMeta(pathname: string): ShellRouteMeta {
     ALL_ROUTES.filter(
       (route) => pathname === route.href || pathname.startsWith(`${route.href}/`),
     ).sort((left, right) => right.href.length - left.href.length)[0] ?? {
-      href: "/dashboard",
+      href: "/today",
       index: "00",
       label: "Workspace",
       group: "command",

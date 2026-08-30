@@ -52,7 +52,7 @@ const TASK_SELECT = [
 ].join(",");
 
 const REMINDER_SELECT =
-  "id,task_id,remind_at,channel,status,sent_at,failure_reason,created_at,updated_at";
+  "id,task_id,remind_at,channel,delivery_mode,status,sent_at,failure_reason,source,source_id,created_at,updated_at";
 const RECURRENCE_SELECT = "id,task_id,rule,anchor_date,timezone,next_occurrence_date,last_generated_at";
 const SESSION_TOTAL_SELECT = "task_id,duration_seconds";
 
@@ -80,9 +80,12 @@ function mapReminder(row: Row): TaskReminderRecord {
     taskId: String(row.task_id),
     remindAt: String(row.remind_at),
     channel: "email",
+    deliveryMode: (String(row.delivery_mode ?? "email") as TaskReminderRecord["deliveryMode"]) ?? "email",
     status: String(row.status) as TaskReminderRecord["status"],
     sentAt: asNullableString(row.sent_at),
     failureReason: asNullableString(row.failure_reason),
+    source: asNullableString(row.source),
+    sourceId: asNullableString(row.source_id),
     createdAt: asNullableString(row.created_at) ?? undefined,
     updatedAt: asNullableString(row.updated_at) ?? undefined,
   };
@@ -253,6 +256,7 @@ export class SupabaseTasksRepository implements TasksRepository {
     const result = await this.supabase
       .from("tasks")
       .insert({
+        ...(input.id ? { id: input.id } : {}),
         owner_user_id: actor.userId,
         title: input.title,
         project_id: input.projectId,
@@ -369,6 +373,9 @@ export class SupabaseTasksRepository implements TasksRepository {
       status: "pending";
       mcpOperationId?: string;
       mcpClientId?: string;
+      deliveryMode?: "push" | "email" | "both";
+      source?: string | null;
+      sourceId?: string | null;
     }>,
   ): Promise<RepositoryResult<TaskRecord>> {
     const identity = mcpOperationIdentity(input);
@@ -377,12 +384,15 @@ export class SupabaseTasksRepository implements TasksRepository {
       task_id: input.taskId,
       remind_at: input.remindAt,
       channel: input.channel,
+      delivery_mode: input.deliveryMode ?? "email",
       status: input.status,
+      ...(input.source ? { source: input.source } : {}),
+      ...(input.sourceId ? { source_id: input.sourceId } : {}),
       ...(identity
         ? {
             mcp_operation_id: identity.mcpOperationId,
             mcp_client_id: identity.mcpClientId,
-          }
+        }
         : {}),
     });
     if (result.error) {
@@ -390,6 +400,16 @@ export class SupabaseTasksRepository implements TasksRepository {
         const replay = await this.findReminderByOperation(actor, identity);
         if (replay.ok && replay.value) return { ok: true, value: replay.value };
         if (!replay.ok) return replay;
+      }
+      if (
+        input.source &&
+        input.sourceId &&
+        isSupabaseUniqueConstraintViolation(result.error, "task_reminders_owner_source_source_id_unique")
+      ) {
+        // Smart Inbox/source idempotency is a separate invariant from MCP
+        // operation fencing. Only its named unique index can replay here.
+        const task = await this.getTask(actor, input.taskId);
+        return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
       }
       return failure(result.error);
     }

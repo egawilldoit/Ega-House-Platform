@@ -25,18 +25,19 @@ describe("editorial authenticated workspace shell", () => {
     const routeMeta = read("src/components/layout/shell-route-meta.ts");
 
     for (const entry of [
-      ["01", "Dashboard", "/dashboard"],
-      ["02", "Today", "/today"],
-      ["03", "Tasks", "/tasks"],
-      ["04", "Goals", "/goals"],
-      ["05", "Timer", "/timer"],
-      ["06", "Review", "/review"],
-      ["07", "Analytics", "/work-analytics"],
+      ["01", "Today", "/today"],
+      ["02", "Tasks", "/tasks"],
+      ["03", "Goals", "/goals"],
+      ["04", "Timer", "/timer"],
+      ["05", "Review", "/review"],
+      ["06", "Analytics", "/work-analytics"],
     ]) {
       expect(routeMeta).toContain(`index: "${entry[0]}"`);
       expect(routeMeta).toContain(`label: "${entry[1]}"`);
       expect(routeMeta).toContain(`href: "${entry[2]}"`);
     }
+
+    expect(routeMeta).not.toContain('href: "/dashboard"');
 
     expect(routeMeta).toContain("getShellRouteMeta");
   });
@@ -93,29 +94,15 @@ describe("editorial authenticated workspace shell", () => {
 
   it("preserves the dashboard data and failure-isolation boundaries", () => {
     const dashboard = read("src/app/dashboard/page.tsx");
-
-    for (const contract of [
-      "OwnerScopedRealtimeRefresh",
-      "TimerStopOutcomePrompt",
-      "PanelErrorBoundary",
-      "Suspense",
-      "SummaryStripAsync",
-      "AttentionQueueAsync",
-      "ReviewPulseAsync",
-      "PlannerAsync",
-      "FocusAsync",
-      "ProjectsAsync",
-      "McpComingSoonAnnouncement",
-    ]) {
-      expect(dashboard).toContain(contract);
-    }
+    // EGA-516: dashboard is now a compatibility redirect to the canonical Operator (Today)
+    expect(dashboard).toContain('redirect("/today")');
+    expect(dashboard).not.toContain("CommandCenterAsync");
+    expect(dashboard).not.toContain("getDashboardData");
   });
 
   it("turns the dashboard into an editorial control board without replacing panels", () => {
-    const dashboard = read("src/app/dashboard/page.tsx");
     const css = read("src/app/dashboard/_components/dashboard-editorial.css");
-
-    expect(dashboard).toContain('import "./_components/dashboard-editorial.css"');
+    // Dashboard page is now a redirect, but editorial CSS remains for future Operator theming
     expect(css).toContain('[data-workspace-theme="editorial"] .ega-dashboard-hero');
     expect(css).toContain('[data-workspace-theme="editorial"] .workspace-main-rail-grid');
     expect(css).toContain('[data-workspace-theme="editorial"] .ega-dashboard-metric');

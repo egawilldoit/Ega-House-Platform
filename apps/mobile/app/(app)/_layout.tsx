@@ -83,6 +83,20 @@ export default function ProtectedLayout() {
         }}
       />
       <Stack.Screen
+        name="notifications"
+        options={{
+          headerShown: true,
+          title: 'Notifications',
+        }}
+      />
+      <Stack.Screen
+        name="settings/notifications"
+        options={{
+          headerShown: true,
+          title: 'Notification Settings',
+        }}
+      />
+      <Stack.Screen
         name="updates"
         options={{
           headerShown: true,

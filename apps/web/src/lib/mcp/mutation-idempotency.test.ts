@@ -259,7 +259,7 @@ describe("storeMcpMutationResult", () => {
 
 describe("MCP receipt SQL fencing contract", () => {
   const migration = readFileSync(
-    resolve(process.cwd(), "..", "..", "drizzle/0047_mcp_mutation_receipts.sql"),
+    resolve(process.cwd(), "..", "..", "drizzle/0052_mcp_mutation_receipts.sql"),
     "utf8",
   );
 

@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { CornerDownLeft, Search } from "lucide-react";
 
 import { searchWorkspaceAction } from "@/app/search/actions";
+import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
 import { WORKSPACE_SEARCH_MIN_QUERY_LENGTH } from "@/lib/workspace-search";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -185,6 +186,10 @@ export function CommandPalette() {
     }
 
     closePalette();
+    if (item.action === "capture") {
+      window.dispatchEvent(new CustomEvent(INBOX_CAPTURE_EVENT));
+      return;
+    }
     router.push(canonicalUrl.resolve(item.href));
   };
 
