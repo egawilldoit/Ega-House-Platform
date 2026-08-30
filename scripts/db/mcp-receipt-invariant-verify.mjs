@@ -232,6 +232,93 @@ const READ_GRANT_ID = "55555555-5555-4555-8555-555555555552";
 const CLIENT_ID = "hermes-client";
 const READ_CLIENT_ID = "read-only-client";
 const RESOURCE_URI = "https://ega.example.com/api/mcp";
+
+const LEGACY_READ_ONLY_PERMISSIONS = [
+  "projects.read",
+  "goals.read",
+  "tasks.read",
+];
+const LEGACY_TASK_MANAGER_PERMISSIONS = [
+  "projects.read",
+  "goals.read",
+  "tasks.read",
+  "tasks.create",
+  "tasks.update",
+];
+const LEGACY_DELIVERY_OBSERVER_PERMISSIONS = [
+  "delivery_runs.read",
+  "delivery_events.read",
+  "delivery_artifacts.read",
+];
+const CURRENT_READ_ONLY_PERMISSIONS = [
+  "projects.read",
+  "goals.read",
+  "tasks.read",
+  "today.read",
+  "timer.read",
+];
+const CURRENT_TASK_MANAGER_PERMISSIONS = [
+  "projects.read",
+  "goals.read",
+  "tasks.read",
+  "tasks.create",
+  "tasks.update",
+  "today.read",
+  "timer.read",
+];
+const CURRENT_WORKSPACE_MANAGER_PERMISSIONS = [
+  "projects.read",
+  "projects.create",
+  "projects.update",
+  "goals.read",
+  "goals.create",
+  "goals.update",
+  "tasks.read",
+  "tasks.create",
+  "tasks.update",
+  "today.read",
+  "today.update",
+  "timer.read",
+  "timer.create",
+  "timer.update",
+];
+
+const LEGACY_READ_ACTIVE_GRANTS = [
+  { id: "55555555-5555-4555-8555-555555555601", owner: "55555555-5555-4555-8555-555555555611", client: "legacy-read-client-1" },
+  { id: "55555555-5555-4555-8555-555555555602", owner: "55555555-5555-4555-8555-555555555612", client: "legacy-read-client-2" },
+  { id: "55555555-5555-4555-8555-555555555603", owner: "55555555-5555-4555-8555-555555555613", client: "legacy-read-client-3" },
+];
+const LEGACY_READ_PENDING_GRANT = {
+  id: "55555555-5555-4555-8555-555555555604",
+  owner: "55555555-5555-4555-8555-555555555614",
+  client: "legacy-read-pending",
+};
+const LEGACY_TASK_ACTIVE_GRANT = {
+  id: "55555555-5555-4555-8555-555555555605",
+  owner: "55555555-5555-4555-8555-555555555615",
+  client: "legacy-task-client",
+};
+const LEGACY_TASK_PENDING_GRANT = {
+  id: "55555555-5555-4555-8555-555555555606",
+  owner: "55555555-5555-4555-8555-555555555616",
+  client: "legacy-task-pending",
+};
+const LEGACY_DELIVERY_ACTIVE_GRANT = {
+  id: "55555555-5555-4555-8555-555555555607",
+  owner: "55555555-5555-4555-8555-555555555617",
+  client: "legacy-delivery-client",
+};
+const LEGACY_DELIVERY_PENDING_GRANT = {
+  id: "55555555-5555-4555-8555-555555555608",
+  owner: "55555555-5555-4555-8555-555555555618",
+  client: "legacy-delivery-pending",
+};
+const LEGACY_DELIVERY_REVOKED_GRANT = {
+  id: "55555555-5555-4555-8555-555555555609",
+  owner: "55555555-5555-4555-8555-555555555619",
+  client: "legacy-delivery-revoked",
+  revokedAt: "2026-08-30T00:00:00.000Z",
+};
 const TOOL = "ega_create_task";
 const OP_FIRST = "66666666-6666-4666-8666-666666666661";
 const OP_TOKEN_GUARD = "66666666-6666-4666-8666-666666666662";
@@ -285,6 +372,130 @@ async function seedActiveGrant(sql) {
     [READ_GRANT_ID, OWNER_B, READ_CLIENT_ID, RESOURCE_URI],
   );
   log("SEED", "Active workspace_manager and read_only grants inserted for the proof owners");
+}
+
+async function insertGrant(sql, grant, status, permissionProfile, permissions) {
+  await sql.unsafe(
+    `
+    INSERT INTO public.mcp_authorization_grants
+      (id, owner_user_id, oauth_client_id, resource_uri, client_name, status, permission_profile, permissions, permissions_version, revoked_at)
+    VALUES ($1::uuid, $2::uuid, $3, $4, 'Migration fixture', $5, $6, $7::jsonb, 1, $8::timestamptz)
+    `,
+    [
+      grant.id,
+      grant.owner,
+      grant.client,
+      RESOURCE_URI,
+      status,
+      permissionProfile,
+      JSON.stringify(permissions),
+      grant.revokedAt ?? null,
+    ],
+  );
+}
+
+async function seedLegacyGrantFixture(sql) {
+  for (const grant of LEGACY_READ_ACTIVE_GRANTS) {
+    await insertGrant(sql, grant, "active", "read_only", LEGACY_READ_ONLY_PERMISSIONS);
+  }
+  await insertGrant(sql, LEGACY_READ_PENDING_GRANT, "pending", "read_only", LEGACY_READ_ONLY_PERMISSIONS);
+  await insertGrant(sql, LEGACY_TASK_ACTIVE_GRANT, "active", "task_manager", LEGACY_TASK_MANAGER_PERMISSIONS);
+  await insertGrant(sql, LEGACY_TASK_PENDING_GRANT, "pending", "task_manager", LEGACY_TASK_MANAGER_PERMISSIONS);
+  await insertGrant(sql, LEGACY_DELIVERY_ACTIVE_GRANT, "active", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
+  await insertGrant(sql, LEGACY_DELIVERY_PENDING_GRANT, "pending", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
+  await insertGrant(sql, LEGACY_DELIVERY_REVOKED_GRANT, "revoked", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
+  log("LEGACY-SEED", "Production-shaped legacy read_only, task_manager, and delivery_observer grants inserted before 0050.");
+}
+
+async function assertGrant(sql, grant, expectedStatus, expectedProfile, expectedPermissions) {
+  const [row] = await sql`
+    SELECT status, permission_profile, permissions, permissions_version, revoked_at
+    FROM public.mcp_authorization_grants
+    WHERE id = ${grant.id}::uuid
+  `;
+  assert(row?.status === expectedStatus, `${grant.client} expected ${expectedStatus}, got ${row?.status}`);
+  assert(row?.permission_profile === expectedProfile, `${grant.client} profile changed unexpectedly`);
+  assert(
+    JSON.stringify(row?.permissions) === JSON.stringify(expectedPermissions),
+    `${grant.client} permissions changed unexpectedly`,
+  );
+  assert(row?.permissions_version === 1, `${grant.client} permissions_version changed unexpectedly`);
+  if (expectedStatus === "active" || expectedStatus === "pending") {
+    assert(row?.revoked_at === null, `${grant.client} unexpectedly has revoked_at`);
+  } else {
+    assert(row?.revoked_at !== null, `${grant.client} terminal transition must set revoked_at`);
+    if (grant.revokedAt) {
+      assert(
+        new Date(row.revoked_at).toISOString() === new Date(grant.revokedAt).toISOString(),
+        `${grant.client} existing revoked_at was changed unexpectedly`,
+      );
+    }
+  }
+}
+
+async function assertLegacyGrantMigration(sql) {
+  for (const grant of LEGACY_READ_ACTIVE_GRANTS) {
+    await assertGrant(sql, grant, "revoked", "read_only", LEGACY_READ_ONLY_PERMISSIONS);
+  }
+  await assertGrant(sql, LEGACY_READ_PENDING_GRANT, "failed", "read_only", LEGACY_READ_ONLY_PERMISSIONS);
+  await assertGrant(sql, LEGACY_TASK_ACTIVE_GRANT, "revoked", "task_manager", LEGACY_TASK_MANAGER_PERMISSIONS);
+  await assertGrant(sql, LEGACY_TASK_PENDING_GRANT, "failed", "task_manager", LEGACY_TASK_MANAGER_PERMISSIONS);
+  await assertGrant(sql, LEGACY_DELIVERY_ACTIVE_GRANT, "revoked", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
+  await assertGrant(sql, LEGACY_DELIVERY_PENDING_GRANT, "failed", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
+  await assertGrant(sql, LEGACY_DELIVERY_REVOKED_GRANT, "revoked", "delivery_observer", LEGACY_DELIVERY_OBSERVER_PERMISSIONS);
+  log("LEGACY-UPGRADE", "Known legacy active grants were revoked, pending grants failed, and permission documents were preserved.");
+}
+
+async function assertCurrentGrantConstraints(sql) {
+  const currentGrants = [
+    {
+      id: "55555555-5555-4555-8555-555555555621",
+      owner: "55555555-5555-4555-8555-555555555631",
+      client: "current-read-client",
+      profile: "read_only",
+      permissions: CURRENT_READ_ONLY_PERMISSIONS,
+    },
+    {
+      id: "55555555-5555-4555-8555-555555555622",
+      owner: "55555555-5555-4555-8555-555555555632",
+      client: "current-task-client",
+      profile: "task_manager",
+      permissions: CURRENT_TASK_MANAGER_PERMISSIONS,
+    },
+    {
+      id: "55555555-5555-4555-8555-555555555623",
+      owner: "55555555-5555-4555-8555-555555555633",
+      client: "current-workspace-client",
+      profile: "workspace_manager",
+      permissions: CURRENT_WORKSPACE_MANAGER_PERMISSIONS,
+    },
+  ];
+  for (const grant of currentGrants) {
+    await insertGrant(sql, grant, "active", grant.profile, grant.permissions);
+    await assertGrant(sql, grant, "active", grant.profile, grant.permissions);
+  }
+  log("CURRENT-GRANTS", "Fresh active grants accepted only with the canonical current permission documents.");
+
+  const unknownActive = {
+    id: "55555555-5555-4555-8555-555555555624",
+    owner: "55555555-5555-4555-8555-555555555634",
+    client: "unknown-active-client",
+  };
+  const unknownTerminal = {
+    id: "55555555-5555-4555-8555-555555555625",
+    owner: "55555555-5555-4555-8555-555555555635",
+    client: "unknown-terminal-client",
+  };
+  const unknownPermissions = ["projects.read", "unknown.permission"];
+  const activeError = await capturePostgresError(() =>
+    insertGrant(sql, unknownActive, "active", "read_only", unknownPermissions),
+  );
+  const terminalError = await capturePostgresError(() =>
+    insertGrant(sql, unknownTerminal, "revoked", "read_only", unknownPermissions),
+  );
+  assert(activeError === "23514", `unknown active permission shape must fail closed, got ${activeError}`);
+  assert(terminalError === "23514", `unknown terminal permission shape must fail closed, got ${terminalError}`);
+  log("UNKNOWN-GRANT", "Unknown permission documents were rejected for both active and terminal rows.");
 }
 
 // Runs `fn` inside one transaction carrying a transaction-local MCP auth
@@ -928,6 +1139,7 @@ async function main() {
     }
     if (upgradeFrom) {
       await assertCurrentMainBaseline(sql);
+      await seedLegacyGrantFixture(sql);
       for (const tag of tags.slice(baselineIndex + 1)) {
         const statements = await applyFile(sql, tag);
         applied += 1;
@@ -961,6 +1173,10 @@ async function main() {
     assert(flags[0]?.relrowsecurity === true, "mcp_mutation_receipts must have RLS enabled");
     log("RLS", "mcp_mutation_receipts keeps its RESTRICTIVE deny-all policy with RLS enabled.");
 
+    if (upgradeFrom) {
+      await assertLegacyGrantMigration(sql);
+    }
+    await assertCurrentGrantConstraints(sql);
     await runProofPhases(sql);
     await runDomainFencingProof(sql);
     await runConcurrencyProof(sql, mcpSession(sql));
