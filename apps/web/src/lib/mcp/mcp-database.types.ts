@@ -130,6 +130,19 @@ export type McpDatabase = Omit<Database, "public"> & {
           retry_after_seconds: number;
         }>;
       };
+      resolve_active_mcp_grant: {
+        Args: Record<string, never>;
+        Returns: Array<{
+          id: string;
+          owner_user_id: string;
+          oauth_client_id: string;
+          resource_uri: string;
+          status: string;
+          permission_profile: string;
+          permissions: Json;
+          permissions_version: number;
+        }>;
+      };
     };
   };
 };
