@@ -57,6 +57,13 @@ function collectElements(
   return matches;
 }
 
+function collectText(root: unknown): string {
+  if (typeof root === "string") return root;
+  if (Array.isArray(root)) return root.map(collectText).join(" ");
+  if (!isReactElementNode(root)) return "";
+  return collectText(root.props.children);
+}
+
 function findSingleForm(tree: unknown): ReactElementNode {
   const forms = collectElements(tree, (element) => element.type === "form");
   expect(forms).toHaveLength(1);
@@ -264,5 +271,13 @@ describe("OAuth consent page — permission_profile submission (blocker B8 regre
     expect(values.has("permission_profile")).toBe(false);
     expect(values.get("authorization_id")).toBe(authorizationIdParam);
     expect(values.get("decision")).toBe("deny");
+  });
+
+  it("describes the full canonical read-only scope when writes are disabled", async () => {
+    const { tree } = await renderConsentPage(false);
+    const text = collectText(tree);
+
+    expect(text).toContain("Today plan");
+    expect(text).toContain("Timer sessions");
   });
 });
