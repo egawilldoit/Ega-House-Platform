@@ -48,6 +48,8 @@ describe("OAuth consent decision service", () => {
   });
 
   it("activates the read-only grant before approving authorization", async () => {
+    const originalWritesFlag = process.env.MCP_WRITES_ENABLED;
+    process.env.MCP_WRITES_ENABLED = "true";
     const order: string[] = [];
     const activateGrant = vi.fn(async () => {
       order.push("grant");
@@ -61,39 +63,213 @@ describe("OAuth consent decision service", () => {
       };
     });
 
+    try {
+      await expect(
+        processOAuthConsentDecision({
+          decision: "approve",
+          authorizationId: "authorization-123",
+          ownerUserId: "user-123",
+          resourceUri: "https://preview.example/api/mcp",
+          oauth: {
+            getAuthorizationDetails: vi.fn().mockResolvedValue({
+              data: authorizationDetails(),
+              error: null,
+            }),
+            approveAuthorization,
+            denyAuthorization: vi.fn(),
+          },
+          admin: {} as SupabaseClient<McpDatabase>,
+          activateGrant,
+          failGrant: vi.fn(),
+        }),
+      ).resolves.toBe(
+        "http://127.0.0.1:3210/callback?code=code-123",
+      );
+
+      expect(order).toEqual(["grant", "approve"]);
+      expect(activateGrant).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          ownerUserId: "user-123",
+          oauthClientId: "client-123",
+          clientName: "Hermes",
+          resourceUri: "https://preview.example/api/mcp",
+          permissionProfile: "read_only",
+        }),
+      );
+    } finally {
+      if (originalWritesFlag === undefined) {
+        delete process.env.MCP_WRITES_ENABLED;
+      } else {
+        process.env.MCP_WRITES_ENABLED = originalWritesFlag;
+      }
+    }
+  });
+
+  it("persists workspace_manager when writes are enabled", async () => {
+    const originalWritesFlag = process.env.MCP_WRITES_ENABLED;
+    process.env.MCP_WRITES_ENABLED = "true";
+
+    const single = vi.fn().mockResolvedValue({
+      data: { id: "grant-123" },
+      error: null,
+    });
+    const select = vi.fn().mockReturnValue({ single });
+    const upsert = vi.fn().mockReturnValue({ select });
+    const admin = {
+      from: vi.fn().mockReturnValue({ upsert }),
+    } as unknown as SupabaseClient<McpDatabase>;
+
+    try {
+      await expect(
+        processOAuthConsentDecision({
+          decision: "approve",
+          authorizationId: "authorization-123",
+          ownerUserId: "user-123",
+          resourceUri: "https://preview.example/api/mcp",
+          permissionProfile: "workspace_manager",
+          oauth: {
+            getAuthorizationDetails: vi.fn().mockResolvedValue({
+              data: authorizationDetails(),
+              error: null,
+            }),
+            approveAuthorization: vi.fn().mockResolvedValue({
+              data: { redirect_url: "http://127.0.0.1:3210/callback?code=code-123" },
+              error: null,
+            }),
+            denyAuthorization: vi.fn(),
+          },
+          admin,
+        }),
+      ).resolves.toBe("http://127.0.0.1:3210/callback?code=code-123");
+
+      expect(upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permission_profile: "workspace_manager",
+        }),
+        { onConflict: "owner_user_id,oauth_client_id" },
+      );
+    } finally {
+      if (originalWritesFlag === undefined) {
+        delete process.env.MCP_WRITES_ENABLED;
+      } else {
+        process.env.MCP_WRITES_ENABLED = originalWritesFlag;
+      }
+    }
+  });
+
+  it("downgrades workspace_manager to read_only when writes are disabled", async () => {
+    const originalWritesFlag = process.env.MCP_WRITES_ENABLED;
+    process.env.MCP_WRITES_ENABLED = "false";
+    const single = vi.fn().mockResolvedValue({ data: { id: "grant-123" }, error: null });
+    const upsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({ single }),
+    });
+    const admin = {
+      from: vi.fn().mockReturnValue({ upsert }),
+    } as unknown as SupabaseClient<McpDatabase>;
+
+    try {
+      await processOAuthConsentDecision({
+        decision: "approve",
+        authorizationId: "authorization-123",
+        ownerUserId: "user-123",
+        resourceUri: "https://preview.example/api/mcp",
+        permissionProfile: "workspace_manager",
+        oauth: {
+          getAuthorizationDetails: vi.fn().mockResolvedValue({
+            data: authorizationDetails(),
+            error: null,
+          }),
+          approveAuthorization: vi.fn().mockResolvedValue({
+            data: { redirect_url: "http://127.0.0.1:3210/callback?code=code-123" },
+            error: null,
+          }),
+          denyAuthorization: vi.fn(),
+        },
+        admin,
+      });
+
+      expect(upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permission_profile: "read_only",
+          permissions: [
+            "projects.read",
+            "goals.read",
+            "tasks.read",
+            "today.read",
+            "timer.read",
+          ],
+        }),
+        { onConflict: "owner_user_id,oauth_client_id" },
+      );
+    } finally {
+      if (originalWritesFlag === undefined) {
+        delete process.env.MCP_WRITES_ENABLED;
+      } else {
+        process.env.MCP_WRITES_ENABLED = originalWritesFlag;
+      }
+    }
+  });
+
+  it("defaults an omitted permission profile to read_only", async () => {
+    const single = vi.fn().mockResolvedValue({ data: { id: "grant-123" }, error: null });
+    const upsert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({ single }),
+    });
+    const admin = {
+      from: vi.fn().mockReturnValue({ upsert }),
+    } as unknown as SupabaseClient<McpDatabase>;
+
+    await processOAuthConsentDecision({
+      decision: "approve",
+      authorizationId: "authorization-123",
+      ownerUserId: "user-123",
+      resourceUri: "https://preview.example/api/mcp",
+      oauth: {
+        getAuthorizationDetails: vi.fn().mockResolvedValue({
+          data: authorizationDetails(),
+          error: null,
+        }),
+        approveAuthorization: vi.fn().mockResolvedValue({
+          data: { redirect_url: "http://127.0.0.1:3210/callback?code=code-123" },
+          error: null,
+        }),
+        denyAuthorization: vi.fn(),
+      },
+      admin,
+    });
+
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ permission_profile: "read_only" }),
+      { onConflict: "owner_user_id,oauth_client_id" },
+    );
+  });
+
+  it("rejects unsupported permission profiles before activation", async () => {
+    const activateGrant = vi.fn();
+
     await expect(
       processOAuthConsentDecision({
         decision: "approve",
         authorizationId: "authorization-123",
         ownerUserId: "user-123",
         resourceUri: "https://preview.example/api/mcp",
+        permissionProfile: "operator_admin",
         oauth: {
           getAuthorizationDetails: vi.fn().mockResolvedValue({
             data: authorizationDetails(),
             error: null,
           }),
-          approveAuthorization,
+          approveAuthorization: vi.fn(),
           denyAuthorization: vi.fn(),
         },
         admin: {} as SupabaseClient<McpDatabase>,
         activateGrant,
-        failGrant: vi.fn(),
       }),
-    ).resolves.toBe(
-      "http://127.0.0.1:3210/callback?code=code-123",
-    );
+    ).rejects.toThrow("Unsupported MCP permission profile.");
 
-    expect(order).toEqual(["grant", "approve"]);
-    expect(activateGrant).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        ownerUserId: "user-123",
-        oauthClientId: "client-123",
-        clientName: "Hermes",
-        resourceUri: "https://preview.example/api/mcp",
-        permissionProfile: "read_only",
-      }),
-    );
+    expect(activateGrant).not.toHaveBeenCalled();
   });
 
   it("fails the activated grant when Supabase approval fails", async () => {
