@@ -13,7 +13,7 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
 };
 
 describe("MCP AuthInfo adapter", () => {
@@ -28,6 +28,8 @@ describe("MCP AuthInfo adapter", () => {
         "projects.read",
         "goals.read",
         "tasks.read",
+        "today.read",
+        "timer.read",
       ],
       expiresAt: 2_000_000_100,
       extra: { principal: PRINCIPAL },

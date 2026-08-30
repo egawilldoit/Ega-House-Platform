@@ -1,7 +1,7 @@
 # EGA House Homepage — Operational Studies Design
 
-**Date:** 2026-08-03  
-**Branch:** `feat/homepage-operational-studies`  
+**Date:** 2026-08-03
+**Branch:** `feat/homepage-operational-studies`
 **Status:** Approved for implementation planning
 
 ## 1. Goal

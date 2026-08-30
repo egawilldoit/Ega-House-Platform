@@ -1,6 +1,7 @@
 import { isTaskCompletedStatus } from "@ega/domain";
 
 export {
+  GOAL_HEALTH_VALUES,
   GOAL_STATUS_VALUES,
   PROJECT_STATUS_VALUES,
   TASK_PRIORITY_VALUES,
@@ -14,7 +15,7 @@ export {
   isTaskPriority,
   isTaskStatus,
 } from "@ega/domain";
-export type { GoalStatus, ProjectStatus, TaskPriority, TaskStatus } from "@ega/domain";
+export type { GoalHealth, GoalStatus, ProjectStatus, TaskPriority, TaskStatus } from "@ega/domain";
 
 export function formatTaskToken(value: string) {
   return value

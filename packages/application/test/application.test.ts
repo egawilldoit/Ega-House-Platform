@@ -91,7 +91,7 @@ class FakeProjectsRepository implements ProjectsRepository {
 
 class FakeGoalsRepository implements GoalsRepository {
   calls: Array<{ method: string; actorUserId: string; args: Record<string, unknown> }> = [];
-  createResult: RepositoryResult<null> = okResult(null);
+  createResult: RepositoryResult<GoalRecord | null> = okResult(null);
   updateResult: RepositoryResult<null> = okResult(null);
   projectOptionsResult: RepositoryResult<{ id: string; name: string }[]> = okResult([]);
   listResult: RepositoryResult<GoalRecord[]> = okResult([]);
@@ -152,6 +152,19 @@ const PROJECT_ROW: ProjectRecord = {
   description: "Kitchen and bathroom",
   status: "active",
   createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-02-01T00:00:00.000Z",
+};
+
+const GOAL_ROW: GoalRecord = {
+  id: "goal-1",
+  projectId: "project-1",
+  title: "Ship the app",
+  slug: "ship-the-app",
+  description: "Notes",
+  nextStep: "Send build",
+  health: "on_track",
+  status: "active",
+  createdAt: "2026-02-01T00:00:00.000Z",
   updatedAt: "2026-02-01T00:00:00.000Z",
 };
 
@@ -389,6 +402,37 @@ test("createGoal passes the actor and normalized values to the repository", asyn
     health: "at_risk",
     status: "active",
     slug: "ship-the-app",
+  });
+});
+
+test("createGoal propagates the server-bound MCP operation identity", async () => {
+  const repository = new FakeGoalsRepository();
+  repository.createResult = okResult(GOAL_ROW);
+
+  const result = await createGoal(ACTOR, repository, {
+    title: "Ship the app",
+    projectId: "project-1",
+    description: "Notes",
+    nextStep: "Send build",
+    health: "on_track",
+    status: "active",
+    slug: "ship-the-app",
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.data, GOAL_ROW);
+  assert.deepEqual(repository.calls[0]?.args, {
+    title: "Ship the app",
+    projectId: "project-1",
+    description: "Notes",
+    nextStep: "Send build",
+    health: "on_track",
+    status: "active",
+    slug: "ship-the-app",
+    mcpOperationId: "550e8400-e29b-41d4-a716-446655440000",
+    mcpClientId: "mcp-client-a",
   });
 });
 

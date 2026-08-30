@@ -5,10 +5,12 @@ import {
   type OAuthConsentDecision,
 } from "@/lib/oauth/consent";
 import {
+  activateMcpGrant,
   activateReadOnlyMcpGrant,
   markMcpGrantFailed,
 } from "@/lib/oauth/grant-admin";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import { parsePermissionProfile } from "@/lib/mcp/permissions";
 
 type OAuthMethodResult = Promise<{
   data: unknown;
@@ -29,6 +31,7 @@ type ProcessConsentInput = {
   authorizationId: string;
   ownerUserId: string;
   resourceUri: string;
+  permissionProfile?: string;
   oauth: OAuthDecisionClient;
   admin?: SupabaseClient<McpDatabase>;
   activateGrant?: ActivateGrant;
@@ -88,11 +91,27 @@ export async function processOAuthConsentDecision(
     throw new Error("OAuth grant administration is unavailable.");
   }
 
-  await activateGrant(admin, {
+  const requestedProfile = input.permissionProfile
+    ? parsePermissionProfile(input.permissionProfile)
+    : "read_only" as const;
+
+  const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
+  const effectiveProfile =
+    requestedProfile === "workspace_manager" && !writesEnabled
+      ? "read_only" as const
+      : requestedProfile;
+
+  const grantActivator =
+    effectiveProfile === "read_only" && input.activateGrant === undefined
+      ? activateMcpGrant
+      : (activateGrant as unknown as typeof activateMcpGrant);
+
+  await grantActivator(admin, {
     ownerUserId: input.ownerUserId,
     oauthClientId: details.clientId,
     clientName: details.clientName,
     resourceUri: input.resourceUri,
+    permissionProfile: effectiveProfile,
   });
 
   const approved = await input.oauth.approveAuthorization(input.authorizationId);

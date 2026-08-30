@@ -39,11 +39,16 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   let authorizationId: string;
   let decision: "approve" | "deny";
+  let permissionProfile: string | undefined;
 
   try {
     const formData = await request.formData();
     authorizationId = parseAuthorizationId(formData.get("authorization_id"));
     decision = parseConsentDecision(formData.get("decision"));
+    const rawProfile = formData.get("permission_profile");
+    if (typeof rawProfile === "string" && rawProfile.trim() !== "") {
+      permissionProfile = rawProfile.trim();
+    }
   } catch {
     return NextResponse.json(
       { error: "Invalid OAuth consent request." },
@@ -75,6 +80,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       authorizationId,
       ownerUserId: user.id,
       resourceUri: config?.resource ?? "",
+      permissionProfile,
       oauth: supabase.auth.oauth as OAuthDecisionClient,
       admin: config ? createAdminClient() : undefined,
     });

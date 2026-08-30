@@ -48,6 +48,8 @@ export async function createTask(
     priority?: unknown;
     dueDate?: unknown;
     estimateMinutes?: unknown;
+    mcpOperationId?: string;
+    mcpClientId?: string;
   },
   options?: { preallocatedId?: string },
 ): Promise<ApplicationResult<TaskRecord>> {
@@ -93,6 +95,9 @@ export async function createTask(
     priority: priorityCandidate,
     dueDate: optionalDateOnly(input.dueDate),
     estimateMinutes: normalizeEstimate(input.estimateMinutes),
+    ...(input.mcpOperationId && input.mcpClientId
+      ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
+      : {}),
   };
 
   const result = await repository.createTask(actor, record);
@@ -185,9 +190,29 @@ export async function unarchiveTask(
 export async function createTaskReminder(
   actor: AuthenticatedActor,
   repository: TasksRepository,
-  input: { taskId: unknown; remindAt: unknown; deliveryMode?: unknown; now?: Date },
+  input: {
+    taskId: unknown;
+    remindAt: unknown;
+    deliveryMode?: unknown;
+    now?: Date;
+    mcpOperationId?: string;
+    mcpClientId?: string;
+  },
 ): Promise<ApplicationResult<TaskRecord>> {
   const taskId = String(input.taskId ?? "").trim();
+  const operationIdentity = input.mcpOperationId && input.mcpClientId
+    ? { mcpOperationId: input.mcpOperationId, mcpClientId: input.mcpClientId }
+    : null;
+
+  // A retry after the reminder INSERT committed must replay before validating
+  // mutable time. The domain operation index is the canonical proof that the
+  // reminder already exists, even if its scheduled time has now passed.
+  if (operationIdentity) {
+    const replayResult = await repository.findReminderByOperation(actor, operationIdentity);
+    if (!replayResult.ok) return applicationFailure("Unable to verify the reminder operation right now.");
+    if (replayResult.value) return applicationSuccess(replayResult.value);
+  }
+
   const raw = String(input.remindAt ?? "").trim();
   const remindAt = new Date(raw);
   const now = input.now ?? new Date();
@@ -209,6 +234,7 @@ export async function createTaskReminder(
     channel: "email",
     status: "pending",
     deliveryMode,
+    ...(operationIdentity ?? {}),
   });
   if (result.ok) return applicationSuccess(result.value);
   return mutationFailure("Unable to create reminder right now.", toAppErrorCode((result.error as { code?: string })?.code));

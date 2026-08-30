@@ -11,7 +11,7 @@ import {
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
 import { normalizeProjectSlug } from "../projects/service";
-import type { GoalsRepository } from "./ports";
+import type { CreateGoalRecordInput, GoalRecord, GoalsRepository } from "./ports";
 
 export type GoalFormValues = {
   title: string;
@@ -24,7 +24,7 @@ export type GoalFormValues = {
 };
 
 export type CreateGoalResult =
-  | Readonly<{ ok: true; data: null; values: GoalFormValues }>
+  | Readonly<{ ok: true; data: GoalRecord | null; values: GoalFormValues }>
   | Readonly<{ ok: false; errorMessage: string; values: GoalFormValues }>;
 
 function goalStatusMessage() {
@@ -42,6 +42,8 @@ export async function createGoal(
     health: unknown;
     status: unknown;
     slug: unknown;
+    mcpOperationId?: string;
+    mcpClientId?: string;
   },
 ): Promise<CreateGoalResult> {
   const title = String(input.title ?? "").trim();
@@ -69,7 +71,7 @@ export async function createGoal(
   if (nextStep.error) return { ok: false, errorMessage: nextStep.error, values };
   if (health.error) return { ok: false, errorMessage: health.error, values };
 
-  const result = await repository.createGoal(actor, {
+  const record: CreateGoalRecordInput = {
     title,
     projectId,
     description: description || null,
@@ -77,13 +79,19 @@ export async function createGoal(
     health: health.value,
     status,
     slug: slug || null,
-  });
+  };
+  if (input.mcpOperationId && input.mcpClientId) {
+    record.mcpOperationId = input.mcpOperationId;
+    record.mcpClientId = input.mcpClientId;
+  }
+
+  const result = await repository.createGoal(actor, record);
 
   if (!result.ok) {
     return { ok: false, errorMessage: "Unable to create goal right now.", values };
   }
 
-  return { ok: true, data: null, values };
+  return { ok: true, data: result.value, values };
 }
 
 type GoalUpdateInput = {

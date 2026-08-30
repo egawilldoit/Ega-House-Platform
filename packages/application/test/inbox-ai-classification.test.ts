@@ -176,6 +176,9 @@ class FakeTasksRepo implements TasksRepository {
   async createReminder() {
     return ok({} as TaskRecord);
   }
+  async findReminderByOperation() {
+    return ok(null as TaskRecord | null);
+  }
   async cancelReminder() {
     return ok({} as TaskRecord);
   }

@@ -52,7 +52,7 @@ export const mcpAuthorizationGrants = pgTable(
     ),
     check(
       "mcp_authorization_grants_profile_check",
-      sql`${table.permissionProfile} in ('read_only', 'task_manager', 'delivery_observer')`,
+      sql`${table.permissionProfile} in ('read_only', 'task_manager', 'workspace_manager')`,
     ),
     check(
       "mcp_authorization_grants_resource_uri_check",

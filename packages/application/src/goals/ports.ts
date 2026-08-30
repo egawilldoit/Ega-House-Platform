@@ -37,6 +37,8 @@ export type CreateGoalRecordInput = {
   health: GoalHealth | null;
   status: GoalStatus;
   slug: string | null;
+  mcpOperationId?: string;
+  mcpClientId?: string;
 };
 
 export interface GoalsRepository {
@@ -50,7 +52,7 @@ export interface GoalsRepository {
   createGoal(
     actor: AuthenticatedActor,
     input: CreateGoalRecordInput,
-  ): Promise<RepositoryResult<null>>;
+  ): Promise<RepositoryResult<GoalRecord | null>>;
   updateGoalStatus(
     actor: AuthenticatedActor,
     input: { goalId: string; status: GoalStatus | typeof GOAL_ARCHIVE_STATUS; updatedAt: string },

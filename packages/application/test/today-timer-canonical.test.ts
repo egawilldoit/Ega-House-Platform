@@ -98,6 +98,9 @@ class FakeTimerRepository implements TimerSessionRepository {
     void _input;
     return ok({ eligible: true, reason: null, taskTitle: "X" } as StartableTask);
   }
+  async findSessionByOperation() {
+    return ok(null as TimerSessionRecord | null);
+  }
   async insertOpenSession(actor: AuthenticatedActor, _input: { taskId: string; startedAtIso: string }) {
     void actor;
     return ok({ id: "new", taskId: "task-1", startedAt: _input.startedAtIso, endedAt: null, durationSeconds: null, taskTitle: "X" });

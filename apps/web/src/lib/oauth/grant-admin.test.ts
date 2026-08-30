@@ -58,7 +58,7 @@ describe("OAuth MCP grant administration", () => {
         resource_uri: "https://preview.example/api/mcp",
         status: "active",
         permission_profile: "read_only",
-        permissions: ["projects.read", "goals.read", "tasks.read"],
+        permissions: ["projects.read", "goals.read", "tasks.read", "today.read", "timer.read"],
         permissions_version: 1,
         approved_at: "2026-08-01T18:00:00.000Z",
         revoked_at: null,

@@ -1,8 +1,8 @@
 # Homepage and Auth Editorial Refinement Design
 
-**Status:** Approved direction, ready for implementation planning  
-**Branch:** `feat/homepage-operational-studies`  
-**PR:** #117  
+**Status:** Approved direction, ready for implementation planning
+**Branch:** `feat/homepage-operational-studies`
+**PR:** #117
 **Date:** 2026-08-03
 
 ## 1. Objective

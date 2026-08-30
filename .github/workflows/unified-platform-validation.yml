@@ -485,6 +485,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/timer-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MCP receipt and domain-fencing invariants through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]

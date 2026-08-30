@@ -362,6 +362,7 @@ class FakeTasksForConvert implements TasksRepository {
     this.store.set(input.taskId as string, updated);
     return ok(updated);
   }
+  async findReminderByOperation() { return ok(null as TaskRecord | null); }
   async cancelReminder() {
     return ok(taskRecord());
   }

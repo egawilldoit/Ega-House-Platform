@@ -53,11 +53,17 @@ export async function authenticateMcpRequest(
     return unauthenticated("Access token verification failed.");
   }
 
-  const claims = validateMcpAccessTokenClaims(untrustedClaims, {
-    issuer: options.issuer,
-    audience: options.audience,
-    nowSeconds: options.nowSeconds,
-  });
+  let claims: ValidatedMcpIdentityClaims;
+  try {
+    claims = validateMcpAccessTokenClaims(untrustedClaims, {
+      issuer: options.issuer,
+      audience: options.audience,
+      nowSeconds: options.nowSeconds,
+    });
+  } catch (error) {
+    if (error instanceof McpAuthorizationError) throw error;
+    return unauthenticated("Access token verification failed.");
+  }
 
   return { accessToken, claims };
 }
