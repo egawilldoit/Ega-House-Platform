@@ -9,6 +9,8 @@ import {
   FocusQueuePanel,
   StartHerePanel,
 } from "@/components/today/today-cockpit-panels";
+import { TodayIntelligencePanel } from "@/components/today/today-intelligence-panel";
+import { TodayOperatorPlan } from "@/components/today/today-operator-plan";
 import { TodaySection } from "@/components/today/today-section";
 import { TodaySuggestionsPanel } from "@/components/today/today-suggestions-panel";
 import { TodaySummaryBar } from "@/components/today/today-summary-bar";
@@ -20,9 +22,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { formatTaskDueDate } from "@/lib/task-due-date";
+import { formatTaskEstimate } from "@/lib/task-estimate";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
+import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
+import { getFrictionRadar } from "@/lib/services/friction-service";
+import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -36,9 +42,18 @@ function PlannerErrorState({ actionError }: { actionError: string | null }) {
       {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
       <Card className="border-[var(--border)] bg-white">
         <CardContent className="px-6 pb-6 pt-6">
-          <p className="text-sm text-[color:var(--muted-foreground)]">
-            Could not load Today planner right now. Try again shortly.
-          </p>
+          <div className="space-y-3" role="status" aria-live="polite">
+            <div>
+              <h2 className="text-base font-semibold text-[color:var(--foreground)]">Today is temporarily unavailable</h2>
+              <p className="mt-1 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                The daily plan could not be read. Your task inventory is still available while we recover the daily view.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/today" className="btn-instrument inline-flex h-9 items-center px-3">Retry Today</Link>
+              <Link href="/tasks" className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-3">Open Tasks</Link>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
@@ -52,14 +67,24 @@ export default async function TodayPage({
     actionError?: string;
     actionSuccess?: string;
     stoppedTaskId?: string;
+    operatorProposalId?: string;
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
   const actionError = resolvedSearchParams.actionError?.slice(0, 180) ?? null;
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
+  const operatorProposalId = resolvedSearchParams.operatorProposalId?.slice(0, 80) ?? null;
 
-  const [todayResult, user] = await Promise.all([getOperatorSnapshotData(), getCurrentUser()]);
+  const [todayResult, healthResult, frictionResult, user, proposalResult] = await Promise.all([
+    getOperatorSnapshotData(),
+    getHealthSnapshotData().catch(() => ({ errorMessage: "Workload evidence is unavailable.", data: null, recommendations: [] })),
+    getFrictionRadar().catch(() => ({ errorMessage: "Friction signals are unavailable.", data: null })),
+    getCurrentUser(),
+    operatorProposalId
+      ? getOperatorProposalData({ proposalId: operatorProposalId }).catch(() => ({ data: null, errorMessage: "The approval plan is unavailable." }))
+      : Promise.resolve({ data: null, errorMessage: null }),
+  ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
     return (
@@ -92,8 +117,8 @@ export default async function TodayPage({
     ? {
         sessionId: snapshot.activeTimer.sessionId,
         taskId: snapshot.activeTimer.taskId,
-        startedAt: new Date().toISOString(),
-        elapsedLabel: snapshot.summary.trackedTodayLabel,
+        startedAt: "",
+        elapsedLabel: "Running now",
         taskTitle: activeTaskForTimer?.title ?? "Active task",
         taskStatus: activeTaskForTimer?.status ?? "in_progress",
         taskPriority: activeTaskForTimer?.priority ?? "medium",
@@ -144,8 +169,8 @@ export default async function TodayPage({
   return (
     <AppShell
       eyebrow="Execution Workspace"
-      title="Today"
-      description={`${formatTaskDueDate(todayData.date)} · Choose the work that matters, then execute it.`}
+      title="Today / Daily Operator"
+      description={`${formatTaskDueDate(todayData.date)} · Here’s what matters today.`}
       contentClassName="today-page-content"
       actions={
         <div className="flex items-center gap-2">
@@ -178,6 +203,20 @@ export default async function TodayPage({
           actionSuccess={actionSuccess}
         />
 
+        <div className="today-operator-brief" aria-label="Daily Operator briefing">
+          <div>
+            <p className="glass-label text-signal-live">Morning briefing</p>
+            <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight">Here’s what matters today.</h2>
+          </div>
+          <div className="today-operator-state-strip">
+            <span><strong>{formatTaskEstimate(todayData.summary.totalEstimateMinutes) ?? "—"}</strong> planned load</span>
+            <span><strong>{todayData.summary.plannedCount + todayData.summary.inProgressCount}</strong> active lane</span>
+            <span><strong>{todayData.summary.overdueCount}</strong> overdue</span>
+            <span><strong>{todayData.activeTimer ? "Live" : "None"}</strong> timer</span>
+            <span><strong>{todayData.summary.completedCount}</strong> completed</span>
+          </div>
+        </div>
+
         <TodaySummaryBar
           plannedCount={todayData.summary.plannedCount}
           inProgressCount={todayData.summary.inProgressCount}
@@ -202,6 +241,15 @@ export default async function TodayPage({
             />
           </div>
         </div>
+
+        <TodayIntelligencePanel health={healthResult} friction={frictionResult} />
+
+        <TodayOperatorPlan
+          tasks={todayData.focusQueue}
+          proposal={proposalResult.data}
+          proposalError={proposalResult.errorMessage}
+          returnTo={returnTo}
+        />
 
         <div className="today-work-grid">
           <div className="today-lane-stack">

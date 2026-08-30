@@ -65,9 +65,9 @@ describe("CommandPalette", () => {
     await openViaShortcut();
 
     const options = document.body.querySelectorAll('[role="option"]');
-    // 13 nav + 6 quick actions = 19 when query empty
+    // 12 nav + 7 quick actions = 19 when query empty
     expect(options.length).toBe(19);
-    expect(options[0].textContent).toContain("Dashboard");
+    expect(options[0].textContent).toContain("Today");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
 
     await act(async () => {
@@ -76,7 +76,7 @@ describe("CommandPalette", () => {
       );
     });
 
-    expect(routerPush).toHaveBeenCalledWith("/dashboard");
+    expect(routerPush).toHaveBeenCalledWith("/today");
     expect(dialog()).toBeNull();
   });
 

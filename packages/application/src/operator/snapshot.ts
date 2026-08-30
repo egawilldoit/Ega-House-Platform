@@ -304,16 +304,21 @@ export async function getOperatorSnapshot(
   const windowStartIso = dayWindow.startUtcIso;
 
   const [selectedResult, pinnedResult, inProgressResult, timerResult] = await Promise.all([
-    todayPort.listSelectedTasks(actor, { today: localDate }),
+    todayPort.listSelectedTasks(actor, {
+      today: localDate,
+      windowStartIso: dayWindow.startUtcIso,
+      windowEndIso: dayWindow.endUtcIso,
+    }),
     todayPort.listPinnedSuggestions(actor, { limit: 80 }),
     todayPort.listInProgressSuggestions(actor, { limit: 80 }),
     todayPort.getTodayTimerSnapshot(actor, { nowIso, windowStartIso }),
   ]);
 
   if (!selectedResult.ok) return applicationFailure("Unable to load Today right now.");
-  if (!pinnedResult.ok || !inProgressResult.ok) {
-    return applicationFailure("Unable to load Today suggestions right now.");
-  }
+  // Suggestions are enrichment. A stale pinned/in-progress read must not blank
+  // the user's selected Today work; the UI can render an empty/unavailable lane.
+  const pinnedRows = pinnedResult.ok ? pinnedResult.value : [];
+  const inProgressRows = inProgressResult.ok ? inProgressResult.value : [];
 
   const timerSnapshot = timerResult.ok
     ? timerResult.value
@@ -323,8 +328,8 @@ export async function getOperatorSnapshot(
   const plan = buildTodayPlan({
     today: localDate,
     selectedRows: selectedResult.value,
-    pinnedRows: pinnedResult.value,
-    inProgressRows: inProgressResult.value,
+    pinnedRows,
+    inProgressRows,
     activeTimer: timerSnapshot.activeTimer,
     trackedTodaySeconds: timerSnapshot.trackedTodaySeconds,
   });
