@@ -8,6 +8,8 @@ import {
 } from "@/lib/oauth/consent";
 import { createClient } from "@/lib/supabase/server";
 
+import { ConsentApprovalLabel } from "./consent-approval-label";
+
 export const metadata: Metadata = {
   title: "Authorize MCP access",
   description: "Review and approve secure EGA House MCP access.",
@@ -232,7 +234,7 @@ export default async function OAuthConsentPage({
                 value="approve"
                 className="rounded-xl bg-[#17383a] px-5 py-3.5 font-semibold text-[#f4ed9a] transition hover:bg-[#102a2c]"
               >
-                Approve read-only access
+                <ConsentApprovalLabel />
               </button>
             </div>
           </form>
