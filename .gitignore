@@ -51,3 +51,6 @@ graphify-out/
 
 # playwright runtime artifact (regenerated every run; never commit)
 **/test-results/.last-run.json
+
+# verification harness generated results
+/scripts/verification/results/
