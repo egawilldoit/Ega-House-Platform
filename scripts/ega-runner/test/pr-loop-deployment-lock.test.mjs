@@ -47,13 +47,13 @@ function approvedGreenSnapshot() {
   };
 }
 
-test("web and API Vercel projects deploy only main", () => {
+test("web and API repository configs declare the main-only Vercel policy", () => {
   for (const configPath of ["vercel.json", "apps/server/vercel.json"]) {
     const config = readJson(configPath);
     assert.deepEqual(config.git?.deploymentEnabled, {
       "*": false,
       main: true,
-    }, `${configPath} must disable ordinary feature/PR deployments`);
+    }, `${configPath} must declare ordinary feature/PR deployments disabled`);
   }
 });
 
@@ -76,7 +76,6 @@ test("approved green PR is ready to merge without a preview when the gate is dis
 test("loadConfig keeps the supported default preview gate disabled", () => {
   const overrides = {
     DATABASE_URL: "postgresql://runner:runner@127.0.0.1:5432/runner",
-    EGA_RUNNER_REQUIRE_VERCEL_PREVIEW: "false",
     EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS: "300",
     EGA_RUNNER_HEARTBEAT_SECONDS: "60",
     EGA_RUNNER_LEASE_SECONDS: "300",
@@ -88,12 +87,17 @@ test("loadConfig keeps the supported default preview gate disabled", () => {
     EGA_RUNNER_PR_MONITOR_BATCH_SIZE: "5",
     EGA_RUNNER_MAX_REPAIR_ATTEMPTS: "3",
   };
+  const managedKeys = [
+    ...Object.keys(overrides),
+    "EGA_RUNNER_REQUIRE_VERCEL_PREVIEW",
+  ];
   const previous = new Map(
-    Object.keys(overrides).map((key) => [key, process.env[key]]),
+    managedKeys.map((key) => [key, process.env[key]]),
   );
 
   try {
     Object.assign(process.env, overrides);
+    delete process.env.EGA_RUNNER_REQUIRE_VERCEL_PREVIEW;
     assert.equal(loadConfig().requireVercelPreview, false);
   } finally {
     for (const [key, value] of previous) {
