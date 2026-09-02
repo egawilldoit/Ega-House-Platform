@@ -87,8 +87,8 @@ The API Vercel project must use:
 - build command: supplied by `apps/server/vercel.json`
 - custom domain: `ega-api.egawilldoit.online`
 
-Repository-triggered deployment is locked to `main`. Both the root web
-`vercel.json` and `apps/server/vercel.json` use this exact policy:
+The checked-in root web `vercel.json` and `apps/server/vercel.json` declare the
+intended main-only Git deployment policy:
 
 ```json
 {
@@ -97,9 +97,13 @@ Repository-triggered deployment is locked to `main`. Both the root web
 }
 ```
 
-Therefore ordinary feature-branch pushes and pull-request heads do not create
-web or API deployments. A `main` deployment is still external Vercel state;
-the configuration permits it but does not prove that it occurred.
+These repository declarations do not prove that the connected Vercel projects
+or Git integration enforce the policy. Independent external evidence records
+API deployment `6233638086` for feature-branch HEAD
+`21d9febba61c20ec45f7ff68f644b684f23335c3`. Wave 00 therefore remains blocked
+pending authenticated verification and correction of the connected Vercel
+project/integration settings. A production deployment remains external Vercel
+state and must be verified against its exact Git SHA.
 
 Do not add a catch-all rewrite to an `api/index.ts` generic function. The native
 Hono preset discovers the project-root entrypoint directly; the production

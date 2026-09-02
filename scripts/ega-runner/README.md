@@ -127,14 +127,20 @@ npm run test:ega-runner-pr-loop
 | `EGA_RUNNER_AUTO_MERGE` | `false` | Request GitHub auto-merge only after readiness, pinned to the observed head SHA |
 | `EGA_RUNNER_SLACK_CHANNEL` | `#hermes-today` | Notification channel |
 
-The supported Vercel configuration disables Git deployments for `"*"` and
-enables only `main` in both web and API projects. With the default
-`EGA_RUNNER_REQUIRE_VERCEL_PREVIEW=false`, a missing preview is not a readiness
-failure: an approved, mergeable PR with complete passing checks can become
-`ready_to_merge`. Setting the variable to `true` is an explicit opt-in that
-requires an exact-SHA `READY` preview. When credentials are available, the
-Vercel verifier may also record an exact-SHA production deployment; that
-observation is separate from preview readiness and is not deployment authority.
+The checked-in web and API `vercel.json` files declare Git deployments disabled
+for `"*"` and enabled only for `main`. Repository declarations do not prove the
+connected Vercel projects or Git integration enforce that policy: independent
+external evidence records API deployment `6233638086` for feature-branch HEAD
+`21d9febba61c20ec45f7ff68f644b684f23335c3`. Wave 00 remains blocked pending
+authenticated verification and correction of those external settings.
+
+With the default `EGA_RUNNER_REQUIRE_VERCEL_PREVIEW=false`, a missing preview is
+not a readiness failure: an approved, mergeable PR with complete passing checks
+can become `ready_to_merge`. Setting the variable to `true` is an explicit
+opt-in that requires an exact-SHA `READY` preview. When credentials are
+available, the Vercel verifier may also record an exact-SHA production
+deployment; that observation is separate from preview readiness and is not
+deployment authority.
 
 The VM also requires Git, authenticated `gh`, Hermes, Node.js 20+, and the database migration `0036_runner_pr_watch_repair_graph`.
 
