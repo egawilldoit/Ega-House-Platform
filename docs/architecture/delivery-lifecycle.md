@@ -63,9 +63,15 @@ Failure/stop states are `VALIDATION_FAILED`, `PR_FAILED`, `NEEDS_HUMAN`, `FAILED
 - exactly one PR was created or reused;
 - its head branch, base branch, and head SHA match the owned run.
 
-`ready_to_merge` means the observed PR head still matches the owned SHA, required checks are complete and passing, the configured preview gate is satisfied, no unresolved review blocker remains, and GitHub reports approval. It does not itself merge the PR unless explicit auto-merge configuration is enabled; that request is pinned to the exact observed head SHA.
+`ready_to_merge` means the observed PR head still matches the owned SHA, required checks are complete and passing, the configured preview gate is satisfied, no unresolved review blocker remains, and GitHub reports approval. The supported default is `EGA_RUNNER_REQUIRE_VERCEL_PREVIEW=false`, so an absent preview does not block an approved green PR. Preview gating remains an explicit opt-in for a deployment configuration that produces exact-SHA previews. `ready_to_merge` does not itself merge the PR unless explicit auto-merge configuration is enabled; that request is pinned to the exact observed head SHA.
 
 `merged` is observed from GitHub. It is not equivalent to production deployment.
+
+The web and API Vercel projects disable Git deployments for `"*"` and enable
+only `main`. Runner production observation remains useful after merge: it can
+record an exact-SHA production match when Vercel credentials are configured,
+but production evidence never substitutes for a required preview and never
+authorizes a deployment.
 
 ## Repair semantics
 

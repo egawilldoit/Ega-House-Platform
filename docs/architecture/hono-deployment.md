@@ -87,6 +87,20 @@ The API Vercel project must use:
 - build command: supplied by `apps/server/vercel.json`
 - custom domain: `ega-api.egawilldoit.online`
 
+Repository-triggered deployment is locked to `main`. Both the root web
+`vercel.json` and `apps/server/vercel.json` use this exact policy:
+
+```json
+{
+  "*": false,
+  "main": true
+}
+```
+
+Therefore ordinary feature-branch pushes and pull-request heads do not create
+web or API deployments. A `main` deployment is still external Vercel state;
+the configuration permits it but does not prove that it occurred.
+
 Do not add a catch-all rewrite to an `api/index.ts` generic function. The native
 Hono preset discovers the project-root entrypoint directly; the production
 build intentionally generates `index.js` next to `index.ts`.
