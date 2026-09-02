@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { loadConfig } from "../src/config.ts";
 import { classifyPullRequest } from "../src/pr-monitor.ts";
 import { verifyVercelDeployment } from "../src/vercel.ts";
 
@@ -70,6 +71,36 @@ test("approved green PR is ready to merge without a preview when the gate is dis
     classifyPullRequest(snapshot, { ...policy, requireVercelPreview: true }),
     "wait_preview",
   );
+});
+
+test("loadConfig keeps the supported default preview gate disabled", () => {
+  const overrides = {
+    DATABASE_URL: "postgresql://runner:runner@127.0.0.1:5432/runner",
+    EGA_RUNNER_REQUIRE_VERCEL_PREVIEW: "false",
+    EGA_RUNNER_VISIBILITY_TIMEOUT_SECONDS: "300",
+    EGA_RUNNER_HEARTBEAT_SECONDS: "60",
+    EGA_RUNNER_LEASE_SECONDS: "300",
+    EGA_RUNNER_POLL_SECONDS: "10",
+    EGA_RUNNER_MAX_TURNS: "50",
+    EGA_RUNNER_REPAIR_MAX_TURNS: "25",
+    EGA_RUNNER_HERMES_TIMEOUT_MS: "1800000",
+    EGA_RUNNER_PR_MONITOR_INTERVAL_SECONDS: "60",
+    EGA_RUNNER_PR_MONITOR_BATCH_SIZE: "5",
+    EGA_RUNNER_MAX_REPAIR_ATTEMPTS: "3",
+  };
+  const previous = new Map(
+    Object.keys(overrides).map((key) => [key, process.env[key]]),
+  );
+
+  try {
+    Object.assign(process.env, overrides);
+    assert.equal(loadConfig().requireVercelPreview, false);
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("production deployment verification still observes an exact-SHA production match", async () => {
