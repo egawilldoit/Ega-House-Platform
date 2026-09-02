@@ -115,6 +115,20 @@ esac
     assert.equal(result.production?.sha, sha);
     assert.equal(result.production?.state, "READY");
     assert.match(result.findings.join("\n"), /Production deployment found/);
+
+    const mismatchedResult = await verifyVercelDeployment(
+      "fedcba9876543210fedcba9876543210fedcba98",
+      "ega-api",
+    );
+
+    assert.equal(mismatchedResult.ok, false);
+    assert.equal(mismatchedResult.preview, null);
+    assert.equal(
+      mismatchedResult.production,
+      null,
+      "an unrelated production deployment must not satisfy exact-SHA verification",
+    );
+    assert.doesNotMatch(mismatchedResult.findings.join("\n"), /Production deployment found/);
   } finally {
     if (previousPath === undefined) delete process.env.PATH;
     else process.env.PATH = previousPath;
