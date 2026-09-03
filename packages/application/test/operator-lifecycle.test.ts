@@ -432,6 +432,43 @@ test("AC: Apply detects stale if task mutated after approval", async () => {
   assert.equal(today.calls.length, 0); // no mutation when stale
 });
 
+test("AC: Apply rechecks Task versions after claim before mutation", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const today = new FakeTodayMutation(tasks);
+
+  // Model another writer landing after the pre-claim stale check but before
+  // this apply receives its atomic mutation authority.
+  class ApplyRaceRepository extends InMemoryOperatorProposalRepository {
+    override async claimApprovedProposalForApply(actor: AuthenticatedActor, proposalId: string) {
+      lookup.updateTask(id1, { updatedAt: "2026-08-10T09:00:00.000Z" });
+      return super.claimApprovedProposalForApply(actor, proposalId);
+    }
+  }
+  const repo = new ApplyRaceRepository();
+
+  const created = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "stale-apply-after-claim-1",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const approved = await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id });
+  assert.equal(approved.ok, true);
+  if (!approved.ok) return;
+
+  const applied = await applyOperatorProposal(ACTOR_A, repo, lookup, today, { proposalId: created.data.id });
+  assert.equal(applied.ok, true);
+  if (!applied.ok) return;
+  assert.equal(applied.data.status, "stale");
+  assert.equal(applied.data.result?.staleDetected, true);
+  assert.equal(today.calls.length, 0);
+});
+
 // ---------------------------------------------------------------------------
 // 4. Retry with same idempotency key returns same durable result
 // ---------------------------------------------------------------------------
