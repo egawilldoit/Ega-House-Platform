@@ -1,6 +1,6 @@
 # Wave 13 — Targeted Architecture Cleanup
 
-Status: AUDIT IN PROGRESS
+Status: IMPLEMENTATION COMPLETE — ACCEPTANCE PENDING
 
 ## Boundary
 
@@ -35,6 +35,49 @@ The large `apps/web/src/lib` tree contains compatibility shims and web-local
 read models by design. A targeted audit may find no safe deletion. The wave
 must remain useful by recording evidence and making a cleanup only when the
 canonical owner and live behavior are proven.
+
+## Audit findings
+
+| Area | Evidence | Classification | Decision |
+| --- | --- | --- | --- |
+| `task-session.ts` duration label | `apps/web/src/lib/task-session.ts` duplicated the exact `formatDurationLabel` implementation exported by `packages/application/src/shared/duration.ts`; 17 other web files import the helper and application already owns the same formatter | Proven duplicate ownership | Re-export the application formatter from the existing web module so callers keep their import surface while implementation has one owner |
+| `task-session.ts` session calculations and Supabase map | Web helpers operate on root `Tables<"task_sessions">` rows and compose web-owned data access; application helpers use its own `SessionDurationRow` and timer ports | Web-specific composition | Retain; no safe ownership move established |
+| `task-domain.ts` | Status constants/guards are re-exported from `@ega/domain`; `formatTaskToken` and `getTaskStatusTone` are presentation helpers with live component callers | Compatibility plus presentation | Retain; no duplicate domain ownership |
+| `task-recurrence.ts` | Recurrence rules and normalization re-export from `@ega/domain/tasks`; `formatTaskRecurrenceRule` is web display text with live callers | Compatibility plus presentation | Retain |
+| `idea-note-domain.ts` | Explicit compatibility aliases delegate to canonical Inbox constants and validators; live Ideas routes/actions still import the aliases | Compatibility shim | Retain; removing it would break the established web import surface without reducing ownership |
+| `goal-archive.ts`, `project-archive.ts`, `goal-health.ts`, `goal-next-step.ts` | Canonical archive/health/next-step behavior is imported or re-exported from `@ega/domain/goals` and `@ega/domain/projects`; remaining helpers read web `FormData` or format labels/previews | Compatibility plus web input/presentation | Retain |
+| `task-due-date.ts` | Web helper combines process-local input/date formatting and a web `getTaskDueDateState`; domain exposes core predicates with different time-context ownership | Web input/presentation | Retain; direct replacement would change semantics |
+| `task-estimate.ts` | Normalization and label formatting are used by web forms/cards; no canonical public equivalent with the same UI contract exists | Web input/presentation | Retain |
+| `task-archive.ts` | Owns the web list-view query values (`active`, `archived`, `all`); no matching domain/application owner was found | Web view policy | Retain |
+| `timer-domain.ts` | Owns web clock/date formatting; no identical canonical helper with the same display contract was found | Web presentation | Retain |
+| `review-week.ts`, `weekly-review-generator.ts`, and service/read-model files | They delegate to canonical domain/application time/review logic and add web composition or display concerns; callers are live | Composition/compatibility | Retain |
+
+The only proven removable duplication in this bounded audit was the duration
+label formatter. No dead path or duplicate database/schema authority was
+proven. No broad refactor is authorized by this wave.
+
+## Implemented cleanup
+
+`apps/web/src/lib/task-session.ts` now re-exports `formatDurationLabel` from
+`@ega/application/shared/duration`. The existing web import surface is
+unchanged. `apps/web/src/lib/task-session.test.ts` asserts reference identity
+with the canonical application export and preserves representative output
+behavior.
+
+## Evidence and review
+
+- Representative callers were enumerated with `rg`; all retained
+  compatibility/presentation helpers have live callers.
+- The regression was run RED before the re-export change, then GREEN after it:
+  7/7 tests passed.
+- Existing architecture documentation explicitly permits retained
+  compatibility/presentation shims when live consumers exist:
+  `ARCHITECTURE.md`, `docs/architecture/platform-monorepo.md`, and
+  `docs/architecture/readiness.md`.
+- No runtime product behavior changed beyond using the same canonical
+  formatter. Authenticated browser and Android runtime evidence are not
+  available for this source-level ownership cleanup and remain explicitly
+  unverified for this wave.
 
 ## Acceptance criteria
 
