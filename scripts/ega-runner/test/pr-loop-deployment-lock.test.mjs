@@ -1,6 +1,7 @@
 #!/usr/bin/env -S node --import tsx
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -54,6 +55,38 @@ test("web and API repository configs declare the main-only Vercel policy", () =>
       "*": false,
       main: true,
     }, `${configPath} must declare ordinary feature/PR deployments disabled`);
+  }
+});
+
+test("Vercel ignore commands allow only main builds", () => {
+  for (const configPath of ["vercel.json", "apps/server/vercel.json"]) {
+    const config = readJson(configPath);
+    const command = config.ignoreCommand;
+
+    assert.equal(typeof command, "string", `${configPath} must configure an ignore command`);
+
+    for (const [ref, expectedStatus] of [
+      ["wave/00-deployment-lock", 0],
+      ["feature/foo", 0],
+      ["main", 1],
+      [undefined, 0],
+    ]) {
+      const env = { ...process.env };
+      if (ref === undefined) delete env.VERCEL_GIT_COMMIT_REF;
+      else env.VERCEL_GIT_COMMIT_REF = ref;
+
+      const result = spawnSync(command, {
+        cwd: resolve(repositoryRoot, configPath === "vercel.json" ? "." : "apps/server"),
+        env,
+        shell: true,
+      });
+
+      assert.equal(
+        result.status,
+        expectedStatus,
+        `${configPath} returned ${result.status} for ${ref ?? "an absent ref"}`,
+      );
+    }
   }
 });
 
