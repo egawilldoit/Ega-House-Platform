@@ -16,7 +16,12 @@ import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { SearchField } from '@/components/mobile/ui/SearchField';
 import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
 import { SkeletonCard } from '@/components/mobile/ui/Skeleton';
-import { useTaskListQuery, useUpdateTaskMutation } from '@/features/tasks/query';
+import {
+  useArchiveTaskMutation,
+  useTaskListQuery,
+  useUnarchiveTaskMutation,
+  useUpdateTaskMutation,
+} from '@/features/tasks/query';
 import { matchTaskViewPreset, TASK_VIEW_PRESETS, type TaskViewId, type TaskViewPriority } from '@/features/tasks/views';
 import type { MobileTaskDueFilter, MobileTaskListItem, MobileTaskPriority, MobileTaskSortValue, MobileTaskStatus, UpdateTaskInput } from '@/types/tasks';
 
@@ -48,6 +53,13 @@ const FILTER_DUE_OPTIONS: Array<{ label: string; value: MobileTaskDueFilter }> =
   { label: 'Today', value: 'due_today' },
   { label: 'Soon', value: 'due_soon' },
   { label: 'None', value: 'no_due_date' },
+];
+
+type TaskArchiveView = 'active' | 'all';
+
+const FILTER_ARCHIVE_OPTIONS: Array<{ label: string; value: TaskArchiveView }> = [
+  { label: 'Active', value: 'active' },
+  { label: 'All', value: 'all' },
 ];
 
 const EMPTY_TASKS: MobileTaskListItem[] = [];
@@ -98,6 +110,7 @@ export function TasksListView() {
   const [priorityFilter, setPriorityFilter] = useState<TaskViewPriority>('all');
   const [dueFilter, setDueFilter] = useState<MobileTaskDueFilter>('all');
   const [sortFilter, setSortFilter] = useState<MobileTaskSortValue>('updated_desc');
+  const [archiveView, setArchiveView] = useState<TaskArchiveView>('active');
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsed, setCollapsed] = useState(true);
 
@@ -106,9 +119,12 @@ export function TasksListView() {
     status: statusFilter === 'all' ? null : statusFilter,
     priority: priorityFilter === 'all' ? null : priorityFilter,
     sort: sortFilter,
+    includeArchived: archiveView === 'all',
   });
 
   const updateTaskMutation = useUpdateTaskMutation();
+  const archiveTaskMutation = useArchiveTaskMutation();
+  const unarchiveTaskMutation = useUnarchiveTaskMutation();
   const { refetch } = tasksQuery;
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -135,9 +151,10 @@ export function TasksListView() {
   });
 
   const hasFilters =
-    statusFilter !== 'all' || priorityFilter !== 'all' || dueFilter !== 'all' || sortFilter !== 'updated_desc' || searchQuery.trim().length > 0;
+    archiveView !== 'active' || statusFilter !== 'all' || priorityFilter !== 'all' || dueFilter !== 'all' || sortFilter !== 'updated_desc' || searchQuery.trim().length > 0;
 
   const activeCount =
+    (archiveView !== 'active' ? 1 : 0) +
     (statusFilter !== 'all' ? 1 : 0) +
     (priorityFilter !== 'all' ? 1 : 0) +
     (dueFilter !== 'all' ? 1 : 0) +
@@ -155,6 +172,7 @@ export function TasksListView() {
 
   const clearFilters = useCallback(() => {
     selectTaskView('all');
+    setArchiveView('active');
     setSearchQuery('');
   }, [selectTaskView]);
 
@@ -199,6 +217,26 @@ export function TasksListView() {
     [updateTaskMutation],
   );
 
+  const mutateArchive = useCallback(
+    async (taskId: string, archived: boolean) => {
+      setUpdatingTaskIds((current) => ({ ...current, [taskId]: true }));
+      setTaskErrors((current) => ({ ...current, [taskId]: undefined }));
+      try {
+        if (archived) {
+          await archiveTaskMutation.mutateAsync(taskId);
+        } else {
+          await unarchiveTaskMutation.mutateAsync(taskId);
+        }
+      } catch (archiveError) {
+        const message = archiveError instanceof Error ? archiveError.message : 'Unable to change task archive state right now.';
+        setTaskErrors((current) => ({ ...current, [taskId]: message }));
+      } finally {
+        setUpdatingTaskIds((current) => ({ ...current, [taskId]: false }));
+      }
+    },
+    [archiveTaskMutation, unarchiveTaskMutation],
+  );
+
   const actionSheetItems = useMemo<ActionSheetItem[]>(() => {
     if (!activeTask) return [];
     const statusItems = getStatusOptions(activeTask).map((status) => ({
@@ -231,6 +269,25 @@ export function TasksListView() {
       },
     }));
 
+    const archiveItem: ActionSheetItem = activeTask.archivedAt
+      ? {
+          key: 'unarchive',
+          label: 'Unarchive task',
+          description: 'Return it to the active task list',
+          onPress: () => {
+            mutateArchive(activeTask.id, false).catch(() => {});
+          },
+        }
+      : {
+          key: 'archive',
+          label: 'Archive task',
+          description: 'Remove it from the active task list',
+          destructive: true,
+          onPress: () => {
+            mutateArchive(activeTask.id, true).catch(() => {});
+          },
+        };
+
     return [
       {
         key: 'open',
@@ -242,8 +299,9 @@ export function TasksListView() {
       ...statusItems,
       ...priorityItems,
       ...dueItems,
+      archiveItem,
     ];
-  }, [activeTask, dueDateOptions, mutateTask]);
+  }, [activeTask, dueDateOptions, mutateArchive, mutateTask]);
 
   const renderTaskItem = useCallback(
     ({ item }: { item: MobileTaskListItem }) => {
@@ -256,6 +314,7 @@ export function TasksListView() {
             dueLabel={formatDueDate(item.dueDate)}
             estimateLabel={item.estimateMinutes !== null && item.estimateMinutes > 0 ? `${item.estimateMinutes}m est` : undefined}
             goal={item.goal?.title}
+            archived={Boolean(item.archivedAt)}
             onActions={() => setActiveTaskId(item.id)}
             onOpen={() => router.push({ pathname: '/(app)/tasks/[id]', params: { id: item.id } })}
             priority={item.priority}
@@ -356,6 +415,9 @@ export function TasksListView() {
                   <Text style={styles.filterLabel}>Status</Text>
                   <SegmentedControl value={statusFilter} options={FILTER_STATUS_OPTIONS} onChange={setStatusFilter} testID="task-status-filter" />
 
+                  <Text style={styles.filterLabel}>Task scope</Text>
+                  <SegmentedControl value={archiveView} options={FILTER_ARCHIVE_OPTIONS} onChange={setArchiveView} testID="task-archive-filter" />
+
                   <Text style={styles.filterLabel}>Priority</Text>
                   <SegmentedControl
                     value={priorityFilter}
@@ -404,7 +466,7 @@ export function TasksListView() {
                 icon="clipboard-outline"
                 iconSize={36}
                 title={hasFilters ? 'No tasks match this view' : 'Create your first task'}
-                description={hasFilters ? 'Try a different status, priority, or due-date filter.' : 'Capture the next execution step and keep momentum visible.'}
+                description={hasFilters ? 'Try a different scope, status, priority, or due-date filter.' : 'Capture the next execution step and keep momentum visible.'}
                 action={
                   hasFilters ? (
                     <View style={styles.emptyActions}>
