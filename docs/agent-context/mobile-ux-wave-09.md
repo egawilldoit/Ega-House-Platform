@@ -1,6 +1,6 @@
 # Mobile UX Quality — Wave 09 Evidence
 
-Status: REVIEWED — FINAL VERIFICATION PENDING
+Status: ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE
 
 Branch: `wave/09-mobile-ux-quality`
 
@@ -72,6 +72,16 @@ change review semantics or API ownership.
   Expo Doctor 18/18 PASS; Android export/bundle PASS.
 - Authenticated Android visual execution remains `RUNTIME NOT VERIFIED`:
   this environment has no emulator/device or authenticated session.
+
+## Final exact-head verification
+
+- Evidence head: `fdf4b5e92840f759799a866f2bb99b5a80c1cce4`.
+- Unified Platform Validation run `33791803607` passed all 16 jobs at that
+  exact head, including mobile Doctor, typecheck, tests, and Android bundle
+  validation.
+- The acceptance status is based on the code, product, and review evidence
+  above. Authenticated Android visual/runtime evidence remains unavailable,
+  so it is not claimed.
 
 ## Independent review
 
