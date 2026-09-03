@@ -104,7 +104,8 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       if (isConflict) {
         return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
       }
-      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+      const notFound = msg.includes("not found");
+      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
     }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) }, 201);
   });
@@ -115,7 +116,10 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
     const proposalRepo = new SupabaseOperatorProposalRepository(client as never);
     const lookup = toTaskLookup(client);
     const result = await approveOperatorProposal(actor, proposalRepo, lookup, { proposalId: c.req.param("id") });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const notFound = result.errorMessage.toLowerCase().includes("not found");
+      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+    }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) });
   });
 
@@ -130,7 +134,10 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       proposalId: c.req.param("id"),
       taskIds: body.taskIds,
     });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const notFound = result.errorMessage.toLowerCase().includes("not found");
+      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+    }
     const proposal = result.data;
     return c.json({
       ok: true,
@@ -146,7 +153,10 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
     const { actor, client } = c.var;
     const proposalRepo = new SupabaseOperatorProposalRepository(client as never);
     const result = await dismissOperatorProposal(actor, proposalRepo, { proposalId: c.req.param("id") });
-    if (!result.ok) return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    if (!result.ok) {
+      const notFound = result.errorMessage.toLowerCase().includes("not found");
+      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+    }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) });
   });
 
