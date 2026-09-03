@@ -50,6 +50,10 @@ describe("archived project purge migration", () => {
     expect(migration).toContain("DELETE FROM public.projects");
     expect(migration).toContain("INSERT INTO public.calendar_sync_jobs");
     expect(migration).toContain("operation,\n    status,");
+    expect(migration).toContain(
+      "OR (existing_job.status = 'failed' AND existing_job.attempts < 5)",
+    );
+    expect(migration).toContain("MAX_CALENDAR_SYNC_ATTEMPTS = 5");
     expect(migration).not.toContain("DELETE FROM public.agent_integration_events");
     expect(migration).not.toContain("DELETE FROM public.operator_proposals");
     expect(migration).not.toContain("DELETE FROM public.calendar_sync_jobs");
