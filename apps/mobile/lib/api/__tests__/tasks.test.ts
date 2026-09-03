@@ -77,6 +77,20 @@ describe('listMobileTasks', () => {
     });
   });
 
+  it('delegates archive scope and planned date without dropping the filters', async () => {
+    list.mockResolvedValue({ ok: true, data: { ok: true, tasks: [], counters: {}, filters: {}, projects: [], goals: [] } });
+
+    await listMobileTasks({
+      includeArchived: true,
+      plannedForDate: '2026-08-10',
+    } as never);
+
+    expect(list).toHaveBeenCalledWith({
+      includeArchived: true,
+      plannedForDate: '2026-08-10',
+    });
+  });
+
   it('omits unset filters entirely', async () => {
     list.mockResolvedValue({ ok: true, data: {} });
 
