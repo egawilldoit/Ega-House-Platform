@@ -29,6 +29,9 @@ export const OPERATOR_PROPOSAL_STATUSES = [
   "dismissed",
 ] as const;
 
+export const OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT = 50;
+export const OPERATOR_PROPOSAL_LIST_MAX_LIMIT = 200;
+
 export type OperatorProposalStatus = (typeof OPERATOR_PROPOSAL_STATUSES)[number];
 
 export type OperatorProposalResult = Readonly<{
@@ -399,6 +402,21 @@ function operatorFailure<T = never>(message: string, code: ApplicationErrorCode 
   return applicationFailure(message, code);
 }
 
+export function parseOperatorProposalListLimit(raw: string | undefined): ApplicationResult<number> {
+  if (raw === undefined) return applicationSuccess(OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT);
+
+  const value = raw.trim();
+  if (!/^\d+$/.test(value)) {
+    return operatorFailure(`limit must be an integer between 1 and ${OPERATOR_PROPOSAL_LIST_MAX_LIMIT}.`);
+  }
+
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > OPERATOR_PROPOSAL_LIST_MAX_LIMIT) {
+    return operatorFailure(`limit must be an integer between 1 and ${OPERATOR_PROPOSAL_LIST_MAX_LIMIT}.`);
+  }
+  return applicationSuccess(limit);
+}
+
 export async function createOperatorProposal(
   actor: AuthenticatedActor,
   proposalRepo: OperatorProposalRepository,
@@ -723,7 +741,7 @@ export async function applyOperatorProposal(
       const latest = await proposalRepo.findById(actor, proposal.id);
       if (latest.ok && latest.value) {
         if (isTerminalStatus(latest.value.status)) return applicationSuccess(latest.value);
-        if (latest.value.status === "applying") return operatorFailure("Proposal is already being applied.");
+        if (latest.value.status === "applying") return operatorFailure("Proposal is already being applied.", "conflict");
       }
       return operatorFailure("Proposal is already being applied.", "unknown");
     }

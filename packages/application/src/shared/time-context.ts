@@ -49,7 +49,7 @@ export async function resolveEffectiveTimezone(
 
   const storedResult = await repository.getTimezone(actor);
   if (!storedResult.ok) {
-    return applicationFailure("Unable to load time context right now.");
+    return applicationFailure("Unable to load time context right now.", storedResult.error.code);
   }
   const stored = storedResult.value ? String(storedResult.value).trim() : null;
   if (stored && isValidIANATimeZone(stored)) {
@@ -73,7 +73,7 @@ export async function resolveTimeContext(
 
   const effectiveResult = await resolveEffectiveTimezone(actor, repository, input.requestedTimezone);
   if (!effectiveResult.ok) {
-    return applicationFailure(effectiveResult.errorMessage);
+    return applicationFailure(effectiveResult.errorMessage, effectiveResult.code);
   }
   const { timezone: effective, requestedTimezone: requested, fallback } = effectiveResult.data;
 
@@ -128,7 +128,7 @@ export async function setTimeContextTimezone(
   }
   const result = await repository.setTimezone(actor, timezone);
   if (!result.ok) {
-    return applicationFailure("Unable to save timezone right now.");
+    return applicationFailure("Unable to save timezone right now.", result.error.code);
   }
   return applicationSuccess(result.value);
 }
@@ -139,7 +139,7 @@ export async function getTimeContextTimezone(
 ): Promise<ApplicationResult<string | null>> {
   const result = await repository.getTimezone(actor);
   if (!result.ok) {
-    return applicationFailure("Unable to load time context right now.");
+    return applicationFailure("Unable to load time context right now.", result.error.code);
   }
   return applicationSuccess(result.value);
 }
@@ -173,7 +173,7 @@ export async function resolveFrictionEvidenceWindow(
   }
   const timeCtx = await resolveTimeContext(actor, repository, { now });
   if (!timeCtx.ok) {
-    return applicationFailure(timeCtx.errorMessage);
+    return applicationFailure(timeCtx.errorMessage, timeCtx.code);
   }
   try {
     const window = getRollingLocalWindow(

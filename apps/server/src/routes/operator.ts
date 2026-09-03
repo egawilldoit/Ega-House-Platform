@@ -6,6 +6,7 @@ import {
   createOperatorProposal,
   dismissOperatorProposal,
   getOperatorStoredProposal,
+  parseOperatorProposalListLimit,
   resolveTimeContext,
   reviseOperatorProposal,
   type ApplicationErrorCode,
@@ -75,7 +76,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
           : undefined;
     const tcResult = await resolveTimeContext(actor, timeContextRepo, { requestedTimezone: requestedTz, now });
     if (!tcResult.ok) {
-      return c.json({ error: { code: "VALIDATION", message: tcResult.errorMessage } }, 400);
+      return mapOperatorFailure(c, tcResult);
     }
     const tc = tcResult.data;
     const localDate = tc.localDate;
@@ -180,12 +181,11 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
     const localDate = c.req.query("localDate");
     const status = c.req.query("status");
     const limitRaw = c.req.query("limit");
+    const limitResult = parseOperatorProposalListLimit(limitRaw);
+    if (!limitResult.ok) return mapOperatorFailure(c, limitResult);
     if (localDate) filter.localDate = localDate;
     if (status) filter.status = status;
-    if (limitRaw) {
-      const parsed = Number.parseInt(limitRaw, 10);
-      if (Number.isFinite(parsed)) filter.limit = parsed;
-    }
+    filter.limit = limitResult.data;
     const result = await proposalRepo.listProposals(actor, filter as never);
     if (!result.ok) return c.json({ error: { code: "INTERNAL", message: "Unable to list proposals." } }, 500);
     return c.json({ ok: true, proposals: result.value.map(mapProposalResponse) });
