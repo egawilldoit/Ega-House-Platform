@@ -36,6 +36,25 @@ The selected change does not add a new Inbox surface. Wave 01 marks the existing
 
 This wave will not add notification preferences, a second transport, a new persistence owner, or a separate Operator/Health page. It will reuse the existing application policy and owner-scoped repository, and it will keep task targeting within the existing `/tasks` route semantics.
 
+## Root-cause findings
+
+The notification capability was already implemented below the web presentation layer. The web gap was an absent composition and discovery path: no web route called the notification use cases, workspace metrics did not query the unread projection, and the shared navigation/top bar had no notification affordance. Adding another server endpoint would have duplicated an existing transport rather than closing the web product gap.
+
+## Changes implemented
+
+- Added an authenticated `/notifications` page backed directly by the existing application use cases and request-scoped `SupabaseNotificationRepository`.
+- Added list, unread count, task-target open, individual mark-read, mark-all-read, pagination, empty, success, and recoverable error states.
+- Added a task-target helper that resolves only canonical task targets to `/tasks?view=all#task-<id>`; non-actionable notifications remain in the notification center.
+- Added System navigation, command-palette discovery, top-bar unread affordance, and mobile-drawer discovery through the shared shell.
+- Kept the unread shell query fail-soft so a missing/unavailable notifications relation cannot take down unrelated workspace navigation; the notification page still reports its own load failure.
+
+## Verification snapshot
+
+- Focused web suite: **PASS** — 5 files / 15 tests, including target routing, page/action wiring, top-bar unread state, shell metrics, command palette, and route metadata.
+- `git diff --check`: **PASS**.
+- Local web typecheck: **NOT VERIFIED** in this worktree because the shared install state is missing pre-existing MCP and `zod-v4` modules; after the boundary corrections there were no Wave 04 diagnostics. Clean CI is the authoritative web typecheck/build check.
+- Runtime authentication, applied migration state, and cross-user production RLS remain **NOT VERIFIED** until the available environment can exercise them.
+
 ## Evidence status
 
-Runtime authentication, applied migration state, and cross-user production RLS remain **NOT VERIFIED** until the available environment can exercise them. Local code/tests and any browser evidence will be recorded separately.
+Runtime authentication, applied migration state, and cross-user production RLS remain **NOT VERIFIED** until the available environment can exercise them. Local code/tests and any browser evidence are recorded separately. No production deployment or database mutation is part of this wave.
