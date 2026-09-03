@@ -139,7 +139,13 @@ export default function NotificationsScreen() {
           renderItem={({ item }) => {
             const unread = !item.readAt;
             return (
-              <Pressable onPress={() => onPressItem(item)} style={({ pressed }) => [styles.item, pressed ? styles.itemPressed : null, unread ? styles.itemUnread : null]}>
+              <Pressable
+                accessibilityHint="Opens the related item"
+                accessibilityLabel={`${unread ? 'Open unread notification' : 'Open notification'}: ${item.title}`}
+                accessibilityRole="button"
+                onPress={() => onPressItem(item)}
+                style={({ pressed }) => [styles.item, pressed ? styles.itemPressed : null, unread ? styles.itemUnread : null]}
+              >
                 <View style={styles.itemIcon}>
                   <Ionicons name={unread ? 'notifications' : 'notifications-outline'} size={18} color={unread ? mobileTheme.colors.accent : mobileTheme.colors.textMuted} />
                   {unread ? <View style={styles.unreadDot} /> : null}

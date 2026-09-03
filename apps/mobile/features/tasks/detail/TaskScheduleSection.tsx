@@ -91,7 +91,10 @@ export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, o
       </View>
 
       <Pressable
+        accessibilityHint="Opens the due date picker"
+        accessibilityLabel={`Pick a calendar date, currently ${formatDueDate(draft.dueDate)}`}
         accessibilityRole="button"
+        accessibilityState={{ expanded: isDuePickerVisible }}
         onPress={() => setIsDuePickerVisible((v) => !v)}
         style={({ pressed }) => [styles.dateField, pressed ? styles.dateFieldPressed : null]}
       >
@@ -200,6 +203,7 @@ function QuickPill({
 }) {
   return (
     <Pressable
+      accessibilityLabel={label}
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
