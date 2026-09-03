@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { act, create } from 'react-test-renderer';
+import { act, create, type ReactTestInstance } from 'react-test-renderer';
 import { StyleSheet } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
@@ -53,7 +53,7 @@ const queryResult = {
   isFetching: false,
 };
 
-function flattenPressableStyle(node: { props: { style: unknown } }) {
+function flattenPressableStyle(node: ReactTestInstance) {
   const style = typeof node.props.style === 'function'
     ? node.props.style({ pressed: false })
     : node.props.style;
