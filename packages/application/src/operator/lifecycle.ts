@@ -402,6 +402,31 @@ function operatorFailure<T = never>(message: string, code: ApplicationErrorCode 
   return applicationFailure(message, code);
 }
 
+async function markOperatorProposalStale(
+  actor: AuthenticatedActor,
+  proposalRepo: OperatorProposalRepository,
+  proposal: OperatorProposalRecord,
+  targetIds: string[],
+  reason: string,
+): Promise<ApplicationResult<OperatorProposalRecord>> {
+  const nowIso = new Date().toISOString();
+  const updated = await proposalRepo.updateProposal(actor, proposal.id, {
+    status: "stale",
+    updatedAt: nowIso,
+    appliedAt: nowIso,
+    result: {
+      appliedTaskIds: [],
+      skippedTaskIds: [],
+      failedTaskIds: targetIds.map((id) => ({ id, reason })),
+      staleDetected: true,
+      appliedAt: nowIso,
+      status: "stale",
+    },
+  });
+  if (!updated.ok) return operatorFailure("Unable to mark proposal as stale.", "unknown");
+  return applicationSuccess(updated.value);
+}
+
 export function parseOperatorProposalListLimit(raw: string | undefined): ApplicationResult<number> {
   if (raw === undefined) return applicationSuccess(OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT);
 
@@ -673,8 +698,10 @@ export async function approveOperatorProposal(
  *   proposal in `applying` with no `result`. Retry with same proposalId resumes deterministically:
  *   each Task is checked for `plannedForDate === localDate` before mutating, so already-applied
  *   tasks are counted as applied without duplicate writes (mutation receipt = Task state).
- * - Stale detection is evaluated only before claim (when status `approved`), not on `applying`
- *   resume, because own prior mutations change `plannedForDate` and would otherwise appear stale.
+ * - Approved proposals are checked for staleness before claim and immediately after a
+ *   successful claim; the second check closes the race between the read and claim.
+ * - `applying` resume skips stale checks because own prior mutations change `plannedForDate`
+ *   and would otherwise appear stale.
  * - Finalization writes `result` + `applied`/`partially_applied`; retry after finalization is
  *   idempotent returning same `result` without extra mutations.
  * - Operation identity is `proposalId` (single writer per proposal); Task application is
@@ -711,26 +738,16 @@ export async function applyOperatorProposal(
 
   if (proposal.status === "approved") {
     // Stale detection before claim — compares stored taskVersions vs current, scoped to explicit ids.
-    // Evaluated only before claim; resume after crash skips this because own mutations would appear stale.
     const staleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
     if (staleCheck.stale) {
-      const nowIso = new Date().toISOString();
       const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
-      const updated = await proposalRepo.updateProposal(actor, proposal.id, {
-        status: "stale",
-        updatedAt: nowIso,
-        appliedAt: nowIso,
-        result: {
-          appliedTaskIds: [],
-          skippedTaskIds: [],
-          failedTaskIds: targetIds.map((id) => ({ id, reason: staleCheck.reason ?? "stale" })),
-          staleDetected: true,
-          appliedAt: nowIso,
-          status: "stale",
-        },
-      });
-      if (!updated.ok) return operatorFailure("Unable to mark proposal as stale.", "unknown");
-      return applicationSuccess(updated.value);
+      return markOperatorProposalStale(
+        actor,
+        proposalRepo,
+        proposal,
+        targetIds,
+        staleCheck.reason ?? "stale",
+      );
     }
 
     // Atomic claim: approved → applying. Only winner may mutate Tasks.
@@ -746,6 +763,20 @@ export async function applyOperatorProposal(
       return operatorFailure("Proposal is already being applied.", "unknown");
     }
     proposal = claim.value;
+
+    // A Task can change after the first read but before the claim completes. Re-check
+    // after claiming authority so this writer cannot apply an obsolete proposal.
+    const postClaimStaleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
+    if (postClaimStaleCheck.stale) {
+      const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
+      return markOperatorProposalStale(
+        actor,
+        proposalRepo,
+        proposal,
+        targetIds,
+        postClaimStaleCheck.reason ?? "stale",
+      );
+    }
   } else {
     // Status is `applying` — recoverable in-progress. Crash after claim leaves no `result`.
     // Resume deterministically without re-evaluating stale (own `plannedForDate` mutations would pollute check).
