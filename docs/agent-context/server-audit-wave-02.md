@@ -1,14 +1,18 @@
 # Wave 02 server audit
 
 Status: transport audit and regression coverage complete; Operator error
-classification and optional-body handling corrections are included below.
+classification, bounded proposal reads, optional-body handling, and
+post-claim staleness corrections are included below.
 
 Base: `def37b14b4e595d37431cc7d98cf6fb86d2980b8`
 
+Implementation evidence head: `9908768c` (documentation acceptance commit
+follows this implementation head).
+
 Scope: authenticated Hono transport in `apps/server`. Evidence below is from
-the checked-in route source and the executable server suite at this base. A
-passing test proves the exercised fake-Supabase path; it does not claim a
-deployed database or production runtime.
+the checked-in route source and the executable server suite at the corrected
+head. A passing test proves the exercised fake-Supabase path; it does not claim
+a deployed database or production runtime.
 
 ## Boundary evidence
 
@@ -39,7 +43,7 @@ shape where that behavior exists for the family.
 | Notifications — `routes/notifications.ts` | `notifications.test.ts:101-210` covers auth, list/unread, read/opened, read-all, device registration/removal, preferences, invalid input and owner scoping. | PASS |
 | Friction — `routes/friction.ts` | `friction-server.test.ts:108-487` covers auth, empty/populated signals, owner scope, rolling window, timezones, DST, malformed evidence and response shape. | PASS |
 | Health — `routes/health.ts` | `server-coverage-wave-02.test.ts` covers authenticated empty snapshot, owner predicates, response envelope, and repository failure mapped to the stable 500 response; application tests cover recommendations and timezone cases. | PASS; live database/RLS NOT RUNTIME VERIFIED |
-| Operator — `routes/operator.ts` | `server-coverage-wave-02.test.ts` covers authenticated owner-scoped list/get, successful create/approve/apply/dismiss envelopes, optional bodyless apply, malformed create/revise/apply bodies, missing-proposal responses, and repository failure mapped to 500. Application-level lifecycle/error tests cover idempotency and invalid states. | PASS; live database/RLS NOT RUNTIME VERIFIED |
+| Operator — `routes/operator.ts` | `server-coverage-wave-02.test.ts` covers authenticated owner-scoped list/get, successful create/approve/apply/dismiss envelopes, optional bodyless apply, malformed create/revise/apply bodies, missing-proposal responses, persistence failure, bounded default/rejected limits, and the lost-claim conflict. Application-level lifecycle/error tests cover idempotency, invalid states, and a Task update between pre-claim inspection and claim; the data-access test proves the repository default bound. | PASS; live database/RLS NOT RUNTIME VERIFIED |
 | Time Context — `routes/time-context.ts` | `server-coverage-wave-02.test.ts` covers authenticated UTC fallback, explicit date, owner predicate, and malformed date rejection without storage access; domain/application tests cover timezone, DST and historical windows. | PASS; live database/RLS NOT RUNTIME VERIFIED |
 | Weekly Review — `routes/weekly-review.ts` | `server-coverage-wave-02.test.ts` covers authenticated empty contract, owner-scoped reads, and invalid week rejection without storage access; application tests cover source data, comparison and validation. | PASS; live database/RLS NOT RUNTIME VERIFIED |
 | Operational/unknown — `app.ts`, `routes/health.ts` | `vercel-entrypoint.test.ts` covers `/health`, `/ready`, API auth, unknown path JSON 404 and the native entrypoint. | PASS for local module runtime |
@@ -57,20 +61,42 @@ shape where that behavior exists for the family.
    `apps/server/test/server-coverage-wave-02.test.ts`. The fake Supabase client
    proves route status/envelopes and owner predicates, but it is not a live
    database or RLS test.
-4. The audit found two real Operator transport inconsistencies. Mutation routes
-   returned 400 for a missing proposal while the GET route and other resource
-   routes use 404, and repository failures were also reported as client
-   validation errors. The application now carries explicit error classes and
-   the transport maps them to `NOT_FOUND`/404 or `INTERNAL`/500 as appropriate,
-   with regression coverage. Apply also preserves its existing body-omitted
-   meaning while rejecting explicitly malformed JSON before storage access.
-5. The audit found no justification for a Hono rewrite, service-role shortcut,
-   duplicate business policy, or new abstraction. Any implementation should be
+4. The audit found four Operator/API boundary defects. Mutation routes returned
+   400 for a missing proposal while the GET route and other resource routes use
+   404; repository/time-context failures were reported as client validation
+   errors; a lost atomic apply claim could be reported as validation instead of
+   conflict; and proposal listing accepted unsafe/partial limits and could
+   reach an unbounded repository query. The application now carries explicit
+   error classes and bounded list policy, the transport maps them to 400/404/
+   409/500 as appropriate, the repository always applies a 50-item default with
+   a 200-item cap, and the API client preserves CONFLICT/409 envelopes,
+   including a malformed 409 envelope without a machine code. Apply preserves
+   its body-omitted meaning while rejecting explicitly malformed JSON before
+   storage access. Each defect has focused regression coverage.
+5. Approved Operator apply now checks Task versions again after the atomic
+   proposal claim and before any Today mutation. The regression test mutates a
+   Task at that exact claim boundary and proves the proposal becomes stale with
+   no Task mutation. Crash recovery remains intentionally exempt from this
+   check because `applying` retries must tolerate the proposal's own prior
+   `plannedForDate` writes.
+6. The audit found no justification for a Hono rewrite, service-role shortcut,
+   duplicate business policy, or new abstraction. Any implementation should
    remain limited to transport tests or regression-backed corrections.
 
 ## Runtime classification
 
 - L1 static/source inspection: VERIFIED.
-- L2 package/server tests: VERIFIED at the corrected wave head.
+- L2 package/server tests: VERIFIED at the implementation evidence head
+  (server 128/128; application 414/414; data-access 92/92; API client 47/47).
 - L3 live external HTTP/auth/database/RLS: NOT VERIFIED in this audit.
 - Production deployment: not triggered.
+
+## Known residuals
+
+- `readJsonBody` still relies on the runtime JSON parser without a route-wide
+  byte limit. No large-body behavior was observed or required by this wave;
+  adding a limit would affect every existing JSON route and is deferred unless
+  a measured or security-backed requirement appears.
+- Route fakes prove actor predicates and response mapping, not live Supabase RLS
+  enforcement. Deployed authenticated HTTP, database, and RLS remain NOT
+  RUNTIME VERIFIED.
