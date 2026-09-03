@@ -22,6 +22,7 @@ jest.mock('@/lib/api/inbox', () => ({
 type QueryOptions = {
   queryKey: unknown[];
   queryFn: () => Promise<unknown>;
+  placeholderData?: (previous: unknown) => unknown;
 };
 
 type MutationOptions = {
@@ -70,6 +71,28 @@ describe('Inbox processing query boundary', () => {
     expect(queryCall?.queryKey).toEqual(['inbox', 'list', { view: 'all' }]);
     await expect(queryCall?.queryFn()).resolves.toBe(response);
     expect(inboxApi.listInboxItems).toHaveBeenCalledWith({ view: 'all' });
+  });
+
+  it('does not reuse another view as a placeholder while switching Inbox views', () => {
+    useInboxListQuery({ view: 'archived' });
+
+    const activeResponse = {
+      ok: true,
+      items: [{ id: 'active-1' }],
+      projects: [],
+      filters: { view: 'active' },
+      total: 1,
+    };
+    const archivedResponse = {
+      ok: true,
+      items: [{ id: 'archived-1' }],
+      projects: [],
+      filters: { view: 'archived' },
+      total: 1,
+    };
+
+    expect(queryCall?.placeholderData?.(activeResponse)).toBeUndefined();
+    expect(queryCall?.placeholderData?.(archivedResponse)).toBe(archivedResponse);
   });
 
   it('updates an item and invalidates every Inbox view after success', async () => {
