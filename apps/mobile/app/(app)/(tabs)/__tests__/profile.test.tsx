@@ -57,4 +57,24 @@ describe('ProfileScreen', () => {
     }
     expect(findText(component!, 'Notifications')).toBe(true);
   });
+
+  it('names the notification and update navigation actions', () => {
+    let component: ReturnType<typeof create>;
+
+    act(() => {
+      component = create(<ProfileScreen />);
+    });
+
+    const notificationSettings = component!.root.findByProps({
+      accessibilityLabel: 'Open notification settings',
+    });
+    const updates = component!.root.findByProps({ testID: 'profile-updates-link' });
+
+    expect(notificationSettings.props.accessibilityRole).toBe('button');
+    expect(notificationSettings.props.accessibilityHint).toBe(
+      'Changes push and email reminder preferences',
+    );
+    expect(updates.props.accessibilityRole).toBe('button');
+    expect(updates.props.accessibilityLabel).toBe('Open app updates');
+  });
 });
