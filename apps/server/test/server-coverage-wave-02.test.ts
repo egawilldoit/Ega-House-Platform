@@ -211,10 +211,26 @@ test("Operator mutation routes preserve missing-proposal 404 semantics", async (
   }
 });
 
+test("Operator mutation routes map repository failures to 500", async () => {
+  const fake = new FakeSupabase();
+  fake.push("operator_proposals", { data: null, error: { code: "XX000", message: "database unavailable" } });
+
+  const response = await makeApp(fake).request("/api/operator/proposals/proposal-1/approve", {
+    method: "POST",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    error: { code: "INTERNAL", message: "Unable to load proposal." },
+  });
+});
+
 test("Operator create and revise reject malformed JSON before repository access", async () => {
   for (const path of [
     "/api/operator/proposals",
     "/api/operator/proposals/proposal-1/revise",
+    "/api/operator/proposals/proposal-1/apply",
   ]) {
     const fake = new FakeSupabase();
     const response = await makeApp(fake).request(path, {
@@ -269,8 +285,7 @@ test("Operator mutation routes preserve successful proposal envelopes", async ()
   });
   const applyResponse = await makeApp(applyFake).request("/api/operator/proposals/proposal-1/apply", {
     method: "POST",
-    headers: { ...AUTH, "content-type": "application/json" },
-    body: JSON.stringify({}),
+    headers: AUTH,
   });
   assert.equal(applyResponse.status, 200);
   const applyBody = await applyResponse.json();
