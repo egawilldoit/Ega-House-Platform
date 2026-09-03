@@ -1,6 +1,6 @@
 # Wave 12 — Accessibility and Interaction Quality
 
-Status: AUDIT IN PROGRESS
+Status: ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE
 
 ## Boundary
 
@@ -91,3 +91,56 @@ dependencies are available.
   wave and are not attributed to accessibility work.
 - Wave 11 recorded a transient externally hung acceptance-ledger CI audit;
   its exact implementation head had a full green CI run.
+
+## Implementation
+
+The focused red/green regression work is recorded in `111750c8` and the
+minimal production changes in `b5bbe7e5`:
+
+- notification rows now expose a stable name, button role, action hint, and
+  unread-aware wording;
+- profile, notification settings, task reminder/schedule, and root recovery
+  controls now expose explicit names, hints, and applicable busy/disabled,
+  expanded, and selected state;
+- the quick-task and analytics web Sheet containers now reference their
+  visible titles as the accessible dialog name.
+
+No workflow, navigation, API, authentication, persistence, or product-state
+semantics changed.
+
+## Verification
+
+- Focused red/green tests: mobile notification accessibility `1/1`; web
+  dialog semantics `15/15`; affected mobile profile/notification tests `4/4`.
+- Full mobile suite: `46` suites and `263` tests passed.
+- Full web suite: `166` files and `1,276` tests passed.
+- Mobile and web typechecks passed.
+- Architecture, architecture tests, purity, and security checks passed.
+- Exact pushed-head Unified Platform Validation run `33816304149` passed all
+  `16/16` jobs, including workspace, server, web, mobile, and delivery-map
+  checks.
+- Local Expo Doctor remains `17/18`: the pre-existing `@types/react`
+  expected `~19.1.10`, found `19.2.14` mismatch is not introduced by this
+  wave.
+- Local web build and local Android export were not usable from this linked
+  worktree: Next rejects the out-of-root dependency symlink, and Metro cannot
+  resolve the current shared-contract package through that stale dependency
+  tree. The exact-head CI build/bundle checks passed.
+- `git diff --check` and the wave-local diff are clean after recording this
+  ledger.
+
+## Review
+
+The exact wave-local range was reviewed for boundary, product, and complexity
+regressions. Critical findings: `0`. Important findings introduced by this
+wave: `0`. No second icon system, state owner, transport, or abstraction was
+introduced.
+
+## Final acceptance
+
+Wave 12 is accepted at the exact current head only with external runtime
+evidence explicitly unavailable. Existing evidence covers the supported L1-L5
+mobile ladder and deployed Hono health; authenticated browser inspection,
+Android app runtime, and assistive-technology execution remain `RUNTIME NOT
+VERIFIED`. The Vercel status for the pushed head is successful with
+`Canceled by Ignored Build Step`, so no non-main Preview was built.
