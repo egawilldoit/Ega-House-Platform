@@ -1,6 +1,6 @@
 # Mobile UX Quality — Wave 09 Evidence
 
-Status: IMPLEMENTED — ACCEPTANCE PENDING
+Status: REVIEWED — FINAL VERIFICATION PENDING
 
 Branch: `wave/09-mobile-ux-quality`
 
@@ -14,7 +14,12 @@ experience at the existing route boundaries, preserving the five-tab model
 and canonical API-client path. No emulator or physical device is available,
 so authenticated Android visual evidence remains an explicit runtime gap.
 
-The first focused target is the existing secondary `Weekly Review` route:
+The first focused target is the existing secondary `Weekly Review` route.
+
+## Starting-head baseline
+
+The following findings describe the route at the starting accepted Wave 08
+HEAD (`6ebe4b15beccb1306f84badca830fb8bf840b029`), before Wave 09 changes:
 
 - `apps/mobile/app/(app)/review.tsx:25-51` uses plain loading, error, and
   no-data containers;
@@ -49,17 +54,31 @@ change review semantics or API ownership.
 
 - RED: the focused test failed on the pre-change screen because the important
   pressables had no test IDs or accessibility contract.
-- GREEN: the focused Review suite passes with 2 tests.
+- GREEN: the focused Review suite passes with 3 tests.
 - The week navigation and current-week actions now have explicit button
   labels/hints, pressed feedback, and `mobileTheme.layout.minTouchTarget`
   sizing.
 - Retry now exposes busy/disabled state while fetching and remains recoverable.
+- The Review error uses the existing `FeedbackBanner` alert/live-region
+  contract, so failures are announced to assistive technology.
+- Review content uses the canonical inset-aware `contentBottomPaddingNoFab`
+  metric, keeping the final action clear of bottom chrome on edge-to-edge
+  devices.
+- `Stack.Screen` options are rendered for loading, error, empty, and populated
+  states.
 - Review spacing, radii, button text, and error color use existing
   `mobileTheme` tokens; no API, route, or navigation authority changed.
-- Worktree mobile verification: typecheck PASS; 43 suites / 250 tests PASS;
+- Worktree mobile verification: typecheck PASS; 43 suites / 251 tests PASS;
   Expo Doctor 18/18 PASS; Android export/bundle PASS.
 - Authenticated Android visual execution remains `RUNTIME NOT VERIFIED`:
   this environment has no emulator/device or authenticated session.
+
+## Independent review
+
+Fresh re-review of `4c176e49` found Critical=0 and Important=0. The review
+confirmed the canonical bottom-chrome metric, alert/live-region semantics,
+unconditional screen options, API boundary preservation, and product scope.
+The remaining Minor evidence-wording finding is corrected in this document.
 
 ## Known constraints
 
