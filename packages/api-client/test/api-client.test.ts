@@ -373,6 +373,20 @@ test("preserves conflict envelope codes and 409 status", async () => {
   });
 });
 
+test("falls back to CONFLICT when a 409 envelope omits its code", async () => {
+  const { client } = makeHarness({
+    status: 409,
+    body: { error: { message: "Proposal is already being applied." } },
+  });
+
+  const result = await client.projects.list();
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: { code: "CONFLICT", message: "Proposal is already being applied.", status: 409 },
+  });
+});
+
 test("missing token short-circuits to UNAUTHENTICATED without fetching", async () => {
   const calls: CapturedRequest[] = [];
   const client = createEgaApiClient({
