@@ -175,6 +175,27 @@ test("GET /api/operator/proposals returns an owner-scoped empty list", async () 
   assert.deepEqual(call.steps.find((step) => step.method === "limit")?.args, [10]);
 });
 
+test("GET /api/operator/proposals applies a bounded default and rejects unsafe limits", async () => {
+  const defaultFake = new FakeSupabase();
+  const defaultResponse = await makeApp(defaultFake).request("/api/operator/proposals", { headers: AUTH });
+
+  assert.equal(defaultResponse.status, 200);
+  assert.deepEqual(defaultFake.calls.find((call) => call.table === "operator_proposals")?.steps.find((step) => step.method === "limit")?.args, [50]);
+
+  for (const value of ["0", "-1", "1foo", "201"]) {
+    const fake = new FakeSupabase();
+    const response = await makeApp(fake).request(`/api/operator/proposals?limit=${encodeURIComponent(value)}`, {
+      headers: AUTH,
+    });
+
+    assert.equal(response.status, 400, value);
+    assert.deepEqual(await response.json(), {
+      error: { code: "VALIDATION", message: "limit must be an integer between 1 and 200." },
+    });
+    assert.equal(fake.calls.length, 0, value);
+  }
+});
+
 test("GET /api/operator/proposals/:id maps an unavailable proposal to 404", async () => {
   const fake = new FakeSupabase();
 
@@ -224,6 +245,23 @@ test("Operator mutation routes map repository failures to 500", async () => {
   assert.deepEqual(await response.json(), {
     error: { code: "INTERNAL", message: "Unable to load proposal." },
   });
+});
+
+test("Operator create maps time-context persistence failures to 500", async () => {
+  const fake = new FakeSupabase();
+  fake.push("user_time_context", { data: null, error: { code: "XX000", message: "database unavailable" } });
+
+  const response = await makeApp(fake).request("/api/operator/proposals", {
+    method: "POST",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ proposedTaskIds: [], idempotencyKey: "time-context-failure" }),
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    error: { code: "INTERNAL", message: "Unable to load time context right now." },
+  });
+  assert.equal(fake.calls.some((call) => call.table === "operator_proposals"), false);
 });
 
 test("Operator create and revise reject malformed JSON before repository access", async () => {
@@ -305,6 +343,24 @@ test("Operator mutation routes preserve successful proposal envelopes", async ()
   });
   assert.equal(dismissResponse.status, 200);
   assert.equal((await dismissResponse.json()).proposal.status, "dismissed");
+});
+
+test("Operator apply maps a lost atomic claim with an applying winner to 409", async () => {
+  const fake = new FakeSupabase();
+  fake.push("operator_proposals", { data: operatorRow("approved"), error: null });
+  fake.push("operator_proposals", { data: null, error: null });
+  fake.push("operator_proposals", { data: operatorRow("applying"), error: null });
+
+  const response = await makeApp(fake).request("/api/operator/proposals/proposal-1/apply", {
+    method: "POST",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: { code: "CONFLICT", message: "Proposal is already being applied." },
+  });
+  assert.equal(fake.calls.some((call) => call.table === "tasks"), false);
 });
 
 test("GET /api/time-context resolves the UTC fallback and supports explicit dates", async () => {

@@ -137,6 +137,13 @@ test("operator list scopes to owner and supports filter", async () => {
   assert.ok(steps.includes("limit:10"));
 });
 
+test("operator list applies a bounded default when no limit is supplied", async () => {
+  const fake = new FakeOperatorSupabase([{ data: [], error: null }]);
+  await repo(fake).listProposals(ACTOR_A);
+  const steps = fake.calls[0]?.steps ?? [];
+  assert.ok(steps.includes("limit:50"));
+});
+
 test("operator deleteOlderThan scopes to owner and uses lt on created_at", async () => {
   const fake = new FakeOperatorSupabase([{ data: null, error: null, count: 2 }]);
   await repo(fake).deleteOlderThan(ACTOR_A, "2026-07-01T00:00:00.000Z");
