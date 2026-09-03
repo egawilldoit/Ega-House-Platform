@@ -142,6 +142,14 @@ export function unarchiveProject(
   });
 }
 
+/**
+ * Project ids are Postgres uuids. Reject malformed values before any
+ * persistence call so a destructive endpoint never sends attacker-shaped
+ * input to the database (which would surface as a generic internal failure).
+ * The shape is intentionally version-agnostic to mirror the uuid type.
+ */
+const PROJECT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function dependencyErrorMessage(taskCount: number, goalCount: number) {
   if (taskCount > 0 && goalCount > 0) {
     return "This project still has linked tasks and goals. Move or remove them before permanently deleting the project.";
@@ -168,7 +176,7 @@ export async function deleteArchivedProject(
 ): Promise<ApplicationResult<null>> {
   const projectId = String(input.projectId ?? "").trim();
 
-  if (!projectId) {
+  if (!projectId || !PROJECT_ID_PATTERN.test(projectId)) {
     return applicationFailure("Project delete request is invalid.", "validation");
   }
 

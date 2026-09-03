@@ -475,7 +475,7 @@ test("POST /api/projects/:id/unarchive writes the active status", async () => {
 });
 
 const ARCHIVED_PROJECT_ROW = {
-  id: "project-1",
+  id: "123e4567-e89b-12d3-a456-426614174000",
   name: "Home Renovation",
   slug: "home-renovation",
   description: "Kitchen",
@@ -484,11 +484,13 @@ const ARCHIVED_PROJECT_ROW = {
   updated_at: "2026-02-01T00:00:00.000Z",
 };
 
+const DELETE_PROJECT_PATH = `/api/projects/${ARCHIVED_PROJECT_ROW.id}`;
+
 function queueEligibleArchivedDelete(fake: FakeSupabase) {
   fake.pushResult("projects", { data: ARCHIVED_PROJECT_ROW, error: null });
   fake.pushResult("tasks", { data: [], error: null });
   fake.pushResult("goals", { data: [], error: null });
-  fake.pushResult("projects", { data: [{ id: "project-1" }], error: null });
+  fake.pushResult("projects", { data: [{ id: ARCHIVED_PROJECT_ROW.id }], error: null });
 }
 
 test("DELETE /api/projects/:id removes an eligible archived project", async () => {
@@ -496,7 +498,7 @@ test("DELETE /api/projects/:id removes an eligible archived project", async () =
   queueEligibleArchivedDelete(fake);
   const app = makeApp(fake);
 
-  const response = await app.request("/api/projects/project-1", {
+  const response = await app.request(DELETE_PROJECT_PATH, {
     method: "DELETE",
     headers: { ...AUTH, ...JSON_HEADERS },
     body: JSON.stringify({ userId: "attacker", projectId: "other" }),
@@ -508,7 +510,7 @@ test("DELETE /api/projects/:id removes an eligible archived project", async () =
   const calls = fake.calls.filter((call) => call.table === "projects");
   const remove = calls.find((call) => call.steps.some((step) => step.method === "delete"));
   assert.ok(remove);
-  assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === "project-1"));
+  assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === ARCHIVED_PROJECT_ROW.id));
   assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
   assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "status" && step.args[1] === "archived"));
 });
@@ -516,9 +518,25 @@ test("DELETE /api/projects/:id removes an eligible archived project", async () =
 test("DELETE /api/projects/:id requires authentication", async () => {
   const app = makeApp(fakeSupabase());
 
-  const response = await app.request("/api/projects/project-1", { method: "DELETE" });
+  const response = await app.request(DELETE_PROJECT_PATH, { method: "DELETE" });
 
   assert.equal(response.status, 401);
+});
+
+test("DELETE /api/projects/:id rejects a malformed id before the database", async () => {
+  const fake = fakeSupabase();
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/not-a-uuid", {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Project delete request is invalid." },
+  });
+  assert.equal(fake.calls.length, 0);
 });
 
 test("DELETE /api/projects/:id rejects every non-archived status with 400", async () => {
@@ -527,7 +545,7 @@ test("DELETE /api/projects/:id rejects every non-archived status with 400", asyn
     fake.pushResult("projects", { data: { ...ARCHIVED_PROJECT_ROW, status }, error: null });
     const app = makeApp(fake);
 
-    const response = await app.request("/api/projects/project-1", {
+    const response = await app.request(DELETE_PROJECT_PATH, {
       method: "DELETE",
       headers: AUTH,
     });
@@ -550,7 +568,7 @@ test("DELETE /api/projects/:id returns 409 when linked tasks remain", async () =
   fake.pushResult("goals", { data: [], error: null });
   const app = makeApp(fake);
 
-  const response = await app.request("/api/projects/project-1", {
+  const response = await app.request(DELETE_PROJECT_PATH, {
     method: "DELETE",
     headers: AUTH,
   });
@@ -571,7 +589,7 @@ test("DELETE /api/projects/:id returns 409 when linked goals remain", async () =
   fake.pushResult("goals", { data: [{ id: "goal-1", title: "Finish kitchen", project_id: "project-1" }], error: null });
   const app = makeApp(fake);
 
-  const response = await app.request("/api/projects/project-1", {
+  const response = await app.request(DELETE_PROJECT_PATH, {
     method: "DELETE",
     headers: AUTH,
   });
@@ -590,7 +608,7 @@ test("DELETE /api/projects/:id returns 404 for a missing or foreign project", as
   fake.pushResult("projects", { data: null, error: null });
   const app = makeApp(fake);
 
-  const response = await app.request("/api/projects/project-1", {
+  const response = await app.request(DELETE_PROJECT_PATH, {
     method: "DELETE",
     headers: AUTH,
   });
@@ -609,7 +627,7 @@ test("DELETE /api/projects/:id maps a foreign-key race to 409", async () => {
   fake.pushResult("projects", { data: null, error: { code: "23503", message: "violates foreign key constraint" } });
   const app = makeApp(fake);
 
-  const response = await app.request("/api/projects/project-1", {
+  const response = await app.request(DELETE_PROJECT_PATH, {
     method: "DELETE",
     headers: AUTH,
   });
@@ -631,7 +649,7 @@ test("DELETE /api/projects/:id maps a persistence failure to sanitized 500", asy
   fake.pushResult("projects", { data: null, error: { code: "PGRST500" } });
   const app = makeApp(fake);
 
-  const response = await app.request("/api/projects/project-1", {
+  const response = await app.request(DELETE_PROJECT_PATH, {
     method: "DELETE",
     headers: AUTH,
   });
