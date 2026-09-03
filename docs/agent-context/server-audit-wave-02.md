@@ -1,7 +1,7 @@
 # Wave 02 server audit
 
-Status: transport audit and regression coverage complete; one error-classification
-correction is included below.
+Status: transport audit and regression coverage complete; Operator error
+classification and optional-body handling corrections are included below.
 
 Base: `def37b14b4e595d37431cc7d98cf6fb86d2980b8`
 
@@ -18,7 +18,7 @@ deployed database or production runtime.
 | RLS client carries the same token | `apps/server/src/app.ts:108-109` sets the actor and `createRequestClient(token)` after verification; `apps/server/src/auth.ts:37-64` builds the Supabase client with the bearer Authorization header. Repository tests assert owner predicates throughout `apps/server/test` and `packages/data-access/test`. | PROVEN by source and request-scoped test doubles; deployed RLS NOT RUNTIME VERIFIED |
 | Public surface is intentionally narrow | `apps/server/src/app.ts:60-65` allows only `/api/auth/session` and `/api/auth/refresh` through auth middleware; `/health` and `/ready` are separate operational endpoints. `vercel-entrypoint.test.ts` and `platform-server.test.ts` exercise these paths. | PROVEN |
 | Transport delegates policy | Route modules construct request-scoped repositories and call `@ega/application`; no route owns persistence SQL. The audit found no new framework or service-role CRUD path. | PROVEN by source inspection |
-| Error boundary does not expose raw failures | `apps/server/src/app.ts:146-155` logs server-side and returns the stable INTERNAL envelope. Route tests cover validation, not-found, and repository-failure mappings. | PROVEN for exercised paths; unexercised route coverage listed below |
+| Error boundary does not expose raw failures | `apps/server/src/app.ts:146-155` logs server-side and returns the stable INTERNAL envelope. Operator routes preserve typed application outcomes: validation → 400, not found → 404, conflict → 409, unknown/repository failure → 500. | PROVEN for exercised paths; unexercised route coverage listed below |
 
 ## Endpoint-family matrix
 
@@ -39,7 +39,7 @@ shape where that behavior exists for the family.
 | Notifications — `routes/notifications.ts` | `notifications.test.ts:101-210` covers auth, list/unread, read/opened, read-all, device registration/removal, preferences, invalid input and owner scoping. | PASS |
 | Friction — `routes/friction.ts` | `friction-server.test.ts:108-487` covers auth, empty/populated signals, owner scope, rolling window, timezones, DST, malformed evidence and response shape. | PASS |
 | Health — `routes/health.ts` | `server-coverage-wave-02.test.ts` covers authenticated empty snapshot, owner predicates, response envelope, and repository failure mapped to the stable 500 response; application tests cover recommendations and timezone cases. | PASS; live database/RLS NOT RUNTIME VERIFIED |
-| Operator — `routes/operator.ts` | `server-coverage-wave-02.test.ts` covers authenticated owner-scoped list/get, successful create/approve/apply/dismiss envelopes, malformed create/revise bodies, missing-proposal responses, and application-level lifecycle/error tests cover idempotency and invalid states. | PASS; live database/RLS NOT RUNTIME VERIFIED |
+| Operator — `routes/operator.ts` | `server-coverage-wave-02.test.ts` covers authenticated owner-scoped list/get, successful create/approve/apply/dismiss envelopes, optional bodyless apply, malformed create/revise/apply bodies, missing-proposal responses, and repository failure mapped to 500. Application-level lifecycle/error tests cover idempotency and invalid states. | PASS; live database/RLS NOT RUNTIME VERIFIED |
 | Time Context — `routes/time-context.ts` | `server-coverage-wave-02.test.ts` covers authenticated UTC fallback, explicit date, owner predicate, and malformed date rejection without storage access; domain/application tests cover timezone, DST and historical windows. | PASS; live database/RLS NOT RUNTIME VERIFIED |
 | Weekly Review — `routes/weekly-review.ts` | `server-coverage-wave-02.test.ts` covers authenticated empty contract, owner-scoped reads, and invalid week rejection without storage access; application tests cover source data, comparison and validation. | PASS; live database/RLS NOT RUNTIME VERIFIED |
 | Operational/unknown — `app.ts`, `routes/health.ts` | `vercel-entrypoint.test.ts` covers `/health`, `/ready`, API auth, unknown path JSON 404 and the native entrypoint. | PASS for local module runtime |
@@ -57,10 +57,13 @@ shape where that behavior exists for the family.
    `apps/server/test/server-coverage-wave-02.test.ts`. The fake Supabase client
    proves route status/envelopes and owner predicates, but it is not a live
    database or RLS test.
-4. The audit found one real transport inconsistency: Operator mutation routes
+4. The audit found two real Operator transport inconsistencies. Mutation routes
    returned 400 for a missing proposal while the GET route and other resource
-   routes use 404. The routes now preserve `NOT_FOUND`/404 for that application
-   result, with regression coverage for revise, approve, apply, and dismiss.
+   routes use 404, and repository failures were also reported as client
+   validation errors. The application now carries explicit error classes and
+   the transport maps them to `NOT_FOUND`/404 or `INTERNAL`/500 as appropriate,
+   with regression coverage. Apply also preserves its existing body-omitted
+   meaning while rejecting explicitly malformed JSON before storage access.
 5. The audit found no justification for a Hono rewrite, service-role shortcut,
    duplicate business policy, or new abstraction. Any implementation should be
    remain limited to transport tests or regression-backed corrections.
@@ -68,6 +71,6 @@ shape where that behavior exists for the family.
 ## Runtime classification
 
 - L1 static/source inspection: VERIFIED.
-- L2 package/server tests: VERIFIED at the accepted predecessor base.
+- L2 package/server tests: VERIFIED at the corrected wave head.
 - L3 live external HTTP/auth/database/RLS: NOT VERIFIED in this audit.
 - Production deployment: not triggered.
