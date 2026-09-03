@@ -1,5 +1,3 @@
-import type { ProjectStatus, ProjectViewFilter } from "@ega/domain";
-
 export type { ProjectStatus, ProjectViewFilter } from "@ega/domain";
 
 /** Normalized values echoed by POST /api/projects. */
