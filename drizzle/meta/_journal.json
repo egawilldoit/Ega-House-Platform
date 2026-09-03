@@ -435,6 +435,13 @@
       "when": 1787880000011,
       "tag": "0061_mcp_audit_event_rpc",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1787880000012,
+      "tag": "0062_project_purge",
+      "breakpoints": true
     }
   ]
 }

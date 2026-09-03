@@ -16,6 +16,7 @@ import { createApp, type ServerDependencies } from "../src/index";
 type QueryResult = {
   data: unknown;
   error: { code?: string; message?: string } | null;
+  count?: number | null;
 };
 
 type ChainStep = { method: string; args: unknown[] };
@@ -23,15 +24,28 @@ type ChainStep = { method: string; args: unknown[] };
 class FakeSupabase {
   private readonly queues = new Map<string, QueryResult[]>();
   calls: Array<{ table: string; steps: ChainStep[] }> = [];
+  rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
   from(table: string) {
     return new FakeQueryBuilder(table, this);
+  }
+
+  rpc(name: string, args: Record<string, unknown>) {
+    this.rpcCalls.push({ name, args });
+    return {
+      then: (fulfilled: (value: QueryResult) => unknown) =>
+        Promise.resolve(this.popResult(`rpc:${name}`)).then(fulfilled),
+    } as unknown as Promise<QueryResult>;
   }
 
   pushResult(table: string, result: QueryResult) {
     const queue = this.queues.get(table) ?? [];
     queue.push(result);
     this.queues.set(table, queue);
+  }
+
+  pushRpcResult(name: string, result: QueryResult) {
+    this.pushResult(`rpc:${name}`, result);
   }
 
   popResult(table: string): QueryResult {
@@ -70,6 +84,11 @@ class FakeQueryBuilder {
 
   in(column: string, values: unknown[]) {
     this.steps.push({ method: "in", args: [column, values] });
+    return this;
+  }
+
+  is(column: string, value: unknown) {
+    this.steps.push({ method: "is", args: [column, value] });
     return this;
   }
 
@@ -657,6 +676,336 @@ test("DELETE /api/projects/:id maps a persistence failure to sanitized 500", asy
   assert.equal(response.status, 500);
   assert.deepEqual(await response.json(), {
     error: { code: "INTERNAL", message: "Unable to delete project right now." },
+  });
+});
+
+const PURGE_PROJECT_ID = ARCHIVED_PROJECT_ROW.id;
+const PREVIEW_PATH = `/api/projects/${PURGE_PROJECT_ID}/purge-preview`;
+const PURGE_PATH = `/api/projects/${PURGE_PROJECT_ID}/purge`;
+
+function queuePurgePreview(fake: FakeSupabase) {
+  fake.pushResult("projects", {
+    data: { ...ARCHIVED_PROJECT_ROW, name: "Stage CGI" },
+    error: null,
+  });
+  fake.pushResult("projects", {
+    data: { id: PURGE_PROJECT_ID, name: "Stage CGI" },
+    error: null,
+  });
+  fake.pushResult("tasks", {
+    data: [{ id: "task-1", calendar_event_id: "event-1" }],
+    error: null,
+  });
+  fake.pushResult("goals", { data: [{ id: "goal-1" }], error: null });
+  fake.pushResult("task_sessions", { data: null, error: null, count: 2 });
+  fake.pushResult("task_sessions", { data: null, error: null, count: 1 });
+  fake.pushResult("task_reminders", { data: null, error: null, count: 1 });
+  fake.pushResult("task_recurrences", { data: null, error: null, count: 0 });
+  fake.pushResult("task_external_refs", { data: null, error: null, count: 0 });
+  fake.pushResult("notifications", { data: null, error: null, count: 1 });
+}
+
+function purgeBody(overrides: Record<string, unknown> = {}) {
+  return {
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 1,
+    expectedGoalCount: 1,
+    ...overrides,
+  };
+}
+
+function queuePurgeProject(fake: FakeSupabase) {
+  fake.pushResult("projects", {
+    data: { ...ARCHIVED_PROJECT_ROW, name: "Stage CGI" },
+    error: null,
+  });
+}
+
+test("GET /api/projects/:id/purge-preview requires authentication", async () => {
+  const app = makeApp(fakeSupabase());
+
+  const response = await app.request(PREVIEW_PATH);
+
+  assert.equal(response.status, 401);
+});
+
+test("GET /api/projects/:id/purge-preview rejects a malformed id", async () => {
+  const fake = fakeSupabase();
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/not-a-uuid/purge-preview", {
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Project purge preview request is invalid." },
+  });
+  assert.equal(fake.calls.length, 0);
+});
+
+test("GET /api/projects/:id/purge-preview returns 404 for a missing or foreign project", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: null, error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request(PREVIEW_PATH, { headers: AUTH });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), {
+    error: { code: "NOT_FOUND", message: "Project not found." },
+  });
+});
+
+test("GET /api/projects/:id/purge-preview rejects a non-archived project", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: { ...ARCHIVED_PROJECT_ROW, status: "active" }, error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request(PREVIEW_PATH, { headers: AUTH });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Only archived projects can be permanently deleted." },
+  });
+});
+
+test("GET /api/projects/:id/purge-preview returns the deletion impact", async () => {
+  const fake = fakeSupabase();
+  queuePurgePreview(fake);
+  const app = makeApp(fake);
+
+  const response = await app.request(PREVIEW_PATH, { headers: AUTH });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    projectId: PURGE_PROJECT_ID,
+    projectName: "Stage CGI",
+    impact: {
+      taskCount: 1,
+      goalCount: 1,
+      sessionCount: 2,
+      activeSessionCount: 1,
+      reminderCount: 1,
+      recurrenceCount: 0,
+      externalRefCount: 0,
+      taskNotificationCount: 1,
+      calendarEventCount: 1,
+    },
+  });
+});
+
+test("POST /api/projects/:id/purge requires authentication", async () => {
+  const app = makeApp(fakeSupabase());
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: JSON_HEADERS,
+    body: JSON.stringify(purgeBody()),
+  });
+
+  assert.equal(response.status, 401);
+});
+
+test("POST /api/projects/:id/purge rejects an invalid JSON body", async () => {
+  const app = makeApp(fakeSupabase());
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: "{not json",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Request body must be valid JSON." },
+  });
+});
+
+test("POST /api/projects/:id/purge rejects a malformed id before the database", async () => {
+  const fake = fakeSupabase();
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/not-a-uuid/purge", {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody()),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Project purge request is invalid." },
+  });
+  assert.equal(fake.calls.length, 0);
+  assert.equal(fake.rpcCalls.length, 0);
+});
+
+test("POST /api/projects/:id/purge rejects a missing confirmation", async () => {
+  const fake = fakeSupabase();
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody({ confirmationName: "  " })),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Project purge request is invalid." },
+  });
+  assert.equal(fake.calls.length, 0);
+});
+
+test("POST /api/projects/:id/purge rejects an incorrect confirmation", async () => {
+  const fake = fakeSupabase();
+  queuePurgeProject(fake);
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody({ confirmationName: "Wrong Name" })),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Project name confirmation does not match." },
+  });
+  assert.equal(fake.rpcCalls.length, 0);
+});
+
+test("POST /api/projects/:id/purge rejects invalid expected counts", async () => {
+  const fake = fakeSupabase();
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody({ expectedTaskCount: -1 })),
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(fake.calls.length, 0);
+});
+
+test("POST /api/projects/:id/purge rejects a non-archived project", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: { ...ARCHIVED_PROJECT_ROW, status: "done" }, error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody()),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Only archived projects can be permanently deleted." },
+  });
+  assert.equal(fake.rpcCalls.length, 0);
+});
+
+test("POST /api/projects/:id/purge returns 404 for a foreign project", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: null, error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify({ ...purgeBody(), ownerUserId: "attacker" }),
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), {
+    error: { code: "NOT_FOUND", message: "Project not found." },
+  });
+  assert.equal(fake.rpcCalls.length, 0);
+});
+
+test("POST /api/projects/:id/purge returns 409 when contents changed", async () => {
+  const fake = fakeSupabase();
+  queuePurgeProject(fake);
+  fake.pushRpcResult("purge_archived_project", { data: { status: "contents_changed" }, error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody()),
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "VALIDATION",
+      message: "Project contents changed. Review the deletion impact and confirm again.",
+    },
+  });
+
+  assert.deepEqual(fake.rpcCalls[0].args, {
+    p_project_id: PURGE_PROJECT_ID,
+    p_confirmation_name: "Stage CGI",
+    p_expected_task_count: 1,
+    p_expected_goal_count: 1,
+  });
+  assert.ok(!("p_owner_user_id" in fake.rpcCalls[0].args));
+});
+
+test("POST /api/projects/:id/purge removes the project atomically on success", async () => {
+  const fake = fakeSupabase();
+  queuePurgeProject(fake);
+  fake.pushRpcResult("purge_archived_project", {
+    data: {
+      status: "purged",
+      tasks_deleted: 1,
+      goals_deleted: 1,
+      sessions_deleted: 2,
+      external_refs_deleted: 0,
+      notifications_deleted: 1,
+      calendar_delete_jobs_enqueued: 1,
+    },
+    error: null,
+  });
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody()),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    deleted: {
+      tasksDeleted: 1,
+      goalsDeleted: 1,
+      sessionsDeleted: 2,
+      externalRefsDeleted: 0,
+      notificationsDeleted: 1,
+      calendarDeleteJobsEnqueued: 1,
+    },
+  });
+});
+
+test("POST /api/projects/:id/purge maps a persistence failure to sanitized 500", async () => {
+  const fake = fakeSupabase();
+  queuePurgeProject(fake);
+  fake.pushRpcResult("purge_archived_project", { data: null, error: { code: "PGRST500" } });
+  const app = makeApp(fake);
+
+  const response = await app.request(PURGE_PATH, {
+    method: "POST",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify(purgeBody()),
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    error: { code: "INTERNAL", message: "Unable to purge project right now." },
   });
 });
 

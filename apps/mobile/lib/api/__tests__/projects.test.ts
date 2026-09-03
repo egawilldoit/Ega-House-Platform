@@ -69,6 +69,8 @@ function makeFakeProjectsApi() {
     archive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
     unarchive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
     remove: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
+    getPurgePreview: jest.fn(),
+    purge: jest.fn(),
   };
 }
 
