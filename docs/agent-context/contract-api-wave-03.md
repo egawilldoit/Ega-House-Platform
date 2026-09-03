@@ -1,6 +1,7 @@
 # Wave 03 contract and API-client boundary inventory
 
-**Snapshot:** `0f68315213589e66e1d6d9890a40779df1255e35` (2026-09-03)
+**Starting snapshot:** `0f68315213589e66e1d6d9890a40779df1255e35` (2026-09-03)
+**Implementation snapshot:** `b89dd2c7eaeaef7e30289e409ccc1e78816177cf` (2026-09-03)
 
 This is the Wave 03 starting evidence. It separates capabilities that need a
 native transport contract from web-only or internal capabilities. Source and
@@ -82,6 +83,52 @@ Operator snapshot returned by the route.
 
 No new endpoint, product screen, database owner, or generic transport
 abstraction is authorized by this inventory.
+
+## Implementation evidence
+
+The selected boundary is implemented at `b89dd2c7`:
+
+- `@ega/contracts/projects` and `@ega/contracts/goals` now own the Project and
+  Goal request, read-model, and mutation-envelope shapes.
+- `@ega/api-client/src/types.ts` remains available as a compatibility subpath
+  but only re-exports those shared types; it no longer defines wire DTOs.
+- Project and Goal Hono routes and API-client resources use the shared response
+  types, including the `{ ok: true, values }` create envelope.
+- `MobileTodayResponse` aliases the complete `OperatorSnapshotDto`, and the
+  native Today adapter and integration fixture exercise the added snapshot
+  fields (timezone, time context, day window, focus, schedule, and signals).
+- Existing mobile Project and Goal API test doubles now use the same complete
+  response envelopes as the live API-client methods.
+
+Focused boundary evidence at the implementation snapshot:
+
+| Check | Result |
+| --- | --- |
+| `contracts:typecheck` | PASS |
+| `contracts:test` | PASS — 22 tests |
+| `api-client:typecheck` | PASS |
+| `api-client:test` | PASS — 47 tests |
+| `server:typecheck` | PASS |
+| `server:test` | PASS — 128 tests |
+| `mobile:typecheck` | PASS |
+| `mobile:test` | PASS — 38 suites / 238 tests |
+| architecture tests | PASS — 21 tests |
+| purity/security checks | PASS |
+| Android bundle export | PASS — exact Wave 03 implementation snapshot |
+
+`mobile:doctor` remains NOT VERIFIED in this worktree because the shared
+install currently hoists `@types/react` 19.2.14 while Expo declares
+`~19.1.0`; the source package declares the compatible range and this is an
+environment/install-state finding, not a contract change. No generated
+dependency files are part of the wave.
+
+## Wave ruling
+
+**Wave 03 — ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE.**
+
+Code and boundary behavior are proven by the focused and affected suites.
+Authenticated deployed API behavior, cross-user RLS isolation, and Android
+runtime API connectivity remain `RUNTIME NOT VERIFIED`.
 
 ## Evidence still unavailable
 
