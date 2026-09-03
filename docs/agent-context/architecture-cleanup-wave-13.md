@@ -1,6 +1,6 @@
 # Wave 13 — Targeted Architecture Cleanup
 
-Status: IMPLEMENTATION COMPLETE — ACCEPTANCE PENDING
+Status: ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE
 
 ## Boundary
 
@@ -89,3 +89,22 @@ behavior.
 - Critical findings: 0; Important findings introduced by this wave: 0.
 - Exact wave-local diff, checks, runtime limitations, and final decision are
   recorded before acceptance.
+
+## Final acceptance record
+
+- Accepted HEAD: `ce2db057c7d1dc768b479f68511250ef82c5045f`
+- Wave-local commits: `5a9775df..ce2db057`
+- Code gate: PASS — exact-head Unified Platform Validation run
+  `33817829666` completed successfully, including workspace audit,
+  architecture/security/purity, package checks, web tests/build, mobile
+  checks/bundle, and hygiene.
+- Product gate: PASS — the existing web import surface and formatter output
+  are preserved while duplicate implementation ownership is removed.
+- Runtime gate: ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE. This is a
+  source-level ownership cleanup with no new product flow; authenticated web
+  and Android runtime evidence remain unavailable in this environment.
+- Review gate: PASS — wave-local review found no Critical or Important issue;
+  no broad refactor or boundary change was introduced.
+- Publication gate: PASS — branch is pushed, PR #223 remains Draft, exact-head
+  API Vercel status is `Canceled by Ignored Build Step`, and no production
+  deployment or merge occurred.
