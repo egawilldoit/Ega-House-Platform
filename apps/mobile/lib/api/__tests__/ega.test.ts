@@ -64,6 +64,8 @@ function makeFakeClient(): EgaApiClient {
       archive: jest.fn(),
       unarchive: jest.fn(),
       remove: jest.fn(),
+      getPurgePreview: jest.fn(),
+      purge: jest.fn(),
     },
     goals: {
       list: jest.fn(async () => ({ ok: true as const, data: { projects: [], goals: [], summary: { total: 0, active: 0, completed: 0, archived: 0 } } })),

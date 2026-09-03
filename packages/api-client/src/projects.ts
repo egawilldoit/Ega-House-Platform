@@ -11,6 +11,11 @@
  *                                                   (400 VALIDATION when not archived,
  *                                                    409 VALIDATION when linked tasks/goals remain,
  *                                                    404 NOT_FOUND when missing/foreign)
+ *   GET    /api/projects/:id/purge-preview         -> ProjectPurgePreviewResponse
+ *   POST   /api/projects/:id/purge                 -> { ok: true, deleted: ProjectPurgeSummary }
+ *                                                   (400 VALIDATION incl. confirmation mismatch,
+ *                                                    409 VALIDATION when contents changed,
+ *                                                    404 NOT_FOUND when missing/foreign)
  *
  * Every method returns the typed `ApiResult` set; errors are mapped from the
  * server envelope (UNAUTHENTICATED | VALIDATION | NOT_FOUND | INTERNAL).
@@ -29,6 +34,39 @@ import type {
   ProjectsReadModel,
 } from "./types";
 
+export type ProjectPurgeImpact = {
+  taskCount: number;
+  goalCount: number;
+  sessionCount: number;
+  activeSessionCount: number;
+  reminderCount: number;
+  recurrenceCount: number;
+  externalRefCount: number;
+  taskNotificationCount: number;
+  calendarEventCount: number;
+};
+
+export type ProjectPurgePreviewResponse = {
+  projectId: string;
+  projectName: string;
+  impact: ProjectPurgeImpact;
+};
+
+export type ProjectPurgeSummary = {
+  tasksDeleted: number;
+  goalsDeleted: number;
+  sessionsDeleted: number;
+  externalRefsDeleted: number;
+  notificationsDeleted: number;
+  calendarDeleteJobsEnqueued: number;
+};
+
+export type PurgeProjectInput = {
+  confirmationName: string;
+  expectedTaskCount: number;
+  expectedGoalCount: number;
+};
+
 export type ProjectsApi = {
   /** GET /api/projects?view=... (view omitted => server defaults to "active"). */
   list(view?: ProjectViewFilter): Promise<ApiResult<ProjectsReadModel>>;
@@ -44,6 +82,10 @@ export type ProjectsApi = {
   unarchive(projectId: string): Promise<ApiResult<OkResponse>>;
   /** DELETE /api/projects/:id — archived projects without linked tasks/goals only. */
   remove(projectId: string): Promise<ApiResult<OkResponse>>;
+  /** GET /api/projects/:id/purge-preview — exact deletion impact for an archived project. */
+  getPurgePreview(projectId: string): Promise<ApiResult<ProjectPurgePreviewResponse>>;
+  /** POST /api/projects/:id/purge — atomic purge of an archived project. */
+  purge(projectId: string, input: PurgeProjectInput): Promise<ApiResult<{ ok: true; deleted: ProjectPurgeSummary }>>;
 };
 
 export function createProjectsApi(http: HttpClient): ProjectsApi {
@@ -95,6 +137,20 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
       return http.request<OkResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}`,
         method: "DELETE",
+      });
+    },
+
+    getPurgePreview(projectId) {
+      return http.request<ProjectPurgePreviewResponse>({
+        path: `/api/projects/${encodeURIComponent(projectId)}/purge-preview`,
+      });
+    },
+
+    purge(projectId, input) {
+      return http.request<{ ok: true; deleted: ProjectPurgeSummary }>({
+        path: `/api/projects/${encodeURIComponent(projectId)}/purge`,
+        method: "POST",
+        body: input,
       });
     },
   };
