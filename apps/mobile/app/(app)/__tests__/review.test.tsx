@@ -53,6 +53,13 @@ const queryResult = {
   isFetching: false,
 };
 
+function flattenPressableStyle(node: { props: { style: unknown } }) {
+  const style = typeof node.props.style === 'function'
+    ? node.props.style({ pressed: false })
+    : node.props.style;
+  return StyleSheet.flatten(style);
+}
+
 describe('WeeklyReviewScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -72,17 +79,17 @@ describe('WeeklyReviewScreen', () => {
 
     expect(previous.props.accessibilityRole).toBe('button');
     expect(previous.props.accessibilityLabel).toBe('View previous week');
-    expect(StyleSheet.flatten(previous.props.style).minHeight).toBeGreaterThanOrEqual(
+    expect(flattenPressableStyle(previous).minHeight).toBeGreaterThanOrEqual(
       mobileTheme.layout.minTouchTarget,
     );
     expect(next.props.accessibilityRole).toBe('button');
     expect(next.props.accessibilityLabel).toBe('View next week');
-    expect(StyleSheet.flatten(next.props.style).minHeight).toBeGreaterThanOrEqual(
+    expect(flattenPressableStyle(next).minHeight).toBeGreaterThanOrEqual(
       mobileTheme.layout.minTouchTarget,
     );
     expect(current.props.accessibilityRole).toBe('button');
     expect(current.props.accessibilityLabel).toBe('Return to this week');
-    expect(StyleSheet.flatten(current.props.style).minHeight).toBeGreaterThanOrEqual(
+    expect(flattenPressableStyle(current).minHeight).toBeGreaterThanOrEqual(
       mobileTheme.layout.minTouchTarget,
     );
   });
@@ -105,7 +112,7 @@ describe('WeeklyReviewScreen', () => {
     const retry = renderer!.root.findByProps({ testID: 'review-retry' });
     expect(retry.props.accessibilityRole).toBe('button');
     expect(retry.props.accessibilityLabel).toBe('Retry loading weekly review');
-    expect(StyleSheet.flatten(retry.props.style).minHeight).toBeGreaterThanOrEqual(
+    expect(flattenPressableStyle(retry).minHeight).toBeGreaterThanOrEqual(
       mobileTheme.layout.minTouchTarget,
     );
 
