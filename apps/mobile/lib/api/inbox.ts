@@ -1,4 +1,5 @@
 import { getMobileEgaApiClient, unwrapApiResult } from "@/lib/api/ega";
+import type { ConvertInboxInput } from "@ega/contracts/inbox";
 
 export type ListInboxParams = {
   view?: string | null;
@@ -34,4 +35,8 @@ export async function archiveInboxItem(id: string) {
 
 export async function restoreInboxItem(id: string) {
   return unwrapApiResult(await getMobileEgaApiClient().inbox.restore(id));
+}
+
+export async function convertInboxItem(id: string, input: ConvertInboxInput = {}) {
+  return unwrapApiResult(await getMobileEgaApiClient().inbox.convert(id, input));
 }
