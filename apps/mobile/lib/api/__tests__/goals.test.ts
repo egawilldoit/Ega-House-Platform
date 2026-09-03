@@ -7,8 +7,10 @@
 import type {
   ApiResult,
   CreateGoalInput,
+  CreateGoalResponse,
   GoalFormValues,
   GoalHealth,
+  GoalMutationResponse,
   GoalStatus,
   GoalsReadModel,
 } from '@ega/api-client';
@@ -55,12 +57,12 @@ const GOAL_FORM_VALUES: GoalFormValues = {
 function makeFakeGoalsApi() {
   return {
     list: jest.fn(async (): Promise<ApiResult<GoalsReadModel>> => ({ ok: true as const, data: GOALS_READ_MODEL })),
-    create: jest.fn(async (): Promise<ApiResult<{ values: GoalFormValues }>> => ({ ok: true as const, data: { values: GOAL_FORM_VALUES } })),
-    updateStatus: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
-    updateHealth: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
-    updateNextStep: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
-    archive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
-    unarchive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
+    create: jest.fn(async (): Promise<ApiResult<CreateGoalResponse>> => ({ ok: true as const, data: { ok: true, values: GOAL_FORM_VALUES } })),
+    updateStatus: jest.fn(async (): Promise<ApiResult<GoalMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    updateHealth: jest.fn(async (): Promise<ApiResult<GoalMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    updateNextStep: jest.fn(async (): Promise<ApiResult<GoalMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    archive: jest.fn(async (): Promise<ApiResult<GoalMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    unarchive: jest.fn(async (): Promise<ApiResult<GoalMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
   };
 }
 

@@ -17,7 +17,9 @@
     "./execution-evidence": "./src/execution-evidence.ts",
     "./operator": "./src/operator.ts",
     "./weekly-review": "./src/weekly-review.ts",
-    "./health": "./src/health.ts"
+    "./health": "./src/health.ts",
+    "./projects": "./src/projects.ts",
+    "./goals": "./src/goals.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

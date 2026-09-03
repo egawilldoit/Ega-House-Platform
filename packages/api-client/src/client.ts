@@ -27,7 +27,7 @@ import { createTimerApi, type TimerApi } from "./timer";
 import { createTodayApi, type TodayApi } from "./today";
 import { createWeeklyReviewApi, type WeeklyReviewApi } from "./weekly-review";
 import type { ApiErrorPayload, ApiResult } from "./errors";
-import type { HealthResponse } from "./types";
+import type { HealthStatusResponse as HealthResponse } from "@ega/contracts/health";
 
 export type EgaApiClientOptions = {
   /** Origin of the transport, e.g. `https://api.ega.example`. */

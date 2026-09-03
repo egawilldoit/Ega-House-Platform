@@ -6,8 +6,10 @@
  */
 import type {
   ApiResult,
+  CreateProjectResponse,
   ProjectFormValues,
   ProjectIdentityReadModel,
+  ProjectMutationResponse,
   ProjectStatus,
   ProjectsReadModel,
 } from '@ega/api-client';
@@ -64,10 +66,10 @@ function makeFakeProjectsApi() {
   return {
     list: jest.fn(async (): Promise<ApiResult<ProjectsReadModel>> => ({ ok: true as const, data: PROJECTS_READ_MODEL })),
     getBySlug: jest.fn(async (): Promise<ApiResult<ProjectIdentityReadModel>> => ({ ok: true as const, data: PROJECT_IDENTITY })),
-    create: jest.fn(async (): Promise<ApiResult<{ values: ProjectFormValues }>> => ({ ok: true as const, data: { values: PROJECT_FORM_VALUES } })),
-    updateStatus: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
-    archive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
-    unarchive: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
+    create: jest.fn(async (): Promise<ApiResult<CreateProjectResponse>> => ({ ok: true as const, data: { ok: true, values: PROJECT_FORM_VALUES } })),
+    updateStatus: jest.fn(async (): Promise<ApiResult<ProjectMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    archive: jest.fn(async (): Promise<ApiResult<ProjectMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    unarchive: jest.fn(async (): Promise<ApiResult<ProjectMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
   };
 }
 

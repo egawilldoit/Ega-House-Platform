@@ -5,6 +5,11 @@ import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
   INTERNAL_ERROR_RESPONSE,
+  type CreateGoalResponse,
+  type CreateProjectResponse,
+  type MobileTodayResponse,
+  type ProjectsReadModel,
+  type GoalsReadModel,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
   isTaskDueFilter,
@@ -104,5 +109,81 @@ test("agent internal error wire response remains stable", () => {
       code: "INTERNAL_ERROR",
       message: "The request could not be completed.",
     },
+  });
+});
+
+test("project and goal response DTOs describe the existing transport envelopes", () => {
+  const projectResponse: CreateProjectResponse = {
+    ok: true,
+    values: { name: "Launch", slug: "launch", description: "" },
+  };
+  const projects: ProjectsReadModel = {
+    projects: [],
+    summary: { total: 0, active: 0, completed: 0, archived: 0 },
+  };
+  const goalResponse: CreateGoalResponse = {
+    ok: true,
+    values: {
+      title: "Ship beta",
+      projectId: "project-1",
+      description: "",
+      nextStep: "",
+      health: "on_track",
+      status: "active",
+      slug: "ship-beta",
+    },
+  };
+  const goals: GoalsReadModel = {
+    projects: [],
+    goals: [],
+    summary: { total: 0, active: 0, completed: 0, archived: 0 },
+  };
+
+  assert.equal(projectResponse.ok, true);
+  assert.equal(projects.summary.total, 0);
+  assert.equal(goalResponse.values.status, "active");
+  assert.equal(goals.summary.total, 0);
+});
+
+test("Today response uses the complete Operator snapshot contract", () => {
+  const today: MobileTodayResponse = {
+    ok: true,
+    date: "2026-09-03",
+    timezone: "UTC",
+    timeContextId: "context-1",
+    dayWindow: {
+      startUtcIso: "2026-09-03T00:00:00.000Z",
+      endUtcIso: "2026-09-04T00:00:00.000Z",
+    },
+    plannedToday: [],
+    sections: { planned: [], inProgress: [], blocked: [], completed: [] },
+    focus: { startHere: null, queue: [] },
+    schedule: { blocks: [], flexible: [] },
+    suggestions: { pinned: [], inProgress: [] },
+    summary: {
+      plannedCount: 0,
+      inProgressCount: 0,
+      blockedCount: 0,
+      completedCount: 0,
+      selectedCount: 0,
+      clearableCompletedCount: 0,
+      overdueCount: 0,
+      dueTodayCount: 0,
+      totalEstimateMinutes: 0,
+      trackedTodaySeconds: 0,
+      trackedTodayLabel: "0m",
+    },
+    activeTimer: null,
+    signals: { health: null, friction: null, inbox: null, weeklyObjective: null },
+  };
+
+  assert.equal(today.timezone, "UTC");
+  assert.equal(today.timeContextId, "context-1");
+  assert.deepEqual(today.focus.queue, []);
+  assert.deepEqual(today.signals, {
+    health: null,
+    friction: null,
+    inbox: null,
+    weeklyObjective: null,
   });
 });

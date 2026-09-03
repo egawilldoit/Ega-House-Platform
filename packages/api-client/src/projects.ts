@@ -12,16 +12,17 @@
  * server envelope (UNAUTHENTICATED | VALIDATION | NOT_FOUND | INTERNAL).
  */
 
-import type { ApiResult, OkResponse } from "./errors";
+import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 import type {
+  CreateProjectResponse,
   CreateProjectInput,
-  ProjectFormValues,
   ProjectIdentityReadModel,
+  ProjectMutationResponse,
   ProjectStatus,
   ProjectViewFilter,
   ProjectsReadModel,
-} from "./types";
+} from "@ega/contracts/projects";
 
 export type ProjectsApi = {
   /** GET /api/projects?view=... (view omitted => server defaults to "active"). */
@@ -29,13 +30,13 @@ export type ProjectsApi = {
   /** GET /api/projects/:slug — 404 maps to `NOT_FOUND`. */
   getBySlug(slug: string): Promise<ApiResult<ProjectIdentityReadModel>>;
   /** POST /api/projects — 201 with the normalized form values echoed back. */
-  create(input: CreateProjectInput): Promise<ApiResult<{ values: ProjectFormValues }>>;
+  create(input: CreateProjectInput): Promise<ApiResult<CreateProjectResponse>>;
   /** PATCH /api/projects/:id/status. */
-  updateStatus(projectId: string, status: ProjectStatus): Promise<ApiResult<OkResponse>>;
+  updateStatus(projectId: string, status: ProjectStatus): Promise<ApiResult<ProjectMutationResponse>>;
   /** POST /api/projects/:id/archive. */
-  archive(projectId: string): Promise<ApiResult<OkResponse>>;
+  archive(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
   /** POST /api/projects/:id/unarchive. */
-  unarchive(projectId: string): Promise<ApiResult<OkResponse>>;
+  unarchive(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
 };
 
 export function createProjectsApi(http: HttpClient): ProjectsApi {
@@ -54,7 +55,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     create(input) {
-      return http.request<{ values: ProjectFormValues }>({
+      return http.request<CreateProjectResponse>({
         path: "/api/projects",
         method: "POST",
         body: input,
@@ -62,7 +63,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     updateStatus(projectId, status) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/status`,
         method: "PATCH",
         body: { status },
@@ -70,14 +71,14 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     archive(projectId) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/archive`,
         method: "POST",
       });
     },
 
     unarchive(projectId) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/unarchive`,
         method: "POST",
       });

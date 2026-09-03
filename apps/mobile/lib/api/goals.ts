@@ -3,7 +3,7 @@
  * (PR5 Hono transport contract), bound to the mobile session token.
  *
  *   GET  /api/goals?view=active|archived|all -> GoalsReadModel
- *   POST /api/goals                          -> { values }
+ *   POST /api/goals                          -> { ok: true, values }
  *   PATCH /api/goals/:id/status|health|next-step -> { ok: true }
  *   POST /api/goals/:id/archive|unarchive    -> { ok: true }
  *
