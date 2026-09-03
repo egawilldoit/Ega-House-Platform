@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { act, create, type ReactTestInstance } from 'react-test-renderer';
-import { StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 import { mobileTheme } from '@/components/mobile/theme';
 import { useWeeklyReviewQuery } from '@/features/weekly-review/query';
@@ -12,6 +12,15 @@ jest.mock('expo-router', () => ({
     ({ children }: { children?: React.ReactNode }) => children ?? null,
     { Screen: () => null },
   ),
+}));
+
+jest.mock('@/components/mobile/navigation/bottomChrome', () => ({
+  useBottomChromeMetrics: () => ({ contentBottomPaddingNoFab: 188 }),
+}));
+
+jest.mock('@expo/vector-icons/Ionicons', () => ({
+  __esModule: true,
+  default: () => null,
 }));
 
 jest.mock('@/features/weekly-review/query', () => ({
@@ -121,5 +130,33 @@ describe('WeeklyReviewScreen', () => {
     });
 
     expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('announces the error and keeps the final action clear of bottom chrome', () => {
+    (useWeeklyReviewQuery as jest.Mock).mockReturnValue({
+      ...queryResult,
+      data: undefined,
+      error: new Error('offline'),
+      isError: true,
+    });
+
+    let renderer: ReturnType<typeof create>;
+    act(() => {
+      renderer = create(<WeeklyReviewScreen />);
+    });
+
+    const errorBanner = renderer!.root
+      .findAllByProps({ testID: 'review-error-banner' })
+      .find((node) => node.props.accessibilityRole === 'alert');
+    expect(errorBanner?.props.accessibilityRole).toBe('alert');
+    expect(errorBanner?.props.accessibilityLiveRegion).toBe('polite');
+
+    (useWeeklyReviewQuery as jest.Mock).mockReturnValue(queryResult);
+    act(() => {
+      renderer!.update(<WeeklyReviewScreen />);
+    });
+
+    const scrollView = renderer!.root.findByType(ScrollView);
+    expect(StyleSheet.flatten(scrollView.props.contentContainerStyle).paddingBottom).toBe(188);
   });
 });

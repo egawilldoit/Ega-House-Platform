@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Stack } from "expo-router";
 
+import { useBottomChromeMetrics } from "@/components/mobile/navigation/bottomChrome";
+import { FeedbackBanner } from "@/components/mobile/ui/FeedbackBanner";
 import { useWeeklyReviewQuery } from "@/features/weekly-review/query";
 import { mobileTheme } from "@/components/mobile/theme";
 
@@ -20,56 +22,64 @@ function shiftIsoDateByDays(isoDate: string, days: number) {
 
 export default function WeeklyReviewScreen() {
   const [selectedWeekOf, setSelectedWeekOf] = useState<string | undefined>(undefined);
+  const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const { data, isLoading, isError, error, refetch, isFetching } = useWeeklyReviewQuery(selectedWeekOf);
 
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator />
-        <Text style={styles.mutedText}>Loading weekly review…</Text>
-      </View>
-    );
-  }
-
-  if (isError) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error instanceof Error ? error.message : "Failed to load review."}</Text>
-        <Pressable
-          testID="review-retry"
-          accessibilityRole="button"
-          accessibilityLabel="Retry loading weekly review"
-          accessibilityHint="Attempts to load the review again"
-          accessibilityState={{ busy: isFetching, disabled: isFetching }}
-          disabled={isFetching}
-          style={({ pressed }) => [styles.button, isFetching ? styles.disabled : null, pressed ? styles.pressed : null]}
-          onPress={() => void refetch()}
-        >
-          <Text style={styles.buttonText}>Retry</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   const review = data?.review;
-  if (!review) {
+  const content = (() => {
+    if (isLoading) {
+      return (
+        <View style={styles.center}>
+          <ActivityIndicator />
+          <Text style={styles.mutedText}>Loading weekly review…</Text>
+        </View>
+      );
+    }
+
+    if (isError) {
+      return (
+        <View style={styles.center}>
+          <FeedbackBanner
+            message={error instanceof Error ? error.message : "Failed to load review."}
+            tone="danger"
+            testID="review-error-banner"
+            style={styles.errorBanner}
+          />
+          <Pressable
+            testID="review-retry"
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading weekly review"
+            accessibilityHint="Attempts to load the review again"
+            accessibilityState={{ busy: isFetching, disabled: isFetching }}
+            disabled={isFetching}
+            style={({ pressed }) => [styles.button, isFetching ? styles.disabled : null, pressed ? styles.pressed : null]}
+            onPress={() => void refetch()}
+          >
+            <Text style={styles.buttonText}>Retry</Text>
+          </Pressable>
+        </View>
+      );
+    }
+
+    if (!review) {
+      return (
+        <View style={styles.center}>
+          <Text style={styles.mutedText}>No review data.</Text>
+        </View>
+      );
+    }
+
+    const stats = review.stats;
+    const window = review.window;
+    const saved = review.savedReview;
+    const draft = review.generatedDraft;
+    const mostTracked = review.mostTracked;
+
     return (
-      <View style={styles.center}>
-        <Text style={styles.mutedText}>No review data.</Text>
-      </View>
-    );
-  }
-
-  const stats = review.stats;
-  const window = review.window;
-  const saved = review.savedReview;
-  const draft = review.generatedDraft;
-  const mostTracked = review.mostTracked;
-
-  return (
-    <>
-      <Stack.Screen options={{ headerShown: true, title: "Weekly Review" }} />
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingBottom: contentBottomPaddingNoFab }]}
+      >
         <View style={styles.weekSelector}>
           <Pressable
             testID="review-previous-week"
@@ -208,6 +218,13 @@ export default function WeeklyReviewScreen() {
           <Text style={styles.buttonText}>Back to this week</Text>
         </Pressable>
       </ScrollView>
+    );
+  })();
+
+  return (
+    <>
+      <Stack.Screen options={{ headerShown: true, title: "Weekly Review" }} />
+      {content}
     </>
   );
 }
@@ -270,7 +287,7 @@ const styles = StyleSheet.create({
   blockerTitle: { color: mobileTheme.colors.text, fontWeight: "600" },
   trackedRow: { gap: 2, paddingVertical: mobileTheme.spacing.xs },
   trackedLabel: { color: mobileTheme.colors.text, fontWeight: "600" },
-  errorText: { color: mobileTheme.colors.danger, textAlign: "center" },
+  errorBanner: { alignSelf: "stretch" },
   button: {
     alignItems: "center",
     backgroundColor: mobileTheme.colors.accent,
