@@ -65,7 +65,7 @@ Runtime authentication, applied migration state, and cross-user production RLS r
 
 **Result:** `ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE`
 
-- **Exact accepted HEAD:** `706344a55bcb12fc9eac7957cf4be5b396517852`
+- **Exact accepted HEAD:** `d90274628c241b2acd2bca39ef761adf0f95bdcc`
 - **Code gate:** PASS. Focused tests, exact-head GitHub web/typecheck/build, workspace, hygiene, package checks, architecture, purity, and security checks passed.
 - **Runtime gate:** NOT VERIFIED for authenticated web/database behavior because no safe authenticated environment or branch preview is available. Vercel branch execution is suppressed by the accepted Wave 00 guard.
 - **Product gate:** PASS. Notifications is documented as a web workflow with navigation, unread discovery, task targeting, mark-read actions, empty/error/submitting states, and no duplicate Inbox or business-policy owner.
