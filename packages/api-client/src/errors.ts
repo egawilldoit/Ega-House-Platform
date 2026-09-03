@@ -8,7 +8,7 @@
  * message.
  */
 
-export type ApiErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "INTERNAL";
+export type ApiErrorCode = "UNAUTHENTICATED" | "VALIDATION" | "NOT_FOUND" | "CONFLICT" | "INTERNAL";
 
 export type ApiErrorPayload = {
   code: ApiErrorCode;
@@ -24,6 +24,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
   "UNAUTHENTICATED",
   "VALIDATION",
   "NOT_FOUND",
+  "CONFLICT",
   "INTERNAL",
 ]);
 
@@ -39,6 +40,7 @@ const DEFAULT_MESSAGES: Record<ApiErrorCode, string> = {
   UNAUTHENTICATED: "Authentication required.",
   VALIDATION: "Request was invalid.",
   NOT_FOUND: "Resource not found.",
+  CONFLICT: "The request conflicts with current state.",
   INTERNAL: "Internal server error.",
 };
 
@@ -47,6 +49,7 @@ function codeForStatus(status: number): ApiErrorCode {
   if (status === 401) return "UNAUTHENTICATED";
   if (status === 400) return "VALIDATION";
   if (status === 404) return "NOT_FOUND";
+  if (status === 409) return "CONFLICT";
   return "INTERNAL";
 }
 
@@ -60,7 +63,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * Prefers the `{ error: { code, message } }` envelope when present; falls
  * back to the HTTP status when the body is missing or malformed. Unknown
  * envelope codes are normalized to INTERNAL so callers only ever see the
- * four documented codes.
+ * five documented codes.
  */
 export function parseErrorEnvelope(
   body: unknown,
