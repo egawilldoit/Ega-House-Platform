@@ -1,6 +1,6 @@
 # Mobile UX Quality — Wave 09 Evidence
 
-Status: IN PROGRESS
+Status: IMPLEMENTED — ACCEPTANCE PENDING
 
 Branch: `wave/09-mobile-ux-quality`
 
@@ -44,6 +44,22 @@ change review semantics or API ownership.
    exact-head CI, and a fresh read-only review.
 4. Report Android app visual execution as `RUNTIME NOT VERIFIED` unless an
    emulator/device becomes available.
+
+## Implementation evidence
+
+- RED: the focused test failed on the pre-change screen because the important
+  pressables had no test IDs or accessibility contract.
+- GREEN: the focused Review suite passes with 2 tests.
+- The week navigation and current-week actions now have explicit button
+  labels/hints, pressed feedback, and `mobileTheme.layout.minTouchTarget`
+  sizing.
+- Retry now exposes busy/disabled state while fetching and remains recoverable.
+- Review spacing, radii, button text, and error color use existing
+  `mobileTheme` tokens; no API, route, or navigation authority changed.
+- Worktree mobile verification: typecheck PASS; 43 suites / 250 tests PASS;
+  Expo Doctor 18/18 PASS; Android export/bundle PASS.
+- Authenticated Android visual execution remains `RUNTIME NOT VERIFIED`:
+  this environment has no emulator/device or authenticated session.
 
 ## Known constraints
 
