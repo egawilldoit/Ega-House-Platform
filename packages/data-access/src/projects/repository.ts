@@ -1,6 +1,8 @@
 import {
   type AuthenticatedActor,
   type CreateProjectRecordInput,
+  type DeleteArchivedProjectInput,
+  type DeleteArchivedProjectResult,
   type ProjectGoalRecord,
   type ProjectRecord,
   type ProjectsRepository,
@@ -9,9 +11,11 @@ import {
   type ProjectViewFilter,
   type ProjectStatus,
 } from "@ega/application";
+import { PROJECT_ARCHIVE_STATUS } from "@ega/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  isSupabaseForeignKeyViolation,
   isSupabaseUniqueConstraintViolation,
   mcpOperationIdentity,
   sanitizeSupabaseError,
@@ -161,6 +165,24 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     return { ok: true, value: data ? mapProjectRow(data as ProjectRow) : null };
   }
 
+  async getProjectById(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<ProjectRecord | null>> {
+    const { data, error } = await this.supabase
+      .from("projects")
+      .select(PROJECT_SELECT)
+      .eq("id", projectId)
+      .eq("owner_user_id", actor.userId)
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: data ? mapProjectRow(data as ProjectRow) : null };
+  }
+
   async listGoalsForProject(
     actor: AuthenticatedActor,
     projectId: string,
@@ -257,5 +279,35 @@ export class SupabaseProjectsRepository implements ProjectsRepository {
     }
 
     return { ok: true, value: null };
+  }
+
+  /**
+   * Permanently delete one project row. Defense in depth: the write is scoped
+   * to the owner and to the archived status, so a non-archived or foreign row
+   * can never match even if a caller bypasses the application pre-check. A
+   * foreign-key refusal (linked task/goal inserted after the pre-check)
+   * becomes a conflict; `deleted: false` covers the zero-row race.
+   */
+  async deleteArchivedProject(
+    actor: AuthenticatedActor,
+    input: DeleteArchivedProjectInput,
+  ): Promise<RepositoryResult<DeleteArchivedProjectResult>> {
+    const { data, error } = await this.supabase
+      .from("projects")
+      .delete()
+      .eq("id", input.projectId)
+      .eq("owner_user_id", actor.userId)
+      .eq("status", PROJECT_ARCHIVE_STATUS)
+      .select("id");
+
+    if (error) {
+      if (isSupabaseForeignKeyViolation(error)) {
+        return { ok: false, error: { code: "conflict" } };
+      }
+
+      return { ok: false, error: sanitizeSupabaseError(error) };
+    }
+
+    return { ok: true, value: { deleted: (data ?? []).length > 0 } };
   }
 }
