@@ -22,6 +22,7 @@ import { TodayTaskCard } from '@/features/today/components/TodayTaskCard';
 import { HealthCoachSnapshot } from '@/features/health/components/HealthCoachSnapshot';
 import { useHealthSnapshotQuery } from '@/features/health/query';
 import { useUnreadCountQuery } from '@/features/notifications/query';
+import { TodayWorkspaceInsights } from '@/features/today/components/TodayWorkspaceInsights';
 import {
   useAddTaskToTodayMutation,
   useClearTodayCompletedMutation,
@@ -622,6 +623,10 @@ export default function TodayScreen() {
                 ) : null,
               )}
             </Card>
+            <TodayWorkspaceInsights
+              onOpenReview={() => router.push('/(app)/review')}
+              onOpenFriction={() => router.push('/(app)/friction')}
+            />
           </View>
         }
         renderSectionHeader={({ section }) => (
