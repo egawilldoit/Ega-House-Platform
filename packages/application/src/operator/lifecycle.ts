@@ -136,7 +136,7 @@ export interface OperatorTaskLookupPort {
 export interface OperatorTodayMutationPort {
   setPlannedDate(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; plannedForDate: string | null }>,
+    input: Readonly<{ taskId: string; plannedForDate: string | null; expectedUpdatedAt?: string }>,
   ): Promise<RepositoryResult<unknown>>;
 }
 
@@ -819,6 +819,7 @@ export async function applyOperatorProposal(
     const mutation = await todayMutation.setPlannedDate(actor, {
       taskId,
       plannedForDate: proposal.localDate,
+      expectedUpdatedAt: taskCheck.value.updatedAt,
     });
     if (!mutation.ok) {
       if (mutation.error.code === "conflict") {
