@@ -122,6 +122,8 @@ describe('mobile goal API wrappers', () => {
         archive: jest.fn(),
         unarchive: jest.fn(),
         remove: jest.fn(),
+        getPurgePreview: jest.fn(),
+        purge: jest.fn(),
       },
       goals: fakeGoals,
       ...makeWave2Apis(),
