@@ -83,7 +83,7 @@ export function InboxConvertSheet({ visible, item, projects, onClose, onSubmit }
         <ScrollView contentContainerStyle={styles.content} testID="inbox-convert-sheet">
           <Text style={styles.eyebrow}>Inbox Processing</Text>
           <Text style={styles.title}>{item?.title ?? "Choose a project"}</Text>
-          <Text style={styles.description}>Choose where this idea belongs. The original Inbox item will be marked converted and the new task will appear in Tasks and Today projections.</Text>
+          <Text style={styles.description}>Choose where this idea belongs. The original Inbox item will be marked converted and the new task will open in Tasks, where you can review or schedule it for Today.</Text>
 
           <Text style={styles.sectionLabel}>Project</Text>
           {projects.length > 0 ? (
