@@ -115,7 +115,12 @@ BEGIN
   -- Enqueue Google Calendar cleanup BEFORE the task rows disappear. The
   -- existing calendar worker resolves delete jobs from the stored
   -- calendar_event_id even when the task row is gone. Never invent cleanup
-  -- intent: skip tasks that already carry an active delete job.
+  -- intent: skip tasks that already carry an actionable delete job. A failed
+  -- job that exhausted its retries is NOT actionable (the worker only claims
+  -- pending/failed jobs with attempts below its ceiling), so it must not
+  -- suppress a fresh cleanup job or the external event would orphan.
+  -- The ceiling below mirrors MAX_CALENDAR_SYNC_ATTEMPTS = 5 in
+  -- apps/web/src/lib/services/calendar-sync-service.ts; keep them in sync.
   INSERT INTO public.calendar_sync_jobs (
     owner_user_id,
     task_id,
@@ -141,7 +146,10 @@ BEGIN
       WHERE existing_job.owner_user_id = v_actor
         AND existing_job.task_id = task_record.id
         AND existing_job.operation = 'delete'
-        AND existing_job.status IN ('pending', 'processing', 'failed')
+        AND (
+          existing_job.status IN ('pending', 'processing')
+          OR (existing_job.status = 'failed' AND existing_job.attempts < 5)
+        )
     );
   GET DIAGNOSTICS v_calendar_jobs_enqueued = ROW_COUNT;
 
