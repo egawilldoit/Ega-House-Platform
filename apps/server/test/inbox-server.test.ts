@@ -108,6 +108,15 @@ test("GET /api/inbox returns list with owner scoping and filters", async () => {
   const body = await response.json();
   assert.equal(body.ok, true);
   assert.equal(body.items.length, 1);
+  assert.deepEqual(body.filters, {
+    view: "active",
+    search: "",
+    type: "all",
+    status: "all",
+    projectId: "all",
+    priority: "all",
+    tag: "",
+  });
   assert.ok(fake.calls[0].steps.some((s) => s.method === "eq" && s.args[0] === "owner_user_id" && s.args[1] === "user-123"));
 });
 
