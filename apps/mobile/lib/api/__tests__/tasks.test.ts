@@ -28,7 +28,7 @@ function makeFullFakeClient(): EgaApiClient {
   return {
     health: jest.fn(),
     auth: { login: jest.fn(), refresh: jest.fn(), logout: jest.fn() },
-    projects: { list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn() },
+    projects: { list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn(), remove: jest.fn() },
     goals: { list: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), updateHealth: jest.fn(), updateNextStep: jest.fn(), archive: jest.fn(), unarchive: jest.fn() },
     tasks: { list, get, create, update, archive: jest.fn(), unarchive: jest.fn(), createReminder, cancelReminder, setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn() },
     inbox: { list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn() },

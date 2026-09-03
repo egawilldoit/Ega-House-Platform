@@ -10,6 +10,7 @@ import {
   createAuthenticatedActor,
   createGoal,
   createProject,
+  deleteArchivedProject,
   getGoalsReadModel,
   getProjectIdentityReadModel,
   getProjectsReadModel,
@@ -22,6 +23,7 @@ import {
   type AuthenticatedActor,
   type CreateGoalRecordInput,
   type CreateProjectRecordInput,
+  type DeleteArchivedProjectResult,
   type GoalRecord,
   type GoalTaskContextRecord,
   type GoalsRepository,
@@ -49,8 +51,10 @@ class FakeProjectsRepository implements ProjectsRepository {
   statusesResult: RepositoryResult<string[]> = okResult([]);
   tasksResult: RepositoryResult<ProjectTaskContextRecord[]> = okResult([]);
   slugResult: RepositoryResult<ProjectRecord | null> = okResult(null);
+  idResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   goalsResult: RepositoryResult<ProjectGoalRecord[]> = okResult([]);
   updateResult: RepositoryResult<null> = okResult(null);
+  deleteResult: RepositoryResult<DeleteArchivedProjectResult> = okResult({ deleted: true });
 
   private record(method: string, actorUserId: string, args: Record<string, unknown>) {
     this.calls.push({ method, actorUserId, args });
@@ -72,6 +76,10 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.record("getProjectBySlug", actor.userId, { slug });
     return this.slugResult;
   }
+  async getProjectById(actor: AuthenticatedActor, projectId: string) {
+    this.record("getProjectById", actor.userId, { projectId });
+    return this.idResult;
+  }
   async listGoalsForProject(actor: AuthenticatedActor, projectId: string) {
     this.record("listGoalsForProject", actor.userId, { projectId });
     return this.goalsResult;
@@ -86,6 +94,13 @@ class FakeProjectsRepository implements ProjectsRepository {
   ) {
     this.record("updateProjectStatus", actor.userId, input);
     return this.updateResult;
+  }
+  async deleteArchivedProject(
+    actor: AuthenticatedActor,
+    input: { projectId: string },
+  ) {
+    this.record("deleteArchivedProject", actor.userId, input);
+    return this.deleteResult;
   }
 }
 
@@ -304,6 +319,183 @@ test("project archive and unarchive use canonical domain statuses", async () => 
   assert.equal(repository.calls.length, 2);
   assert.equal(repository.calls[0].args.status, PROJECT_ARCHIVE_STATUS);
   assert.equal(repository.calls[1].args.status, "active");
+});
+
+const ARCHIVED_PROJECT_ROW: ProjectRecord = { ...PROJECT_ROW, status: "archived" };
+
+function archivedRepository() {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(ARCHIVED_PROJECT_ROW);
+  return repository;
+}
+
+function failureMessage(result: { ok: boolean }) {
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("expected failure");
+  return result as { ok: false; errorMessage: string; code?: string };
+}
+
+test("deleteArchivedProject rejects a missing id without touching the repository", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "  " }));
+
+  assert.equal(result.errorMessage, "Project delete request is invalid.");
+  assert.equal(result.code, "validation");
+  assert.equal(repository.calls.length, 0);
+});
+
+test("deleteArchivedProject maps a missing project to notFound", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(null);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(result.errorMessage, "Project not found.");
+  assert.equal(result.code, "notFound");
+});
+
+test("deleteArchivedProject rejects every non-archived status", async () => {
+  for (const status of ["planned", "active", "done", "paused"]) {
+    const repository = new FakeProjectsRepository();
+    repository.idResult = okResult({ ...PROJECT_ROW, status });
+
+    const result = failureMessage(
+      await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }),
+    );
+
+    assert.equal(result.errorMessage, "Only archived projects can be permanently deleted.");
+    assert.equal(result.code, "validation");
+    assert.deepEqual(
+      repository.calls.map((call) => call.method),
+      ["getProjectById"],
+    );
+  }
+});
+
+test("deleteArchivedProject deletes an archived project without dependencies", async () => {
+  const repository = archivedRepository();
+
+  const result = await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getProjectById", "listTasksForProjects", "listGoalsForProject", "deleteArchivedProject"],
+  );
+  for (const call of repository.calls) {
+    assert.equal(call.actorUserId, "user-123");
+  }
+  assert.deepEqual(repository.calls[3].args, { projectId: "project-1" });
+});
+
+test("deleteArchivedProject blocks an archived project with linked tasks", async () => {
+  const repository = archivedRepository();
+  repository.tasksResult = okResult([
+    { id: "task-1", projectId: "project-1", title: "Paint", status: "todo", priority: "high", updatedAt: "2026-02-02T00:00:00.000Z" },
+  ]);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+  assert.ok(!repository.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject blocks an archived project with linked goals", async () => {
+  const repository = archivedRepository();
+  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: "project-1" }]);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked goals. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+  assert.ok(!repository.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject blocks an archived project with linked tasks and goals", async () => {
+  const repository = archivedRepository();
+  repository.tasksResult = okResult([
+    { id: "task-1", projectId: "project-1", title: "Paint", status: "todo", priority: "high", updatedAt: "2026-02-02T00:00:00.000Z" },
+  ]);
+  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: "project-1" }]);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked tasks and goals. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+  assert.ok(!repository.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject sanitizes a pre-read failure", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = unknownFailure();
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(result.errorMessage, "Unable to load project right now.");
+  assert.equal(result.code, "unknown");
+});
+
+test("deleteArchivedProject sanitizes dependency read failures", async () => {
+  const tasksFail = archivedRepository();
+  tasksFail.tasksResult = unknownFailure();
+
+  const tasksResult = failureMessage(
+    await deleteArchivedProject(ACTOR, tasksFail, { projectId: "project-1" }),
+  );
+  assert.equal(tasksResult.errorMessage, "Unable to verify linked records right now.");
+
+  const goalsFail = archivedRepository();
+  goalsFail.goalsResult = unknownFailure();
+
+  const goalsResult = failureMessage(
+    await deleteArchivedProject(ACTOR, goalsFail, { projectId: "project-1" }),
+  );
+  assert.equal(goalsResult.errorMessage, "Unable to verify linked records right now.");
+  assert.ok(!goalsFail.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject sanitizes a persistence failure", async () => {
+  const repository = archivedRepository();
+  repository.deleteResult = unknownFailure();
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(result.errorMessage, "Unable to delete project right now.");
+  assert.equal(result.code, "unknown");
+});
+
+test("deleteArchivedProject maps a foreign-key race to the dependency conflict", async () => {
+  const repository = archivedRepository();
+  repository.deleteResult = { ok: false, error: { code: "conflict" } };
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked tasks or goals. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+});
+
+test("deleteArchivedProject treats a zero-row delete as a safe failure", async () => {
+  const repository = archivedRepository();
+  repository.deleteResult = okResult({ deleted: false });
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "project-1" }));
+
+  assert.equal(result.errorMessage, "Unable to delete project right now.");
+  assert.equal(result.code, "unknown");
 });
 
 test("project read model preserves summary and progress behavior", async () => {

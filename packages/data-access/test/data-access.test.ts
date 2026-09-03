@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   SupabaseGoalsRepository,
   SupabaseProjectsRepository,
+  isSupabaseForeignKeyViolation,
   sanitizeSupabaseError,
 } from "../src/index";
 
@@ -97,6 +98,11 @@ class FakeQueryBuilder {
     return this;
   }
 
+  delete() {
+    this.steps.push({ method: "delete", args: [] });
+    return this;
+  }
+
   then<TResult1, TResult2>(
     onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -135,6 +141,15 @@ test("sanitizeSupabaseError maps only the deliberate failure set", () => {
   );
   assert.deepEqual(sanitizeSupabaseError({ code: "PGRST116" }), { code: "unknown" });
   assert.deepEqual(sanitizeSupabaseError(null), { code: "unknown" });
+});
+
+test("isSupabaseForeignKeyViolation recognizes only 23503 without leaking internals", () => {
+  assert.equal(isSupabaseForeignKeyViolation({ code: "23503" }), true);
+  assert.equal(isSupabaseForeignKeyViolation({ code: "23505" }), false);
+  assert.equal(isSupabaseForeignKeyViolation(null), false);
+  // The generic sanitizer stays unchanged: only the guarded delete path maps
+  // 23503 to a conflict.
+  assert.deepEqual(sanitizeSupabaseError({ code: "23503" }), { code: "unknown" });
 });
 
 test("listProjects maps rows, applies the view filter, and scopes by owner", async () => {
@@ -271,6 +286,89 @@ test("updateProjectStatus scopes the update by id and owner and sanitizes errors
     status: "paused",
     updated_at: "2026-03-01T00:00:00.000Z",
   });
+});
+
+test("getProjectById scopes the lookup by id and owner", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", {
+    data: {
+      id: "project-1",
+      name: "Home Renovation",
+      slug: "home-renovation",
+      description: null,
+      status: "archived",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-02-01T00:00:00.000Z",
+    },
+    error: null,
+  });
+
+  const result = await projectsRepository(fake).getProjectById(ACTOR, "project-1");
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value?.id, "project-1");
+  assert.equal(result.value?.status, "archived");
+
+  const steps = stepsFor(fake);
+  assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === "project-1"));
+  assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
+});
+
+test("deleteArchivedProject scopes the delete by id, owner, and archived status", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: [{ id: "project-1" }], error: null });
+
+  const result = await projectsRepository(fake).deleteArchivedProject(ACTOR, { projectId: "project-1" });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, { deleted: true });
+
+  const steps = stepsFor(fake);
+  assert.ok(steps.some((step) => step.method === "delete"));
+  assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === "project-1"));
+  assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
+  assert.ok(steps.some((step) => step.method === "eq" && step.args[0] === "status" && step.args[1] === "archived"));
+});
+
+test("deleteArchivedProject maps a 23503 foreign-key refusal to conflict", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", {
+    data: null,
+    error: {
+      code: "23503",
+      message: 'insert or update on table "tasks" violates foreign key constraint "tasks_project_id_projects_id_fk"',
+    },
+  });
+
+  const result = await projectsRepository(fake).deleteArchivedProject(ACTOR, { projectId: "project-1" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.deepEqual(result.error, { code: "conflict" });
+});
+
+test("deleteArchivedProject reports a zero-row delete instead of claiming success", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: [], error: null });
+
+  const result = await projectsRepository(fake).deleteArchivedProject(ACTOR, { projectId: "project-1" });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, { deleted: false });
+});
+
+test("deleteArchivedProject sanitizes non-constraint failures", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: null, error: { code: "PGRST500" } });
+
+  const result = await projectsRepository(fake).deleteArchivedProject(ACTOR, { projectId: "project-1" });
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.deepEqual(result.error, { code: "unknown" });
 });
 
 test("listTasksForProjects scopes the task query by owner", async () => {
