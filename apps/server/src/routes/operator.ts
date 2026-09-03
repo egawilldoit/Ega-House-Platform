@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 
 import {
   approveOperatorProposal,
@@ -8,6 +8,7 @@ import {
   getOperatorStoredProposal,
   resolveTimeContext,
   reviseOperatorProposal,
+  type ApplicationErrorCode,
 } from "@ega/application";
 import {
   SupabaseOperatorProposalRepository,
@@ -16,7 +17,7 @@ import {
 } from "@ega/data-access";
 
 import type { ServerDependencies, ServerVariables } from "../app";
-import { readJsonBody } from "../app";
+import { readJsonBody, readOptionalJsonBody } from "../app";
 
 function toTaskLookup(client: ServerVariables["client"]) {
   const repo = new SupabaseTasksRepository(client as never);
@@ -35,6 +36,22 @@ function toTodayMutation(client: ServerVariables["client"]) {
 
 function mapProposalResponse(proposal: unknown) {
   return proposal;
+}
+
+function mapOperatorFailure(
+  c: Context<{ Variables: ServerVariables }>,
+  result: Readonly<{ errorMessage: string; code?: ApplicationErrorCode }>,
+) {
+  if (result.code === "conflict") {
+    return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
+  }
+  if (result.code === "notFound") {
+    return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+  }
+  if (result.code === "validation") {
+    return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+  }
+  return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
 }
 
 export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ Variables: ServerVariables }> {
@@ -74,13 +91,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       timezone,
     });
     if (!result.ok) {
-      const msg = result.errorMessage.toLowerCase();
-      const isConflict = msg.includes("idempotency") && msg.includes("conflict");
-      if (isConflict) {
-        return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
-      }
-      const notFound = result.errorMessage.includes("not found");
-      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+      return mapOperatorFailure(c, result);
     }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) }, 201);
   });
@@ -99,13 +110,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       aiRef: body.aiRef,
     });
     if (!result.ok) {
-      const msg = result.errorMessage.toLowerCase();
-      const isConflict = msg.includes("idempotency") && msg.includes("conflict");
-      if (isConflict) {
-        return c.json({ error: { code: "CONFLICT", message: result.errorMessage } }, 409);
-      }
-      const notFound = msg.includes("not found");
-      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+      return mapOperatorFailure(c, result);
     }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) }, 201);
   });
@@ -117,8 +122,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
     const lookup = toTaskLookup(client);
     const result = await approveOperatorProposal(actor, proposalRepo, lookup, { proposalId: c.req.param("id") });
     if (!result.ok) {
-      const notFound = result.errorMessage.toLowerCase().includes("not found");
-      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+      return mapOperatorFailure(c, result);
     }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) });
   });
@@ -126,7 +130,8 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
   // Apply — safe plan application: validates ownership/state, skips invalid, partial explicit, idempotent
   routes.post("/proposals/:id/apply", async (c) => {
     const { actor, client } = c.var;
-    const body = (await readJsonBody(c)) ?? {};
+    const body = await readOptionalJsonBody(c);
+    if (!body) return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     const proposalRepo = new SupabaseOperatorProposalRepository(client as never);
     const lookup = toTaskLookup(client);
     const mutation = toTodayMutation(client);
@@ -135,8 +140,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
       taskIds: body.taskIds,
     });
     if (!result.ok) {
-      const notFound = result.errorMessage.toLowerCase().includes("not found");
-      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+      return mapOperatorFailure(c, result);
     }
     const proposal = result.data;
     return c.json({
@@ -154,8 +158,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
     const proposalRepo = new SupabaseOperatorProposalRepository(client as never);
     const result = await dismissOperatorProposal(actor, proposalRepo, { proposalId: c.req.param("id") });
     if (!result.ok) {
-      const notFound = result.errorMessage.toLowerCase().includes("not found");
-      return c.json({ error: { code: notFound ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, notFound ? 404 : 400);
+      return mapOperatorFailure(c, result);
     }
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) });
   });
@@ -165,7 +168,7 @@ export function createOperatorRoutes(dependencies: ServerDependencies): Hono<{ V
     const { actor, client } = c.var;
     const proposalRepo = new SupabaseOperatorProposalRepository(client as never);
     const result = await getOperatorStoredProposal(actor, proposalRepo, c.req.param("id"));
-    if (!result.ok) return c.json({ error: { code: result.errorMessage.includes("not found") ? "NOT_FOUND" : "VALIDATION", message: result.errorMessage } }, result.errorMessage.includes("not found") ? 404 : 400);
+    if (!result.ok) return mapOperatorFailure(c, result);
     return c.json({ ok: true, proposal: mapProposalResponse(result.data) });
   });
 
