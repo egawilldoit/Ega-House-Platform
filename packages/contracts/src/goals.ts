@@ -1,4 +1,4 @@
-import type { GoalHealth, GoalStatus, GoalViewFilter } from "@ega/domain";
+import type { GoalHealth, GoalStatus } from "@ega/domain";
 
 export type { GoalHealth, GoalStatus, GoalViewFilter } from "@ega/domain";
 
