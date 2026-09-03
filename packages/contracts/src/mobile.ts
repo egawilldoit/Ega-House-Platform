@@ -138,6 +138,8 @@ export type MobileTaskListItem = {
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
+  plannedForDate: string | null;
+  archivedAt: string | null;
   estimateMinutes: number | null;
   updatedAt: string;
   focusRank: number | null;
@@ -164,6 +166,8 @@ export type MobileTaskListFilters = {
   priority: TaskPriority | null;
   due: TaskDueFilter;
   sort: TaskSortValue;
+  plannedForDate: string | null;
+  includeArchived: boolean;
   limit: number | null;
 };
 

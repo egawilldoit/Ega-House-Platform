@@ -14,6 +14,8 @@ import {
   createMobileTask,
   getMobileTaskById,
   listMobileTasks,
+  archiveMobileTask,
+  unarchiveMobileTask,
   updateMobileTask,
 } from '@/lib/api/tasks';
 
@@ -23,6 +25,8 @@ const create = jest.fn();
 const update = jest.fn();
 const createReminder = jest.fn();
 const cancelReminder = jest.fn();
+const archive = jest.fn();
+const unarchive = jest.fn();
 
 function makeFullFakeClient(): EgaApiClient {
   return {
@@ -30,7 +34,7 @@ function makeFullFakeClient(): EgaApiClient {
     auth: { login: jest.fn(), refresh: jest.fn(), logout: jest.fn() },
     projects: { list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn(), remove: jest.fn(), getPurgePreview: jest.fn(), purge: jest.fn() },
     goals: { list: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), updateHealth: jest.fn(), updateNextStep: jest.fn(), archive: jest.fn(), unarchive: jest.fn() },
-    tasks: { list, get, create, update, archive: jest.fn(), unarchive: jest.fn(), createReminder, cancelReminder, setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn() },
+    tasks: { list, get, create, update, archive, unarchive, createReminder, cancelReminder, setRecurrence: jest.fn(), clearRecurrence: jest.fn(), pin: jest.fn(), unpin: jest.fn() },
     inbox: { list: jest.fn(), get: jest.fn(), create: jest.fn(), update: jest.fn(), archive: jest.fn(), restore: jest.fn(), convert: jest.fn() },
     today: { get: jest.fn(), plan: jest.fn(), remove: jest.fn(), updateStatus: jest.fn(), clearCompleted: jest.fn() },
     operator: { create: jest.fn(), revise: jest.fn(), approve: jest.fn(), apply: jest.fn(), dismiss: jest.fn(), get: jest.fn(), list: jest.fn() },
@@ -83,7 +87,7 @@ describe('listMobileTasks', () => {
     await listMobileTasks({
       includeArchived: true,
       plannedForDate: '2026-08-10',
-    } as never);
+    });
 
     expect(list).toHaveBeenCalledWith({
       includeArchived: true,
@@ -119,6 +123,8 @@ describe('task mutation wrappers delegate to the canonical client', () => {
     update.mockResolvedValue(taskResponse);
     createReminder.mockResolvedValue(taskResponse);
     cancelReminder.mockResolvedValue(taskResponse);
+    archive.mockResolvedValue(taskResponse);
+    unarchive.mockResolvedValue(taskResponse);
   });
 
   it('get/create/update/reminders hit their canonical resource methods and unwrap results', async () => {
@@ -145,5 +151,13 @@ describe('task mutation wrappers delegate to the canonical client', () => {
     expect(cancelReminder).toHaveBeenCalledWith('task-1', 'reminder-1');
 
     expect(unwrappedTask).toEqual({ ok: true, task: { id: 'task-1' } });
+  });
+
+  it('archive and unarchive use the canonical task resource methods', async () => {
+    await archiveMobileTask('task-1');
+    await unarchiveMobileTask('task-1');
+
+    expect(archive).toHaveBeenCalledWith('task-1');
+    expect(unarchive).toHaveBeenCalledWith('task-1');
   });
 });
