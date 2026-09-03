@@ -1,6 +1,7 @@
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
+import { useRouter } from "expo-router";
 
 import { mobileTheme } from "@/components/mobile/theme";
 import { AppScreen } from "@/components/mobile/ui/AppScreen";
@@ -10,10 +11,21 @@ import { FeedbackBanner } from "@/components/mobile/ui/FeedbackBanner";
 import { FrictionRadarView } from "@/features/friction/FrictionRadarView";
 import { useFrictionRadarQuery } from "@/features/friction/query";
 import { useBottomChromeMetrics } from "@/components/mobile/navigation/bottomChrome";
+import { frictionTargetToRoute, type FrictionTarget } from "@/lib/navigation/friction-target";
 
 export default function FrictionRadarScreen() {
+  const router = useRouter();
   const { contentBottomPaddingNoFab } = useBottomChromeMetrics();
   const { data, error, isError, isPending, isRefetching, refetch, isFetched } = useFrictionRadarQuery();
+
+  const openFrictionTarget = useCallback(
+    (target: FrictionTarget) => {
+      const route = frictionTargetToRoute(target);
+      if (!route) return;
+      router.push({ pathname: route.pathname, params: route.params });
+    },
+    [router],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -82,6 +94,8 @@ export default function FrictionRadarScreen() {
             neglectedGoals={data.neglectedGoals}
             workloadImbalance={data.workloadImbalance}
             evidenceWindow={data.evidenceWindow}
+            onTaskPress={(taskId) => openFrictionTarget({ type: "task", id: taskId })}
+            onGoalPress={(goalId) => openFrictionTarget({ type: "goal", id: goalId })}
           />
         </View>
       </ScrollView>
