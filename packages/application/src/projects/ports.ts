@@ -36,6 +36,14 @@ export type CreateProjectRecordInput = {
   mcpClientId?: string;
 };
 
+export type DeleteArchivedProjectInput = {
+  projectId: string;
+};
+
+export type DeleteArchivedProjectResult = {
+  deleted: boolean;
+};
+
 export interface ProjectsRepository {
   listProjects(
     actor: AuthenticatedActor,
@@ -50,6 +58,10 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     slug: string,
   ): Promise<RepositoryResult<ProjectRecord | null>>;
+  getProjectById(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<ProjectRecord | null>>;
   listGoalsForProject(
     actor: AuthenticatedActor,
     projectId: string,
@@ -62,4 +74,8 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     input: { projectId: string; status: ProjectStatus; updatedAt: string },
   ): Promise<RepositoryResult<null>>;
+  deleteArchivedProject(
+    actor: AuthenticatedActor,
+    input: DeleteArchivedProjectInput,
+  ): Promise<RepositoryResult<DeleteArchivedProjectResult>>;
 }

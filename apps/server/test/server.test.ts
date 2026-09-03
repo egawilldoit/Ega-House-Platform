@@ -98,6 +98,11 @@ class FakeQueryBuilder {
     return this;
   }
 
+  delete() {
+    this.steps.push({ method: "delete", args: [] });
+    return this;
+  }
+
   then<TResult1, TResult2>(
     onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
@@ -467,6 +472,174 @@ test("POST /api/projects/:id/unarchive writes the active status", async () => {
   const update = updateSteps(fake, "projects")[0];
   assert.ok(update);
   assert.deepEqual(update.args[0], { status: "active", updated_at: FIXED_NOW });
+});
+
+const ARCHIVED_PROJECT_ROW = {
+  id: "project-1",
+  name: "Home Renovation",
+  slug: "home-renovation",
+  description: "Kitchen",
+  status: "archived",
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-02-01T00:00:00.000Z",
+};
+
+function queueEligibleArchivedDelete(fake: FakeSupabase) {
+  fake.pushResult("projects", { data: ARCHIVED_PROJECT_ROW, error: null });
+  fake.pushResult("tasks", { data: [], error: null });
+  fake.pushResult("goals", { data: [], error: null });
+  fake.pushResult("projects", { data: [{ id: "project-1" }], error: null });
+}
+
+test("DELETE /api/projects/:id removes an eligible archived project", async () => {
+  const fake = fakeSupabase();
+  queueEligibleArchivedDelete(fake);
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1", {
+    method: "DELETE",
+    headers: { ...AUTH, ...JSON_HEADERS },
+    body: JSON.stringify({ userId: "attacker", projectId: "other" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { ok: true });
+
+  const calls = fake.calls.filter((call) => call.table === "projects");
+  const remove = calls.find((call) => call.steps.some((step) => step.method === "delete"));
+  assert.ok(remove);
+  assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "id" && step.args[1] === "project-1"));
+  assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"));
+  assert.ok(remove.steps.some((step) => step.method === "eq" && step.args[0] === "status" && step.args[1] === "archived"));
+});
+
+test("DELETE /api/projects/:id requires authentication", async () => {
+  const app = makeApp(fakeSupabase());
+
+  const response = await app.request("/api/projects/project-1", { method: "DELETE" });
+
+  assert.equal(response.status, 401);
+});
+
+test("DELETE /api/projects/:id rejects every non-archived status with 400", async () => {
+  for (const status of ["planned", "active", "done", "paused"]) {
+    const fake = fakeSupabase();
+    fake.pushResult("projects", { data: { ...ARCHIVED_PROJECT_ROW, status }, error: null });
+    const app = makeApp(fake);
+
+    const response = await app.request("/api/projects/project-1", {
+      method: "DELETE",
+      headers: AUTH,
+    });
+
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), {
+      error: { code: "VALIDATION", message: "Only archived projects can be permanently deleted." },
+    });
+    assert.ok(!fake.calls.some((call) => call.steps.some((step) => step.method === "delete")));
+  }
+});
+
+test("DELETE /api/projects/:id returns 409 when linked tasks remain", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: ARCHIVED_PROJECT_ROW, error: null });
+  fake.pushResult("tasks", {
+    data: [{ id: "task-1", project_id: "project-1", title: "Paint", status: "todo", priority: "high", updated_at: "2026-02-02T00:00:00.000Z" }],
+    error: null,
+  });
+  fake.pushResult("goals", { data: [], error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1", {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "VALIDATION",
+      message: "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+    },
+  });
+});
+
+test("DELETE /api/projects/:id returns 409 when linked goals remain", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: ARCHIVED_PROJECT_ROW, error: null });
+  fake.pushResult("tasks", { data: [], error: null });
+  fake.pushResult("goals", { data: [{ id: "goal-1", title: "Finish kitchen", project_id: "project-1" }], error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1", {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "VALIDATION",
+      message: "This project still has linked goals. Move or remove them before permanently deleting the project.",
+    },
+  });
+});
+
+test("DELETE /api/projects/:id returns 404 for a missing or foreign project", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: null, error: null });
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1", {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), {
+    error: { code: "NOT_FOUND", message: "Project not found." },
+  });
+});
+
+test("DELETE /api/projects/:id maps a foreign-key race to 409", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: ARCHIVED_PROJECT_ROW, error: null });
+  fake.pushResult("tasks", { data: [], error: null });
+  fake.pushResult("goals", { data: [], error: null });
+  fake.pushResult("projects", { data: null, error: { code: "23503", message: "violates foreign key constraint" } });
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1", {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(await response.json(), {
+    error: {
+      code: "VALIDATION",
+      message: "This project still has linked tasks or goals. Move or remove them before permanently deleting the project.",
+    },
+  });
+});
+
+test("DELETE /api/projects/:id maps a persistence failure to sanitized 500", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: ARCHIVED_PROJECT_ROW, error: null });
+  fake.pushResult("tasks", { data: [], error: null });
+  fake.pushResult("goals", { data: [], error: null });
+  fake.pushResult("projects", { data: null, error: { code: "PGRST500" } });
+  const app = makeApp(fake);
+
+  const response = await app.request("/api/projects/project-1", {
+    method: "DELETE",
+    headers: AUTH,
+  });
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    error: { code: "INTERNAL", message: "Unable to delete project right now." },
+  });
 });
 
 test("GET /api/projects/:slug returns the project identity read model", async () => {

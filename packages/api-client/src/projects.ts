@@ -7,9 +7,15 @@
  *   PATCH  /api/projects/:id/status               -> { ok: true }
  *   POST   /api/projects/:id/archive              -> { ok: true }
  *   POST   /api/projects/:id/unarchive            -> { ok: true }
+ *   DELETE /api/projects/:id                      -> { ok: true }
+ *                                                   (400 VALIDATION when not archived,
+ *                                                    409 VALIDATION when linked tasks/goals remain,
+ *                                                    404 NOT_FOUND when missing/foreign)
  *
  * Every method returns the typed `ApiResult` set; errors are mapped from the
  * server envelope (UNAUTHENTICATED | VALIDATION | NOT_FOUND | INTERNAL).
+ * The client preserves the HTTP status, so a 409 dependency conflict keeps
+ * `error.status === 409` with `error.code === "VALIDATION"`.
  */
 
 import type { ApiResult, OkResponse } from "./errors";
@@ -36,6 +42,8 @@ export type ProjectsApi = {
   archive(projectId: string): Promise<ApiResult<OkResponse>>;
   /** POST /api/projects/:id/unarchive. */
   unarchive(projectId: string): Promise<ApiResult<OkResponse>>;
+  /** DELETE /api/projects/:id — archived projects without linked tasks/goals only. */
+  remove(projectId: string): Promise<ApiResult<OkResponse>>;
 };
 
 export function createProjectsApi(http: HttpClient): ProjectsApi {
@@ -80,6 +88,13 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
       return http.request<OkResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/unarchive`,
         method: "POST",
+      });
+    },
+
+    remove(projectId) {
+      return http.request<OkResponse>({
+        path: `/api/projects/${encodeURIComponent(projectId)}`,
+        method: "DELETE",
       });
     },
   };

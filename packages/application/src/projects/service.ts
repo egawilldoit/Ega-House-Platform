@@ -1,5 +1,6 @@
 import {
   PROJECT_ARCHIVE_STATUS,
+  isProjectArchivedStatus,
   isProjectStatus,
   type ProjectStatus,
 } from "@ega/domain";
@@ -139,4 +140,84 @@ export function unarchiveProject(
     ...input,
     status: "active",
   });
+}
+
+function dependencyErrorMessage(taskCount: number, goalCount: number) {
+  if (taskCount > 0 && goalCount > 0) {
+    return "This project still has linked tasks and goals. Move or remove them before permanently deleting the project.";
+  }
+
+  if (taskCount > 0) {
+    return "This project still has linked tasks. Move or remove them before permanently deleting the project.";
+  }
+
+  return "This project still has linked goals. Move or remove them before permanently deleting the project.";
+}
+
+/**
+ * Permanently delete a project that is already archived and has no linked
+ * tasks or goals. This is the only business-rule owner for project deletion:
+ * transports call it, the repository only performs the guarded persistence
+ * write. A Postgres 23503 race (dependency inserted after the pre-check) maps
+ * to the same dependency conflict, never to a raw database error.
+ */
+export async function deleteArchivedProject(
+  actor: AuthenticatedActor,
+  repository: ProjectsRepository,
+  input: { projectId: unknown },
+): Promise<ApplicationResult<null>> {
+  const projectId = String(input.projectId ?? "").trim();
+
+  if (!projectId) {
+    return applicationFailure("Project delete request is invalid.", "validation");
+  }
+
+  const projectResult = await repository.getProjectById(actor, projectId);
+
+  if (!projectResult.ok) {
+    return applicationFailure("Unable to load project right now.", "unknown");
+  }
+
+  if (!projectResult.value) {
+    return applicationFailure("Project not found.", "notFound");
+  }
+
+  if (!isProjectArchivedStatus(projectResult.value.status)) {
+    return applicationFailure("Only archived projects can be permanently deleted.", "validation");
+  }
+
+  const [tasksResult, goalsResult] = await Promise.all([
+    repository.listTasksForProjects(actor, [projectId]),
+    repository.listGoalsForProject(actor, projectId),
+  ]);
+
+  if (!tasksResult.ok || !goalsResult.ok) {
+    return applicationFailure("Unable to verify linked records right now.", "unknown");
+  }
+
+  const taskCount = tasksResult.value.length;
+  const goalCount = goalsResult.value.length;
+
+  if (taskCount > 0 || goalCount > 0) {
+    return applicationFailure(dependencyErrorMessage(taskCount, goalCount), "conflict");
+  }
+
+  const deleteResult = await repository.deleteArchivedProject(actor, { projectId });
+
+  if (!deleteResult.ok) {
+    if (deleteResult.error.code === "conflict") {
+      return applicationFailure(
+        "This project still has linked tasks or goals. Move or remove them before permanently deleting the project.",
+        "conflict",
+      );
+    }
+
+    return applicationFailure("Unable to delete project right now.", "unknown");
+  }
+
+  if (!deleteResult.value.deleted) {
+    return applicationFailure("Unable to delete project right now.", "unknown");
+  }
+
+  return applicationSuccess(null);
 }
