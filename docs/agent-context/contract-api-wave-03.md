@@ -2,7 +2,7 @@
 
 **Starting snapshot:** `0f68315213589e66e1d6d9890a40779df1255e35` (2026-09-03)
 **Implementation snapshot:** `b89dd2c7eaeaef7e30289e409ccc1e78816177cf` (2026-09-03)
-**Verification snapshot:** `494815083e5ba338666c5890757d7d16f060f2b1` (2026-09-03)
+**Verification snapshot:** `7931fbc35b5882e40dc24fb31d79685cafdb8df7` (2026-09-03)
 
 This is the Wave 03 starting evidence. It separates capabilities that need a
 native transport contract from web-only or internal capabilities. Source and
@@ -87,8 +87,8 @@ abstraction is authorized by this inventory.
 
 ## Implementation evidence
 
-The selected boundary is implemented at `b89dd2c7` and lint-cleaned at the
-verification snapshot `49481508`:
+The selected boundary is implemented at `b89dd2c7` and verified at the exact
+Wave 03 snapshot `7931fbc3`:
 
 - `@ega/contracts/projects` and `@ega/contracts/goals` now own the Project and
   Goal request, read-model, and mutation-envelope shapes.
@@ -102,7 +102,7 @@ verification snapshot `49481508`:
 - Existing mobile Project and Goal API test doubles now use the same complete
   response envelopes as the live API-client methods.
 
-Focused boundary evidence at the implementation snapshot:
+Focused boundary evidence at the exact verification snapshot:
 
 | Check | Result |
 | --- | --- |
@@ -118,6 +118,13 @@ Focused boundary evidence at the implementation snapshot:
 | purity/security checks | PASS |
 | Android bundle export | PASS — exact Wave 03 implementation snapshot |
 | changed-path lint | PASS — exact verification snapshot |
+
+The web acceptance regression was intentionally updated at `7931fbc3` after
+the first published CI run exposed an assertion tied to the old direct
+`OperatorSnapshotDto` import. The regression now proves both sides of the
+contract: the API-client Today module uses `MobileTodayResponse`, and the
+shared alias resolves to `OperatorSnapshotDto`. The focused test and the full
+published web job pass.
 
 `mobile:doctor` remains NOT VERIFIED in this worktree because the shared
 install currently hoists `@types/react` 19.2.14 while Expo declares
