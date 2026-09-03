@@ -1,6 +1,6 @@
 # Mobile Feature Convergence — Wave 08 Evidence
 
-Status: investigation in progress
+Status: implementation and review in progress
 
 Branch: `wave/08-mobile-feature-convergence`
 
@@ -45,7 +45,7 @@ remain `NOT VERIFIED` because no emulator/device or authenticated runtime is
 available in this environment. Wave 08 will not claim those levels from
 source inspection.
 
-## Product gate (pending implementation)
+## Product gate
 
 The planned scope must answer:
 
@@ -61,5 +61,18 @@ The planned scope must answer:
 - Why not new navigation: these are supporting intelligence surfaces, not
   daily destinations that justify another bottom-tab item.
 
-Acceptance remains pending focused tests, exact-head verification, and
-independent review.
+## Verification update
+
+- Focused Wave 08 coverage: 4 suites / 9 tests pass.
+- Exact worktree mobile gates pass: typecheck, 42 suites / 248 tests, Expo
+  Doctor 18/18, and Android export/bundle.
+- Exact pushed SHA `e59de38e6e784b4141b76cdd08ead800f04946c5` has green GitHub
+  checks (run `33787076273`).
+- Vercel's server status for the SHA is `Skipped - Not affected`; no ready
+  Preview was produced.
+- Authenticated Android execution remains NOT VERIFIED: no emulator/device or
+  authenticated session is available. L6/L7 and authenticated mutation proof
+  are external/runtime gaps, not source-level acceptance evidence.
+
+The wave-local acceptance record remains pending the independent review and
+final exact-head handoff update.
