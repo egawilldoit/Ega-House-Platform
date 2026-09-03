@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { formatDurationLabel as formatCanonicalDurationLabel } from "@ega/application/shared/duration";
 import {
+  formatDurationLabel,
   getSessionDurationWithinWindowSeconds,
   getTaskSessionDurationSeconds,
 } from "./task-session";
+
+test("uses the canonical application duration formatter", () => {
+  assert.strictEqual(formatDurationLabel, formatCanonicalDurationLabel);
+  assert.equal(formatDurationLabel(3661), "1h 1m 1s");
+});
 
 test("prefers timestamp-derived duration for completed sessions", () => {
   const durationSeconds = getTaskSessionDurationSeconds(
