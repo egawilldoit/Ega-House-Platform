@@ -2,6 +2,7 @@
 
 **Starting snapshot:** `0f68315213589e66e1d6d9890a40779df1255e35` (2026-09-03)
 **Implementation snapshot:** `b89dd2c7eaeaef7e30289e409ccc1e78816177cf` (2026-09-03)
+**Verification snapshot:** `494815083e5ba338666c5890757d7d16f060f2b1` (2026-09-03)
 
 This is the Wave 03 starting evidence. It separates capabilities that need a
 native transport contract from web-only or internal capabilities. Source and
@@ -86,7 +87,8 @@ abstraction is authorized by this inventory.
 
 ## Implementation evidence
 
-The selected boundary is implemented at `b89dd2c7`:
+The selected boundary is implemented at `b89dd2c7` and lint-cleaned at the
+verification snapshot `49481508`:
 
 - `@ega/contracts/projects` and `@ega/contracts/goals` now own the Project and
   Goal request, read-model, and mutation-envelope shapes.
@@ -115,6 +117,7 @@ Focused boundary evidence at the implementation snapshot:
 | architecture tests | PASS — 21 tests |
 | purity/security checks | PASS |
 | Android bundle export | PASS — exact Wave 03 implementation snapshot |
+| changed-path lint | PASS — exact verification snapshot |
 
 `mobile:doctor` remains NOT VERIFIED in this worktree because the shared
 install currently hoists `@types/react` 19.2.14 while Expo declares
