@@ -68,9 +68,12 @@ The planned scope must answer:
   Doctor 18/18, and Android export/bundle.
 - Exact pushed implementation checkpoint `e59de38e6e784b4141b76cdd08ead800f04946c5`
   has green GitHub checks (run `33787076273`).
-- Exact evidence-head `d751b490a045d283f3c5977e888e12aadc97770b` has green
+- Exact implementation/evidence-head `d751b490a045d283f3c5977e888e12aadc97770b` has green
   GitHub checks (run `33788150507`), including workspace, architecture,
   security, server, web, mobile, database-invariant, and hygiene gates.
+- Final acceptance-record head `cf9d3fc02b7df98d2bbea99b4c52f276c7a21ed0` has
+  green exact-head GitHub checks (run `33788620149`), including the same
+  required validation jobs.
 - Vercel's server status for the SHA is `Skipped - Not affected`; no ready
   Preview was produced.
 - Authenticated Android execution remains NOT VERIFIED: no emulator/device or
@@ -81,4 +84,4 @@ The planned scope must answer:
 - Wave acceptance: code gate PASS; product gate PASS by source and focused
   rendered-component evidence; runtime gate L1–L5 PASS and explicit L8
   `/health` PASS, with L6/L7/authenticated Android NOT VERIFIED.
-- Final exact evidence-head: `d751b490a045d283f3c5977e888e12aadc97770b`.
+- Final exact evidence-head: `cf9d3fc02b7df98d2bbea99b4c52f276c7a21ed0`.
