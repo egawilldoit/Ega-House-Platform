@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Filter, Inbox, Search } from "lucide-react";
 
 import { CreateIdeaNoteForm } from "@/app/ideas/create-idea-note-form";
+import { ConvertIdeaNoteForm } from "@/app/ideas/convert-idea-note-form";
 import { EditIdeaNoteForm } from "@/app/ideas/edit-idea-note-form";
 import { IdeaNoteArchiveControls } from "@/app/ideas/idea-note-archive-controls";
 import { AppShell } from "@/components/layout/app-shell";
@@ -379,6 +380,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
                       <>
                         <IdeaNoteArchiveControls noteId={note.id} mode="archive" />
                         <EditIdeaNoteForm note={note} projectOptions={projectOptions} />
+                        <ConvertIdeaNoteForm note={note} projectOptions={projectOptions} />
                       </>
                     )}
                   </article>
