@@ -93,7 +93,7 @@ behavior.
 ## Final acceptance record
 
 - Accepted HEAD: `ce2db057c7d1dc768b479f68511250ef82c5045f`
-- Wave-local commits: `5a9775df..ce2db057`
+- Wave-local commits: `764f7a0c..d5014da6`
 - Code gate: PASS — exact-head Unified Platform Validation run
   `33817829666` completed successfully, including workspace audit,
   architecture/security/purity, package checks, web tests/build, mobile
