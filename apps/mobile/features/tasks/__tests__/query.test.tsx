@@ -5,6 +5,8 @@ import * as tasksApi from '@/lib/api/tasks';
 import {
   taskQueryKeys,
   useCreateTaskMutation,
+  useArchiveTaskMutation,
+  useUnarchiveTaskMutation,
   useTaskByIdQuery,
   useTaskFormOptionsQuery,
   useTaskListQuery,
@@ -20,6 +22,8 @@ jest.mock('@/lib/api/tasks', () => ({
   listMobileTasks: jest.fn(),
   getMobileTaskById: jest.fn(),
   createMobileTask: jest.fn(),
+  archiveMobileTask: jest.fn(),
+  unarchiveMobileTask: jest.fn(),
 }));
 
 const mock = <T extends (...args: never[]) => unknown>(fn: T) => fn as jest.MockedFunction<T>;
@@ -35,6 +39,8 @@ const LIST_RESPONSE: MobileTaskListResponse = {
       status: 'todo',
       priority: 'urgent',
       dueDate: '2026-08-22',
+      plannedForDate: null,
+      archivedAt: null,
       estimateMinutes: 30,
       updatedAt: '2026-08-22T00:00:00.000Z',
       focusRank: null,
@@ -60,6 +66,8 @@ const LIST_RESPONSE: MobileTaskListResponse = {
     priority: null,
     due: 'all',
     sort: 'updated_desc',
+    plannedForDate: null,
+    includeArchived: false,
     limit: null,
   },
   projects: [{ id: 'p-1', name: 'Launch', slug: 'launch' }],
@@ -93,11 +101,13 @@ describe('tasks query hooks', () => {
       taskQueryKeys.list({
         status: null,
         projectId: null,
-        goalId: null,
-        priority: 'urgent',
-        due: 'all',
-        sort: 'updated_desc',
-        limit: null,
+      goalId: null,
+      priority: 'urgent',
+      plannedForDate: null,
+      due: 'all',
+      sort: 'updated_desc',
+      includeArchived: false,
+      limit: null,
       }),
     );
     await expect(queryCall?.queryFn()).resolves.toBe(LIST_RESPONSE);
@@ -106,8 +116,10 @@ describe('tasks query hooks', () => {
       projectId: null,
       goalId: null,
       priority: 'urgent',
+      plannedForDate: null,
       due: 'all',
       sort: 'updated_desc',
+      includeArchived: false,
       limit: null,
     });
   });
@@ -120,6 +132,14 @@ describe('tasks query hooks', () => {
     const allKey = queryCall?.queryKey;
 
     expect(urgentKey).not.toEqual(allKey);
+  });
+
+  it('does not use an active placeholder while the archive scope changes', () => {
+    useTaskListQuery({ includeArchived: true });
+
+    const placeholder = (queryCall as unknown as { placeholderData: (data: MobileTaskListResponse) => unknown })
+      ?.placeholderData;
+    expect(placeholder(LIST_RESPONSE)).toBeUndefined();
   });
 
   it('useTaskByIdQuery unwraps the enriched task item', async () => {
@@ -178,5 +198,36 @@ describe('tasks query hooks', () => {
     const keys = queryClient.invalidateQueries.mock.calls.map((call) => call[0].queryKey);
     expect(keys).toContainEqual(['tasks', 'list']);
     expect(keys).toContainEqual(['today']);
+  });
+
+  it('archive transitions call the canonical API and refresh task views', async () => {
+    const queryClient = {
+      setQueriesData: jest.fn(),
+      setQueryData: jest.fn(),
+      invalidateQueries: jest.fn().mockResolvedValue(undefined),
+    };
+    (ReactQuery.useQueryClient as unknown as jest.Mock).mockReturnValue(queryClient);
+    const response = { ok: true as const, task: { ...LIST_RESPONSE.tasks[0], archivedAt: '2026-08-22T12:00:00.000Z' } };
+    mock(tasksApi.archiveMobileTask).mockResolvedValue(response);
+    mock(tasksApi.unarchiveMobileTask).mockResolvedValue({ ...response, task: { ...response.task, archivedAt: null } });
+
+    const mutationOptions: Array<{ mutationFn: (input: unknown) => Promise<unknown>; onSuccess?: (data: unknown) => void }> = [];
+    (ReactQuery.useMutation as unknown as jest.Mock).mockImplementation((options: never) => {
+      mutationOptions.push(options);
+      return { isPending: false, mutateAsync: jest.fn() };
+    });
+
+    useArchiveTaskMutation();
+    useUnarchiveTaskMutation();
+    await mutationOptions[0].mutationFn('task-1');
+    mutationOptions[0].onSuccess?.(response);
+    await mutationOptions[1].mutationFn('task-1');
+    mutationOptions[1].onSuccess?.({ ...response, task: { ...response.task, archivedAt: null } });
+
+    expect(tasksApi.archiveMobileTask).toHaveBeenCalledWith('task-1');
+    expect(tasksApi.unarchiveMobileTask).toHaveBeenCalledWith('task-1');
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(['tasks', 'detail', 'task-1'], expect.anything());
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['tasks', 'list'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['today'] });
   });
 });
