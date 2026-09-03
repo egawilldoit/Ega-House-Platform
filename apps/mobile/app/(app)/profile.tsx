@@ -75,6 +75,8 @@ export default function ProfileStackScreen() {
         <Pressable
           onPress={() => router.push('/(app)/settings/notifications')}
           style={({ pressed }: { pressed: boolean }) => [styles.notificationCard, pressed ? styles.pressed : null]}
+          accessibilityHint="Changes push and email reminder preferences"
+          accessibilityLabel="Open notification settings"
           accessibilityRole="button"
         >
           <Card style={styles.notificationInner}>
@@ -109,7 +111,12 @@ export default function ProfileStackScreen() {
         </Card>
 
         <Link href="/(app)/updates" asChild>
-          <Pressable testID="profile-updates-link">
+          <Pressable
+            accessibilityHint="Opens the latest app update details"
+            accessibilityLabel="Open app updates"
+            accessibilityRole="button"
+            testID="profile-updates-link"
+          >
             <Card style={styles.updatesCard} testID="profile-updates-card">
               <View style={styles.updatesRow}>
                 <View style={styles.updatesIcon}>

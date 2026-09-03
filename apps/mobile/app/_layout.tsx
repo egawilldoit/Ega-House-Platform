@@ -52,7 +52,10 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
       {recoveryMessage ? <Text style={errorStyles.recoveryMessage}>{recoveryMessage}</Text> : null}
 
       <Pressable
+        accessibilityHint="Checks for and installs the latest available app update"
+        accessibilityLabel={recovering ? 'Checking for a recovery update' : 'Recover latest app update'}
         accessibilityRole="button"
+        accessibilityState={{ busy: recovering, disabled: recovering }}
         disabled={recovering}
         onPress={onRecover}
         style={[errorStyles.primaryButton, recovering && errorStyles.disabledButton]}
@@ -60,7 +63,15 @@ export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
         <Text style={errorStyles.primaryButtonText}>{recovering ? 'Checking for a fix…' : 'Recover latest update'}</Text>
       </Pressable>
 
-      <Pressable accessibilityRole="button" disabled={recovering} onPress={onRetry} style={errorStyles.secondaryButton}>
+      <Pressable
+        accessibilityHint="Reloads the current screen"
+        accessibilityLabel="Retry screen"
+        accessibilityRole="button"
+        accessibilityState={{ disabled: recovering }}
+        disabled={recovering}
+        onPress={onRetry}
+        style={errorStyles.secondaryButton}
+      >
         <Text style={errorStyles.secondaryButtonText}>Retry screen</Text>
       </Pressable>
     </View>

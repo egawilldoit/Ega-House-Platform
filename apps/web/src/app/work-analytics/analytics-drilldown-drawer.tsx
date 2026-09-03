@@ -157,12 +157,12 @@ export function AnalyticsDrilldownDrawer({
 
   return (
     <Sheet open={!!drilldown} onOpenChange={(open) => !open && closeDrilldown()}>
-      <SheetContent className={className}>
+      <SheetContent aria-labelledby="analytics-drilldown-title" className={className}>
         <div className="flex h-full flex-col">
           <SheetHeader className="border-b border-[var(--border)] px-6 py-5">
             <div className="flex items-center justify-between">
               <div>
-                <SheetTitle>{drawerTitle(drilldown)}</SheetTitle>
+                <SheetTitle id="analytics-drilldown-title">{drawerTitle(drilldown)}</SheetTitle>
                 <SheetDescription className="mt-1">
                   {drawerDescription(drilldown)}
                 </SheetDescription>

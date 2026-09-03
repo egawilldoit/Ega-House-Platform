@@ -73,7 +73,10 @@ export function TaskReminderSection({
   return (
     <FormSection icon="notifications-outline" title="Reminder" description="Schedule task reminders">
       <Pressable
+        accessibilityHint="Opens the reminder date and time picker"
+        accessibilityLabel="Set reminder date and time"
         accessibilityRole="button"
+        accessibilityState={{ disabled: isReminderSubmitting }}
         disabled={isReminderSubmitting}
         onPress={() => onOpenPicker('date')}
         style={({ pressed }) => [styles.dateField, pressed && !isReminderSubmitting ? styles.pressed : null]}
@@ -108,7 +111,13 @@ export function TaskReminderSection({
               await onRequestPermission();
             }}
           />
-          <Pressable onPress={() => Linking.openSettings()} style={styles.openSettingsLink}>
+          <Pressable
+            accessibilityHint="Opens this device's notification settings"
+            accessibilityLabel="Open system notification settings"
+            accessibilityRole="button"
+            onPress={() => Linking.openSettings()}
+            style={styles.openSettingsLink}
+          >
             <Text style={styles.openSettingsText}>Open settings</Text>
           </Pressable>
         </View>
@@ -195,7 +204,10 @@ export function TaskReminderSection({
       {completedReminders.length > 0 ? (
         <>
           <Pressable
+            accessibilityHint={isHistoryExpanded ? 'Collapses completed reminder history' : 'Expands completed reminder history'}
+            accessibilityLabel={`Reminder history, ${completedReminders.length} completed`}
             accessibilityRole="button"
+            accessibilityState={{ expanded: isHistoryExpanded }}
             onPress={() => setIsHistoryExpanded((v) => !v)}
             style={styles.historyHeader}
           >
