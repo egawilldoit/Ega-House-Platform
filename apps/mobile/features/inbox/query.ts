@@ -18,10 +18,12 @@ export const inboxQueryKeys = {
 };
 
 export function useInboxListQuery(params: Record<string, string | null | undefined> = {}): ReturnType<typeof useQuery<InboxListResponse>> {
+  const requestedView = params.view ?? "active";
+
   return useQuery<InboxListResponse>({
     queryKey: inboxQueryKeys.list(params),
     queryFn: () => listInboxItems(params as unknown as Parameters<typeof listInboxItems>[0]),
-    placeholderData: (prev) => prev,
+    placeholderData: (prev) => (prev?.filters.view === requestedView ? prev : undefined),
   });
 }
 

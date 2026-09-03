@@ -18,7 +18,7 @@ describe('mobile Inbox processing surface', () => {
 
   it('offers a destination for the task created by conversion', () => {
     expect(screen).toMatch(/useRouter/);
-    expect(screen).toMatch(/result\.data\.task\.id/);
+    expect(screen).toMatch(/result\.task\.id/);
     expect(screen).toMatch(/tasks\/\[id\]/);
   });
 });

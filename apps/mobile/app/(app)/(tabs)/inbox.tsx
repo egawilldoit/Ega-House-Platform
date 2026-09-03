@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useRouter } from "expo-router";
 import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { mobileTheme } from "@/components/mobile/theme";
@@ -32,6 +33,7 @@ const INBOX_VIEW_OPTIONS: Array<{ label: string; value: InboxListView }> = [
 type InboxEditableInput = Omit<UpdateInboxInput, "id">;
 
 export default function InboxScreen() {
+  const router = useRouter();
   const [view, setView] = useState<InboxListView>("active");
   const inboxQuery = useInboxListQuery({ view });
   const createMutation = useCreateInboxMutation();
@@ -124,9 +126,10 @@ export default function InboxScreen() {
     setError(null);
     setSuccess(null);
     try {
-      await convertMutation.mutateAsync({ id: convertItem.id, input: { projectId } });
+      const result = await convertMutation.mutateAsync({ id: convertItem.id, input: { projectId } });
       setConvertItem(null);
       setSuccess("Task created from Inbox idea.");
+      router.push({ pathname: "/(app)/tasks/[id]", params: { id: result.task.id } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to convert this idea.");
       throw e;
