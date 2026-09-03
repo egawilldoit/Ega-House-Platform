@@ -51,6 +51,8 @@ The notification capability was already implemented below the web presentation l
 ## Verification snapshot
 
 - Focused web suite: **PASS** — 5 files / 15 tests, including target routing, page/action wiring, top-bar unread state, shell metrics, command palette, and route metadata.
+- Exact-head CI initially exposed one stale command-palette fixture: adding Notifications changed the empty-query option count from 19 to 20. The first clean run had 164/165 web files and 1,271/1,272 tests passing; the expectation and explanatory comment were corrected in `5a899932`.
+- Exact-head CI after that correction: **PASS** — web typecheck, 1,272/1,272 web tests, web production build, workspace audit, and final hygiene all passed.
 - `git diff --check`: **PASS**.
 - Local web typecheck: **NOT VERIFIED** in this worktree because the shared install state is missing pre-existing MCP and `zod-v4` modules; after the boundary corrections there were no Wave 04 diagnostics. Clean CI is the authoritative web typecheck/build check.
 - Runtime authentication, applied migration state, and cross-user production RLS remain **NOT VERIFIED** until the available environment can exercise them.
@@ -58,3 +60,14 @@ The notification capability was already implemented below the web presentation l
 ## Evidence status
 
 Runtime authentication, applied migration state, and cross-user production RLS remain **NOT VERIFIED** until the available environment can exercise them. Local code/tests and any browser evidence are recorded separately. No production deployment or database mutation is part of this wave.
+
+## Acceptance record
+
+**Result:** `ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE`
+
+- **Exact accepted HEAD:** `5a899932a924323bc3b48ad464c3ca6a93e7811c`
+- **Code gate:** PASS. Focused tests, exact-head GitHub web/typecheck/build, workspace, hygiene, package checks, architecture, purity, and security checks passed.
+- **Runtime gate:** NOT VERIFIED for authenticated web/database behavior because no safe authenticated environment or branch preview is available. Vercel branch execution is suppressed by the accepted Wave 00 guard.
+- **Product gate:** PASS. Notifications is documented as a web workflow with navigation, unread discovery, task targeting, mark-read actions, empty/error/submitting states, and no duplicate Inbox or business-policy owner.
+- **Review gate:** PASS. Fresh exact-range review found no Critical or Important findings.
+- **Publication gate:** PASS. The exact SHA has no Vercel deployment record; the API Vercel status is `Canceled by Ignored Build Step`; no production deployment or database mutation occurred.
