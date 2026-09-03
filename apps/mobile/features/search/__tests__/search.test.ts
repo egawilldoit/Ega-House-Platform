@@ -15,6 +15,8 @@ function makeTask(overrides: Partial<MobileTaskListItem> & { title: string }): M
     status: overrides.status ?? 'todo',
     priority: overrides.priority ?? 'medium',
     dueDate: null,
+    plannedForDate: null,
+    archivedAt: null,
     estimateMinutes: null,
     updatedAt: new Date().toISOString(),
     focusRank: null,
@@ -23,7 +25,7 @@ function makeTask(overrides: Partial<MobileTaskListItem> & { title: string }): M
     goal: overrides.goal ?? null,
     reminders: [],
     recurrence: null,
-  } as MobileTaskListItem;
+  };
 }
 
 function makeProject(overrides: Partial<ProjectCardReadModel> & { name: string }): ProjectCardReadModel {

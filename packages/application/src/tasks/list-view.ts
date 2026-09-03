@@ -41,6 +41,8 @@ export function toMobileTaskListItem(record: TaskRecord): MobileTaskListItem {
     status: record.status,
     priority: record.priority,
     dueDate: record.dueDate,
+    plannedForDate: record.plannedForDate,
+    archivedAt: record.archivedAt,
     estimateMinutes: record.estimateMinutes,
     updatedAt: record.updatedAt,
     focusRank: record.focusRank,
@@ -242,6 +244,8 @@ export function buildMobileTaskListView(input: MobileTaskListViewInput): MobileT
       priority: query.priority ?? null,
       due: query.due ?? DEFAULT_TASK_DUE_FILTER,
       sort: query.sort ?? DEFAULT_TASK_SORT,
+      plannedForDate: query.plannedForDate ?? null,
+      includeArchived: query.includeArchived ?? false,
       limit,
     },
     projects: input.projects.map((project) => ({

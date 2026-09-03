@@ -60,6 +60,8 @@ test("PARITY LIST: default envelope matches the legacy enriched payload exactly"
     priority: null,
     due: "all",
     sort: "updated_desc",
+    plannedForDate: null,
+    includeArchived: false,
     limit: null,
   });
   assert.deepEqual(body.projects, expectedListEnvelope([]).projects);
@@ -164,6 +166,7 @@ test("PARITY LIST: invalid status/sort/limit reject with legacy validation messa
   for (const [query, message] of [
     ["status=archived", "Invalid status filter."],
     ["sort=random", "Invalid sort value."],
+    ["includeArchived=yes", "Invalid includeArchived filter."],
     ["limit=0", "limit must be an integer between 1 and 200."],
     ["limit=201", "limit must be an integer between 1 and 200."],
   ] as Array<[string, string]>) {
