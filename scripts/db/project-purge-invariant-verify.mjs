@@ -276,7 +276,7 @@ async function seedMainFixture(sql) {
   );
   await sql.unsafe(
     `INSERT INTO public.task_recurrences (id, owner_user_id, task_id, rule, anchor_date, timezone, next_occurrence_date)
-     VALUES ($1, $2, $3, 'weekly', CURRENT_DATE, 'UTC', CURRENT_DATE + 7)`,
+     VALUES ($1, $2, $3, 'weekly:monday', CURRENT_DATE, 'UTC', CURRENT_DATE + 7)`,
     [P0.recurrence, OWNER_A, P0.task1],
   );
   await sql.unsafe(
