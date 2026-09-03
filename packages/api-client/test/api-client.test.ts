@@ -178,6 +178,64 @@ test("archive and unarchive project post to the action endpoints", async () => {
   assert.equal(calls[0].body, undefined);
 });
 
+test("remove project deletes the encoded id path without a body", async () => {
+  const { client, calls } = makeHarness({ body: { ok: true } });
+
+  const result = await client.projects.remove("my project/1");
+
+  assert.deepEqual(result, { ok: true, data: { ok: true } });
+  assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].url, "https://api.ega.example/api/projects/my%20project%2F1");
+  assert.equal(calls[0].body, undefined);
+});
+
+test("remove project preserves the 409 dependency conflict status and code", async () => {
+  const { client } = makeHarness({
+    status: 409,
+    body: {
+      error: {
+        code: "VALIDATION",
+        message: "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+      },
+    },
+  });
+
+  const result = await client.projects.remove("p-1");
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "VALIDATION",
+      message: "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+      status: 409,
+    },
+  });
+});
+
+test("remove project maps 400 and 404 envelopes", async () => {
+  const notArchived = makeHarness({
+    status: 400,
+    body: { error: { code: "VALIDATION", message: "Only archived projects can be permanently deleted." } },
+  });
+  assert.deepEqual(await notArchived.client.projects.remove("p-1"), {
+    ok: false,
+    error: {
+      code: "VALIDATION",
+      message: "Only archived projects can be permanently deleted.",
+      status: 400,
+    },
+  });
+
+  const missing = makeHarness({
+    status: 404,
+    body: { error: { code: "NOT_FOUND", message: "Project not found." } },
+  });
+  assert.deepEqual(await missing.client.projects.remove("p-1"), {
+    ok: false,
+    error: { code: "NOT_FOUND", message: "Project not found.", status: 404 },
+  });
+});
+
 test("list goals builds the view query and maps the read model", async () => {
   const goalsModel = {
     projects: [{ id: "p-1", name: "Launch" }],
@@ -430,6 +488,7 @@ test("client surface exposes typed projects and goals namespaces", () => {
   assert.equal(typeof surface.projects.updateStatus, "function");
   assert.equal(typeof surface.projects.archive, "function");
   assert.equal(typeof surface.projects.unarchive, "function");
+  assert.equal(typeof surface.projects.remove, "function");
   assert.equal(typeof surface.goals.list, "function");
   assert.equal(typeof surface.goals.create, "function");
   assert.equal(typeof surface.goals.updateStatus, "function");

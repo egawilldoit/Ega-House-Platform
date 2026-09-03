@@ -10,10 +10,12 @@ import { SupabaseProjectsRepository } from "@ega/data-access";
 
 import {
   archiveProjectAction,
+  deleteProjectAction,
   unarchiveProjectAction,
   updateProjectStatusAction,
 } from "@/app/tasks/projects/actions";
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
+import { ProjectPermanentDeleteForm } from "@/components/projects/project-permanent-delete-form";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -117,16 +119,19 @@ function ProjectCard({
   returnTo,
   inlineError,
   archiveError,
+  deleteError,
   activeView,
 }: {
   project: ProjectCardReadModel;
   returnTo: string;
   inlineError?: string | null;
   archiveError?: string | null;
+  deleteError?: string | null;
   activeView: ProjectViewFilter;
 }) {
   const progressTone = getProjectProgressTone(project);
   const isArchived = isProjectArchivedStatus(project.status);
+  const footerError = archiveError ?? deleteError;
   const detailHref = `/tasks/projects/${project.slug}${
     activeView === "active" ? "" : `?view=${activeView}`
   }`;
@@ -242,14 +247,40 @@ function ProjectCard({
           )}
 
           <div className="mt-4 border-t border-[var(--border)] pt-4">
-            {archiveError ? <p className="feedback-block feedback-block-error mb-3">{archiveError}</p> : null}
-            <form action={isArchived ? unarchiveProjectAction : archiveProjectAction}>
-              <input type="hidden" name="projectId" value={project.id} />
-              <input type="hidden" name="returnTo" value={returnTo} />
-              <Button type="submit" variant={isArchived ? "muted" : "danger"} size="sm">
-                {isArchived ? "Unarchive Project" : "Archive Project"}
-              </Button>
-            </form>
+            {footerError ? <p className="feedback-block feedback-block-error mb-3">{footerError}</p> : null}
+            {isArchived ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={unarchiveProjectAction}>
+                  <input type="hidden" name="projectId" value={project.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <Button type="submit" variant="muted" size="sm">
+                    Unarchive Project
+                  </Button>
+                </form>
+                {project.taskCount > 0 ? (
+                  <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+                    Permanent deletion unavailable — {project.taskCount} linked{" "}
+                    {project.taskCount === 1 ? "task" : "tasks"} must be moved or removed
+                    first.
+                  </p>
+                ) : (
+                  <ProjectPermanentDeleteForm
+                    action={deleteProjectAction}
+                    projectId={project.id}
+                    projectName={project.name}
+                    returnTo={returnTo}
+                  />
+                )}
+              </div>
+            ) : (
+              <form action={archiveProjectAction}>
+                <input type="hidden" name="projectId" value={project.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <Button type="submit" variant="danger" size="sm">
+                  Archive Project
+                </Button>
+              </form>
+            )}
           </div>
         </div>
       </CardContent>
@@ -363,6 +394,11 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
               }
               archiveError={
                 projectUpdateProjectId === project.id && projectUpdateField === "archive"
+                  ? projectUpdateError
+                  : null
+              }
+              deleteError={
+                projectUpdateProjectId === project.id && projectUpdateField === "delete"
                   ? projectUpdateError
                   : null
               }

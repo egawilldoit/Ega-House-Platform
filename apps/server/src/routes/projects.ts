@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
   archiveProject,
   createProject,
+  deleteArchivedProject,
   getProjectIdentityReadModel,
   getProjectsReadModel,
   unarchiveProject,
@@ -153,6 +154,36 @@ export function createProjectsRoutes(
     }
 
     return c.json({ ok: true });
+  });
+
+  routes.delete("/:id", async (c) => {
+    const { actor, client } = c.var;
+
+    const result = await deleteArchivedProject(
+      actor,
+      new SupabaseProjectsRepository(client),
+      { projectId: c.req.param("id") },
+    );
+
+    if (result.ok) {
+      return c.json({ ok: true });
+    }
+
+    // Dependency conflicts keep the established VALIDATION envelope code and
+    // signal through HTTP 409; the typed client preserves both status and code.
+    if (result.code === "conflict") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 409);
+    }
+
+    if (result.code === "notFound") {
+      return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+    }
+
+    if (result.code === "validation") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
+
+    return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
   });
 
   return routes;

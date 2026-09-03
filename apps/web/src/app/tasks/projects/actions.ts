@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import {
   archiveProject,
   createAuthenticatedActor,
+  deleteArchivedProject,
   unarchiveProject,
   updateProjectStatus,
   type AuthenticatedActor,
@@ -28,7 +29,7 @@ function redirectWithProjectsError(
   returnPath: string,
   errorMessage: string,
   projectId?: string,
-  field?: "status" | "archive",
+  field?: "status" | "archive" | "delete",
 ): never {
   const target = new URL(returnPath, "https://egawilldoit.online");
   target.searchParams.set("projectUpdateError", errorMessage);
@@ -119,4 +120,41 @@ export async function archiveProjectAction(formData: FormData) {
 
 export async function unarchiveProjectAction(formData: FormData) {
   await updateProjectArchiveState(formData, "active");
+}
+
+export async function deleteProjectAction(formData: FormData) {
+  const returnPath = getProjectsReturnPath(formData.get("returnTo"));
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const confirmDelete = String(formData.get("confirmDelete") ?? "").trim();
+
+  if (!projectId) {
+    redirectWithProjectsError(returnPath, "Project delete request is invalid.");
+  }
+
+  // The hidden confirmation field is an accidental-submit safeguard only; the
+  // archived-only and dependency rules are enforced by the application layer.
+  if (confirmDelete !== "true") {
+    redirectWithProjectsError(
+      returnPath,
+      "Project delete confirmation is required.",
+      projectId,
+      "delete",
+    );
+  }
+
+  const { actor, repository } = await resolveProjectContext();
+  const result = await deleteArchivedProject(actor, repository, { projectId });
+
+  if (!result.ok) {
+    redirectWithProjectsError(returnPath, result.errorMessage, projectId, "delete");
+  }
+
+  const returnPathname = getProjectsPathname(returnPath);
+
+  revalidatePath("/tasks/projects");
+  revalidatePath(returnPathname);
+  revalidatePath("/tasks");
+  revalidatePath("/goals");
+  // No card anchor on success: the deleted project no longer exists.
+  redirect(returnPath);
 }
