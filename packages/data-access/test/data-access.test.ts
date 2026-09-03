@@ -16,6 +16,7 @@ const ACTOR = createAuthenticatedActor("user-123");
 type QueryResult = {
   data: unknown;
   error: { code?: string; message?: string } | null;
+  count?: number | null;
 };
 
 type ChainStep = { method: string; args: unknown[] };
@@ -23,15 +24,28 @@ type ChainStep = { method: string; args: unknown[] };
 class FakeSupabase {
   private readonly queues = new Map<string, QueryResult[]>();
   calls: Array<{ table: string; steps: ChainStep[] }> = [];
+  rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
   from(table: string) {
     return new FakeQueryBuilder(table, this);
+  }
+
+  rpc(name: string, args: Record<string, unknown>) {
+    this.rpcCalls.push({ name, args });
+    return {
+      then: (fulfilled: (value: QueryResult) => unknown) =>
+        Promise.resolve(this.popResult(`rpc:${name}`)).then(fulfilled),
+    } as unknown as Promise<QueryResult>;
   }
 
   pushResult(table: string, result: QueryResult) {
     const queue = this.queues.get(table) ?? [];
     queue.push(result);
     this.queues.set(table, queue);
+  }
+
+  pushRpcResult(name: string, result: QueryResult) {
+    this.pushResult(`rpc:${name}`, result);
   }
 
   popResult(table: string): QueryResult {
@@ -70,6 +84,11 @@ class FakeQueryBuilder {
 
   in(column: string, values: unknown[]) {
     this.steps.push({ method: "in", args: [column, values] });
+    return this;
+  }
+
+  is(column: string, value: unknown) {
+    this.steps.push({ method: "is", args: [column, value] });
     return this;
   }
 
@@ -369,6 +388,193 @@ test("deleteArchivedProject sanitizes non-constraint failures", async () => {
   assert.equal(result.ok, false);
   if (result.ok) return;
   assert.deepEqual(result.error, { code: "unknown" });
+});
+
+const PURGE_PROJECT_ID = "123e4567-e89b-12d3-a456-426614174000";
+
+test("getProjectPurgePreview scopes every query by owner and maps counts", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", {
+    data: { id: PURGE_PROJECT_ID, name: "Stage CGI" },
+    error: null,
+  });
+  fake.pushResult("tasks", {
+    data: [
+      { id: "task-1", calendar_event_id: "event-1" },
+      { id: "task-2", calendar_event_id: null },
+    ],
+    error: null,
+  });
+  fake.pushResult("goals", { data: [{ id: "goal-1" }], error: null });
+  fake.pushResult("task_sessions", { data: null, error: null, count: 3 });
+  fake.pushResult("task_sessions", { data: null, error: null, count: 1 });
+  fake.pushResult("task_reminders", { data: null, error: null, count: 2 });
+  fake.pushResult("task_recurrences", { data: null, error: null, count: 1 });
+  fake.pushResult("task_external_refs", { data: null, error: null, count: 1 });
+  fake.pushResult("notifications", { data: null, error: null, count: 2 });
+
+  const result = await projectsRepository(fake).getProjectPurgePreview(ACTOR, PURGE_PROJECT_ID);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, {
+    projectId: PURGE_PROJECT_ID,
+    projectName: "Stage CGI",
+    taskCount: 2,
+    goalCount: 1,
+    sessionCount: 3,
+    activeSessionCount: 1,
+    reminderCount: 2,
+    recurrenceCount: 1,
+    externalRefCount: 1,
+    taskNotificationCount: 2,
+    calendarEventCount: 1,
+  });
+
+  for (const call of fake.calls) {
+    assert.ok(
+      call.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123"),
+      `owner scope missing on ${call.table}`,
+    );
+  }
+
+  const sessionCalls = fake.calls.filter((call) => call.table === "task_sessions");
+  assert.equal(sessionCalls.length, 2);
+  assert.ok(sessionCalls[1].steps.some((step) => step.method === "is" && step.args[0] === "ended_at"));
+  const notificationCall = fake.calls.find((call) => call.table === "notifications");
+  assert.ok(notificationCall?.steps.some((step) => step.method === "eq" && step.args[0] === "target_type" && step.args[1] === "task"));
+});
+
+test("getProjectPurgePreview returns null for a foreign project without leaking", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", { data: null, error: null });
+
+  const result = await projectsRepository(fake).getProjectPurgePreview(ACTOR, PURGE_PROJECT_ID);
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value, null);
+  assert.equal(fake.calls.length, 1);
+});
+
+test("getProjectPurgePreview sanitizes count failures", async () => {
+  const fake = fakeSupabase();
+  fake.pushResult("projects", {
+    data: { id: PURGE_PROJECT_ID, name: "Stage CGI" },
+    error: null,
+  });
+  fake.pushResult("tasks", {
+    data: [{ id: "task-1", calendar_event_id: null }],
+    error: null,
+  });
+  fake.pushResult("goals", { data: [], error: null });
+  fake.pushResult("task_sessions", { data: null, error: { code: "PGRST500" } });
+
+  const result = await projectsRepository(fake).getProjectPurgePreview(ACTOR, PURGE_PROJECT_ID);
+
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.deepEqual(result.error, { code: "unknown" });
+});
+
+test("purgeArchivedProject calls the purge RPC without any owner id", async () => {
+  const fake = fakeSupabase();
+  fake.pushRpcResult("purge_archived_project", {
+    data: {
+      status: "purged",
+      tasks_deleted: 2,
+      goals_deleted: 1,
+      sessions_deleted: 3,
+      external_refs_deleted: 1,
+      notifications_deleted: 2,
+      calendar_delete_jobs_enqueued: 1,
+    },
+    error: null,
+  });
+
+  const result = await projectsRepository(fake).purgeArchivedProject(ACTOR, {
+    projectId: PURGE_PROJECT_ID,
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 2,
+    expectedGoalCount: 1,
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.value, {
+    status: "purged",
+    tasksDeleted: 2,
+    goalsDeleted: 1,
+    sessionsDeleted: 3,
+    externalRefsDeleted: 1,
+    notificationsDeleted: 2,
+    calendarDeleteJobsEnqueued: 1,
+  });
+
+  assert.equal(fake.rpcCalls.length, 1);
+  assert.deepEqual(fake.rpcCalls[0], {
+    name: "purge_archived_project",
+    args: {
+      p_project_id: PURGE_PROJECT_ID,
+      p_confirmation_name: "Stage CGI",
+      p_expected_task_count: 2,
+      p_expected_goal_count: 1,
+    },
+  });
+  assert.ok(!("p_owner_user_id" in fake.rpcCalls[0].args));
+});
+
+test("purgeArchivedProject maps typed RPC outcomes without leaking details", async () => {
+  for (const status of ["not_found", "not_archived", "confirmation_mismatch", "contents_changed"]) {
+    const fake = fakeSupabase();
+    fake.pushRpcResult("purge_archived_project", { data: { status }, error: null });
+
+    const result = await projectsRepository(fake).purgeArchivedProject(ACTOR, {
+      projectId: PURGE_PROJECT_ID,
+      confirmationName: "Stage CGI",
+      expectedTaskCount: 2,
+      expectedGoalCount: 1,
+    });
+
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.value, { status });
+  }
+});
+
+test("purgeArchivedProject fails closed on RPC errors and malformed results", async () => {
+  const errored = fakeSupabase();
+  errored.pushRpcResult("purge_archived_project", {
+    data: null,
+    error: { code: "42501", message: "permission denied" },
+  });
+
+  const errorResult = await projectsRepository(errored).purgeArchivedProject(ACTOR, {
+    projectId: PURGE_PROJECT_ID,
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 2,
+    expectedGoalCount: 1,
+  });
+
+  assert.equal(errorResult.ok, false);
+  if (errorResult.ok) return;
+  assert.deepEqual(errorResult.error, { code: "unknown" });
+
+  for (const data of [null, "purged", { status: "purged" }, { status: "purged", tasks_deleted: -1 }]) {
+    const fake = fakeSupabase();
+    fake.pushRpcResult("purge_archived_project", { data, error: null });
+
+    const result = await projectsRepository(fake).purgeArchivedProject(ACTOR, {
+      projectId: PURGE_PROJECT_ID,
+      confirmationName: "Stage CGI",
+      expectedTaskCount: 2,
+      expectedGoalCount: 1,
+    });
+
+    assert.equal(result.ok, false);
+    if (result.ok) return;
+    assert.deepEqual(result.error, { code: "unknown" });
+  }
 });
 
 test("listTasksForProjects scopes the task query by owner", async () => {

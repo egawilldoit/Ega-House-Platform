@@ -7,7 +7,7 @@ import {
 
 import type { AuthenticatedActor } from "../auth/actor";
 import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
-import type { ProjectsRepository } from "./ports";
+import type { ProjectPurgePreview, ProjectsRepository } from "./ports";
 
 export type ProjectFormValues = {
   name: string;
@@ -228,4 +228,143 @@ export async function deleteArchivedProject(
   }
 
   return applicationSuccess(null);
+}
+
+export type ProjectPurgeSummary = {
+  tasksDeleted: number;
+  goalsDeleted: number;
+  sessionsDeleted: number;
+  externalRefsDeleted: number;
+  notificationsDeleted: number;
+  calendarDeleteJobsEnqueued: number;
+};
+
+function parseProjectId(value: unknown): string | null {
+  const projectId = String(value ?? "").trim();
+  return projectId && PROJECT_ID_PATTERN.test(projectId) ? projectId : null;
+}
+
+function parseExpectedCount(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Read the exact deletion impact for an archived project. The counts feed the
+ * confirmation screen and become the expected counts of the purge call; the
+ * database recomputes them inside the purge transaction.
+ */
+export async function getProjectPurgePreview(
+  actor: AuthenticatedActor,
+  repository: ProjectsRepository,
+  input: { projectId: unknown },
+): Promise<ApplicationResult<ProjectPurgePreview>> {
+  const projectId = parseProjectId(input.projectId);
+
+  if (!projectId) {
+    return applicationFailure("Project purge preview request is invalid.", "validation");
+  }
+
+  const projectResult = await repository.getProjectById(actor, projectId);
+
+  if (!projectResult.ok) {
+    return applicationFailure("Unable to load project right now.", "unknown");
+  }
+
+  if (!projectResult.value) {
+    return applicationFailure("Project not found.", "notFound");
+  }
+
+  if (!isProjectArchivedStatus(projectResult.value.status)) {
+    return applicationFailure("Only archived projects can be permanently deleted.", "validation");
+  }
+
+  const previewResult = await repository.getProjectPurgePreview(actor, projectId);
+
+  if (!previewResult.ok) {
+    return applicationFailure("Unable to load deletion impact right now.", "unknown");
+  }
+
+  if (!previewResult.value) {
+    return applicationFailure("Project not found.", "notFound");
+  }
+
+  return applicationSuccess(previewResult.value);
+}
+
+/**
+ * Atomically purge an archived project and its project-owned work data. The
+ * application owns every product rule (archived-only, exact-name
+ * confirmation, sane expected counts); the database RPC owns atomicity and
+ * re-enforces each invariant inside its own transaction.
+ */
+export async function purgeArchivedProject(
+  actor: AuthenticatedActor,
+  repository: ProjectsRepository,
+  input: {
+    projectId: unknown;
+    confirmationName: unknown;
+    expectedTaskCount: unknown;
+    expectedGoalCount: unknown;
+  },
+): Promise<ApplicationResult<ProjectPurgeSummary>> {
+  const projectId = parseProjectId(input.projectId);
+  const confirmationName = String(input.confirmationName ?? "").trim();
+  const expectedTaskCount = parseExpectedCount(input.expectedTaskCount);
+  const expectedGoalCount = parseExpectedCount(input.expectedGoalCount);
+
+  if (!projectId || !confirmationName || expectedTaskCount === null || expectedGoalCount === null) {
+    return applicationFailure("Project purge request is invalid.", "validation");
+  }
+
+  const projectResult = await repository.getProjectById(actor, projectId);
+
+  if (!projectResult.ok) {
+    return applicationFailure("Unable to load project right now.", "unknown");
+  }
+
+  if (!projectResult.value) {
+    return applicationFailure("Project not found.", "notFound");
+  }
+
+  if (!isProjectArchivedStatus(projectResult.value.status)) {
+    return applicationFailure("Only archived projects can be permanently deleted.", "validation");
+  }
+
+  if (confirmationName !== projectResult.value.name) {
+    return applicationFailure("Project name confirmation does not match.", "validation");
+  }
+
+  const purgeResult = await repository.purgeArchivedProject(actor, {
+    projectId,
+    confirmationName,
+    expectedTaskCount,
+    expectedGoalCount,
+  });
+
+  if (!purgeResult.ok) {
+    return applicationFailure("Unable to purge project right now.", "unknown");
+  }
+
+  switch (purgeResult.value.status) {
+    case "purged":
+      return applicationSuccess({
+        tasksDeleted: purgeResult.value.tasksDeleted,
+        goalsDeleted: purgeResult.value.goalsDeleted,
+        sessionsDeleted: purgeResult.value.sessionsDeleted,
+        externalRefsDeleted: purgeResult.value.externalRefsDeleted,
+        notificationsDeleted: purgeResult.value.notificationsDeleted,
+        calendarDeleteJobsEnqueued: purgeResult.value.calendarDeleteJobsEnqueued,
+      });
+    case "not_found":
+      return applicationFailure("Project not found.", "notFound");
+    case "not_archived":
+      return applicationFailure("Only archived projects can be permanently deleted.", "validation");
+    case "confirmation_mismatch":
+      return applicationFailure("Project name confirmation does not match.", "validation");
+    case "contents_changed":
+      return applicationFailure(
+        "Project contents changed. Review the deletion impact and confirm again.",
+        "conflict",
+      );
+  }
 }
