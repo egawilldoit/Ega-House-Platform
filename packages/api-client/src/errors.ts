@@ -78,6 +78,8 @@ export function parseErrorEnvelope(
       } else if (MOBILE_CODE_ALIASES[code]) {
         normalizedCode = MOBILE_CODE_ALIASES[code];
       }
+    } else {
+      normalizedCode = codeForStatus(status);
     }
     return {
       code: normalizedCode,
