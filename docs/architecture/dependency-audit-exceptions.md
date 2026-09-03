@@ -4,7 +4,7 @@ Unified CI blocks every new or directly-owned **high/critical** npm advisory. Th
 
 | Leaf package | Advisory | Classification | Proven path / constraint | Action |
 | --- | --- | --- | --- | --- |
-| `fast-uri@3.1.4` | GHSA-7p8r-x3mc-p8w7 | transitive, build-time reachable | `@sentry/nextjs -> webpack -> schema-utils -> ajv@8 -> fast-uri`; AJV requires `^3.0.1`, while the safe registry line is v4 | keep latest compatible v3; do not force a major override; re-evaluate upstream |
+| `fast-uri@3.1.7` | GHSA-7p8r-x3mc-p8w7, GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc, GHSA-fph4-wmhf-6fwf, GHSA-jqff-g426-hqxp (all out of range at 3.1.7) | transitive, build-time reachable | `@sentry/nextjs -> webpack -> schema-utils -> ajv@8 -> fast-uri`; AJV requires `^3.0.1`, while the safe registry line is v4 | override pinned to latest compatible v3 (3.1.7, 2026-09-03); do not force a major override; re-evaluate upstream |
 | `js-yaml@4.1.1` | GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj | transitive tooling | observed through `eslint -> @eslint/eslintrc -> js-yaml`; current parents require v4 | no unsafe major override; re-evaluate upstream |
 | `nanoid@3.3.16` | GHSA-2v37-7h3g-55p8 | transitive mobile dependency | `expo-router@6.0.24 -> nanoid@^3.3.8` | keep Expo-compatible line; re-evaluate when Expo Router publishes/resolves a fixed compatible version |
 | `image-size@1.2.1` | GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq | transitive Expo/Metro build toolchain | `expo@54 -> @expo/metro -> metro@0.83.3 -> image-size@^1.0.2`; npm proposes the breaking downgrade `expo@53.0.27` | retain Expo 54 / RN 0.81.5 compatibility; do not use `npm audit fix --force`; re-evaluate upstream |
