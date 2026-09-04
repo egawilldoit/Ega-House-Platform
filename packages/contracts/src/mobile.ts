@@ -38,6 +38,61 @@ export type MobileAuthRefreshResponse = {
   user?: MobileAuthenticatedUser;
 };
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isMobileAuthenticatedUser(value: unknown): value is MobileAuthenticatedUser {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return isNonEmptyString(candidate.id) && isNonEmptyString(candidate.email);
+}
+
+function isMobileSessionPayload(value: unknown): value is MobileSessionPayload {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    isNonEmptyString(candidate.accessToken) &&
+    isNonEmptyString(candidate.refreshToken) &&
+    typeof candidate.expiresAt === "number" &&
+    Number.isFinite(candidate.expiresAt)
+  );
+}
+
+/** Runtime guard for the authenticated session response from Hono. */
+export function isMobileAuthSessionResponse(
+  value: unknown,
+): value is MobileAuthSessionResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return candidate.ok === true && isMobileAuthenticatedUser(candidate.user) && isMobileSessionPayload(candidate.session);
+}
+
+/** Runtime guard for the rotating refresh response from Hono. */
+export function isMobileAuthRefreshResponse(
+  value: unknown,
+): value is MobileAuthRefreshResponse {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.ok === true &&
+    isMobileSessionPayload(candidate.session) &&
+    (candidate.user === undefined || isMobileAuthenticatedUser(candidate.user))
+  );
+}
+
 export type MobileAuthLogoutResponse = { ok: true };
 
 export type MobileApiErrorResponse = {
