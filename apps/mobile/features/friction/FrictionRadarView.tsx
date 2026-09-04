@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import type {
   FrictionBlockedSignal,
   FrictionContextSwitchSignal,
@@ -21,31 +21,53 @@ type Props = {
   neglectedGoals: FrictionNeglectedGoalSignal[];
   workloadImbalance: FrictionWorkloadImbalanceSignal;
   evidenceWindow: { startIso: string; endIso: string } | null;
+  onTaskPress?: (taskId: string) => void;
+  onGoalPress?: (goalId: string) => void;
 };
 
 function SignalRow({
   title,
   subtitle,
-  ageDays,
+  badgeText,
+  onPress,
+  accessibilityLabel,
 }: {
   title: string;
   subtitle: string;
-  ageDays: number;
+  badgeText: string;
+  onPress?: () => void;
+  accessibilityLabel?: string;
 }) {
-  return (
-    <View style={styles.row}>
+  const content = (
+    <>
       <View style={styles.rowCopy}>
         <Text style={styles.rowTitle}>{title}</Text>
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
       </View>
       <View style={styles.ageBadge}>
-        <Text style={styles.ageText}>{ageDays}d ago</Text>
+        <Text style={styles.ageText}>{badgeText}</Text>
       </View>
-    </View>
+    </>
+  );
+
+  if (!onPress) {
+    return <View style={styles.row}>{content}</View>;
+  }
+
+  return (
+    <Pressable
+      accessibilityHint="Opens details"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }: { pressed: boolean }) => [styles.row, pressed ? styles.rowPressed : null]}
+    >
+      {content}
+    </Pressable>
   );
 }
 
-export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDays, estimateSignals, contextSwitch, neglectedGoals, workloadImbalance }: Props) {
+export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDays, estimateSignals, contextSwitch, neglectedGoals, workloadImbalance, onTaskPress, onGoalPress }: Props) {
   const hasAny =
     blocked.length > 0 ||
     staleTasks.length > 0 ||
@@ -81,7 +103,9 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
               key={task.id}
               title={task.title}
               subtitle={task.blockedReason ? `Reason: ${task.blockedReason}` : "No blocker reason provided"}
-              ageDays={task.ageDays}
+              badgeText={`${task.ageDays}d ago`}
+              onPress={onTaskPress ? () => onTaskPress(task.id) : undefined}
+              accessibilityLabel={onTaskPress ? `Open blocked task: ${task.title}` : undefined}
             />
           ))
         )}
@@ -98,7 +122,9 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
               key={task.id}
               title={task.title}
               subtitle={`Status ${task.status} · Updated ${new Date(task.updatedAt).toLocaleDateString()}`}
-              ageDays={task.ageDays}
+              badgeText={`${task.ageDays}d ago`}
+              onPress={onTaskPress ? () => onTaskPress(task.id) : undefined}
+              accessibilityLabel={onTaskPress ? `Open stale task: ${task.title}` : undefined}
             />
           ))
         )}
@@ -115,7 +141,9 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
               key={goal.id}
               title={goal.title}
               subtitle={`Status ${goal.status} · Updated ${new Date(goal.updatedAt).toLocaleDateString()}`}
-              ageDays={goal.ageDays}
+              badgeText={`${goal.ageDays}d ago`}
+              onPress={onGoalPress ? () => onGoalPress(goal.id) : undefined}
+              accessibilityLabel={onGoalPress ? `Open stale goal: ${goal.title}` : undefined}
             />
           ))
         )}
@@ -128,19 +156,14 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
           <Text style={styles.emptyInline}>No estimate friction in window.</Text>
         ) : (
           estimateSignals.map((sig) => (
-            <View key={sig.id} style={styles.row}>
-              <View style={styles.rowCopy}>
-                <Text style={styles.rowTitle}>{sig.title}</Text>
-                <Text style={styles.rowSubtitle}>
-                  Est {sig.estimateMinutes}m · Actual {sig.actualMinutes}m · Δ {sig.deltaMinutes}m
-                </Text>
-              </View>
-              <View style={styles.ageBadge}>
-                <Text style={styles.ageText}>
-                  {sig.percentError}% {sig.severity}
-                </Text>
-              </View>
-            </View>
+            <SignalRow
+              key={sig.id}
+              title={sig.title}
+              subtitle={`Est ${sig.estimateMinutes}m · Actual ${sig.actualMinutes}m · Δ ${sig.deltaMinutes}m`}
+              badgeText={`${sig.percentError}% ${sig.severity}`}
+              onPress={onTaskPress ? () => onTaskPress(sig.id) : undefined}
+              accessibilityLabel={onTaskPress ? `Open estimate task: ${sig.title}` : undefined}
+            />
           ))
         )}
       </Card>
@@ -164,15 +187,14 @@ export function FrictionRadarView({ blocked, staleTasks, staleGoals, thresholdDa
           <Text style={styles.emptyInline}>No neglected goals in window.</Text>
         ) : (
           neglectedGoals.map((goal) => (
-            <View key={goal.id} style={styles.row}>
-              <View style={styles.rowCopy}>
-                <Text style={styles.rowTitle}>{goal.title}</Text>
-                <Text style={styles.rowSubtitle}>Status {goal.status} · Window {new Date(goal.window.startIso).toLocaleDateString()} → {new Date(goal.window.endIso).toLocaleDateString()}</Text>
-              </View>
-              <View style={styles.ageBadge}>
-                <Text style={styles.ageText}>{goal.daysSinceActivity === null ? "no activity" : `${goal.daysSinceActivity}d`}</Text>
-              </View>
-            </View>
+            <SignalRow
+              key={goal.id}
+              title={goal.title}
+              subtitle={`Status ${goal.status} · Window ${new Date(goal.window.startIso).toLocaleDateString()} → ${new Date(goal.window.endIso).toLocaleDateString()}`}
+              badgeText={goal.daysSinceActivity === null ? "no activity" : `${goal.daysSinceActivity}d`}
+              onPress={onGoalPress ? () => onGoalPress(goal.id) : undefined}
+              accessibilityLabel={onGoalPress ? `Open neglected goal: ${goal.title}` : undefined}
+            />
           ))
         )}
       </Card>
@@ -214,6 +236,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: mobileTheme.spacing.sm,
   },
+  rowPressed: { opacity: 0.72 },
   rowCopy: { flex: 1, marginRight: 12 },
   rowTitle: { color: mobileTheme.colors.text, fontSize: 14, fontWeight: mobileTheme.font.semibold },
   rowSubtitle: { color: mobileTheme.colors.textSubtle, fontSize: 12, marginTop: 2 },
