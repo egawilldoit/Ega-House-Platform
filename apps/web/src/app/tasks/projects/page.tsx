@@ -130,6 +130,9 @@ function ProjectCard({
   const detailHref = `/tasks/projects/${project.slug}${
     activeView === "active" ? "" : `?view=${activeView}`
   }`;
+  const deleteHref = `/tasks/projects/${project.slug}/delete${
+    activeView === "active" ? "" : `?view=${activeView}`
+  }`;
 
   return (
     <Card
@@ -243,13 +246,31 @@ function ProjectCard({
 
           <div className="mt-4 border-t border-[var(--border)] pt-4">
             {archiveError ? <p className="feedback-block feedback-block-error mb-3">{archiveError}</p> : null}
-            <form action={isArchived ? unarchiveProjectAction : archiveProjectAction}>
-              <input type="hidden" name="projectId" value={project.id} />
-              <input type="hidden" name="returnTo" value={returnTo} />
-              <Button type="submit" variant={isArchived ? "muted" : "danger"} size="sm">
-                {isArchived ? "Unarchive Project" : "Archive Project"}
-              </Button>
-            </form>
+            {isArchived ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={unarchiveProjectAction}>
+                  <input type="hidden" name="projectId" value={project.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <Button type="submit" variant="muted" size="sm">
+                    Unarchive Project
+                  </Button>
+                </form>
+                <Link
+                  href={deleteHref}
+                  className={buttonVariants({ variant: "danger", size: "sm" })}
+                >
+                  Delete permanently
+                </Link>
+              </div>
+            ) : (
+              <form action={archiveProjectAction}>
+                <input type="hidden" name="projectId" value={project.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <Button type="submit" variant="danger" size="sm">
+                  Archive Project
+                </Button>
+              </form>
+            )}
           </div>
         </div>
       </CardContent>

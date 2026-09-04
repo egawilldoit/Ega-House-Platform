@@ -15,7 +15,7 @@
     "check:architecture": "node scripts/architecture/check-boundaries.mjs",
     "ci:purity": "node scripts/ci/package-purity.mjs",
     "ci:security": "node scripts/ci/security-proofs.mjs",
-    "ci:workspace": "node scripts/ci/workspace-proofs.mjs",
+    "ci:workspace": "node --test scripts/ci/audit-production.test.mjs && node scripts/ci/workspace-proofs.mjs",
     "contracts:test": "npm run test --workspace @ega/contracts",
     "contracts:typecheck": "npm run typecheck --workspace @ega/contracts",
     "data-access:test": "npm run test --workspace @ega/data-access",
@@ -87,7 +87,7 @@
   "overrides": {
     "@hono/node-server": "2.0.11",
     "dompurify": "3.4.12",
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.7",
     "postcss": "8.5.23",
     "sharp": "0.35.3",
     "ws": "8.21.3"

@@ -39,6 +39,17 @@ export function isSupabaseUniqueConstraintViolation(
 }
 
 /**
+ * Recognize a Postgres foreign-key violation (SQLSTATE `23503`) without
+ * exposing constraint or table internals to callers. Used as the race
+ * backstop for guarded deletes: when a dependency row wins the race against
+ * an application pre-check, the database refusal becomes a safe conflict
+ * instead of a raw persistence error.
+ */
+export function isSupabaseForeignKeyViolation(error: SupabaseErrorLike | null): boolean {
+  return !!error && error.code === "23503";
+}
+
+/**
  * Translate a raw Supabase persistence error into the deliberately small,
  * persistence-independent failure set used by the application layer.
  *
