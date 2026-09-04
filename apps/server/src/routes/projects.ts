@@ -18,6 +18,7 @@ import type {
   ProjectPurgePreviewResponse,
   ProjectPurgeResponse,
   ProjectsReadModel,
+  PurgeProjectInput,
 } from "@ega/contracts/projects";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 import { normalizeProjectViewFilter } from "@ega/domain";
@@ -249,14 +250,17 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     }
 
+    // `readJsonBody` remains intentionally untrusted; the application validates
+    // these values. This assertion names the shared wire contract without
+    // changing the existing invalid-input behavior.
+    const purgeInput = body as unknown as PurgeProjectInput;
+
     const result = await purgeArchivedProject(
       actor,
       new SupabaseProjectsRepository(client),
       {
         projectId: c.req.param("id"),
-        confirmationName: body.confirmationName,
-        expectedTaskCount: body.expectedTaskCount,
-        expectedGoalCount: body.expectedGoalCount,
+        ...purgeInput,
       },
     );
 

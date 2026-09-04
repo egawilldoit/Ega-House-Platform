@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -77,6 +78,12 @@ class FakeBuilder {
 }
 
 const AUTH = { authorization: "Bearer wave-02-token" };
+
+test("project purge transport consumes the shared request contract", () => {
+  const source = readFileSync(new URL("../src/routes/projects.ts", import.meta.url), "utf8");
+
+  assert.match(source, /PurgeProjectInput/);
+});
 
 function operatorRow(status: string, result: unknown = null) {
   return {
