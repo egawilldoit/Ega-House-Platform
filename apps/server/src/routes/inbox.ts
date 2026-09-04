@@ -56,6 +56,25 @@ export function createInboxRoutes(
       ok: true as const,
       items: result.data,
       projects: projectsResult.value,
+      filters: {
+        view: parsed.data.view,
+        search: parsed.data.search ?? "",
+        type: parsed.data.type ?? "all",
+        status: parsed.data.status ?? "all",
+        projectId:
+          parsed.data.projectFilter === "none"
+            ? "none"
+            : parsed.data.projectFilter === "all"
+              ? "all"
+              : parsed.data.projectId ?? "all",
+        priority:
+          parsed.data.priorityFilter === "none"
+            ? "none"
+            : parsed.data.priorityFilter === "all"
+              ? "all"
+              : parsed.data.priority ?? "all",
+        tag: parsed.data.tag ?? "",
+      },
       total: result.data.length,
     });
   });

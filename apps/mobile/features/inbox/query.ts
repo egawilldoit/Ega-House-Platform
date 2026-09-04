@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { createInboxItem, listInboxItems, archiveInboxItem, restoreInboxItem } from "@/lib/api/inbox";
-import type { InboxListResponse } from "@ega/contracts/inbox";
+import {
+  archiveInboxItem,
+  convertInboxItem,
+  createInboxItem,
+  listInboxItems,
+  restoreInboxItem,
+  updateInboxItem,
+} from "@/lib/api/inbox";
+import type { ConvertInboxInput, InboxListResponse, UpdateInboxInput } from "@ega/contracts/inbox";
+
+type InboxUpdateInput = Omit<UpdateInboxInput, "id">;
 
 export const inboxQueryKeys = {
   all: ["inbox"] as const,
@@ -9,10 +18,12 @@ export const inboxQueryKeys = {
 };
 
 export function useInboxListQuery(params: Record<string, string | null | undefined> = {}): ReturnType<typeof useQuery<InboxListResponse>> {
+  const requestedView = params.view ?? "active";
+
   return useQuery<InboxListResponse>({
     queryKey: inboxQueryKeys.list(params),
     queryFn: () => listInboxItems(params as unknown as Parameters<typeof listInboxItems>[0]),
-    placeholderData: (prev) => prev,
+    placeholderData: (prev) => (prev?.filters.view === requestedView ? prev : undefined),
   });
 }
 
@@ -43,6 +54,28 @@ export function useRestoreInboxMutation() {
     mutationFn: (id: string) => restoreInboxItem(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inboxQueryKeys.all });
+    },
+  });
+}
+
+export function useUpdateInboxMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: InboxUpdateInput }) => updateInboxItem(id, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inboxQueryKeys.all });
+    },
+  });
+}
+
+export function useConvertInboxMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: ConvertInboxInput }) => convertInboxItem(id, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: inboxQueryKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["today"] });
     },
   });
 }

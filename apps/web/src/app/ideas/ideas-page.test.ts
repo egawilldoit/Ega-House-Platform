@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
 const ideasPage = readFileSync(path.join(process.cwd(), "src", "app", "ideas", "page.tsx"), "utf8");
+const ideasActions = readFileSync(path.join(process.cwd(), "src", "app", "ideas", "actions.ts"), "utf8");
 const editForm = readFileSync(
   path.join(process.cwd(), "src", "app", "ideas", "edit-idea-note-form.tsx"),
   "utf8",
@@ -37,4 +38,22 @@ test("archive and restore controls render in expected idea views", () => {
   assert.match(ideasPage, /mode="archive"/);
   assert.match(archiveControls, /mode === "archive" \? archiveIdeaNoteAction : restoreIdeaNoteAction/);
   assert.match(archiveControls, /mode === "archive" \? "Archive" : "Restore"/);
+});
+
+test("active Inbox ideas expose conversion through the canonical application path", () => {
+  assert.match(ideasPage, /ConvertIdeaNoteForm/);
+  assert.match(ideasPage, /projectOptions=\{projectOptions\}/);
+  assert.match(ideasActions, /convertInboxItemToTask/);
+  assert.match(ideasActions, /revalidatePath\("\/tasks"\)/);
+  assert.match(ideasActions, /redirect\(`\/tasks#task-\$\{result\.data\.task\.id\}`\)/);
+});
+
+test("Inbox conversion requires a project and exposes pending/error states", () => {
+  const conversionFormPath = path.join(process.cwd(), "src", "app", "ideas", "convert-idea-note-form.tsx");
+  assert.ok(existsSync(conversionFormPath), "conversion form should exist");
+  const conversionForm = readFileSync(conversionFormPath, "utf8");
+  assert.match(conversionForm, /convertIdeaNoteAction/);
+  assert.match(conversionForm, /name="projectId"/);
+  assert.match(conversionForm, /pendingLabel/);
+  assert.match(conversionForm, /projectOptions\.length === 0/);
 });

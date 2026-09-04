@@ -6,6 +6,8 @@ import {
   createMobileTaskReminder,
   getMobileTaskById,
   listMobileTasks,
+  archiveMobileTask,
+  unarchiveMobileTask,
   type ListMobileTasksParams,
   updateMobileTask,
 } from '@/lib/api/tasks';
@@ -24,8 +26,10 @@ type NormalizedTaskListParams = {
   projectId: ListMobileTasksParams['projectId'];
   goalId: ListMobileTasksParams['goalId'];
   priority: NonNullable<ListMobileTasksParams['priority']> | null;
+  plannedForDate: ListMobileTasksParams['plannedForDate'];
   due: NonNullable<ListMobileTasksParams['due']>;
   sort: NonNullable<ListMobileTasksParams['sort']>;
+  includeArchived: boolean;
   limit: ListMobileTasksParams['limit'];
 };
 
@@ -35,8 +39,10 @@ function normalizeTaskListParams(params: ListMobileTasksParams = {}): Normalized
     projectId: params.projectId ?? null,
     goalId: params.goalId ?? null,
     priority: params.priority ?? null,
+    plannedForDate: params.plannedForDate ?? null,
     due: params.due ?? DEFAULT_TASK_QUERY_DUE,
     sort: params.sort ?? DEFAULT_TASK_QUERY_SORT,
+    includeArchived: params.includeArchived ?? false,
     limit: params.limit ?? null,
   };
 }
@@ -89,11 +95,19 @@ export function useTaskListQuery(params: ListMobileTasksParams = {}) {
   return useQuery({
     queryKey: taskQueryKeys.list(normalized),
     queryFn: () => listMobileTasks(normalized),
-    // Placeholder keeps stale visible during filter/sort/due switch (perceived performance: no blank flash).
+    // Placeholder keeps stale visible during filter/sort/due switch (perceived performance: no blank flash),
+    // but never crosses the archive/date scope: showing an active task while
+    // an archived view is loading is a semantic lie, not a harmless flash.
     // Caveat (Wave 10.11): TanStack keeps status=success while placeholder shown → isPending false, data=previous.
     // Benefit is clear here: server filtering is fast, stale list + “Refreshing…” banner is better than skeleton.
     // Real error/refetch feedback remains via `isFetching && data` banner and `isError && data` FeedbackBanner.
-    placeholderData: (previousData) => previousData,
+    placeholderData: (previousData) => {
+      if (!previousData) return undefined;
+      return previousData.filters.includeArchived === normalized.includeArchived &&
+        previousData.filters.plannedForDate === normalized.plannedForDate
+        ? previousData
+        : undefined;
+    },
   });
 }
 
@@ -152,6 +166,41 @@ export function useUpdateTaskMutation() {
       queryClient.invalidateQueries({ queryKey: ['today'] }).catch(() => {
         // Best-effort background refresh.
       });
+    },
+  });
+}
+
+function invalidateTaskViews(queryClient: QueryClient, includeToday = true) {
+  queryClient.invalidateQueries({ queryKey: taskQueryKeys.lists() }).catch(() => {
+    // Best-effort background refresh.
+  });
+  if (includeToday) {
+    queryClient.invalidateQueries({ queryKey: ['today'] }).catch(() => {
+      // Best-effort background refresh.
+    });
+  }
+}
+
+export function useArchiveTaskMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (taskId: string) => archiveMobileTask(taskId),
+    onSuccess: (response) => {
+      queryClient.setQueryData(taskQueryKeys.detail(response.task.id), response.task);
+      invalidateTaskViews(queryClient);
+    },
+  });
+}
+
+export function useUnarchiveTaskMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (taskId: string) => unarchiveMobileTask(taskId),
+    onSuccess: (response) => {
+      queryClient.setQueryData(taskQueryKeys.detail(response.task.id), response.task);
+      invalidateTaskViews(queryClient);
     },
   });
 }
