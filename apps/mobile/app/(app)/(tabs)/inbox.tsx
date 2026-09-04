@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useRouter } from "expo-router";
-import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { mobileTheme } from "@/components/mobile/theme";
 import { AppScreen } from "@/components/mobile/ui/AppScreen";
@@ -136,6 +136,63 @@ export default function InboxScreen() {
     }
   }
 
+  function renderInboxItem({ item }: { item: InboxItem }) {
+    return (
+      <Card style={styles.itemCard}>
+        <Text style={styles.itemTitle}>{item.title}</Text>
+        <Text style={styles.itemMeta}>
+          {item.type} · {item.status}
+          {item.projectName ? ` · ${item.projectName}` : " · No project"}
+        </Text>
+        {item.body ? <Text style={styles.itemBody}>{item.body}</Text> : null}
+        {item.tags?.length ? <Text style={styles.itemTags}>{item.tags.join(", ")}</Text> : null}
+        <View style={styles.itemActions}>
+          {item.status === "archived" ? (
+            <Button
+              title="Restore"
+              variant="secondary"
+              size="sm"
+              disabled={isMutating}
+              loading={restoreMutation.isPending}
+              onPress={() => handleRestore(item.id)}
+              testID={`inbox-restore-${item.id}`}
+            />
+          ) : item.status === "converted" ? (
+            <FeedbackBanner message="Converted to task" tone="neutral" testID={`inbox-converted-${item.id}`} />
+          ) : (
+            <>
+              <Button
+                title="Edit"
+                variant="ghost"
+                size="sm"
+                disabled={isMutating}
+                onPress={() => setEditItem(item)}
+                testID={`inbox-edit-${item.id}`}
+              />
+              <Button
+                title="Convert"
+                variant="secondary"
+                size="sm"
+                disabled={isMutating}
+                onPress={() => setConvertItem(item)}
+                testID={`inbox-convert-${item.id}`}
+              />
+              <Button
+                title="Archive"
+                variant="secondary"
+                size="sm"
+                disabled={isMutating}
+                loading={archiveMutation.isPending}
+                onPress={() => handleArchive(item.id)}
+                testID={`inbox-archive-${item.id}`}
+              />
+            </>
+          )}
+        </View>
+      </Card>
+    );
+  }
+
   if (isLoading) {
     return (
       <AppScreen testID="inbox-loading">
@@ -159,33 +216,39 @@ export default function InboxScreen() {
   return (
     <AppScreen testID="inbox-screen" padded={false}>
       <View style={styles.screenWrap}>
-        <ScrollView
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={renderInboxItem}
           contentContainerStyle={[styles.content, { paddingBottom: contentBottomPadding }]}
           refreshControl={<RefreshControl refreshing={inboxQuery.isRefetching} onRefresh={() => inboxQuery.refetch()} />}
-        >
-          <ScreenHeader eyebrow="Capture" title="Inbox" description="Loose ideas before they become tasks." />
+          ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
+          ListHeaderComponent={(
+            <View style={styles.headerContent}>
+              <ScreenHeader eyebrow="Capture" title="Inbox" description="Loose ideas before they become tasks." />
 
-          <SegmentedControl
-            disabled={isMutating}
-            onChange={(nextView) => {
-              setError(null);
-              setSuccess(null);
-              setView(nextView);
-            }}
-            options={INBOX_VIEW_OPTIONS}
-            testID="inbox-view-control"
-            value={view}
-          />
+              <SegmentedControl
+                disabled={isMutating}
+                onChange={(nextView) => {
+                  setError(null);
+                  setSuccess(null);
+                  setView(nextView);
+                }}
+                options={INBOX_VIEW_OPTIONS}
+                testID="inbox-view-control"
+                value={view}
+              />
 
-          {error ? <FeedbackBanner tone="danger" message={error} testID="inbox-error-banner" /> : null}
-          {success ? <FeedbackBanner tone="success" message={success} testID="inbox-success-banner" /> : null}
+              {error ? <FeedbackBanner tone="danger" message={error} testID="inbox-error-banner" /> : null}
+              {success ? <FeedbackBanner tone="success" message={success} testID="inbox-success-banner" /> : null}
 
-          <Card style={styles.hintCard} testID="inbox-hint-card">
-            <Text style={styles.hintTitle}>Quick capture</Text>
-            <Text style={styles.hintText}>Tap Capture to save a raw thought without choosing a Project. Retry is safe — same tap won&apos;t duplicate.</Text>
-          </Card>
-
-          {items.length === 0 ? (
+              <Card style={styles.hintCard} testID="inbox-hint-card">
+                <Text style={styles.hintTitle}>Quick capture</Text>
+                <Text style={styles.hintText}>Tap Capture to save a raw thought without choosing a Project. Retry is safe — same tap won&apos;t duplicate.</Text>
+              </Card>
+            </View>
+          )}
+          ListEmptyComponent={(
             <Card style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>
                 {view === "archived" ? "No archived ideas" : view === "all" ? "Inbox is empty" : "No active ideas"}
@@ -196,65 +259,8 @@ export default function InboxScreen() {
                   : "Capture a thought to keep it separate from tasks until you are ready to process it."}
               </Text>
             </Card>
-          ) : (
-            <View style={styles.list}>
-              {items.map((item: InboxItem) => (
-                <Card key={item.id} style={styles.itemCard}>
-                  <Text style={styles.itemTitle}>{item.title}</Text>
-                  <Text style={styles.itemMeta}>
-                    {item.type} · {item.status}
-                    {item.projectName ? ` · ${item.projectName}` : " · No project"}
-                  </Text>
-                  {item.body ? <Text style={styles.itemBody}>{item.body}</Text> : null}
-                  {item.tags?.length ? <Text style={styles.itemTags}>{item.tags.join(", ")}</Text> : null}
-                  <View style={styles.itemActions}>
-                    {item.status === "archived" ? (
-                      <Button
-                        title="Restore"
-                        variant="secondary"
-                        size="sm"
-                        disabled={isMutating}
-                        loading={restoreMutation.isPending}
-                        onPress={() => handleRestore(item.id)}
-                        testID={`inbox-restore-${item.id}`}
-                      />
-                    ) : item.status === "converted" ? (
-                      <FeedbackBanner message="Converted to task" tone="neutral" testID={`inbox-converted-${item.id}`} />
-                    ) : (
-                      <>
-                        <Button
-                          title="Edit"
-                          variant="ghost"
-                          size="sm"
-                          disabled={isMutating}
-                          onPress={() => setEditItem(item)}
-                          testID={`inbox-edit-${item.id}`}
-                        />
-                        <Button
-                          title="Convert"
-                          variant="secondary"
-                          size="sm"
-                          disabled={isMutating}
-                          onPress={() => setConvertItem(item)}
-                          testID={`inbox-convert-${item.id}`}
-                        />
-                        <Button
-                          title="Archive"
-                          variant="secondary"
-                          size="sm"
-                          disabled={isMutating}
-                          loading={archiveMutation.isPending}
-                          onPress={() => handleArchive(item.id)}
-                          testID={`inbox-archive-${item.id}`}
-                        />
-                      </>
-                    )}
-                  </View>
-                </Card>
-              ))}
-            </View>
           )}
-        </ScrollView>
+        />
 
         <FloatingActionButton
           label="Capture idea"
@@ -291,9 +297,12 @@ export default function InboxScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    gap: mobileTheme.spacing.md,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
+  },
+  headerContent: {
+    gap: mobileTheme.spacing.md,
+    marginBottom: mobileTheme.spacing.md,
   },
   hintCard: {
     gap: 6,
@@ -342,6 +351,9 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.textSubtle,
     fontSize: 12,
   },
+  itemSeparator: {
+    height: mobileTheme.spacing.md,
+  },
   itemTags: {
     color: mobileTheme.colors.textMuted,
     fontSize: 12,
@@ -351,9 +363,6 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 15,
     fontWeight: mobileTheme.font.semibold,
-  },
-  list: {
-    gap: mobileTheme.spacing.md,
   },
   screenWrap: {
     flex: 1,
