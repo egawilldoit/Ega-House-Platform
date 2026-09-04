@@ -71,3 +71,28 @@ test("stays clean when there are no shell actions", () => {
   assert.equal(metrics.highestPrioritySignal, "clear");
   assert.equal(metrics.reviewMissing, false);
 });
+
+test("surfaces the unread notification count without disturbing task signals", () => {
+  const metrics = buildWorkspaceShellMetrics({
+    hasActiveTimer: false,
+    blockedTaskCount: 0,
+    overdueTaskCount: 0,
+    dueTodayTaskCount: 0,
+    hasCurrentWeekReview: true,
+    unreadNotificationCount: 3,
+  });
+
+  assert.equal(metrics.unreadNotificationCount, 3);
+  assert.equal(metrics.highestPrioritySignal, "clear");
+  assert.equal(metrics.totalActionCount, 0);
+
+  const missing = buildWorkspaceShellMetrics({
+    hasActiveTimer: false,
+    blockedTaskCount: 0,
+    overdueTaskCount: 0,
+    dueTodayTaskCount: 0,
+    hasCurrentWeekReview: true,
+  });
+
+  assert.equal(missing.unreadNotificationCount, 0);
+});

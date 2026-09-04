@@ -71,3 +71,15 @@ Runtime authentication, applied migration state, and cross-user production RLS r
 - **Product gate:** PASS. Notifications is documented as a web workflow with navigation, unread discovery, task targeting, mark-read actions, empty/error/submitting states, and no duplicate Inbox or business-policy owner.
 - **Review gate:** PASS. Fresh exact-range review found no Critical or Important findings.
 - **Publication gate:** PASS. The exact SHA has no Vercel deployment record; the API Vercel status is `Canceled by Ignored Build Step`; no production deployment or database mutation occurred.
+
+## Reconciliation with current main (2026-09-04)
+
+After Waves 02 (`a05a6bd6`) and 03 (`b71d86a6`) merged, the Wave 04 branch was rebuilt
+directly on current `main` (`b71d86a6`) by replaying only the nine Wave 04 commits
+(`41cbbe1a..d0b53242`). No Wave 00–03 history was carried over and no current-main
+functionality was reverted: the eight overlapping non-web files (server purge transport,
+api-client purge re-exports, shared purge contracts, and their tests) are byte-identical
+to current `main`, which already converges purge DTOs under `@ega/contracts/projects`.
+The final diff is exactly the 16 intended Wave 04 files (web notification center plus
+this record). A focused shell-metrics test pinning the unread-count mapping was added
+during reconciliation; no production behavior was changed to satisfy any test.
