@@ -1,6 +1,7 @@
 # Notifications Subsystem V1 — Architecture & Runtime
 
-**Status:** Implemented on branch `feat/notification-system-v1` (not yet merged, migration not applied to production, no real-device push proof yet). Last updated 2026-08-27.
+**Status:** Implemented in the current repository (migration and real-device
+push remain externally unverified). Last updated 2026-09-03.
 
 ## 1. Topology
 
@@ -95,7 +96,7 @@ All routes derive `actor` from verified bearer token, use request-scoped Supabas
 
 ## 8. Mobile Native Layer
 
-- `expo-notifications@~0.32.17` and `expo-crypto@~15.0.9` installed via `npx expo install` (SDK 54 compatible), no EAS, no `eas.json` added, no `ExpoPushToken`.
+- `expo-notifications@~0.32.17` and `expo-crypto@~15.0.9` are installed via `npx expo install` (SDK 54 compatible). The repository contains minimal `apps/mobile/eas.json` CLI metadata, but no EAS Build/Submit/Update workflow or `ExpoPushToken` path.
 - `app.json` retains `com.ega_house.mobile`; notifications use native FCM token via `Notifications.getDevicePushTokenAsync()`.
 - `lib/notifications/`:
   - `installation.ts` — `getOrCreateInstallationId()` persisted in `expo-secure-store` key `ega.notification.installation_id`, generated via `expo-crypto.randomUUID()` or `getRandomBytesAsync` fallback.
@@ -163,7 +164,7 @@ All UI reuses `mobileTheme.colors.background/surface/accent` glass primitives; n
 
 - controlled `0045` migrate on staging → prod
 - deploy backend (Hono + web cron) with FCM env
-- `eas` **not** used; build release APK via Blacksmith `mobile-delivery` (`gh workflow` or `scripts/ci/mobile-delivery`)
+- EAS Build/Submit/Update is **not** used; build the release APK via Blacksmith `mobile-delivery` (`gh workflow` or `scripts/ci/mobile-delivery`). `apps/mobile/eas.json` is CLI metadata only.
 - install on real Android device (package `com.ega_house.mobile`)
 - login, grant notification permission contextually via reminder composer, verify `POST /api/notifications/devices` with RPC claim
 - schedule reminder with `Push` / `Tomorrow 09:00` → `POST /api/tasks/:id/reminders {remindAt, deliveryMode:'push'}`
@@ -175,7 +176,7 @@ All UI reuses `mobileTheme.colors.background/surface/accent` glass primitives; n
 
 ## 16. Out of Scope / YAGNI
 
-No `eas.json`, no `ExpoPushToken`, no `EAS Build/Submit/Update`, no iOS/APNs, no web push, no quiet hours, no daily briefing, no goal/timer/review notifications, no rich actions, no analytics platform, no Kafka/Redis/broker, no microservices.
+No `ExpoPushToken`, no EAS Build/Submit/Update, no iOS/APNs, no web push, no quiet hours, no daily briefing, no goal/timer/review notifications, no rich actions, no analytics platform, no Kafka/Redis/broker, no microservices. The minimal `apps/mobile/eas.json` file does not configure a release workflow.
 
 Adding a future `timer` notification is `createNotification({type:'timer', ...})` plus delivery; adding APNs is a new `ApnsPushProvider` behind the same `PushProvider` port.
 

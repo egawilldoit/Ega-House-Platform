@@ -27,13 +27,13 @@ Conventions used by every step:
 | --- | --- | --- | --- | --- | --- |
 | 1 | Install | `adb -s $SERIAL install -r ega-house-debug.apk` | command output, APK sha256sum | exit 0, `Success` | none |
 | 2 | Launch | `adb -s $SERIAL shell am start -n "$(adb -s $SERIAL shell cmd package resolve-activity --brief -c android.intent.category.LAUNCHER $PKG \| tail -1)"`; after 10s `adb -s $SERIAL shell pidof $PKG` | resolved component, pid, logcat window, screenshot | activity starts, process alive ≥10s, no `FATAL EXCEPTION`, welcome/login UI on screen | none |
-| 3 | Login | Welcome → "Get started" → enter `$EMAIL`/`$PASSWORD` → tap "Login" | screenshot before/after, logcat (token exchange errors), HTTP host hit | lands on `(app)/(tabs)/tasks` with tab bar visible | API, creds |
+| 3 | Login | Welcome → "Get started" → enter `$EMAIL`/`$PASSWORD` → tap "Login" | screenshot before/after, logcat (token exchange errors), HTTP host hit | lands in the protected `(app)` tabs with the tab bar visible (Today is the default tab) | API, creds |
 | 4 | Session restore | Kill app (`am force-stop $PKG`), relaunch via step-2 launch command | screenshot of restored screen, secure-store presence check in logcat is NOT required | app opens directly into `(app)` tabs without prompting login (SecureStore key `ega.mobile.session`) | API, creds |
-| 5 | Tasks list | Tap "Tasks" tab | screenshot, `uiautomator dump` XML | task rows render (or honest empty state); no error banner | API, creds |
+| 5 | Tasks list | Tap "Work" tab, leave mode on "Tasks" | screenshot, `uiautomator dump` XML | task rows render (or honest empty state); no error banner | API, creds |
 | 6 | Today view | Tap "Today" tab | screenshot, dump XML | today content renders consistent with task/goal data | API, creds |
 | 7 | Create/edit task | Tasks → create flow (`/(app)/tasks/create`): fill title, save; reopen and edit title | screenshots of form + list, mutation result in UI | new task appears in list; edit persists after pull-to-refresh | API, creds |
 | 8 | Goals | Tap "Goals" tab; open `goals/[id]` detail and `goals/create` | screenshots | goal detail/create screens render without crash | API, creds |
-| 9 | Projects | Tap "Projects" tab; open `projects/[slug]` detail and `projects/create` | screenshots | project screens render without crash | API, creds |
+| 9 | Projects | Tap "Work" tab → select "Projects" mode; open `projects/[slug]` detail and `projects/create` | screenshots | project screens render without crash | API, creds |
 | 10 | Timer start | Timer tab → select open task → tap "Start timer" | screenshot with running clock, logcat window, recorded `startedAt` shown in UI | active session appears with elapsed clock ticking | API, creds |
 | 11 | Background | Press Home (or `input keyevent KEYCODE_HOME`); wait 60–120s; optionally toggle airplane-safe idle | timestamps: background at T0, return at T1 | process still alive (`pidof $PKG`); no fatal in logcat during background | API, creds |
 | 12 | Return to foreground | Re-launch via recents or `am start` again | screenshot immediately on return | app resumes to timer screen without restart-from-splash | none |

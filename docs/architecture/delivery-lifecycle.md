@@ -68,15 +68,17 @@ Failure/stop states are `VALIDATION_FAILED`, `PR_FAILED`, `NEEDS_HUMAN`, `FAILED
 `merged` is observed from GitHub. It is not equivalent to production deployment.
 
 The checked-in web and API `vercel.json` files declare Git deployments disabled
-for `"*"` and enabled only for `main`; repository declarations do not prove the
-connected Vercel projects or Git integration enforce that policy. Independent
-external evidence records API deployment `6233638086` for feature-branch HEAD
-`21d9febba61c20ec45f7ff68f644b684f23335c3`. Wave 00 remains blocked pending
-authenticated verification and correction of those external settings. Runner
-production observation remains useful after merge: it can record an exact-SHA
-production match when Vercel credentials are configured, but production
-evidence never substitutes for a required preview and never authorizes a
-deployment.
+for `"*"` and enabled only for `main`. Wave 00 added a fail-closed Vercel
+Ignored Build Step for both project roots: only `VERCEL_GIT_COMMIT_REF=main`
+may build, while an absent or non-main ref is skipped. The exact Wave 00 API
+head `6f71ebdf6f67f8c77f371b28eefba4487a0930b8` received the observed external
+status `Canceled by Ignored Build Step`; no successful feature-branch preview
+was produced. This proves the repository/build guard and its external smoke
+behavior, not the complete connected-project settings or a production deploy.
+Runner production observation remains useful after merge: it can record an
+exact-SHA production match when Vercel credentials are configured, but
+production evidence never substitutes for a required preview and never
+authorizes a deployment.
 
 ## Repair semantics
 
