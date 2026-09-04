@@ -4,7 +4,13 @@ import { getLocalDayWindow } from "@ega/domain";
 import { isTaskCanceledStatus, isTaskCompletedStatus } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
-import { applicationFailure, applicationSuccess, type ApplicationResult, type RepositoryResult } from "../shared/result";
+import {
+  applicationFailure,
+  applicationSuccess,
+  type ApplicationErrorCode,
+  type ApplicationResult,
+  type RepositoryResult,
+} from "../shared/result";
 import type { OperatorProposalTaskVersion } from "./proposal";
 import { getOperatorProposalHashInput, type OperatorProposal } from "./proposal";
 
@@ -22,6 +28,9 @@ export const OPERATOR_PROPOSAL_STATUSES = [
   "stale",
   "dismissed",
 ] as const;
+
+export const OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT = 50;
+export const OPERATOR_PROPOSAL_LIST_MAX_LIMIT = 200;
 
 export type OperatorProposalStatus = (typeof OPERATOR_PROPOSAL_STATUSES)[number];
 
@@ -127,7 +136,7 @@ export interface OperatorTaskLookupPort {
 export interface OperatorTodayMutationPort {
   setPlannedDate(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; plannedForDate: string | null }>,
+    input: Readonly<{ taskId: string; plannedForDate: string | null; expectedUpdatedAt?: string }>,
   ): Promise<RepositoryResult<unknown>>;
 }
 
@@ -322,7 +331,10 @@ export async function validateProposedTasksShared(
   actor: AuthenticatedActor,
   lookup: OperatorTaskLookupPort,
   proposedTaskIds: string[],
-): Promise<{ ok: true; versions: OperatorProposalTaskVersion[] } | { ok: false; message: string }> {
+): Promise<
+  | { ok: true; versions: OperatorProposalTaskVersion[] }
+  | { ok: false; message: string; code: "notFound" | "validation" | "unknown" }
+> {
   if (proposedTaskIds.length === 0) {
     // Sparse day: allow empty, but still need to validate nothing
     return { ok: true, versions: [] };
@@ -330,10 +342,10 @@ export async function validateProposedTasksShared(
   const versions: OperatorProposalTaskVersion[] = [];
   for (const id of proposedTaskIds) {
     const result = await lookup.getTask(actor, id);
-    if (!result.ok) return { ok: false, message: "Unable to validate Task state right now." };
-    if (!result.value) return { ok: false, message: `Task ${id} not found.` };
+    if (!result.ok) return { ok: false, message: "Unable to validate Task state right now.", code: "unknown" };
+    if (!result.value) return { ok: false, message: `Task ${id} not found.`, code: "notFound" };
     const task = result.value;
-    if (isTaskExcluded(task)) return { ok: false, message: `Task ${id} is not actionable.` };
+    if (isTaskExcluded(task)) return { ok: false, message: `Task ${id} is not actionable.`, code: "validation" };
     // Owner isolation: lookup already scoped to actor, but if task belongs to other owner, it would be null (not found) — already handled
     versions.push({
       id: task.id,
@@ -386,6 +398,50 @@ export async function detectStale(
 // Use cases
 // ---------------------------------------------------------------------------
 
+function operatorFailure<T = never>(message: string, code: ApplicationErrorCode = "validation"): ApplicationResult<T> {
+  return applicationFailure(message, code);
+}
+
+async function markOperatorProposalStale(
+  actor: AuthenticatedActor,
+  proposalRepo: OperatorProposalRepository,
+  proposal: OperatorProposalRecord,
+  targetIds: string[],
+  reason: string,
+): Promise<ApplicationResult<OperatorProposalRecord>> {
+  const nowIso = new Date().toISOString();
+  const updated = await proposalRepo.updateProposal(actor, proposal.id, {
+    status: "stale",
+    updatedAt: nowIso,
+    appliedAt: nowIso,
+    result: {
+      appliedTaskIds: [],
+      skippedTaskIds: [],
+      failedTaskIds: targetIds.map((id) => ({ id, reason })),
+      staleDetected: true,
+      appliedAt: nowIso,
+      status: "stale",
+    },
+  });
+  if (!updated.ok) return operatorFailure("Unable to mark proposal as stale.", "unknown");
+  return applicationSuccess(updated.value);
+}
+
+export function parseOperatorProposalListLimit(raw: string | undefined): ApplicationResult<number> {
+  if (raw === undefined) return applicationSuccess(OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT);
+
+  const value = raw.trim();
+  if (!/^\d+$/.test(value)) {
+    return operatorFailure(`limit must be an integer between 1 and ${OPERATOR_PROPOSAL_LIST_MAX_LIMIT}.`);
+  }
+
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > OPERATOR_PROPOSAL_LIST_MAX_LIMIT) {
+    return operatorFailure(`limit must be an integer between 1 and ${OPERATOR_PROPOSAL_LIST_MAX_LIMIT}.`);
+  }
+  return applicationSuccess(limit);
+}
+
 export async function createOperatorProposal(
   actor: AuthenticatedActor,
   proposalRepo: OperatorProposalRepository,
@@ -401,21 +457,21 @@ export async function createOperatorProposal(
   }>,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const localDate = String(input.localDate ?? "").trim();
-  if (!isValidDateString(localDate)) return applicationFailure("Local date is invalid. Expected YYYY-MM-DD.");
+  if (!isValidDateString(localDate)) return operatorFailure("Local date is invalid. Expected YYYY-MM-DD.");
 
   const timeContextId = String(input.timeContextId ?? "").trim();
-  if (!timeContextId) return applicationFailure("Time context is required.");
-  if (timeContextId.length > 256) return applicationFailure("Time context id is too long.");
+  if (!timeContextId) return operatorFailure("Time context is required.");
+  if (timeContextId.length > 256) return operatorFailure("Time context id is too long.");
 
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
-  if (!idempotencyKey) return applicationFailure("Idempotency key is required.");
+  if (!idempotencyKey) return operatorFailure("Idempotency key is required.");
 
   const proposedIdsValidation = validateProposedTaskIds(input.proposedTaskIds);
-  if (!proposedIdsValidation.ok) return applicationFailure(proposedIdsValidation.message);
+  if (!proposedIdsValidation.ok) return operatorFailure(proposedIdsValidation.message);
   const proposedTaskIds = proposedIdsValidation.value;
 
   const parentProposalId = input.parentProposalId ? String(input.parentProposalId).trim() : null;
-  if (parentProposalId && !parentProposalId) return applicationFailure("Parent proposal id is invalid.");
+  if (parentProposalId && !parentProposalId) return operatorFailure("Parent proposal id is invalid.");
 
   const aiRefRaw = input.aiRef !== undefined && input.aiRef !== null ? String(input.aiRef).trim() : null;
   const aiRef = aiRefRaw && aiRefRaw.length > 0 ? aiRefRaw.slice(0, 1024) : null;
@@ -433,18 +489,18 @@ export async function createOperatorProposal(
 
   // Idempotency: same key + same semantic request → same result, same key + different semantic request → conflict
   const existingByKey = await proposalRepo.findByIdempotencyKey(actor, idempotencyKey);
-  if (!existingByKey.ok) return applicationFailure("Unable to check proposal idempotency right now.");
+  if (!existingByKey.ok) return operatorFailure("Unable to check proposal idempotency right now.", "unknown");
   if (existingByKey.value) {
     const storedFingerprint = computeStoredCreateFingerprint(existingByKey.value);
     if (storedFingerprint === incomingFingerprint) {
       return applicationSuccess(existingByKey.value);
     }
-    return applicationFailure("Idempotency key conflict: same key with different request payload.");
+    return operatorFailure("Idempotency key conflict: same key with different request payload.", "conflict");
   }
 
   // Shared validation — LLM/client cannot bypass
   const validation = await validateProposedTasksShared(actor, taskLookup, proposedTaskIds);
-  if (!validation.ok) return applicationFailure(validation.message);
+  if (!validation.ok) return operatorFailure(validation.message, validation.code);
   const taskVersions = validation.versions;
 
   // Compute baseline hash deterministically
@@ -463,11 +519,11 @@ export async function createOperatorProposal(
   let status: OperatorProposalStatus = "generated";
   if (parentProposalId) {
     const parentResult = await proposalRepo.findById(actor, parentProposalId);
-    if (!parentResult.ok) return applicationFailure("Unable to load parent proposal.");
-    if (!parentResult.value) return applicationFailure("Parent proposal not found.");
+    if (!parentResult.ok) return operatorFailure("Unable to load parent proposal.", "unknown");
+    if (!parentResult.value) return operatorFailure("Parent proposal not found.", "notFound");
     const parent = parentResult.value;
     // Parent must belong to same owner (repo already scopes, but double-check)
-    if (parent.ownerUserId !== actor.userId) return applicationFailure("Parent proposal not found.");
+    if (parent.ownerUserId !== actor.userId) return operatorFailure("Parent proposal not found.", "notFound");
     revision = parent.revision + 1;
     parentId = parent.id;
     status = "revised";
@@ -494,10 +550,10 @@ export async function createOperatorProposal(
         if (storedFingerprint === incomingFingerprint) {
           return applicationSuccess(retry.value);
         }
-        return applicationFailure("Idempotency key conflict: same key with different request payload.");
+        return operatorFailure("Idempotency key conflict: same key with different request payload.", "conflict");
       }
     }
-    return applicationFailure("Unable to create proposal right now.");
+    return operatorFailure("Unable to create proposal right now.", "unknown");
   }
   return applicationSuccess(createResult.value);
 }
@@ -514,11 +570,11 @@ export async function reviseOperatorProposal(
   }>,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const proposalId = String(input.proposalId ?? "").trim();
-  if (!proposalId) return applicationFailure("Proposal id is required.");
+  if (!proposalId) return operatorFailure("Proposal id is required.");
   const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey);
-  if (!idempotencyKey) return applicationFailure("Idempotency key is required.");
+  if (!idempotencyKey) return operatorFailure("Idempotency key is required.");
   const proposedIdsValidation = validateProposedTaskIds(input.proposedTaskIds);
-  if (!proposedIdsValidation.ok) return applicationFailure(proposedIdsValidation.message);
+  if (!proposedIdsValidation.ok) return operatorFailure(proposedIdsValidation.message);
 
   const aiRef = normalizeAiRef(input.aiRef);
   const incomingFingerprint = computeReviseProposalRequestFingerprint({
@@ -529,24 +585,24 @@ export async function reviseOperatorProposal(
 
   // Idempotency: same key + same semantic request → same result, different → conflict
   const existingByKey = await proposalRepo.findByIdempotencyKey(actor, idempotencyKey);
-  if (!existingByKey.ok) return applicationFailure("Unable to check idempotency.");
+  if (!existingByKey.ok) return operatorFailure("Unable to check idempotency.", "unknown");
   if (existingByKey.value) {
     const storedFingerprint = computeStoredReviseFingerprint(existingByKey.value);
     if (storedFingerprint === incomingFingerprint) {
       return applicationSuccess(existingByKey.value);
     }
-    return applicationFailure("Idempotency key conflict: same key with different revise payload.");
+    return operatorFailure("Idempotency key conflict: same key with different revise payload.", "conflict");
   }
 
   const parentResult = await proposalRepo.findById(actor, proposalId);
-  if (!parentResult.ok) return applicationFailure("Unable to load proposal.");
-  if (!parentResult.value) return applicationFailure("Proposal not found.");
+  if (!parentResult.ok) return operatorFailure("Unable to load proposal.", "unknown");
+  if (!parentResult.value) return operatorFailure("Proposal not found.", "notFound");
   const parent = parentResult.value;
-  if (isTerminalStatus(parent.status)) return applicationFailure("Cannot revise a terminal proposal.");
+  if (isTerminalStatus(parent.status)) return operatorFailure("Cannot revise a terminal proposal.");
 
   // Shared validation
   const validation = await validateProposedTasksShared(actor, taskLookup, proposedIdsValidation.value);
-  if (!validation.ok) return applicationFailure(validation.message);
+  if (!validation.ok) return operatorFailure(validation.message, validation.code);
 
   const baselineHash = computeOperatorBaselineHash({
     version: "1",
@@ -577,10 +633,10 @@ export async function reviseOperatorProposal(
         if (storedFingerprint === incomingFingerprint) {
           return applicationSuccess(retry.value);
         }
-        return applicationFailure("Idempotency key conflict: same key with different revise payload.");
+        return operatorFailure("Idempotency key conflict: same key with different revise payload.", "conflict");
       }
     }
-    return applicationFailure("Unable to revise proposal.");
+    return operatorFailure("Unable to revise proposal.", "unknown");
   }
   return applicationSuccess(createResult.value);
 }
@@ -592,17 +648,17 @@ export async function approveOperatorProposal(
   input: Readonly<{ proposalId: unknown }>,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const proposalId = String(input.proposalId ?? "").trim();
-  if (!proposalId) return applicationFailure("Proposal id is required.");
+  if (!proposalId) return operatorFailure("Proposal id is required.");
 
   const found = await proposalRepo.findById(actor, proposalId);
-  if (!found.ok) return applicationFailure("Unable to load proposal.");
-  if (!found.value) return applicationFailure("Proposal not found.");
+  if (!found.ok) return operatorFailure("Unable to load proposal.", "unknown");
+  if (!found.value) return operatorFailure("Proposal not found.", "notFound");
   const proposal = found.value;
 
   if (proposal.status === "approved") return applicationSuccess(proposal);
-  if (isTerminalStatus(proposal.status)) return applicationFailure(`Cannot approve proposal in ${proposal.status} state.`);
+  if (isTerminalStatus(proposal.status)) return operatorFailure(`Cannot approve proposal in ${proposal.status} state.`);
   if (proposal.status !== "generated" && proposal.status !== "revised") {
-    return applicationFailure(`Cannot approve proposal in ${proposal.status} state.`);
+    return operatorFailure(`Cannot approve proposal in ${proposal.status} state.`);
   }
 
   // Stale detection before mutation
@@ -620,7 +676,7 @@ export async function approveOperatorProposal(
         status: "stale",
       },
     });
-    if (!updated.ok) return applicationFailure("Unable to mark proposal as stale.");
+    if (!updated.ok) return operatorFailure("Unable to mark proposal as stale.", "unknown");
     return applicationSuccess(updated.value);
   }
 
@@ -630,7 +686,7 @@ export async function approveOperatorProposal(
     approvedAt: nowIso,
     updatedAt: nowIso,
   });
-  if (!updated.ok) return applicationFailure("Unable to approve proposal.");
+  if (!updated.ok) return operatorFailure("Unable to approve proposal.", "unknown");
   return applicationSuccess(updated.value);
 }
 
@@ -642,8 +698,10 @@ export async function approveOperatorProposal(
  *   proposal in `applying` with no `result`. Retry with same proposalId resumes deterministically:
  *   each Task is checked for `plannedForDate === localDate` before mutating, so already-applied
  *   tasks are counted as applied without duplicate writes (mutation receipt = Task state).
- * - Stale detection is evaluated only before claim (when status `approved`), not on `applying`
- *   resume, because own prior mutations change `plannedForDate` and would otherwise appear stale.
+ * - Approved proposals are checked for staleness before claim and immediately after a
+ *   successful claim; the second check closes the race between the read and claim.
+ * - `applying` resume skips stale checks because own prior mutations change `plannedForDate`
+ *   and would otherwise appear stale.
  * - Finalization writes `result` + `applied`/`partially_applied`; retry after finalization is
  *   idempotent returning same `result` without extra mutations.
  * - Operation identity is `proposalId` (single writer per proposal); Task application is
@@ -657,11 +715,11 @@ export async function applyOperatorProposal(
   input: Readonly<{ proposalId: unknown; idempotencyKey?: unknown; taskIds?: unknown }>,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const proposalId = String(input.proposalId ?? "").trim();
-  if (!proposalId) return applicationFailure("Proposal id is required.");
+  if (!proposalId) return operatorFailure("Proposal id is required.");
 
   const found = await proposalRepo.findById(actor, proposalId);
-  if (!found.ok) return applicationFailure("Unable to load proposal.");
-  if (!found.value) return applicationFailure("Proposal not found.");
+  if (!found.ok) return operatorFailure("Unable to load proposal.", "unknown");
+  if (!found.value) return operatorFailure("Proposal not found.", "notFound");
   let proposal = found.value;
 
   // Idempotency: if already terminal, return same result (two devices same revision cannot apply twice)
@@ -670,51 +728,55 @@ export async function applyOperatorProposal(
   }
 
   if (proposal.status !== "approved" && proposal.status !== "applying") {
-    return applicationFailure(`Cannot apply proposal in ${proposal.status} state. Approve first.`);
+    return operatorFailure(`Cannot apply proposal in ${proposal.status} state. Approve first.`);
   }
 
   // Explicit partial apply: validate requested subset is within proposal (LLM cannot inject arbitrary ids)
   const explicitValidation = validateExplicitTaskIds(proposal.proposedTaskIds, input.taskIds);
-  if (!explicitValidation.ok) return applicationFailure(explicitValidation.message);
+  if (!explicitValidation.ok) return operatorFailure(explicitValidation.message);
   const explicitTaskIds = explicitValidation.value;
 
   if (proposal.status === "approved") {
     // Stale detection before claim — compares stored taskVersions vs current, scoped to explicit ids.
-    // Evaluated only before claim; resume after crash skips this because own mutations would appear stale.
     const staleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
     if (staleCheck.stale) {
-      const nowIso = new Date().toISOString();
       const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
-      const updated = await proposalRepo.updateProposal(actor, proposal.id, {
-        status: "stale",
-        updatedAt: nowIso,
-        appliedAt: nowIso,
-        result: {
-          appliedTaskIds: [],
-          skippedTaskIds: [],
-          failedTaskIds: targetIds.map((id) => ({ id, reason: staleCheck.reason ?? "stale" })),
-          staleDetected: true,
-          appliedAt: nowIso,
-          status: "stale",
-        },
-      });
-      if (!updated.ok) return applicationFailure("Unable to mark proposal as stale.");
-      return applicationSuccess(updated.value);
+      return markOperatorProposalStale(
+        actor,
+        proposalRepo,
+        proposal,
+        targetIds,
+        staleCheck.reason ?? "stale",
+      );
     }
 
     // Atomic claim: approved → applying. Only winner may mutate Tasks.
     const claim = await proposalRepo.claimApprovedProposalForApply(actor, proposal.id);
-    if (!claim.ok) return applicationFailure("Unable to claim proposal for apply.");
+    if (!claim.ok) return operatorFailure("Unable to claim proposal for apply.", "unknown");
     if (!claim.value) {
       // Lost race — another device claimed, or status no longer approved
       const latest = await proposalRepo.findById(actor, proposal.id);
       if (latest.ok && latest.value) {
         if (isTerminalStatus(latest.value.status)) return applicationSuccess(latest.value);
-        if (latest.value.status === "applying") return applicationFailure("Proposal is already being applied.");
+        if (latest.value.status === "applying") return operatorFailure("Proposal is already being applied.", "conflict");
       }
-      return applicationFailure("Proposal is already being applied.");
+      return operatorFailure("Proposal is already being applied.", "unknown");
     }
     proposal = claim.value;
+
+    // A Task can change after the first read but before the claim completes. Re-check
+    // after claiming authority so this writer cannot apply an obsolete proposal.
+    const postClaimStaleCheck = await detectStale(actor, taskLookup, proposal, explicitTaskIds);
+    if (postClaimStaleCheck.stale) {
+      const targetIds = explicitTaskIds.length ? explicitTaskIds : proposal.proposedTaskIds;
+      return markOperatorProposalStale(
+        actor,
+        proposalRepo,
+        proposal,
+        targetIds,
+        postClaimStaleCheck.reason ?? "stale",
+      );
+    }
   } else {
     // Status is `applying` — recoverable in-progress. Crash after claim leaves no `result`.
     // Resume deterministically without re-evaluating stale (own `plannedForDate` mutations would pollute check).
@@ -757,6 +819,7 @@ export async function applyOperatorProposal(
     const mutation = await todayMutation.setPlannedDate(actor, {
       taskId,
       plannedForDate: proposal.localDate,
+      expectedUpdatedAt: taskCheck.value.updatedAt,
     });
     if (!mutation.ok) {
       if (mutation.error.code === "conflict") {
@@ -805,7 +868,7 @@ export async function applyOperatorProposal(
     updatedAt: nowIso,
     result,
   });
-  if (!finalUpdate.ok) return applicationFailure("Unable to finalize proposal apply.");
+  if (!finalUpdate.ok) return operatorFailure("Unable to finalize proposal apply.", "unknown");
   return applicationSuccess(finalUpdate.value);
 }
 
@@ -821,16 +884,16 @@ export async function dismissOperatorProposal(
   input: Readonly<{ proposalId: unknown }>,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const proposalId = String(input.proposalId ?? "").trim();
-  if (!proposalId) return applicationFailure("Proposal id is required.");
+  if (!proposalId) return operatorFailure("Proposal id is required.");
 
   const found = await proposalRepo.findById(actor, proposalId);
-  if (!found.ok) return applicationFailure("Unable to load proposal.");
-  if (!found.value) return applicationFailure("Proposal not found.");
+  if (!found.ok) return operatorFailure("Unable to load proposal.", "unknown");
+  if (!found.value) return operatorFailure("Proposal not found.", "notFound");
   const proposal = found.value;
 
   if (proposal.status === "dismissed") return applicationSuccess(proposal);
   if (isTerminalStatus(proposal.status)) {
-    return applicationFailure(`Cannot dismiss proposal in ${proposal.status} state.`);
+    return operatorFailure(`Cannot dismiss proposal in ${proposal.status} state.`);
   }
   // Dismissal produces no Task/Today mutation — do not touch task repos
 
@@ -848,7 +911,7 @@ export async function dismissOperatorProposal(
       status: "dismissed",
     },
   });
-  if (!updated.ok) return applicationFailure("Unable to dismiss proposal.");
+  if (!updated.ok) return operatorFailure("Unable to dismiss proposal.", "unknown");
   return applicationSuccess(updated.value);
 }
 
@@ -858,10 +921,10 @@ export async function getOperatorStoredProposal(
   proposalId: string,
 ): Promise<ApplicationResult<OperatorProposalRecord>> {
   const id = String(proposalId ?? "").trim();
-  if (!id) return applicationFailure("Proposal id is required.");
+  if (!id) return operatorFailure("Proposal id is required.");
   const found = await proposalRepo.findById(actor, id);
-  if (!found.ok) return applicationFailure("Unable to load proposal.");
-  if (!found.value) return applicationFailure("Proposal not found.");
+  if (!found.ok) return operatorFailure("Unable to load proposal.", "unknown");
+  if (!found.value) return operatorFailure("Proposal not found.", "notFound");
   return applicationSuccess(found.value);
 }
 
@@ -886,10 +949,10 @@ export async function getOperatorAcceptedBaseline(
   input: Readonly<{ proposalId: unknown }>,
 ): Promise<ApplicationResult<OperatorAcceptedBaseline>> {
   const proposalId = String(input.proposalId ?? "").trim();
-  if (!proposalId) return applicationFailure("Proposal id is required.");
+  if (!proposalId) return operatorFailure("Proposal id is required.");
   const found = await proposalRepo.findById(actor, proposalId);
-  if (!found.ok) return applicationFailure("Unable to load proposal.");
-  if (!found.value) return applicationFailure("Proposal not found.");
+  if (!found.ok) return operatorFailure("Unable to load proposal.", "unknown");
+  if (!found.value) return operatorFailure("Proposal not found.", "notFound");
   const p = found.value;
   // Baseline reconstructable: for applied/partially_applied, use result.appliedTaskIds, otherwise proposedTaskIds
   // For stale/dismissed, baseline is empty or original? Spec says baseline for later replanning is what actually applied, including partial, not merely original. So for not-applied, baseline is empty or original but flag status.
@@ -931,9 +994,9 @@ export async function cleanupOperatorProposals(
     if (Number.isFinite(parsed) && parsed > 0) retentionDays = parsed;
   }
   const now = input.now ?? new Date();
-  if (Number.isNaN(now.getTime())) return applicationFailure("Current time is invalid.");
+  if (Number.isNaN(now.getTime())) return operatorFailure("Current time is invalid.");
   const cutoff = new Date(now.getTime() - retentionDays * 86_400_000).toISOString();
   const result = await proposalRepo.deleteOlderThan(actor, cutoff);
-  if (!result.ok) return applicationFailure("Unable to cleanup proposals.");
+  if (!result.ok) return operatorFailure("Unable to cleanup proposals.", "unknown");
   return applicationSuccess(result.value);
 }

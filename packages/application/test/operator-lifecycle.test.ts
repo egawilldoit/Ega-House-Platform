@@ -64,13 +64,18 @@ class FakeTodayMutation implements OperatorTodayMutationPort {
   constructor(
     private readonly tasks: Map<string, TaskRow>,
     private readonly failIds: Set<string> = new Set(),
+    private readonly beforeWrite?: (input: { taskId: string; plannedForDate: string | null }) => void,
   ) {}
-  async setPlannedDate(actor: AuthenticatedActor, input: { taskId: string; plannedForDate: string | null }): Promise<RepositoryResult<unknown>> {
+  async setPlannedDate(actor: AuthenticatedActor, input: { taskId: string; plannedForDate: string | null; expectedUpdatedAt?: string }): Promise<RepositoryResult<unknown>> {
     this.calls.push({ actor: actor.userId, taskId: input.taskId, plannedForDate: input.plannedForDate });
+    this.beforeWrite?.(input);
     const row = this.tasks.get(input.taskId);
     if (!row) return { ok: false, error: { code: "unknown" } };
     if (row.ownerUserId !== actor.userId) return { ok: false, error: { code: "unknown" } };
     if (this.failIds.has(input.taskId)) return { ok: false, error: { code: "unknown" } };
+    if (input.expectedUpdatedAt !== undefined && row.updatedAt !== input.expectedUpdatedAt) {
+      return { ok: false, error: { code: "conflict" } };
+    }
     // Conflict simulation for already archived? not needed
     row.plannedForDate = input.plannedForDate;
     row.updatedAt = new Date().toISOString();
@@ -430,6 +435,75 @@ test("AC: Apply detects stale if task mutated after approval", async () => {
   if (!applied.ok) return;
   assert.equal(applied.data.status, "stale");
   assert.equal(today.calls.length, 0); // no mutation when stale
+});
+
+test("AC: Apply rechecks Task versions after claim before mutation", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const today = new FakeTodayMutation(tasks);
+
+  // Model another writer landing after the pre-claim stale check but before
+  // this apply receives its atomic mutation authority.
+  class ApplyRaceRepository extends InMemoryOperatorProposalRepository {
+    override async claimApprovedProposalForApply(actor: AuthenticatedActor, proposalId: string) {
+      lookup.updateTask(id1, { updatedAt: "2026-08-10T09:00:00.000Z" });
+      return super.claimApprovedProposalForApply(actor, proposalId);
+    }
+  }
+  const repo = new ApplyRaceRepository();
+
+  const created = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "stale-apply-after-claim-1",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  const approved = await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id });
+  assert.equal(approved.ok, true);
+  if (!approved.ok) return;
+
+  const applied = await applyOperatorProposal(ACTOR_A, repo, lookup, today, { proposalId: created.data.id });
+  assert.equal(applied.ok, true);
+  if (!applied.ok) return;
+  assert.equal(applied.data.status, "stale");
+  assert.equal(applied.data.result?.staleDetected, true);
+  assert.equal(today.calls.length, 0);
+});
+
+test("AC: Apply uses a conditional Today write after final validation", async () => {
+  const id1 = randomUUID();
+  const tasks = new Map<string, TaskRow>();
+  tasks.set(id1, makeTaskRow({ id: id1, ownerUserId: ACTOR_A.userId }));
+  const lookup = new FakeTaskLookup(tasks);
+  const repo = new InMemoryOperatorProposalRepository();
+  const today = new FakeTodayMutation(tasks, new Set(), () => {
+    lookup.updateTask(id1, {
+      plannedForDate: "2026-08-11",
+      updatedAt: "2026-08-10T11:00:00.000Z",
+    });
+  });
+
+  const created = await createOperatorProposal(ACTOR_A, repo, lookup, {
+    localDate: "2026-08-10",
+    timeContextId: "2026-08-10::UTC",
+    proposedTaskIds: [id1],
+    idempotencyKey: "conditional-today-write-1",
+  });
+  assert.equal(created.ok, true);
+  if (!created.ok) return;
+  assert.equal((await approveOperatorProposal(ACTOR_A, repo, lookup, { proposalId: created.data.id })).ok, true);
+
+  const applied = await applyOperatorProposal(ACTOR_A, repo, lookup, today, { proposalId: created.data.id });
+  assert.equal(applied.ok, true);
+  if (!applied.ok) return;
+  assert.equal(applied.data.status, "partially_applied");
+  assert.deepEqual(applied.data.result?.appliedTaskIds, []);
+  assert.deepEqual(applied.data.result?.skippedTaskIds, [{ id: id1, reason: "Conflict" }]);
+  assert.equal(tasks.get(id1)?.plannedForDate, "2026-08-11");
 });
 
 // ---------------------------------------------------------------------------

@@ -328,14 +328,26 @@ export class SupabaseTasksRepository implements TasksRepository {
     if (input.calendarSyncEnabled !== undefined) payload.calendar_sync_enabled = input.calendarSyncEnabled;
     if (input.calendarReminderMinutes !== undefined) payload.calendar_reminder_minutes = input.calendarReminderMinutes;
 
-    const result = await this.supabase
+    let taskUpdate = this.supabase
       .from("tasks")
       .update(payload)
       .eq("id", input.taskId)
-      .eq("owner_user_id", actor.userId)
-      .select(TASK_SELECT)
-      .single();
-    if (result.error || !result.data) return failure(result.error);
+      .eq("owner_user_id", actor.userId);
+    if (input.expectedUpdatedAt !== undefined) {
+      taskUpdate = taskUpdate.eq("updated_at", input.expectedUpdatedAt);
+    }
+    const result = input.expectedUpdatedAt === undefined
+      ? await taskUpdate.select(TASK_SELECT).single()
+      : await taskUpdate.select(TASK_SELECT).maybeSingle();
+    if (result.error) return failure(result.error);
+    if (!result.data) {
+      // A conditional update matching no row means another writer changed the
+      // version after the caller read it. Keep that race distinguishable from
+      // an ordinary update failure so the application can avoid overwriting it.
+      return input.expectedUpdatedAt !== undefined
+        ? { ok: false, error: { code: "conflict" } }
+        : failure(null);
+    }
 
     const hydrated = await this.hydrateTasks(actor, [asRow(result.data)]);
     if (!hydrated.ok) return hydrated;
@@ -507,11 +519,12 @@ export class SupabaseTasksRepository implements TasksRepository {
 
   async setPlannedDate(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; plannedForDate: string | null }>,
+    input: Readonly<{ taskId: string; plannedForDate: string | null; expectedUpdatedAt?: string }>,
   ): Promise<RepositoryResult<TaskRecord>> {
     return this.updateTask(actor, {
       taskId: input.taskId,
       plannedForDate: input.plannedForDate,
+      expectedUpdatedAt: input.expectedUpdatedAt,
     });
   }
 
