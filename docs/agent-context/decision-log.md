@@ -54,3 +54,15 @@ This log persists material **current-behavior vs normative-authority conflicts**
 - **Resolution / required decision:** prefer explicit trusted project-local discovery; preserve read-only `external_dirs` compatibility fallback; never auto-trust or mutate global Hermes config.
 - **Status:** `OPEN` — corrective change proposed on `docs/agent-architecture-context-refresh`; close only after canonical merge and real-profile discovery verification.
 - **Follow-up / evidence:** run `npm run preflight:hermes-skills` under the actual Runner service user/profile and record `DISCOVERY VERIFIED` or the exact blocker.
+
+### DEC-2026-09-04-01 — Agent authority, scope, and merge instructions conflict
+
+- **Date:** 2026-09-04
+- **Scope:** root/scoped agent contracts and shared validation/quality guidance.
+- **Conflict:** at `f9d248470fc9c80c27bb240a9638b976d43e1bf8`, root guidance ranks source ahead of runtime while product-authority ranks runtime first; root requires all scope files while the index selects applicable scopes; authorized merges coexist with an unconditional remain-unmerged sentence. Root test aliases verify web only without saying so in the root command list.
+- **Current-behavior evidence:** root `AGENTS.md`, `package.json`, `product-authority.md`, `index.md`, and `testing-and-validation.md` at that revision.
+- **Normative authority:** user-approved agent-contract analysis and explicit instruction to implement the improvement and merge it; existing product, security, and protection invariants remain in force.
+- **Classification:** `DEFECT` (instruction inconsistency and incomplete evidence routing).
+- **Resolution / required decision:** unify evidence by claim/revision/environment; select applicable scopes; clarify existing authorization and explicit merge gates; route checks to affected workspaces and consumers. Add proportional investigation, recovery, review, and completion guidance without changing application/CI behavior.
+- **Status:** `OPEN` — proposed on `docs/agent-contract-quality-20260904`; this becomes `RESOLVED` only when the corrective change is observed on the canonical branch. Reconcile status at the next decision-log maintenance after that observation.
+- **Follow-up / evidence:** validate instruction links, commands, discovery budget, applicable architecture checks, independent semantic review, and exact-head CI. Writing guidance does not prove installed harness discovery or production behavior.

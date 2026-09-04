@@ -31,3 +31,10 @@ npm run validate:agent-context
 Run focused lifecycle tests for touched code and repository architecture/CI
 checks for queue or guardrail changes. Use smoke mode only when its external
 requirements are genuinely satisfied; report unavailable integrations as such.
+
+Apply the root quality workflow's general review and authorized merge gates in
+addition to Runner-specific checks. Explicit authorization to merge a particular
+PR does not enable persistent auto-merge or authorize destructive reconciliation.
+For touched effects, test ambiguous success, retry exhaustion, duplicate delivery,
+lease loss, and restart recovery as applicable; never blindly repeat an external
+write whose outcome is unknown.
