@@ -97,13 +97,15 @@ intended main-only Git deployment policy:
 }
 ```
 
-These repository declarations do not prove that the connected Vercel projects
-or Git integration enforce the policy. Independent external evidence records
-API deployment `6233638086` for feature-branch HEAD
-`21d9febba61c20ec45f7ff68f644b684f23335c3`. Wave 00 therefore remains blocked
-pending authenticated verification and correction of the connected Vercel
-project/integration settings. A production deployment remains external Vercel
-state and must be verified against its exact Git SHA.
+Wave 00 added a fail-closed Vercel Ignored Build Step for the API project root:
+only `VERCEL_GIT_COMMIT_REF=main` may build; an absent or non-main ref is
+skipped. The exact Wave 00 API head
+`6f71ebdf6f67f8c77f371b28eefba4487a0930b8` received the observed external
+status `Canceled by Ignored Build Step`, with no successful feature-branch
+preview. This proves the checked-in build guard and its smoke behavior, not
+the complete connected-project settings or a production deploy. A production
+deployment remains external Vercel state and must be verified against its
+exact Git SHA.
 
 Do not add a catch-all rewrite to an `api/index.ts` generic function. The native
 Hono preset discovers the project-root entrypoint directly; the production

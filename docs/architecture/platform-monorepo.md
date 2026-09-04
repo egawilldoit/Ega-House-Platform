@@ -45,7 +45,12 @@ Owns Expo-native UI, navigation, token/session storage, and native composition. 
 
 ### `apps/server`
 
-Owns the standalone Hono HTTP transport. Current routes include Auth, Timer, Projects, Goals, Tasks, and Today. It verifies Supabase bearer identity, derives the authenticated actor, creates request-scoped persistence composition, and maps HTTP to shared use cases instead of duplicating business rules. Deployment authority is documented in [`hono-deployment.md`](hono-deployment.md).
+Owns the standalone Hono HTTP transport. Current route families include Auth,
+Timer, Projects, Goals, Tasks, Today, Inbox, Notifications, Friction, Health,
+Operator, Time Context, and Weekly Review. It verifies Supabase bearer
+identity, derives the authenticated actor, creates request-scoped persistence
+composition, and maps HTTP to shared use cases instead of duplicating business
+rules. Deployment authority is documented in [`hono-deployment.md`](hono-deployment.md).
 
 ### `@ega/contracts`
 
@@ -65,7 +70,9 @@ Owns repository adapters for shared application ports. User-scoped adapters rece
 
 ### `@ega/api-client`
 
-Owns reusable typed HTTP mechanics and current Projects/Goals/Tasks/Today endpoint methods. Token/session acquisition remains client-side composition rather than package-owned Expo storage.
+Owns reusable typed HTTP mechanics and current endpoint methods for the shared
+server route families. Token/session acquisition remains client-side
+composition rather than package-owned Expo storage.
 
 ## Dependency direction
 
