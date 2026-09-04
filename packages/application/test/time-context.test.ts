@@ -246,6 +246,7 @@ test("resolveTimeContext repository failure returns application failure", async 
   const repo = new FakeTimeContextRepo(null, true);
   const result = await resolveTimeContext(actor, repo, { now: new Date("2026-01-15T12:00:00.000Z") });
   assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, "unknown");
 });
 
 test("resolveTimeContext trims whitespace timezone", async () => {

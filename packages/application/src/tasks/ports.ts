@@ -116,6 +116,8 @@ export type CreateTaskRecordInput = Readonly<{
 
 export type UpdateTaskRecordInput = Readonly<{
   taskId: string;
+  /** Reject the write when the persisted task changed since this version was read. */
+  expectedUpdatedAt?: string;
   title?: string;
   description?: string | null;
   blockedReason?: string | null;

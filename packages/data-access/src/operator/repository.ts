@@ -1,3 +1,7 @@
+import {
+  OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT,
+  OPERATOR_PROPOSAL_LIST_MAX_LIMIT,
+} from "@ega/application";
 import type {
   AuthenticatedActor,
   OperatorProposalRecord,
@@ -231,9 +235,15 @@ export class SupabaseOperatorProposalRepository implements OperatorProposalRepos
     if (filter?.status) {
       builder = (builder as { eq: (c: string, v: unknown) => unknown }).eq("status", filter.status);
     }
-    if (filter?.limit) {
-      builder = (builder as { limit: (n: number) => unknown }).limit(filter.limit);
-    }
+    const requestedLimit = filter?.limit;
+    const limit =
+      typeof requestedLimit === "number" &&
+      Number.isSafeInteger(requestedLimit) &&
+      requestedLimit >= 1 &&
+      requestedLimit <= OPERATOR_PROPOSAL_LIST_MAX_LIMIT
+        ? requestedLimit
+        : OPERATOR_PROPOSAL_LIST_DEFAULT_LIMIT;
+    builder = (builder as { limit: (n: number) => unknown }).limit(limit);
     builder = (builder as { order: (c: string, opts: unknown) => unknown }).order("created_at", { ascending: false });
     const result = (await (builder as Promise<{ data: unknown; error: unknown | null }>)) as { data: unknown; error: unknown | null };
     if (result.error) return failure(result.error as never);

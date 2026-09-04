@@ -79,6 +79,16 @@ export async function readJsonBody(
   }
 }
 
+/**
+ * Apply accepts an omitted body to mean "all proposed Tasks". Preserve that
+ * API contract while rejecting an explicitly supplied malformed body.
+ */
+export async function readOptionalJsonBody(
+  c: Context,
+): Promise<Record<string, unknown> | null> {
+  return c.req.raw.body === null ? {} : readJsonBody(c);
+}
+
 export function createApp(dependencies: ServerDependencies): Hono<{ Variables: ServerVariables }> {
   const app = new Hono<{ Variables: ServerVariables }>();
 

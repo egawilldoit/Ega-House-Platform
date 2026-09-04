@@ -21,7 +21,7 @@ export interface TaskRecurrenceRepository {
 export interface TodayTaskRepository {
   setPlannedDate(
     actor: AuthenticatedActor,
-    input: Readonly<{ taskId: string; plannedForDate: string | null }>,
+    input: Readonly<{ taskId: string; plannedForDate: string | null; expectedUpdatedAt?: string }>,
   ): Promise<RepositoryResult<TaskRecord>>;
   setStatus(
     actor: AuthenticatedActor,

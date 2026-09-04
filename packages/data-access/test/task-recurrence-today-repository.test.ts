@@ -119,6 +119,23 @@ test("Today planned-date and status updates scope task writes to actor ownership
   )));
 });
 
+test("conditional Today write uses the expected task version and reports a conflict when it changed", async () => {
+  const fake = new FakeSupabase();
+  fake.push("tasks", { data: null, error: null });
+
+  const result = await repo(fake).setPlannedDate(ACTOR, {
+    taskId: "task-1",
+    plannedForDate: "2026-08-10",
+    expectedUpdatedAt: "2026-08-10T00:00:00.000Z",
+  });
+
+  assert.deepEqual(result, { ok: false, error: { code: "conflict" } });
+  const taskWrite = fake.calls.find((call) => call.table === "tasks");
+  assert.ok(taskWrite?.steps.some(
+    (step) => step.method === "eq" && step.args[0] === "updated_at" && step.args[1] === "2026-08-10T00:00:00.000Z",
+  ));
+});
+
 test("clear completed Today work is owner and date scoped", async () => {
   const fake = new FakeSupabase();
   fake.push("tasks", { data: null, error: null, count: 2 });
