@@ -9,6 +9,11 @@ import {
   updateGoalNextStep,
   updateGoalStatus,
 } from "@ega/application";
+import type {
+  CreateGoalResponse,
+  GoalMutationResponse,
+  GoalsReadModel,
+} from "@ega/contracts/goals";
 import { SupabaseGoalsRepository } from "@ega/data-access";
 import { normalizeGoalViewFilter } from "@ega/domain";
 
@@ -39,7 +44,7 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     }
 
-    return c.json(result.data);
+    return c.json(result.data satisfies GoalsReadModel);
   });
 
   routes.post("/", async (c) => {
@@ -71,7 +76,8 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true, values: result.values }, 201);
+    const response: CreateGoalResponse = { ok: true, values: result.values };
+    return c.json(response, 201);
   });
 
   routes.patch("/:id/status", async (c) => {
@@ -99,7 +105,8 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: GoalMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.patch("/:id/health", async (c) => {
@@ -127,7 +134,8 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: GoalMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.patch("/:id/next-step", async (c) => {
@@ -155,7 +163,8 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: GoalMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.post("/:id/archive", async (c) => {
@@ -174,7 +183,8 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: GoalMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.post("/:id/unarchive", async (c) => {
@@ -193,7 +203,8 @@ export function createGoalsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: GoalMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   return routes;

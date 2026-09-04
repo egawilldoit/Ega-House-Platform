@@ -4,6 +4,53 @@ import test from "node:test";
 import { createEgaApiClient } from "../src/client";
 import type { EgaApiClient } from "../src/client";
 import type { FetchLike } from "../src/http";
+import type {
+  ProjectPurgeImpact,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
+  ProjectPurgeSummary,
+  PurgeProjectInput,
+} from "../src/projects";
+import type { ProjectPurgeImpact as RootProjectPurgeImpact } from "../src";
+
+const purgeImpactCompatibility: ProjectPurgeImpact & RootProjectPurgeImpact = {
+  taskCount: 0,
+  goalCount: 0,
+  sessionCount: 0,
+  activeSessionCount: 0,
+  reminderCount: 0,
+  recurrenceCount: 0,
+  externalRefCount: 0,
+  taskNotificationCount: 0,
+  calendarEventCount: 0,
+};
+const purgeInputCompatibility: PurgeProjectInput = {
+  confirmationName: "Launch",
+  expectedTaskCount: 0,
+  expectedGoalCount: 0,
+};
+const purgePreviewCompatibility: ProjectPurgePreviewResponse = {
+  projectId: "project-1",
+  projectName: "Launch",
+  impact: purgeImpactCompatibility,
+};
+const purgeSummaryCompatibility: ProjectPurgeSummary = {
+  tasksDeleted: 0,
+  goalsDeleted: 0,
+  sessionsDeleted: 0,
+  externalRefsDeleted: 0,
+  notificationsDeleted: 0,
+  calendarDeleteJobsEnqueued: 0,
+};
+const purgeResponseCompatibility: ProjectPurgeResponse = {
+  ok: true,
+  deleted: purgeSummaryCompatibility,
+};
+
+test("project purge DTOs remain exported from compatibility surfaces", () => {
+  assert.equal(purgeInputCompatibility.confirmationName, purgePreviewCompatibility.projectName);
+  assert.equal(purgeResponseCompatibility.deleted.tasksDeleted, purgeSummaryCompatibility.tasksDeleted);
+});
 
 /**
  * Controlled HTTP tests. A tiny fake fetch records every request

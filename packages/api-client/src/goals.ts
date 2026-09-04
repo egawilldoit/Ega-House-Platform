@@ -13,32 +13,33 @@
  * server envelope (UNAUTHENTICATED | VALIDATION | NOT_FOUND | INTERNAL).
  */
 
-import type { ApiResult, OkResponse } from "./errors";
+import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 import type {
+  CreateGoalResponse,
   CreateGoalInput,
-  GoalFormValues,
+  GoalMutationResponse,
   GoalHealth,
   GoalStatus,
   GoalViewFilter,
   GoalsReadModel,
-} from "./types";
+} from "@ega/contracts/goals";
 
 export type GoalsApi = {
   /** GET /api/goals?view=... (view omitted => server defaults to "active"). */
   list(view?: GoalViewFilter): Promise<ApiResult<GoalsReadModel>>;
   /** POST /api/goals — 201 with the normalized form values echoed back. */
-  create(input: CreateGoalInput): Promise<ApiResult<{ values: GoalFormValues }>>;
+  create(input: CreateGoalInput): Promise<ApiResult<CreateGoalResponse>>;
   /** PATCH /api/goals/:id/status. */
-  updateStatus(goalId: string, status: GoalStatus): Promise<ApiResult<OkResponse>>;
+  updateStatus(goalId: string, status: GoalStatus): Promise<ApiResult<GoalMutationResponse>>;
   /** PATCH /api/goals/:id/health. */
-  updateHealth(goalId: string, health: GoalHealth | null): Promise<ApiResult<OkResponse>>;
+  updateHealth(goalId: string, health: GoalHealth | null): Promise<ApiResult<GoalMutationResponse>>;
   /** PATCH /api/goals/:id/next-step. */
-  updateNextStep(goalId: string, nextStep: string | null): Promise<ApiResult<OkResponse>>;
+  updateNextStep(goalId: string, nextStep: string | null): Promise<ApiResult<GoalMutationResponse>>;
   /** POST /api/goals/:id/archive. */
-  archive(goalId: string): Promise<ApiResult<OkResponse>>;
+  archive(goalId: string): Promise<ApiResult<GoalMutationResponse>>;
   /** POST /api/goals/:id/unarchive. */
-  unarchive(goalId: string): Promise<ApiResult<OkResponse>>;
+  unarchive(goalId: string): Promise<ApiResult<GoalMutationResponse>>;
 };
 
 export function createGoalsApi(http: HttpClient): GoalsApi {
@@ -51,7 +52,7 @@ export function createGoalsApi(http: HttpClient): GoalsApi {
     },
 
     create(input) {
-      return http.request<{ values: GoalFormValues }>({
+      return http.request<CreateGoalResponse>({
         path: "/api/goals",
         method: "POST",
         body: input,
@@ -59,7 +60,7 @@ export function createGoalsApi(http: HttpClient): GoalsApi {
     },
 
     updateStatus(goalId, status) {
-      return http.request<OkResponse>({
+      return http.request<GoalMutationResponse>({
         path: `/api/goals/${encodeURIComponent(goalId)}/status`,
         method: "PATCH",
         body: { status },
@@ -67,7 +68,7 @@ export function createGoalsApi(http: HttpClient): GoalsApi {
     },
 
     updateHealth(goalId, health) {
-      return http.request<OkResponse>({
+      return http.request<GoalMutationResponse>({
         path: `/api/goals/${encodeURIComponent(goalId)}/health`,
         method: "PATCH",
         body: { health },
@@ -75,7 +76,7 @@ export function createGoalsApi(http: HttpClient): GoalsApi {
     },
 
     updateNextStep(goalId, nextStep) {
-      return http.request<OkResponse>({
+      return http.request<GoalMutationResponse>({
         path: `/api/goals/${encodeURIComponent(goalId)}/next-step`,
         method: "PATCH",
         body: { nextStep },
@@ -83,14 +84,14 @@ export function createGoalsApi(http: HttpClient): GoalsApi {
     },
 
     archive(goalId) {
-      return http.request<OkResponse>({
+      return http.request<GoalMutationResponse>({
         path: `/api/goals/${encodeURIComponent(goalId)}/archive`,
         method: "POST",
       });
     },
 
     unarchive(goalId) {
-      return http.request<OkResponse>({
+      return http.request<GoalMutationResponse>({
         path: `/api/goals/${encodeURIComponent(goalId)}/unarchive`,
         method: "POST",
       });

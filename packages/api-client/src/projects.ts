@@ -23,49 +23,30 @@
  * `error.status === 409` with `error.code === "VALIDATION"`.
  */
 
-import type { ApiResult, OkResponse } from "./errors";
+import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 import type {
+  CreateProjectResponse,
   CreateProjectInput,
-  ProjectFormValues,
   ProjectIdentityReadModel,
+  ProjectMutationResponse,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
   ProjectStatus,
   ProjectViewFilter,
   ProjectsReadModel,
-} from "./types";
+  PurgeProjectInput,
+} from "@ega/contracts/projects";
 
-export type ProjectPurgeImpact = {
-  taskCount: number;
-  goalCount: number;
-  sessionCount: number;
-  activeSessionCount: number;
-  reminderCount: number;
-  recurrenceCount: number;
-  externalRefCount: number;
-  taskNotificationCount: number;
-  calendarEventCount: number;
-};
-
-export type ProjectPurgePreviewResponse = {
-  projectId: string;
-  projectName: string;
-  impact: ProjectPurgeImpact;
-};
-
-export type ProjectPurgeSummary = {
-  tasksDeleted: number;
-  goalsDeleted: number;
-  sessionsDeleted: number;
-  externalRefsDeleted: number;
-  notificationsDeleted: number;
-  calendarDeleteJobsEnqueued: number;
-};
-
-export type PurgeProjectInput = {
-  confirmationName: string;
-  expectedTaskCount: number;
-  expectedGoalCount: number;
-};
+// Preserve the historical subpath exports while keeping the contracts package
+// as the single authority for these wire shapes.
+export type {
+  ProjectPurgeImpact,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
+  ProjectPurgeSummary,
+  PurgeProjectInput,
+} from "@ega/contracts/projects";
 
 export type ProjectsApi = {
   /** GET /api/projects?view=... (view omitted => server defaults to "active"). */
@@ -73,19 +54,19 @@ export type ProjectsApi = {
   /** GET /api/projects/:slug — 404 maps to `NOT_FOUND`. */
   getBySlug(slug: string): Promise<ApiResult<ProjectIdentityReadModel>>;
   /** POST /api/projects — 201 with the normalized form values echoed back. */
-  create(input: CreateProjectInput): Promise<ApiResult<{ values: ProjectFormValues }>>;
+  create(input: CreateProjectInput): Promise<ApiResult<CreateProjectResponse>>;
   /** PATCH /api/projects/:id/status. */
-  updateStatus(projectId: string, status: ProjectStatus): Promise<ApiResult<OkResponse>>;
+  updateStatus(projectId: string, status: ProjectStatus): Promise<ApiResult<ProjectMutationResponse>>;
   /** POST /api/projects/:id/archive. */
-  archive(projectId: string): Promise<ApiResult<OkResponse>>;
+  archive(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
   /** POST /api/projects/:id/unarchive. */
-  unarchive(projectId: string): Promise<ApiResult<OkResponse>>;
+  unarchive(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
   /** DELETE /api/projects/:id — archived projects without linked tasks/goals only. */
-  remove(projectId: string): Promise<ApiResult<OkResponse>>;
+  remove(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
   /** GET /api/projects/:id/purge-preview — exact deletion impact for an archived project. */
   getPurgePreview(projectId: string): Promise<ApiResult<ProjectPurgePreviewResponse>>;
   /** POST /api/projects/:id/purge — atomic purge of an archived project. */
-  purge(projectId: string, input: PurgeProjectInput): Promise<ApiResult<{ ok: true; deleted: ProjectPurgeSummary }>>;
+  purge(projectId: string, input: PurgeProjectInput): Promise<ApiResult<ProjectPurgeResponse>>;
 };
 
 export function createProjectsApi(http: HttpClient): ProjectsApi {
@@ -104,7 +85,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     create(input) {
-      return http.request<{ values: ProjectFormValues }>({
+      return http.request<CreateProjectResponse>({
         path: "/api/projects",
         method: "POST",
         body: input,
@@ -112,7 +93,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     updateStatus(projectId, status) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/status`,
         method: "PATCH",
         body: { status },
@@ -120,21 +101,21 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     archive(projectId) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/archive`,
         method: "POST",
       });
     },
 
     unarchive(projectId) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/unarchive`,
         method: "POST",
       });
     },
 
     remove(projectId) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}`,
         method: "DELETE",
       });
@@ -147,7 +128,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     purge(projectId, input) {
-      return http.request<{ ok: true; deleted: ProjectPurgeSummary }>({
+      return http.request<ProjectPurgeResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/purge`,
         method: "POST",
         body: input,

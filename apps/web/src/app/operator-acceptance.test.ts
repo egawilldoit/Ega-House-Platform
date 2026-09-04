@@ -87,7 +87,9 @@ describe("EGA-516 Operator acceptance", () => {
 
     const apiClientToday = read("../../packages/api-client/src/today.ts");
     expect(apiClientToday).toContain('path: "/api/today"');
-    expect(apiClientToday).toContain("OperatorSnapshotDto");
+    expect(apiClientToday).toContain("MobileTodayResponse");
+    const mobileContracts = read("../../packages/contracts/src/mobile.ts");
+    expect(mobileContracts).toContain("OperatorSnapshotDto");
 
     const serverTodayContent = readFileSync(resolve(process.cwd(), "../server/src/routes/today.ts"), "utf8");
     expect(serverTodayContent).toContain("getOperatorSnapshot");

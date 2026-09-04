@@ -4,7 +4,7 @@
  *
  *   GET  /api/projects?view=active|archived|all -> ProjectsReadModel
  *   GET  /api/projects/:slug                    -> ProjectIdentityReadModel
- *   POST /api/projects                          -> { values }
+ *   POST /api/projects                          -> { ok: true, values }
  *   PATCH /api/projects/:id/status              -> { ok: true }
  *   POST /api/projects/:id/archive|unarchive    -> { ok: true }
  *
