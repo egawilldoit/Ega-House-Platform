@@ -28,3 +28,9 @@ Auth/RLS changes additionally require `npm run ci:security`,
 `npm run check:architecture`, `npm run test:architecture`, and
 `npm run ci:purity`. Test malformed, unauthenticated, unauthorized, empty,
 invalid-transition, and contract/error cases at the closest seam.
+
+For changed endpoints, trace contracts through application/data-access and
+api-client/web/mobile consumers. Verify wire serialization and error mapping;
+select duplicate/concurrent requests and partial-failure cases when relevant.
+Auth changes require authorized-success and cross-user-denial proof at the real
+boundary in a controlled environment; mocked identity alone does not prove RLS.

@@ -1,18 +1,23 @@
 # EGA House Evidence and Product Authority
 
-Use the following hierarchies for different questions. Do not collapse them into one precedence list.
+Use the evidence model and normative hierarchy for different questions. Do not collapse them into one precedence list.
 
 ## Current-behavior evidence
 
-Use this hierarchy to determine what the repository currently does:
+Use evidence appropriate to the claim, with its revision, environment, and scope:
 
-1. Observed runtime, database, and external-system evidence.
-2. Executable code and migrations.
-3. Tests exercising the current path.
-4. Current runbooks and living documentation.
-5. Historical plans, prompts, audit snapshots, and migration evidence.
+- Source, configuration, migrations, and executable tests establish repository
+  behavior at a revision and within the exercised boundaries.
+- Observed runtime, database, and external-system results establish only what
+  happened in the recorded environment; they do not prove an unexecuted path or
+  that the environment runs the current repository revision.
+- Living docs explain current intent/maps; historical plans, prompts, reports,
+  and migration evidence remain point-in-time evidence, not execution proof.
 
-A lower layer may explain intent but cannot prove that a higher-layer behavior occurred.
+When these disagree, investigate deployed revision, configuration, data, and
+execution path. Neither existing code nor runtime behavior defines what the
+product ought to do. Do not resolve contradictions by silently changing evidence
+or requirements. The normative hierarchy below defines required behavior.
 
 ## Normative product authority
 
@@ -58,7 +63,7 @@ Search [`decision-log.md`](decision-log.md) before making a new material classif
 
 ## Approval boundaries
 
-Human approval is required for merge, deployment, production data changes, secrets, destructive cleanup, broad migrations, governance/security weakening, and automatic-merge enablement. Issue authorization permits scoped implementation and non-destructive validation; it does not imply those higher-impact permissions.
+Human approval is required for merge, deployment, production data changes, secrets, destructive cleanup, broad migrations, governance/security weakening, and automatic-merge enablement. Issue authorization permits scoped implementation and non-destructive validation; it does not imply those higher-impact permissions. Explicit user authorization already given for an action remains valid within its scope; do not demand a second approval solely because this document mentions one. Authorization never permits bypassing platform restrictions or repository protection. Apply the [quality workflow](quality-workflow.md) for review, authorized merge gates, and completion evidence.
 
 ## Terminal evidence rule
 
