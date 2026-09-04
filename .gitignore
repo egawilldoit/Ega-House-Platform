@@ -48,6 +48,7 @@ next-env.d.ts
 # local reports
 reports/*.csv
 reports/*.json
+/.superpowers/
 
 # graphify generated output (regenerable with `graphify update .`)
 graphify-out/
