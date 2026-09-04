@@ -66,13 +66,18 @@ export default function NotificationSettingsScreen() {
                   {permissionStatus === 'granted' ? 'Allowed in system settings' : permissionStatus === 'denied' ? 'Blocked in system settings' : 'Not yet requested'}
                 </Text>
                 {permissionStatus !== 'granted' ? (
-                  <Pressable onPress={() => Linking.openSettings()}>
+                  <Pressable
+                    accessibilityHint="Opens this device's notification settings"
+                    accessibilityLabel="Open system notification settings"
+                    accessibilityRole="button"
+                    onPress={() => Linking.openSettings()}
+                  >
                     <Text style={styles.openSettings}>Open settings</Text>
                   </Pressable>
                 ) : null}
               </View>
             </View>
-            {updating === 'push' ? <ActivityIndicator size="small" /> : <Switch value={pushEnabled} onValueChange={(v) => onToggle('pushEnabled', v)} />}
+            {updating === 'push' ? <ActivityIndicator size="small" /> : <Switch accessibilityHint="Toggles task reminder notifications on this device" accessibilityLabel="Push notifications" value={pushEnabled} onValueChange={(v) => onToggle('pushEnabled', v)} />}
           </View>
 
           <View style={styles.divider} />
@@ -85,7 +90,7 @@ export default function NotificationSettingsScreen() {
               </View>
               <Text style={styles.rowDesc}>Receive reminders by email</Text>
             </View>
-            {updating === 'email' ? <ActivityIndicator size="small" /> : <Switch value={emailEnabled} onValueChange={(v) => onToggle('emailEnabled', v)} />}
+            {updating === 'email' ? <ActivityIndicator size="small" /> : <Switch accessibilityHint="Toggles task reminder emails" accessibilityLabel="Email notifications" value={emailEnabled} onValueChange={(v) => onToggle('emailEnabled', v)} />}
           </View>
 
           <View style={styles.hintBox}>
@@ -102,7 +107,13 @@ export default function NotificationSettingsScreen() {
             <Text style={styles.statusLabel}>OS permission</Text>
             <Text style={[styles.statusValue, permissionStatus === 'granted' ? styles.statusValueGranted : null]}>{permissionStatus}</Text>
           </View>
-          <Pressable onPress={() => refreshPermission()} style={styles.refreshBtn}>
+          <Pressable
+            accessibilityHint="Checks the current notification permission"
+            accessibilityLabel="Refresh notification permission status"
+            accessibilityRole="button"
+            onPress={() => refreshPermission()}
+            style={styles.refreshBtn}
+          >
             <Text style={styles.refreshText}>Refresh status</Text>
           </Pressable>
         </Card>
