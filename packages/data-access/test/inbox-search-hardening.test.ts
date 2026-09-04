@@ -58,6 +58,10 @@ class Builder {
     this.steps.push({ method: "order", args });
     return this;
   }
+  limit(...args: unknown[]) {
+    this.steps.push({ method: "limit", args });
+    return this;
+  }
   maybeSingle(...args: unknown[]) {
     this.steps.push({ method: "maybeSingle", args });
     return this;
