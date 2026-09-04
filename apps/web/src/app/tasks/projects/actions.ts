@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import {
   archiveProject,
   createAuthenticatedActor,
+  purgeArchivedProject,
   unarchiveProject,
   updateProjectStatus,
   type AuthenticatedActor,
@@ -14,6 +15,7 @@ import { SupabaseProjectsRepository } from "@ega/data-access";
 
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
+import { revalidateWorkspaceFor } from "@/lib/workspace/workspace-navigation";
 
 function getProjectsReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
@@ -119,4 +121,61 @@ export async function archiveProjectAction(formData: FormData) {
 
 export async function unarchiveProjectAction(formData: FormData) {
   await updateProjectArchiveState(formData, "active");
+}
+
+function getPurgeDeletePath(rawSlug: unknown) {
+  const slug = String(rawSlug ?? "").trim();
+  // Project slugs are lowercase-hyphen canonical (see application
+  // createProject); anything else falls back to the archived list so a forged
+  // slug can never steer the error redirect off the projects surface.
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)
+    ? `/tasks/projects/${slug}/delete`
+    : "/tasks/projects?view=archived";
+}
+
+function redirectWithPurgeError(deletePath: string, errorMessage: string): never {
+  const target = new URL(deletePath, "https://egawilldoit.online");
+  target.searchParams.set("purgeError", errorMessage);
+  redirect(`${target.pathname}${target.search}`);
+}
+
+function parseExpectedCount(raw: unknown): number | null {
+  const text = String(raw ?? "").trim();
+  if (!/^\d+$/.test(text)) {
+    return null;
+  }
+  const value = Number.parseInt(text, 10);
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+export async function purgeProjectAction(formData: FormData) {
+  const returnPath = getProjectsReturnPath(formData.get("returnTo"));
+  const deletePath = getPurgeDeletePath(formData.get("slug"));
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const confirmationName = String(formData.get("confirmationName") ?? "").trim();
+  const expectedTaskCount = parseExpectedCount(formData.get("expectedTaskCount"));
+  const expectedGoalCount = parseExpectedCount(formData.get("expectedGoalCount"));
+
+  if (!projectId || !confirmationName || expectedTaskCount === null || expectedGoalCount === null) {
+    redirectWithPurgeError(deletePath, "Project purge request is invalid.");
+  }
+
+  const { actor, repository } = await resolveProjectContext();
+  const result = await purgeArchivedProject(actor, repository, {
+    projectId,
+    confirmationName,
+    expectedTaskCount,
+    expectedGoalCount,
+  });
+
+  if (!result.ok) {
+    redirectWithPurgeError(deletePath, result.errorMessage);
+  }
+
+  // The purge removed tasks, goals, and timer history: revalidate the task
+  // workspace (covers projects/today/timer/review/dashboard) plus goals.
+  // No card anchor on success: the purged project no longer exists.
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  revalidatePath("/goals");
+  redirect(returnPath);
 }

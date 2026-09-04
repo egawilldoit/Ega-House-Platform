@@ -70,6 +70,9 @@ function makeFakeProjectsApi() {
     updateStatus: jest.fn(async (): Promise<ApiResult<ProjectMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
     archive: jest.fn(async (): Promise<ApiResult<ProjectMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
     unarchive: jest.fn(async (): Promise<ApiResult<ProjectMutationResponse>> => ({ ok: true as const, data: { ok: true } })),
+    remove: jest.fn(async (): Promise<ApiResult<{ ok: true }>> => ({ ok: true as const, data: { ok: true as const } })),
+    getPurgePreview: jest.fn(),
+    purge: jest.fn(),
   };
 }
 
