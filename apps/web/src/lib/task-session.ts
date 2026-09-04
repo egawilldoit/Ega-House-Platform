@@ -106,19 +106,5 @@ export async function getTaskTotalDurationMap(
   }, {});
 }
 
-export function formatDurationLabel(seconds: number) {
-  const safeSeconds = Math.max(0, Math.floor(seconds));
-  const hrs = Math.floor(safeSeconds / 3600);
-  const mins = Math.floor((safeSeconds % 3600) / 60);
-  const secs = safeSeconds % 60;
-
-  if (hrs > 0) {
-    return `${hrs}h ${mins}m ${secs}s`;
-  }
-
-  if (mins > 0) {
-    return `${mins}m ${secs}s`;
-  }
-
-  return `${secs}s`;
-}
+// Keep the web import surface stable while using the application-owned formatter.
+export { formatDurationLabel } from "@ega/application/shared/duration";
