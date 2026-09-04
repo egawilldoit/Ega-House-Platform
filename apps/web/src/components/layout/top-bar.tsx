@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Keyboard, Search } from "lucide-react";
+import { Bell, Keyboard, Search } from "lucide-react";
 
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -56,6 +56,27 @@ export function TopBar({ metrics, mobileNavigation }: TopBarProps) {
 
           <Link href={canonicalUrl.resolve("/apps")} className="ega-topbar-upgrade-pill">
             Apps
+          </Link>
+
+          <Link
+            href={canonicalUrl.resolve("/notifications")}
+            className="workspace-topbar-icon"
+            aria-label={
+              metrics.unreadNotificationCount > 0
+                ? `Notifications (${metrics.unreadNotificationCount} unread)`
+                : "Notifications"
+            }
+            title="Notifications"
+          >
+            <Bell aria-hidden="true" />
+            {metrics.unreadNotificationCount > 0 ? (
+              <>
+                <span className="workspace-notification-signal" aria-hidden="true" />
+                <span className="sr-only">
+                  {metrics.unreadNotificationCount} unread notification{metrics.unreadNotificationCount === 1 ? "" : "s"}
+                </span>
+              </>
+            ) : null}
           </Link>
 
           <Tooltip content="Keyboard shortcuts (?)">

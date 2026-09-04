@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   BarChart3,
+  Bell,
   Bot,
   CalendarCheck2,
   CheckSquare,
@@ -61,6 +62,7 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/review": FileText,
   "/work-analytics": BarChart3,
   "/ideas": Lightbulb,
+  "/notifications": Bell,
   "/startup": Rocket,
   "/shutdown": Power,
   "/apps": Grid2X2,
@@ -292,6 +294,11 @@ export function SidebarNavigation({
             key={route.href}
             route={route}
             pathname={pathname}
+            badge={
+              route.href === "/notifications" && metrics.unreadNotificationCount > 0
+                ? { label: String(metrics.unreadNotificationCount), tone: "warn" }
+                : null
+            }
             compact={compact}
             onNavigate={onNavigate}
           />
