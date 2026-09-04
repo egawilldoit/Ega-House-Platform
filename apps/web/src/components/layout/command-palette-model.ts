@@ -34,6 +34,7 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
   { label: "Review", href: SHORTCUT_ROUTE_MAP.review },
   { label: "Analytics", href: "/work-analytics" },
   { label: "Ideas", href: "/ideas" },
+  { label: "Notifications", href: "/notifications" },
   { label: "Startup", href: "/startup" },
   { label: "Shutdown", href: "/shutdown" },
   { label: "Apps", href: SHORTCUT_ROUTE_MAP.apps },

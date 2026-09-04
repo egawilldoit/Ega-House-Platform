@@ -11,13 +11,13 @@ import {
 test("navigation items include the full route set when the query is empty", () => {
   const labels = filterNavigationItems("").map((item) => item.label);
 
-  assert.deepEqual(labels, ["Today", "Tasks", "Goals", "Timer", "Review", "Analytics", "Ideas", "Startup", "Shutdown", "Apps", "Help", "Settings"]);
+  assert.deepEqual(labels, ["Today", "Tasks", "Goals", "Timer", "Review", "Analytics", "Ideas", "Notifications", "Startup", "Shutdown", "Apps", "Help", "Settings"]);
 });
 
 test("filters navigation items case-insensitively and drops non-matches", () => {
   const items = filterNavigationItems("TA");
 
-  // With expanded nav (13 items), "TA" matches Tasks and Startup (sTArtup)
+  // With expanded nav, "TA" matches Tasks and Startup (sTArtup)
   assert.deepEqual(items.map((item) => item.label), ["Tasks", "Startup"]);
 });
 

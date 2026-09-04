@@ -24,11 +24,11 @@ test("shared workspace navigation points Help to the real /help route", () => {
 
   assert.match(
     routeMeta,
-    /href:\s*"\/help",\s*index:\s*"S5",\s*label:\s*"Help"/,
+    /href:\s*"\/help",\s*index:\s*"S6",\s*label:\s*"Help"/,
   );
   assert.doesNotMatch(
     routeMeta,
-    /href:\s*"\/dashboard",\s*index:\s*"S5",\s*label:\s*"Help"/,
+    /href:\s*"\/dashboard"[\s\S]*label:\s*"Help"/,
   );
   assert.match(navigation, /SYSTEM_ROUTES\.map/);
   assert.match(navigation, /canonicalUrl\.resolve\(route\.href\)/);

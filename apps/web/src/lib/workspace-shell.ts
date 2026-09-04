@@ -21,6 +21,7 @@ export type WorkspaceShellMetricsSnapshot = {
   overdueTaskCount: number;
   dueTodayTaskCount: number;
   hasCurrentWeekReview: boolean;
+  unreadNotificationCount?: number;
 };
 
 export type WorkspaceShellMetrics = {
@@ -29,6 +30,7 @@ export type WorkspaceShellMetrics = {
   blockedTaskCount: number;
   overdueTaskCount: number;
   dueTodayTaskCount: number;
+  unreadNotificationCount: number;
   reviewMissing: boolean;
   reviewSignal: "missing" | "current";
   taskActionCount: number;
@@ -63,6 +65,7 @@ export function buildWorkspaceShellMetrics(
   const blockedTaskCount = toSafeCount(snapshot.blockedTaskCount);
   const overdueTaskCount = toSafeCount(snapshot.overdueTaskCount);
   const dueTodayTaskCount = toSafeCount(snapshot.dueTodayTaskCount);
+  const unreadNotificationCount = toSafeCount(snapshot.unreadNotificationCount);
   const hasActiveTimer = Boolean(snapshot.hasActiveTimer);
   const reviewMissing = !snapshot.hasCurrentWeekReview;
   const taskActionCount = blockedTaskCount + overdueTaskCount + dueTodayTaskCount;
@@ -86,6 +89,7 @@ export function buildWorkspaceShellMetrics(
     blockedTaskCount,
     overdueTaskCount,
     dueTodayTaskCount,
+    unreadNotificationCount,
     reviewMissing,
     reviewSignal: reviewMissing ? "missing" : "current",
     taskActionCount,
@@ -120,6 +124,19 @@ async function getActiveTaskCountOrThrow(
   }
 
   return getCountOrThrow(buildQuery(false), message);
+}
+
+async function getUnreadNotificationCountOrZero(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+) {
+  const notificationClient =
+    supabase as unknown as import("@supabase/supabase-js").SupabaseClient;
+  const { count, error } = await notificationClient
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
+
+  return error ? 0 : count ?? 0;
 }
 
 async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics> {
@@ -161,6 +178,7 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
       overdueTaskCount,
       dueTodayTaskCount,
       currentWeekReviewResult,
+      unreadNotificationCount,
     ] = await Promise.all([
       supabase
         .from("task_sessions")
@@ -205,6 +223,7 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
         .eq("week_start", reviewWeek.weekStart)
         .eq("week_end", reviewWeek.weekEnd)
         .limit(1),
+      getUnreadNotificationCountOrZero(supabase),
     ]);
 
     if (activeTimerResult.error) {
@@ -222,6 +241,7 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
       blockedTaskCount,
       overdueTaskCount,
       dueTodayTaskCount,
+      unreadNotificationCount,
       hasCurrentWeekReview: Boolean(currentWeekReviewResult.data?.length),
     });
   } catch (error) {
