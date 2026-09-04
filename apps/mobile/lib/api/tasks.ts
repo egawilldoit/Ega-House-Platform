@@ -29,8 +29,10 @@ export type ListMobileTasksParams = {
   projectId?: string | null;
   goalId?: string | null;
   priority?: TaskPriority | null;
+  plannedForDate?: string | null;
   due?: TaskDueFilter;
   sort?: TaskSortValue;
+  includeArchived?: boolean;
   limit?: number | null;
 };
 
@@ -40,8 +42,10 @@ function listQuery(params: ListMobileTasksParams) {
     projectId: params.projectId ?? undefined,
     goalId: params.goalId ?? undefined,
     priority: params.priority ?? undefined,
+    plannedForDate: params.plannedForDate ?? undefined,
     due: params.due ?? undefined,
     sort: params.sort ?? undefined,
+    includeArchived: params.includeArchived ?? undefined,
     limit: typeof params.limit === 'number' ? params.limit : undefined,
   };
 }
@@ -67,6 +71,14 @@ export async function updateMobileTask(
   input: Record<string, unknown>,
 ): Promise<MobileTaskMutationResponse> {
   return unwrapApiResult(await getMobileEgaApiClient().tasks.update(taskId, input));
+}
+
+export async function archiveMobileTask(taskId: string): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.archive(taskId));
+}
+
+export async function unarchiveMobileTask(taskId: string): Promise<MobileTaskMutationResponse> {
+  return unwrapApiResult(await getMobileEgaApiClient().tasks.unarchive(taskId));
 }
 
 export async function createMobileTaskReminder(

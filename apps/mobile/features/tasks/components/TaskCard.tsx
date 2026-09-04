@@ -14,6 +14,7 @@ export type TaskCardProps = {
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueLabel: string;
   estimateLabel?: string;
+  archived?: boolean;
   blockedReason?: string | null;
   saving?: boolean;
   onOpen: () => void;
@@ -32,6 +33,7 @@ export function TaskCard({
   priority,
   dueLabel,
   estimateLabel,
+  archived = false,
   blockedReason,
   saving,
   onOpen,
@@ -72,6 +74,12 @@ export function TaskCard({
           <View style={styles.chipRow}>
             <Chip kind="status" value={status} label={formatStatus(status)} style={styles.chip} />
             <Chip kind="priority" value={priority} style={styles.chip} showDot />
+            {archived ? (
+              <View style={styles.archivedPill}>
+                <Ionicons color={mobileTheme.colors.textMuted} name="archive-outline" size={13} />
+                <Text style={styles.archivedText}>Archived</Text>
+              </View>
+            ) : null}
             <View style={styles.spacer} />
             <View style={[styles.duePill, hasDueDate ? styles.duePillHasDue : styles.duePillNoDue]}>
               <Ionicons
@@ -122,6 +130,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 10,
+  },
+  archivedPill: {
+    alignItems: 'center',
+    backgroundColor: mobileTheme.colors.surfaceMuted,
+    borderRadius: mobileTheme.radius.pill,
+    flexDirection: 'row',
+    gap: 4,
+    minHeight: 26,
+    paddingHorizontal: 8,
+  },
+  archivedText: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 11,
+    fontWeight: mobileTheme.font.bold,
   },
   blockedBox: {
     alignItems: 'flex-start',

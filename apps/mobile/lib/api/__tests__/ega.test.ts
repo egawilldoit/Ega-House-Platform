@@ -97,6 +97,8 @@ function makeFakeClient(): EgaApiClient {
             priority: null,
             due: 'all' as const,
             sort: 'updated_desc' as const,
+            plannedForDate: null,
+            includeArchived: false,
             limit: null,
           },
           projects: [],

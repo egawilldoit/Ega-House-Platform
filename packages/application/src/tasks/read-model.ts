@@ -20,6 +20,7 @@ export type ParsedMobileTaskListQuery = Readonly<{
   projectId: string | null;
   goalId: string | null;
   plannedForDate: string | null;
+  includeArchived: boolean;
   due: TaskDueFilter;
   sort: TaskSortValue;
   limit: number | null;
@@ -33,6 +34,7 @@ export function parseMobileTaskListQuery(
   const projectId = query("projectId")?.trim() || null;
   const goalId = query("goalId")?.trim() || null;
   const plannedForDate = query("plannedForDate")?.trim() || null;
+  const includeArchivedParam = (query("includeArchived") ?? "").trim();
   const dueParam = (query("due") ?? "").trim() || DEFAULT_TASK_DUE_FILTER;
   const sortParam = (query("sort") ?? "").trim() || DEFAULT_TASK_SORT;
   const limitParam = (query("limit") ?? "").trim();
@@ -45,6 +47,10 @@ export function parseMobileTaskListQuery(
   const priority = priorityParam ? priorityParam : null;
   if (priority !== null && !isTaskPriority(priority)) {
     return { ok: false, message: "Invalid priority filter." };
+  }
+
+  if (includeArchivedParam && includeArchivedParam !== "true" && includeArchivedParam !== "false") {
+    return { ok: false, message: "Invalid includeArchived filter." };
   }
 
   if (!isTaskDueFilter(dueParam)) {
@@ -75,6 +81,7 @@ export function parseMobileTaskListQuery(
       projectId,
       goalId,
       plannedForDate,
+      includeArchived: includeArchivedParam === "true",
       due: dueParam,
       sort: sortParam,
       limit,

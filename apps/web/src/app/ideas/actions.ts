@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+import { convertInboxItemToTask, createAuthenticatedActor } from "@ega/application";
+import { SupabaseInboxRepository, SupabaseTasksRepository } from "@ega/data-access";
 
 import {
   archiveIdeaNote,
@@ -9,6 +13,8 @@ import {
   updateIdeaNote,
 } from "@/lib/services/idea-note-service";
 import { DEFAULT_IDEA_NOTE_TYPE } from "@/lib/idea-note-domain";
+import { requireAuthenticatedUser } from "@/lib/services/auth-service";
+import { createClient } from "@/lib/supabase/server";
 
 export type CreateIdeaNoteFormState = {
   error: string | null;
@@ -29,6 +35,10 @@ export type UpdateIdeaNoteFormState = {
 };
 
 export type IdeaNoteArchiveFormState = UpdateIdeaNoteFormState;
+
+export type ConvertIdeaNoteFormState = {
+  error: string | null;
+};
 
 function createErrorState(
   error: string,
@@ -155,4 +165,39 @@ export async function restoreIdeaNoteAction(
     error: null,
     success: "Idea restored.",
   };
+}
+
+export async function convertIdeaNoteAction(
+  _previous: ConvertIdeaNoteFormState,
+  formData: FormData,
+): Promise<ConvertIdeaNoteFormState> {
+  const inboxItemId = String(formData.get("id") ?? "").trim();
+  const projectId = String(formData.get("projectId") ?? "").trim();
+
+  if (!inboxItemId) {
+    return { error: "Idea is required." };
+  }
+
+  if (!projectId) {
+    return { error: "Choose a project before creating the task." };
+  }
+
+  const supabase = await createClient();
+  const user = await requireAuthenticatedUser({ supabase });
+  const actor = createAuthenticatedActor(user.id);
+  const inboxRepository = new SupabaseInboxRepository(supabase);
+  const tasksRepository = new SupabaseTasksRepository(supabase);
+  const result = await convertInboxItemToTask(actor, inboxRepository, tasksRepository, {
+    inboxItemId,
+    projectId,
+  });
+
+  if (!result.ok) {
+    return { error: result.errorMessage };
+  }
+
+  revalidatePath("/ideas");
+  revalidatePath("/tasks");
+  revalidatePath("/today");
+  redirect(`/tasks#task-${result.data.task.id}`);
 }

@@ -60,6 +60,8 @@ test("PARITY LIST: default envelope matches the legacy enriched payload exactly"
     priority: null,
     due: "all",
     sort: "updated_desc",
+    plannedForDate: null,
+    includeArchived: false,
     limit: null,
   });
   assert.deepEqual(body.projects, expectedListEnvelope([]).projects);
@@ -164,6 +166,7 @@ test("PARITY LIST: invalid status/sort/limit reject with legacy validation messa
   for (const [query, message] of [
     ["status=archived", "Invalid status filter."],
     ["sort=random", "Invalid sort value."],
+    ["includeArchived=yes", "Invalid includeArchived filter."],
     ["limit=0", "limit must be an integer between 1 and 200."],
     ["limit=201", "limit must be an integer between 1 and 200."],
   ] as Array<[string, string]>) {
@@ -195,6 +198,45 @@ test("PARITY LIST: active project restricts visible goal form options", async ()
   const body = await (await makeApp(fake).request("/api/tasks?projectId=p1", { headers: AUTH })).json();
   assert.equal(body.filters.projectId, "p1");
   assert.deepEqual(body.goals, [{ id: "g1", title: "Ship v1" }]);
+});
+
+test("PARITY LIST: archive scope and planned date reach the canonical task read model", async () => {
+  const fake = new FakeSupabase();
+  const archivedTask = {
+    ...parityTaskRows()[0],
+    id: "t-archived",
+    title: "Archived task",
+    archived_at: "2026-08-09T12:00:00.000Z",
+    planned_for_date: "2026-08-10",
+  };
+  fake.push("projects", { data: parityProjectRows(), error: null });
+  fake.push("goals", { data: parityGoalRows(), error: null });
+  fake.push("tasks", { data: [archivedTask], error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+  fake.push("task_sessions", { data: [], error: null });
+
+  const response = await makeApp(fake).request(
+    "/api/tasks?includeArchived=true&plannedForDate=2026-08-10",
+    { headers: AUTH },
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+
+  assert.equal(body.tasks[0].id, "t-archived");
+  assert.equal(body.tasks[0].archivedAt, "2026-08-09T12:00:00.000Z");
+  assert.equal(body.tasks[0].plannedForDate, "2026-08-10");
+  assert.equal(body.filters.includeArchived, true);
+  assert.equal(body.filters.plannedForDate, "2026-08-10");
+
+  const taskCall = fake.calls.find((call) => call.table === "tasks");
+  assert.ok(taskCall);
+  assert.ok(!taskCall.steps.some((step) => step.method === "is" && step.args[0] === "archived_at"));
+  assert.ok(
+    taskCall.steps.some(
+      (step) => step.method === "eq" && step.args[0] === "planned_for_date" && step.args[1] === "2026-08-10",
+    ),
+  );
 });
 
 test("PARITY DETAIL: GET /api/tasks/:id returns the enriched { ok, task } envelope or 404", async () => {
