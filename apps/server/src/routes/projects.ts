@@ -11,6 +11,15 @@ import {
   unarchiveProject,
   updateProjectStatus,
 } from "@ega/application";
+import type {
+  CreateProjectResponse,
+  ProjectIdentityReadModel,
+  ProjectMutationResponse,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
+  ProjectsReadModel,
+  PurgeProjectInput,
+} from "@ega/contracts/projects";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 import { normalizeProjectViewFilter } from "@ega/domain";
 
@@ -41,7 +50,7 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
     }
 
-    return c.json(result.data);
+    return c.json(result.data satisfies ProjectsReadModel);
   });
 
   routes.get("/:slug", async (c) => {
@@ -61,7 +70,7 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "NOT_FOUND", message: "Project not found." } }, 404);
     }
 
-    return c.json(result.data);
+    return c.json(result.data satisfies ProjectIdentityReadModel);
   });
 
   routes.post("/", async (c) => {
@@ -89,7 +98,8 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true, values: result.values }, 201);
+    const response: CreateProjectResponse = { ok: true, values: result.values };
+    return c.json(response, 201);
   });
 
   routes.patch("/:id/status", async (c) => {
@@ -117,7 +127,8 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: ProjectMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.post("/:id/archive", async (c) => {
@@ -136,7 +147,8 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: ProjectMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.post("/:id/unarchive", async (c) => {
@@ -155,7 +167,8 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
     }
 
-    return c.json({ ok: true });
+    const response: ProjectMutationResponse = { ok: true };
+    return c.json(response);
   });
 
   routes.delete("/:id", async (c) => {
@@ -168,7 +181,8 @@ export function createProjectsRoutes(
     );
 
     if (result.ok) {
-      return c.json({ ok: true });
+      const response: ProjectMutationResponse = { ok: true };
+      return c.json(response);
     }
 
     // Dependency conflicts keep the established VALIDATION envelope code and
@@ -199,7 +213,7 @@ export function createProjectsRoutes(
 
     if (result.ok) {
       const preview = result.data;
-      return c.json({
+      const response: ProjectPurgePreviewResponse = {
         projectId: preview.projectId,
         projectName: preview.projectName,
         impact: {
@@ -213,7 +227,8 @@ export function createProjectsRoutes(
           taskNotificationCount: preview.taskNotificationCount,
           calendarEventCount: preview.calendarEventCount,
         },
-      });
+      };
+      return c.json(response);
     }
 
     if (result.code === "notFound") {
@@ -235,19 +250,23 @@ export function createProjectsRoutes(
       return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
     }
 
+    // `readJsonBody` remains intentionally untrusted; the application validates
+    // these values. This assertion names the shared wire contract without
+    // changing the existing invalid-input behavior.
+    const purgeInput = body as unknown as PurgeProjectInput;
+
     const result = await purgeArchivedProject(
       actor,
       new SupabaseProjectsRepository(client),
       {
         projectId: c.req.param("id"),
-        confirmationName: body.confirmationName,
-        expectedTaskCount: body.expectedTaskCount,
-        expectedGoalCount: body.expectedGoalCount,
+        ...purgeInput,
       },
     );
 
     if (result.ok) {
-      return c.json({ ok: true, deleted: result.data });
+      const response: ProjectPurgeResponse = { ok: true, deleted: result.data };
+      return c.json(response);
     }
 
     // Contents-changed conflicts keep the established VALIDATION envelope

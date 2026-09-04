@@ -76,3 +76,6 @@ export type HealthSnapshotResponse = Readonly<{
   snapshot: HealthWorkloadSnapshotDto;
   recommendations: HealthRecommendationDto[];
 }>;
+
+/** GET /health response body. */
+export type HealthStatusResponse = Readonly<{ status: "ok" }>;

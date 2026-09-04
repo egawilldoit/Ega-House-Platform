@@ -1,6 +1,7 @@
 import type { TaskPriority, TaskRecurrenceRule, TaskStatus } from "@ega/domain";
 
 import type { TaskDueFilter, TaskSortValue } from "./common/task-list";
+import type { OperatorSnapshotDto } from "./operator";
 
 export type { TaskPriority, TaskStatus, TaskDueFilter, TaskSortValue };
 
@@ -157,22 +158,14 @@ export type MobileTodaySummary = {
   trackedTodayLabel: string;
 };
 
-export type MobileTodayResponse = {
-  ok: true;
-  date: string;
-  sections: {
-    planned: MobileTodayTaskItem[];
-    inProgress: MobileTodayTaskItem[];
-    blocked: MobileTodayTaskItem[];
-    completed: MobileTodayTaskItem[];
-  };
-  suggestions: {
-    pinned: MobileTodayTaskItem[];
-    inProgress: MobileTodayTaskItem[];
-  };
-  summary: MobileTodaySummary;
-  activeTimer: { sessionId: string; taskId: string } | null;
-};
+/**
+ * GET /api/today response body.
+ *
+ * Today is served by the Operator snapshot use case. Keep the historical
+ * mobile name as a type alias so native callers and the server share the
+ * same response authority instead of maintaining a narrower shadow DTO.
+ */
+export type MobileTodayResponse = OperatorSnapshotDto;
 
 export type MobileTodayTaskStatusMutationResponse = {
   ok: true;

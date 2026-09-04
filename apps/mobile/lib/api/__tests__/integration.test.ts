@@ -20,6 +20,13 @@ import { configureMobileApiClient } from '@/lib/api/client';
 const TODAY_PAYLOAD: MobileTodayResponse = {
   ok: true,
   date: '2026-08-21',
+  timezone: 'UTC',
+  timeContextId: 'time-context-int',
+  dayWindow: {
+    startUtcIso: '2026-08-21T00:00:00.000Z',
+    endUtcIso: '2026-08-22T00:00:00.000Z',
+  },
+  plannedToday: [],
   sections: {
     planned: [],
     inProgress: [],
@@ -29,6 +36,14 @@ const TODAY_PAYLOAD: MobileTodayResponse = {
   suggestions: {
     pinned: [],
     inProgress: [],
+  },
+  focus: {
+    startHere: null,
+    queue: [],
+  },
+  schedule: {
+    blocks: [],
+    flexible: [],
   },
   summary: {
     plannedCount: 0,
@@ -44,6 +59,12 @@ const TODAY_PAYLOAD: MobileTodayResponse = {
     trackedTodayLabel: '0m',
   },
   activeTimer: null,
+  signals: {
+    health: null,
+    friction: null,
+    inbox: null,
+    weeklyObjective: null,
+  },
 };
 
 type TodayQueryResult = ReturnType<typeof useTodayWorkspaceQuery>;
