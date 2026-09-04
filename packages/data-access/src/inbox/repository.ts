@@ -15,6 +15,7 @@ import { sanitizeSupabaseError } from "../supabase/errors";
 
 const ACTIVE_INBOX_STATUSES = ["inbox", "reviewing", "planned"] as const;
 const ALL_VISIBLE_INBOX_STATUSES = ["inbox", "reviewing", "planned", "archived"] as const;
+const INBOX_LIST_LIMIT = 240;
 const INBOX_SELECT = "id, title, body, status, type, project_id, priority, tags, created_at, updated_at, projects(name)";
 
 type InboxRow = {
@@ -139,7 +140,7 @@ export class SupabaseInboxRepository implements InboxRepository {
       request = request.contains("tags", [query.tag]);
     }
 
-    request = request.order("created_at", { ascending: false });
+    request = request.order("created_at", { ascending: false }).limit(INBOX_LIST_LIMIT);
 
     const result = await request;
     if (result.error) return failure(result.error);
