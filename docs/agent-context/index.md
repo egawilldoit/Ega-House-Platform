@@ -1,6 +1,6 @@
 # Agent Context Index
 
-Use this directory for current repository-local agent guidance. `AGENTS.md` is the compact repository contract; scoped `AGENTS.md` files add local rules next to the code they govern. Current behavior and normative requirements remain separate hierarchies in [`product-authority.md`](product-authority.md).
+Use this directory for current repository-local agent guidance. `AGENTS.md` is the compact repository contract; scoped `AGENTS.md` files add local rules next to the code they govern. Current behavior and normative requirements use a separate evidence model and normative hierarchy in [`product-authority.md`](product-authority.md).
 
 ## Start here
 
@@ -22,6 +22,8 @@ Use this directory for current repository-local agent guidance. `AGENTS.md` is t
 11. [`contract-api-wave-03.md`](contract-api-wave-03.md) — Wave 03 contract/API-client boundary inventory and selected scope.
 12. [`skill-routing-evaluation.md`](skill-routing-evaluation.md) — expected specialized-skill routing and observed/unexecuted semantic checks.
 13. [`../reports/README.md`](../reports/README.md) — historical audits/design/readiness evidence index.
+
+Use [quality-workflow.md](quality-workflow.md) for the general analysis, implementation, recovery, review, authorized merge, and completion procedure. Apply this core before specialized skills; Runner-specific review does not replace product review.
 
 ## Why scoped instructions
 

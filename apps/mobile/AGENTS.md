@@ -32,3 +32,10 @@ Use typecheck + affected tests during iteration; run Doctor/bundle for native,
 routing, Metro, or release changes. Shared ownership changes also require
 `npm run check:architecture`, `npm run test:architecture`, and
 `npm run ci:purity`. Do not claim Android/iOS runtime from TypeScript tests.
+
+For changed mutations/session flows, verify invalidation, failure feedback,
+user-switch isolation, and retry behavior where applicable. Use
+`npm run verify:mobile` levels required by the change; record platform/artifact
+and distinguish JS bundle, native build, installation/device, and authenticated
+workflow evidence. Native dependency/configuration changes need explicit native
+versus OTA compatibility and release-order assessment.

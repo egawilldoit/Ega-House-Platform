@@ -34,3 +34,8 @@ For ownership/import changes also run `npm run check:architecture`,
 `npm run ci:security`. Inspect loading, empty, error, success, focus, keyboard,
 responsive, and reduced-motion states for touched UI. Do not claim runtime
 behavior from source or tests alone.
+
+For changed mutations, verify persisted outcome, failure feedback, and invalidation
+of affected projections. Check user-switch cache isolation and shared task/timer/
+Today semantics when touched; select date/timezone and duplicate-submit cases by
+risk. Rendered tests do not establish an authenticated end-to-end flow.
