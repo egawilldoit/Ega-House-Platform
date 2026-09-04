@@ -13,11 +13,15 @@ export type {
   ProjectGoalRecord,
   ProjectIdentityReadModel,
   ProjectMutationResponse,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
+  ProjectPurgeSummary,
   ProjectRecord,
   ProjectStatus,
   ProjectTaskContextRecord,
   ProjectViewFilter,
   ProjectsReadModel,
+  PurgeProjectInput,
 } from "@ega/contracts/projects";
 
 export type {

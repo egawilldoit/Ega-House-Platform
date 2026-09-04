@@ -23,50 +23,20 @@
  * `error.status === 409` with `error.code === "VALIDATION"`.
  */
 
-import type { ApiResult, OkResponse } from "./errors";
+import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 import type {
   CreateProjectResponse,
   CreateProjectInput,
   ProjectIdentityReadModel,
   ProjectMutationResponse,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
   ProjectStatus,
   ProjectViewFilter,
   ProjectsReadModel,
+  PurgeProjectInput,
 } from "@ega/contracts/projects";
-
-export type ProjectPurgeImpact = {
-  taskCount: number;
-  goalCount: number;
-  sessionCount: number;
-  activeSessionCount: number;
-  reminderCount: number;
-  recurrenceCount: number;
-  externalRefCount: number;
-  taskNotificationCount: number;
-  calendarEventCount: number;
-};
-
-export type ProjectPurgePreviewResponse = {
-  projectId: string;
-  projectName: string;
-  impact: ProjectPurgeImpact;
-};
-
-export type ProjectPurgeSummary = {
-  tasksDeleted: number;
-  goalsDeleted: number;
-  sessionsDeleted: number;
-  externalRefsDeleted: number;
-  notificationsDeleted: number;
-  calendarDeleteJobsEnqueued: number;
-};
-
-export type PurgeProjectInput = {
-  confirmationName: string;
-  expectedTaskCount: number;
-  expectedGoalCount: number;
-};
 
 export type ProjectsApi = {
   /** GET /api/projects?view=... (view omitted => server defaults to "active"). */
@@ -82,11 +52,11 @@ export type ProjectsApi = {
   /** POST /api/projects/:id/unarchive. */
   unarchive(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
   /** DELETE /api/projects/:id — archived projects without linked tasks/goals only. */
-  remove(projectId: string): Promise<ApiResult<OkResponse>>;
+  remove(projectId: string): Promise<ApiResult<ProjectMutationResponse>>;
   /** GET /api/projects/:id/purge-preview — exact deletion impact for an archived project. */
   getPurgePreview(projectId: string): Promise<ApiResult<ProjectPurgePreviewResponse>>;
   /** POST /api/projects/:id/purge — atomic purge of an archived project. */
-  purge(projectId: string, input: PurgeProjectInput): Promise<ApiResult<{ ok: true; deleted: ProjectPurgeSummary }>>;
+  purge(projectId: string, input: PurgeProjectInput): Promise<ApiResult<ProjectPurgeResponse>>;
 };
 
 export function createProjectsApi(http: HttpClient): ProjectsApi {
@@ -135,7 +105,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     remove(projectId) {
-      return http.request<OkResponse>({
+      return http.request<ProjectMutationResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}`,
         method: "DELETE",
       });
@@ -148,7 +118,7 @@ export function createProjectsApi(http: HttpClient): ProjectsApi {
     },
 
     purge(projectId, input) {
-      return http.request<{ ok: true; deleted: ProjectPurgeSummary }>({
+      return http.request<ProjectPurgeResponse>({
         path: `/api/projects/${encodeURIComponent(projectId)}/purge`,
         method: "POST",
         body: input,

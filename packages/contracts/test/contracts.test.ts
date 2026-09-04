@@ -8,6 +8,10 @@ import {
   type CreateGoalResponse,
   type CreateProjectResponse,
   type MobileTodayResponse,
+  type ProjectPurgePreviewResponse,
+  type ProjectPurgeResponse,
+  type ProjectPurgeSummary,
+  type PurgeProjectInput,
   type ProjectsReadModel,
   type GoalsReadModel,
   TASK_DUE_FILTER_VALUES,
@@ -143,6 +147,41 @@ test("project and goal response DTOs describe the existing transport envelopes",
   assert.equal(projects.summary.total, 0);
   assert.equal(goalResponse.values.status, "active");
   assert.equal(goals.summary.total, 0);
+});
+
+test("project purge endpoints use shared contract envelopes", () => {
+  const input: PurgeProjectInput = {
+    confirmationName: "Launch",
+    expectedTaskCount: 2,
+    expectedGoalCount: 1,
+  };
+  const summary: ProjectPurgeSummary = {
+    tasksDeleted: 2,
+    goalsDeleted: 1,
+    sessionsDeleted: 3,
+    externalRefsDeleted: 0,
+    notificationsDeleted: 1,
+    calendarDeleteJobsEnqueued: 1,
+  };
+  const preview: ProjectPurgePreviewResponse = {
+    projectId: "project-1",
+    projectName: "Launch",
+    impact: {
+      taskCount: 2,
+      goalCount: 1,
+      sessionCount: 3,
+      activeSessionCount: 0,
+      reminderCount: 1,
+      recurrenceCount: 0,
+      externalRefCount: 0,
+      taskNotificationCount: 1,
+      calendarEventCount: 1,
+    },
+  };
+  const response: ProjectPurgeResponse = { ok: true, deleted: summary };
+
+  assert.equal(input.confirmationName, preview.projectName);
+  assert.equal(response.deleted.tasksDeleted, preview.impact.taskCount);
 });
 
 test("Today response uses the complete Operator snapshot contract", () => {

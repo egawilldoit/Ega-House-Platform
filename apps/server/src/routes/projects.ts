@@ -15,6 +15,8 @@ import type {
   CreateProjectResponse,
   ProjectIdentityReadModel,
   ProjectMutationResponse,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
   ProjectsReadModel,
 } from "@ega/contracts/projects";
 import { SupabaseProjectsRepository } from "@ega/data-access";
@@ -178,7 +180,8 @@ export function createProjectsRoutes(
     );
 
     if (result.ok) {
-      return c.json({ ok: true });
+      const response: ProjectMutationResponse = { ok: true };
+      return c.json(response);
     }
 
     // Dependency conflicts keep the established VALIDATION envelope code and
@@ -209,7 +212,7 @@ export function createProjectsRoutes(
 
     if (result.ok) {
       const preview = result.data;
-      return c.json({
+      const response: ProjectPurgePreviewResponse = {
         projectId: preview.projectId,
         projectName: preview.projectName,
         impact: {
@@ -223,7 +226,8 @@ export function createProjectsRoutes(
           taskNotificationCount: preview.taskNotificationCount,
           calendarEventCount: preview.calendarEventCount,
         },
-      });
+      };
+      return c.json(response);
     }
 
     if (result.code === "notFound") {
@@ -257,7 +261,8 @@ export function createProjectsRoutes(
     );
 
     if (result.ok) {
-      return c.json({ ok: true, deleted: result.data });
+      const response: ProjectPurgeResponse = { ok: true, deleted: result.data };
+      return c.json(response);
     }
 
     // Contents-changed conflicts keep the established VALIDATION envelope

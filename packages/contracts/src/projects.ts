@@ -71,3 +71,46 @@ export type CreateProjectResponse = {
 };
 
 export type ProjectMutationResponse = { ok: true };
+
+/** Exact deletion impact returned by GET /api/projects/:id/purge-preview. */
+export type ProjectPurgeImpact = {
+  taskCount: number;
+  goalCount: number;
+  sessionCount: number;
+  activeSessionCount: number;
+  reminderCount: number;
+  recurrenceCount: number;
+  externalRefCount: number;
+  taskNotificationCount: number;
+  calendarEventCount: number;
+};
+
+/** GET /api/projects/:id/purge-preview response body. */
+export type ProjectPurgePreviewResponse = {
+  projectId: string;
+  projectName: string;
+  impact: ProjectPurgeImpact;
+};
+
+/** Summary returned after POST /api/projects/:id/purge. */
+export type ProjectPurgeSummary = {
+  tasksDeleted: number;
+  goalsDeleted: number;
+  sessionsDeleted: number;
+  externalRefsDeleted: number;
+  notificationsDeleted: number;
+  calendarDeleteJobsEnqueued: number;
+};
+
+/** POST /api/projects/:id/purge request body. */
+export type PurgeProjectInput = {
+  confirmationName: string;
+  expectedTaskCount: number;
+  expectedGoalCount: number;
+};
+
+/** POST /api/projects/:id/purge response body. */
+export type ProjectPurgeResponse = {
+  ok: true;
+  deleted: ProjectPurgeSummary;
+};

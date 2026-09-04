@@ -67,6 +67,9 @@ export type {
   ProjectFormValues,
   CreateProjectResponse,
   ProjectMutationResponse,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
+  ProjectPurgeSummary,
   GoalFormValues,
   CreateGoalResponse,
   GoalMutationResponse,
@@ -80,6 +83,7 @@ export type {
   GoalReadModel,
   GoalsReadModel,
   CreateProjectInput,
+  PurgeProjectInput,
   CreateGoalInput,
   HealthResponse,
 } from "./types";
