@@ -131,6 +131,28 @@ test("insertOpenSession keeps unknown failures untyped", async () => {
   if (!result.ok) assert.deepEqual(result.error, { code: "unknown" });
 });
 
+test("listOpenSessions bounds the active-session read to the single-owner invariant", async () => {
+  const fake = new FakeTimerSupabase([{ data: [], error: null }]);
+  const builderCapture: FakeTimerQueryBuilder[] = [];
+  const originalFrom = fake.from.bind(fake);
+  fake.from = (table: string) => {
+    const builder = originalFrom(table) as FakeTimerQueryBuilder;
+    builderCapture.push(builder);
+    return builder;
+  };
+
+  const result = await timerRepository(fake).listOpenSessions(ACTOR);
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(builderCapture[0]?.recordedSteps(), [
+    "select:id, task_id, started_at, ended_at, duration_seconds, tasks(title)",
+    "eq:owner_user_id=user-timer",
+    "is:ended_at=null",
+    "order:started_at",
+    "limit:1",
+  ]);
+});
+
 test("insertOpenSession returns the mapped session row on success and scopes writes to the actor owner", async () => {
   const fake = new FakeTimerSupabase([
     {
