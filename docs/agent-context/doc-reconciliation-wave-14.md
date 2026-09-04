@@ -41,6 +41,39 @@ The instruction-size failures predate this wave and are the explicit Wave 14
 owner. The dependency-audit issues recorded by Wave 01 are separate upstream
 toolchain debt; they are not silently waived or reclassified here.
 
+## Reconciled living statements
+
+| Living file | Old statement | Contrary current evidence | Corrected statement | Evidence |
+| --- | --- | --- | --- | --- |
+| `docs/architecture/delivery-lifecycle.md` | Wave 00 remained blocked because the API project built a Preview for the feature branch SHA. | Wave 00 was accepted at `6f71ebdf6f67f8c77f371b28eefba4487a0930b8`; the exact non-main API status was `Canceled by Ignored Build Step`. | Repository policy and the observed API smoke enforce fail-closed non-main skipping; this does not prove every connected Vercel setting or a production deployment. | Wave 00 acceptance record, GitHub commit status for `6f71ebdf`, root and server `vercel.json`. |
+| `docs/architecture/hono-deployment.md` | The standalone API deployment lock was still blocked by a successful Preview deployment. | The post-fix exact-SHA API status was canceled by the ignored build step and no successful Preview was observed. | Non-main API builds are skipped by the fail-closed ignore command; `main` remains permitted and production verification remains separate. | Wave 00 acceptance record and GitHub commit status for `6f71ebdf`. |
+| `docs/architecture/platform-monorepo.md` | The current server/API surface listed only Auth, Timer, Projects, Goals, Tasks, and Today. | `apps/server/src/routes/` and route registration include Inbox, Notifications, Friction, Health, Operator, Time Context, and Weekly Review. | The current transport surface includes all listed route families, while application ownership remains below Hono. | Current server route files/registration and Wave 01 capability matrix. |
+| `ARCHITECTURE.md` | Mobile delivery documentation described no checked-in EAS configuration. | `apps/mobile/eas.json` exists and contains minimal CLI metadata. | EAS metadata is checked in, but no EAS Build, Submit, or Update workflow is configured or claimed. | `apps/mobile/eas.json`, mobile scripts, and Wave 06 runtime evidence. |
+| `docs/architecture/notifications.md` | Native notification setup was described as an unmerged branch state with no current EAS metadata. | The notification implementation is present on the current accepted branch and `apps/mobile/eas.json` exists; device migration and push delivery remain unverified. | The native layer is current in the repository, while device migration, push delivery, and release-service behavior remain explicitly NOT VERIFIED. | Current notification source, `apps/mobile/eas.json`, and Wave 06–12 evidence. |
+| `docs/mobile-e2e-flows.md` | Login and task/project protocols referred to a Tasks tab and Projects tab. | The current tab layout exposes Today, Work, Goals, Timer, and Inbox; Tasks and Projects are modes within Work. | After login, Today is the default protected surface; task and project flows are reached through Work modes. | `apps/mobile/app/(app)/(tabs)/_layout.tsx`, Work route files, and current mobile navigation. |
+
+Historical Wave 01–13 ledgers and reports were left unchanged. Their
+point-in-time claims remain historical evidence rather than current product
+guidance.
+
+## Instruction-chain measurement
+
+The validator was not weakened. Repetition was removed from the root contract
+and subsystem-specific guidance was retained in the nearest leaf instructions.
+
+| Chain | Before | After | Result |
+| --- | ---: | ---: | --- |
+| root | 10,775 bytes | 4,210 bytes | under 6,000 |
+| web | 13,888 bytes | 5,716 bytes | under 6,000 |
+| mobile | 13,433 bytes | 5,609 bytes | under 6,000 |
+| server | 13,402 bytes | 5,504 bytes | under 6,000 |
+| packages | 13,825 bytes | 5,803 bytes | under 6,000 |
+| Runner | 14,233 bytes | 5,948 bytes | under 6,000 |
+
+`npm run test:agent-context` passes 29/29 and
+`npm run validate:agent-context` passes with navigation, links, commands,
+queue, identity, RLS, architecture, and merge-safety checks intact.
+
 ## Acceptance criteria
 
 - Every modified living statement records its prior wording, contradicting
