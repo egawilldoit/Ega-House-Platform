@@ -1,60 +1,36 @@
 # Web App Agent Instructions
 
-Scope: everything under `apps/web/`. These rules extend the repository-root [`AGENTS.md`](../../AGENTS.md).
+Scope: `apps/web/`. This extends the root [`AGENTS.md`](../../AGENTS.md).
 
-## Ownership
+## Ownership and boundaries
 
-`apps/web` is the Next.js web product. Its main source areas are:
+`src/app` owns routes, Server Components/Actions, and compatibility APIs;
+`src/components` owns presentation; `src/hooks` owns client hooks; `src/lib`
+owns web composition, adapters, utilities, and retained compatibility surfaces.
 
-- `src/app` — routes, layouts, server/client boundaries, Server Actions, compatibility APIs;
-- `src/components` — presentation and interactive UI;
-- `src/hooks` — web/client hooks;
-- `src/lib` — web-specific composition, adapters, utilities, and compatibility surfaces.
+- Server-side web code may compose `@ega/application` and `@ega/data-access`
+  directly. Do not self-fetch Hono merely to reuse an endpoint.
+- Put workflow policy in `@ega/application`/`@ega/domain`, not components or
+  actions. Client components must not import DB, persistence, or secrets.
+- Identity is server-derived. Root `src/db` and `drizzle/` remain schema
+  authority. Preserve `src/app/api` and `src/lib` compatibility surfaces until
+  callers and removal safety are proven.
+- Reuse the nearest feature pattern. Do not add a duplicate DTO, data owner,
+  state system, design system, or icon framework.
 
-Read [`../../CONTEXT.md`](../../CONTEXT.md) for product workflow semantics and [`../../docs/architecture/platform-monorepo.md`](../../docs/architecture/platform-monorepo.md) before changing ownership across workspaces.
+## Proof
 
-## Architecture rules
+Use the narrowest test first. From repository root, relevant checks are:
 
-- Put reusable product workflow policy in `@ega/application` / `@ega/domain`, not in route actions or React components.
-- Server Components and Server Actions may compose `@ega/application` with `@ega/data-access` directly.
-- Do **not** self-fetch `apps/server` from server-side web code merely to reuse an HTTP endpoint. The Hono server is the native/external transport boundary, not an internal web RPC layer.
-- Client Components must not import server-only persistence, root DB modules, or secrets.
-- Keep caller identity server-derived. Do not accept a request/body/query user id as a substitute for authenticated identity.
-- Root `src/db` and `drizzle/` remain the database/schema authority. Do not create a second web-local schema or migration authority.
-- Existing `src/app/api` routes and `src/lib` compatibility surfaces may have external consumers. Preserve them unless the issue explicitly authorizes migration/removal and evidence proves callers are covered.
-- Keep UI state/presentation concerns in the web app; do not push React/browser types into shared domain/application packages.
-
-## Pattern selection
-
-Before adding a new action, service, or adapter, find the closest current implementation in the same feature area and reuse its ownership pattern. Prefer a small call into an existing application use case over duplicating orchestration in the route/action.
-
-Treat old compatibility code as **legacy-to-evaluate**, not automatically as a pattern to copy and not automatically as dead code to delete.
-
-## Validation
-
-From repository root, prefer:
-
-```bash
+```text
 npm run web:typecheck
 npm run web:test
 npm --workspace @ega/web run lint
 npm run web:build
 ```
 
-Use the narrowest relevant test first. Run `npm run web:build` for routing/build-boundary changes, shared import changes, or before claiming a web PR is release-ready. If imports/ownership move across workspaces, also run:
-
-```bash
-npm run check:architecture
-npm run test:architecture
-npm run ci:purity
-```
-
-For auth/security boundary changes, also run `npm run ci:security`.
-
-## Do not
-
-- move workflow rules into components/actions for convenience;
-- add browser imports of server-only modules;
-- add a second database/schema owner under this app;
-- bypass established application/data-access boundaries with direct ad-hoc persistence;
-- remove compatibility routes based only on an import search.
+For ownership/import changes also run `npm run check:architecture`,
+`npm run test:architecture`, and `npm run ci:purity`; for auth/RLS changes add
+`npm run ci:security`. Inspect loading, empty, error, success, focus, keyboard,
+responsive, and reduced-motion states for touched UI. Do not claim runtime
+behavior from source or tests alone.
