@@ -3,8 +3,11 @@ import { Hono } from "hono";
 import {
   archiveProject,
   createProject,
+  deleteArchivedProject,
   getProjectIdentityReadModel,
+  getProjectPurgePreview,
   getProjectsReadModel,
+  purgeArchivedProject,
   unarchiveProject,
   updateProjectStatus,
 } from "@ega/application";
@@ -153,6 +156,115 @@ export function createProjectsRoutes(
     }
 
     return c.json({ ok: true });
+  });
+
+  routes.delete("/:id", async (c) => {
+    const { actor, client } = c.var;
+
+    const result = await deleteArchivedProject(
+      actor,
+      new SupabaseProjectsRepository(client),
+      { projectId: c.req.param("id") },
+    );
+
+    if (result.ok) {
+      return c.json({ ok: true });
+    }
+
+    // Dependency conflicts keep the established VALIDATION envelope code and
+    // signal through HTTP 409; the typed client preserves both status and code.
+    if (result.code === "conflict") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 409);
+    }
+
+    if (result.code === "notFound") {
+      return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+    }
+
+    if (result.code === "validation") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
+
+    return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
+  });
+
+  routes.get("/:id/purge-preview", async (c) => {
+    const { actor, client } = c.var;
+
+    const result = await getProjectPurgePreview(
+      actor,
+      new SupabaseProjectsRepository(client),
+      { projectId: c.req.param("id") },
+    );
+
+    if (result.ok) {
+      const preview = result.data;
+      return c.json({
+        projectId: preview.projectId,
+        projectName: preview.projectName,
+        impact: {
+          taskCount: preview.taskCount,
+          goalCount: preview.goalCount,
+          sessionCount: preview.sessionCount,
+          activeSessionCount: preview.activeSessionCount,
+          reminderCount: preview.reminderCount,
+          recurrenceCount: preview.recurrenceCount,
+          externalRefCount: preview.externalRefCount,
+          taskNotificationCount: preview.taskNotificationCount,
+          calendarEventCount: preview.calendarEventCount,
+        },
+      });
+    }
+
+    if (result.code === "notFound") {
+      return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+    }
+
+    if (result.code === "validation") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
+
+    return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
+  });
+
+  routes.post("/:id/purge", async (c) => {
+    const { actor, client } = c.var;
+
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json({ error: { code: "VALIDATION", message: "Request body must be valid JSON." } }, 400);
+    }
+
+    const result = await purgeArchivedProject(
+      actor,
+      new SupabaseProjectsRepository(client),
+      {
+        projectId: c.req.param("id"),
+        confirmationName: body.confirmationName,
+        expectedTaskCount: body.expectedTaskCount,
+        expectedGoalCount: body.expectedGoalCount,
+      },
+    );
+
+    if (result.ok) {
+      return c.json({ ok: true, deleted: result.data });
+    }
+
+    // Contents-changed conflicts keep the established VALIDATION envelope
+    // code and signal through HTTP 409; the typed client preserves both.
+    if (result.code === "conflict") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 409);
+    }
+
+    if (result.code === "notFound") {
+      return c.json({ error: { code: "NOT_FOUND", message: result.errorMessage } }, 404);
+    }
+
+    if (result.code === "validation") {
+      return c.json({ error: { code: "VALIDATION", message: result.errorMessage } }, 400);
+    }
+
+    return c.json({ error: { code: "INTERNAL", message: result.errorMessage } }, 500);
   });
 
   return routes;

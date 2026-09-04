@@ -36,6 +36,50 @@ export type CreateProjectRecordInput = {
   mcpClientId?: string;
 };
 
+export type DeleteArchivedProjectInput = {
+  projectId: string;
+};
+
+export type DeleteArchivedProjectResult = {
+  deleted: boolean;
+};
+
+export type ProjectPurgePreview = {
+  projectId: string;
+  projectName: string;
+  taskCount: number;
+  goalCount: number;
+  sessionCount: number;
+  activeSessionCount: number;
+  reminderCount: number;
+  recurrenceCount: number;
+  externalRefCount: number;
+  taskNotificationCount: number;
+  calendarEventCount: number;
+};
+
+export type PurgeArchivedProjectInput = {
+  projectId: string;
+  confirmationName: string;
+  expectedTaskCount: number;
+  expectedGoalCount: number;
+};
+
+export type PurgeArchivedProjectResult =
+  | Readonly<{
+      status: "purged";
+      tasksDeleted: number;
+      goalsDeleted: number;
+      sessionsDeleted: number;
+      externalRefsDeleted: number;
+      notificationsDeleted: number;
+      calendarDeleteJobsEnqueued: number;
+    }>
+  | Readonly<{ status: "not_found" }>
+  | Readonly<{ status: "not_archived" }>
+  | Readonly<{ status: "confirmation_mismatch" }>
+  | Readonly<{ status: "contents_changed" }>;
+
 export interface ProjectsRepository {
   listProjects(
     actor: AuthenticatedActor,
@@ -50,6 +94,10 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     slug: string,
   ): Promise<RepositoryResult<ProjectRecord | null>>;
+  getProjectById(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<ProjectRecord | null>>;
   listGoalsForProject(
     actor: AuthenticatedActor,
     projectId: string,
@@ -62,4 +110,16 @@ export interface ProjectsRepository {
     actor: AuthenticatedActor,
     input: { projectId: string; status: ProjectStatus; updatedAt: string },
   ): Promise<RepositoryResult<null>>;
+  deleteArchivedProject(
+    actor: AuthenticatedActor,
+    input: DeleteArchivedProjectInput,
+  ): Promise<RepositoryResult<DeleteArchivedProjectResult>>;
+  getProjectPurgePreview(
+    actor: AuthenticatedActor,
+    projectId: string,
+  ): Promise<RepositoryResult<ProjectPurgePreview | null>>;
+  purgeArchivedProject(
+    actor: AuthenticatedActor,
+    input: PurgeArchivedProjectInput,
+  ): Promise<RepositoryResult<PurgeArchivedProjectResult>>;
 }

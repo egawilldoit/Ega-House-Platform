@@ -178,6 +178,145 @@ test("archive and unarchive project post to the action endpoints", async () => {
   assert.equal(calls[0].body, undefined);
 });
 
+test("remove project deletes the encoded id path without a body", async () => {
+  const { client, calls } = makeHarness({ body: { ok: true } });
+
+  const result = await client.projects.remove("my project/1");
+
+  assert.deepEqual(result, { ok: true, data: { ok: true } });
+  assert.equal(calls[0].method, "DELETE");
+  assert.equal(calls[0].url, "https://api.ega.example/api/projects/my%20project%2F1");
+  assert.equal(calls[0].body, undefined);
+});
+
+test("remove project preserves the 409 dependency conflict status and code", async () => {
+  const { client } = makeHarness({
+    status: 409,
+    body: {
+      error: {
+        code: "VALIDATION",
+        message: "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+      },
+    },
+  });
+
+  const result = await client.projects.remove("p-1");
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "VALIDATION",
+      message: "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+      status: 409,
+    },
+  });
+});
+
+test("get purge preview builds the encoded preview path", async () => {
+  const preview = {
+    projectId: "p-1",
+    projectName: "Stage CGI",
+    impact: {
+      taskCount: 2,
+      goalCount: 1,
+      sessionCount: 3,
+      activeSessionCount: 0,
+      reminderCount: 1,
+      recurrenceCount: 0,
+      externalRefCount: 0,
+      taskNotificationCount: 1,
+      calendarEventCount: 1,
+    },
+  };
+  const { client, calls } = makeHarness({ body: preview });
+
+  const result = await client.projects.getPurgePreview("my project/1");
+
+  assert.deepEqual(result, { ok: true, data: preview });
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].url, "https://api.ega.example/api/projects/my%20project%2F1/purge-preview");
+  assert.equal(calls[0].body, undefined);
+});
+
+test("purge posts the confirmation payload and maps the deleted summary", async () => {
+  const deleted = {
+    tasksDeleted: 2,
+    goalsDeleted: 1,
+    sessionsDeleted: 3,
+    externalRefsDeleted: 0,
+    notificationsDeleted: 1,
+    calendarDeleteJobsEnqueued: 1,
+  };
+  const { client, calls } = makeHarness({ body: { ok: true, deleted } });
+
+  const result = await client.projects.purge("p-1", {
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 2,
+    expectedGoalCount: 1,
+  });
+
+  assert.deepEqual(result, { ok: true, data: { ok: true, deleted } });
+  assert.equal(calls[0].method, "POST");
+  assert.equal(calls[0].url, "https://api.ega.example/api/projects/p-1/purge");
+  assert.deepEqual(calls[0].body, {
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 2,
+    expectedGoalCount: 1,
+  });
+  assert.ok(!("ownerUserId" in (calls[0].body as Record<string, unknown>)));
+});
+
+test("purge preserves the 409 contents-changed status and code", async () => {
+  const { client } = makeHarness({
+    status: 409,
+    body: {
+      error: {
+        code: "VALIDATION",
+        message: "Project contents changed. Review the deletion impact and confirm again.",
+      },
+    },
+  });
+
+  const result = await client.projects.purge("p-1", {
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 2,
+    expectedGoalCount: 1,
+  });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: {
+      code: "VALIDATION",
+      message: "Project contents changed. Review the deletion impact and confirm again.",
+      status: 409,
+    },
+  });
+});
+
+test("remove project maps 400 and 404 envelopes", async () => {
+  const notArchived = makeHarness({
+    status: 400,
+    body: { error: { code: "VALIDATION", message: "Only archived projects can be permanently deleted." } },
+  });
+  assert.deepEqual(await notArchived.client.projects.remove("p-1"), {
+    ok: false,
+    error: {
+      code: "VALIDATION",
+      message: "Only archived projects can be permanently deleted.",
+      status: 400,
+    },
+  });
+
+  const missing = makeHarness({
+    status: 404,
+    body: { error: { code: "NOT_FOUND", message: "Project not found." } },
+  });
+  assert.deepEqual(await missing.client.projects.remove("p-1"), {
+    ok: false,
+    error: { code: "NOT_FOUND", message: "Project not found.", status: 404 },
+  });
+});
+
 test("list goals builds the view query and maps the read model", async () => {
   const goalsModel = {
     projects: [{ id: "p-1", name: "Launch" }],
@@ -430,6 +569,9 @@ test("client surface exposes typed projects and goals namespaces", () => {
   assert.equal(typeof surface.projects.updateStatus, "function");
   assert.equal(typeof surface.projects.archive, "function");
   assert.equal(typeof surface.projects.unarchive, "function");
+  assert.equal(typeof surface.projects.remove, "function");
+  assert.equal(typeof surface.projects.getPurgePreview, "function");
+  assert.equal(typeof surface.projects.purge, "function");
   assert.equal(typeof surface.goals.list, "function");
   assert.equal(typeof surface.goals.create, "function");
   assert.equal(typeof surface.goals.updateStatus, "function");
