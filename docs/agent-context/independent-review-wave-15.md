@@ -115,10 +115,14 @@ refactoring.
 
 ## Current-main integration note
 
-`main` advanced during the program to `7a96be0dcd2292570d6a9070ab8865f1e19dc1b6`
-with archived-project purge work. PR #225 therefore requires current-main
-reconciliation before release-readiness can be claimed. That is a Wave 16
-integration concern, not an unresolved Wave 15 review finding.
+Wave 15 rebased onto post-Wave-14 `main` (`daf05699898d313b37cf88e73ecbfbdf19b0090d`,
+Wave 14 squash-merge of PR #224). The earlier program-time note that cited
+`7a96be0dcd2292570d6a9070ab8865f1e19dc1b6` as the tip was stale: `7a96be0d` is an
+intermediate main commit (archived-project purge PR #219), not the tip. Wave 14's
+delta (13 docs/governance files) was re-reviewed after the rebase with no new
+Critical or program-introduced Important findings; remaining `main` reconciliation
+beyond Wave 14 is a Wave 16 integration concern, not an unresolved Wave 15
+review finding.
 
 ## Known inherited runtime gaps
 
