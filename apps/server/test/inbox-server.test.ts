@@ -32,6 +32,7 @@ class FakeQueryBuilder {
   or(f: string) { this.steps.push({ method: "or", args: [f] }); return this; }
   contains(c: string, v: unknown[]) { this.steps.push({ method: "contains", args: [c, v] }); return this; }
   order(c: string, o?: unknown) { this.steps.push({ method: "order", args: [c, o] }); return this; }
+  limit(v: number) { this.steps.push({ method: "limit", args: [v] }); return this; }
   insert(p: unknown) { this.steps.push({ method: "insert", args: [p] }); return this; }
   update(p: unknown) { this.steps.push({ method: "update", args: [p] }); return this; }
   maybeSingle() { this.steps.push({ method: "maybeSingle", args: [] }); return this; }
