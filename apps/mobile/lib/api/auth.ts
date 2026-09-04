@@ -1,3 +1,7 @@
+import {
+  isMobileAuthRefreshResponse,
+  isMobileAuthSessionResponse,
+} from '@ega/contracts/mobile';
 import type {
   MobileAuthRefreshResponse,
   MobileAuthSessionResponse,
@@ -12,21 +16,33 @@ export type MobileLoginInput = {
 export async function loginMobile(
   input: MobileLoginInput,
 ): Promise<MobileAuthSessionResponse> {
-  return mobileApiFetch<MobileAuthSessionResponse>('/api/auth/session', {
+  const response = await mobileApiFetch<unknown>('/api/auth/session', {
     method: 'POST',
     auth: false,
     body: JSON.stringify(input),
   });
+
+  if (!isMobileAuthSessionResponse(response)) {
+    throw new Error('Authentication service returned an invalid session.');
+  }
+
+  return response;
 }
 
 export async function refreshMobileSession(
   refreshToken: string,
 ): Promise<MobileAuthRefreshResponse> {
-  return mobileApiFetch<MobileAuthRefreshResponse>('/api/auth/refresh', {
+  const response = await mobileApiFetch<unknown>('/api/auth/refresh', {
     method: 'POST',
     auth: false,
     body: JSON.stringify({ refreshToken }),
   });
+
+  if (!isMobileAuthRefreshResponse(response)) {
+    throw new Error('Authentication service returned an invalid refresh session.');
+  }
+
+  return response;
 }
 
 export async function logoutMobileSession() {

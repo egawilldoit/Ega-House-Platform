@@ -238,6 +238,22 @@ describe('mobile session refresh single-flight', () => {
     expect(handlers.onUnauthorized).not.toHaveBeenCalled();
   });
 
+  it('rejects a malformed successful refresh without installing an invalid session', async () => {
+    const handlers = makeHandlers();
+    const existingSession = await handlers.getSession();
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    } as unknown as Response);
+
+    await expect(refreshMobileSessionIfConfigured()).resolves.toBe(false);
+    expect(handlers.setSession).not.toHaveBeenCalled();
+    expect(handlers.clearSession).not.toHaveBeenCalled();
+    expect(handlers.onUnauthorized).not.toHaveBeenCalled();
+    expect(await handlers.getSession()).toEqual(existingSession);
+  });
+
   it('retries concurrent authenticated requests once after the shared refresh', async () => {
     makeHandlers();
 

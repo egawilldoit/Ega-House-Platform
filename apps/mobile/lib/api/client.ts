@@ -1,5 +1,7 @@
 import Constants from 'expo-constants';
 
+import { isMobileAuthRefreshResponse } from '@ega/contracts/mobile';
+
 import type { MobileAuthRefreshResponse, MobileAuthSession, MobileAuthUser } from '@/types/auth';
 
 type SessionBundle = {
@@ -324,7 +326,13 @@ async function performRefresh() {
       return false;
     }
 
-    payload = (await response.json()) as MobileAuthRefreshResponse;
+    const responsePayload: unknown = await response.json();
+    if (!isMobileAuthRefreshResponse(responsePayload)) {
+      logApiDiagnostic('refresh-invalid-response', { endpoint });
+      return false;
+    }
+
+    payload = responsePayload;
   } catch (error) {
     logApiDiagnostic('refresh-network-error', {
       endpoint,
