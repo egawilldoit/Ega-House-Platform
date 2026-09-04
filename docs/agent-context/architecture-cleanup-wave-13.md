@@ -5,7 +5,13 @@ Status: ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE
 ## Boundary
 
 - Branch: `wave/13-targeted-cleanup`
-- Starting accepted HEAD: `b89744526f685e5d27bcd988b6278e3ba2acaa9`
+- Base after Waves 11/12: `e5567258bdc108cbb1a4a35b4230bf6de93b7863`
+  (Wave 12 merge #222; chain `2f2923aa` W10 → `61fba10b` W11 #221 →
+  `e5567258` W12 #222, both PRs MERGED). The historical audit began at the
+  pre-merge Wave-12 head `b89744526f685e5d27bcd988b6278e3ba2acaa9a`;
+  Waves 11/12 are file-disjoint from this wave's three files (verified via
+  `git diff --name-only 2f2923aa..e5567258`, empty for these paths), and the
+  rebased code diff is byte-identical to the historical true diff.
 - Scope: proven duplicate ownership or materially simplifying cleanup in
   `apps/web/src/lib` encountered during Waves 02–12
 - Exclusions: repository-wide restructuring, package-topology changes, DB
@@ -92,8 +98,14 @@ behavior.
 
 ## Final acceptance record
 
-- Accepted HEAD: `ce2db057c7d1dc768b479f68511250ef82c5045f`
-- Wave-local commits: `764f7a0c..d5014da6`
+- Historical accepted HEAD (pre-merge base): `ce2db057c7d1dc768b479f68511250ef82c5045f`
+- Historical wave-local commits: `764f7a0c..d5014da6` on top of pre-merge
+  Wave-12 head `b8974452`
+- Post-Wave-12 rebase: the 6 historical wave-local commits were replayed onto
+  `e5567258` with zero conflicts; the rebased code diff
+  (`apps/web/src/lib/task-session.ts`, `apps/web/src/lib/task-session.test.ts`)
+  is byte-identical to the historical true diff (verified via `diff` of both
+  diffs). No Wave 11/12 file overlap (see Boundary).
 - Code gate: PASS — exact-head Unified Platform Validation run
   `33817829666` completed successfully, including workspace audit,
   architecture/security/purity, package checks, web tests/build, mobile
@@ -108,3 +120,8 @@ behavior.
 - Publication gate: PASS — branch is pushed, PR #223 remains Draft, exact-head
   API Vercel status is `Canceled by Ignored Build Step`, and no production
   deployment or merge occurred.
+- Rebase-gate (post-Wave-12): the final exact-head validation run ID, final
+  HEAD SHA, and merge SHAs are recorded in the PR #223 body (mutable PR
+  metadata, updated after exact-head CI is green). This document is frozen at
+  the rebased HEAD so exact-head CI evidence stays valid; no further document
+  amendment follows the green run.
