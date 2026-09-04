@@ -37,3 +37,9 @@ npm run api-client:test
 Ownership, exports, or direction changes also require
 `npm run check:architecture`, `npm run test:architecture`, and
 `npm run ci:purity`; auth/RLS adapter changes require `npm run ci:security`.
+
+A changed package's passing tests are not consumer proof. Trace affected public
+exports, wire/error shapes, serialized data, and callers; run consumer checks
+where semantics or interfaces change. For data/schema-sensitive behavior use real
+disposable-database proofs of affected constraints, ownership, and transitions.
+Keep deployment compatibility with existing clients/data explicit.

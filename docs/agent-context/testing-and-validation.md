@@ -7,12 +7,16 @@ Use commands from current manifests and executable scripts, not remembered test/
 - `STRUCTURAL PASS`: file shape, links, metadata, instruction-chain structure, dependency/source-pattern checks passed.
 - `COMMAND DECLARED`: the manifest contains the command; it was not necessarily executed successfully.
 - `FILE EXISTS`: the path exists; behavior was not executed.
-- `STATIC PASS`: compiler/lint/unit/static checks passed for the executed command.
+- `STATIC PASS`: compiler, lint, or static/source checks passed.
+- `TEST PASS`: unit/component tests passed; record fixtures/mocks and the boundary exercised.
+- `INTEGRATION PASS`: tests crossed the stated real boundary (for example disposable Postgres or HTTP); record environment and limits.
 - `DISCOVERY VERIFIED`: the installed agent tool exposed the expected repository instruction/skill under the tested profile.
 - `RUNTIME VERIFIED`: the tested runtime/external path produced the stated result under recorded conditions.
 - `RUNTIME NOT VERIFIED`: no runtime or external-system conclusion is supported.
 
-Structural/static validation does not establish deployment, device, database, cross-user, agent semantic-routing, or external-system state unless the executed test actually crosses that boundary.
+Evidence labels describe coverage, not a universal confidence ranking. Structural/static checks and isolated tests do not establish deployment, device, database, cross-user, agent semantic-routing, or external-system state. A test proves only the boundary and scenarios actually exercised. Historical labels remain historical.
+
+Use the [quality workflow](quality-workflow.md) for hypothesis-driven investigation, failure cases, independent review, and merge/release decisions. Required acceptance evidence must pass before the corresponding completion claim; optional unavailable checks need an impact statement.
 
 ## Validation matrix
 
@@ -26,7 +30,7 @@ Structural/static validation does not establish deployment, device, database, cr
 | Application/data access | matching `application:*` / `data-access:*` typecheck + test | Server/web integration tests; RLS proof for authorization-sensitive changes |
 | API client | `npm run api-client:typecheck`, `npm run api-client:test` | Mobile/server integration for changed endpoints |
 | Mobile (`apps/mobile`) | `npm run mobile:typecheck`, `npm run mobile:test` | `npm run verify:mobile` levels required by the change; bundle/prebuild/device/runtime proof as applicable |
-| Database schema/migration | SQL/journal inspection | Controlled migration against disposable database + affected package/server/web tests |
+| Database schema/migration | SQL/journal inspection + controlled application against a disposable database | Relevant existing-data upgrade path, affected invariants/RLS and package/server/web tests; rollout/recovery assessment |
 | Runner TypeScript | `npm run typecheck:ega-runner` | Focused Runner tests and real integrations |
 | PR monitor/repair graph | `npm run test:ega-runner-pr-loop` | GitHub fixture/integration tests including pagination/concurrency edge cases |
 | Queue/lease | `node scripts/ega-runner/test/execution-contract.test.mjs` | Disposable Postgres/PGMQ duplicate, lease-loss, crash/retry scenarios |
@@ -34,6 +38,28 @@ Structural/static validation does not establish deployment, device, database, cr
 | Hermes adapter | `node scripts/ega-runner/test/hermes-executor.test.mjs` | `npm run preflight:hermes-skills` under Runner user + controlled Hermes smoke |
 | Automation schema | `node scripts/ega-runner/test/schema-preflight.test.mjs` | Apply/rollback against disposable database |
 | Full Runner | `cd scripts/ega-runner && npm run smoke` | Authorized real ticket through the contract's review-ready state |
+
+## Selecting and preserving proof
+
+- Map required behavior to evidence before implementation. Run the closest useful
+  test first, then affected workspaces and consumers; changed paths alone may
+  miss contract, schema, or integration effects.
+- Prove a defect regression fails for the actual cause and passes after the fix.
+  Mocked/source checks do not substitute for the failing real boundary. Docs-only
+  edits need structural and semantic review, not artificial behavioral tests.
+- Do not weaken assertions, disable checks, or repeatedly rerun until green.
+  Investigate flakiness and local/CI differences. Classify a baseline failure only
+  with comparable evidence from the relevant base; pre-existing is not a waiver
+  for a required gate.
+- Report exact directory, revision, command, result, and relevant environment.
+  After changes rerun affected proof; reuse unaffected evidence only with a
+  recorded reason and never present an old revision's run as a new one. Repository
+  requirements for current-head checks still apply.
+- For conditional CI, inspect job conclusions and why each job ran/skipped.
+  Skipped is not tested. Use the existing force-full workflow when required by
+  scope/release criteria or to resolve an actual coverage gap, not for every typo.
+- Agent-context changes require link/command/discovery-budget checks and a semantic
+  pass for contradictory authority, scope, approvals, or evidence claims.
 
 ## Agent-context commands
 
@@ -122,4 +148,4 @@ authorized trigger
 → human merge
 ```
 
-For every command/run report the exact directory, revision, exit code/result, credentials/external services involved, evidence class, and skipped/unavailable checks. Never claim success for a command or platform that was not executed.
+For every command/run report the exact directory, revision, exit code/result, credential role (never values) and external services involved, evidence class, and skipped/unavailable checks. Never claim success for a command or platform that was not executed.
