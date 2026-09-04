@@ -10,9 +10,12 @@ import {
   createAuthenticatedActor,
   createGoal,
   createProject,
+  deleteArchivedProject,
   getGoalsReadModel,
   getProjectIdentityReadModel,
+  getProjectPurgePreview,
   getProjectsReadModel,
+  purgeArchivedProject,
   unarchiveGoal,
   unarchiveProject,
   updateGoalHealth,
@@ -22,13 +25,16 @@ import {
   type AuthenticatedActor,
   type CreateGoalRecordInput,
   type CreateProjectRecordInput,
+  type DeleteArchivedProjectResult,
   type GoalRecord,
   type GoalTaskContextRecord,
   type GoalsRepository,
   type ProjectGoalRecord,
+  type ProjectPurgePreview,
   type ProjectRecord,
   type ProjectsRepository,
   type ProjectTaskContextRecord,
+  type PurgeArchivedProjectResult,
   type RepositoryResult,
 } from "../src/index";
 
@@ -49,8 +55,20 @@ class FakeProjectsRepository implements ProjectsRepository {
   statusesResult: RepositoryResult<string[]> = okResult([]);
   tasksResult: RepositoryResult<ProjectTaskContextRecord[]> = okResult([]);
   slugResult: RepositoryResult<ProjectRecord | null> = okResult(null);
+  idResult: RepositoryResult<ProjectRecord | null> = okResult(null);
   goalsResult: RepositoryResult<ProjectGoalRecord[]> = okResult([]);
   updateResult: RepositoryResult<null> = okResult(null);
+  deleteResult: RepositoryResult<DeleteArchivedProjectResult> = okResult({ deleted: true });
+  previewResult: RepositoryResult<ProjectPurgePreview | null> = okResult(null);
+  purgeResult: RepositoryResult<PurgeArchivedProjectResult> = okResult({
+    status: "purged",
+    tasksDeleted: 0,
+    goalsDeleted: 0,
+    sessionsDeleted: 0,
+    externalRefsDeleted: 0,
+    notificationsDeleted: 0,
+    calendarDeleteJobsEnqueued: 0,
+  });
 
   private record(method: string, actorUserId: string, args: Record<string, unknown>) {
     this.calls.push({ method, actorUserId, args });
@@ -72,6 +90,10 @@ class FakeProjectsRepository implements ProjectsRepository {
     this.record("getProjectBySlug", actor.userId, { slug });
     return this.slugResult;
   }
+  async getProjectById(actor: AuthenticatedActor, projectId: string) {
+    this.record("getProjectById", actor.userId, { projectId });
+    return this.idResult;
+  }
   async listGoalsForProject(actor: AuthenticatedActor, projectId: string) {
     this.record("listGoalsForProject", actor.userId, { projectId });
     return this.goalsResult;
@@ -86,6 +108,24 @@ class FakeProjectsRepository implements ProjectsRepository {
   ) {
     this.record("updateProjectStatus", actor.userId, input);
     return this.updateResult;
+  }
+  async deleteArchivedProject(
+    actor: AuthenticatedActor,
+    input: { projectId: string },
+  ) {
+    this.record("deleteArchivedProject", actor.userId, input);
+    return this.deleteResult;
+  }
+  async getProjectPurgePreview(actor: AuthenticatedActor, projectId: string) {
+    this.record("getProjectPurgePreview", actor.userId, { projectId });
+    return this.previewResult;
+  }
+  async purgeArchivedProject(
+    actor: AuthenticatedActor,
+    input: { projectId: string; confirmationName: string; expectedTaskCount: number; expectedGoalCount: number },
+  ) {
+    this.record("purgeArchivedProject", actor.userId, input);
+    return this.purgeResult;
   }
 }
 
@@ -304,6 +344,469 @@ test("project archive and unarchive use canonical domain statuses", async () => 
   assert.equal(repository.calls.length, 2);
   assert.equal(repository.calls[0].args.status, PROJECT_ARCHIVE_STATUS);
   assert.equal(repository.calls[1].args.status, "active");
+});
+
+const ARCHIVED_PROJECT_ROW: ProjectRecord = { ...PROJECT_ROW, status: "archived" };
+
+// Valid v4-shaped UUID used by every permanent-delete test: the use case
+// rejects non-UUID ids before the repository, so legacy "project-1" style
+// ids must not appear in success-path fixtures.
+const DELETE_PROJECT_ID = "123e4567-e89b-12d3-a456-426614174000";
+const ARCHIVED_DELETE_ROW: ProjectRecord = { ...ARCHIVED_PROJECT_ROW, id: DELETE_PROJECT_ID };
+
+function archivedRepository() {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(ARCHIVED_DELETE_ROW);
+  return repository;
+}
+
+function failureMessage(result: { ok: boolean }) {
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("expected failure");
+  return result as { ok: false; errorMessage: string; code?: string };
+}
+
+test("deleteArchivedProject rejects a missing id without touching the repository", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: "  " }));
+
+  assert.equal(result.errorMessage, "Project delete request is invalid.");
+  assert.equal(result.code, "validation");
+  assert.equal(repository.calls.length, 0);
+});
+
+test("deleteArchivedProject rejects malformed ids before the repository", async () => {
+  for (const projectId of ["not-a-uuid", "project-1", "123", "../../etc/passwd", "z".repeat(36)]) {
+    const repository = new FakeProjectsRepository();
+
+    const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId }));
+
+    assert.equal(result.errorMessage, "Project delete request is invalid.");
+    assert.equal(result.code, "validation");
+    assert.equal(repository.calls.length, 0);
+  }
+});
+
+test("deleteArchivedProject maps a missing project to notFound", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(null);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(result.errorMessage, "Project not found.");
+  assert.equal(result.code, "notFound");
+});
+
+test("deleteArchivedProject rejects every non-archived status", async () => {
+  for (const status of ["planned", "active", "done", "paused"]) {
+    const repository = new FakeProjectsRepository();
+    repository.idResult = okResult({ ...PROJECT_ROW, id: DELETE_PROJECT_ID, status });
+
+    const result = failureMessage(
+      await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }),
+    );
+
+    assert.equal(result.errorMessage, "Only archived projects can be permanently deleted.");
+    assert.equal(result.code, "validation");
+    assert.deepEqual(
+      repository.calls.map((call) => call.method),
+      ["getProjectById"],
+    );
+  }
+});
+
+test("deleteArchivedProject deletes an archived project without dependencies", async () => {
+  const repository = archivedRepository();
+
+  const result = await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getProjectById", "listTasksForProjects", "listGoalsForProject", "deleteArchivedProject"],
+  );
+  for (const call of repository.calls) {
+    assert.equal(call.actorUserId, "user-123");
+  }
+  assert.deepEqual(repository.calls[3].args, { projectId: DELETE_PROJECT_ID });
+});
+
+test("deleteArchivedProject blocks an archived project with linked tasks", async () => {
+  const repository = archivedRepository();
+  repository.tasksResult = okResult([
+    { id: "task-1", projectId: DELETE_PROJECT_ID, title: "Paint", status: "todo", priority: "high", updatedAt: "2026-02-02T00:00:00.000Z" },
+  ]);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked tasks. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+  assert.ok(!repository.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject blocks an archived project with linked goals", async () => {
+  const repository = archivedRepository();
+  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID }]);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked goals. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+  assert.ok(!repository.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject blocks an archived project with linked tasks and goals", async () => {
+  const repository = archivedRepository();
+  repository.tasksResult = okResult([
+    { id: "task-1", projectId: DELETE_PROJECT_ID, title: "Paint", status: "todo", priority: "high", updatedAt: "2026-02-02T00:00:00.000Z" },
+  ]);
+  repository.goalsResult = okResult([{ id: "goal-1", title: "Finish kitchen", projectId: DELETE_PROJECT_ID }]);
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked tasks and goals. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+  assert.ok(!repository.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject sanitizes a pre-read failure", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = unknownFailure();
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(result.errorMessage, "Unable to load project right now.");
+  assert.equal(result.code, "unknown");
+});
+
+test("deleteArchivedProject sanitizes dependency read failures", async () => {
+  const tasksFail = archivedRepository();
+  tasksFail.tasksResult = unknownFailure();
+
+  const tasksResult = failureMessage(
+    await deleteArchivedProject(ACTOR, tasksFail, { projectId: DELETE_PROJECT_ID }),
+  );
+  assert.equal(tasksResult.errorMessage, "Unable to verify linked records right now.");
+
+  const goalsFail = archivedRepository();
+  goalsFail.goalsResult = unknownFailure();
+
+  const goalsResult = failureMessage(
+    await deleteArchivedProject(ACTOR, goalsFail, { projectId: DELETE_PROJECT_ID }),
+  );
+  assert.equal(goalsResult.errorMessage, "Unable to verify linked records right now.");
+  assert.ok(!goalsFail.calls.some((call) => call.method === "deleteArchivedProject"));
+});
+
+test("deleteArchivedProject sanitizes a persistence failure", async () => {
+  const repository = archivedRepository();
+  repository.deleteResult = unknownFailure();
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(result.errorMessage, "Unable to delete project right now.");
+  assert.equal(result.code, "unknown");
+});
+
+test("deleteArchivedProject maps a foreign-key race to the dependency conflict", async () => {
+  const repository = archivedRepository();
+  repository.deleteResult = { ok: false, error: { code: "conflict" } };
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(
+    result.errorMessage,
+    "This project still has linked tasks or goals. Move or remove them before permanently deleting the project.",
+  );
+  assert.equal(result.code, "conflict");
+});
+
+test("deleteArchivedProject treats a zero-row delete as a safe failure", async () => {
+  const repository = archivedRepository();
+  repository.deleteResult = okResult({ deleted: false });
+
+  const result = failureMessage(await deleteArchivedProject(ACTOR, repository, { projectId: DELETE_PROJECT_ID }));
+
+  assert.equal(result.errorMessage, "Unable to delete project right now.");
+  assert.equal(result.code, "unknown");
+});
+
+const PURGE_PROJECT_ROW: ProjectRecord = {
+  ...ARCHIVED_DELETE_ROW,
+  name: "Stage CGI",
+};
+
+const PURGE_PREVIEW: ProjectPurgePreview = {
+  projectId: DELETE_PROJECT_ID,
+  projectName: "Stage CGI",
+  taskCount: 38,
+  goalCount: 7,
+  sessionCount: 143,
+  activeSessionCount: 1,
+  reminderCount: 12,
+  recurrenceCount: 4,
+  externalRefCount: 2,
+  taskNotificationCount: 6,
+  calendarEventCount: 3,
+};
+
+function purgeRepository() {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(PURGE_PROJECT_ROW);
+  repository.previewResult = okResult(PURGE_PREVIEW);
+  return repository;
+}
+
+function purgeInput(overrides: Record<string, unknown> = {}) {
+  return {
+    projectId: DELETE_PROJECT_ID,
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 38,
+    expectedGoalCount: 7,
+    ...overrides,
+  };
+}
+
+test("getProjectPurgePreview rejects malformed ids without touching the repository", async () => {
+  const repository = new FakeProjectsRepository();
+
+  const result = failureMessage(
+    await getProjectPurgePreview(ACTOR, repository, { projectId: "not-a-uuid" }),
+  );
+
+  assert.equal(result.errorMessage, "Project purge preview request is invalid.");
+  assert.equal(result.code, "validation");
+  assert.equal(repository.calls.length, 0);
+});
+
+test("getProjectPurgePreview maps a missing project to notFound", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(null);
+
+  const result = failureMessage(
+    await getProjectPurgePreview(ACTOR, repository, { projectId: DELETE_PROJECT_ID }),
+  );
+
+  assert.equal(result.errorMessage, "Project not found.");
+  assert.equal(result.code, "notFound");
+});
+
+test("getProjectPurgePreview rejects every non-archived status", async () => {
+  for (const status of ["planned", "active", "done", "paused"]) {
+    const repository = new FakeProjectsRepository();
+    repository.idResult = okResult({ ...PURGE_PROJECT_ROW, status });
+
+    const result = failureMessage(
+      await getProjectPurgePreview(ACTOR, repository, { projectId: DELETE_PROJECT_ID }),
+    );
+
+    assert.equal(result.errorMessage, "Only archived projects can be permanently deleted.");
+    assert.equal(result.code, "validation");
+    assert.deepEqual(
+      repository.calls.map((call) => call.method),
+      ["getProjectById"],
+    );
+  }
+});
+
+test("getProjectPurgePreview returns the impact counts for an archived project", async () => {
+  const repository = purgeRepository();
+
+  const result = await getProjectPurgePreview(ACTOR, repository, { projectId: DELETE_PROJECT_ID });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.data, PURGE_PREVIEW);
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getProjectById", "getProjectPurgePreview"],
+  );
+  for (const call of repository.calls) {
+    assert.equal(call.actorUserId, "user-123");
+  }
+});
+
+test("getProjectPurgePreview sanitizes a preview read failure", async () => {
+  const repository = purgeRepository();
+  repository.previewResult = unknownFailure();
+
+  const result = failureMessage(
+    await getProjectPurgePreview(ACTOR, repository, { projectId: DELETE_PROJECT_ID }),
+  );
+
+  assert.equal(result.errorMessage, "Unable to load deletion impact right now.");
+  assert.equal(result.code, "unknown");
+});
+
+test("purgeArchivedProject rejects malformed ids without touching the repository", async () => {
+  for (const projectId of ["not-a-uuid", "project-1", "  "]) {
+    const repository = new FakeProjectsRepository();
+
+    const result = failureMessage(await purgeArchivedProject(ACTOR, repository, purgeInput({ projectId })));
+
+    assert.equal(result.errorMessage, "Project purge request is invalid.");
+    assert.equal(result.code, "validation");
+    assert.equal(repository.calls.length, 0);
+  }
+});
+
+test("purgeArchivedProject rejects bad confirmation and counts without touching the repository", async () => {
+  const badInputs = [
+    purgeInput({ confirmationName: "  " }),
+    purgeInput({ expectedTaskCount: -1 }),
+    purgeInput({ expectedGoalCount: 1.5 }),
+    purgeInput({ expectedTaskCount: "38" }),
+    purgeInput({ expectedGoalCount: Number.NaN }),
+  ];
+
+  for (const input of badInputs) {
+    const repository = new FakeProjectsRepository();
+
+    const result = failureMessage(await purgeArchivedProject(ACTOR, repository, input));
+
+    assert.equal(result.errorMessage, "Project purge request is invalid.");
+    assert.equal(result.code, "validation");
+    assert.equal(repository.calls.length, 0);
+  }
+});
+
+test("purgeArchivedProject maps a missing project to notFound", async () => {
+  const repository = new FakeProjectsRepository();
+  repository.idResult = okResult(null);
+
+  const result = failureMessage(await purgeArchivedProject(ACTOR, repository, purgeInput()));
+
+  assert.equal(result.errorMessage, "Project not found.");
+  assert.equal(result.code, "notFound");
+});
+
+test("purgeArchivedProject rejects every non-archived status", async () => {
+  for (const status of ["planned", "active", "done", "paused"]) {
+    const repository = new FakeProjectsRepository();
+    repository.idResult = okResult({ ...PURGE_PROJECT_ROW, status });
+
+    const result = failureMessage(await purgeArchivedProject(ACTOR, repository, purgeInput()));
+
+    assert.equal(result.errorMessage, "Only archived projects can be permanently deleted.");
+    assert.equal(result.code, "validation");
+    assert.ok(!repository.calls.some((call) => call.method === "purgeArchivedProject"));
+  }
+});
+
+test("purgeArchivedProject rejects a wrong confirmation name before purging", async () => {
+  const repository = purgeRepository();
+
+  const result = failureMessage(
+    await purgeArchivedProject(ACTOR, repository, purgeInput({ confirmationName: "stage cgi" })),
+  );
+
+  assert.equal(result.errorMessage, "Project name confirmation does not match.");
+  assert.equal(result.code, "validation");
+  assert.ok(!repository.calls.some((call) => call.method === "purgeArchivedProject"));
+});
+
+test("purgeArchivedProject purges through the repository and preserves delete counts", async () => {
+  const repository = purgeRepository();
+  repository.purgeResult = okResult({
+    status: "purged",
+    tasksDeleted: 38,
+    goalsDeleted: 7,
+    sessionsDeleted: 143,
+    externalRefsDeleted: 2,
+    notificationsDeleted: 6,
+    calendarDeleteJobsEnqueued: 3,
+  });
+
+  const result = await purgeArchivedProject(ACTOR, repository, purgeInput());
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.data, {
+    tasksDeleted: 38,
+    goalsDeleted: 7,
+    sessionsDeleted: 143,
+    externalRefsDeleted: 2,
+    notificationsDeleted: 6,
+    calendarDeleteJobsEnqueued: 3,
+  });
+  assert.deepEqual(
+    repository.calls.map((call) => call.method),
+    ["getProjectById", "purgeArchivedProject"],
+  );
+  assert.deepEqual(repository.calls[1].args, {
+    projectId: DELETE_PROJECT_ID,
+    confirmationName: "Stage CGI",
+    expectedTaskCount: 38,
+    expectedGoalCount: 7,
+  });
+  assert.equal(repository.calls[1].actorUserId, "user-123");
+});
+
+test("purgeArchivedProject purges an empty archived project", async () => {
+  const repository = purgeRepository();
+
+  const result = await purgeArchivedProject(
+    ACTOR,
+    repository,
+    purgeInput({ expectedTaskCount: 0, expectedGoalCount: 0 }),
+  );
+
+  assert.equal(result.ok, true);
+});
+
+test("purgeArchivedProject maps repository outcomes to safe errors", async () => {
+  const cases = [
+    {
+      value: { status: "not_found" },
+      errorMessage: "Project not found.",
+      code: "notFound",
+    },
+    {
+      value: { status: "not_archived" },
+      errorMessage: "Only archived projects can be permanently deleted.",
+      code: "validation",
+    },
+    {
+      value: { status: "confirmation_mismatch" },
+      errorMessage: "Project name confirmation does not match.",
+      code: "validation",
+    },
+    {
+      value: { status: "contents_changed" },
+      errorMessage: "Project contents changed. Review the deletion impact and confirm again.",
+      code: "conflict",
+    },
+  ] as const;
+
+  for (const { value, errorMessage, code } of cases) {
+    const repository = purgeRepository();
+    repository.purgeResult = okResult(value);
+
+    const result = failureMessage(await purgeArchivedProject(ACTOR, repository, purgeInput()));
+
+    assert.equal(result.errorMessage, errorMessage);
+    assert.equal(result.code, code);
+  }
+});
+
+test("purgeArchivedProject sanitizes a persistence failure", async () => {
+  const repository = purgeRepository();
+  repository.purgeResult = unknownFailure();
+
+  const result = failureMessage(await purgeArchivedProject(ACTOR, repository, purgeInput()));
+
+  assert.equal(result.errorMessage, "Unable to purge project right now.");
+  assert.equal(result.code, "unknown");
 });
 
 test("project read model preserves summary and progress behavior", async () => {

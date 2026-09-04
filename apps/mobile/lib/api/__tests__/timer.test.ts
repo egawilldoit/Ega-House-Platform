@@ -45,7 +45,7 @@ function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiC
     health: jest.fn(async () => ({ ok: true as const, data: { status: 'ok' as const } })),
     auth: { login: jest.fn(), refresh: jest.fn(), logout: jest.fn() },
     projects: {
-      list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
+      list: jest.fn(), getBySlug: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), archive: jest.fn(), unarchive: jest.fn(), remove: jest.fn(), getPurgePreview: jest.fn(), purge: jest.fn(),
     },
     goals: {
       list: jest.fn(), create: jest.fn(), updateStatus: jest.fn(), updateHealth: jest.fn(), updateNextStep: jest.fn(), archive: jest.fn(), unarchive: jest.fn(),
