@@ -18,8 +18,9 @@ Use this directory for current repository-local agent guidance. `AGENTS.md` is t
 7. [`decision-log.md`](decision-log.md) — persisted defect vs unresolved-product-decision classifications; never an authority override.
 8. [`tooling-map.md`](tooling-map.md) — harness/config loading and drift status.
 9. [`testing-and-validation.md`](testing-and-validation.md) — command matrix and evidence labels.
-10. [`skill-routing-evaluation.md`](skill-routing-evaluation.md) — expected specialized-skill routing and observed/unexecuted semantic checks.
-11. [`../reports/README.md`](../reports/README.md) — historical audits/design/readiness evidence index.
+10. [`capability-matrix.md`](capability-matrix.md) — Wave 01 source/test/config baseline and convergence-debt ledger; not runtime proof.
+11. [`skill-routing-evaluation.md`](skill-routing-evaluation.md) — expected specialized-skill routing and observed/unexecuted semantic checks.
+12. [`../reports/README.md`](../reports/README.md) — historical audits/design/readiness evidence index.
 
 ## Why scoped instructions
 
