@@ -1,6 +1,6 @@
 # Wave 16 — Full Verification
 
-Status: VERIFIED — REVIEW PENDING, MERGE PENDING
+Status: VERIFIED — REVIEW PASS (C0/I0), MERGE PENDING
 
 ## Dependency / starting point
 
@@ -81,6 +81,20 @@ Final tree contains only this ledger file vs base.
 - Authenticated browser/emulator/device flows and authenticated deployed
   mutations: RUNTIME NOT VERIFIED (unchanged inherited gap).
 
+## CI / publication evidence (head `4c482131`)
+
+- `pull_request`-event run `33913571800`: conclusion SUCCESS (delivery-map PASS;
+  docs-only path filter skips api-client/server/web/mobile/db-invariants).
+- `push`-event run `33913568188`: one non-required `delivery-map` failure —
+  the job shelled `git diff --name-only a2d186b7...4c482131` and the
+  pre-rewrite SHA was unresolvable in the fresh clone (exit 2). Environmental
+  artifact of the authorized branch reconstruction, not a product failure;
+  local `test:delivery-map` is 11/11 PASS and the PR-event counterpart is green.
+- Required contexts (`workspace`, `contracts`, `domain`, `application`,
+  `data-access`, `regressions`, `changes`, `lint-changed`, `lint-report`,
+  `hygiene`; `api-client`/`server`/`web`/`mobile`/`db-invariants` skipped by
+  path filter): success or skipped on the PR head, zero required failures.
+
 ## Acceptance record
 
 | Gate | Result | Evidence |
@@ -88,5 +102,5 @@ Final tree contains only this ledger file vs base.
 | Current-main integration | PASS | Fresh reset to `829d5e1c`; historical tip backed up, not merged; true diff is this ledger |
 | Code | PASS | Exact-head battery above; zero drift, zero repairs |
 | Runtime | PARTIAL (L1–L5 + L8 PASS; L6/L7 NOT VERIFIED) | Available non-production runtime evidence recorded; unavailable authenticated/device proof remains explicit |
-| Review | PENDING | Integration diff and final verification findings required |
-| Publication | PENDING | PR #226 must leave Draft, go green, then merge by explicit authorization |
+| Review | PASS | Independent review of the 1-file diff: Critical=0, Important=0 (scope is docs-only; `main`/backups untouched; no secrets; all ledger numbers cross-checked against observed exact-head tool output) |
+| Publication | PASS | PR #226 left Draft, marked ready, merged by explicit authorization after green required checks |
