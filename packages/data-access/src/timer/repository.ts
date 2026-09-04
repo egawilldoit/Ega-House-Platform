@@ -43,7 +43,8 @@ export class SupabaseTimerSessionRepository implements TimerSessionRepository {
       .select(SESSION_SELECT)
       .eq("owner_user_id", actor.userId)
       .is("ended_at", null)
-      .order("started_at", { ascending: false });
+      .order("started_at", { ascending: false })
+      .limit(1);
 
     if (result.error) return { ok: false, error: sanitizeSupabaseError(result.error) };
     return { ok: true, value: ((result.data ?? []) as Row[]).map(mapSession) };
