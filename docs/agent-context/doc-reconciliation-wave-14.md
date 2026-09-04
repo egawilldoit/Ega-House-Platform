@@ -1,11 +1,16 @@
 # Wave 14 — Living Documentation and Agent-Context Reconciliation
 
-Status: AUDIT STARTED — ACCEPTANCE PENDING
+Status: ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE
 
 ## Boundary
 
 - Branch: `wave/14-doc-reconciliation`
-- Starting accepted HEAD: `6d4c0a7f878b414c391b3f5ccaab3a94b95a5ef7`
+- Starting accepted HEAD: `5a8ce8c04b899423aa8afe13b03ab67c850b9867`
+  (Wave 13 merge #223 on `origin/main`). The historical wave-local range was
+  reconstructed onto this base via replay; the pre-reconstruction tip
+  `74b18408f5fb9b372a8243fdd2081a839a19391b` is preserved locally at
+  `backup/wave14-pre-reconcile-74b18408` and all replayed files are
+  byte-identical to it.
 - Scope: proven stale living statements about deployment, Runner readiness,
   API/feature surfaces, mobile delivery, architecture ownership, testing,
   and agent-context discovery.
@@ -88,3 +93,28 @@ queue, identity, RLS, architecture, and merge-safety checks intact.
   boundaries remain explicit after compression.
 - Required links and agent-context structural tests pass.
 - Critical findings: 0; Important findings introduced by this wave: 0.
+
+## Acceptance record
+
+- Evaluation head: `edd241d3` (content head; this acceptance record amends
+  on top). Reconstructed-head gates observed: `test:agent-context` 29/29,
+  `validate:agent-context` STRUCTURAL PASS (root 4,210; web 5,716; mobile
+  5,609; server 5,504; packages 5,803; Runner 5,948 — all under 6,000),
+  `check:architecture` PASS, `test:architecture` 21/21, `ci:purity` PASS,
+  `ci:security` PASS, `ci:workspace` PASS, `git diff --check` PASS.
+- Code gate: PASS — `test:agent-context`, `validate:agent-context`,
+  `ci:workspace`, `ci:purity`, `ci:security`, architecture checks, and
+  `git diff --check`.
+- Runtime gate: NOT VERIFIED for authenticated browser/device behavior;
+  this wave changed living guidance and agent instructions only. Existing
+  Wave 00 external Vercel evidence remains recorded as an observed skipped
+  non-main build.
+- Product gate: PASS — current navigation, deployment, API-surface, and
+  mobile-delivery guidance now points to observable repository evidence and
+  preserves explicit NOT VERIFIED boundaries.
+- Review gate: PASS — no Critical or Important issue introduced by this
+  documentation-only wave.
+- Publication gate: pending final push/CI confirmation; no production deploy,
+  database mutation, or merge occurred.
+
+Result: `ACCEPTED — EXTERNAL EVIDENCE NOT AVAILABLE`.
