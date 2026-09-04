@@ -406,7 +406,7 @@ function QuickTaskSheetPanel({
       <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
         <SheetHeader className="min-w-0">
           <p className="glass-label text-signal-live">Execution Capture</p>
-          <SheetTitle>Quick task</SheetTitle>
+          <SheetTitle id="quick-task-sheet-title">Quick task</SheetTitle>
           <SheetDescription>
             Create one task fast or stage multiple tasks in a single pass. Ownership stays
             server-side under the current RLS model.
@@ -1194,7 +1194,7 @@ export function QuickTaskSheet({
         </Button>
       </SheetTrigger> : null}
 
-      <SheetContent className="flex flex-col">
+      <SheetContent aria-labelledby="quick-task-sheet-title" className="flex flex-col">
         {open ? (
           <QuickTaskSheetPanel
             key={sessionKey}

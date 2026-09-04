@@ -168,6 +168,14 @@ test("quick task panel focuses command input when opened", () => {
   assert.match(quickTaskSheetSource, /workspaceShortcutEvents\.openQuickTask/);
 });
 
+test("quick task sheet gives its dialog the visible title as an accessible name", () => {
+  assert.match(
+    quickTaskSheetSource,
+    /<SheetContent[^>]+aria-labelledby="quick-task-sheet-title"/,
+  );
+  assert.match(quickTaskSheetSource, /<SheetTitle id="quick-task-sheet-title">Quick task<\/SheetTitle>/);
+});
+
 test("quick task multi mode does not render worked-time UI", () => {
   assert.doesNotMatch(multiModeSection, /Already worked on this\?/);
   assert.doesNotMatch(multiModeSection, /quick-task-worked-from/);
