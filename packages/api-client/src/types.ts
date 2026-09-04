@@ -13,6 +13,7 @@ export type {
   ProjectGoalRecord,
   ProjectIdentityReadModel,
   ProjectMutationResponse,
+  ProjectPurgeImpact,
   ProjectPurgePreviewResponse,
   ProjectPurgeResponse,
   ProjectPurgeSummary,

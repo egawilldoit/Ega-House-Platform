@@ -67,6 +67,7 @@ export type {
   ProjectFormValues,
   CreateProjectResponse,
   ProjectMutationResponse,
+  ProjectPurgeImpact,
   ProjectPurgePreviewResponse,
   ProjectPurgeResponse,
   ProjectPurgeSummary,

@@ -38,6 +38,16 @@ import type {
   PurgeProjectInput,
 } from "@ega/contracts/projects";
 
+// Preserve the historical subpath exports while keeping the contracts package
+// as the single authority for these wire shapes.
+export type {
+  ProjectPurgeImpact,
+  ProjectPurgePreviewResponse,
+  ProjectPurgeResponse,
+  ProjectPurgeSummary,
+  PurgeProjectInput,
+} from "@ega/contracts/projects";
+
 export type ProjectsApi = {
   /** GET /api/projects?view=... (view omitted => server defaults to "active"). */
   list(view?: ProjectViewFilter): Promise<ApiResult<ProjectsReadModel>>;
