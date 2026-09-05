@@ -37,7 +37,7 @@ env:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     outputs:
       mobile: ${{ steps.filter.outputs.mobile }}
@@ -111,7 +111,7 @@ jobs:
 
   delivery-map:
     needs: [changes]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Checkout exact head
@@ -148,7 +148,7 @@ jobs:
           echo "Android binary: NOT BUILT (binaries are generated only by Mobile Delivery)" >> "$GITHUB_STEP_SUMMARY"
 
   workspace:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -195,7 +195,7 @@ jobs:
         run: npm run test:architecture
 
   contracts:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -215,7 +215,7 @@ jobs:
       - run: npm run contracts:test
 
   domain:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -235,7 +235,7 @@ jobs:
       - run: npm run domain:test
 
   application:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -255,7 +255,7 @@ jobs:
       - run: npm run application:test
 
   data-access:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -275,7 +275,7 @@ jobs:
       - run: npm run data-access:test
 
   regressions:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -299,7 +299,7 @@ jobs:
         run: npm run test:ega-runner-pr-loop
 
   lint-changed:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -327,7 +327,7 @@ jobs:
           npm run lint:changed -- --base "$BASE"
 
   lint-report:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     continue-on-error: true
     steps:
@@ -350,7 +350,7 @@ jobs:
   web:
     needs: [changes]
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -376,7 +376,7 @@ jobs:
   mobile:
     needs: [changes]
     if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -404,7 +404,7 @@ jobs:
   server:
     needs: [changes]
     if: needs.changes.outputs.server == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -429,7 +429,7 @@ jobs:
   api-client:
     needs: [changes]
     if: needs.changes.outputs.api-client == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     steps:
       - name: Checkout exact head
@@ -454,7 +454,7 @@ jobs:
   db-invariants:
     needs: [changes]
     if: needs.changes.outputs.db == 'true' || needs.changes.outputs.force_full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 45
     services:
       postgres:
@@ -505,7 +505,7 @@ jobs:
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
       - name: Checkout exact head
