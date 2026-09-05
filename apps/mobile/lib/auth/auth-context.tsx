@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
 
 import { configureMobileApiClient } from '@/lib/api/client';
 import {
@@ -16,6 +17,7 @@ import {
   refreshMobileSession as refreshApiSession,
 } from '@/lib/api/auth';
 import { clearMobileQueryCache } from '@/lib/query/query-client';
+import { createResumeRefresh } from '@/lib/lifecycle/resume-refresh';
 import { mobileSessionStorage } from '@/lib/storage/session';
 import type { MobileAuthSession, MobileAuthUser, StoredMobileSession } from '@/types/auth';
 
@@ -174,6 +176,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isCancelled = true;
     };
   }, [applySessionBundle, clearSession, persistSession]);
+
+  useEffect(() => {
+    // Proactive foreground refresh: bootstrap only refreshes at launch, so an
+    // app backgrounded across token expiry would otherwise 401-churn on every
+    // foreground refetch. Reuses the existing single-flight refresh authority;
+    // the helper owns no session state and never clears it. Reads the live
+    // ref so an account switch is always evaluated, never a stale closure.
+    const resumeRefresh = createResumeRefresh({
+      getSession: async () => sessionBundleRef.current?.session ?? null,
+    });
+
+    const subscription = AppState.addEventListener('change', (status) => {
+      if (status === 'active') {
+        void resumeRefresh();
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
