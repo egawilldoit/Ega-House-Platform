@@ -5,7 +5,9 @@ Status: VERIFIED — REVIEW PASS (C0/I0), ALL MERGED
 ## Starting main
 
 - Pre-Wave-17 `origin/main`: `6a465217c5dcae1c2170505b7f32a50ccb4c538c`
-- Final `origin/main`: `bc8805d67941c7c17ccdb6aec0f6ef9d1e493dfd`
+- Final Wave-17 product-code head (`origin/main` after PR #233):
+  `bc8805d67941c7c17ccdb6aec0f6ef9d1e493dfd`
+- Wave-17 ledger merge (PR #234, docs-only): `96a7707cecea98909a845f0490bb77c3b0bf9667`
 - Rule followed: recover valid behavior on the current architecture; no stale
   branch resurrected wholesale. Merges sequential; analyses parallel.
 
@@ -97,12 +99,23 @@ Status: VERIFIED — REVIEW PASS (C0/I0), ALL MERGED
   `ci:security`, `ci:workspace` PASS, `mobile:typecheck`/`doctor`(18/18)/
   `bundle` PASS, `git diff --check` clean.
 - Native diff 6a465217→bc8805d6: 14 files, JS/TS/tests/lint-baseline only —
-  NO NATIVE CHANGE, OTA COMPATIBLE WITH mobile-v1.0.4.
-- `validate:agent-context` fails 10 pre-existing instruction-chain byte
-  errors; Wave 17 touches zero `AGENTS.md` files (proven by diff), so the
-  failure is inherited, not introduced. No physical-device testing claimed.
+  NO NATIVE CHANGE, so the Wave-17 delta itself is OTA SAFE.
+- Full-main lineage vs the `mobile-v1.0.4` native baseline is NOT OTA-safe:
+  `dbb352886280e4b208bd005fda8633260096aefe` ("new icons") changed the
+  configured build-time branding assets (`icon.png`, `splash-icon.png`) after
+  the v1.0.4 build, so current main lineage requires a new APK
+  (see post-closeout FIX 1). Wave 17 itself did not cause that requirement.
+- `validate:agent-context`: a local fresh-worktree attempt observed 10
+  environment/instruction-chain diagnostics. The canonical GitHub exact-head
+  regressions job on the final closeout head ran
+  `npm run validate:agent-context` and PASSED (Wave 17 touches zero
+  `AGENTS.md` files, proven by diff), so the final canonical repo gate is
+  PASS. Local observation retained here as environment-specific evidence, not
+  hidden. No physical-device testing claimed.
 
 ## Release boundary
 
 Production DB mutation: NONE. Manual deploy: NONE. OTA publish: NONE. APK
-build: NONE. Native baseline stays `mobile-v1.0.4`. Classification: OTA SAFE.
+build: NONE. Native baseline stays `mobile-v1.0.4`. Classification: the
+Wave-17 delta is OTA SAFE; full current-main lineage from the v1.0.4 baseline
+is NEW APK REQUIRED (post-closeout branding change, see FIX 1).
