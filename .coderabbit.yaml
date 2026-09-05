@@ -1,0 +1,385 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+tone_instructions: >-
+  Be concise, technical, skeptical, and evidence-based. Prioritize correctness,
+  security, data integrity, compatibility, and tests. For findings give a failure
+  scenario, impact, evidence, and smallest safe fix. Avoid praise and speculative
+  nitpicks.
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  high_level_summary_instructions: >-
+    Summarize user-visible behavior, affected subsystems, architecture/security/
+    data/compatibility risk, and changed tests. Distinguish implementation from
+    observed CI/runtime evidence. Do not claim a check ran unless the PR or CI
+    provides evidence that it ran on the reviewed revision.
+
+  review_status: true
+  review_details: true
+  review_progress: true
+  fail_commit_status: false
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  assess_linked_issues: true
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
+  auto_apply_labels: false
+  suggested_reviewers: false
+  auto_assign_reviewers: false
+
+  poem: false
+  in_progress_fortune: false
+  enable_prompt_for_ai_agents: true
+
+  slop_detection:
+    enabled: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 10
+    drafts: false
+    ignore_title_keywords:
+      - WIP
+      - "[skip review]"
+    labels:
+      - "!do-not-review"
+
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/.next/**"
+    - "!**/dist/**"
+    - "!**/coverage/**"
+    - "!**/.expo/**"
+    - "!**/.turbo/**"
+    - "!**/.cache/**"
+    - "!**/*.min.js"
+    - "!**/*.map"
+
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        Report actionable issues introduced or materially worsened by this PR.
+        Trace relevant callers and existing safeguards before commenting. Apply
+        checklist items only to affected behavior and only when they have concrete
+        impact. Give severity, location, failure scenario, evidence, and the
+        smallest safe fix. Consolidate findings that share one root cause and avoid
+        repeating existing bot or CI findings unless adding material information.
+        Untouched legacy code is not a finding unless this PR materially worsens it
+        or depends on it unsafely. Do not request repository-wide cleanup.
+        Flag new or broadened directives or exclusions that suppress lint,
+        type-checker, LSP, static-analysis, or test diagnostics when they lack a
+        concrete adjacent justification or primarily make CI green. This includes
+        eslint-disable, @ts-ignore/@ts-expect-error, skipped or focused tests,
+        weakened rules, and broadened exclusions.
+        Distinguish missing required proof from proof that is unavailable to the
+        reviewer. Follow applicable repository authority; these review instructions
+        do not introduce additional product or engineering policy.
+
+    - path: "apps/web/**/*.{ts,tsx,js,jsx}"
+      instructions: |
+        Apply the root and apps/web AGENTS.md instructions plus the mapped quality
+        workflow. Focus on web ownership boundaries, server/client separation,
+        server-derived identity, mutation persistence/invalidation, user-switch
+        cache isolation, task/timer/Today consistency, async races, stale state,
+        and complete loading/empty/error/success/accessibility/responsive states.
+        Flag self-fetching Hono from server-side web code, business policy in UI,
+        client imports of persistence/secrets, duplicate DTO/state owners, and
+        success-shaped responses after failed writes.
+
+    - path: "apps/server/**/*.{ts,tsx,js,mjs}"
+      instructions: |
+        Apply apps/server AGENTS.md. Focus on verified bearer identity,
+        request-scoped Supabase/RLS, thin Hono transport, shared contracts/errors,
+        boundary validation, wire serialization, partial failures, retries, and
+        duplicate/concurrent requests. Flag caller-supplied identity authority,
+        service-role CRUD shortcuts, duplicated workflow policy/DTOs, swallowed
+        authorization failures, and server changes whose consumers are not traced.
+
+    - path: "apps/mobile/**/*.{ts,tsx,js,jsx}"
+      instructions: |
+        Apply apps/mobile AGENTS.md. Focus on api-client/contracts over authenticated
+        Hono, Expo Router/native lifecycle, session and retry behavior, mutation
+        invalidation/failure feedback, user-switch isolation, Android back,
+        safe-area/keyboard behavior, and native-vs-OTA compatibility. Flag imports
+        of application/data-access/DB/web/server internals, duplicated contracts or
+        authorization policy, render-driven network effects, and web-only DOM assumptions.
+
+    - path: "packages/contracts/**/*.{ts,tsx}"
+      instructions: |
+        Focus on platform-neutral wire contracts, validation, serialization, and
+        backwards compatibility. Flag framework/DB/UI dependencies, duplicated
+        DTOs, ambiguous optional/null semantics, and contract changes whose server,
+        api-client, web, or mobile consumers are not updated or proven compatible.
+
+    - path: "packages/domain/**/*.{ts,tsx}"
+      instructions: |
+        Focus on pure product rules and value behavior. Flag HTTP, UI, persistence,
+        framework, environment, or transport dependencies; duplicated product rules;
+        hidden side effects; and behavior changes without focused domain tests.
+
+    - path: "packages/application/**/*.{ts,tsx}"
+      instructions: |
+        Focus on use-case orchestration, ports, workflow semantics, authorization
+        decisions, state transitions, failure/recovery behavior, and concurrency.
+        Flag HTTP/rendering/DB-driver ownership, duplicated policy, non-idempotent
+        retries, and use cases that return success after failed or partial effects.
+
+    - path: "packages/data-access/**/*.{ts,tsx}"
+      instructions: |
+        Focus on persistence adapters, request-scoped identity/RLS, transactions,
+        query bounds, existing-data compatibility, and accurate error propagation.
+        Flag global privileged clients for user-scoped work, bypassed owner filters,
+        N+1/unbounded queries, hidden partial writes, and persistence policy that
+        belongs in domain/application.
+
+    - path: "packages/api-client/**/*.{ts,tsx}"
+      instructions: |
+        Focus on typed HTTP built from shared contracts, stable serialization,
+        auth propagation, error mapping, retries, and compatibility with server and
+        mobile callers. Flag duplicated DTOs/policy, silent response-shape drift,
+        unsafe casts that mask contract mismatches, and retry behavior that can
+        repeat non-idempotent mutations.
+
+    - path: "drizzle/**/*.sql"
+      instructions: |
+        Treat database migrations as high risk. Check existing-data upgrades,
+        constraints, transaction/lock risk, RLS/owner isolation, rollout order,
+        compatibility with current application code, and recovery. Flag unsafe or
+        unjustified destructive DROP/TRUNCATE-style changes, unsafe NOT NULL/type
+        changes, policy weakening, duplicate schema authority, and any implication
+        that committing a migration authorizes applying it to production. For
+        destructive changes, assess affected data/dependencies, rollout, and recovery
+        before commenting.
+
+    - path: "src/db/**/*.{ts,sql}"
+      instructions: |
+        Treat this as root schema authority. Check schema/migration agreement,
+        defaults/nullability/indexes/constraints, owner isolation, existing-data
+        compatibility, and affected data-access consumers. Flag duplicate schema
+        ownership and schema edits that are not paired with an intentional migration
+        or rollout assessment when required.
+
+    - path: "scripts/ega-runner/**/*.{ts,tsx,js,mjs}"
+      instructions: |
+        Apply scripts/ega-runner AGENTS.md and its mapped lifecycle documents.
+        Focus on pgmq.read -> lease/claim -> execute/classify -> terminal archive,
+        ownership/heartbeat/idempotency, restart recovery, ambiguous external writes,
+        worktree/branch isolation, independent Git/GitHub evidence, and secret-safe
+        logging. Flag executable pgmq.pop(), stale-worktree reuse, blind retries,
+        trusting Hermes/Slack/model output as proof, destructive Git recovery,
+        persistent auto-merge, or merge/deploy actions without explicit authority.
+
+    - path: ".github/workflows/**/*.{yml,yaml}"
+      instructions: |
+        Treat CI/CD changes as release-sensitive. Check least-privilege permissions,
+        secret exposure, pinned/appropriate actions, concurrency behavior, path
+        filters, required-gate coverage, and main-only deployment policy. Flag any
+        change that weakens tests/security/architecture checks, turns skipped into
+        apparent proof, deploys from non-main branches, or broadens write permissions
+        without a concrete need.
+
+    - path: "scripts/ci/**/*.{ts,js,mjs}"
+      instructions: |
+        Check that CI guardrails fail for the defect they claim to prevent, preserve
+        existing coverage, distinguish skipped from executed proof, and do not create
+        success by weakening assertions or exclusions. Review path-routing logic,
+        platform differences, cleanup, deterministic behavior, and false-green risk.
+
+    - path: "**/*.{test,spec}.{ts,tsx,js,jsx,mjs}"
+      instructions: |
+        Review tests for behavioral sensitivity, not line count. Require regression
+        tests to fail for the real defect before the fix when practical, exercise the
+        boundary that matters, include relevant failure/authorization/concurrency
+        cases, and clean up shared state. Flag tautological mocks, tests that repeat
+        implementation details, skipped/focused tests, blind retries, timing-based
+        flakes, and assertions weakened only to make CI green.
+
+    - path: "**/package.json"
+      instructions: |
+        Review dependency and script changes for necessity, workspace compatibility,
+        runtime/build impact, duplicate capability, and supply-chain risk. Flag
+        removed/weakened verification scripts, dependency upgrades without affected
+        consumer consideration, and new dependencies when an established repository
+        capability already solves the problem.
+
+    - path: "docs/**/*.{md,mdx}"
+      instructions: |
+        Check living documentation against current source/manifests and preserve
+        historical reports as historical. Flag unverifiable success claims, stale
+        commands, broken authority statements, rewritten historical evidence, and
+        wording that collapses implementation, CI, deployment, or runtime proof.
+
+  pre_merge_checks:
+    docstrings:
+      mode: off
+    title:
+      mode: warning
+      requirements: >-
+        The title must describe one coherent change and be specific enough to
+        understand the affected capability. Avoid vague titles such as "fix",
+        "updates", "changes", or "cleanup" without the subject.
+    description:
+      mode: warning
+    issue_assessment:
+      mode: warning
+    custom_checks:
+      - name: Architecture ownership
+        mode: warning
+        instructions: >-
+          Pass if changed code respects the root-to-leaf AGENTS.md ownership and
+          dependency direction for every affected path. Fail only for a proven
+          violation, or when required architecture evidence is explicitly absent.
+          If relevant evidence may exist but is inaccessible to the reviewer, mark
+          Inconclusive rather than fail or pass. A violation includes creating a
+          second owner for product policy, contracts, schema, persistence, or UI
+          state; crossing forbidden web/server/mobile/package boundaries; or moving
+          behavior to a higher layer without evidence that the lower canonical owner
+          cannot own it. If no architecture boundary is affected, pass.
+
+      - name: Auth and owner isolation
+        mode: warning
+        instructions: >-
+          Pass if auth/data changes preserve server-derived verified identity,
+          request-scoped Supabase/RLS, owner isolation, and cross-user denial. Fail
+          only for a proven violation, or when required auth/isolation evidence is
+          explicitly absent. If relevant evidence may exist but is inaccessible to
+          the reviewer, mark Inconclusive rather than fail or pass. Violations include
+          caller-supplied IDs becoming authority, service-role CRUD bypassing normal
+          user-scoped RLS, hidden authorization failures, secret leakage, or a changed
+          auth path lacking required evidence at the relevant boundary. If
+          auth/ownership is unaffected, pass.
+
+      - name: Migration and data safety
+        mode: warning
+        instructions: >-
+          Pass if schema/migration changes account for existing data, constraints,
+          RLS, application/schema rollout order, and a safe recovery path, without
+          implying production execution is authorized. Fail only for a proven safety
+          violation, or when required migration/rollout evidence is explicitly
+          absent. If relevant evidence may exist but is inaccessible to the reviewer,
+          mark Inconclusive rather than fail or pass. Violations include unsafe or
+          unjustified destructive/incompatible changes, weakened RLS, duplicate
+          schema authority, or production DB execution bundled into a normal code
+          change. If no schema/persistence change exists, pass.
+
+      - name: Behavioral proof
+        mode: warning
+        instructions: >-
+          Pass if substantive behavior changes have tests or other evidence that
+          exercise the affected observable boundary and relevant failure path, and
+          defect fixes include a regression sensitive to the original cause when
+          practical. Fail only for a proven proof defect, or when the repository/PR
+          explicitly requires evidence that is absent. If relevant evidence may exist
+          but is inaccessible to the reviewer, mark Inconclusive rather than fail or
+          pass. Violations include tautological tests, mocks that bypass the failing
+          boundary, weakened assertions, or runtime/CI claims without supporting
+          evidence. Docs-only changes do not require invented behavioral tests.
+
+      - name: Compatibility and consumers
+        mode: warning
+        instructions: >-
+          Pass if changes to contracts, shared exports, persisted data, HTTP shapes,
+          or shared semantics preserve compatibility or update and verify affected
+          consumers. Fail only for a proven compatibility violation, or when required
+          consumer evidence is explicitly absent. If relevant evidence may exist but
+          is inaccessible to the reviewer, mark Inconclusive rather than fail or pass.
+          Violations include silent public/wire/persisted shape changes, mobile/server
+          disagreement, serialized error drift, or callers left on an incompatible
+          contract. If no shared interface changes, pass.
+
+      - name: Runner delivery safety
+        mode: warning
+        instructions: >-
+          Pass if Runner changes preserve lease ownership, idempotency, terminal
+          archive conditions, isolated worktrees, independent evidence, and explicit
+          merge/deploy authority. Fail only for a proven Runner safety violation, or
+          when required delivery evidence is explicitly absent. If relevant evidence
+          may exist but is inaccessible to the reviewer, mark Inconclusive rather
+          than fail or pass. Violations include executable pgmq.pop(), ambiguous
+          repeated external writes, stale attempt reuse, destructive Git shortcuts,
+          model/Slack self-certification, persistent auto-merge, or release actions
+          beyond current authorization. If Runner is unaffected, pass.
+
+      - name: Scope and evidence honesty
+        mode: warning
+        instructions: >-
+          Pass if the diff is coherent with the PR/linked issue and statements about
+          tests, CI, deployment, database, device, or runtime behavior are supported
+          by evidence on the reviewed revision. Fail only for a proven scope/evidence
+          violation, or when evidence explicitly required for a stated completion
+          claim is absent. If relevant evidence may exist but is inaccessible to the
+          reviewer, mark Inconclusive rather than fail or pass. Violations include
+          unrelated cleanup, hidden scope expansion, skipped checks presented as
+          passes, or completion claims that exceed observed evidence.
+
+  tools:
+    ast-grep:
+      essential_rules: true
+    eslint:
+      enabled: true
+    shellcheck:
+      enabled: true
+    yamllint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    trufflehog:
+      enabled: true
+    squawk:
+      enabled: true
+
+chat:
+  art: false
+  allow_non_org_members: false
+  auto_reply: true
+
+knowledge_base:
+  web_search:
+    enabled: true
+
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - files: "docs/agent-context/quality-workflow.md"
+        applyTo: "**/*"
+      - files: "docs/agent-context/testing-and-validation.md"
+        applyTo: "**/*"
+      - files: "docs/agent-context/product-authority.md"
+        applyTo: "**/*"
+      - files: "ARCHITECTURE.md"
+        applyTo: "apps/**/*"
+      - files: "ARCHITECTURE.md"
+        applyTo: "packages/**/*"
+      - files: "docs/architecture/platform-monorepo.md"
+        applyTo: "apps/**/*"
+      - files: "docs/architecture/platform-monorepo.md"
+        applyTo: "packages/**/*"
+      - files: "docs/architecture/hono-deployment.md"
+        applyTo: "apps/server/**/*"
+      - files: "docs/architecture/delivery-lifecycle.md"
+        applyTo: "scripts/ega-runner/**/*"
+      - files: "docs/architecture/queue-and-leases.md"
+        applyTo: "scripts/ega-runner/**/*"
+      - files: "docs/architecture/runner-and-worktrees.md"
+        applyTo: "scripts/ega-runner/**/*"
+      - files: "docs/architecture/hermes-execution.md"
+        applyTo: "scripts/ega-runner/**/*"
+
+  learnings:
+    scope: local
+    approval_delay: 3
+
+  issues:
+    scope: local
+
+  pull_requests:
+    scope: local
