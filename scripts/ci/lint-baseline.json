@@ -3,8 +3,8 @@
   "sha": "b5e59ee66bcbda0012286133a8ad157cc1ccd78d",
   "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.",
   "totals": {
-    "errors": 39,
-    "warnings": 53
+    "errors": 38,
+    "warnings": 52
   },
   "perFile": {
     ".opencode/plugins/graphify.js": {
@@ -99,31 +99,11 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/mobile/components/EditScreenInfo.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/ExternalLink.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/StyledText.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/Themed.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
     "apps/mobile/components/__tests__/GoalCard-test.tsx": {
       "errors": 0,
       "warnings": 0
     },
     "apps/mobile/components/__tests__/ProjectCard-test.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/__tests__/StyledText-test.js": {
       "errors": 0,
       "warnings": 0
     },
@@ -191,14 +171,6 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/mobile/components/useClientOnlyValue.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/useClientOnlyValue.web.ts": {
-      "errors": 1,
-      "warnings": 0
-    },
     "apps/mobile/components/useColorScheme.ts": {
       "errors": 0,
       "warnings": 0
@@ -206,10 +178,6 @@
     "apps/mobile/components/useColorScheme.web.ts": {
       "errors": 0,
       "warnings": 0
-    },
-    "apps/mobile/constants/Colors.ts": {
-      "errors": 0,
-      "warnings": 1
     },
     "apps/mobile/declarations.d.ts": {
       "errors": 0,
