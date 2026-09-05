@@ -15,11 +15,16 @@
  * - app.json native configuration (runtimeVersion, version, permissions, plugins, identifiers)
  * - eas.json channel/runtime
  * - native Android/iOS files, Gradle config
+ * - build-time branding assets referenced by Expo config (launcher icon,
+ *   native splash image, adaptive icon): the installed binary bakes these in,
+ *   so a JS OTA cannot deliver them. Normal runtime images stay OTA-safe.
  *
  * Does NOT automatically classify entire root package-lock.json as native.
  */
 
 import * as cp from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const NATIVE_SENSITIVE_PATTERNS = [
   /^apps\/mobile\/app\.json$/,
@@ -80,6 +85,81 @@ function isNativeSensitiveFile(file) {
   return NATIVE_SENSITIVE_PATTERNS.some((re) => re.test(file));
 }
 
+// Expo config paths holding build-time branding assets. The installed native
+// binary bakes these in at build time (launcher icon, native splash,
+// adaptive icon), so changes to the referenced files require a new APK.
+// Extend this list if future Expo config fields reference more build-time
+// assets. Normal runtime images are NOT listed here and stay OTA-safe.
+const NATIVE_BRANDING_CONFIG_PATHS = [
+  ['expo', 'icon'],
+  ['expo', 'splash', 'image'],
+  ['expo', 'android', 'adaptiveIcon', 'foregroundImage'],
+];
+
+// Fallback when app.json cannot be read (fail closed for the known files).
+const FALLBACK_NATIVE_BRANDING_ASSETS = new Set([
+  'apps/mobile/assets/images/icon.png',
+  'apps/mobile/assets/images/splash-icon.png',
+  'apps/mobile/assets/images/adaptive-icon.png',
+]);
+
+function readPathSegments(obj, segments) {
+  let current = obj;
+  for (const segment of segments) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = current[segment];
+  }
+  return current;
+}
+
+// Derive repo-relative branding asset paths from Expo config text.
+// baseDir is the mobile app directory relative to repo root.
+export function resolveNativeBrandingAssets(appJsonText, baseDir = 'apps/mobile') {
+  const found = new Set();
+  let config;
+  try {
+    config = JSON.parse(appJsonText);
+  } catch {
+    return found;
+  }
+  for (const segments of NATIVE_BRANDING_CONFIG_PATHS) {
+    const value = readPathSegments(config, segments);
+    if (typeof value !== 'string' || !value.trim()) continue;
+    const normalized = value.startsWith('./') ? value.slice(2) : value;
+    if (normalized.startsWith('/') || normalized.includes('..')) continue;
+    found.add(path.posix.join(baseDir, normalized));
+  }
+  return found;
+}
+
+function loadNativeBrandingAssets({ cwd = process.cwd(), rev = null } = {}) {
+  // Prefer the compared `head` revision so a dirty working tree (or a
+  // checkout newer than `head`) cannot skew classification. Fall back to the
+  // working-tree file, then to the fail-closed known set.
+  if (rev) {
+    const shown = cp.spawnSync('git', ['show', `${rev}:apps/mobile/app.json`], {
+      cwd,
+      encoding: 'utf8',
+    });
+    if (shown.status === 0 && shown.stdout.trim()) {
+      const derived = resolveNativeBrandingAssets(shown.stdout);
+      if (derived.size > 0) return derived;
+    }
+  }
+  try {
+    const text = fs.readFileSync(path.join(cwd, 'apps/mobile/app.json'), 'utf8');
+    const derived = resolveNativeBrandingAssets(text);
+    if (derived.size > 0) return derived;
+  } catch {
+    // fall through to fail-closed fallback below
+  }
+  return new Set(FALLBACK_NATIVE_BRANDING_ASSETS);
+}
+
+function isNativeBrandingAsset(file, brandingAssets) {
+  return brandingAssets.has(file);
+}
+
 function checkNativeDiff(base, head) {
   const diffMobilePkg = getDiffText(base, head, ['apps/mobile/package.json']);
   const diffAppJson = getDiffText(base, head, ['apps/mobile/app.json']);
@@ -102,8 +182,16 @@ export function checkNativeDiffFromTexts(diffMobilePkg, diffAppJson, _diffEas) {
   return hits;
 }
 
-export function classifyFromFiles(files, diffMobilePkg = '', diffAppJson = '', diffEas = '') {
-  const sensitiveFiles = files.filter(isNativeSensitiveFile);
+export function classifyFromFiles(
+  files,
+  diffMobilePkg = '',
+  diffAppJson = '',
+  diffEas = '',
+  brandingAssets = loadNativeBrandingAssets()
+) {
+  const sensitiveFiles = files.filter(
+    (file) => isNativeSensitiveFile(file) || isNativeBrandingAsset(file, brandingAssets)
+  );
   const depHits = checkNativeDiffFromTexts(diffMobilePkg, diffAppJson, diffEas);
   const requiresNative = sensitiveFiles.length > 0 || depHits.length > 0;
   return {
@@ -131,7 +219,10 @@ export function classifyChanges({ base = 'origin/main', head = 'HEAD' } = {}) {
       reason: `git diff failed: ${error} — fail closed, OTA BLOCKED`,
     };
   }
-  const sensitiveFiles = files.filter(isNativeSensitiveFile);
+  const brandingAssets = loadNativeBrandingAssets({ cwd: process.cwd(), rev: head });
+  const sensitiveFiles = files.filter(
+    (file) => isNativeSensitiveFile(file) || isNativeBrandingAsset(file, brandingAssets)
+  );
   const depHits = checkNativeDiff(base, head);
   const requiresNative = sensitiveFiles.length > 0 || depHits.length > 0;
   return {
@@ -160,7 +251,7 @@ export function formatHuman(result) {
     lines.push('OTA BLOCKED');
     lines.push('NEW APK REQUIRED');
     lines.push('');
-    lines.push('This change touches the native runtime (SDK, native deps, permissions, plugins, runtimeVersion, android package).');
+    lines.push('This change touches the native runtime (SDK, native deps, permissions, plugins, runtimeVersion, android package, or build-time branding assets).');
     lines.push('OTA cannot deliver native changes. Build a new APK via Mobile Delivery (mobile-v* tag or workflow_dispatch) before publishing OTA.');
     lines.push('See docs/mobile-ota.md for rollback: eas update:rollback --branch production');
   } else {
