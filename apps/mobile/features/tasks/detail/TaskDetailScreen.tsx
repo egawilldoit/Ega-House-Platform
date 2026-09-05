@@ -26,6 +26,7 @@ import {
   useTaskByIdQuery,
   useUpdateTaskMutation,
 } from '@/features/tasks/query';
+import { useAddTaskToTodayMutation } from '@/features/today/query';
 import { useNotifications } from '@/lib/notifications/provider';
 import type { MobileTaskReminder } from '@/types/tasks';
 
@@ -54,6 +55,7 @@ export function TaskDetailScreen() {
   const updateTaskMutation = useUpdateTaskMutation();
   const createReminderMutation = useCreateTaskReminderMutation();
   const cancelReminderMutation = useCancelTaskReminderMutation();
+  const addToTodayMutation = useAddTaskToTodayMutation();
   const { refetch } = taskQuery;
 
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -112,6 +114,23 @@ export function TaskDetailScreen() {
     setSuccessMessage(null);
     setSubmitError(null);
   }, []);
+
+  const onAddToToday = useCallback(async () => {
+    if (!taskId || addToTodayMutation.isPending) {
+      return;
+    }
+
+    setSubmitError(null);
+    setSuccessMessage(null);
+
+    try {
+      await addToTodayMutation.mutateAsync(taskId);
+      setSuccessMessage('Added to Today.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to add task to Today right now.';
+      setSubmitError(message);
+    }
+  }, [addToTodayMutation, taskId]);
 
   const onSave = useCallback(async () => {
     if (!taskId || !draft) {
@@ -315,6 +334,7 @@ export function TaskDetailScreen() {
   const isSaving = updateTaskMutation.isPending;
   const isReminderSubmitting = createReminderMutation.isPending;
   const isCancellingReminder = cancelReminderMutation.isPending;
+  const isAddingToToday = addToTodayMutation.isPending;
 
   return (
     <AppScreen padded={false} testID="task-detail-screen">
@@ -332,6 +352,19 @@ export function TaskDetailScreen() {
             />
 
             <TaskIdentityCard task={task} />
+
+            <Button
+              testID="task-detail-add-to-today"
+              title={isAddingToToday ? 'Adding...' : 'Add to Today'}
+              variant="secondary"
+              disabled={isAddingToToday}
+              loading={isAddingToToday}
+              onPress={() => {
+                onAddToToday().catch(() => {
+                  // handled by mutation feedback state
+                });
+              }}
+            />
 
             <TaskStateSection draft={draft} onChange={setDraft} onClearMessages={clearMessages} />
 
