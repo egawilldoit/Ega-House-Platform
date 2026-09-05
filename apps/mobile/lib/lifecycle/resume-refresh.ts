@@ -1,4 +1,8 @@
 import { refreshMobileSessionIfConfigured } from '@/lib/api/client';
+import {
+  isSessionNearExpiry,
+  SESSION_REFRESH_BUFFER_SECONDS,
+} from '@/lib/auth/session-expiry';
 
 /**
  * Proactive foreground session refresh.
@@ -18,7 +22,7 @@ import { refreshMobileSessionIfConfigured } from '@/lib/api/client';
  *   wins via commit-time identity check, stale failure never destroys a
  *   newer session).
  */
-export const RESUME_REFRESH_BUFFER_SECONDS = 45;
+export const RESUME_REFRESH_BUFFER_SECONDS = SESSION_REFRESH_BUFFER_SECONDS;
 export const RESUME_REFRESH_COOLDOWN_MS = 60_000;
 
 export type ResumeRefreshSessionInput = {
@@ -37,9 +41,9 @@ type ResumeRefreshDeps = {
 export function isResumeRefreshDue(
   expiresAt: number,
   nowSeconds: number,
-  bufferSeconds: number,
+  bufferSeconds: number = SESSION_REFRESH_BUFFER_SECONDS,
 ): boolean {
-  return expiresAt <= nowSeconds + bufferSeconds;
+  return isSessionNearExpiry(expiresAt, nowSeconds, bufferSeconds);
 }
 
 export function createResumeRefresh(deps: ResumeRefreshDeps) {
