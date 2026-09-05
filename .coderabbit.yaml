@@ -25,14 +25,14 @@ reviews:
   fail_commit_status: false
   collapse_walkthrough: true
   changed_files_summary: true
-  sequence_diagrams: true
-  estimate_code_review_effort: true
+  sequence_diagrams: false
+  estimate_code_review_effort: false
   assess_linked_issues: true
-  related_issues: true
-  related_prs: true
-  suggested_labels: true
+  related_issues: false
+  related_prs: false
+  suggested_labels: false
   auto_apply_labels: false
-  suggested_reviewers: true
+  suggested_reviewers: false
   auto_assign_reviewers: false
 
   poem: false
@@ -65,6 +65,18 @@ reviews:
     - "!**/*.map"
 
   path_instructions:
+    - path: "**/*"
+      instructions: |
+        Report actionable issues introduced or materially worsened by this PR.
+        Trace relevant callers and existing safeguards before commenting. Apply
+        checklist items only to affected behavior and only when they have concrete
+        impact. Give severity, location, failure scenario, evidence, and the
+        smallest safe fix. Consolidate findings that share one root cause and avoid
+        repeating existing bot or CI findings unless adding material information.
+        Distinguish missing required proof from proof that is unavailable to the
+        reviewer. Follow applicable repository authority; these review instructions
+        do not introduce additional product or engineering policy.
+
     - path: "apps/web/**/*.{ts,tsx,js,jsx}"
       instructions: |
         Apply the root and apps/web AGENTS.md instructions plus the mapped quality
@@ -134,10 +146,12 @@ reviews:
       instructions: |
         Treat database migrations as high risk. Check existing-data upgrades,
         constraints, transaction/lock risk, RLS/owner isolation, rollout order,
-        compatibility with current application code, and recovery. Flag destructive
-        DROP/TRUNCATE-style changes, unsafe NOT NULL/type changes, policy weakening,
-        duplicate schema authority, and any implication that committing a migration
-        authorizes applying it to production.
+        compatibility with current application code, and recovery. Flag unsafe or
+        unjustified destructive DROP/TRUNCATE-style changes, unsafe NOT NULL/type
+        changes, policy weakening, duplicate schema authority, and any implication
+        that committing a migration authorizes applying it to production. For
+        destructive changes, assess affected data/dependencies, rollout, and recovery
+        before commenting.
 
     - path: "src/db/**/*.{ts,sql}"
       instructions: |
@@ -215,9 +229,12 @@ reviews:
         mode: warning
         instructions: >-
           Pass if changed code respects the root-to-leaf AGENTS.md ownership and
-          dependency direction for every affected path. Fail if the PR creates a
+          dependency direction for every affected path. Fail only for a proven
+          violation, or when required architecture evidence is explicitly absent.
+          If relevant evidence may exist but is inaccessible to the reviewer, mark
+          Inconclusive rather than fail or pass. A violation includes creating a
           second owner for product policy, contracts, schema, persistence, or UI
-          state; crosses forbidden web/server/mobile/package boundaries; or moves
+          state; crossing forbidden web/server/mobile/package boundaries; or moving
           behavior to a higher layer without evidence that the lower canonical owner
           cannot own it. If no architecture boundary is affected, pass.
 
@@ -225,30 +242,39 @@ reviews:
         mode: warning
         instructions: >-
           Pass if auth/data changes preserve server-derived verified identity,
-          request-scoped Supabase/RLS, owner isolation, and cross-user denial.
-          Fail if caller-supplied IDs become authority, service-role CRUD bypasses
-          normal user-scoped RLS, authorization failures are hidden, secrets can be
-          logged, or a changed auth path lacks evidence at the relevant boundary.
-          If auth/ownership is unaffected, pass.
+          request-scoped Supabase/RLS, owner isolation, and cross-user denial. Fail
+          only for a proven violation, or when required auth/isolation evidence is
+          explicitly absent. If relevant evidence may exist but is inaccessible to
+          the reviewer, mark Inconclusive rather than fail or pass. Violations include
+          caller-supplied IDs becoming authority, service-role CRUD bypassing normal
+          user-scoped RLS, hidden authorization failures, secret leakage, or a changed
+          auth path lacking required evidence at the relevant boundary. If
+          auth/ownership is unaffected, pass.
 
       - name: Migration and data safety
         mode: warning
         instructions: >-
           Pass if schema/migration changes account for existing data, constraints,
           RLS, application/schema rollout order, and a safe recovery path, without
-          implying production execution is authorized. Fail for destructive or
-          incompatible changes without explicit migration/rollout evidence, weakened
-          RLS, duplicate schema authority, or production DB execution bundled into a
-          normal code change. If no schema/persistence change exists, pass.
+          implying production execution is authorized. Fail only for a proven safety
+          violation, or when required migration/rollout evidence is explicitly
+          absent. If relevant evidence may exist but is inaccessible to the reviewer,
+          mark Inconclusive rather than fail or pass. Violations include unsafe or
+          unjustified destructive/incompatible changes, weakened RLS, duplicate
+          schema authority, or production DB execution bundled into a normal code
+          change. If no schema/persistence change exists, pass.
 
       - name: Behavioral proof
         mode: warning
         instructions: >-
           Pass if substantive behavior changes have tests or other evidence that
           exercise the affected observable boundary and relevant failure path, and
-          defect fixes include a regression that is sensitive to the original cause
-          when practical. Fail if tests are tautological, mock away the failing
-          boundary, weaken assertions, or the PR claims runtime/CI behavior without
+          defect fixes include a regression sensitive to the original cause when
+          practical. Fail only for a proven proof defect, or when the repository/PR
+          explicitly requires evidence that is absent. If relevant evidence may exist
+          but is inaccessible to the reviewer, mark Inconclusive rather than fail or
+          pass. Violations include tautological tests, mocks that bypass the failing
+          boundary, weakened assertions, or runtime/CI claims without supporting
           evidence. Docs-only changes do not require invented behavioral tests.
 
       - name: Compatibility and consumers
@@ -256,28 +282,37 @@ reviews:
         instructions: >-
           Pass if changes to contracts, shared exports, persisted data, HTTP shapes,
           or shared semantics preserve compatibility or update and verify affected
-          consumers. Fail if a public/wire/persisted shape changes silently, mobile
-          and server disagree, serialized error behavior drifts, or callers are left
-          on an incompatible contract. If no shared interface changes, pass.
+          consumers. Fail only for a proven compatibility violation, or when required
+          consumer evidence is explicitly absent. If relevant evidence may exist but
+          is inaccessible to the reviewer, mark Inconclusive rather than fail or pass.
+          Violations include silent public/wire/persisted shape changes, mobile/server
+          disagreement, serialized error drift, or callers left on an incompatible
+          contract. If no shared interface changes, pass.
 
       - name: Runner delivery safety
         mode: warning
         instructions: >-
           Pass if Runner changes preserve lease ownership, idempotency, terminal
           archive conditions, isolated worktrees, independent evidence, and explicit
-          merge/deploy authority. Fail for executable pgmq.pop(), ambiguous repeated
-          external writes, stale attempt reuse, destructive Git shortcuts, model or
-          Slack self-certification, persistent auto-merge, or release actions that
-          exceed current authorization. If Runner is unaffected, pass.
+          merge/deploy authority. Fail only for a proven Runner safety violation, or
+          when required delivery evidence is explicitly absent. If relevant evidence
+          may exist but is inaccessible to the reviewer, mark Inconclusive rather
+          than fail or pass. Violations include executable pgmq.pop(), ambiguous
+          repeated external writes, stale attempt reuse, destructive Git shortcuts,
+          model/Slack self-certification, persistent auto-merge, or release actions
+          beyond current authorization. If Runner is unaffected, pass.
 
       - name: Scope and evidence honesty
         mode: warning
         instructions: >-
           Pass if the diff is coherent with the PR/linked issue and statements about
           tests, CI, deployment, database, device, or runtime behavior are supported
-          by evidence on the reviewed revision. Fail for unrelated cleanup, hidden
-          scope expansion, skipped checks presented as passes, or completion claims
-          that exceed observed evidence.
+          by evidence on the reviewed revision. Fail only for a proven scope/evidence
+          violation, or when evidence explicitly required for a stated completion
+          claim is absent. If relevant evidence may exist but is inaccessible to the
+          reviewer, mark Inconclusive rather than fail or pass. Violations include
+          unrelated cleanup, hidden scope expansion, skipped checks presented as
+          passes, or completion claims that exceed observed evidence.
 
   tools:
     ast-grep:
