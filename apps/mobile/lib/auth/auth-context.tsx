@@ -17,6 +17,7 @@ import {
   refreshMobileSession as refreshApiSession,
 } from '@/lib/api/auth';
 import { clearMobileQueryCache } from '@/lib/query/query-client';
+import { isSessionNearExpiry } from '@/lib/auth/session-expiry';
 import { createResumeRefresh } from '@/lib/lifecycle/resume-refresh';
 import { mobileSessionStorage } from '@/lib/storage/session';
 import type { MobileAuthSession, MobileAuthUser, StoredMobileSession } from '@/types/auth';
@@ -33,13 +34,6 @@ type AuthContextValue = {
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-
-const REFRESH_BUFFER_SECONDS = 45;
-
-function isSessionNearExpiry(session: MobileAuthSession) {
-  const nowSeconds = Math.floor(Date.now() / 1000);
-  return session.expiresAt <= nowSeconds + REFRESH_BUFFER_SECONDS;
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
@@ -138,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      if (!isSessionNearExpiry(restored.session)) {
+      if (!isSessionNearExpiry(restored.session.expiresAt, Math.floor(Date.now() / 1000))) {
         applySessionBundle(restored);
         setIsReady(true);
         return;
