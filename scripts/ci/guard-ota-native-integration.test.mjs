@@ -216,6 +216,43 @@ test('real git-history: configured launcher icon change => BLOCK, runtime image 
   }
 });
 
+test('real git-history: worktree config skew cannot hide a head-revision branding change', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ota-skew-test-'));
+  try {
+    run('git', ['init'], { cwd: tmp });
+    run('git', ['config', 'user.email', 'test@test.com'], { cwd: tmp });
+    run('git', ['config', 'user.name', 'Test'], { cwd: tmp });
+    fs.mkdirSync(path.join(tmp, 'apps/mobile/assets/images'), { recursive: true });
+    const appJsonFor = (icon) =>
+      JSON.stringify({ expo: { version: '1.0.4', icon } }, null, 2);
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/app.json'), appJsonFor('./assets/images/icon.png'));
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/assets/images/icon.png'), 'icon-a');
+    run('git', ['add', '.'], { cwd: tmp });
+    run('git', ['commit', '-m', 'A branding baseline'], { cwd: tmp });
+    const shaA = run('git', ['rev-parse', 'HEAD'], { cwd: tmp }).stdout.trim();
+
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/assets/images/icon.png'), 'icon-b');
+    run('git', ['add', '.'], { cwd: tmp });
+    run('git', ['commit', '-m', 'B new icon'], { cwd: tmp });
+    const shaB = run('git', ['rev-parse', 'HEAD'], { cwd: tmp }).stdout.trim();
+
+    // Dirty the working tree so its config disagrees with the compared head.
+    fs.writeFileSync(
+      path.join(tmp, 'apps/mobile/app.json'),
+      appJsonFor('./assets/images/totally-different.png')
+    );
+
+    const guardRes = run('node', [GUARD_SCRIPT, '--base', shaA, '--head', shaB, '--check-ota-safe'], {
+      cwd: tmp,
+    });
+    assert.equal(guardRes.status, 1, 'head-revision branding change must BLOCK despite worktree skew');
+    assert.match(guardRes.stdout + guardRes.stderr, /OTA BLOCKED/);
+    assert.match(guardRes.stdout + guardRes.stderr, /icon\.png/);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
 test('real git-history: missing baseline SHA => BLOCK', () => {  const { tmp, shaA } = initTempRepo();
   try {
     const fakeSha = 'f'.repeat(40);
