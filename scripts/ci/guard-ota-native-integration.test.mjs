@@ -155,8 +155,68 @@ test('real git-history: native + higher version => ALLOW', () => {
   }
 });
 
-test('real git-history: missing baseline SHA => BLOCK', () => {
-  const { tmp, shaA } = initTempRepo();
+test('real git-history: configured launcher icon change => BLOCK, runtime image => ALLOW', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ota-brand-test-'));
+  try {
+    run('git', ['init'], { cwd: tmp });
+    run('git', ['config', 'user.email', 'test@test.com'], { cwd: tmp });
+    run('git', ['config', 'user.name', 'Test'], { cwd: tmp });
+    fs.mkdirSync(path.join(tmp, 'apps/mobile/assets/images'), { recursive: true });
+    // Expo config references icon + splash as build-time branding; a plain
+    // content image is only a runtime asset.
+    fs.writeFileSync(
+      path.join(tmp, 'apps/mobile/app.json'),
+      JSON.stringify(
+        {
+          expo: {
+            version: '1.0.4',
+            icon: './assets/images/icon.png',
+            splash: { image: './assets/images/splash-icon.png' },
+          },
+        },
+        null,
+        2
+      )
+    );
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/assets/images/icon.png'), 'icon-a');
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/assets/images/hero.png'), 'hero-a');
+    run('git', ['add', '.'], { cwd: tmp });
+    run('git', ['commit', '-m', 'A branding baseline'], { cwd: tmp });
+    const shaA = run('git', ['rev-parse', 'HEAD'], { cwd: tmp }).stdout.trim();
+
+    // B: launcher icon bytes change (mirrors dbb35288 new icons)
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/assets/images/icon.png'), 'icon-b');
+    run('git', ['add', '.'], { cwd: tmp });
+    run('git', ['commit', '-m', 'B new icons'], { cwd: tmp });
+    const shaB = run('git', ['rev-parse', 'HEAD'], { cwd: tmp }).stdout.trim();
+    const iconRes = run('node', [GUARD_SCRIPT, '--base', shaA, '--head', shaB, '--check-ota-safe'], {
+      cwd: tmp,
+    });
+    assert.equal(iconRes.status, 1, 'configured icon change must BLOCK');
+    assert.match(iconRes.stdout + iconRes.stderr, /OTA BLOCKED/);
+    assert.match(iconRes.stdout + iconRes.stderr, /icon\.png/);
+
+    // C: runtime content image change only
+    fs.writeFileSync(path.join(tmp, 'apps/mobile/assets/images/hero.png'), 'hero-b');
+    run('git', ['add', '.'], { cwd: tmp });
+    run('git', ['commit', '-m', 'C hero art'], { cwd: tmp });
+    const shaC = run('git', ['rev-parse', 'HEAD'], { cwd: tmp }).stdout.trim();
+    const heroRes = run(
+      'node',
+      [GUARD_SCRIPT, '--base', shaB, '--head', shaC, '--check-ota-safe'],
+      { cwd: tmp }
+    );
+    assert.equal(
+      heroRes.status,
+      0,
+      `runtime image should stay OTA SAFE, stderr: ${heroRes.stderr} stdout: ${heroRes.stdout}`
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('real git-history: missing baseline SHA => BLOCK', () => {  const { tmp, shaA } = initTempRepo();
   try {
     const fakeSha = 'f'.repeat(40);
     const guardRes = run('node', [GUARD_SCRIPT, '--base', fakeSha, '--head', shaA, '--check-ota-safe'], { cwd: tmp });

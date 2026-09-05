@@ -124,7 +124,7 @@ After `npx expo prebuild --platform android --clean --no-install`, the generated
 - `native.ts` — strict semver, `validateManifest`, `classifyNativeUpdate` (cases A-D), `fetchLatestReleaseManifest` (timeout 8s, fail closed), `buildApkUrlFromManifest`.
 - `service.ts` — `getAppUpdateInfo`, `checkForUpdate` (native-first, fail-closed), `downloadUpdate`, `reloadApp` (surfaces `Unable to restart…` and transitions to `ERROR` keeping retry possible), `createUpdateService` state machine (single owner, `isChecking`/`isDownloading`/`isReady`).
 - `useAppUpdates.ts` — hooks `useUpdateService`, `useAppUpdateInfo` (no duplicate manifest fetches; UI reads service state).\n- `recovery.ts` — root-route error recovery helper: check server, fetch a newer update or rollback directive, then reload.
-- Tests: `native.test.ts` (version/runtime cases, malformed, timeout), `service.test.ts` (native required/error → no EAS call, OTA flow, reload failure), `guard-ota-native.test.mjs` (JS-only vs native dep/SDK/app.json/permission/eas/gradle, lock-only not native).
+- Tests: `native.test.ts` (version/runtime cases, malformed, timeout), `service.test.ts` (native required/error → no EAS call, OTA flow, reload failure), `guard-ota-native.test.mjs` (JS-only vs native dep/SDK/app.json/permission/eas/gradle, lock-only not native, branding icon/splash/adaptive BLOCK, runtime image stays safe).
 
 ## 6. UI (`apps/mobile/features/updates/`)
 
@@ -228,6 +228,10 @@ Changes requiring a new APK (new `expo.version` + new runtime):
 - Native deps (`react-native`, `expo-*` native, `reanimated`, `screens`, `safe-area`, etc.)
 - `app.json` `plugins`, `permissions`, `runtimeVersion`, `package`, `updates.requestHeaders`, `version`
 - `eas.json` channel changes, native `android`/`ios` files, Gradle.
+- Build-time branding assets referenced by Expo config: launcher icon
+  (`expo.icon`), configured native splash image (`expo.splash.image`),
+  adaptive icon (`expo.android.adaptiveIcon.foregroundImage`). The installed
+  binary bakes these in, so a JS OTA cannot deliver them.
 
 Guard:
 
@@ -252,7 +256,8 @@ APK at A → C (native) => OTA BLOCKED → new APK at C → D (JS only) => OTA a
 | OTA-safe (same version & runtime) | Requires new APK (new version/runtime) |
 |---|---|
 | JS/TSX, styling, copy, translations, screen layouts, non-native logic | Expo SDK, RN, native deps, `expo-updates`, `expo-constants`, `reanimated`, etc. |
-| Assets (images/fonts) via OTA | Permissions, entitlements, `app.json` native config, package id, Gradle, `android/`/`ios/` files, new native modules |
+| Runtime assets (content images/fonts) via OTA | Permissions, entitlements, `app.json` native config, package id, Gradle, `android/`/`ios/` files, new native modules |
+| | Launcher icon, configured native splash image, adaptive icon (build-time branding — baked into the APK, not OTA-deliverable) |
 
 ## 11. Expo project relink baseline (this PR)
 
@@ -282,7 +287,7 @@ grep 'expo-channel-name.*production' apps/mobile/android/app/src/main/AndroidMan
 npm run check:architecture                    # 21 PASS
 npm run ci:purity                             # PASS
 npm run test:guardrails                       # 50 PASS
-node --test scripts/ci/guard-ota-native.test.mjs  # 11 PASS
+node --test scripts/ci/guard-ota-native.test.mjs  # 17 PASS (incl. branding icon/splash/adaptive BLOCK + runtime-image safe)
 npm run lint:changed -- --base origin/main    # 0 regressions
 ```
 
