@@ -132,7 +132,20 @@ export function resolveNativeBrandingAssets(appJsonText, baseDir = 'apps/mobile'
   return found;
 }
 
-function loadNativeBrandingAssets(cwd = process.cwd()) {
+function loadNativeBrandingAssets({ cwd = process.cwd(), rev = null } = {}) {
+  // Prefer the compared `head` revision so a dirty working tree (or a
+  // checkout newer than `head`) cannot skew classification. Fall back to the
+  // working-tree file, then to the fail-closed known set.
+  if (rev) {
+    const shown = cp.spawnSync('git', ['show', `${rev}:apps/mobile/app.json`], {
+      cwd,
+      encoding: 'utf8',
+    });
+    if (shown.status === 0 && shown.stdout.trim()) {
+      const derived = resolveNativeBrandingAssets(shown.stdout);
+      if (derived.size > 0) return derived;
+    }
+  }
   try {
     const text = fs.readFileSync(path.join(cwd, 'apps/mobile/app.json'), 'utf8');
     const derived = resolveNativeBrandingAssets(text);
@@ -206,10 +219,9 @@ export function classifyChanges({ base = 'origin/main', head = 'HEAD' } = {}) {
       reason: `git diff failed: ${error} — fail closed, OTA BLOCKED`,
     };
   }
+  const brandingAssets = loadNativeBrandingAssets({ cwd: process.cwd(), rev: head });
   const sensitiveFiles = files.filter(
-    (file) =>
-      isNativeSensitiveFile(file) ||
-      isNativeBrandingAsset(file, loadNativeBrandingAssets(process.cwd()))
+    (file) => isNativeSensitiveFile(file) || isNativeBrandingAsset(file, brandingAssets)
   );
   const depHits = checkNativeDiff(base, head);
   const requiresNative = sensitiveFiles.length > 0 || depHits.length > 0;
