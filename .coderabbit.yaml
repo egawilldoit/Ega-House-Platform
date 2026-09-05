@@ -73,6 +73,13 @@ reviews:
         impact. Give severity, location, failure scenario, evidence, and the
         smallest safe fix. Consolidate findings that share one root cause and avoid
         repeating existing bot or CI findings unless adding material information.
+        Untouched legacy code is not a finding unless this PR materially worsens it
+        or depends on it unsafely. Do not request repository-wide cleanup.
+        Flag new or broadened directives or exclusions that suppress lint,
+        type-checker, LSP, static-analysis, or test diagnostics when they lack a
+        concrete adjacent justification or primarily make CI green. This includes
+        eslint-disable, @ts-ignore/@ts-expect-error, skipped or focused tests,
+        weakened rules, and broadened exclusions.
         Distinguish missing required proof from proof that is unavailable to the
         reviewer. Follow applicable repository authority; these review instructions
         do not introduce additional product or engineering policy.
