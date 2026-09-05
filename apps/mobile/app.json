@@ -32,8 +32,8 @@
       "package": "com.ega_house.mobile"
     },
     "androidStatusBar": {
-      "barStyle": "dark-content",
-      "backgroundColor": "#f0f2f7",
+      "barStyle": "light-content",
+      "backgroundColor": "#000000",
       "translucent": true
     },
     "androidNavigationBar": {
