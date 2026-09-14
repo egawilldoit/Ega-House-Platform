@@ -108,12 +108,28 @@ test("EGA-653: active timer becomes the primary state and Next up stays distinct
       dueTodayTaskCount: 2,
       hasCurrentWeekReview: false,
     }),
+    activeTimerStartedAt: "2026-09-14T10:00:00.000Z",
   });
 
   assert.equal(model.activeTimer?.taskId, "active");
   assert.equal(model.activeTimer?.task?.title, "Running work");
+  // startedAt comes from the bounded canonical active-session read.
+  assert.equal(model.activeTimer?.startedAt, "2026-09-14T10:00:00.000Z");
   // Next up is at most one and never duplicates Start Here or the active timer task.
   assert.equal(model.nextUp?.id, "b");
+});
+
+test("EGA-653: active timer without a resolved session exposes no elapsed time", () => {
+  const model = buildHomeModel({
+    snapshot: snapshot({
+      focus: { startHere: null, queue: [] },
+      activeTimer: { sessionId: "s1", taskId: "active" },
+    }),
+    metrics,
+  });
+
+  assert.equal(model.activeTimer?.taskId, "active");
+  assert.equal(model.activeTimer?.startedAt, null);
 });
 
 test("EGA-653: Next up skips blocked/completed and never exceeds one item", () => {

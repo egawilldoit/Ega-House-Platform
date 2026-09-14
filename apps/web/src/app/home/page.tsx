@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
+import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { AuthenticatedHomePage } from "./_components/authenticated-home-page";
@@ -27,7 +28,16 @@ export default async function HomeRoute() {
     getCurrentUser(),
   ]);
 
-  const model = buildHomeModel({ snapshot: snapshotResult.data, metrics });
+  // Bounded active-session read, only when the canonical Operator snapshot says
+  // a timer is running. It supplies startedAt for the live elapsed display; Home
+  // never computes timer math itself and never loads the full Timer page model.
+  let activeTimerStartedAt: string | null = null;
+  if (snapshotResult.data?.activeTimer) {
+    const activeTimerResult = await getActiveTimerSession();
+    activeTimerStartedAt = activeTimerResult.data?.startedAt ?? null;
+  }
+
+  const model = buildHomeModel({ snapshot: snapshotResult.data, metrics, activeTimerStartedAt });
 
   return (
     <AppShell

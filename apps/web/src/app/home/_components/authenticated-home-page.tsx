@@ -4,6 +4,7 @@ import { ArrowRight, CalendarCheck2, Timer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { LiveDuration } from "@/components/timer/live-duration";
 import { formatTaskToken } from "@/lib/task-domain";
 
 import type { HomeModel } from "../_lib/home-page-model";
@@ -34,6 +35,9 @@ function ActiveTimerCard({ model }: { model: HomeModel }) {
         </h2>
         {activeTimer.task ? (
           <TaskContext projectName={activeTimer.task.projectName} goalTitle={activeTimer.task.goalTitle} />
+        ) : null}
+        {activeTimer.startedAt ? (
+          <LiveDuration startedAt={activeTimer.startedAt} />
         ) : null}
         <Link href="/timer" className="btn-instrument inline-flex h-9 items-center gap-2 px-4 text-sm">
           Open timer
@@ -74,7 +78,7 @@ function StartHereCard({ model }: { model: HomeModel }) {
           ) : null}
         </div>
         <Link href="/timer" className="btn-instrument inline-flex h-9 items-center gap-2 px-4 text-sm">
-          Start task
+          Open timer
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
         </Link>
       </CardContent>
