@@ -21,16 +21,12 @@ import type {
 // ---- Render props types for drilldown ----
 
 type ChartSectionProps = {
-  last7DaysSeries: WorkAnalyticsDaily[];
-  last30DaysSeries: WorkAnalyticsDaily[];
+  series: WorkAnalyticsDaily[];
+  title: string;
   dateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
 };
 
-function ChartSection({
-  last7DaysSeries,
-  last30DaysSeries,
-  dateDrilldownIndex,
-}: ChartSectionProps) {
+function ChartSection({ series, title, dateDrilldownIndex }: ChartSectionProps) {
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const handleBarClick = React.useCallback(
@@ -41,20 +37,7 @@ function ChartSection({
     [dateDrilldownIndex, openDrilldown],
   );
 
-  return (
-    <>
-      <TrendBarChart
-        data={last7DaysSeries}
-        title="Last 7 days"
-        onBarClick={handleBarClick}
-      />
-      <TrendBarChart
-        data={last30DaysSeries}
-        title="Last 30 days"
-        onBarClick={handleBarClick}
-      />
-    </>
-  );
+  return <TrendBarChart data={series} title={title} onBarClick={handleBarClick} />;
 }
 
 type BreakdownCardProps = {
@@ -274,34 +257,43 @@ export function InteractiveAnalytics({
 }: InteractiveAnalyticsProps) {
   return (
     <AnalyticsDrilldownProvider>
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartSection
-          last7DaysSeries={last7DaysSeries}
-          last30DaysSeries={last30DaysSeries}
-          dateDrilldownIndex={drilldownIndexes.date}
-        />
-        <BreakdownCard
-          title={breakdownTitle}
-          breakdownBy={breakdownBy}
-          projectBreakdown={projectBreakdown}
-          goalBreakdown={goalBreakdown}
-          taskBreakdown={taskBreakdown}
-          projectDrilldownIndex={drilldownIndexes.project}
-          goalDrilldownIndex={drilldownIndexes.goal}
-          taskDrilldownIndex={drilldownIndexes.task}
-        />
-        <Card>
-          <CardHeader>
-            <CardTitle>Insights</CardTitle>
-          </CardHeader>
-          <CardContent>
-            Delta {insightsDeltaMinutes}m · Best{" "}
-            {insightsBestDay ?? "n/a"} · Lowest{" "}
-            {insightsLowestDay ?? "n/a"} · Avg{" "}
-            {insightsAvgSessionMinutes}m · Longest{" "}
-            {insightsLongestSessionMinutes}m
-          </CardContent>
-        </Card>
+      <div className="analytics-visualization-stack mt-4">
+        <div className="analytics-primary-chart">
+          <ChartSection
+            series={last30DaysSeries}
+            title="Last 30 days"
+            dateDrilldownIndex={drilldownIndexes.date}
+          />
+        </div>
+        <div className="analytics-secondary-grid">
+          <ChartSection
+            series={last7DaysSeries}
+            title="Last 7 days"
+            dateDrilldownIndex={drilldownIndexes.date}
+          />
+          <BreakdownCard
+            title={breakdownTitle}
+            breakdownBy={breakdownBy}
+            projectBreakdown={projectBreakdown}
+            goalBreakdown={goalBreakdown}
+            taskBreakdown={taskBreakdown}
+            projectDrilldownIndex={drilldownIndexes.project}
+            goalDrilldownIndex={drilldownIndexes.goal}
+            taskDrilldownIndex={drilldownIndexes.task}
+          />
+          <Card className="analytics-insights-card">
+            <CardHeader>
+              <CardTitle className="text-sm">Insights</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-[color:var(--muted-foreground)]">
+              Delta {insightsDeltaMinutes}m · Best{" "}
+              {insightsBestDay ?? "n/a"} · Lowest{" "}
+              {insightsLowestDay ?? "n/a"} · Avg{" "}
+              {insightsAvgSessionMinutes}m · Longest{" "}
+              {insightsLongestSessionMinutes}m
+            </CardContent>
+          </Card>
+        </div>
       </div>
       <AnalyticsDrilldownDrawer />
     </AnalyticsDrilldownProvider>
