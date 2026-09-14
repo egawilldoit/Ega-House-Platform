@@ -142,9 +142,14 @@ async function getUnreadNotificationCountOrZero(
 async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics> {
   try {
     const supabase = await createClient();
-    const today = getTodayLocalIsoDate();
-    // Weekly Review week must be derived from canonical Time Context, not UTC.
-    // Resolve stored timezone first; fall back to device local today if unauthenticated or on error.
+    const now = new Date();
+    // The shell day boundary and the Weekly Review week must both derive from the
+    // canonical Time Context, not the runtime's local/UTC date. Resolve the stored
+    // timezone first; fall back to UTC if unauthenticated or on error. This keeps
+    // the global overdue/due-today counts on the same day window as the Operator
+    // Today plan, so the two visible "overdue" surfaces cannot disagree at
+    // timezone/date edges.
+    let localToday = getTodayLocalIsoDate(now);
     let reviewWeek: ReturnType<typeof getWeekBounds> = null;
     try {
       const { data: authData } = await supabase.auth.getUser();
@@ -155,17 +160,20 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
         const actor = createAuthenticatedActor(authData.user.id);
         const tzResult = await repo.getTimezone(actor);
         const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
-        const localToday = getLocalDateInTimezone(new Date(), effectiveTz);
+        localToday = getLocalDateInTimezone(now, effectiveTz);
         reviewWeek = getWeekBounds(localToday);
       } else {
-        reviewWeek = getWeekBounds(getLocalDateInTimezone(new Date(), "UTC"));
+        localToday = getLocalDateInTimezone(now, "UTC");
+        reviewWeek = getWeekBounds(localToday);
       }
     } catch {
-      reviewWeek = getWeekBounds(getLocalDateInTimezone(new Date(), "UTC"));
+      localToday = getLocalDateInTimezone(now, "UTC");
+      reviewWeek = getWeekBounds(localToday);
     }
+    const today = localToday;
     if (!reviewWeek) {
       // Final fallback to previous logic if Time Context resolution failed.
-      reviewWeek = getWeekBounds(getLocalDateInTimezone(new Date(), "UTC"));
+      reviewWeek = getWeekBounds(getLocalDateInTimezone(now, "UTC"));
     }
 
     if (!reviewWeek) {
