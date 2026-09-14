@@ -14,6 +14,7 @@ import { Menu, X } from "lucide-react";
 
 import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { SidebarCreateTaskButton } from "./sidebar-create-task";
 import { SidebarNavigation, type SidebarGoal, type SidebarProject } from "./sidebar-navigation";
 
 type WorkspaceNavigationDrawerProps = {
@@ -143,6 +144,9 @@ export function SidebarMobileDrawer({
       </div>
       <div className="workspace-drawer-quick-task flex flex-col gap-2">
         <InboxQuickCapture projects={projects} goals={goals} />
+      </div>
+      <div className="workspace-create-task flex flex-col">
+        <SidebarCreateTaskButton />
       </div>
       <SidebarNavigation projects={projects} metrics={metrics} />
     </WorkspaceNavigationDrawer>

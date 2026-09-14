@@ -4,6 +4,7 @@ import Image from "next/image";
 
 import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { SidebarCreateTaskButton } from "./sidebar-create-task";
 import {
   SidebarNavigation,
   type SidebarGoal,
@@ -41,6 +42,10 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
 
       <div className="workspace-quick-task flex flex-col gap-2">
         <InboxQuickCapture projects={projects} goals={goals} />
+      </div>
+
+      <div className="workspace-create-task flex flex-col">
+        <SidebarCreateTaskButton />
       </div>
 
       <SidebarNavigation projects={projects} metrics={metrics} />
