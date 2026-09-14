@@ -24,7 +24,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { buildTaskListUrl } from "@/lib/task-list";
 import { formatDurationLabel } from "@/lib/task-session";
-import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
+import { formatTaskToken } from "@/lib/task-domain";
 import { isTaskArchived } from "@/lib/task-archive";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
@@ -209,7 +209,6 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
               tasks.map((task) => {
                 const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
                 const taskArchived = isTaskArchived(task.archived_at);
-                const taskCompleted = isTaskCompletedStatus(task.status);
                 return (
                   <article key={task.id} id={`task-${task.id}`} className="tasks-task-card scroll-mt-24">
                     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-start">
