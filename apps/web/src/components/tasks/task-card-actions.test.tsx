@@ -120,4 +120,59 @@ describe("TaskCardActions progressive disclosure (EGA-651)", () => {
     expect(container.textContent).not.toContain("Start timer");
     expect(container.textContent).toContain("More options");
   });
+
+  it("EGA-651: opens the advanced editor with a visible, announced alert when this task has a save error", async () => {
+    await renderCard({ error: "Could not save task" });
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.getAttribute("aria-label")).toBe("Advanced task settings for Ship the polish stack");
+    expect(dialog?.textContent).toContain("Advanced settings");
+    expect(dialog?.textContent).toContain("Ship the polish stack");
+
+    const alert = dialog?.querySelector('[role="alert"]');
+    expect(alert).not.toBeNull();
+    expect(alert?.textContent).toContain("Could not save task");
+
+    // Opening the editor because of an error must not mutate anything.
+    for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("EGA-651: no error keeps the advanced editor closed by default", async () => {
+    await renderCard({ error: null });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("EGA-651: only the task carrying the error opens its editor", async () => {
+    const base = {
+      ...actions,
+      returnTo: "/tasks",
+      defaultStatus: "todo",
+      defaultPriority: "high",
+      defaultDueDate: null,
+      defaultEstimateMinutes: null,
+      defaultScheduledStartAt: null,
+      defaultScheduledEndAt: null,
+      defaultCalendarSyncEnabled: false,
+      defaultCalendarReminderMinutes: 30,
+      defaultBlockedReason: null,
+      defaultRecurrenceRule: null,
+      archivedAt: null,
+      reminders: null,
+      overflowActions: null,
+    };
+
+    await act(async () => {
+      root.render(
+        <>
+          <TaskCardActions {...base} taskId="task-1" taskTitle="First task" error={null} />
+          <TaskCardActions {...base} taskId="task-2" taskTitle="Second task" error="Save failed" />
+        </>,
+      );
+    });
+
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    expect(dialogs.length).toBe(1);
+    expect(dialogs[0].getAttribute("aria-label")).toBe("Advanced task settings for Second task");
+  });
 });
