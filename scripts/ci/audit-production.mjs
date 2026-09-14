@@ -3,18 +3,17 @@ import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const ALLOWED_LEAF_SOURCES = new Map([
-  [1130720, 'fast-uri via upstream AJV v3 contract'],
-  [1123911, 'js-yaml via upstream v4 tooling contract'],
-  [1138115, 'js-yaml via upstream v4 tooling contract'],
-  // GitHub's reviewed nanoid advisory kept the same GHSA but npm audit
-  // refreshed its source id on 2026-08-22. The exception remains the
-  // already-approved transitive Expo Router v3 line documented in
-  // docs/architecture/dependency-audit-exceptions.md.
-  [1139427, 'nanoid via Expo Router v3 contract'],
+  // Only the Metro/Expo build-toolchain image-size advisories remain
+  // unavoidable through the resolved Expo 54 graph (no safe in-range fix; the
+  // only npm-proposed fix is a major downgrade of expo, which is refused).
+  // Reviewed 2026-09-14; see docs/architecture/dependency-audit-exceptions.md.
   [1138808, 'image-size via Metro/Expo toolchain'],
   [1138809, 'image-size via Metro/Expo toolchain'],
 ]);
-const REVIEW_BY = '2026-09-09';
+// Owner-approved renewal on 2026-09-14 (previous deadline 2026-09-09). The
+// direct critical `next` advisory was remediated (next 16.2.12 -> 16.3.5) and
+// the fast-uri/js-yaml/nanoid/sharp exceptions were removed by remediation.
+const REVIEW_BY = '2026-09-28';
 export const AUDIT_TIMEOUT_MS = 120_000;
 export const AUDIT_ATTEMPTS = 2;
 
