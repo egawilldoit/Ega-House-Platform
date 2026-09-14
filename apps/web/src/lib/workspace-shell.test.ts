@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { buildTodayPlan, getDueBucket, type TodaySourceTask } from "@ega/application";
+import { getLocalDateInTimezone } from "@ega/domain";
+
 import { buildWorkspaceShellMetrics } from "./workspace-shell";
 
 test("prioritizes active timer over all other shell signals", () => {
@@ -95,4 +98,51 @@ test("surfaces the unread notification count without disturbing task signals", (
   });
 
   assert.equal(missing.unreadNotificationCount, 0);
+});
+
+function dueTask(id: string, dueDate: string): TodaySourceTask {
+  return {
+    id,
+    title: `Task ${id}`,
+    description: null,
+    blockedReason: null,
+    status: "todo",
+    priority: "medium",
+    dueDate,
+    estimateMinutes: null,
+    scheduledStartAt: null,
+    scheduledEndAt: null,
+    focusRank: null,
+    plannedForDate: null,
+    updatedAt: "2026-09-13T10:00:00.000Z",
+    completedAt: null,
+    projectName: "EGA House",
+    projectSlug: "ega-house",
+    goalTitle: null,
+  };
+}
+
+test("EGA-647: shell day boundary follows canonical Time Context, not the runtime/UTC date", () => {
+  // 02:00Z on 2026-09-15 is still 2026-09-14 in America/Los_Angeles (UTC-7).
+  const now = new Date("2026-09-15T02:00:00.000Z");
+  const canonicalToday = getLocalDateInTimezone(now, "America/Los_Angeles");
+  assert.equal(canonicalToday, "2026-09-14");
+
+  // A task due on the canonical local day is "today" for the Today plan, not overdue.
+  const plan = buildTodayPlan({
+    today: canonicalToday,
+    selectedRows: [dueTask("due-today", canonicalToday)],
+    pinnedRows: [],
+    inProgressRows: [],
+    activeTimer: null,
+    trackedTodaySeconds: 0,
+  });
+  assert.equal(plan.summary.overdueCount, 0);
+  assert.equal(plan.sections.planned[0]?.dueBucket, "today");
+
+  // The runtime/UTC day boundary would have classified the same task overdue,
+  // which is the divergence the shell now avoids by reusing the canonical day.
+  const utcToday = getLocalDateInTimezone(now, "UTC");
+  assert.equal(utcToday, "2026-09-15");
+  assert.equal(getDueBucket(canonicalToday, "todo", utcToday), "overdue");
 });
