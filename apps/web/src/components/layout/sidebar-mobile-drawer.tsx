@@ -7,14 +7,17 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { Menu, X } from "lucide-react";
 
-import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
+import { InboxCaptureTrigger } from "@/components/inbox/inbox-capture-trigger";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
-import { SidebarNavigation, type SidebarGoal, type SidebarProject } from "./sidebar-navigation";
+import { SidebarCreateTaskButton } from "./sidebar-create-task";
+import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
+import { WorkspaceDrawerContext } from "./workspace-drawer-context";
 
 type WorkspaceNavigationDrawerProps = {
   children: ReactNode;
@@ -38,6 +41,8 @@ export function WorkspaceNavigationDrawer({
       queueMicrotask(() => triggerRef.current?.focus());
     }
   }, []);
+
+  const drawerControls = useMemo(() => ({ closeDrawer }), [closeDrawer]);
 
   useEffect(() => {
     if (!open) return;
@@ -72,7 +77,8 @@ export function WorkspaceNavigationDrawer({
   }
 
   return (
-    <div className="workspace-mobile-navigation">
+    <WorkspaceDrawerContext.Provider value={drawerControls}>
+      <div className="workspace-mobile-navigation">
       <button
         ref={triggerRef}
         type="button"
@@ -116,19 +122,18 @@ export function WorkspaceNavigationDrawer({
           </div>
         </div>
       ) : null}
-    </div>
+      </div>
+    </WorkspaceDrawerContext.Provider>
   );
 }
 
 type SidebarMobileDrawerProps = {
   projects?: SidebarProject[];
-  goals?: SidebarGoal[];
   metrics: WorkspaceShellMetrics;
 };
 
 export function SidebarMobileDrawer({
   projects = [],
-  goals = [],
   metrics,
 }: SidebarMobileDrawerProps) {
   return (
@@ -142,7 +147,10 @@ export function SidebarMobileDrawer({
         <small>OS / MOBILE</small>
       </div>
       <div className="workspace-drawer-quick-task flex flex-col gap-2">
-        <InboxQuickCapture projects={projects} goals={goals} />
+        <InboxCaptureTrigger />
+      </div>
+      <div className="workspace-create-task flex flex-col">
+        <SidebarCreateTaskButton />
       </div>
       <SidebarNavigation projects={projects} metrics={metrics} />
     </WorkspaceNavigationDrawer>
