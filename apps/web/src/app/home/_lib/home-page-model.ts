@@ -13,6 +13,8 @@ export type HomeActiveTimer = {
   sessionId: string;
   taskId: string;
   task: OperatorTask | null;
+  /** Canonical session start, when the bounded timer read succeeded. */
+  startedAt: string | null;
 };
 
 export type HomeModel = {
@@ -55,6 +57,7 @@ function findTask(snapshot: OperatorSnapshot, taskId: string): OperatorTask | nu
 export function buildHomeModel(input: {
   snapshot: OperatorSnapshot | null;
   metrics: WorkspaceShellMetrics;
+  activeTimerStartedAt?: string | null;
 }): HomeModel {
   const { snapshot, metrics } = input;
   const activeTimer = snapshot?.activeTimer ?? null;
@@ -74,7 +77,12 @@ export function buildHomeModel(input: {
 
   return {
     activeTimer: activeTimer
-      ? { sessionId: activeTimer.sessionId, taskId: activeTimer.taskId, task: activeTimerTask }
+      ? {
+          sessionId: activeTimer.sessionId,
+          taskId: activeTimer.taskId,
+          task: activeTimerTask,
+          startedAt: input.activeTimerStartedAt ?? null,
+        }
       : null,
     startHere,
     nextUp,

@@ -10,6 +10,12 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+vi.mock("@/components/timer/live-duration", () => ({
+  LiveDuration: ({ startedAt }: { startedAt: string }) => (
+    <span data-testid="mock-live-duration" data-started-at={startedAt} />
+  ),
+}));
+
 import type { OperatorTask } from "@ega/application";
 
 import { INBOX_CAPTURE_EVENT, QUICK_TASK_EVENT } from "@/lib/workspace-events";
@@ -77,10 +83,15 @@ function emptyModel(overrides: Partial<Parameters<typeof AuthenticatedHomePage>[
 }
 
 describe("AuthenticatedHomePage (EGA-653)", () => {
-  it("makes the active timer the dominant state when one is running", async () => {
+  it("makes the active timer the dominant state and feeds startedAt to the live duration", async () => {
     await render(
       emptyModel({
-        activeTimer: { sessionId: "s1", taskId: "a", task: task({ id: "a", title: "Deep work" }) },
+        activeTimer: {
+          sessionId: "s1",
+          taskId: "a",
+          task: task({ id: "a", title: "Deep work" }),
+          startedAt: "2026-09-14T10:00:00.000Z",
+        },
         startHere: task({ id: "b", title: "Other work" }),
       }),
     );
@@ -89,6 +100,22 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(container.querySelector('[data-testid="home-start-here"]')).toBeNull();
     expect(container.textContent).toContain("Deep work");
     expect(container.textContent).toContain("Open timer");
+
+    const live = container.querySelector('[data-testid="mock-live-duration"]');
+    expect(live).not.toBeNull();
+    expect(live?.getAttribute("data-started-at")).toBe("2026-09-14T10:00:00.000Z");
+  });
+
+  it("degraded active timer shows Timer active without inventing a duration", async () => {
+    await render(
+      emptyModel({
+        activeTimer: { sessionId: "s1", taskId: "a", task: null, startedAt: null },
+      }),
+    );
+
+    expect(container.querySelector('[data-testid="home-active-timer"]')).not.toBeNull();
+    expect(container.textContent).toContain("Timer active");
+    expect(container.querySelector('[data-testid="mock-live-duration"]')).toBeNull();
   });
 
   it("renders Start Here from canonical focus when no timer is active", async () => {
@@ -100,7 +127,9 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
 
     expect(container.querySelector('[data-testid="home-start-here"]')).not.toBeNull();
     expect(container.textContent).toContain("Write the plan");
-    expect(container.textContent).toContain("Start task");
+    // The CTA must not claim the task was started; it only opens the timer flow.
+    expect(container.textContent).toContain("Open timer");
+    expect(container.textContent).not.toContain("Start task");
   });
 
   it("shows a calm empty Start Here state with no fabricated work", async () => {
