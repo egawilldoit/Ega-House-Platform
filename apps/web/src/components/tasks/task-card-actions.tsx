@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { MoreHorizontal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -54,9 +54,27 @@ export function TaskCardActions({
   reminders,
   ...inlineProps
 }: TaskCardActionsProps) {
-  const [open, setOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const isArchived = Boolean(inlineProps.archivedAt);
   const isCompleted = isTaskCompletedStatus(inlineProps.defaultStatus);
+
+  const errorMessage = inlineProps.error ?? null;
+  // A failed save redirects back with an error for this exact task. The error
+  // lives inside the advanced editor, so that task's editor opens automatically
+  // (initial render and later error transitions) until the user dismisses it.
+  const open =
+    manualOpen || (Boolean(errorMessage) && errorMessage !== dismissedError);
+
+  useEffect(() => {
+    if (!open || !errorMessage) return;
+    document.getElementById(`task-update-error-${inlineProps.taskId}`)?.focus();
+  }, [open, errorMessage, inlineProps.taskId]);
+
+  function handleOpenChange(nextOpen: boolean) {
+    setManualOpen(nextOpen);
+    if (!nextOpen) setDismissedError(errorMessage);
+  }
 
   return (
     <div className="tasks-card-actions flex flex-wrap items-center gap-2">
@@ -85,7 +103,7 @@ export function TaskCardActions({
         />
       ) : null}
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={handleOpenChange}>
         <SheetTrigger asChild>
           <Button
             type="button"

@@ -405,7 +405,12 @@ export function InlineTaskUpdateForm({
       </div>
 
       {error ? (
-        <p className="feedback-block feedback-block-error">
+        <p
+          id={`task-update-error-${taskId}`}
+          role="alert"
+          tabIndex={-1}
+          className="feedback-block feedback-block-error"
+        >
           {error}
         </p>
       ) : null}
