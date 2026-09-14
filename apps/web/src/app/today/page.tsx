@@ -10,6 +10,7 @@ import {
   StartHerePanel,
 } from "@/components/today/today-cockpit-panels";
 import { TodayIntelligencePanel } from "@/components/today/today-intelligence-panel";
+import { TodayOperatorBriefing } from "@/components/today/today-operator-briefing";
 import { TodayOperatorPlan } from "@/components/today/today-operator-plan";
 import { TodaySection } from "@/components/today/today-section";
 import { TodaySuggestionsPanel } from "@/components/today/today-suggestions-panel";
@@ -22,13 +23,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { formatTaskDueDate } from "@/lib/task-due-date";
-import { formatTaskEstimate } from "@/lib/task-estimate";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
+import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -76,7 +77,7 @@ export default async function TodayPage({
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const operatorProposalId = resolvedSearchParams.operatorProposalId?.slice(0, 80) ?? null;
 
-  const [todayResult, healthResult, frictionResult, user, proposalResult] = await Promise.all([
+  const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] = await Promise.all([
     getOperatorSnapshotData(),
     getHealthSnapshotData().catch(() => ({ errorMessage: "Workload evidence is unavailable.", data: null, recommendations: [] })),
     getFrictionRadar().catch(() => ({ errorMessage: "Friction signals are unavailable.", data: null })),
@@ -84,6 +85,9 @@ export default async function TodayPage({
     operatorProposalId
       ? getOperatorProposalData({ proposalId: operatorProposalId }).catch(() => ({ data: null, errorMessage: "The approval plan is unavailable." }))
       : Promise.resolve({ data: null, errorMessage: null }),
+    // Request-memoized and already resolved by AppShell; reusing it keeps the
+    // visible "overdue" metric on the same canonical semantics as the top bar.
+    getWorkspaceShellMetrics(),
   ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
@@ -203,19 +207,11 @@ export default async function TodayPage({
           actionSuccess={actionSuccess}
         />
 
-        <div className="today-operator-brief" aria-label="Daily Operator briefing">
-          <div>
-            <p className="glass-label text-signal-live">Morning briefing</p>
-            <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight">Here’s what matters today.</h2>
-          </div>
-          <div className="today-operator-state-strip">
-            <span><strong>{formatTaskEstimate(todayData.summary.totalEstimateMinutes) ?? "—"}</strong> planned load</span>
-            <span><strong>{todayData.summary.plannedCount + todayData.summary.inProgressCount}</strong> active lane</span>
-            <span><strong>{todayData.summary.overdueCount}</strong> overdue</span>
-            <span><strong>{todayData.activeTimer ? "Live" : "None"}</strong> timer</span>
-            <span><strong>{todayData.summary.completedCount}</strong> completed</span>
-          </div>
-        </div>
+        <TodayOperatorBriefing
+          summary={todayData.summary}
+          hasActiveTimer={Boolean(todayData.activeTimer)}
+          globalOverdueCount={shellMetrics.overdueTaskCount}
+        />
 
         <TodaySummaryBar
           plannedCount={todayData.summary.plannedCount}
