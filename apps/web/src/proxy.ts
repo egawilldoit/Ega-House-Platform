@@ -24,6 +24,7 @@ const GLOBAL_APP_ROUTES: Array<`/${string}`> = [
   "/apps",
   "/dashboard",
   "/help",
+  "/home",
   "/ideas",
   "/settings",
   "/shutdown",
@@ -34,6 +35,7 @@ const GLOBAL_APP_ROUTES: Array<`/${string}`> = [
 const PROTECTED_ROOT_PATH_PREFIXES: Array<`/${string}`> = [
   "/dashboard",
   "/goals",
+  "/home",
   "/ideas",
   "/shutdown",
   "/startup",
