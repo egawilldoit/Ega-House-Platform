@@ -9,7 +9,7 @@ import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
 import { Tooltip } from "@/components/ui/tooltip";
 import { getShellRouteMeta } from "./shell-route-meta";
-import { TopBarSignalCluster } from "./shell-signals";
+import { TopBarCompactSignals } from "./shell-signals";
 import { COMMAND_PALETTE_EVENT } from "./command-palette";
 import { workspaceShortcutEvents } from "./workspace-keyboard-shortcuts";
 
@@ -52,7 +52,7 @@ export function TopBar({ metrics, mobileNavigation }: TopBarProps) {
         </div>
 
         <div className="topbar-actions workspace-topbar-actions">
-          <TopBarSignalCluster metrics={metrics} />
+          <TopBarCompactSignals metrics={metrics} />
 
           <Link href={canonicalUrl.resolve("/apps")} className="ega-topbar-upgrade-pill">
             Apps
