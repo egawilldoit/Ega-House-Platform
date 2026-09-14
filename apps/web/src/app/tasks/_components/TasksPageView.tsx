@@ -151,7 +151,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
             </div>
             {taskUpdateSuccess ? <p className="feedback-block feedback-block-success">{taskUpdateSuccess}</p> : null}
           </CardHeader>
-          <CardContent className="space-y-4 p-5">
+          <CardContent className="tasks-board-container space-y-4 p-5">
             {activeLayout === "kanban" ? (
               <div className="tasks-kanban-board">
                 {kanbanBoard.columns.map((column) => {
