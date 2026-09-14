@@ -1034,11 +1034,60 @@ select {
   grid-template-columns: minmax(0, 1fr) clamp(18rem, 21vw, 22rem);
 }
 
+/*
+ * Tasks Kanban board columns respond to the board's own container width, not
+ * just the viewport. This prevents four columns from being squeezed into a
+ * narrow main column while a secondary rail also consumes width.
+ */
+.tasks-board-container {
+  container-type: inline-size;
+}
+
 .tasks-kanban-board {
   display: grid;
   gap: clamp(0.75rem, 1vw, 1rem);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+
+@container (min-width: 42rem) {
+  .tasks-kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 60rem) {
+  .tasks-kanban-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 78rem) {
+  .tasks-kanban-board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/*
+ * Active timer: the elapsed-duration rail must not reserve a fixed 18rem column
+ * inside an already narrow rail. It splits only when its own container is wide
+ * enough; otherwise duration stacks below the task copy.
+ */
+.active-timer-card {
+  container-type: inline-size;
+}
+
+.active-timer-display-grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container (min-width: 40rem) {
+  .active-timer-display-grid {
+    grid-template-columns: minmax(0, 1fr) 18rem;
+  }
 }
 
 .tasks-kanban-column {
@@ -1926,10 +1975,6 @@ select {
     position: static;
   }
 
-  .tasks-kanban-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .today-work-grid {
     grid-template-columns: 1fr;
   }
@@ -1952,10 +1997,6 @@ select {
     border-right: 0;
   }
 
-  .tasks-kanban-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .today-focus-row {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -1963,12 +2004,6 @@ select {
   .today-focus-row .today-cockpit-actions {
     grid-column: 2;
     justify-content: flex-start;
-  }
-}
-
-@media (max-width: 900px) {
-  .tasks-kanban-board {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -2009,10 +2044,6 @@ select {
 
   .today-operator-state-strip span:nth-child(3) {
     border-right: 1px solid rgba(244, 239, 227, 0.18);
-  }
-
-  .tasks-kanban-board {
-    grid-template-columns: 1fr;
   }
 
   .tasks-kanban-card-actions {

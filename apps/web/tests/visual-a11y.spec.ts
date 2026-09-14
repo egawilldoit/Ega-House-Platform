@@ -90,3 +90,80 @@ test.describe("visual and a11y — desktop and 390px", () => {
     await expect(dialog).toBeHidden({ timeout: 2000 });
   });
 });
+
+/**
+ * EGA-648 real-browser geometry checks. These mount the real workspace layout
+ * markup against the production stylesheet and read computed layout, so they
+ * exercise actual browser geometry rather than source text. Authenticated routes
+ * redirect to /login without credentials, so the fixture is mounted on /login
+ * where the global design-system stylesheet is loaded.
+ */
+test.describe("EGA-648 responsive layout geometry", () => {
+  test("active timer display stacks at rail width and only splits when wide", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+
+    const measured = await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.style.position = "absolute";
+      host.style.left = "-10000px";
+      host.style.top = "0";
+      host.innerHTML = `
+        <div class="active-timer-card" data-fixture="timer" style="width: 288px">
+          <div class="active-timer-display-grid">
+            <div>Task copy that should keep a readable measure</div>
+            <div>00:10:00</div>
+          </div>
+        </div>`;
+      document.body.appendChild(host);
+      const card = host.querySelector<HTMLElement>('[data-fixture="timer"]')!;
+      const grid = card.querySelector<HTMLElement>(".active-timer-display-grid")!;
+      const narrow = getComputedStyle(grid).gridTemplateColumns;
+      card.style.width = "720px";
+      const wide = getComputedStyle(grid).gridTemplateColumns;
+      host.remove();
+      return { narrow, wide };
+    });
+
+    // Rail width (~18rem): duration must stack, not reserve an 18rem column.
+    expect(measured.narrow.split(" ").length).toBe(1);
+    // Wide container keeps the original two-column composition.
+    expect(measured.wide.split(" ").length).toBe(2);
+  });
+
+  test("kanban board columns adapt to container width and never squeeze", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+
+    const measured = await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.style.position = "absolute";
+      host.style.left = "-10000px";
+      host.style.top = "0";
+      host.innerHTML = `
+        <div class="tasks-board-container" data-fixture="board-container">
+          <div class="tasks-kanban-board">
+            <section class="tasks-kanban-column">1</section>
+            <section class="tasks-kanban-column">2</section>
+            <section class="tasks-kanban-column">3</section>
+            <section class="tasks-kanban-column">4</section>
+          </div>
+        </div>`;
+      document.body.appendChild(host);
+      const container = host.querySelector<HTMLElement>('[data-fixture="board-container"]')!;
+      const board = container.querySelector<HTMLElement>(".tasks-kanban-board")!;
+      const columnCountByWidth = [400, 700, 1000, 1300].map((width) => {
+        container.style.width = `${width}px`;
+        return getComputedStyle(board).gridTemplateColumns.split(" ").length;
+      });
+      container.style.width = "600px";
+      const columnWidth = container
+        .querySelector<HTMLElement>(".tasks-kanban-column")!
+        .getBoundingClientRect().width;
+      host.remove();
+      return { columnCountByWidth, columnWidth };
+    });
+
+    expect(measured.columnCountByWidth).toEqual([1, 2, 3, 4]);
+    // Columns stay usable instead of collapsing into a ~150px squeeze.
+    expect(measured.columnWidth).toBeGreaterThan(250);
+  });
+});
