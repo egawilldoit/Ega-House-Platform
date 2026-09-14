@@ -37,21 +37,48 @@ test("shared workspace rail layout prioritizes main content and stacks below des
   );
 });
 
-test("tasks kanban board uses responsive column contract", () => {
+test("tasks kanban board adapts columns to its own container width", () => {
   const tasksSource = tasksPage + tasksView;
   assert.match(tasksSource, /className="tasks-kanban-board"/);
   assert.match(tasksSource, /className="tasks-kanban-column/);
+  assert.match(tasksSource, /tasks-board-container/);
   assert.match(
     globalsCss,
-    /\.tasks-kanban-board\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4, minmax\(0, 1fr\)\)/,
+    /\.tasks-board-container\s*\{[\s\S]*?container-type:\s*inline-size/,
   );
   assert.match(
     globalsCss,
-    /@media \(max-width: 1180px\)\s*\{[\s\S]*?\.tasks-kanban-board\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/,
+    /\.tasks-kanban-board\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/,
   );
   assert.match(
     globalsCss,
-    /@media \(max-width: 900px\)\s*\{[\s\S]*?\.tasks-kanban-board\s*\{[\s\S]*?grid-template-columns:\s*1fr/,
+    /@container \(min-width: 42rem\)\s*\{[\s\S]*?\.tasks-kanban-board\s*\{[\s\S]*?repeat\(2, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(
+    globalsCss,
+    /@container \(min-width: 60rem\)\s*\{[\s\S]*?\.tasks-kanban-board\s*\{[\s\S]*?repeat\(3, minmax\(0, 1fr\)\)/,
+  );
+  assert.match(
+    globalsCss,
+    /@container \(min-width: 78rem\)\s*\{[\s\S]*?\.tasks-kanban-board\s*\{[\s\S]*?repeat\(4, minmax\(0, 1fr\)\)/,
+  );
+});
+
+test("active timer display stacks duration instead of reserving a fixed inner column", () => {
+  const activeTimer = readFileSync(
+    path.join(process.cwd(), "src", "components", "timer", "active-timer-display.tsx"),
+    "utf8",
+  );
+  assert.match(activeTimer, /className="active-timer-card/);
+  assert.match(activeTimer, /className="active-timer-display-grid"/);
+  assert.doesNotMatch(activeTimer, /lg:grid-cols-\[minmax\(0,1fr\)_18rem\]/);
+  assert.match(
+    globalsCss,
+    /\.active-timer-display-grid\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/,
+  );
+  assert.match(
+    globalsCss,
+    /@container \(min-width: 40rem\)\s*\{[\s\S]*?\.active-timer-display-grid\s*\{[\s\S]*?minmax\(0, 1fr\) 18rem/,
   );
 });
 
