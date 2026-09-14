@@ -8,7 +8,7 @@ export default async function Page() {
   const user = await getCurrentUser();
 
   if (user) {
-    redirect("/today");
+    redirect("/home");
   }
 
   return <HomePage />;
