@@ -945,6 +945,18 @@
     margin: 0;
   }
 
+  /* Icon-only: hide text wrappers explicitly (nested text sizes could otherwise
+     override font-size: 0) and remove the manual toggle, which cannot change the
+     layout inside the automatic-compact interval. */
+  [data-workspace-theme="editorial"] .workspace-capture-trigger-copy,
+  [data-workspace-theme="editorial"] .workspace-create-task-copy {
+    display: none;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar-collapse {
+    display: none;
+  }
+
   [data-workspace-theme="editorial"] .workspace-sidebar-nav {
     padding-inline: 0.55rem;
   }
@@ -1029,6 +1041,11 @@
     width: 1rem;
     height: 1rem;
     margin: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-capture-trigger-copy,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-create-task-copy {
+    display: none;
   }
 
   [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-nav {

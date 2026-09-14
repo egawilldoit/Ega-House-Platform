@@ -25,6 +25,7 @@ export function InboxCaptureTrigger() {
     <Button
       className="workspace-capture-trigger mx-2.5 mt-2 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 rounded-none border border-[var(--workspace-citrus)] bg-[var(--workspace-citrus)] px-3 py-2.5 text-left text-[var(--workspace-black)] shadow-none hover:bg-[#ffe566]"
       aria-label="Capture to Inbox"
+      title="Capture to Inbox"
       data-testid="inbox-quick-capture-trigger"
       onClick={openCapture}
     >
