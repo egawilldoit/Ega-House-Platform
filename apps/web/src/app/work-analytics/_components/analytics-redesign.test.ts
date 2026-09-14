@@ -49,3 +49,22 @@ test("EGA-655: charts keep keyboard access, labels and reduced motion", () => {
   assert.match(chart, /motion-reduce:transition-none/);
   assert.match(chart, /No tracked time yet/);
 });
+
+test("EGA-655: primary KPI and dominant chart follow the selected range", () => {
+  assert.match(view, /report\.selectedSummary/);
+  assert.match(view, /report\.selectedRangeLabel/);
+  assert.match(view, /primarySeries=\{report\.selectedSeries\}/);
+  assert.match(interactive, /primarySeries/);
+  assert.match(interactive, /primaryTitle/);
+});
+
+test("EGA-655: analytics filters are compact and URL-authoritative", () => {
+  const filters = read("app", "work-analytics", "analytics-filters.tsx");
+  assert.match(filters, /analytics-filter-controls-compact/);
+  assert.match(filters, /analytics-filter-range/);
+  assert.match(filters, /analytics-filter-more/);
+  // No permanently expanded fieldsets and no local state that can disagree with the URL.
+  assert.doesNotMatch(filters, /<fieldset/);
+  assert.doesNotMatch(filters, /useState/);
+  assert.match(filters, /router\.replace/);
+});

@@ -11,11 +11,13 @@ const defaultFilters: AnalyticsFilterValues = {
   includeOpen: false,
 };
 
-const defaultTaskCounts = {
+const noCounts = {
   completedCount: 0,
   createdCount: 0,
   blockedCount: 0,
 };
+
+const defaultTaskCounts = { selected: noCounts, last30d: noCounts };
 
 test("buildWorkAnalyticsReport returns full report shape with no sessions", () => {
   const now = new Date("2026-04-27T12:00:00.000Z");
@@ -93,7 +95,7 @@ test("buildWorkAnalyticsReport with non-default range propagates series correctl
   // Use "today" range — only today's window, but summary still uses 30d
   const report = buildWorkAnalyticsReport(
     sessions,
-    { completedCount: 1, createdCount: 1, blockedCount: 0 },
+    { selected: { completedCount: 1, createdCount: 1, blockedCount: 0 }, last30d: { completedCount: 1, createdCount: 1, blockedCount: 0 } },
     { ...defaultFilters, range: "today" },
     now,
   );
