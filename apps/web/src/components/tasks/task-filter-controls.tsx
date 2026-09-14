@@ -6,6 +6,7 @@ import { SlidersHorizontal, X } from "lucide-react";
 
 import {
   DEFAULT_TASK_DUE_FILTER,
+  DEFAULT_TASK_SORT,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
   type TaskLayoutMode,
@@ -88,7 +89,7 @@ export function TaskFilterControls({
   activeProjectId = null,
   activeGoalId = null,
   activeDueFilter = DEFAULT_TASK_DUE_FILTER,
-  activeSort = "updated_desc",
+  activeSort = DEFAULT_TASK_SORT,
   activeView = null,
   activeLayout = "list",
   activeEstimateMin = null,
@@ -201,7 +202,7 @@ export function TaskFilterControls({
             return (
               <FilterPill
                 key={`sort-${option.label}`}
-                href={hrefFor({ sort: (option.value as TaskSortValue | null) ?? "updated_desc" })}
+                href={hrefFor({ sort: (option.value as TaskSortValue | null) ?? DEFAULT_TASK_SORT })}
                 label={option.label}
                 active={isActive}
                 ariaCurrent={isActive ? "page" : undefined}
