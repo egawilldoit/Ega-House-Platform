@@ -135,6 +135,28 @@
   text-transform: uppercase;
 }
 
+/* Direct Create Task action: visually distinct from the yellow Capture action. */
+[data-workspace-theme="editorial"] .workspace-create-task {
+  padding: 0.25rem 0.8rem 0;
+}
+
+[data-workspace-theme="editorial"] .workspace-create-task .workspace-create-task-trigger {
+  width: 100%;
+  min-height: 2.5rem;
+  border: 1px solid rgba(255, 249, 237, 0.3);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--workspace-cream);
+  box-shadow: none;
+  font-family: var(--font-mono);
+  letter-spacing: 0.04em;
+}
+
+[data-workspace-theme="editorial"] .workspace-create-task .workspace-create-task-trigger:hover {
+  border-color: rgba(255, 249, 237, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+}
+
 [data-workspace-theme="editorial"] .workspace-sidebar-nav {
   gap: 0;
   padding: 0.6rem 0.7rem 1rem;
@@ -858,6 +880,24 @@
   }
 
   [data-workspace-theme="editorial"] .workspace-quick-task button svg {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-create-task {
+    padding-inline: 0.55rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-create-task button {
+    justify-content: center;
+    min-width: 0;
+    padding-inline: 0.35rem;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-create-task button svg {
     width: 1rem;
     height: 1rem;
     margin: 0;
