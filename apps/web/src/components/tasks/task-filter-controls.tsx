@@ -1,21 +1,28 @@
+"use client";
+
+import { useId, useState } from "react";
+import Link from "next/link";
+import { SlidersHorizontal, X } from "lucide-react";
+
 import {
   DEFAULT_TASK_DUE_FILTER,
-  DEFAULT_TASK_SORT,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
-  buildTaskListUrl,
   type TaskLayoutMode,
   type TaskDueFilter,
   type TaskSortValue,
 } from "@/lib/task-list";
-import { cn } from "@/lib/utils";
+import { TASK_PRIORITY_VALUES, TASK_STATUS_VALUES, formatTaskToken } from "@/lib/task-domain";
+import { FilterPill } from "@/components/ui/filter-pill";
 
 import {
-  TASK_PRIORITY_VALUES,
-  TASK_STATUS_VALUES,
-  formatTaskToken,
-} from "@/lib/task-domain";
-import { FilterPill } from "@/components/ui/filter-pill";
+  buildActiveTaskFilterChips,
+  buildClearTaskFiltersUrl,
+  getDueFilterLabel,
+  getSortLabel,
+  mergeTaskFilterUrl,
+  type TaskFilterState,
+} from "./task-filter-url";
 
 type TaskFilterControlsProps = {
   basePath: string;
@@ -27,6 +34,10 @@ type TaskFilterControlsProps = {
   activeSort?: TaskSortValue;
   activeView?: string | null;
   activeLayout?: TaskLayoutMode;
+  activeEstimateMin?: number | string | null;
+  activeEstimateMax?: number | string | null;
+  activeDueWithin?: number | string | null;
+  activeTasksOnly?: boolean | null;
   projectOptions?: Array<{ id: string; name: string }>;
   goalOptions?: Array<{ id: string; title: string }>;
   includePriority?: boolean;
@@ -49,8 +60,8 @@ function FilterPills({
   hrefForValue: (value: string | null) => string;
 }) {
   return (
-    <div className="space-y-2">
-      <p className="glass-label text-etch">{label}</p>
+    <fieldset className="tasks-filter-group space-y-2">
+      <legend className="glass-label text-etch">{label}</legend>
       <div className="flex flex-wrap gap-2">
         {options.map((option) => {
           const isActive = option.value === activeValue;
@@ -66,7 +77,7 @@ function FilterPills({
           );
         })}
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -77,202 +88,169 @@ export function TaskFilterControls({
   activeProjectId = null,
   activeGoalId = null,
   activeDueFilter = DEFAULT_TASK_DUE_FILTER,
-  activeSort = DEFAULT_TASK_SORT,
+  activeSort = "updated_desc",
   activeView = null,
   activeLayout = "list",
+  activeEstimateMin = null,
+  activeEstimateMax = null,
+  activeDueWithin = null,
+  activeTasksOnly = null,
   projectOptions = [],
   goalOptions = [],
   includePriority = false,
 }: TaskFilterControlsProps) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+
+  const filterState: TaskFilterState = {
+    status: activeStatus,
+    priority: activePriority,
+    estimateMin: activeEstimateMin,
+    estimateMax: activeEstimateMax,
+    dueWithin: activeDueWithin,
+    activeTasks: activeTasksOnly,
+    project: activeProjectId,
+    goal: activeGoalId,
+    due: activeDueFilter,
+    sort: activeSort,
+    view: activeView,
+    layout: activeLayout,
+  };
+
+  const hrefFor = (overrides: TaskFilterState) => mergeTaskFilterUrl(basePath, filterState, overrides);
+
   const statusOptions: FilterOption[] = [
     { value: null, label: "All" },
-    ...TASK_STATUS_VALUES.map((status) => ({
-      value: status,
-      label: formatTaskToken(status),
-    })),
+    ...TASK_STATUS_VALUES.map((status) => ({ value: status, label: formatTaskToken(status) })),
   ];
-
   const priorityOptions: FilterOption[] = [
     { value: null, label: "All" },
-    ...TASK_PRIORITY_VALUES.map((priority) => ({
-      value: priority,
-      label: formatTaskToken(priority),
-    })),
+    ...TASK_PRIORITY_VALUES.map((priority) => ({ value: priority, label: formatTaskToken(priority) })),
   ];
   const projectFilterOptions: FilterOption[] = [
     { value: null, label: "All" },
-    ...projectOptions.map((project) => ({
-      value: project.id,
-      label: project.name,
-    })),
+    ...projectOptions.map((project) => ({ value: project.id, label: project.name })),
   ];
   const goalFilterOptions: FilterOption[] = [
     { value: null, label: "All" },
-    ...goalOptions.map((goal) => ({
-      value: goal.id,
-      label: goal.title,
-    })),
+    ...goalOptions.map((goal) => ({ value: goal.id, label: goal.title })),
   ];
   const dueFilterOptions: FilterOption[] = TASK_DUE_FILTER_VALUES.map((value) => ({
-      value,
-      label:
-      value === "all"
-        ? "All"
-        : value === "overdue"
-          ? "Overdue"
-          : value === "due_today"
-            ? "Due today"
-          : value === "due_soon"
-            ? "Due soon"
-            : "No due date",
+    value,
+    label: getDueFilterLabel(value),
   }));
   const sortOptions: FilterOption[] = TASK_SORT_VALUES.map((value) => ({
     value,
-    label:
-      value === "updated_desc"
-        ? "Recent"
-        : value === "due_date_asc"
-          ? "Due soonest"
-          : "Due latest",
+    label: getSortLabel(value),
   }));
 
+  const activeChips = buildActiveTaskFilterChips(basePath, filterState, {
+    projectName: projectOptions.find((project) => project.id === activeProjectId)?.name ?? null,
+    goalTitle: goalOptions.find((goal) => goal.id === activeGoalId)?.title ?? null,
+  });
+  const clearHref = buildClearTaskFiltersUrl(basePath, filterState);
+  const hasActiveFilters = activeChips.length > 0;
+
   return (
-    <div className="flex flex-wrap gap-x-8 gap-y-4">
-      <FilterPills
-        label="Status"
-        options={statusOptions}
-        activeValue={activeStatus}
-        hrefForValue={(status) =>
-          buildTaskListUrl(basePath, {
-            status,
-            priority: activePriority,
-            project: activeProjectId,
-            goal: activeGoalId,
-            due: activeDueFilter,
-            sort: activeSort,
-            view: activeView,
-            layout: activeLayout,
-          })
-        }
-      />
+    <div className="tasks-filter-toolbar">
+      <button
+        type="button"
+        className="tasks-filter-trigger"
+        data-testid="tasks-filter-trigger"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>Filters</span>
+        {hasActiveFilters ? (
+          <span className="tasks-filter-count" aria-label={`${activeChips.length} active filters`}>
+            {activeChips.length}
+          </span>
+        ) : null}
+      </button>
 
-      {projectOptions.length > 0 ? (
-        <FilterPills
-          label="Project"
-          options={projectFilterOptions}
-          activeValue={activeProjectId}
-          hrefForValue={(project) =>
-            buildTaskListUrl(basePath, {
-              status: activeStatus,
-              priority: activePriority,
-              project,
-              goal: activeGoalId,
-              due: activeDueFilter,
-              sort: activeSort,
-              view: activeView,
-              layout: activeLayout,
-            })
-          }
-        />
-      ) : null}
+      <div className="tasks-active-filters" data-testid="tasks-active-filters" aria-label="Active filters">
+        {hasActiveFilters ? (
+          <>
+            {activeChips.map((chip) => (
+              <Link
+                key={chip.key}
+                href={chip.removeHref}
+                className="filter-pill filter-pill-active tasks-filter-chip"
+                aria-label={`Remove ${chip.label} filter`}
+              >
+                <span>{chip.label}</span>
+                <X className="h-3 w-3" aria-hidden="true" />
+              </Link>
+            ))}
+            <Link href={clearHref} className="tasks-filter-clear" data-testid="tasks-filter-clear">
+              Clear filters
+            </Link>
+          </>
+        ) : (
+          <span className="tasks-filter-empty text-xs text-[color:var(--muted-foreground)]">No active filters</span>
+        )}
+      </div>
 
-      {goalOptions.length > 0 ? (
-        <div className={cn(includePriority ? "" : "lg:col-span-2")}>
+      <div className="tasks-filter-sort" role="group" aria-label="Sort tasks">
+        <span className="glass-label text-etch">Sort</span>
+        <div className="flex flex-wrap gap-2">
+          {sortOptions.map((option) => {
+            const isActive = option.value === activeSort;
+            return (
+              <FilterPill
+                key={`sort-${option.label}`}
+                href={hrefFor({ sort: (option.value as TaskSortValue | null) ?? "updated_desc" })}
+                label={option.label}
+                active={isActive}
+                ariaCurrent={isActive ? "page" : undefined}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      {open ? (
+        <div id={panelId} className="tasks-filter-panel" role="region" aria-label="Task filter options">
           <FilterPills
-            label="Goal"
-            options={goalFilterOptions}
-            activeValue={activeGoalId}
-            hrefForValue={(goal) =>
-              buildTaskListUrl(basePath, {
-                status: activeStatus,
-                priority: activePriority,
-                project: activeProjectId,
-                goal,
-                due: activeDueFilter,
-                sort: activeSort,
-                view: activeView,
-                layout: activeLayout,
-              })
-            }
+            label="Status"
+            options={statusOptions}
+            activeValue={activeStatus}
+            hrefForValue={(status) => hrefFor({ status })}
+          />
+          {projectOptions.length > 0 ? (
+            <FilterPills
+              label="Project"
+              options={projectFilterOptions}
+              activeValue={activeProjectId}
+              hrefForValue={(project) => hrefFor({ project })}
+            />
+          ) : null}
+          {goalOptions.length > 0 ? (
+            <FilterPills
+              label="Goal"
+              options={goalFilterOptions}
+              activeValue={activeGoalId}
+              hrefForValue={(goal) => hrefFor({ goal })}
+            />
+          ) : null}
+          {includePriority ? (
+            <FilterPills
+              label="Priority"
+              options={priorityOptions}
+              activeValue={activePriority}
+              hrefForValue={(priority) => hrefFor({ priority })}
+            />
+          ) : null}
+          <FilterPills
+            label="Due date"
+            options={dueFilterOptions}
+            activeValue={activeDueFilter}
+            hrefForValue={(due) => hrefFor({ due: (due as TaskDueFilter | null) ?? DEFAULT_TASK_DUE_FILTER })}
           />
         </div>
       ) : null}
-
-      {includePriority ? (
-        <FilterPills
-          label="Priority"
-          options={priorityOptions}
-          activeValue={activePriority}
-          hrefForValue={(priority) =>
-            buildTaskListUrl(basePath, {
-              status: activeStatus,
-              priority,
-              project: activeProjectId,
-              goal: activeGoalId,
-              due: activeDueFilter,
-              sort: activeSort,
-              view: activeView,
-              layout: activeLayout,
-            })
-          }
-        />
-      ) : null}
-
-      <FilterPills
-        label="Due date"
-        options={dueFilterOptions}
-        activeValue={activeDueFilter}
-        hrefForValue={(due) =>
-          buildTaskListUrl(basePath, {
-            status: activeStatus,
-            priority: activePriority,
-            project: activeProjectId,
-            goal: activeGoalId,
-            due: (due as TaskDueFilter | null) ?? DEFAULT_TASK_DUE_FILTER,
-            sort: activeSort,
-            view: activeView,
-            layout: activeLayout,
-          })
-        }
-      />
-
-      <FilterPills
-        label="Sort"
-        options={sortOptions}
-        activeValue={activeSort}
-        hrefForValue={(sort) =>
-          buildTaskListUrl(basePath, {
-            status: activeStatus,
-            priority: activePriority,
-            project: activeProjectId,
-            goal: activeGoalId,
-            due: activeDueFilter,
-            sort: (sort as TaskSortValue | null) ?? DEFAULT_TASK_SORT,
-            view: activeView,
-            layout: activeLayout,
-          })
-        }
-      />
     </div>
   );
-}
-
-export function buildTaskFilterReturnPath(
-  basePath: string,
-  filters: {
-    status?: string | null;
-    priority?: string | null;
-    estimateMin?: number | string | null;
-    estimateMax?: number | string | null;
-    dueWithin?: number | string | null;
-    activeTasks?: boolean | null;
-    project?: string | null;
-    goal?: string | null;
-    due?: TaskDueFilter;
-    sort?: TaskSortValue;
-    view?: string | null;
-    layout?: TaskLayoutMode;
-  },
-) {
-  return buildTaskListUrl(basePath, filters);
 }

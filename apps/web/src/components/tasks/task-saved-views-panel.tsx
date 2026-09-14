@@ -6,7 +6,7 @@ import {
   deleteTaskSavedViewAction,
   updateTaskSavedViewAction,
 } from "@/app/tasks/saved-views-actions";
-import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-controls";
+import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
