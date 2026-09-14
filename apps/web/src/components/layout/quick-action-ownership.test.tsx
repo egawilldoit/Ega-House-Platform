@@ -182,6 +182,18 @@ describe("EGA-649 single global quick-action ownership", () => {
     expect(container.querySelectorAll('[role="dialog"][aria-label="Quick task sheet"]').length).toBe(1);
   });
 
+  it("EGA-654: icon-only quick actions keep accessible names and tooltips", async () => {
+    await renderShell();
+
+    const capture = container.querySelector('[data-testid="inbox-quick-capture-trigger"]');
+    expect(capture?.getAttribute("aria-label")).toBe("Capture to Inbox");
+    expect(capture?.getAttribute("title")).toBe("Capture to Inbox");
+
+    const createTask = container.querySelector('[data-testid="sidebar-create-task"]');
+    expect(createTask?.getAttribute("aria-label")).toBe("Create task");
+    expect(createTask?.getAttribute("title")).toBe("Create task");
+  });
+
   it("Escape still closes the drawer and restores the trigger", async () => {
     await renderShell();
     const trigger = drawerTrigger();

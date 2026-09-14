@@ -80,7 +80,7 @@ describe("EGA-654 navigation structure", () => {
     expect(topBar).toContain("Account settings");
   });
 
-  it("sidebar exposes a collapsible control and reduced-motion-safe CSS", () => {
+  it("EGA-654: auto-compact CSS and the accessibility contract agree", () => {
     const sidebar = read("components", "layout", "sidebar.tsx");
     expect(sidebar).toContain('data-collapsed={collapsed ? "true" : "false"}');
     expect(sidebar).toContain('data-testid="sidebar-collapse-toggle"');
@@ -90,9 +90,19 @@ describe("EGA-654 navigation structure", () => {
     expect(css).toContain('.workspace-sidebar[data-collapsed="true"]');
     expect(css).toContain("@media (prefers-reduced-motion: no-preference)");
     expect(css).toContain(".sidebar-active-indicator");
+    // Icon-only states hide the text wrappers explicitly, not only via font-size.
+    expect(css).toContain(".workspace-capture-trigger-copy");
+    expect(css).toContain(".workspace-create-task-copy");
+    // The manual toggle is removed where it cannot change layout (<=1180px).
+    expect(css).toMatch(
+      /@media \(max-width: 1180px\)[\s\S]*?\.workspace-sidebar-collapse\s*\{[\s\S]*?display:\s*none/,
+    );
 
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
     expect(navigation).toContain("sidebar-active-indicator");
+    // Names are unconditional (not gated on the compact prop).
+    expect(navigation).toContain("aria-label={route.label}");
+    expect(navigation).toContain("aria-label={project.name}");
   });
 });
 
@@ -130,11 +140,23 @@ describe("EGA-654 collapsed sidebar keeps every destination", () => {
     );
 
     expect(collapsedHrefs).toEqual(expandedHrefs);
+  });
 
-    // Collapsed icon-only destinations keep an accessible name + tooltip.
-    const today = container.querySelector('a[href="/today"]');
-    expect(today?.getAttribute("aria-label")).toBe("Today");
-    expect(today?.getAttribute("title")).toBe("Today");
-    expect(today?.getAttribute("aria-current")).toBe("page");
+  it("EGA-654: every destination keeps an accessible name and tooltip in both visual states", async () => {
+    // The CSS auto-compact interval hides labels while React `compact` stays
+    // false, so names must not depend on the compact prop.
+    for (const compact of [false, true]) {
+      await renderCompact(compact);
+
+      const today = container.querySelector('a[href="/today"]');
+      expect(today?.getAttribute("aria-label")).toBe("Today");
+      expect(today?.getAttribute("title")).toBe("Today");
+      expect(today?.getAttribute("aria-current")).toBe("page");
+
+      for (const link of Array.from(container.querySelectorAll("a"))) {
+        const name = link.getAttribute("aria-label") ?? link.textContent?.trim() ?? "";
+        expect(name.length).toBeGreaterThan(0);
+      }
+    }
   });
 });
