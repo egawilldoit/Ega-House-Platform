@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,11 +69,7 @@ export function TaskMarkDoneForm({
   defaultCalendarReminderMinutes,
   defaultEstimateMinutes,
 }: TaskMarkDoneFormProps) {
-  const [timezoneOffsetMinutes, setTimezoneOffsetMinutes] = useState("0");
-
-  useEffect(() => {
-    setTimezoneOffsetMinutes(String(new Date().getTimezoneOffset()));
-  }, []);
+  const timezoneOffsetRef = useRef<HTMLInputElement>(null);
 
   const scheduledStartAtDefaultValue = defaultScheduledStartAt
     ? defaultScheduledStartAt.slice(0, 16)
@@ -83,7 +79,14 @@ export function TaskMarkDoneForm({
     : "";
 
   return (
-    <form action={action}>
+    <form
+      action={action}
+      onSubmit={() => {
+        if (timezoneOffsetRef.current) {
+          timezoneOffsetRef.current.value = String(new Date().getTimezoneOffset());
+        }
+      }}
+    >
       <input type="hidden" name="taskId" value={taskId} />
       <input type="hidden" name="returnTo" value={returnTo} />
       <input type="hidden" name="status" value="done" />
@@ -100,9 +103,10 @@ export function TaskMarkDoneForm({
         value={defaultCalendarReminderMinutes}
       />
       <input
+        ref={timezoneOffsetRef}
         type="hidden"
         name="scheduleTimezoneOffsetMinutes"
-        value={timezoneOffsetMinutes}
+        defaultValue="0"
       />
       <input
         type="hidden"
