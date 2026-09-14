@@ -21,27 +21,29 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
       <section className="analytics-kpi-strip" aria-label="Primary analytics metrics">
         <article className="analytics-kpi" data-testid="analytics-kpi-focused-time">
           <p className="glass-label text-etch">Focused time</p>
-          <p className="analytics-kpi-value">{formatDurationLabel(report.summary.last30DaysWorkedMinutes * 60)}</p>
-          <p className="analytics-kpi-detail">Last 30 days · {report.summary.last30DaysSessionCount} sessions</p>
+          <p className="analytics-kpi-value">{formatDurationLabel(report.selectedSummary.workedMinutes * 60)}</p>
+          <p className="analytics-kpi-detail">
+            {report.selectedRangeLabel} · {report.selectedSummary.sessionCount} sessions
+          </p>
         </article>
         <article className="analytics-kpi" data-testid="analytics-kpi-active-days">
           <p className="glass-label text-etch">Active days</p>
-          <p className="analytics-kpi-value">{report.summary.activeDays}</p>
+          <p className="analytics-kpi-value">{report.selectedSummary.activeDays}</p>
           <p className="analytics-kpi-detail">
-            Avg {formatDurationLabel(report.summary.averageWorkPerActiveDayMinutes * 60)}/active day
+            Avg {formatDurationLabel(report.selectedSummary.averageWorkPerActiveDayMinutes * 60)}/active day
           </p>
         </article>
         <article className="analytics-kpi" data-testid="analytics-kpi-tasks-completed">
           <p className="glass-label text-etch">Tasks completed</p>
-          <p className="analytics-kpi-value">{report.summary.completedTaskCount}</p>
+          <p className="analytics-kpi-value">{report.selectedSummary.completedTaskCount}</p>
           <p className="analytics-kpi-detail">
-            {report.summary.createdTaskCount} created · {report.summary.blockedTaskCount} blocked
+            {report.selectedSummary.createdTaskCount} created · {report.selectedSummary.blockedTaskCount} blocked
           </p>
         </article>
         <article className="analytics-kpi" data-testid="analytics-kpi-estimate-accuracy">
           <p className="glass-label text-etch">Estimate accuracy</p>
           <p className="analytics-kpi-value">{signedPercent(report.estimateAccuracy.estimateDeltaPercent)}</p>
-          <p className="analytics-kpi-detail">tracked vs estimated</p>
+          <p className="analytics-kpi-detail">tracked vs estimated · {report.selectedRangeLabel}</p>
         </article>
       </section>
 
@@ -109,7 +111,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
         </Card>
       </section>
 
-      <InteractiveAnalytics drilldownIndexes={report.drilldownIndexes} last7DaysSeries={report.last7DaysSeries} last30DaysSeries={report.last30DaysSeries} breakdownBy={report.breakdownBy} breakdownTitle={report.breakdownTitle} projectBreakdown={report.projectBreakdown} goalBreakdown={report.goalBreakdown} taskBreakdown={report.taskBreakdown} insightsDeltaMinutes={report.thisWeekInsights.deltaMinutes} insightsBestDay={report.thisWeekInsights.bestDay?.date ?? null} insightsLowestDay={report.thisWeekInsights.lowestNonZeroDay?.date ?? null} insightsAvgSessionMinutes={report.thisWeekInsights.averageSessionLength} insightsLongestSessionMinutes={report.thisWeekInsights.longestSession} />
+      <InteractiveAnalytics drilldownIndexes={report.drilldownIndexes} primarySeries={report.selectedSeries} primaryTitle={`Focus time — ${report.selectedRangeLabel}`} last7DaysSeries={report.last7DaysSeries} last30DaysSeries={report.last30DaysSeries} breakdownBy={report.breakdownBy} breakdownTitle={report.breakdownTitle} projectBreakdown={report.projectBreakdown} goalBreakdown={report.goalBreakdown} taskBreakdown={report.taskBreakdown} insightsDeltaMinutes={report.thisWeekInsights.deltaMinutes} insightsBestDay={report.thisWeekInsights.bestDay?.date ?? null} insightsLowestDay={report.thisWeekInsights.lowestNonZeroDay?.date ?? null} insightsAvgSessionMinutes={report.thisWeekInsights.averageSessionLength} insightsLongestSessionMinutes={report.thisWeekInsights.longestSession} />
     </div>
   );
 }

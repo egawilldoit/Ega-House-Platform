@@ -6,13 +6,18 @@
  *
  * Each metric delegates to the existing calculator functions from
  * work-analytics-service.ts — no algorithms are duplicated here.
- * The value is in the data flow: single session normalization,
- * consistent window computation, and a compact returned DTO.
+ *
+ * Window authority: the caller fetches one bounded evidence window (see
+ * computeEvidenceWindowForRange) and this builder filters those sessions to the
+ * exact canonical window for each section. The selected-range metrics use
+ * computeWindowForRange(filters.range) — never an approximate day count.
  */
 
 import type { ExecutionEvidenceSessionRow, ExecutionEvidenceWindow } from "./execution-evidence-service";
 import {
+  calculateWorkAnalytics,
   calculateWorkAnalyticsCoreSummary,
+  calculateWorkAnalyticsDailySeries,
   calculateWorkAnalyticsGroupedSeries,
   calculateWorkAnalyticsInsights,
   calculateWorkAnalyticsMonthComparison,
@@ -34,13 +39,43 @@ import type {
   DrilldownIndexes,
   WorkAnalyticsOptions,
 } from "./work-analytics-service";
-import type { AnalyticsFilterValues, AnalyticsBreakdownBy } from "./work-analytics-filters";
+import {
+  computeDateRangeForWindow,
+  computeLast30DaysWindow,
+  computeWindowForRange,
+  RANGE_LABELS,
+  type AnalyticsFilterValues,
+  type AnalyticsBreakdownBy,
+  type AnalyticsRange,
+} from "./work-analytics-filters";
+
+export type WorkAnalyticsTaskCounts = {
+  completedCount: number;
+  createdCount: number;
+  blockedCount: number;
+};
+
+/** Selected-range summary. Its time and task counts all share the selected window. */
+export type WorkAnalyticsSelectedSummary = {
+  workedMinutes: number;
+  sessionCount: number;
+  activeDays: number;
+  averageSessionLengthMinutes: number;
+  averageWorkPerActiveDayMinutes: number;
+  completedTaskCount: number;
+  createdTaskCount: number;
+  blockedTaskCount: number;
+};
 
 /**
  * Compact DTO returned by buildWorkAnalyticsReport.
  * Contains all metrics needed by page.tsx and the export route.
  */
 export type WorkAnalyticsReport = {
+  selectedRange: AnalyticsRange;
+  selectedRangeLabel: string;
+  selectedSummary: WorkAnalyticsSelectedSummary;
+  selectedSeries: WorkAnalyticsDaily[];
   summary: WorkAnalyticsCoreSummary;
   last7DaysSeries: WorkAnalyticsDaily[];
   last30DaysSeries: WorkAnalyticsDaily[];
@@ -76,19 +111,15 @@ function windowFromDays(days: number, now: Date): ExecutionEvidenceWindow {
 /**
  * Build a compact WorkAnalyticsReport from raw sessions, task counts, filters, and now.
  *
- * Sessions are fetched once by the caller. This function computes all metrics
- * in sequence using the same sessions, delegating to existing calculator functions.
- * Windows are computed internally from the filter range and the `now` date.
- *
- * @param sessions  Pre-fetched execution evidence session rows (for the primary window)
- * @param taskCounts Task counts from getWorkAnalyticsTaskCounts
+ * @param sessions  Pre-fetched execution evidence covering the union evidence window
+ * @param taskCounts Task counts for the selected window and the fixed 30-day context,
+ *                   fetched with explicit windows so the two never mix
  * @param filters   Parsed analytics filter values (range, groupBy, breakdownBy, includeOpen)
  * @param now       Reference date/time for window computation
- * @returns A compact WorkAnalyticsReport DTO with all metrics pre-computed
  */
 export function buildWorkAnalyticsReport(
   sessions: ExecutionEvidenceSessionRow[],
-  taskCounts: { completedCount: number; createdCount: number; blockedCount: number },
+  taskCounts: { selected: WorkAnalyticsTaskCounts; last30d: WorkAnalyticsTaskCounts },
   filters: AnalyticsFilterValues,
   now: Date,
 ): WorkAnalyticsReport {
@@ -98,17 +129,50 @@ export function buildWorkAnalyticsReport(
     includeOpenSessions: filters.includeOpen,
   };
 
-  // 1. Primary window (used for breakdowns, estimate accuracy, drilldowns)
-  const primaryWindow = windowFromDays(
-    filters.range === "today" ? 0 : filters.range === "7d" ? 7 : filters.range === "30d" ? 30 : filters.range === "mtm" ? 30 : filters.range === "prev-month" ? 60 : 30,
-    now,
+  // 1. Selected-range window is the canonical authority (calendar-correct for
+  //    mtm/qtd/prev-month, not an approximate day count).
+  const selectedWindow = computeWindowForRange(filters.range, now);
+  const selectedDates = computeDateRangeForWindow(selectedWindow);
+
+  // 2. Selected-range summary: time, active days and task counts share this window.
+  const selectedCore = calculateWorkAnalytics(sessions, selectedWindow, options);
+  const selectedDaily = calculateWorkAnalyticsDailySeries(
+    sessions,
+    selectedDates.startDate,
+    selectedDates.endDate,
+    options,
+  );
+  const selectedActiveDays = selectedDaily.filter((day) => day.workedMinutes > 0).length;
+  const selectedSummary: WorkAnalyticsSelectedSummary = {
+    workedMinutes: selectedCore.totalWorkedMinutes,
+    sessionCount: selectedCore.sessionCount,
+    activeDays: selectedActiveDays,
+    averageSessionLengthMinutes:
+      selectedCore.sessionCount > 0
+        ? Math.round(selectedCore.totalWorkedMinutes / selectedCore.sessionCount)
+        : 0,
+    averageWorkPerActiveDayMinutes:
+      selectedActiveDays > 0
+        ? Math.round(selectedCore.totalWorkedMinutes / selectedActiveDays)
+        : 0,
+    completedTaskCount: taskCounts.selected.completedCount,
+    createdTaskCount: taskCounts.selected.createdCount,
+    blockedTaskCount: taskCounts.selected.blockedCount,
+  };
+
+  const selectedSeries = calculateWorkAnalyticsGroupedSeries(
+    sessions,
+    selectedDates.startDate,
+    selectedDates.endDate,
+    filters.groupBy,
+    options,
   );
 
-  // 2. Summary (always uses 30d for consistency with summary cards)
-  const monthWindow = windowFromDays(30, now);
-  const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts, options);
+  // 3. Fixed 30-day context (uses its own exact calendar windows and the 30-day task counts).
+  const monthWindow = computeLast30DaysWindow(now);
+  const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts.last30d, options);
 
-  // 3. Yesterday
+  // 4. Yesterday
   const yesterdayStart = daysAgoIsoDate(1, now);
   const yesterdaySeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
@@ -119,11 +183,11 @@ export function buildWorkAnalyticsReport(
   );
   const yesterday = yesterdaySeries[0] ?? { workedMinutes: 0, sessionCount: 0 };
 
-  // 4. Week window for insights
+  // 5. Week window for insights
   const weekWindow = windowFromDays(7, now);
   const thisWeekInsights = calculateWorkAnalyticsInsights(sessions, weekWindow, options);
 
-  // 5. 7-day and 30-day series for trend charts
+  // 6. 7-day and 30-day series for trend charts
   const last7DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     daysAgoIsoDate(6, now),
@@ -139,22 +203,22 @@ export function buildWorkAnalyticsReport(
     options,
   );
 
-  // 6. Breakdowns (using primary window)
+  // 7. Breakdowns (selected window)
   const breakdownBy: AnalyticsBreakdownBy = filters.breakdownBy;
-  const projectBreakdown = calculateWorkAnalyticsProjectBreakdown(sessions, primaryWindow, options);
-  const goalBreakdown = calculateWorkAnalyticsGoalBreakdown(sessions, primaryWindow, options);
-  const taskBreakdown = calculateWorkAnalyticsTaskBreakdown(sessions, primaryWindow, options);
+  const projectBreakdown = calculateWorkAnalyticsProjectBreakdown(sessions, selectedWindow, options);
+  const goalBreakdown = calculateWorkAnalyticsGoalBreakdown(sessions, selectedWindow, options);
+  const taskBreakdown = calculateWorkAnalyticsTaskBreakdown(sessions, selectedWindow, options);
 
-  // 7. Month-to-date comparison
+  // 8. Month-to-date comparison (calendar months, from the evidence superset)
   const monthComparison = calculateWorkAnalyticsMonthComparison(sessions, options);
 
-  // 8. Estimate accuracy
-  const estimateAccuracy = calculateEstimateAccuracy(sessions, primaryWindow, options);
+  // 9. Estimate accuracy (selected window)
+  const estimateAccuracy = calculateEstimateAccuracy(sessions, selectedWindow, options);
 
-  // 9. Compact drilldown indexes
-  const drilldownIndexes = buildDrilldownIndexes(sessions, primaryWindow, options);
+  // 10. Compact drilldown indexes (selected window)
+  const drilldownIndexes = buildDrilldownIndexes(sessions, selectedWindow, options);
 
-  // 10. Breakdown title
+  // 11. Breakdown title
   const breakdownTitle =
     breakdownBy === "goal"
       ? "Goal breakdown"
@@ -163,6 +227,10 @@ export function buildWorkAnalyticsReport(
         : "Project breakdown";
 
   return {
+    selectedRange: filters.range,
+    selectedRangeLabel: RANGE_LABELS[filters.range],
+    selectedSummary,
+    selectedSeries,
     summary,
     last7DaysSeries,
     last30DaysSeries,

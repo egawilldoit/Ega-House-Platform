@@ -226,6 +226,8 @@ function BreakdownCard({
 
 type InteractiveAnalyticsProps = {
   drilldownIndexes: DrilldownIndexes;
+  primarySeries: WorkAnalyticsDaily[];
+  primaryTitle: string;
   last7DaysSeries: WorkAnalyticsDaily[];
   last30DaysSeries: WorkAnalyticsDaily[];
   breakdownBy: string;
@@ -242,6 +244,8 @@ type InteractiveAnalyticsProps = {
 
 export function InteractiveAnalytics({
   drilldownIndexes,
+  primarySeries,
+  primaryTitle,
   last7DaysSeries,
   last30DaysSeries,
   breakdownBy,
@@ -260,8 +264,8 @@ export function InteractiveAnalytics({
       <div className="analytics-visualization-stack mt-4">
         <div className="analytics-primary-chart">
           <ChartSection
-            series={last30DaysSeries}
-            title="Last 30 days"
+            series={primarySeries}
+            title={primaryTitle}
             dateDrilldownIndex={drilldownIndexes.date}
           />
         </div>
@@ -269,6 +273,11 @@ export function InteractiveAnalytics({
           <ChartSection
             series={last7DaysSeries}
             title="Last 7 days"
+            dateDrilldownIndex={drilldownIndexes.date}
+          />
+          <ChartSection
+            series={last30DaysSeries}
+            title="Last 30 days"
             dateDrilldownIndex={drilldownIndexes.date}
           />
           <BreakdownCard
