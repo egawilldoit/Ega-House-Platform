@@ -2,24 +2,19 @@
 
 import Image from "next/image";
 
-import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
+import { InboxCaptureTrigger } from "@/components/inbox/inbox-capture-trigger";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { SidebarCreateTaskButton } from "./sidebar-create-task";
-import {
-  SidebarNavigation,
-  type SidebarGoal,
-  type SidebarProject,
-} from "./sidebar-navigation";
+import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
 
 export type { SidebarGoal, SidebarProject } from "./sidebar-navigation";
 
 type SidebarProps = {
   projects?: SidebarProject[];
-  goals?: SidebarGoal[];
   metrics: WorkspaceShellMetrics;
 };
 
-export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
+export function Sidebar({ projects = [], metrics }: SidebarProps) {
   return (
     <aside className="ega-sidebar workspace-sidebar" aria-label="Primary workspace sidebar">
       <div className="sidebar-brand workspace-sidebar-brand">
@@ -41,7 +36,7 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
       </div>
 
       <div className="workspace-quick-task flex flex-col gap-2">
-        <InboxQuickCapture projects={projects} goals={goals} />
+        <InboxCaptureTrigger />
       </div>
 
       <div className="workspace-create-task flex flex-col">

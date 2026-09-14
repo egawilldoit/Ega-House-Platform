@@ -4,16 +4,23 @@ import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
+import { useWorkspaceDrawer } from "./workspace-drawer-context";
 
 /**
  * Direct "Create task" entry point for the workspace navigation.
  *
  * It dispatches the canonical `QUICK_TASK_EVENT` so the single `QuickTaskSheet`
- * the shell already mounts opens. It must never mount a second task form or
- * own task-creation state; Capture (raw Inbox input) stays a separate action.
+ * the shell owns opens. It must never mount a second task form or own
+ * task-creation state; Capture (raw Inbox input) stays a separate action.
+ *
+ * Inside the mobile drawer it closes the drawer first so the drawer and the
+ * global sheet are never both modal at once.
  */
 export function SidebarCreateTaskButton() {
+  const drawer = useWorkspaceDrawer();
+
   function openCreateTask() {
+    drawer?.closeDrawer({ restoreFocus: false });
     window.dispatchEvent(new CustomEvent(QUICK_TASK_EVENT));
   }
 

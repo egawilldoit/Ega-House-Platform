@@ -66,26 +66,26 @@ describe("SidebarCreateTaskButton (EGA-649)", () => {
 });
 
 describe("workspace navigation owns a single quick-task flow (EGA-649)", () => {
-  it("mounts InboxQuickCapture and the Create Task action without a duplicate task sheet", () => {
+  it("keeps the only QuickTaskSheet controller at shell level and triggers elsewhere", () => {
     const sidebar = readSource("components", "layout", "sidebar.tsx");
     const drawer = readSource("components", "layout", "sidebar-mobile-drawer.tsx");
-    const capture = readSource("components", "inbox", "inbox-quick-capture.tsx");
+    const controllers = readSource("components", "layout", "global-quick-action-controllers.tsx");
     const createTask = readSource("components", "layout", "sidebar-create-task.tsx");
 
-    expect((sidebar.match(/<InboxQuickCapture/g) ?? []).length).toBe(1);
-    expect((drawer.match(/<InboxQuickCapture/g) ?? []).length).toBe(1);
-    expect(sidebar).toContain("<SidebarCreateTaskButton");
-    expect(drawer).toContain("<SidebarCreateTaskButton");
+    // Exactly one controller tree mounts QuickTaskSheet (plus Inbox Capture).
+    expect((controllers.match(/<QuickTaskSheet/g) ?? []).length).toBe(1);
+    expect((controllers.match(/<InboxCaptureSheet/g) ?? []).length).toBe(1);
 
-    // Exactly one canonical QuickTaskSheet exists in the shell flow, owned by capture.
-    expect((capture.match(/<QuickTaskSheet/g) ?? []).length).toBe(1);
+    // Navigation surfaces render triggers only.
+    for (const source of [sidebar, drawer]) {
+      expect(source).toContain("<SidebarCreateTaskButton");
+      expect(source).toContain("<InboxCaptureTrigger");
+      expect(source).not.toContain("<QuickTaskSheet");
+      expect(source).not.toContain("<InboxCaptureSheet");
+    }
 
-    // Create Task must not create a second sheet or task form.
+    // Create Task itself never mounts a sheet or task form.
     expect(createTask).not.toContain("<QuickTaskSheet");
     expect(createTask).not.toContain("<Sheet");
-
-    // Capture still opens the Inbox capture sheet.
-    expect(capture).toContain("INBOX_CAPTURE_EVENT");
-    expect(capture).toContain('data-testid="inbox-quick-capture-trigger"');
   });
 });
