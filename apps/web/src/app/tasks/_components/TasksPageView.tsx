@@ -15,11 +15,10 @@ import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TaskSavedViewsPanel } from "@/components/tasks/task-saved-views-panel";
-import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
+import { TaskCardActions } from "@/components/tasks/task-card-actions";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -267,59 +266,43 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                         {task.task_recurrences[0] ? <Badge tone="info">{formatTaskRecurrenceRule(task.task_recurrences[0].rule)}</Badge> : null}
                       </div>
                     </div>
-                    <div className="mt-5 grid gap-4 border-t border-[rgba(15,23,42,0.08)] pt-4 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-start">
-                      <div className="flex flex-wrap gap-3">
-                        <div className="ega-glass-soft grid min-w-32 gap-1 rounded-[0.9rem] px-3 py-3">
-                          <p className="glass-label text-etch">Tracked</p>
-                          <p className="text-sm font-medium text-[color:var(--foreground)]">{formatDurationLabel(taskTotalDurations[task.id] ?? 0)}</p>
-                        </div>
-                        {task.estimate_minutes ? (
-                          <div className="ega-glass-soft grid min-w-32 gap-1 rounded-[0.9rem] px-3 py-3">
-                            <p className="glass-label text-etch">Estimate</p>
-                            <p className="text-sm font-medium text-[color:var(--foreground)]">{formatTaskEstimate(task.estimate_minutes)}</p>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="space-y-4">
-                        <TaskReminderPanel taskId={task.id} reminders={task.task_reminders} returnTo={returnPath} createAction={createTaskReminderAction} cancelAction={cancelTaskReminderAction} />
-                        <InlineTaskUpdateForm
-                          action={updateTaskInlineAction}
-                          deleteAction={deleteTaskAction}
-                          archiveAction={archiveTaskAction}
-                          unarchiveAction={unarchiveTaskAction}
-                          taskId={task.id}
-                          taskTitle={task.title}
-                          returnTo={returnPath}
-                          defaultStatus={task.status}
-                          defaultPriority={task.priority}
-                          defaultDueDate={task.due_date}
-                          defaultEstimateMinutes={task.estimate_minutes}
-                          defaultScheduledStartAt={task.scheduled_start_at}
-                          defaultScheduledEndAt={task.scheduled_end_at}
-                          defaultCalendarSyncEnabled={task.calendar_sync_enabled}
-                          defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
-                          defaultBlockedReason={task.blocked_reason}
-                          defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
-                          archivedAt={task.archived_at}
-                          error={inlineError}
-                          overflowActions={
-                            !taskArchived ? (
-                              <>
-                                {!taskCompleted ? (
-                                  <form action={startTimerAction}>
-                                    <input type="hidden" name="taskId" value={task.id} />
-                                    <input type="hidden" name="returnTo" value={returnPath} />
-                                    <Button type="submit" size="sm" variant="ghost" className="w-full justify-center">
-                                      Start timer
-                                    </Button>
-                                  </form>
-                                ) : null}
-                                <FocusPinToggleForm action={task.focus_rank ? unpinTaskAction : pinTaskAction} taskId={task.id} returnTo={returnPath} isPinned={task.focus_rank !== null} className="w-full" fullWidth />
-                              </>
-                            ) : null
-                          }
-                        />
-                      </div>
+                    <div className="mt-4 border-t border-[rgba(15,23,42,0.08)] pt-4">
+                      <TaskCardActions
+                        action={updateTaskInlineAction}
+                        deleteAction={deleteTaskAction}
+                        archiveAction={archiveTaskAction}
+                        unarchiveAction={unarchiveTaskAction}
+                        startTimerAction={startTimerAction}
+                        taskId={task.id}
+                        taskTitle={task.title}
+                        returnTo={returnPath}
+                        defaultStatus={task.status}
+                        defaultPriority={task.priority}
+                        defaultDueDate={task.due_date}
+                        defaultEstimateMinutes={task.estimate_minutes}
+                        defaultScheduledStartAt={task.scheduled_start_at}
+                        defaultScheduledEndAt={task.scheduled_end_at}
+                        defaultCalendarSyncEnabled={task.calendar_sync_enabled}
+                        defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
+                        defaultBlockedReason={task.blocked_reason}
+                        defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
+                        archivedAt={task.archived_at}
+                        error={inlineError}
+                        reminders={
+                          <TaskReminderPanel
+                            taskId={task.id}
+                            reminders={task.task_reminders}
+                            returnTo={returnPath}
+                            createAction={createTaskReminderAction}
+                            cancelAction={cancelTaskReminderAction}
+                          />
+                        }
+                        overflowActions={
+                          !taskArchived ? (
+                            <FocusPinToggleForm action={task.focus_rank ? unpinTaskAction : pinTaskAction} taskId={task.id} returnTo={returnPath} isPinned={task.focus_rank !== null} className="w-full" fullWidth />
+                          ) : null
+                        }
+                      />
                     </div>
                   </article>
                 );
