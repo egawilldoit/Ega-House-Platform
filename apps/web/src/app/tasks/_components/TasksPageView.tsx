@@ -139,12 +139,17 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
               <TaskFilterControls
                 basePath="/tasks"
                 activeStatus={activeStatus}
+                activePriority={savedViewDefinitionFilters.priorityValues.join(",")}
                 activeProjectId={activeProjectId}
                 activeGoalId={activeGoalId}
                 activeDueFilter={activeDueFilter}
                 activeSort={parsed.activeSort}
                 activeView={activeView}
                 activeLayout={activeLayout}
+                activeEstimateMin={savedViewDefinitionFilters.estimateMinMinutes}
+                activeEstimateMax={savedViewDefinitionFilters.estimateMaxMinutes}
+                activeDueWithin={savedViewDefinitionFilters.dueWithinDays}
+                activeTasksOnly={savedViewDefinitionFilters.activeTasks}
                 projectOptions={projects}
                 goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
               />
