@@ -59,7 +59,10 @@ async function signInFromRootLogin(
   const loginUrl = next ? `${getLoginUrl()}?next=${encodeURIComponent(next)}` : getLoginUrl();
   await page.goto(loginUrl);
   await page.getByLabel("Email").fill(email ?? "");
-  await page.getByLabel("Password").fill(password ?? "");
+  // The password field is labelled exactly "Password"; the reveal toggle is
+  // labelled "Show password"/"Hide password", so a non-exact label match would
+  // resolve two elements. Match the input by exact label.
+  await page.getByLabel("Password", { exact: true }).fill(password ?? "");
   await page.getByRole("button", { name: "Sign in" }).click();
 
   try {
