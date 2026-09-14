@@ -2,7 +2,6 @@ import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import { getWeekBounds } from "@/lib/review-week";
-import { getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { getLocalDateInTimezone } from "@ega/domain";
 import { SupabaseTimeContextRepository } from "@ega/data-access";
 import { createAuthenticatedActor } from "@ega/application/auth/actor";
@@ -149,7 +148,7 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
     // the global overdue/due-today counts on the same day window as the Operator
     // Today plan, so the two visible "overdue" surfaces cannot disagree at
     // timezone/date edges.
-    let localToday = getTodayLocalIsoDate(now);
+    let localToday: string;
     let reviewWeek: ReturnType<typeof getWeekBounds> = null;
     try {
       const { data: authData } = await supabase.auth.getUser();
