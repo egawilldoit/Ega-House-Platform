@@ -89,7 +89,7 @@ describe("editorial authenticated workspace shell", () => {
     expect(css).toContain("@media (max-width: 760px)");
     expect(css).not.toContain("@media (min-width: 761px) and (max-width: 1180px)");
     expect(css).not.toMatch(/\.workspace-sidebar\s+\.sidebar-general-section\s+form\s+\.sidebar-link\s*\{/);
-    expect(css).not.toContain("font-size: 0");
+    expect(css).not.toMatch(/font-size:\s*0(?:\s*;)/);
     expect(css).toContain("[data-workspace-theme=\"editorial\"]::before");
     expect(css).toContain("inset: 0");
 
