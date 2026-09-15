@@ -215,12 +215,22 @@
   transform: translateX(2px);
 }
 
-[data-workspace-theme="editorial"] .sidebar-link.active,
+[data-workspace-theme="editorial"] .sidebar-link.active {
+  color: var(--workspace-paper);
+  background: rgba(255, 212, 0, 0.1);
+  border-color: rgba(255, 212, 0, 0.24);
+  box-shadow: none;
+}
+
 [data-workspace-theme="editorial"] .sidebar-project-link.selected {
-  color: var(--workspace-black);
-  background: var(--workspace-citrus);
-  border-color: var(--workspace-citrus);
-  box-shadow: 6px 6px 0 rgba(255, 75, 43, 0.28);
+  color: var(--workspace-paper);
+  background: rgba(255, 212, 0, 0.055);
+  border-color: rgba(255, 212, 0, 0.16);
+  box-shadow: inset 2px 0 0 rgba(255, 212, 0, 0.65);
+}
+
+[data-workspace-theme="editorial"] .sidebar-project-link.selected .project-dot {
+  box-shadow: 0 0 0 2px rgba(255, 212, 0, 0.26);
 }
 
 [data-workspace-theme="editorial"] .sidebar-link.active::before {
@@ -326,9 +336,9 @@
 [data-workspace-theme="editorial"] .sidebar-link.active .sidebar-badge,
 [data-workspace-theme="editorial"] .sidebar-project-link.selected .sidebar-project-count,
 [data-workspace-theme="editorial"] .sidebar-project-link.selected .sidebar-project-status {
-  border-color: rgba(17, 17, 15, 0.24);
-  background: rgba(17, 17, 15, 0.09);
-  color: var(--workspace-black);
+  border-color: rgba(255, 212, 0, 0.32);
+  background: rgba(255, 212, 0, 0.08);
+  color: var(--workspace-paper);
 }
 
 [data-workspace-theme="editorial"] .sidebar-project-section {
@@ -337,7 +347,8 @@
 }
 
 [data-workspace-theme="editorial"] .sidebar-project-list {
-  max-height: min(31dvh, 18rem);
+  max-height: none;
+  overflow-y: visible;
 }
 
 [data-workspace-theme="editorial"] .sidebar-project-link {
@@ -353,9 +364,17 @@
 }
 
 [data-workspace-theme="editorial"] .sidebar-section-action {
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 2.5rem;
   border: 1px solid rgba(255, 249, 237, 0.18);
   border-radius: 2px;
   color: var(--workspace-citrus);
+}
+
+[data-workspace-theme="editorial"] .sidebar-section-action svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 [data-workspace-theme="editorial"] .sidebar-section-action:hover {
@@ -888,100 +907,10 @@
   height: 1rem;
 }
 
-@media (max-width: 1180px) {
+/* Keep the sidebar readable on tablets while allowing users to collapse it. */
+@media (min-width: 761px) and (max-width: 1180px) {
   [data-workspace-theme="editorial"] {
-    --workspace-sidebar-width: 88px;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-sidebar-brand {
-    justify-content: center;
-    padding-inline: 0.6rem;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-brand-copy,
-  [data-workspace-theme="editorial"] .workspace-brand-index,
-  [data-workspace-theme="editorial"] .sidebar-section-label,
-  [data-workspace-theme="editorial"] .workspace-nav-label,
-  [data-workspace-theme="editorial"] .workspace-nav-index,
-  [data-workspace-theme="editorial"] .workspace-nav-external,
-  [data-workspace-theme="editorial"] .sidebar-link .sidebar-badge,
-  [data-workspace-theme="editorial"] .sidebar-project-count,
-  [data-workspace-theme="editorial"] .sidebar-project-status {
-    display: none;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-quick-task {
-    padding-inline: 0.55rem;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-quick-task button {
-    min-width: 0;
-    padding-inline: 0.35rem;
-    overflow: hidden;
-    font-size: 0;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-quick-task button svg {
-    width: 1rem;
-    height: 1rem;
-    margin: 0;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-create-task {
-    padding-inline: 0.55rem;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-create-task button {
-    justify-content: center;
-    min-width: 0;
-    padding-inline: 0.35rem;
-    overflow: hidden;
-    font-size: 0;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-create-task button svg {
-    width: 1rem;
-    height: 1rem;
-    margin: 0;
-  }
-
-  /* Icon-only: hide text wrappers explicitly (nested text sizes could otherwise
-     override font-size: 0) and remove the manual toggle, which cannot change the
-     layout inside the automatic-compact interval. */
-  [data-workspace-theme="editorial"] .workspace-capture-trigger-copy,
-  [data-workspace-theme="editorial"] .workspace-create-task-copy {
-    display: none;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-sidebar-collapse {
-    display: none;
-  }
-
-  [data-workspace-theme="editorial"] .workspace-sidebar-nav {
-    padding-inline: 0.55rem;
-  }
-
-  [data-workspace-theme="editorial"] .sidebar-link {
-    justify-content: center;
-    padding-inline: 0.35rem;
-  }
-
-  [data-workspace-theme="editorial"] .sidebar-project-section {
-    flex: 0 1 auto;
-    min-height: 0;
-  }
-
-  [data-workspace-theme="editorial"] .sidebar-project-list {
-    max-height: 22dvh;
-  }
-
-  [data-workspace-theme="editorial"] .sidebar-section-heading {
-    justify-content: center;
-  }
-
-  [data-workspace-theme="editorial"] .project-dot {
-    width: 0.66rem;
-    height: 0.66rem;
+    --workspace-sidebar-width: clamp(15rem, 24vw, 17rem);
   }
 
   [data-workspace-theme="editorial"] .workspace-topbar-row {
@@ -999,8 +928,8 @@
   }
 }
 
-/* User-controlled desktop collapse (above the automatic 1180px collapse). */
-@media (min-width: 1181px) {
+/* User-controlled collapse on desktop and tablet widths. */
+@media (min-width: 761px) {
   [data-workspace-theme="editorial"]:has(.workspace-sidebar[data-collapsed="true"]) {
     --workspace-sidebar-width: 80px;
   }

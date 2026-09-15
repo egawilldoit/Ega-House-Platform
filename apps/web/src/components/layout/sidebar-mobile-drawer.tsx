@@ -59,6 +59,35 @@ export function WorkspaceNavigationDrawer({
       if (event.key === "Escape") {
         event.preventDefault();
         closeDrawer();
+        return;
+      }
+
+      if (event.key !== "Tab" || !panelRef.current) return;
+
+      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
+        "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
+      );
+
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panelRef.current.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const activeElement = document.activeElement;
+      const focusIsOutsidePanel = !panelRef.current.contains(activeElement);
+
+      if (focusIsOutsidePanel) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     }
 
@@ -106,6 +135,7 @@ export function WorkspaceNavigationDrawer({
             role="dialog"
             aria-modal="true"
             aria-label={label}
+            tabIndex={-1}
             className="workspace-drawer-panel workspace-drawer-panel-enter"
             onClickCapture={onPanelClick}
           >

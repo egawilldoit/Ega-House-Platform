@@ -13,6 +13,7 @@ import {
   ExternalLink,
   FileText,
   Flag,
+  Folder,
   Grid2X2,
   House,
   Lightbulb,
@@ -121,8 +122,7 @@ function RouteLink({
     <Link
       href={canonicalUrl.resolve(route.href)}
       aria-current={active ? "page" : undefined}
-      // Accessible name and tooltip are unconditional: the label is hidden by CSS
-      // at intermediate widths (auto-compact) where React `compact` is unaware.
+      // Keep names and tooltips available when a user collapses the sidebar to icons.
       aria-label={route.label}
       title={route.label}
       className={cn("sidebar-link workspace-nav-link", active && "active")}
@@ -272,7 +272,7 @@ export function SidebarNavigation({
           onClick={onNavigate}
         >
           <span className="sidebar-link-icon" aria-hidden="true">
-            <BarChart3 />
+            <Folder />
           </span>
           <span className="workspace-nav-label">View all projects</span>
         </Link>
