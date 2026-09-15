@@ -5,10 +5,14 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
 
 describe("EGA-516 Operator acceptance", () => {
-  it("authenticated / opens canonical Operator/Today surface", () => {
+  it("authenticated / enters the workspace Home surface (EGA-653)", () => {
     const page = read("src/app/page.tsx");
-    expect(page).toContain('redirect("/today")');
+    expect(page).toContain('redirect("/home")');
     expect(page).not.toContain('redirect("/dashboard")');
+    // Today remains its own deep workspace, reachable from the shell.
+    const routeMeta = read("src/components/layout/shell-route-meta.ts");
+    expect(routeMeta).toContain('href: "/home"');
+    expect(routeMeta).toContain('href: "/today"');
   });
 
   it("/dashboard no longer computes competing command-center model and redirects to Operator", () => {
