@@ -227,6 +227,48 @@
   display: none;
 }
 
+[data-workspace-theme="editorial"] .sidebar-link {
+  position: relative;
+}
+
+[data-workspace-theme="editorial"] .sidebar-active-indicator {
+  position: absolute;
+  left: 2px;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--workspace-citrus);
+}
+
+[data-workspace-theme="editorial"] .workspace-sidebar-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  margin-left: auto;
+  border: 1px solid rgba(255, 249, 237, 0.22);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--workspace-paper);
+  cursor: pointer;
+}
+
+[data-workspace-theme="editorial"] .workspace-sidebar-collapse:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-workspace-theme="editorial"] .workspace-sidebar-collapse:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--workspace-citrus);
+}
+
+[data-workspace-theme="editorial"] .workspace-sidebar-collapse svg {
+  width: 1rem;
+  height: 1rem;
+}
+
 [data-workspace-theme="editorial"] .workspace-nav-index {
   width: 1.55rem;
   flex: 0 0 1.55rem;
@@ -903,6 +945,18 @@
     margin: 0;
   }
 
+  /* Icon-only: hide text wrappers explicitly (nested text sizes could otherwise
+     override font-size: 0) and remove the manual toggle, which cannot change the
+     layout inside the automatic-compact interval. */
+  [data-workspace-theme="editorial"] .workspace-capture-trigger-copy,
+  [data-workspace-theme="editorial"] .workspace-create-task-copy {
+    display: none;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar-collapse {
+    display: none;
+  }
+
   [data-workspace-theme="editorial"] .workspace-sidebar-nav {
     padding-inline: 0.55rem;
   }
@@ -942,6 +996,84 @@
   [data-workspace-theme="editorial"] .workspace-shortcut-control {
     width: 2.35rem;
     padding: 0;
+  }
+}
+
+/* User-controlled desktop collapse (above the automatic 1180px collapse). */
+@media (min-width: 1181px) {
+  [data-workspace-theme="editorial"]:has(.workspace-sidebar[data-collapsed="true"]) {
+    --workspace-sidebar-width: 80px;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-brand {
+    justify-content: center;
+    padding-inline: 0.6rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-brand-copy,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-brand-index,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-section-label,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-nav-label,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-nav-index,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-nav-external,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-link .sidebar-badge,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-project-count,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-project-status {
+    display: none;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-quick-task,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-create-task {
+    padding-inline: 0.55rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-quick-task button,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-create-task button {
+    justify-content: center;
+    min-width: 0;
+    padding-inline: 0.35rem;
+    overflow: hidden;
+    font-size: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-quick-task button svg,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-create-task button svg {
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-capture-trigger-copy,
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-create-task-copy {
+    display: none;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .workspace-sidebar-nav {
+    padding-inline: 0.55rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-link {
+    justify-content: center;
+    padding-inline: 0.35rem;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-project-section {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar[data-collapsed="true"] .sidebar-section-heading {
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  [data-workspace-theme="editorial"] {
+    transition: grid-template-columns 180ms ease;
+  }
+
+  [data-workspace-theme="editorial"] .workspace-sidebar {
+    transition: width 180ms ease;
   }
 }
 

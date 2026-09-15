@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { motion } from "motion/react";
 import {
   BarChart3,
   Bell,
@@ -105,13 +106,11 @@ function RouteLink({
   route,
   pathname,
   badge,
-  compact,
   onNavigate,
 }: {
   route: ShellRouteMeta;
   pathname: string;
   badge?: { label: string; tone: "active" | "muted" | "warn" | "error" } | null;
-  compact: boolean;
   onNavigate?: () => void;
 }) {
   const canonicalUrl = useCanonicalUrl();
@@ -122,11 +121,22 @@ function RouteLink({
     <Link
       href={canonicalUrl.resolve(route.href)}
       aria-current={active ? "page" : undefined}
-      aria-label={compact ? route.label : undefined}
-      title={compact ? route.label : undefined}
+      // Accessible name and tooltip are unconditional: the label is hidden by CSS
+      // at intermediate widths (auto-compact) where React `compact` is unaware.
+      aria-label={route.label}
+      title={route.label}
       className={cn("sidebar-link workspace-nav-link", active && "active")}
       onClick={onNavigate}
     >
+      {active ? (
+        <motion.span
+          className="sidebar-active-indicator"
+          aria-hidden="true"
+          initial={{ opacity: 0, scaleY: 0.4 }}
+          animate={{ opacity: 1, scaleY: 1 }}
+          transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+        />
+      ) : null}
       <span className="workspace-nav-index" aria-hidden="true">
         {route.index}
       </span>
@@ -181,7 +191,6 @@ export function SidebarNavigation({
                 route={route}
                 pathname={pathname}
                 badge={badge}
-                compact={compact}
                 onNavigate={onNavigate}
               />
             );
@@ -216,7 +225,7 @@ export function SidebarNavigation({
                   key={project.id}
                   href={canonicalUrl.resolve(`/tasks?project=${project.id}`)}
                   aria-current={selected ? "page" : undefined}
-                  aria-label={compact ? project.name : undefined}
+                  aria-label={project.name}
                   title={project.name}
                   className={cn(
                     "sidebar-link sidebar-project-link",
@@ -254,6 +263,8 @@ export function SidebarNavigation({
         <Link
           href={canonicalUrl.resolve("/tasks/projects")}
           aria-current={pathname === "/tasks/projects" ? "page" : undefined}
+          aria-label="View all projects"
+          title="View all projects"
           className={cn(
             "sidebar-link sidebar-project-link sidebar-view-all",
             pathname === "/tasks/projects" && "selected",
@@ -277,8 +288,8 @@ export function SidebarNavigation({
           target="_blank"
           rel="noopener noreferrer"
           className="sidebar-link workspace-nav-link"
-          aria-label={compact ? "Hermes" : undefined}
-          title={compact ? "Hermes" : undefined}
+          aria-label="Hermes"
+          title="Hermes"
           onClick={onNavigate}
         >
           <span className="workspace-nav-index" aria-hidden="true">
@@ -301,7 +312,6 @@ export function SidebarNavigation({
                 ? { label: String(metrics.unreadNotificationCount), tone: "warn" }
                 : null
             }
-            compact={compact}
             onNavigate={onNavigate}
           />
         ))}
