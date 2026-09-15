@@ -69,27 +69,32 @@ describe("editorial authenticated workspace shell", () => {
     expect(css).toContain("--workspace-cream: #f4efe3");
     expect(css).toContain("--workspace-citrus: #ffd400");
     expect(css).toContain("--workspace-signal: #ff4b2b");
-    expect(css).toContain("@media (max-width: 1180px)");
+    expect(css).toContain("@media (min-width: 761px) and (max-width: 1180px)");
+    expect(css).toContain("--workspace-sidebar-width: clamp(15rem, 24vw, 17rem)");
+    expect(css).toContain("@media (min-width: 761px)");
     expect(css).toContain("@media (max-width: 760px)");
     expect(css).toContain("@media (max-width: 420px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("overflow-x: clip");
   });
 
-  it("keeps full labels in the mobile drawer and compacts logout only in the tablet rail", () => {
+  it("keeps full labels in the mobile drawer and leaves tablet navigation expanded", () => {
     const css = read("src/components/layout/editorial-shell-responsive.css");
+    const shellCss = read("src/components/layout/editorial-shell.css");
 
     expect(css).toContain(".workspace-drawer-panel .workspace-nav-label");
     expect(css).toContain(".workspace-drawer-panel .workspace-nav-index");
     expect(css).toContain(".workspace-drawer-panel .sidebar-section-label");
     expect(css).toContain("display: inline");
-    expect(css).toContain("@media (min-width: 761px) and (max-width: 1180px)");
-    expect(css).toMatch(
-      /\.workspace-sidebar\s+\.sidebar-general-section\s+form\s+\.sidebar-link\s*\{/,
-    );
-    expect(css).toContain("font-size: 0");
+    expect(css).toContain("@media (max-width: 760px)");
+    expect(css).not.toContain("@media (min-width: 761px) and (max-width: 1180px)");
+    expect(css).not.toMatch(/\.workspace-sidebar\s+\.sidebar-general-section\s+form\s+\.sidebar-link\s*\{/);
+    expect(css).not.toContain("font-size: 0");
     expect(css).toContain("[data-workspace-theme=\"editorial\"]::before");
     expect(css).toContain("inset: 0");
+
+    expect(shellCss).toContain("@media (min-width: 761px) and (max-width: 1180px)");
+    expect(shellCss).toContain(".workspace-sidebar-collapse");
   });
 
   it("preserves the dashboard data and failure-isolation boundaries", () => {
