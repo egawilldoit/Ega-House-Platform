@@ -24,6 +24,35 @@ type WorkspaceNavigationDrawerProps = {
   label?: string;
 };
 
+const DRAWER_FOCUSABLE_SELECTOR =
+  "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
+function getVisibleFocusableElements(container: HTMLElement): HTMLElement[] {
+  return Array.from(container.querySelectorAll<HTMLElement>(DRAWER_FOCUSABLE_SELECTOR)).filter(
+    (element) => {
+      let ancestor: HTMLElement | null = element;
+
+      while (ancestor && ancestor !== container) {
+        const style = window.getComputedStyle(ancestor);
+        if (
+          ancestor.hasAttribute("inert") ||
+          ancestor.getAttribute("aria-hidden") === "true" ||
+          style.display === "none" ||
+          style.visibility === "hidden" ||
+          style.visibility === "collapse" ||
+          style.opacity === "0"
+        ) {
+          return false;
+        }
+
+        ancestor = ancestor.parentElement;
+      }
+
+      return true;
+    },
+  );
+}
+
 export function WorkspaceNavigationDrawer({
   children,
   label = "Workspace navigation",
@@ -50,13 +79,12 @@ export function WorkspaceNavigationDrawer({
     previousOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const focusTarget = panelRef.current?.querySelector<HTMLElement>(
-      "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-    );
+    const panel = panelRef.current;
+    const focusTarget = panel ? getVisibleFocusableElements(panel)[0] : undefined;
     if (focusTarget) {
       focusTarget.focus();
     } else {
-      panelRef.current?.focus();
+      panel?.focus();
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -68,9 +96,7 @@ export function WorkspaceNavigationDrawer({
 
       if (event.key !== "Tab" || !panelRef.current) return;
 
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(
-        "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-      );
+      const focusable = getVisibleFocusableElements(panelRef.current);
 
       if (focusable.length === 0) {
         event.preventDefault();
@@ -81,15 +107,15 @@ export function WorkspaceNavigationDrawer({
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
       const activeElement = document.activeElement;
-      const focusIsOutsidePanel = !panelRef.current.contains(activeElement);
+      const activeIndex = focusable.indexOf(activeElement as HTMLElement);
 
-      if (focusIsOutsidePanel) {
+      if (activeIndex === -1) {
         event.preventDefault();
         (event.shiftKey ? last : first).focus();
-      } else if (event.shiftKey && activeElement === first) {
+      } else if (event.shiftKey && activeIndex === 0) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && activeElement === last) {
+      } else if (!event.shiftKey && activeIndex === focusable.length - 1) {
         event.preventDefault();
         first.focus();
       }
