@@ -39,9 +39,6 @@ export function SidebarCreateTaskButton() {
       </span>
       <span className="workspace-create-task-copy min-w-0">
         <span className="block text-sm font-semibold leading-5 tracking-normal">Create task</span>
-        <span className="mt-0.5 block text-xs font-semibold leading-4 opacity-70">
-          Structured task in the current workspace.
-        </span>
       </span>
     </Button>
   );
