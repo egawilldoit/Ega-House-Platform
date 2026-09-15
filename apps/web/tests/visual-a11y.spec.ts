@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { test, expect } from "@playwright/test";
 
 const publicRoutes = ["/login"] as const;
@@ -165,5 +168,168 @@ test.describe("EGA-648 responsive layout geometry", () => {
     expect(measured.columnCountByWidth).toEqual([1, 2, 3, 4]);
     // Columns stay usable instead of collapsing into a ~150px squeeze.
     expect(measured.columnWidth).toBeGreaterThan(250);
+  });
+});
+
+
+test.describe("sidebar collapsed rail regression", () => {
+  test("sidebar collapsed rail contract at 761, 900, 1180, and 1200px", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+
+    const sidebarStyles = [
+      readFileSync(resolve(process.cwd(), "src/components/layout/editorial-shell.css"), "utf8"),
+      readFileSync(resolve(process.cwd(), "src/components/layout/editorial-shell-responsive.css"), "utf8"),
+    ];
+    await page.addStyleTag({ content: sidebarStyles.join("\n") });
+
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "sidebar-contract-host";
+      host.className = "ega-app-shell";
+      host.dataset.workspaceTheme = "editorial";
+      host.style.cssText =
+        "position:fixed;inset:0;z-index:99999;display:grid;grid-template-columns:var(--workspace-sidebar-width) minmax(0,1fr);height:100vh;width:100vw;overflow:hidden";
+      host.innerHTML = `
+        <aside id="sidebar-contract" class="workspace-sidebar" data-collapsed="false">
+          <div class="workspace-sidebar-brand">
+            <span class="workspace-brand-copy">EGA</span>
+            <span class="workspace-brand-index">01</span>
+          </div>
+          <nav class="sidebar-nav workspace-sidebar-nav" aria-label="Workspace navigation">
+            <section class="sidebar-section workspace-nav-section">
+              <div class="sidebar-section-label">Command</div>
+              <div class="workspace-nav-list">
+                <a href="/tasks" class="sidebar-link workspace-nav-link active" aria-label="Tasks" title="Tasks">
+                  <span class="sidebar-active-indicator" aria-hidden="true"></span>
+                  <span class="workspace-nav-index" aria-hidden="true">02</span>
+                  <span class="sidebar-link-icon" aria-hidden="true"><svg></svg></span>
+                  <span class="workspace-nav-label">Tasks</span>
+                  <span class="sidebar-badge">21</span>
+                </a>
+              </div>
+            </section>
+            <section class="sidebar-section sidebar-project-section workspace-nav-section">
+              <div class="sidebar-section-heading">
+                <div class="sidebar-section-label">Projects</div>
+                <a href="/tasks/projects/new" class="sidebar-section-action" aria-label="Create new project" title="New project">
+                  <svg></svg>
+                </a>
+              </div>
+              <div class="sidebar-project-list">
+                <a href="/tasks?project=life" class="sidebar-link sidebar-project-link selected" aria-label="Life" title="Life">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Life</span>
+                  <span class="sidebar-project-count">8</span>
+                </a>
+              </div>
+            </section>
+            <section class="sidebar-section sidebar-general-section workspace-nav-section">
+              <div class="sidebar-section-label">System</div>
+              <a href="/ideas" class="sidebar-link workspace-nav-link" aria-label="Ideas" title="Ideas">
+                <span class="sidebar-link-icon"><svg data-testid="system-icon"></svg></span>
+                <span class="workspace-nav-label">Ideas</span>
+              </a>
+              <button type="button" class="sidebar-link" aria-label="Logout" title="Logout">
+                <span class="sidebar-link-icon"><svg></svg></span>
+                <span class="workspace-nav-label">Logout</span>
+              </button>
+            </section>
+          </nav>
+        </aside>
+        <main class="workspace-main" data-testid="sidebar-contract-main">
+          <p>Underlying page content</p>
+        </main>`;
+      document.body.append(host);
+
+      const motionGuard = document.createElement("style");
+      motionGuard.textContent =
+        "#sidebar-contract-host,#sidebar-contract-host .workspace-sidebar{transition:none!important}";
+      document.head.append(motionGuard);
+    });
+
+    const expandedWidths = [
+      [761, 240],
+      [900, 240],
+      [1180, 272],
+      [1200, 288],
+    ] as const;
+
+    for (const [width, expectedExpandedWidth] of expandedWidths) {
+      await page.setViewportSize({ width, height: 900 });
+
+      const expandedWidth = await page.locator("#sidebar-contract").evaluate(
+        (sidebar) => sidebar.getBoundingClientRect().width,
+      );
+      expect(expandedWidth).toBe(expectedExpandedWidth);
+
+      await page.locator("#sidebar-contract").evaluate((sidebar) => {
+        sidebar.setAttribute("data-collapsed", "true");
+      });
+
+      const measurements = await page.evaluate(() => {
+        const sidebar = document.querySelector<HTMLElement>("#sidebar-contract")!;
+        const main = document.querySelector<HTMLElement>('[data-testid="sidebar-contract-main"]')!;
+        const linkElements = Array.from(sidebar.querySelectorAll<HTMLElement>(".sidebar-link"));
+        const allLabelsHidden = linkElements.every((link) => {
+          const label = link.querySelector<HTMLElement>(".workspace-nav-label");
+          return Boolean(label) && getComputedStyle(label!).display === "none";
+        });
+        const contrastRatio = (element: HTMLElement) => {
+          const channels = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+          const luminance = (value: string) => {
+            const [r, g, b] = channels(value).map((channel) => {
+              const srgb = channel / 255;
+              return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          };
+          const foreground = luminance(getComputedStyle(element).color);
+          const background = luminance(getComputedStyle(element).backgroundColor);
+          return (Math.max(foreground, background) + 0.05) /
+            (Math.min(foreground, background) + 0.05);
+        };
+        const systemIcon = sidebar.querySelector<SVGElement>('[data-testid="system-icon"]')!;
+        const addProject = sidebar.querySelector<HTMLElement>(".sidebar-section-action")!;
+        const railRect = sidebar.getBoundingClientRect();
+        const contentRect = main.getBoundingClientRect();
+
+        return {
+          width: railRect.width,
+          sidebarBackground: getComputedStyle(sidebar).backgroundColor,
+          sidebarBackgroundImage: getComputedStyle(sidebar).backgroundImage,
+          sidebarOpacity: getComputedStyle(sidebar).opacity,
+          contentStartsAfterRail: contentRect.left >= railRect.right,
+          labelsAreConsistentlyHidden: allLabelsHidden,
+          hasAccessibleLogoutLabel: Boolean(
+            sidebar.querySelector('button[aria-label="Logout"] > .workspace-nav-label'),
+          ),
+          activeContrast: contrastRatio(sidebar.querySelector<HTMLElement>(".sidebar-link.active")!),
+          projectContrast: contrastRatio(sidebar.querySelector<HTMLElement>(".sidebar-project-link.selected")!),
+          addProjectSize: {
+            width: addProject.getBoundingClientRect().width,
+            height: addProject.getBoundingClientRect().height,
+          },
+          systemDividerWidth: getComputedStyle(sidebar.querySelector<HTMLElement>(".sidebar-general-section")!).borderTopWidth,
+          systemIconWidth: systemIcon.getBoundingClientRect().width,
+        };
+      });
+
+      expect(measurements.width).toBe(80);
+      expect(measurements.sidebarBackground).toBe("rgb(17, 17, 15)");
+      expect(measurements.sidebarBackgroundImage).toBe("none");
+      expect(measurements.sidebarOpacity).toBe("1");
+      expect(measurements.contentStartsAfterRail).toBe(true);
+      expect(measurements.labelsAreConsistentlyHidden).toBe(true);
+      expect(measurements.hasAccessibleLogoutLabel).toBe(true);
+      expect(measurements.activeContrast).toBeGreaterThanOrEqual(4.5);
+      expect(measurements.projectContrast).toBeGreaterThanOrEqual(4.5);
+      expect(measurements.addProjectSize).toEqual({ width: 44, height: 44 });
+      expect(measurements.systemDividerWidth).toBe("1px");
+      expect(measurements.systemIconWidth).toBeLessThan(16);
+
+      await page.locator("#sidebar-contract").evaluate((sidebar) => {
+        sidebar.setAttribute("data-collapsed", "false");
+      });
+    }
   });
 });

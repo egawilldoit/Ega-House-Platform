@@ -20,11 +20,15 @@ export function SidebarLogout() {
           disabled={isPending}
           className="sidebar-link w-full disabled:cursor-not-allowed disabled:opacity-70"
           aria-busy={isPending}
+          aria-label={isPending ? "Signing out" : "Logout"}
+          title={isPending ? "Signing out" : "Logout"}
         >
-          <span className="sidebar-link-icon">
+          <span className="sidebar-link-icon" aria-hidden="true">
             <LogOut />
           </span>
-          {isPending ? "Signing out..." : "Logout"}
+          <span className="workspace-nav-label">
+            {isPending ? "Signing out..." : "Logout"}
+          </span>
         </button>
       </form>
       {state.error ? (
