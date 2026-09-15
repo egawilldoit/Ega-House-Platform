@@ -53,7 +53,11 @@ export function WorkspaceNavigationDrawer({
     const focusTarget = panelRef.current?.querySelector<HTMLElement>(
       "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
     );
-    focusTarget?.focus();
+    if (focusTarget) {
+      focusTarget.focus();
+    } else {
+      panelRef.current?.focus();
+    }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
