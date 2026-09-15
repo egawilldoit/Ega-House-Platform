@@ -20,10 +20,27 @@ afterEach(async () => {
   document.body.style.overflow = "";
 });
 
+function pressTab(target: EventTarget, shiftKey = false) {
+  const event = new KeyboardEvent("keydown", {
+    key: "Tab",
+    bubbles: true,
+    cancelable: true,
+    shiftKey,
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
 async function renderDrawer() {
   await act(async () => {
     root.render(
       <WorkspaceNavigationDrawer>
+        <button type="button" style={{ opacity: 0 }}>
+          Opacity hidden control
+        </button>
+        <button type="button" style={{ visibility: "hidden" }}>
+          Visibility hidden control
+        </button>
         <a href="/dashboard" onClick={(event) => event.preventDefault()}>
           Dashboard
         </a>
@@ -91,5 +108,57 @@ describe("WorkspaceNavigationDrawer", () => {
     expect(
       container.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).toBeNull();
+  });
+
+  it("traps forward and reverse keyboard focus inside the drawer", async () => {
+    await renderDrawer();
+
+    const trigger = getButton("Open workspace navigation");
+    await click(trigger);
+
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const close = container.querySelector<HTMLButtonElement>(".workspace-drawer-close");
+    expect(link).not.toBeNull();
+    expect(close).not.toBeNull();
+    expect(document.activeElement).toBe(link);
+
+    close?.focus();
+    await act(async () => {
+      expect(pressTab(close!).defaultPrevented).toBe(true);
+    });
+    expect(document.activeElement).toBe(link);
+
+    link?.focus();
+    await act(async () => {
+      expect(pressTab(link!, true).defaultPrevented).toBe(true);
+    });
+    expect(document.activeElement).toBe(close);
+
+    trigger.focus();
+    await act(async () => {
+      expect(pressTab(trigger).defaultPrevented).toBe(true);
+    });
+    expect(document.activeElement).toBe(link);
+  });
+
+  it("skips visually hidden controls while trapping focus", async () => {
+    await renderDrawer();
+
+    const trigger = getButton("Open workspace navigation");
+    await click(trigger);
+
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const hiddenControl = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Opacity hidden control",
+    );
+    expect(link).not.toBeNull();
+    expect(hiddenControl).toBeDefined();
+
+    hiddenControl?.focus();
+    await act(async () => {
+      expect(pressTab(hiddenControl!).defaultPrevented).toBe(true);
+    });
+
+    expect(document.activeElement).toBe(link);
   });
 });

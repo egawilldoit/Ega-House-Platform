@@ -80,7 +80,7 @@ describe("EGA-654 navigation structure", () => {
     expect(topBar).toContain("Account settings");
   });
 
-  it("EGA-654: auto-compact CSS and the accessibility contract agree", () => {
+  it("EGA-654: tablet sidebar and accessibility contract agree", () => {
     const sidebar = read("components", "layout", "sidebar.tsx");
     expect(sidebar).toContain('data-collapsed={collapsed ? "true" : "false"}');
     expect(sidebar).toContain('data-testid="sidebar-collapse-toggle"');
@@ -93,10 +93,14 @@ describe("EGA-654 navigation structure", () => {
     // Icon-only states hide the text wrappers explicitly, not only via font-size.
     expect(css).toContain(".workspace-capture-trigger-copy");
     expect(css).toContain(".workspace-create-task-copy");
-    // The manual toggle is removed where it cannot change layout (<=1180px).
+    // Tablet widths keep labels visible and the collapse control available.
     expect(css).toMatch(
-      /@media \(max-width: 1180px\)[\s\S]*?\.workspace-sidebar-collapse\s*\{[\s\S]*?display:\s*none/,
+      /@media \(min-width: 761px\) and \(max-width: 1180px\)[\s\S]*?--workspace-sidebar-width:\s*clamp\(15rem, 24vw, 17rem\)/,
     );
+    expect(css).toMatch(/@media \(min-width: 761px\)[\s\S]*?data-collapsed="true"/);
+    expect(css).toContain("max-height: none;");
+    expect(css).toContain("overflow-y: visible;");
+    expect(css).not.toMatch(/@media \(max-width: 1180px\)[\s\S]*?\.workspace-sidebar-collapse\s*\{[\s\S]*?display:\s*none/);
 
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
     expect(navigation).toContain("sidebar-active-indicator");
