@@ -35,6 +35,12 @@ async function renderDrawer() {
   await act(async () => {
     root.render(
       <WorkspaceNavigationDrawer>
+        <button type="button" style={{ opacity: 0 }}>
+          Opacity hidden control
+        </button>
+        <button type="button" style={{ visibility: "hidden" }}>
+          Visibility hidden control
+        </button>
         <a href="/dashboard" onClick={(event) => event.preventDefault()}>
           Dashboard
         </a>
@@ -132,6 +138,27 @@ describe("WorkspaceNavigationDrawer", () => {
     await act(async () => {
       expect(pressTab(trigger).defaultPrevented).toBe(true);
     });
+    expect(document.activeElement).toBe(link);
+  });
+
+  it("skips visually hidden controls while trapping focus", async () => {
+    await renderDrawer();
+
+    const trigger = getButton("Open workspace navigation");
+    await click(trigger);
+
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const hiddenControl = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "Opacity hidden control",
+    );
+    expect(link).not.toBeNull();
+    expect(hiddenControl).toBeDefined();
+
+    hiddenControl?.focus();
+    await act(async () => {
+      expect(pressTab(hiddenControl!).defaultPrevented).toBe(true);
+    });
+
     expect(document.activeElement).toBe(link);
   });
 });
