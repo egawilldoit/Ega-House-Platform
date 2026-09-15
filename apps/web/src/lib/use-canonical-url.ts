@@ -25,6 +25,7 @@ const ROOT_HOSTNAMES = new Set([
  */
 export const GLOBAL_APP_ROUTES = new Set([
   "/dashboard",
+  "/home",
   "/today",
   "/ideas",
   "/help",
