@@ -97,7 +97,7 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
               </span>
               <div className="h-3 rounded-full bg-[color:var(--instrument-raised)]">
                 <div
-                  className="h-full rounded-full bg-[var(--signal-live)] transition-all duration-300"
+                  className="h-full rounded-full bg-[var(--signal-live)] transition-all duration-300 motion-reduce:transition-none"
                   style={{ width: `${widthPct}%` }}
                 />
               </div>

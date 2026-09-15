@@ -149,6 +149,40 @@ export function computeWindowForRange(
 }
 
 /**
+ * Rolling last-30-days window used by the fixed context summary.
+ */
+export function computeLast30DaysWindow(now: Date): { startIso: string; endIso: string } {
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() - 30);
+  return { startIso: start.toISOString(), endIso: now.toISOString() };
+}
+
+/**
+ * Compute the bounded evidence-fetch window covering every section the analytics
+ * report renders: the selected range, the fixed last-30-days context, and the
+ * previous calendar month required for the month comparison.
+ *
+ * `endIso` is `now` so live/context sections are included. Each calculation
+ * still filters the fetched sessions to its own exact canonical window, so this
+ * only widens what is *fetched*, never which sessions count for a metric.
+ */
+export function computeEvidenceWindowForRange(
+  range: AnalyticsRange,
+  now: Date,
+): { startIso: string; endIso: string } {
+  const selected = computeWindowForRange(range, now);
+  const last30 = computeLast30DaysWindow(now);
+
+  const previousMonthStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
+  );
+
+  const startIso = [selected.startIso, last30.startIso, previousMonthStart.toISOString()].sort()[0];
+
+  return { startIso, endIso: now.toISOString() };
+}
+
+/**
  * Get the start and end date strings (YYYY-MM-DD) covering the window.
  * Used for daily/weekly/monthly series computation.
  */
