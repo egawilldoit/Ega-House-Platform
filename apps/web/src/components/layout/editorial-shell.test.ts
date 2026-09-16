@@ -127,9 +127,23 @@ describe("editorial authenticated workspace shell", () => {
     expect(shellCss).toContain(".workspace-sidebar-collapse");
     expect(desktopSidebarNavRule).toContain("min-height: 0;");
     expect(desktopSidebarNavRule).toContain("overflow-y: auto;");
-    expect(desktopProjectListRule).toContain("overflow-y: visible;");
+    expect(desktopProjectListRule).toContain("max-height: min(31dvh, 18rem);");
+    expect(desktopProjectListRule).toContain("overflow-y: auto;");
+    expect(desktopProjectListRule).toContain("overscroll-behavior: contain;");
     expect(drawerPanelRule).toContain("overflow-y: auto;");
     expect(drawerNavRule).toContain("overflow-y: visible;");
+  });
+
+  it("keeps the project section from collapsing into the system section", () => {
+    const shellCss = read("src/components/layout/editorial-shell.css");
+    const projectSectionRule = cssRule(
+      shellCss,
+      '[data-workspace-theme="editorial"] .sidebar-project-section',
+    );
+
+    expect(projectSectionRule).toContain("flex: 0 0 auto;");
+    expect(projectSectionRule).toContain("min-height: auto;");
+    expect(projectSectionRule).toContain("overflow: visible;");
   });
 
   it("supports explicit expanded and icon-rail sidebar states", () => {
