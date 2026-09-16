@@ -98,8 +98,8 @@ describe("EGA-654 navigation structure", () => {
       /@media \(min-width: 761px\) and \(max-width: 1180px\)[\s\S]*?--workspace-sidebar-width:\s*clamp\(15rem, 24vw, 17rem\)/,
     );
     expect(css).toMatch(/@media \(min-width: 761px\)[\s\S]*?data-collapsed="true"/);
-    expect(css).toContain("max-height: none;");
-    expect(css).toContain("overflow-y: visible;");
+    expect(css).toContain("max-height: min(31dvh, 18rem);");
+    expect(css).toContain("overflow-y: auto;");
     expect(css).not.toMatch(/@media \(max-width: 1180px\)[\s\S]*?\.workspace-sidebar-collapse\s*\{[\s\S]*?display:\s*none/);
 
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
