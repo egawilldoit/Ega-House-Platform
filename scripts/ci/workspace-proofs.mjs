@@ -164,7 +164,7 @@ assert(mobile.devDependencies?.['babel-preset-expo'] === '~54.0.12', 'mobile Exp
 // branches declare them at the root. Accept whichever manifest owns the web
 // app so the proof stays valid across the stack.
 const webOwnerManifest = root.dependencies?.next ? root : readJson('apps/web/package.json');
-assert(webOwnerManifest.dependencies?.next === '16.2.12', 'Next pin 16.2.12');
+assert(webOwnerManifest.dependencies?.next === '16.3.5', 'Next pin 16.3.5');
 assert(
   webOwnerManifest.dependencies?.react === '19.1.0' &&
     webOwnerManifest.dependencies?.['react-dom'] === '19.1.0',

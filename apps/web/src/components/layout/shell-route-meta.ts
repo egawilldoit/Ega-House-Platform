@@ -8,6 +8,13 @@ export type ShellRouteMeta = {
 
 export const COMMAND_ROUTES = [
   {
+    href: "/home",
+    index: "00",
+    label: "Home",
+    group: "command",
+    eyebrow: "Workspace entry",
+  },
+  {
     href: "/today",
     index: "01",
     label: "Today",

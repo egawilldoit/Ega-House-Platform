@@ -1,33 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
-import { useState } from "react";
 
-import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
+import { InboxCaptureTrigger } from "@/components/inbox/inbox-capture-trigger";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
-import {
-  SidebarNavigation,
-  type SidebarGoal,
-  type SidebarProject,
-} from "./sidebar-navigation";
+import { SidebarCreateTaskButton } from "./sidebar-create-task";
+import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
 
 export type { SidebarGoal, SidebarProject } from "./sidebar-navigation";
 
 type SidebarProps = {
   projects?: SidebarProject[];
-  goals?: SidebarGoal[];
   metrics: WorkspaceShellMetrics;
 };
 
-export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
+export function Sidebar({ projects = [], metrics }: SidebarProps) {
+  // Local UI state only; cross-session persistence is not required.
   const [collapsed, setCollapsed] = useState(false);
 
   return (
     <aside
       className="ega-sidebar workspace-sidebar"
       aria-label="Primary workspace sidebar"
-      data-collapsed={collapsed}
+      data-collapsed={collapsed ? "true" : "false"}
     >
       <div className="sidebar-brand workspace-sidebar-brand">
         <Image
@@ -48,18 +45,22 @@ export function Sidebar({ projects = [], goals = [], metrics }: SidebarProps) {
         <button
           type="button"
           className="workspace-sidebar-collapse"
-          aria-label={collapsed ? "Expand workspace sidebar" : "Collapse workspace sidebar"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           aria-pressed={collapsed}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          data-testid="workspace-sidebar-collapse"
-          onClick={() => setCollapsed((value) => !value)}
+          data-testid="sidebar-collapse-toggle"
+          onClick={() => setCollapsed((current) => !current)}
         >
           {collapsed ? <PanelLeftOpen aria-hidden="true" /> : <PanelLeftClose aria-hidden="true" />}
         </button>
       </div>
 
       <div className="workspace-quick-task flex flex-col gap-2">
-        <InboxQuickCapture projects={projects} goals={goals} />
+        <InboxCaptureTrigger />
+      </div>
+
+      <div className="workspace-create-task flex flex-col">
+        <SidebarCreateTaskButton />
       </div>
 
       <SidebarNavigation projects={projects} metrics={metrics} compact={collapsed} />

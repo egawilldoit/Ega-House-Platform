@@ -125,3 +125,39 @@ test("empty string next returns null", () => {
   const result = getSafeRedirectTarget("");
   assert.equal(result, null);
 });
+
+/**
+ * E2E selector regression (pre-existing maintenance fix).
+ *
+ * The login form has two elements whose accessible names contain "password":
+ * the input labelled exactly "Password", and the reveal toggle labelled
+ * "Show password"/"Hide password". A non-exact Playwright label match therefore
+ * resolves two elements and fails strict mode. The auth-session E2E spec must
+ * use an exact label match, and the form must keep exactly one password input.
+ */
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const loginFormSource = readFileSync(
+  resolve(process.cwd(), "src/app/login/login-form.tsx"),
+  "utf8",
+);
+const authSpecSource = readFileSync(
+  resolve(process.cwd(), "tests/auth-session.e2e.spec.ts"),
+  "utf8",
+);
+
+test("login form exposes exactly one password input labelled exactly 'Password'", () => {
+  const passwordInputs = loginFormSource.match(/type=\{showPassword \? "text" : "password"\}/g) ?? [];
+  assert.equal(passwordInputs.length, 1, "expected exactly one password input binding");
+  assert.match(loginFormSource, /label="Password"/);
+});
+
+test("reveal toggle accessible name contains 'password' (why exact match is required)", () => {
+  assert.match(loginFormSource, /aria-label=\{showPassword \? "Hide password" : "Show password"\}/);
+});
+
+test("auth-session E2E uses an exact password label match", () => {
+  assert.match(authSpecSource, /getByLabel\("Password", \{ exact: true \}\)/);
+  assert.doesNotMatch(authSpecSource, /getByLabel\("Password"\)\./);
+});

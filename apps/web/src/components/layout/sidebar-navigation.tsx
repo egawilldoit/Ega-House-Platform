@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { motion } from "motion/react";
 import {
   BarChart3,
   Bell,
@@ -14,6 +15,7 @@ import {
   Flag,
   Folder,
   Grid2X2,
+  House,
   Lightbulb,
   Plus,
   Power,
@@ -56,6 +58,7 @@ type SidebarNavigationProps = {
 };
 
 const ROUTE_ICONS: Record<string, LucideIcon> = {
+  "/home": House,
   "/today": CalendarCheck2,
   "/tasks": CheckSquare,
   "/goals": Flag,
@@ -119,11 +122,21 @@ function RouteLink({
     <Link
       href={canonicalUrl.resolve(route.href)}
       aria-current={active ? "page" : undefined}
+      // Keep names and tooltips available when a user collapses the sidebar to icons.
       aria-label={route.label}
       title={route.label}
       className={cn("sidebar-link workspace-nav-link", active && "active")}
       onClick={onNavigate}
     >
+      {active ? (
+        <motion.span
+          className="sidebar-active-indicator"
+          aria-hidden="true"
+          initial={{ opacity: 0, scaleY: 0.4 }}
+          animate={{ opacity: 1, scaleY: 1 }}
+          transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+        />
+      ) : null}
       <span className="workspace-nav-index" aria-hidden="true">
         {route.index}
       </span>

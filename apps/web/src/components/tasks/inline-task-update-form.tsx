@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,6 +39,87 @@ type InlineTaskUpdateFormProps = {
   error?: string | null;
   overflowActions?: ReactNode;
 };
+
+type TaskMarkDoneFormProps = {
+  action: (formData: FormData) => void | Promise<void>;
+  taskId: string;
+  returnTo: string;
+  defaultPriority: string;
+  defaultDueDate: string | null;
+  defaultScheduledStartAt: string | null;
+  defaultScheduledEndAt: string | null;
+  defaultCalendarSyncEnabled: boolean;
+  defaultCalendarReminderMinutes: number;
+  defaultEstimateMinutes: number | null;
+};
+
+/**
+ * Single canonical "mark done" submission. It forwards the task's scheduling
+ * fields unchanged so completing a task never drops its schedule/calendar state.
+ */
+export function TaskMarkDoneForm({
+  action,
+  taskId,
+  returnTo,
+  defaultPriority,
+  defaultDueDate,
+  defaultScheduledStartAt,
+  defaultScheduledEndAt,
+  defaultCalendarSyncEnabled,
+  defaultCalendarReminderMinutes,
+  defaultEstimateMinutes,
+}: TaskMarkDoneFormProps) {
+  const timezoneOffsetRef = useRef<HTMLInputElement>(null);
+
+  const scheduledStartAtDefaultValue = defaultScheduledStartAt
+    ? defaultScheduledStartAt.slice(0, 16)
+    : "";
+  const scheduledEndAtDefaultValue = defaultScheduledEndAt
+    ? defaultScheduledEndAt.slice(0, 16)
+    : "";
+
+  return (
+    <form
+      action={action}
+      onSubmit={() => {
+        if (timezoneOffsetRef.current) {
+          timezoneOffsetRef.current.value = String(new Date().getTimezoneOffset());
+        }
+      }}
+    >
+      <input type="hidden" name="taskId" value={taskId} />
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <input type="hidden" name="status" value="done" />
+      <input type="hidden" name="priority" value={defaultPriority} />
+      <input type="hidden" name="dueDate" value={defaultDueDate ?? ""} />
+      <input type="hidden" name="scheduledStartAt" value={scheduledStartAtDefaultValue} />
+      <input type="hidden" name="scheduledEndAt" value={scheduledEndAtDefaultValue} />
+      {defaultCalendarSyncEnabled ? (
+        <input type="hidden" name="calendarSyncEnabled" value="on" />
+      ) : null}
+      <input
+        type="hidden"
+        name="calendarReminderMinutes"
+        value={defaultCalendarReminderMinutes}
+      />
+      <input
+        ref={timezoneOffsetRef}
+        type="hidden"
+        name="scheduleTimezoneOffsetMinutes"
+        defaultValue="0"
+      />
+      <input
+        type="hidden"
+        name="estimateMinutes"
+        value={defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : ""}
+      />
+      <input type="hidden" name="blockedReason" value="" />
+      <PendingSubmitButton size="sm" type="submit" variant="muted" pendingLabel="Marking done...">
+        Mark done
+      </PendingSubmitButton>
+    </form>
+  );
+}
 
 export function InlineTaskUpdateForm({
   action,
@@ -252,37 +333,18 @@ export function InlineTaskUpdateForm({
 
       <div className="flex w-full flex-wrap items-center justify-end gap-2">
         {!isCompleted ? (
-          <form action={action}>
-            <input type="hidden" name="taskId" value={taskId} />
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <input type="hidden" name="status" value="done" />
-            <input type="hidden" name="priority" value={defaultPriority} />
-            <input type="hidden" name="dueDate" value={defaultDueDate ?? ""} />
-            <input type="hidden" name="scheduledStartAt" value={scheduledStartAtDefaultValue} />
-            <input type="hidden" name="scheduledEndAt" value={scheduledEndAtDefaultValue} />
-            {defaultCalendarSyncEnabled ? (
-              <input type="hidden" name="calendarSyncEnabled" value="on" />
-            ) : null}
-            <input
-              type="hidden"
-              name="calendarReminderMinutes"
-              value={defaultCalendarReminderMinutes}
-            />
-            <input
-              type="hidden"
-              name="scheduleTimezoneOffsetMinutes"
-              value={timezoneOffsetMinutes}
-            />
-            <input
-              type="hidden"
-              name="estimateMinutes"
-              value={defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : ""}
-            />
-            <input type="hidden" name="blockedReason" value="" />
-            <PendingSubmitButton size="sm" type="submit" variant="muted" pendingLabel="Marking done...">
-              Mark done
-            </PendingSubmitButton>
-          </form>
+          <TaskMarkDoneForm
+            action={action}
+            taskId={taskId}
+            returnTo={returnTo}
+            defaultPriority={defaultPriority}
+            defaultDueDate={defaultDueDate}
+            defaultScheduledStartAt={defaultScheduledStartAt}
+            defaultScheduledEndAt={defaultScheduledEndAt}
+            defaultCalendarSyncEnabled={defaultCalendarSyncEnabled}
+            defaultCalendarReminderMinutes={defaultCalendarReminderMinutes}
+            defaultEstimateMinutes={defaultEstimateMinutes}
+          />
         ) : null}
 
         {archiveAction && !isArchived ? (
@@ -343,7 +405,12 @@ export function InlineTaskUpdateForm({
       </div>
 
       {error ? (
-        <p className="feedback-block feedback-block-error">
+        <p
+          id={`task-update-error-${taskId}`}
+          role="alert"
+          tabIndex={-1}
+          className="feedback-block feedback-block-error"
+        >
           {error}
         </p>
       ) : null}

@@ -34,8 +34,8 @@ export function ActiveTimerDisplay({
   totalTrackedDurationSeconds,
 }: ActiveTimerDisplayProps) {
   return (
-    <div className="space-y-4 rounded-[1.1rem] border border-[var(--border)] bg-gradient-to-br from-[rgba(23,123,82,0.09)] via-white to-[color:var(--instrument-raised)] p-5">
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
+    <div className="active-timer-card space-y-4 rounded-[1.1rem] border border-[var(--border)] bg-gradient-to-br from-[rgba(23,123,82,0.09)] via-white to-[color:var(--instrument-raised)] p-5">
+      <div className="active-timer-display-grid">
         <div className="space-y-4">
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">

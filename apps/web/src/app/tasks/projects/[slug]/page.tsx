@@ -29,10 +29,8 @@ import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { InlineTaskUpdateForm } from "@/components/tasks/inline-task-update-form";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
-import {
-  TaskFilterControls,
-  buildTaskFilterReturnPath,
-} from "@/components/tasks/task-filter-controls";
+import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
+import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

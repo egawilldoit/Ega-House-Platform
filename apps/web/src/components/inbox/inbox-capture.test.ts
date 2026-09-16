@@ -2,21 +2,23 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
 
-function resolve(relative: string, fallback: string) {
-  try { return fileURLToPath(new URL(relative, import.meta.url)); } catch { return path.resolve(process.cwd(), fallback); }
+function read(...segments: string[]) {
+  return readFileSync(path.join(process.cwd(), "src", ...segments), "utf8");
 }
 
-const captureSource = readFileSync(resolve("./inbox-quick-capture.tsx", "src/components/inbox/inbox-quick-capture.tsx"), "utf8");
-const shortcutSource = readFileSync(resolve("../layout/workspace-keyboard-shortcuts.tsx", "src/components/layout/workspace-keyboard-shortcuts.tsx"), "utf8");
-const keyboardDefs = readFileSync(resolve("../../lib/keyboard-shortcuts.ts", "src/lib/keyboard-shortcuts.ts"), "utf8");
-const sidebarSource = readFileSync(resolve("../layout/sidebar.tsx", "src/components/layout/sidebar.tsx"), "utf8");
-const captureActionSource = readFileSync(resolve("./capture-action.ts", "src/components/inbox/capture-action.ts"), "utf8");
-const ideaServiceSource = readFileSync(resolve("../../lib/services/idea-note-service.ts", "src/lib/services/idea-note-service.ts"), "utf8");
+const captureSource = read("components", "inbox", "inbox-capture-sheet.tsx");
+const triggerSource = read("components", "inbox", "inbox-capture-trigger.tsx");
+const shortcutSource = read("components", "layout", "workspace-keyboard-shortcuts.tsx");
+const keyboardDefs = read("lib", "keyboard-shortcuts.ts");
+const sidebarSource = read("components", "layout", "sidebar.tsx");
+const drawerSource = read("components", "layout", "sidebar-mobile-drawer.tsx");
+const controllersSource = read("components", "layout", "global-quick-action-controllers.tsx");
+const appShellSource = read("components", "layout", "app-shell.tsx");
+const captureActionSource = read("components", "inbox", "capture-action.ts");
+const ideaServiceSource = read("lib", "services", "idea-note-service.ts");
 
 test("inbox capture accepts raw thought without project/goal/priority (unstructured global)", () => {
-  // Title + optional body only; no project/goal/priority inputs
   assert.match(captureSource, /htmlFor="inbox-capture-title"/);
   assert.match(captureSource, /htmlFor="inbox-capture-body"/);
   assert.doesNotMatch(captureSource, /projectId/);
@@ -35,14 +37,11 @@ test("inbox capture uses client-generated idempotency key and preserves it for r
   assert.match(captureSource, /createIdempotencyKey/);
   assert.match(captureSource, /idempotencyKeyRef\.current/);
   assert.match(captureSource, /X-Idempotency-Key|idempotencyKey/);
-  // Draft retained on failure, key preserved
   assert.match(captureSource, /saveDraft.*idempotencyKey/);
   assert.match(captureSource, /setError\(/);
-  // No false success: error path does not set success, pending reset, returns early
   assert.match(captureSource, /if \(!result\.ok\)/);
   assert.match(captureSource, /setError\(result\.error\)/);
   assert.match(captureSource, /return;/);
-  // Success clears draft and rotates key
   assert.match(captureSource, /clearDraftStorage/);
   assert.match(captureSource, /idempotencyKeyRef\.current = createIdempotencyKey/);
 });
@@ -50,9 +49,7 @@ test("inbox capture uses client-generated idempotency key and preserves it for r
 test("inbox capture preserves draft on transient failure and never reports false success", () => {
   assert.match(captureSource, /try \{[\s\S]+captureInboxIdea/);
   assert.match(captureSource, /catch \(err\)[\s\S]+setError\(/);
-  // draft already saved before network call
   assert.match(captureSource, /saveDraft\(\{ title, body, idempotencyKey: keyToUse \}\)/);
-  // success only after ok check
   assert.match(captureSource, /if \(!result\.ok\)[\s\S]+setError/);
   assert.match(captureSource, /setSuccess\("Idea captured\."\)/);
 });
@@ -62,7 +59,6 @@ test("inbox capture keyboard accessibility: focus, Esc, shortcut", () => {
   assert.match(captureSource, /aria-label="Inbox capture title"/);
   assert.match(captureSource, /aria-label="Close inbox capture panel"/);
   assert.match(captureSource, /role="alert"/);
-  // Sheet handles Esc via global listener, but component also has close handling
   assert.match(captureSource, /onOpenChange/);
   assert.match(shortcutSource, /INBOX_CAPTURE_EVENT/);
   assert.match(shortcutSource, /isExactShortcutCombo\(event, \{ key: "i", metaOrCtrl: true, shift: true \}\)/);
@@ -70,17 +66,40 @@ test("inbox capture keyboard accessibility: focus, Esc, shortcut", () => {
   assert.match(keyboardDefs, /Ctrl\/Cmd \+ Shift \+ I/);
 });
 
-test("sidebar preserves QuickTaskSheet and adds InboxQuickCapture without ambiguity", () => {
-  assert.match(sidebarSource, /InboxQuickCapture/);
-  assert.match(captureSource, /QuickTaskSheet/);
-  assert.match(captureSource, /showTrigger=\{false\}/);
-  // Shortcuts remain distinct: N for task, I for inbox
+test("EGA-649: one shell-level owner for Inbox Capture and Quick Task", () => {
+  // The shell mounts exactly one controller tree...
+  assert.match(appShellSource, /GlobalQuickActionControllers/);
+  assert.match(controllersSource, /<InboxCaptureSheet/);
+  assert.match(controllersSource, /<QuickTaskSheet/);
+  assert.match(controllersSource, /showTrigger=\{false\}/);
+
+  // ...and navigation surfaces only render triggers, never a second controller.
+  for (const source of [sidebarSource, drawerSource]) {
+    assert.match(source, /InboxCaptureTrigger/);
+    assert.match(source, /SidebarCreateTaskButton/);
+    assert.doesNotMatch(source, /<QuickTaskSheet/);
+    assert.doesNotMatch(source, /<InboxCaptureSheet/);
+    assert.doesNotMatch(source, /InboxQuickCapture/);
+  }
+
+  // Shortcuts remain distinct: N for task, I for inbox.
   assert.match(shortcutSource, /key: "n"/);
   assert.match(shortcutSource, /QUICK_TASK_EVENT/);
   assert.match(shortcutSource, /key: "i"/);
   assert.match(shortcutSource, /INBOX_CAPTURE_EVENT/);
   assert.match(keyboardDefs, /open-quick-task.*Ctrl\/Cmd \+ Shift \+ N/);
   assert.match(keyboardDefs, /open-inbox-capture.*Ctrl\/Cmd \+ Shift \+ I/);
+});
+
+test("EGA-649: drawer triggers close the drawer before opening the global sheet", () => {
+  // Triggers read the drawer context and close it deterministically (no timeout).
+  assert.match(triggerSource, /useWorkspaceDrawer/);
+  assert.match(triggerSource, /closeDrawer\(\{ restoreFocus: false \}\)/);
+  const createTaskSource = read("components", "layout", "sidebar-create-task.tsx");
+  assert.match(createTaskSource, /useWorkspaceDrawer/);
+  assert.match(createTaskSource, /closeDrawer\(\{ restoreFocus: false \}\)/);
+  assert.doesNotMatch(triggerSource, /setTimeout/);
+  assert.doesNotMatch(createTaskSource, /setTimeout/);
 });
 
 test("capture action and idea-note-service handle idempotencyKey server-side", () => {
@@ -95,8 +114,8 @@ test("inbox capture success updates state without full-page refresh", () => {
   assert.doesNotMatch(captureSource, /window\.location\.reload/);
 });
 
-test("inbox capture component uses Sheet with proper aria and test ids", () => {
-  assert.match(captureSource, /data-testid="inbox-quick-capture-trigger"/);
+test("inbox capture sheet and trigger expose stable test ids", () => {
+  assert.match(triggerSource, /data-testid="inbox-quick-capture-trigger"/);
   assert.match(captureSource, /data-testid="inbox-quick-capture-sheet"/);
   assert.match(captureSource, /data-testid="inbox-capture-title-input"/);
   assert.match(captureSource, /data-testid="inbox-capture-submit"/);
