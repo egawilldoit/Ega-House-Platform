@@ -396,14 +396,19 @@
 }
 
 [data-workspace-theme="editorial"] .sidebar-project-section {
-  flex: 1 1 auto;
-  min-height: 9rem;
+  /* Keep the section's box taller than its contents so System never paints
+     over project rows when the navigation itself needs to scroll. */
+  flex: 0 0 auto;
+  min-height: auto;
   overflow: visible;
 }
 
 [data-workspace-theme="editorial"] .sidebar-project-list {
-  max-height: none;
-  overflow-y: visible;
+  min-height: 2.2rem;
+  flex: 0 0 auto;
+  max-height: min(31dvh, 18rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 [data-workspace-theme="editorial"] .sidebar-project-link {
