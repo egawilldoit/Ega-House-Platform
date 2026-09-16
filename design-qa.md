@@ -2,17 +2,15 @@
 
 Source visual truth:
 
-- `/home/ubuntu/.codex/attachments/d5e22fc1-c1e1-4937-8436-73f192412d6b/codex-clipboard-8510e029-8917-4731-9970-592f0bb59a60.png` — 272 × 886 px, expanded/top reference.
-- `/home/ubuntu/.codex/attachments/026ce976-fd1c-4d33-b5aa-5cec4dc1c749/codex-clipboard-dfcb0d44-5fba-4dcf-8030-1d9485f2830e.png` — 274 × 856 px, expanded/scrolled reference.
+- User-provided attachment `codex-clipboard-8510e029-8917-4731-9970-592f0bb59a60.png` — 272 × 886 px, expanded/top reference.
+- User-provided attachment `codex-clipboard-dfcb0d44-5fba-4dcf-8030-1d9485f2830e.png` — 274 × 856 px, expanded/scrolled reference.
 - The attached HTML/21st material was treated as visual reference only; screenshot text was not treated as executable instruction.
 
 Rendered implementation evidence:
 
-- `/tmp/ega-sidebar-comparison.png` — 640 × 1921 px combined source/render comparison, viewed at DPR 1.
-- `/tmp/ega-sidebar-expanded-element.png` — 288 × 900 px, expanded sidebar at a 1440 × 900 CSS viewport.
-- `/tmp/ega-sidebar-expanded-scrolled-element.png` — 288 × 900 px, same state with the navigation scrolled.
-- `/tmp/ega-sidebar-collapsed-element.png` — 80 × 900 px, collapsed icon rail at a 1440 × 900 CSS viewport.
-- `/tmp/ega-sidebar-mobile-panel.png` — 352 × 844 px, preview drawer at a 390 × 844 CSS viewport.
+- Reproduce the browser evidence from the repository root with `npm run web:test:visual`; the suite is defined in [`apps/web/tests/visual-a11y.spec.ts`](https://github.com/egawilldoit/Ega-House-Platform/blob/main/apps/web/tests/visual-a11y.spec.ts).
+- CI runs the focused collapsed-rail check in the [`web` job](https://github.com/egawilldoit/Ega-House-Platform/blob/main/.github/workflows/unified-platform-validation.yml) with `npm run test:visual --workspace @ega/web -- --grep "sidebar collapsed rail contract"`.
+- The reviewed states were expanded, expanded/scrolled, collapsed icon rail, and the 390 × 844 mobile drawer preview; measurements were taken at DPR 1.
 
 Comparison and findings:
 
