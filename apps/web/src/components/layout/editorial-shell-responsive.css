@@ -34,8 +34,9 @@
   }
 
   [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-section {
-    flex: 1 1 auto;
-    min-height: 9rem;
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
   }
 
   [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-list {
