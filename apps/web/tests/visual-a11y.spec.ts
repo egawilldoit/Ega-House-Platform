@@ -221,6 +221,61 @@ test.describe("sidebar collapsed rail regression", () => {
                   <span class="workspace-nav-label">Life</span>
                   <span class="sidebar-project-count">8</span>
                 </a>
+                <a href="/tasks?project=content" class="sidebar-link sidebar-project-link" aria-label="Content Engine" title="Content Engine">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Content Engine</span>
+                  <span class="sidebar-project-count">4</span>
+                </a>
+                <a href="/tasks?project=launch" class="sidebar-link sidebar-project-link" aria-label="Launch" title="Launch">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Launch</span>
+                  <span class="sidebar-project-count">3</span>
+                </a>
+                <a href="/tasks?project=analytics" class="sidebar-link sidebar-project-link" aria-label="Analytics" title="Analytics">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Analytics</span>
+                  <span class="sidebar-project-count">2</span>
+                </a>
+                <a href="/tasks?project=mobile" class="sidebar-link sidebar-project-link" aria-label="Mobile App" title="Mobile App">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Mobile App</span>
+                  <span class="sidebar-project-count">6</span>
+                </a>
+                <a href="/tasks?project=docs" class="sidebar-link sidebar-project-link" aria-label="Documentation" title="Documentation">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Documentation</span>
+                  <span class="sidebar-project-count">1</span>
+                </a>
+                <a href="/tasks?project=ops" class="sidebar-link sidebar-project-link" aria-label="Operations" title="Operations">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Operations</span>
+                  <span class="sidebar-project-count">5</span>
+                </a>
+                <a href="/tasks?project=research" class="sidebar-link sidebar-project-link" aria-label="Research" title="Research">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Research</span>
+                  <span class="sidebar-project-count">2</span>
+                </a>
+                <a href="/tasks?project=qa" class="sidebar-link sidebar-project-link" aria-label="Quality" title="Quality">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Quality</span>
+                  <span class="sidebar-project-count">3</span>
+                </a>
+                <a href="/tasks?project=growth" class="sidebar-link sidebar-project-link" aria-label="Growth" title="Growth">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Growth</span>
+                  <span class="sidebar-project-count">7</span>
+                </a>
+                <a href="/tasks?project=platform" class="sidebar-link sidebar-project-link" aria-label="Platform" title="Platform">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Platform</span>
+                  <span class="sidebar-project-count">9</span>
+                </a>
+                <a href="/tasks?project=archive" class="sidebar-link sidebar-project-link" aria-label="Archive" title="Archive">
+                  <span class="project-dot"></span>
+                  <span class="workspace-nav-label">Archive</span>
+                  <span class="sidebar-project-count">1</span>
+                </a>
               </div>
             </section>
             <section class="sidebar-section sidebar-general-section workspace-nav-section">
@@ -261,6 +316,32 @@ test.describe("sidebar collapsed rail regression", () => {
         (sidebar) => sidebar.getBoundingClientRect().width,
       );
       expect(expandedWidth).toBe(expectedExpandedWidth);
+
+      const expandedLayout = await page.evaluate(() => {
+        const projectSection = document.querySelector<HTMLElement>('#sidebar-contract .sidebar-project-section')!;
+        const projectList = document.querySelector<HTMLElement>('#sidebar-contract .sidebar-project-list')!;
+        const systemSection = document.querySelector<HTMLElement>('#sidebar-contract .sidebar-general-section')!;
+
+        return {
+          projectListOverflowY: getComputedStyle(projectList).overflowY,
+          projectListScrollHeight: projectList.scrollHeight,
+          projectListClientHeight: projectList.clientHeight,
+          projectListBottom: projectList.getBoundingClientRect().bottom,
+          projectSectionBottom: projectSection.getBoundingClientRect().bottom,
+          systemTop: systemSection.getBoundingClientRect().top,
+        };
+      });
+
+      expect(expandedLayout.projectListOverflowY).toBe("auto");
+      expect(expandedLayout.projectListScrollHeight).toBeGreaterThan(
+        expandedLayout.projectListClientHeight,
+      );
+      expect(expandedLayout.systemTop).toBeGreaterThanOrEqual(
+        expandedLayout.projectListBottom,
+      );
+      expect(expandedLayout.systemTop).toBeGreaterThanOrEqual(
+        expandedLayout.projectSectionBottom,
+      );
 
       await page.locator("#sidebar-contract").evaluate((sidebar) => {
         sidebar.setAttribute("data-collapsed", "true");
