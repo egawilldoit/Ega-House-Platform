@@ -20,6 +20,7 @@
     "@ega/contracts": "0.1.0",
     "@ega/data-access": "0.1.0",
     "@ega/domain": "0.1.0",
+    "@radix-ui/react-dialog": "^1.1.23",
     "@sentry/nextjs": "10.68.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.0",

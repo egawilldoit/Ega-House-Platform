@@ -121,7 +121,7 @@ test("quick task worked-time values are preserved after server validation errors
 test("quick task single mode uses command input with parsed preview and hidden title submit", () => {
   assert.match(singleModeSection, /id="quick-task-command"/);
   assert.match(quickTaskSheetSource, /parseQuickTaskCommand/);
-  assert.match(singleModeSection, /Parsed preview/);
+  assert.match(singleModeSection, /aria-label="Parsed task details"/);
   assert.match(singleModeSection, /name="title"\s+value=\{parsedSingleCommand\.title\}/);
   assert.match(singleModeSection, /parsedSingleCommand\.projectError/);
 });
@@ -134,11 +134,11 @@ test("quick task single mode passes goals and selected project context into comm
 });
 
 test("quick task parsed preview includes goal status and blocked reason", () => {
-  assert.match(singleModeSection, />Goal:<\/span>/);
+  assert.match(singleModeSection, /label: "Goal"/);
   assert.match(singleModeSection, /parsedSingleCommand\.goalName \?\? selectedGoalName/);
-  assert.match(singleModeSection, />Status:<\/span>/);
+  assert.match(singleModeSection, /label: "Status"/);
   assert.match(singleModeSection, /formatTaskToken\(singleStatus\)/);
-  assert.match(singleModeSection, />\s*Blocked reason:\s*<\/span>/);
+  assert.match(singleModeSection, /label: "Blocked reason"/);
   assert.match(singleModeSection, /singleBlockedReason \|\| "Required"/);
 });
 
@@ -168,12 +168,39 @@ test("quick task panel focuses command input when opened", () => {
   assert.match(quickTaskSheetSource, /workspaceShortcutEvents\.openQuickTask/);
 });
 
-test("quick task sheet gives its dialog the visible title as an accessible name", () => {
+test("quick task presents a centered, accessible modal dialog", () => {
   assert.match(
     quickTaskSheetSource,
-    /<SheetContent[^>]+aria-labelledby="quick-task-sheet-title"/,
+    /<DialogPrimitive\.Content[\s\S]+aria-labelledby="quick-task-sheet-title"/,
   );
-  assert.match(quickTaskSheetSource, /<SheetTitle id="quick-task-sheet-title">Quick task<\/SheetTitle>/);
+  assert.match(
+    quickTaskSheetSource,
+    /<DialogPrimitive\.Title[\s\S]+id="quick-task-sheet-title"/,
+  );
+  assert.match(
+    quickTaskSheetSource,
+    /<DialogPrimitive\.Description[\s\S]+id="quick-task-sheet-description"/,
+  );
+  assert.match(quickTaskSheetSource, /fixed left-1\/2 top-1\/2[\s\S]+-translate-x-1\/2 -translate-y-1\/2/);
+  assert.match(quickTaskSheetSource, /onCloseAutoFocus=\{\(event\) =>/);
+  assert.match(quickTaskSheetSource, /lastFocusedElement\.focus\(\)/);
+});
+
+test("quick task optional details retain scheduling, reminders, worked time and description fields", () => {
+  assert.match(singleModeSection, /<details[\s\S]+More details[\s\S]+<\/details>/);
+  const optionalDetails = getSection(singleModeSection, "<details", "</details>");
+  for (const field of [
+    'name="scheduledStartAt"',
+    'name="scheduledEndAt"',
+    'name="calendarSyncEnabled"',
+    'name="calendarReminderMinutes"',
+    'name="workedTimeStartedAt"',
+    'name="workedTimeEndedAt"',
+    'name="description"',
+  ]) {
+    assert.ok(optionalDetails.includes(field), `Optional details must retain ${field}`);
+  }
+  assert.match(optionalDetails, /type="datetime-local"/);
 });
 
 test("quick task multi mode does not render worked-time UI", () => {

@@ -28,17 +28,27 @@ export function SidebarCreateTaskButton() {
     <Button
       type="button"
       variant="ghost"
-      className="workspace-create-task-trigger mx-2.5 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 px-3 py-2.5 text-left"
+      className="workspace-create-task-trigger mx-2.5 h-auto min-h-12 w-[calc(100%-1.25rem)] items-center justify-start gap-3 px-3 py-2.5 text-left"
       aria-label="Create task"
       title="Create task"
+      aria-haspopup="dialog"
+      aria-keyshortcuts="Control+Shift+N Meta+Shift+N"
       data-testid="sidebar-create-task"
       onClick={openCreateTask}
     >
-      <span className="workspace-create-task-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/25">
-        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+      <span className="workspace-create-task-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-md border">
+        <Plus className="h-4 w-4" aria-hidden="true" />
       </span>
-      <span className="workspace-create-task-copy min-w-0">
-        <span className="block text-sm font-semibold leading-5 tracking-normal">Create task</span>
+      <span className="workspace-create-task-copy flex min-w-0 flex-1 items-center justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold leading-5 tracking-normal">Create task</span>
+          <span className="mt-0.5 block text-xs leading-4 text-[var(--workspace-muted)]">
+            Single or batch
+          </span>
+        </span>
+        <kbd className="workspace-create-task-shortcut shrink-0" aria-hidden="true">
+          Ctrl/⌘ ⇧ N
+        </kbd>
       </span>
     </Button>
   );
