@@ -106,6 +106,35 @@ function createEmptyDraft(defaultProjectId: string): MultiTaskDraft {
   };
 }
 
+function QuickTaskSubmitButton({
+  label,
+  pending,
+  disabled = false,
+}: {
+  label: string;
+  pending: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <Button
+      type="submit"
+      disabled={pending || disabled}
+      aria-busy={pending}
+      className="inline-flex min-h-12 min-w-36 items-center justify-center gap-2 rounded-lg border border-[var(--ega-gold-strong)] bg-[var(--ega-gold)] px-5 font-semibold text-[var(--ega-text)] shadow-[var(--ega-shadow-sm)] transition-[background-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:bg-[var(--ega-gold-strong)] hover:shadow-[var(--ega-shadow-md)] active:translate-y-0 active:shadow-none focus-visible:ring-2 focus-visible:ring-[var(--ega-gold)] disabled:translate-y-0 disabled:shadow-none motion-reduce:transition-none"
+    >
+      {pending ? (
+        <span
+          className="h-2 w-2 animate-pulse rounded-full bg-current motion-reduce:animate-none"
+          aria-hidden="true"
+        />
+      ) : (
+        <Plus className="h-4 w-4" aria-hidden="true" />
+      )}
+      <span>{pending ? "Creating..." : label}</span>
+    </Button>
+  );
+}
+
 function getDraftErrors(draft: MultiTaskDraft, goals: QuickTaskSheetGoal[]) {
   const errors: string[] = [];
 
@@ -408,7 +437,13 @@ function QuickTaskSheetPanel({
   return (
     <>
       <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
-        <div className="min-w-0 space-y-1.5">
+        <span
+          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--ega-gold-soft)] text-[var(--ega-gold-strong)] ring-1 ring-[var(--ega-gold-ring)]"
+          aria-hidden="true"
+        >
+          <Plus className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1 space-y-1.5">
           <p className="glass-label text-signal-live">Execution Capture</p>
           <DialogPrimitive.Title
             id="quick-task-sheet-title"
@@ -420,8 +455,7 @@ function QuickTaskSheetPanel({
             id="quick-task-sheet-description"
             className="max-w-lg text-sm leading-5 text-[color:var(--muted-foreground)]"
           >
-            Create one task fast or stage multiple tasks in a single pass. Ownership stays
-            server-side under the current RLS model.
+            Capture one task now, or switch to batch to stage several at once.
           </DialogPrimitive.Description>
         </div>
 
@@ -452,9 +486,25 @@ function QuickTaskSheetPanel({
             onValueChange={(value) => onTabChange(value as "single" | "multi")}
             className="flex h-full min-h-0 flex-col gap-4"
           >
-            <TabsList>
-              <TabsTrigger value="single">Single</TabsTrigger>
-              <TabsTrigger value="multi">Multi</TabsTrigger>
+            <TabsList
+              role="group"
+              aria-label="Task creation mode"
+              className="rounded-xl bg-[var(--ega-surface-muted)] p-1"
+            >
+              <TabsTrigger
+                value="single"
+                aria-pressed={activeTab === "single"}
+                className="min-h-10 rounded-lg"
+              >
+                Single
+              </TabsTrigger>
+              <TabsTrigger
+                value="multi"
+                aria-pressed={activeTab === "multi"}
+                className="min-h-10 rounded-lg"
+              >
+                Batch
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="single" className="flex min-h-0 flex-1 flex-col gap-4">
@@ -873,19 +923,21 @@ function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex items-center justify-between border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-3 sm:-mx-6 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex items-center justify-between border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
                   <DialogPrimitive.Close asChild>
-                    <Button type="button" variant="ghost" className="min-h-11 px-3">
+                    <Button
+                      type="button"
+                      variant="muted"
+                      className="min-h-11 min-w-24 rounded-lg px-4 shadow-none"
+                    >
                       Cancel
                     </Button>
                   </DialogPrimitive.Close>
-                  <Button
-                    type="submit"
-                    disabled={isSinglePending || hasCommandError}
-                    className="min-h-11 min-w-36 rounded-md border border-[var(--ega-gold)] bg-[var(--ega-gold)] px-5 font-semibold text-[var(--ega-text)] shadow-sm hover:bg-[var(--ega-gold-strong)]"
-                  >
-                    {isSinglePending ? "Creating..." : "Create task"}
-                  </Button>
+                  <QuickTaskSubmitButton
+                    label="Create task"
+                    pending={isSinglePending}
+                    disabled={hasCommandError}
+                  />
                 </div>
               </form>
             </TabsContent>
@@ -1161,25 +1213,27 @@ function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-3 sm:-mx-6 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex flex-col items-stretch justify-between gap-2 border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
                   <p className="text-xs text-[color:var(--muted-foreground)]" aria-live="polite">
                     {invalidDraftCount > 0
                       ? `${invalidDraftCount} of ${drafts.length} task${drafts.length === 1 ? "" : "s"} need attention`
                       : `${readyDraftCount} task${readyDraftCount === 1 ? "" : "s"} ready`}
                   </p>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-end gap-2">
                     <DialogPrimitive.Close asChild>
-                      <Button type="button" variant="ghost" className="min-h-11 px-3">
+                      <Button
+                        type="button"
+                        variant="muted"
+                        className="min-h-11 min-w-20 rounded-lg px-4 shadow-none"
+                      >
                         Cancel
                       </Button>
                     </DialogPrimitive.Close>
-                    <Button
-                      type="submit"
-                      disabled={isBulkPending || readyDraftCount === 0 || invalidDraftCount > 0}
-                      className="min-h-11 min-w-36 rounded-md border border-[var(--ega-gold)] bg-[var(--ega-gold)] px-5 font-semibold text-[var(--ega-text)] shadow-sm hover:bg-[var(--ega-gold-strong)]"
-                    >
-                      {isBulkPending ? "Creating..." : "Create tasks"}
-                    </Button>
+                    <QuickTaskSubmitButton
+                      label="Create tasks"
+                      pending={isBulkPending}
+                      disabled={readyDraftCount === 0 || invalidDraftCount > 0}
+                    />
                   </div>
                 </div>
               </form>
@@ -1283,7 +1337,7 @@ export function QuickTaskSheet({
             }
             lastFocusedElementRef.current = null;
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex h-[calc(100dvh-2rem)] max-h-[50rem] w-[calc(100vw-1rem)] max-w-[35rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex h-[calc(100dvh-2rem)] max-h-[50rem] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
         >
           {open ? (
             <QuickTaskSheetPanel
