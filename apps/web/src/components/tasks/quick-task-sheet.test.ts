@@ -149,7 +149,11 @@ test("quick task command errors include goal and blocked errors", () => {
   );
   assert.match(singleModeSection, /parsedSingleCommand\.goalError/);
   assert.match(singleModeSection, /parsedSingleCommand\.blockedError/);
-  assert.match(singleModeSection, /disabled=\{isSinglePending \|\| hasCommandError\}/);
+  assert.match(quickTaskSheetSource, /disabled=\{pending \|\| disabled\}/);
+  assert.match(
+    singleModeSection,
+    /<QuickTaskSubmitButton[\s\S]+pending=\{isSinglePending\}[\s\S]+disabled=\{hasCommandError\}/,
+  );
   assert.match(singleModeSection, /if \(hasCommandError\)/);
 });
 
