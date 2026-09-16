@@ -1034,11 +1034,60 @@ select {
   grid-template-columns: minmax(0, 1fr) clamp(18rem, 21vw, 22rem);
 }
 
+/*
+ * Tasks Kanban board columns respond to the board's own container width, not
+ * just the viewport. This prevents four columns from being squeezed into a
+ * narrow main column while a secondary rail also consumes width.
+ */
+.tasks-board-container {
+  container-type: inline-size;
+}
+
 .tasks-kanban-board {
   display: grid;
   gap: clamp(0.75rem, 1vw, 1rem);
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
+}
+
+@container (min-width: 42rem) {
+  .tasks-kanban-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 60rem) {
+  .tasks-kanban-board {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 78rem) {
+  .tasks-kanban-board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+/*
+ * Active timer: the elapsed-duration rail must not reserve a fixed 18rem column
+ * inside an already narrow rail. It splits only when its own container is wide
+ * enough; otherwise duration stacks below the task copy.
+ */
+.active-timer-card {
+  container-type: inline-size;
+}
+
+.active-timer-display-grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@container (min-width: 40rem) {
+  .active-timer-display-grid {
+    grid-template-columns: minmax(0, 1fr) 18rem;
+  }
 }
 
 .tasks-kanban-column {
@@ -1052,6 +1101,91 @@ select {
 .tasks-kanban-card-actions > form,
 .tasks-kanban-card-actions > details {
   flex: 0 1 auto;
+}
+
+/* Compact Tasks filter toolbar: trigger + active chips + sort, options behind one disclosure. */
+.tasks-filter-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.tasks-filter-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--ega-surface);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tasks-filter-trigger:hover {
+  border-color: var(--ega-border-strong);
+}
+
+.tasks-filter-trigger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.tasks-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--ega-text);
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.tasks-filter-panel {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem 1.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--ega-surface);
+}
+
+.tasks-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2rem;
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.tasks-filter-chip {
+  text-decoration: none;
+}
+
+.tasks-filter-clear {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.tasks-filter-sort {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
 }
 
 .ega-glass-workspace,
@@ -1415,6 +1549,72 @@ select {
   padding-right: 0;
 }
 
+/* Compact analytics filter toolbar (EGA-655): visible selects + one disclosure. */
+.analytics-filter-controls-compact {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.analytics-filter-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.analytics-filter-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.analytics-filter-select {
+  height: 2rem;
+  min-width: 9rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--ega-surface);
+  padding: 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--foreground);
+}
+
+.analytics-filter-select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.analytics-filter-more {
+  min-width: 0;
+}
+
+.analytics-filter-more-trigger {
+  display: inline-flex;
+  align-items: center;
+  height: 2rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--ega-surface);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.analytics-filter-more-panel {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--ega-surface);
+}
+
 .analytics-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1431,6 +1631,117 @@ select {
 
 .analytics-summary-grid .text-2xl {
   overflow-wrap: anywhere;
+}
+
+/* EGA-655 analytics hierarchy: compact KPI strip, dominant chart, one accuracy comparison. */
+.analytics-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.analytics-kpi {
+  min-width: 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.analytics-kpi-value {
+  margin-top: 0.35rem;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-kpi-detail {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.analytics-context-card {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 0.6rem 1rem;
+}
+
+.analytics-context-trigger {
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.analytics-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem 1.5rem;
+  margin-top: 0.75rem;
+  padding-bottom: 0.5rem;
+}
+
+.analytics-context-grid dt {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.analytics-context-grid dd {
+  font-size: 0.85rem;
+  color: var(--foreground);
+}
+
+.analytics-accuracy-comparison {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.analytics-accuracy-secondary {
+  margin-top: 0.85rem;
+}
+
+.analytics-visualization-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.analytics-primary-chart {
+  min-width: 0;
+}
+
+.analytics-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .analytics-kpi-strip,
+  .analytics-secondary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .analytics-kpi-strip,
+  .analytics-secondary-grid,
+  .analytics-context-grid,
+  .analytics-accuracy-comparison {
+    grid-template-columns: 1fr;
+  }
 }
 
 .today-work-grid {
@@ -1926,10 +2237,6 @@ select {
     position: static;
   }
 
-  .tasks-kanban-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .today-work-grid {
     grid-template-columns: 1fr;
   }
@@ -1952,10 +2259,6 @@ select {
     border-right: 0;
   }
 
-  .tasks-kanban-board {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .today-focus-row {
     grid-template-columns: auto minmax(0, 1fr);
   }
@@ -1963,12 +2266,6 @@ select {
   .today-focus-row .today-cockpit-actions {
     grid-column: 2;
     justify-content: flex-start;
-  }
-}
-
-@media (max-width: 900px) {
-  .tasks-kanban-board {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -2009,10 +2306,6 @@ select {
 
   .today-operator-state-strip span:nth-child(3) {
     border-right: 1px solid rgba(244, 239, 227, 0.18);
-  }
-
-  .tasks-kanban-board {
-    grid-template-columns: 1fr;
   }
 
   .tasks-kanban-card-actions {

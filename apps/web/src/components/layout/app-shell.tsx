@@ -8,6 +8,7 @@ import { Sidebar, type SidebarGoal, type SidebarProject } from "./sidebar";
 import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
 import { TopBar } from "./top-bar";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
+import { GlobalQuickActionControllers } from "./global-quick-action-controllers";
 import "./editorial-shell.css";
 import "./editorial-shell-responsive.css";
 
@@ -112,14 +113,15 @@ export async function AppShell({
         className,
       )}
     >
-      <Sidebar projects={projects} goals={goals} metrics={metrics} />
+      <Sidebar projects={projects} metrics={metrics} />
 
       <main className="ega-main workspace-main">
         <WorkspaceKeyboardShortcuts />
+        <GlobalQuickActionControllers projects={projects} goals={goals} />
         <TopBar
           metrics={metrics}
           mobileNavigation={
-            <SidebarMobileDrawer projects={projects} goals={goals} metrics={metrics} />
+            <SidebarMobileDrawer projects={projects} metrics={metrics} />
           }
         />
 

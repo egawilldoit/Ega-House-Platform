@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Inbox, Loader2, X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,18 +13,16 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 
 import { captureInboxIdea } from "./capture-action";
-import { QuickTaskSheet } from "@/components/tasks/quick-task-sheet";
 import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
 export { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
 const DRAFT_STORAGE_KEY = "ega:inbox-quick-capture-draft";
 
- type Draft = {
+type Draft = {
   title: string;
   body: string;
   idempotencyKey: string;
@@ -70,12 +68,14 @@ function clearDraftStorage() {
   } catch {}
 }
 
-type InboxQuickCaptureProps = {
-  projects?: { id: string; name: string }[];
-  goals?: { id: string; title: string; project_id: string }[];
-};
-
-export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptureProps) {
+/**
+ * The single Inbox Capture controller.
+ *
+ * Mount once per workspace shell (see GlobalQuickActionControllers). It owns the
+ * capture sheet, draft persistence, and the INBOX_CAPTURE_EVENT listener.
+ * Navigation surfaces only render triggers that dispatch the event.
+ */
+export function InboxCaptureSheet() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -84,7 +84,7 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const idempotencyKeyRef = useRef<string>(createIdempotencyKey());
-  // Restore draft on mount and when opening
+
   useEffect(() => {
     const draft = loadDraft();
     if (draft) {
@@ -97,18 +97,14 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
 
   useEffect(() => {
     if (!open) return;
-    // When opening, focus the title input
     const timer = window.requestAnimationFrame(() => {
       document.getElementById("inbox-capture-title")?.focus();
     });
     return () => window.cancelAnimationFrame(timer);
   }, [open]);
 
-  // Persist draft whenever title/body/key changes while open or on change
   useEffect(() => {
     if (!title && !body) {
-      // Do not store empty draft if no content; but keep key for retry if pending failure?
-      // We still store if we have a pending key and error (to preserve retry key)
       if (error) {
         saveDraft({ title, body, idempotencyKey: idempotencyKeyRef.current });
       }
@@ -117,7 +113,6 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
     saveDraft({ title, body, idempotencyKey: idempotencyKeyRef.current });
   }, [title, body, error]);
 
-  // Listen for global shortcut event
   useEffect(() => {
     const handler = () => {
       setOpen(true);
@@ -130,8 +125,6 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
 
   const closeSheet = useCallback(() => {
     setOpen(false);
-    // Do not clear draft on close if there is pending error? Keep draft for retry.
-    // Only clear error/success when closing via explicit close; draft remains in storage.
     setError(null);
     setSuccess(null);
   }, []);
@@ -147,12 +140,10 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
       setPending(true);
       setError(null);
       setSuccess(null);
-      // Ensure we have a stable key for this attempt; reuse existing key for retries until success
       if (!idempotencyKeyRef.current) {
         idempotencyKeyRef.current = createIdempotencyKey();
       }
       const keyToUse = idempotencyKeyRef.current;
-      // Persist draft before network call (so retry has same key)
       saveDraft({ title, body, idempotencyKey: keyToUse });
 
       try {
@@ -162,28 +153,22 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
           idempotencyKey: keyToUse,
         });
         if (!result.ok) {
-          // Preserve draft and key for retry; do not claim success
           setError(result.error);
           return;
         }
-        // Success: clear draft and key, reset form, update UI without full-page refresh
         setSuccess("Idea captured.");
         setTitle("");
         setBody("");
         clearDraftStorage();
         idempotencyKeyRef.current = createIdempotencyKey();
-        // Update local/query state without full-page refresh: router.refresh triggers soft revalidation
         router.refresh();
-        // Small delay then close to show success feedback
         window.setTimeout(() => {
           setOpen(false);
           setSuccess(null);
         }, 600);
       } catch (err) {
-        // Network or unexpected failure: keep draft, show error, never report false success
         const message = err instanceof Error ? err.message : "Unable to capture idea right now.";
         setError(message);
-        // draft already saved, key preserved for retry
       } finally {
         setPending(false);
       }
@@ -202,27 +187,7 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
   };
 
   return (
-    <>
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetTrigger asChild>
-        <Button
-          className="workspace-capture-trigger mx-2.5 mt-2 h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-2.5 rounded-none border border-[var(--workspace-citrus)] bg-[var(--workspace-citrus)] px-3 py-2.5 text-left text-[var(--workspace-black)] shadow-none hover:bg-[#ffe566]"
-          aria-label="Capture to Inbox"
-          title="Capture to Inbox"
-          data-testid="inbox-quick-capture-trigger"
-        >
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/16 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]">
-            <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
-          </span>
-          <span className="workspace-capture-trigger-copy min-w-0">
-            <span className="block text-sm font-semibold leading-5 tracking-normal">Capture</span>
-            <span className="mt-0.5 block text-xs font-semibold leading-4 text-black/65">
-              Idea, task, reminder, or note.
-            </span>
-          </span>
-        </Button>
-      </SheetTrigger>
-
       <SheetContent
         className="flex flex-col"
         aria-label="Inbox quick capture sheet"
@@ -335,7 +300,7 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
                     Capturing...
                   </>
                 ) : (
-                    "Capture"
+                  "Capture"
                 )}
               </Button>
             </div>
@@ -348,7 +313,5 @@ export function InboxQuickCapture({ projects = [], goals = [] }: InboxQuickCaptu
         </div>
       </SheetContent>
     </Sheet>
-    <QuickTaskSheet projects={projects} goals={goals} showTrigger={false} />
-    </>
   );
 }

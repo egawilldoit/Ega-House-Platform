@@ -10,12 +10,17 @@ vi.mock("next/image", () => ({
 }));
 
 vi.mock("lucide-react", () => ({
+  Inbox: () => <svg aria-hidden="true" />,
   PanelLeftClose: () => <svg aria-hidden="true" />,
   PanelLeftOpen: () => <svg aria-hidden="true" />,
 }));
 
-vi.mock("@/components/inbox/inbox-quick-capture", () => ({
-  InboxQuickCapture: () => <button type="button">Capture</button>,
+vi.mock("@/components/inbox/inbox-capture-trigger", () => ({
+  InboxCaptureTrigger: () => <button type="button">Capture</button>,
+}));
+
+vi.mock("./sidebar-create-task", () => ({
+  SidebarCreateTaskButton: () => <button type="button">Create task</button>,
 }));
 
 vi.mock("./sidebar-navigation", () => ({
@@ -56,7 +61,7 @@ describe("Sidebar collapse control", () => {
     });
 
     const sidebar = container.querySelector<HTMLElement>(".workspace-sidebar");
-    const toggle = container.querySelector<HTMLButtonElement>("[data-testid=workspace-sidebar-collapse]");
+    const toggle = container.querySelector<HTMLButtonElement>("[data-testid=sidebar-collapse-toggle]");
     const navigation = container.querySelector<HTMLElement>("[data-testid=sidebar-navigation]");
     expect(sidebar?.dataset.collapsed).toBe("false");
     expect(toggle?.getAttribute("aria-pressed")).toBe("false");
@@ -67,7 +72,7 @@ describe("Sidebar collapse control", () => {
     });
 
     expect(sidebar?.dataset.collapsed).toBe("true");
-    expect(toggle?.getAttribute("aria-label")).toBe("Expand workspace sidebar");
+    expect(toggle?.getAttribute("aria-label")).toBe("Expand sidebar");
     expect(toggle?.getAttribute("aria-pressed")).toBe("true");
     expect(navigation?.dataset.compact).toBe("true");
   });

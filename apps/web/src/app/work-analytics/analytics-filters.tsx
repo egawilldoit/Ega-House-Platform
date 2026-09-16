@@ -5,6 +5,9 @@ import { useCallback, useMemo, useTransition } from "react";
 import { FilterPill } from "@/components/ui/filter-pill";
 import {
   buildFilterHref,
+  DEFAULT_BREAKDOWN_BY,
+  DEFAULT_GROUP_BY,
+  DEFAULT_RANGE,
   RANGE_LABELS,
   GROUP_BY_LABELS,
   BREAKDOWN_BY_LABELS,
@@ -32,6 +35,13 @@ const AVAILABLE_BREAKDOWN_BYS: AnalyticsBreakdownBy[] = [
   "task",
 ];
 
+/**
+ * Compact, URL-authoritative analytics filter toolbar.
+ *
+ * Range / Group by / Breakdown are visible selects (selected state always
+ * visible); Include open sessions lives behind one disclosure. The URL remains
+ * the single source of truth — no local state can disagree with it.
+ */
 export function AnalyticsFilters() {
   const pathname = usePathname();
   const router = useRouter();
@@ -44,11 +54,11 @@ export function AnalyticsFilters() {
   );
 
   const currentRange: AnalyticsRange =
-    (searchParams.get("range") as AnalyticsRange) ?? "30d";
+    (searchParams.get("range") as AnalyticsRange) ?? DEFAULT_RANGE;
   const currentGroupBy: AnalyticsGroupBy =
-    (searchParams.get("groupBy") as AnalyticsGroupBy) ?? "day";
+    (searchParams.get("groupBy") as AnalyticsGroupBy) ?? DEFAULT_GROUP_BY;
   const currentBreakdownBy: AnalyticsBreakdownBy =
-    (searchParams.get("breakdownBy") as AnalyticsBreakdownBy) ?? "project";
+    (searchParams.get("breakdownBy") as AnalyticsBreakdownBy) ?? DEFAULT_BREAKDOWN_BY;
   const currentIncludeOpen = searchParams.get("includeOpen") === "true";
 
   const navigate = useCallback(
@@ -63,86 +73,91 @@ export function AnalyticsFilters() {
   );
 
   return (
-    <div className="analytics-filter-controls">
-      {/* Range selector */}
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-          Range
-        </legend>
-        <div className="flex flex-wrap gap-1">
+    <div className="analytics-filter-controls analytics-filter-controls-compact">
+      <label className="analytics-filter-field">
+        <span className="analytics-filter-label">Range</span>
+        <select
+          className="analytics-filter-select"
+          data-testid="analytics-filter-range"
+          value={currentRange}
+          disabled={isPending}
+          onChange={(event) =>
+            navigate("range", event.target.value === DEFAULT_RANGE ? null : event.target.value)
+          }
+        >
           {AVAILABLE_RANGES.map((r) => (
-            <FilterPill
-              key={r}
-              onClick={() => navigate("range", r === "30d" ? null : r)}
-              label={RANGE_LABELS[r]}
-              active={currentRange === r}
-              ariaCurrent={currentRange === r ? "page" : undefined}
-              disabled={isPending}
-            />
+            <option key={r} value={r}>
+              {RANGE_LABELS[r]}
+            </option>
           ))}
-        </div>
-      </fieldset>
+        </select>
+      </label>
 
-      {/* Group by selector */}
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-          Group by
-        </legend>
-        <div className="flex flex-wrap gap-1">
+      <label className="analytics-filter-field">
+        <span className="analytics-filter-label">Group by</span>
+        <select
+          className="analytics-filter-select"
+          data-testid="analytics-filter-group-by"
+          value={currentGroupBy}
+          disabled={isPending}
+          onChange={(event) =>
+            navigate("groupBy", event.target.value === DEFAULT_GROUP_BY ? null : event.target.value)
+          }
+        >
           {AVAILABLE_GROUP_BYS.map((g) => (
-            <FilterPill
-              key={g}
-              onClick={() => navigate("groupBy", g === "day" ? null : g)}
-              label={GROUP_BY_LABELS[g]}
-              active={currentGroupBy === g}
-              ariaCurrent={currentGroupBy === g ? "page" : undefined}
-              disabled={isPending}
-            />
+            <option key={g} value={g}>
+              {GROUP_BY_LABELS[g]}
+            </option>
           ))}
-        </div>
-      </fieldset>
+        </select>
+      </label>
 
-      {/* Breakdown by selector */}
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-          Breakdown
-        </legend>
-        <div className="flex flex-wrap gap-1">
+      <label className="analytics-filter-field">
+        <span className="analytics-filter-label">Breakdown</span>
+        <select
+          className="analytics-filter-select"
+          data-testid="analytics-filter-breakdown"
+          value={currentBreakdownBy}
+          disabled={isPending}
+          onChange={(event) =>
+            navigate(
+              "breakdownBy",
+              event.target.value === DEFAULT_BREAKDOWN_BY ? null : event.target.value,
+            )
+          }
+        >
           {AVAILABLE_BREAKDOWN_BYS.map((b) => (
+            <option key={b} value={b}>
+              {BREAKDOWN_BY_LABELS[b]}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <details className="analytics-filter-more">
+        <summary className="analytics-filter-more-trigger" data-testid="analytics-filter-more">
+          More filters{currentIncludeOpen ? " · open sessions on" : ""}
+        </summary>
+        <div className="analytics-filter-more-panel">
+          <span className="analytics-filter-label">Include open sessions</span>
+          <div className="flex flex-wrap gap-1">
             <FilterPill
-              key={b}
-              onClick={() => navigate("breakdownBy", b === "project" ? null : b)}
-              label={BREAKDOWN_BY_LABELS[b]}
-              active={currentBreakdownBy === b}
-              ariaCurrent={currentBreakdownBy === b ? "page" : undefined}
+              onClick={() => navigate("includeOpen", null)}
+              label="Off"
+              active={!currentIncludeOpen}
+              ariaCurrent={!currentIncludeOpen ? "page" : undefined}
               disabled={isPending}
             />
-          ))}
+            <FilterPill
+              onClick={() => navigate("includeOpen", "true")}
+              label="On"
+              active={currentIncludeOpen}
+              ariaCurrent={currentIncludeOpen ? "page" : undefined}
+              disabled={isPending}
+            />
+          </div>
         </div>
-      </fieldset>
-
-      {/* Include open sessions toggle */}
-      <fieldset>
-        <legend className="mb-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-          Include open sessions
-        </legend>
-        <div className="flex flex-wrap gap-1">
-          <FilterPill
-            onClick={() => navigate("includeOpen", null)}
-            label="Off"
-            active={!currentIncludeOpen}
-            ariaCurrent={!currentIncludeOpen ? "page" : undefined}
-            disabled={isPending}
-          />
-          <FilterPill
-            onClick={() => navigate("includeOpen", "true")}
-            label="On"
-            active={currentIncludeOpen}
-            ariaCurrent={currentIncludeOpen ? "page" : undefined}
-            disabled={isPending}
-          />
-        </div>
-      </fieldset>
+      </details>
 
       {/* Loading bar — visible during filter transitions */}
       <div

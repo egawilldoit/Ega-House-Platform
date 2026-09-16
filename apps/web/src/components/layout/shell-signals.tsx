@@ -107,6 +107,48 @@ export function SidebarSignalBadge({
   );
 }
 
+export function getTopBarTimerSignal(metrics: WorkspaceShellMetrics): TopBarShellSignal | null {
+  return metrics.hasActiveTimer ? { href: "/timer", label: "Timer active", tone: "active" } : null;
+}
+
+/**
+ * One compact attention signal: the highest-priority non-timer shell signal.
+ *
+ * The top bar intentionally shows a single attention control instead of a row of
+ * competing badges; the canonical href and label are preserved from the shared
+ * shell signals so no destination is lost.
+ */
+export function getTopBarAttentionSignal(metrics: WorkspaceShellMetrics): TopBarShellSignal | null {
+  return getTopBarShellSignals(metrics).find((signal) => signal.tone !== "active") ?? null;
+}
+
+export function TopBarCompactSignals({ metrics }: { metrics: WorkspaceShellMetrics }) {
+  const canonicalUrl = useCanonicalUrl();
+  const timerSignal = getTopBarTimerSignal(metrics);
+  const attentionSignal = getTopBarAttentionSignal(metrics);
+
+  if (!timerSignal && !attentionSignal) {
+    return null;
+  }
+
+  return (
+    <div className="hidden items-center gap-2 xl:flex" data-testid="topbar-compact-signals">
+      {timerSignal ? (
+        <Link href={canonicalUrl.resolve(timerSignal.href)}>
+          <Badge tone={timerSignal.tone}>{timerSignal.label}</Badge>
+        </Link>
+      ) : null}
+      {attentionSignal ? (
+        <Link href={canonicalUrl.resolve(attentionSignal.href)}>
+          <Badge tone={attentionSignal.tone} aria-label={attentionSignal.label}>
+            {attentionSignal.label}
+          </Badge>
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 export function TopBarSignalCluster({ metrics }: { metrics: WorkspaceShellMetrics }) {
   const signals = getTopBarShellSignals(metrics);
   const canonicalUrl = useCanonicalUrl();

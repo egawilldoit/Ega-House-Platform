@@ -40,8 +40,8 @@
   }
 
   [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-list {
-    max-height: min(31dvh, 18rem);
-    overflow-y: auto;
+    max-height: none;
+    overflow-y: visible;
   }
 
   [data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-section-heading {
