@@ -138,50 +138,52 @@ export function WorkspaceNavigationDrawer({
   return (
     <WorkspaceDrawerContext.Provider value={drawerControls}>
       <div className="workspace-mobile-navigation">
-      <button
-        ref={triggerRef}
-        type="button"
-        className="workspace-nav-trigger"
-        aria-label="Open workspace navigation"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen(true)}
-      >
-        <Menu aria-hidden="true" />
-        <span>Menu</span>
-      </button>
+        <button
+          ref={triggerRef}
+          type="button"
+          className="workspace-nav-trigger"
+          aria-label="Open workspace navigation"
+          title="Open workspace navigation"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen(true)}
+        >
+          <Menu aria-hidden="true" />
+          <span>Menu</span>
+        </button>
 
-      {open ? (
-        <div className="workspace-drawer-layer">
-          <button
-            type="button"
-            className="workspace-drawer-backdrop"
-            aria-label="Close workspace navigation"
-            onClick={() => closeDrawer()}
-          />
-          <div
-            ref={panelRef}
-            id={panelId}
-            role="dialog"
-            aria-modal="true"
-            aria-label={label}
-            tabIndex={-1}
-            className="workspace-drawer-panel workspace-drawer-panel-enter"
-            onClickCapture={onPanelClick}
-          >
-            {children}
+        {open ? (
+          <div className="workspace-drawer-layer">
             <button
               type="button"
-              className="workspace-drawer-close"
-              aria-label="Close workspace navigation panel"
+              className="workspace-drawer-backdrop"
+              aria-label="Close workspace navigation"
               onClick={() => closeDrawer()}
+            />
+            <div
+              ref={panelRef}
+              id={panelId}
+              role="dialog"
+              aria-modal="true"
+              aria-label={label}
+              tabIndex={-1}
+              className="workspace-drawer-panel workspace-drawer-panel-enter"
+              onClickCapture={onPanelClick}
             >
-              <X aria-hidden="true" />
-              Close
-            </button>
+              {children}
+              <button
+                type="button"
+                className="workspace-drawer-close"
+                aria-label="Close workspace navigation panel"
+                title="Close workspace navigation panel"
+                onClick={() => closeDrawer()}
+              >
+                <X aria-hidden="true" />
+                Close
+              </button>
+            </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
       </div>
     </WorkspaceDrawerContext.Provider>
   );
