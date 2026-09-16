@@ -5,6 +5,20 @@ import { describe, expect, it } from "vitest";
 const root = process.cwd();
 const pathFor = (path: string) => resolve(root, path);
 const read = (path: string) => readFileSync(pathFor(path), "utf8");
+const cssRule = (css: string, selector: string) => {
+  const selectorStart = css.indexOf(selector);
+  if (selectorStart < 0) {
+    throw new Error(`Missing CSS selector: ${selector}`);
+  }
+
+  const openingBrace = css.indexOf("{", selectorStart);
+  const closingBrace = css.indexOf("}", openingBrace);
+  if (openingBrace < 0 || closingBrace < 0) {
+    throw new Error(`Incomplete CSS rule: ${selector}`);
+  }
+
+  return css.slice(openingBrace + 1, closingBrace);
+};
 
 const requiredShellFiles = [
   "src/components/layout/editorial-shell.css",
@@ -81,13 +95,27 @@ describe("editorial authenticated workspace shell", () => {
   it("keeps full labels in the mobile drawer and leaves tablet navigation expanded", () => {
     const css = read("src/components/layout/editorial-shell-responsive.css");
     const shellCss = read("src/components/layout/editorial-shell.css");
+    const mobileProjectListRule = cssRule(
+      css,
+      '[data-workspace-theme="editorial"] .workspace-drawer-panel .sidebar-project-list',
+    );
+    const desktopSidebarNavRule = cssRule(
+      shellCss,
+      '[data-workspace-theme="editorial"] .workspace-sidebar-nav',
+    );
+    const desktopProjectListRule = cssRule(
+      shellCss,
+      '[data-workspace-theme="editorial"] .sidebar-project-list',
+    );
+    const drawerPanelRule = cssRule(shellCss, ".workspace-drawer-panel");
+    const drawerNavRule = cssRule(shellCss, ".workspace-drawer-panel > .workspace-sidebar-nav");
 
     expect(css).toContain(".workspace-drawer-panel .workspace-nav-label");
     expect(css).toContain(".workspace-drawer-panel .workspace-nav-index");
     expect(css).toContain(".workspace-drawer-panel .sidebar-section-label");
     expect(css).toContain("display: inline");
-    expect(css).toContain(".workspace-drawer-panel .sidebar-project-list");
-    expect(css).toContain("overflow-y: visible");
+    expect(mobileProjectListRule).toContain("max-height: none;");
+    expect(mobileProjectListRule).toContain("overflow-y: visible;");
     expect(css).toContain("@media (max-width: 760px)");
     expect(css).not.toContain("@media (min-width: 761px) and (max-width: 1180px)");
     expect(css).not.toMatch(/\.workspace-sidebar\s+\.sidebar-general-section\s+form\s+\.sidebar-link\s*\{/);
@@ -97,10 +125,11 @@ describe("editorial authenticated workspace shell", () => {
 
     expect(shellCss).toContain("@media (min-width: 761px) and (max-width: 1180px)");
     expect(shellCss).toContain(".workspace-sidebar-collapse");
-    expect(shellCss).toContain(".workspace-sidebar-nav");
-    expect(shellCss).toContain("overflow-y: auto");
-    expect(shellCss).toContain(".workspace-drawer-panel > .workspace-sidebar-nav");
-    expect(shellCss).toContain("overflow-y: visible");
+    expect(desktopSidebarNavRule).toContain("min-height: 0;");
+    expect(desktopSidebarNavRule).toContain("overflow-y: auto;");
+    expect(desktopProjectListRule).toContain("overflow-y: visible;");
+    expect(drawerPanelRule).toContain("overflow-y: auto;");
+    expect(drawerNavRule).toContain("overflow-y: visible;");
   });
 
   it("supports explicit expanded and icon-rail sidebar states", () => {

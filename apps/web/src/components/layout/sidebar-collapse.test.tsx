@@ -33,6 +33,11 @@ import { Sidebar } from "./sidebar";
 
 let container: HTMLDivElement;
 let root: Root;
+let hadActEnvironment = false;
+let previousActEnvironment: boolean | undefined;
+const actEnvironmentGlobal = globalThis as typeof globalThis & {
+  IS_REACT_ACT_ENVIRONMENT?: boolean;
+};
 
 const metrics = buildWorkspaceShellMetrics({
   hasActiveTimer: false,
@@ -43,7 +48,9 @@ const metrics = buildWorkspaceShellMetrics({
 });
 
 beforeEach(() => {
-  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  hadActEnvironment = Object.prototype.hasOwnProperty.call(actEnvironmentGlobal, "IS_REACT_ACT_ENVIRONMENT");
+  previousActEnvironment = actEnvironmentGlobal.IS_REACT_ACT_ENVIRONMENT;
+  actEnvironmentGlobal.IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -52,6 +59,11 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  if (hadActEnvironment) {
+    actEnvironmentGlobal.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  } else {
+    delete actEnvironmentGlobal.IS_REACT_ACT_ENVIRONMENT;
+  }
 });
 
 describe("Sidebar collapse control", () => {
