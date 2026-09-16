@@ -142,19 +142,43 @@
 
 [data-workspace-theme="editorial"] .workspace-create-task .workspace-create-task-trigger {
   width: 100%;
-  min-height: 2.5rem;
-  border: 1px solid rgba(255, 249, 237, 0.3);
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.04);
+  min-height: 3rem;
+  border: 1px solid rgba(255, 212, 0, 0.48);
+  border-left: 3px solid var(--workspace-citrus);
+  border-radius: 3px;
+  background: rgba(255, 212, 0, 0.06);
   color: var(--workspace-cream);
   box-shadow: none;
-  font-family: var(--font-mono);
-  letter-spacing: 0.04em;
+  font-family: var(--font-body);
+  letter-spacing: normal;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
 }
 
 [data-workspace-theme="editorial"] .workspace-create-task .workspace-create-task-trigger:hover {
-  border-color: rgba(255, 249, 237, 0.5);
-  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--workspace-citrus);
+  background: rgba(255, 212, 0, 0.13);
+}
+
+[data-workspace-theme="editorial"] .workspace-create-task .workspace-create-task-trigger:focus-visible {
+  outline: 2px solid var(--workspace-citrus);
+  outline-offset: 2px;
+}
+
+[data-workspace-theme="editorial"] .workspace-create-task .workspace-create-task-icon {
+  border-color: var(--workspace-citrus);
+  background: var(--workspace-citrus);
+  color: var(--workspace-black);
+}
+
+[data-workspace-theme="editorial"] .workspace-create-task-shortcut {
+  border: 1px solid rgba(255, 249, 237, 0.24);
+  border-radius: 2px;
+  padding: 0.2rem 0.35rem;
+  color: rgba(255, 249, 237, 0.78);
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 [data-workspace-theme="editorial"] .workspace-sidebar-nav {
