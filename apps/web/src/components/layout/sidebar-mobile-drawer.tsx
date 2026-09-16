@@ -16,6 +16,9 @@ import { InboxQuickCapture } from "@/components/inbox/inbox-quick-capture";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { SidebarNavigation, type SidebarGoal, type SidebarProject } from "./sidebar-navigation";
 
+const DRAWER_FOCUSABLE_SELECTOR =
+  "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+
 type WorkspaceNavigationDrawerProps = {
   children: ReactNode;
   label?: string;
@@ -45,15 +48,31 @@ export function WorkspaceNavigationDrawer({
     previousOverflowRef.current = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const focusTarget = panelRef.current?.querySelector<HTMLElement>(
-      "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])",
-    );
+    const focusTarget = panelRef.current?.querySelector<HTMLElement>(DRAWER_FOCUSABLE_SELECTOR);
     focusTarget?.focus();
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         closeDrawer();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+
+      const focusable = panelRef.current
+        ? Array.from(panelRef.current.querySelectorAll<HTMLElement>(DRAWER_FOCUSABLE_SELECTOR))
+        : [];
+      if (focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
       }
     }
 
@@ -78,6 +97,7 @@ export function WorkspaceNavigationDrawer({
         type="button"
         className="workspace-nav-trigger"
         aria-label="Open workspace navigation"
+        title="Open workspace navigation"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={() => setOpen(true)}
@@ -100,6 +120,7 @@ export function WorkspaceNavigationDrawer({
             role="dialog"
             aria-modal="true"
             aria-label={label}
+            tabIndex={-1}
             className="workspace-drawer-panel workspace-drawer-panel-enter"
             onClickCapture={onPanelClick}
           >
@@ -108,6 +129,7 @@ export function WorkspaceNavigationDrawer({
               type="button"
               className="workspace-drawer-close"
               aria-label="Close workspace navigation panel"
+              title="Close workspace navigation panel"
               onClick={() => closeDrawer()}
             >
               <X aria-hidden="true" />

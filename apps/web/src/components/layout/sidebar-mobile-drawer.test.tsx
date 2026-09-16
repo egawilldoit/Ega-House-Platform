@@ -92,4 +92,30 @@ describe("WorkspaceNavigationDrawer", () => {
       container.querySelector('[role="dialog"][aria-label="Workspace navigation"]'),
     ).toBeNull();
   });
+
+  it("keeps keyboard focus inside the open drawer", async () => {
+    await renderDrawer();
+
+    const trigger = getButton("Open workspace navigation");
+    await click(trigger);
+
+    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const close = getButton("Close workspace navigation panel");
+    expect(link).not.toBeNull();
+    link?.focus();
+
+    await act(async () => {
+      close.focus();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    });
+    expect(document.activeElement).toBe(link);
+
+    await act(async () => {
+      link?.focus();
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
+      );
+    });
+    expect(document.activeElement).toBe(close);
+  });
 });
