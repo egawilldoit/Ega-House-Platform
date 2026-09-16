@@ -36,8 +36,8 @@ export function SidebarCreateTaskButton() {
       data-testid="sidebar-create-task"
       onClick={openCreateTask}
     >
-      <span className="workspace-create-task-icon flex h-9 w-9 shrink-0 items-center justify-center rounded-md border">
-        <Plus className="h-4 w-4" aria-hidden="true" />
+      <span className="workspace-create-task-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border">
+        <Plus className="h-[1.125rem] w-[1.125rem]" aria-hidden="true" />
       </span>
       <span className="workspace-create-task-copy flex min-w-0 flex-1 items-center justify-between gap-2">
         <span className="min-w-0">
