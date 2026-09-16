@@ -69,27 +69,45 @@ describe("editorial authenticated workspace shell", () => {
     expect(css).toContain("--workspace-cream: #f4efe3");
     expect(css).toContain("--workspace-citrus: #ffd400");
     expect(css).toContain("--workspace-signal: #ff4b2b");
-    expect(css).toContain("@media (max-width: 1180px)");
+    expect(css).toContain("max-width: 1180px");
+    expect(css).toContain("@media (min-width: 761px)");
     expect(css).toContain("@media (max-width: 760px)");
     expect(css).toContain("@media (max-width: 420px)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("overflow-x: clip");
   });
 
-  it("keeps full labels in the mobile drawer and compacts logout only in the tablet rail", () => {
+  it("keeps full labels in the mobile drawer and bounds its project list", () => {
     const css = read("src/components/layout/editorial-shell-responsive.css");
 
     expect(css).toContain(".workspace-drawer-panel .workspace-nav-label");
     expect(css).toContain(".workspace-drawer-panel .workspace-nav-index");
     expect(css).toContain(".workspace-drawer-panel .sidebar-section-label");
     expect(css).toContain("display: inline");
-    expect(css).toContain("@media (min-width: 761px) and (max-width: 1180px)");
-    expect(css).toMatch(
-      /\.workspace-sidebar\s+\.sidebar-general-section\s+form\s+\.sidebar-link\s*\{/,
-    );
-    expect(css).toContain("font-size: 0");
+    expect(css).toContain(".workspace-drawer-panel .sidebar-project-list");
+    expect(css).toContain("overflow-y: auto");
     expect(css).toContain("[data-workspace-theme=\"editorial\"]::before");
     expect(css).toContain("inset: 0");
+  });
+
+  it("supports explicit expanded and icon-rail sidebar states", () => {
+    const css = read("src/components/layout/editorial-shell.css");
+    const sidebar = read("src/components/layout/sidebar.tsx");
+    const navigation = read("src/components/layout/sidebar-navigation.tsx");
+    const logout = read("src/components/layout/sidebar-logout.tsx");
+
+    expect(css).toContain('data-collapsed="true"');
+    expect(css).toContain(".sidebar-project-list");
+    expect(css).toContain("background-color: var(--workspace-citrus)");
+    expect(css).toContain("min-height: 2.75rem");
+    expect(sidebar).toContain("data-collapsed={collapsed}");
+    expect(sidebar).toContain("compact={collapsed}");
+    expect(sidebar).toContain("workspace-sidebar-collapse");
+    expect(navigation).toContain("aria-label={route.label}");
+    expect(navigation).toContain("aria-label={project.name}");
+    expect(navigation).toContain('aria-label="View all projects"');
+    expect(logout).toContain('aria-label={isPending ? "Signing out" : "Logout"}');
+    expect(logout).toContain("workspace-nav-label");
   });
 
   it("preserves the dashboard data and failure-isolation boundaries", () => {
