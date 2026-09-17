@@ -11,14 +11,28 @@ const view = read("app", "work-analytics", "_components", "WorkAnalyticsPageView
 const interactive = read("app", "work-analytics", "interactive-analytics.tsx");
 const chart = read("components", "review", "trend-bar-chart.tsx");
 
-test("EGA-655: analytics exposes a four-metric primary KPI strip", () => {
+test("EGA-655: analytics keeps four primary metrics in one summary strip", () => {
   assert.match(view, /analytics-kpi-strip/);
-  for (const label of ["Focused time", "Active days", "Tasks completed", "Estimate accuracy"]) {
+  for (const label of [
+    "Focused time",
+    "Active days",
+    "Tasks completed",
+    "Estimate delta",
+  ]) {
     assert.match(view, new RegExp(label));
   }
-  const kpiCount = (view.match(/className="analytics-kpi"/g) ?? []).length;
-  assert.equal(kpiCount, 4, "expected exactly four primary KPI cards");
-  // Secondary metrics are integrated, not equal-weight cards.
+
+  for (const testId of [
+    "analytics-kpi-focused-time",
+    "analytics-kpi-active-days",
+    "analytics-kpi-tasks-completed",
+    "analytics-kpi-estimate-accuracy",
+  ]) {
+    assert.match(view, new RegExp(testId));
+  }
+
+  assert.match(view, /analytics-kpi-primary/);
+  assert.match(view, /analytics-detail-grid/);
   assert.match(view, /analytics-context-card/);
 });
 
@@ -28,26 +42,34 @@ test("EGA-655: estimate accuracy reads as one Estimated vs Tracked comparison", 
   assert.match(view, /Tracked/);
   assert.match(view, /report\.estimateAccuracy\.totalEstimatedMinutes/);
   assert.match(view, /report\.estimateAccuracy\.totalTrackedMinutes/);
-  // Secondary coverage context preserved.
   assert.match(view, /report\.estimateAccuracy\.noEstimateCount/);
 });
 
-test("EGA-655: one dominant historical chart with compact weekly support", () => {
+test("EGA-655: selected range owns the dominant chart with one recent support trend", () => {
   const primaryIndex = interactive.indexOf("analytics-primary-chart");
   const secondaryIndex = interactive.indexOf("analytics-secondary-grid");
   assert.ok(primaryIndex > -1 && secondaryIndex > -1);
-  assert.ok(primaryIndex < secondaryIndex, "primary chart must precede the secondary grid");
-  assert.match(interactive, /title="Last 30 days"/);
-  assert.match(interactive, /title="Last 7 days"/);
-  // Insights retained (de-emphasized), not deleted.
-  assert.match(interactive, /Insights/);
+  assert.ok(primaryIndex < secondaryIndex, "primary chart must precede the support grid");
+  assert.match(interactive, /Recent rhythm · 7 days/);
+  assert.doesNotMatch(interactive, /title="Last 30 days"/);
+  assert.doesNotMatch(interactive, /last30DaysSeries/);
 });
 
-test("EGA-655: charts keep keyboard access, labels and reduced motion", () => {
+test("EGA-655: supporting analytics use readable allocation and insight surfaces", () => {
+  assert.match(interactive, /analytics-breakdown-row/);
+  assert.match(interactive, /analytics-breakdown-track/);
+  assert.match(interactive, /analytics-insights-grid/);
+  assert.match(interactive, /Weekly delta/);
+  assert.match(interactive, /Longest session/);
+});
+
+test("EGA-655: charts keep keyboard access, labels, empty state and reduced motion", () => {
   assert.match(chart, /<button/);
-  assert.match(chart, /focus-visible:ring/);
+  assert.match(chart, /aria-label=/);
+  assert.match(chart, /focus-visible/);
   assert.match(chart, /motion-reduce:transition-none/);
   assert.match(chart, /No tracked time yet/);
+  assert.match(chart, /compact\?: boolean/);
 });
 
 test("EGA-655: primary KPI and dominant chart follow the selected range", () => {
@@ -58,13 +80,14 @@ test("EGA-655: primary KPI and dominant chart follow the selected range", () => 
   assert.match(interactive, /primaryTitle/);
 });
 
-test("EGA-655: analytics filters are compact and URL-authoritative", () => {
+test("EGA-655: analytics filters stay compact and URL-authoritative", () => {
   const filters = read("app", "work-analytics", "analytics-filters.tsx");
   assert.match(filters, /analytics-filter-controls-compact/);
   assert.match(filters, /analytics-filter-range/);
-  assert.match(filters, /analytics-filter-more/);
-  // No permanently expanded fieldsets and no local state that can disagree with the URL.
+  assert.match(filters, /analytics-open-toggle/);
+  assert.match(filters, /aria-pressed=\{currentIncludeOpen\}/);
   assert.doesNotMatch(filters, /<fieldset/);
+  assert.doesNotMatch(filters, /<details/);
   assert.doesNotMatch(filters, /useState/);
   assert.match(filters, /router\.replace/);
 });
