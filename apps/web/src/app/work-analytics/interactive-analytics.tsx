@@ -3,6 +3,7 @@
 import React from "react";
 import { TrendBarChart } from "@/components/review/trend-bar-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDurationLabel } from "@/lib/task-session";
 import {
   AnalyticsDrilldownProvider,
   useAnalyticsDrilldown,
@@ -18,15 +19,19 @@ import type {
   DrilldownIndexes,
 } from "@/lib/services/work-analytics-service";
 
-// ---- Render props types for drilldown ----
-
 type ChartSectionProps = {
   series: WorkAnalyticsDaily[];
   title: string;
   dateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
+  compact?: boolean;
 };
 
-function ChartSection({ series, title, dateDrilldownIndex }: ChartSectionProps) {
+function ChartSection({
+  series,
+  title,
+  dateDrilldownIndex,
+  compact = false,
+}: ChartSectionProps) {
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const handleBarClick = React.useCallback(
@@ -37,7 +42,51 @@ function ChartSection({ series, title, dateDrilldownIndex }: ChartSectionProps) 
     [dateDrilldownIndex, openDrilldown],
   );
 
-  return <TrendBarChart data={series} title={title} onBarClick={handleBarClick} />;
+  return (
+    <TrendBarChart
+      data={series}
+      title={title}
+      onBarClick={handleBarClick}
+      compact={compact}
+    />
+  );
+}
+
+type BreakdownRowProps = {
+  title: string;
+  meta: string;
+  workedMinutes: number;
+  relativePercent: number;
+  onClick: () => void;
+};
+
+function BreakdownRow({
+  title,
+  meta,
+  workedMinutes,
+  relativePercent,
+  onClick,
+}: BreakdownRowProps) {
+  const width = workedMinutes > 0 ? Math.max(8, relativePercent) : 0;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="analytics-breakdown-row group"
+    >
+      <div className="analytics-breakdown-row-head">
+        <span className="analytics-breakdown-row-title">{title}</span>
+        <span className="analytics-breakdown-row-value">
+          {formatDurationLabel(workedMinutes * 60)}
+        </span>
+      </div>
+      <div className="analytics-breakdown-track" aria-hidden="true">
+        <span style={{ width: `${width}%` }} />
+      </div>
+      <p className="analytics-breakdown-row-meta">{meta}</p>
+    </button>
+  );
 }
 
 type BreakdownCardProps = {
@@ -63,76 +112,43 @@ function BreakdownCard({
 }: BreakdownCardProps) {
   const { openDrilldown } = useAnalyticsDrilldown();
 
-  const handleProjectClick = React.useCallback(
-    (pb: WorkAnalyticsProjectBreakdown) => {
-      const key = pb.projectId ?? "__unknown__";
-      const sessions = projectDrilldownIndex[key] ?? [];
-      openDrilldown({
-        type: "project",
-        label: pb.projectName,
-        sessions,
-      });
-    },
-    [projectDrilldownIndex, openDrilldown],
-  );
-
-  const handleGoalClick = React.useCallback(
-    (gb: WorkAnalyticsGoalBreakdown) => {
-      const key = gb.goalId ?? "__no-goal__";
-      const sessions = goalDrilldownIndex[key] ?? [];
-      openDrilldown({
-        type: "goal",
-        label: gb.goalTitle,
-        sessions,
-      });
-    },
-    [goalDrilldownIndex, openDrilldown],
-  );
-
-  const handleTaskClick = React.useCallback(
-    (tb: WorkAnalyticsTaskBreakdown) => {
-      const sessions = taskDrilldownIndex[tb.taskId] ?? [];
-      openDrilldown({
-        type: "task",
-        label: tb.taskTitle,
-        sessions,
-      });
-    },
-    [taskDrilldownIndex, openDrilldown],
-  );
-
   if (breakdownBy === "goal") {
+    const maxMinutes = Math.max(1, ...goalBreakdown.map((item) => item.workedMinutes));
+
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
+      <Card className="analytics-breakdown-card">
+        <CardHeader className="analytics-card-heading">
+          <div>
+            <p className="analytics-section-kicker">Allocation</p>
+            <CardTitle className="text-base">{title}</CardTitle>
+          </div>
+          <p className="analytics-card-caption">Open any row for session detail</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="analytics-breakdown-list">
           {goalBreakdown.length === 0 ? (
-            "No goal data"
-          ) : (
-            <div className="space-y-2">
-              {goalBreakdown.map((gb) => (
-                <button
-                  key={gb.goalId ?? "__no-goal__"}
-                  type="button"
-                  onClick={() => handleGoalClick(gb)}
-                  className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-[color:var(--foreground)]">
-                      {gb.goalTitle}
-                    </span>
-                    <span className="text-sm text-[color:var(--muted-foreground)]">
-                      {gb.workedMinutes}m
-                    </span>
-                  </div>
-                  <div className="text-xs text-[color:var(--muted-foreground)]">
-                    {gb.projectName} · {gb.sessionCount} sessions
-                  </div>
-                </button>
-              ))}
+            <div className="surface-empty px-4 py-5 text-sm text-[color:var(--muted-foreground)]">
+              No goal data for this range.
             </div>
+          ) : (
+            goalBreakdown.map((item) => {
+              const key = item.goalId ?? "__no-goal__";
+              return (
+                <BreakdownRow
+                  key={key}
+                  title={item.goalTitle}
+                  meta={`${item.projectName} · ${item.sessionCount} session${item.sessionCount === 1 ? "" : "s"}`}
+                  workedMinutes={item.workedMinutes}
+                  relativePercent={Math.round((item.workedMinutes / maxMinutes) * 100)}
+                  onClick={() =>
+                    openDrilldown({
+                      type: "goal",
+                      label: item.goalTitle,
+                      sessions: goalDrilldownIndex[key] ?? [],
+                    })
+                  }
+                />
+              );
+            })
           )}
         </CardContent>
       </Card>
@@ -140,96 +156,110 @@ function BreakdownCard({
   }
 
   if (breakdownBy === "task") {
+    const maxMinutes = Math.max(1, ...taskBreakdown.map((item) => item.workedMinutes));
+
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{title}</CardTitle>
+      <Card className="analytics-breakdown-card">
+        <CardHeader className="analytics-card-heading">
+          <div>
+            <p className="analytics-section-kicker">Allocation</p>
+            <CardTitle className="text-base">{title}</CardTitle>
+          </div>
+          <p className="analytics-card-caption">Open any row for session detail</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="analytics-breakdown-list">
           {taskBreakdown.length === 0 ? (
-            "No task data"
-          ) : (
-            <div className="space-y-2">
-              {taskBreakdown.map((tb) => (
-                <button
-                  key={tb.taskId}
-                  type="button"
-                  onClick={() => handleTaskClick(tb)}
-                  className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)]"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-[color:var(--foreground)]">
-                      {tb.taskTitle}
-                    </span>
-                    <span className="text-sm text-[color:var(--muted-foreground)]">
-                      {tb.workedMinutes}m ({tb.percentOfTotal}%)
-                    </span>
-                  </div>
-                  <div className="text-xs text-[color:var(--muted-foreground)]">
-                    {[tb.projectName, tb.goalTitle]
-                      .filter(Boolean)
-                      .join(" · ") || "No context"}
-                    {" · "}
-                    {tb.sessionCount} session{tb.sessionCount !== 1 ? "s" : ""}
-                    {tb.estimateMinutes != null
-                      ? ` · est ${tb.estimateMinutes}m`
-                      : ""}
-                  </div>
-                </button>
-              ))}
+            <div className="surface-empty px-4 py-5 text-sm text-[color:var(--muted-foreground)]">
+              No task data for this range.
             </div>
+          ) : (
+            taskBreakdown.map((item) => {
+              const context =
+                [item.projectName, item.goalTitle].filter(Boolean).join(" · ") ||
+                "No project or goal";
+
+              return (
+                <BreakdownRow
+                  key={item.taskId}
+                  title={item.taskTitle}
+                  meta={`${item.percentOfTotal}% of tracked · ${context}`}
+                  workedMinutes={item.workedMinutes}
+                  relativePercent={Math.round((item.workedMinutes / maxMinutes) * 100)}
+                  onClick={() =>
+                    openDrilldown({
+                      type: "task",
+                      label: item.taskTitle,
+                      sessions: taskDrilldownIndex[item.taskId] ?? [],
+                    })
+                  }
+                />
+              );
+            })
           )}
         </CardContent>
       </Card>
     );
   }
 
-  // Default: project breakdown
+  const maxMinutes = Math.max(
+    1,
+    ...projectBreakdown.map((item) => item.workedMinutes),
+  );
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+    <Card className="analytics-breakdown-card">
+      <CardHeader className="analytics-card-heading">
+        <div>
+          <p className="analytics-section-kicker">Allocation</p>
+          <CardTitle className="text-base">{title}</CardTitle>
+        </div>
+        <p className="analytics-card-caption">Open any row for session detail</p>
       </CardHeader>
-      <CardContent>
+      <CardContent className="analytics-breakdown-list">
         {projectBreakdown.length === 0 ? (
-          "No project data"
-        ) : (
-          <div className="space-y-2">
-            {projectBreakdown.map((pb) => (
-              <button
-                key={pb.projectId ?? "__unknown__"}
-                type="button"
-                onClick={() => handleProjectClick(pb)}
-                className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-[var(--accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)]"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-medium text-[color:var(--foreground)]">
-                    {pb.projectName}
-                  </span>
-                  <span className="text-sm text-[color:var(--muted-foreground)]">
-                    {pb.workedMinutes}m
-                  </span>
-                </div>
-                <div className="text-xs text-[color:var(--muted-foreground)]">
-                  {pb.sessionCount} sessions
-                </div>
-              </button>
-            ))}
+          <div className="surface-empty px-4 py-5 text-sm text-[color:var(--muted-foreground)]">
+            No project data for this range.
           </div>
+        ) : (
+          projectBreakdown.map((item) => {
+            const key = item.projectId ?? "__unknown__";
+            return (
+              <BreakdownRow
+                key={key}
+                title={item.projectName}
+                meta={`${item.sessionCount} session${item.sessionCount === 1 ? "" : "s"}`}
+                workedMinutes={item.workedMinutes}
+                relativePercent={Math.round((item.workedMinutes / maxMinutes) * 100)}
+                onClick={() =>
+                  openDrilldown({
+                    type: "project",
+                    label: item.projectName,
+                    sessions: projectDrilldownIndex[key] ?? [],
+                  })
+                }
+              />
+            );
+          })
         )}
       </CardContent>
     </Card>
   );
 }
 
-// ---- Main interactive wrapper ----
+function formatInsightDate(value: string | null) {
+  if (!value) return "n/a";
+  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}
 
 type InteractiveAnalyticsProps = {
   drilldownIndexes: DrilldownIndexes;
   primarySeries: WorkAnalyticsDaily[];
   primaryTitle: string;
   last7DaysSeries: WorkAnalyticsDaily[];
-  last30DaysSeries: WorkAnalyticsDaily[];
   breakdownBy: string;
   breakdownTitle: string;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
@@ -247,7 +277,6 @@ export function InteractiveAnalytics({
   primarySeries,
   primaryTitle,
   last7DaysSeries,
-  last30DaysSeries,
   breakdownBy,
   breakdownTitle,
   projectBreakdown,
@@ -259,9 +288,16 @@ export function InteractiveAnalytics({
   insightsAvgSessionMinutes,
   insightsLongestSessionMinutes,
 }: InteractiveAnalyticsProps) {
+  const deltaLabel =
+    insightsDeltaMinutes === 0
+      ? "Even"
+      : `${insightsDeltaMinutes > 0 ? "+" : "-"}${formatDurationLabel(
+          Math.abs(insightsDeltaMinutes) * 60,
+        )}`;
+
   return (
     <AnalyticsDrilldownProvider>
-      <div className="analytics-visualization-stack mt-4">
+      <div className="analytics-visualization-stack">
         <div className="analytics-primary-chart">
           <ChartSection
             series={primarySeries}
@@ -269,17 +305,15 @@ export function InteractiveAnalytics({
             dateDrilldownIndex={drilldownIndexes.date}
           />
         </div>
-        <div className="analytics-secondary-grid">
+
+        <div className="analytics-secondary-grid" aria-label="Supporting analytics">
           <ChartSection
             series={last7DaysSeries}
-            title="Last 7 days"
+            title="Recent rhythm · 7 days"
             dateDrilldownIndex={drilldownIndexes.date}
+            compact
           />
-          <ChartSection
-            series={last30DaysSeries}
-            title="Last 30 days"
-            dateDrilldownIndex={drilldownIndexes.date}
-          />
+
           <BreakdownCard
             title={breakdownTitle}
             breakdownBy={breakdownBy}
@@ -290,20 +324,53 @@ export function InteractiveAnalytics({
             goalDrilldownIndex={drilldownIndexes.goal}
             taskDrilldownIndex={drilldownIndexes.task}
           />
+
           <Card className="analytics-insights-card">
-            <CardHeader>
-              <CardTitle className="text-sm">Insights</CardTitle>
+            <CardHeader className="analytics-card-heading">
+              <div>
+                <p className="analytics-section-kicker">Pattern</p>
+                <CardTitle className="text-base">Insights</CardTitle>
+              </div>
+              <p className="analytics-card-caption">This week at a glance</p>
             </CardHeader>
-            <CardContent className="text-sm text-[color:var(--muted-foreground)]">
-              Delta {insightsDeltaMinutes}m · Best{" "}
-              {insightsBestDay ?? "n/a"} · Lowest{" "}
-              {insightsLowestDay ?? "n/a"} · Avg{" "}
-              {insightsAvgSessionMinutes}m · Longest{" "}
-              {insightsLongestSessionMinutes}m
+            <CardContent>
+              <dl className="analytics-insights-grid">
+                <div>
+                  <dt>Weekly delta</dt>
+                  <dd
+                    className={
+                      insightsDeltaMinutes > 0
+                        ? "text-signal-live"
+                        : insightsDeltaMinutes < 0
+                          ? "text-signal-error"
+                          : ""
+                    }
+                  >
+                    {deltaLabel}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Best day</dt>
+                  <dd>{formatInsightDate(insightsBestDay)}</dd>
+                </div>
+                <div>
+                  <dt>Quietest day</dt>
+                  <dd>{formatInsightDate(insightsLowestDay)}</dd>
+                </div>
+                <div>
+                  <dt>Avg session</dt>
+                  <dd>{formatDurationLabel(insightsAvgSessionMinutes * 60)}</dd>
+                </div>
+                <div className="analytics-insight-wide">
+                  <dt>Longest session</dt>
+                  <dd>{formatDurationLabel(insightsLongestSessionMinutes * 60)}</dd>
+                </div>
+              </dl>
             </CardContent>
           </Card>
         </div>
       </div>
+
       <AnalyticsDrilldownDrawer />
     </AnalyticsDrilldownProvider>
   );
