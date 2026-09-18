@@ -8,6 +8,7 @@ const authenticatedRoutes = [
   "/dashboard",
   "/today",
   "/tasks",
+  "/work-analytics",
 ] as const;
 
 test.describe("visual and a11y — desktop and 390px", () => {
@@ -172,7 +173,7 @@ test.describe("EGA-648 responsive layout geometry", () => {
 });
 
 
-test.describe("sidebar collapsed rail regression", () => {
+test.describe("sidebar collapsed rail contract and analytics browser contract", () => {
   test("sidebar collapsed rail contract at 761, 900, 1180, and 1200px", async ({ page }) => {
     await page.goto("/login", { waitUntil: "domcontentloaded" });
 
@@ -412,5 +413,86 @@ test.describe("sidebar collapsed rail regression", () => {
         sidebar.setAttribute("data-collapsed", "false");
       });
     }
+  });
+
+  test("analytics dashboard browser contract keeps focus visible and grids responsive", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "analytics-contract-host";
+      host.style.cssText =
+        "position:fixed;inset:0;z-index:99999;background:white;padding:24px;overflow:auto";
+      host.innerHTML = `
+        <div class="analytics-filter-controls analytics-filter-controls-compact" data-testid="analytics-contract-filters">
+          <label class="analytics-filter-field">
+            <span class="analytics-filter-label">Range</span>
+            <select class="analytics-filter-select" data-testid="analytics-contract-select">
+              <option>Last 7 days</option>
+            </select>
+          </label>
+          <label class="analytics-filter-field">
+            <span class="analytics-filter-label">Group by</span>
+            <select class="analytics-filter-select"><option>Day</option></select>
+          </label>
+          <label class="analytics-filter-field">
+            <span class="analytics-filter-label">Breakdown</span>
+            <select class="analytics-filter-select"><option>Project</option></select>
+          </label>
+          <button class="analytics-open-toggle" data-testid="analytics-contract-toggle" type="button">
+            <span>Open sessions</span><strong>Off</strong>
+          </button>
+        </div>
+        <section class="analytics-kpi-strip" data-testid="analytics-contract-kpis">
+          <article class="analytics-kpi">1</article>
+          <article class="analytics-kpi">2</article>
+          <article class="analytics-kpi">3</article>
+          <article class="analytics-kpi">4</article>
+        </section>`;
+      document.body.appendChild(host);
+    });
+
+    const select = page.getByTestId("analytics-contract-select");
+    await select.focus();
+    const selectFocus = await select.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        outlineStyle: style.outlineStyle,
+        outlineWidth: parseFloat(style.outlineWidth),
+        boxShadow: style.boxShadow,
+      };
+    });
+
+    const toggle = page.getByTestId("analytics-contract-toggle");
+    await toggle.focus();
+    const toggleFocus = await toggle.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        outlineStyle: style.outlineStyle,
+        outlineWidth: parseFloat(style.outlineWidth),
+        boxShadow: style.boxShadow,
+      };
+    });
+
+    expect(selectFocus.outlineStyle).not.toBe("none");
+    expect(selectFocus.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(selectFocus.boxShadow).not.toBe("none");
+    expect(toggleFocus.outlineStyle).not.toBe("none");
+    expect(toggleFocus.outlineWidth).toBeGreaterThanOrEqual(2);
+    expect(toggleFocus.boxShadow).not.toBe("none");
+
+    const columnCount = async (testId: string) =>
+      page.getByTestId(testId).evaluate((element) => {
+        const columns = getComputedStyle(element).gridTemplateColumns.trim();
+        return columns ? columns.split(/\\s+/).length : 0;
+      });
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    expect(await columnCount("analytics-contract-filters")).toBe(4);
+    expect(await columnCount("analytics-contract-kpis")).toBe(4);
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await columnCount("analytics-contract-filters")).toBe(1);
+    expect(await columnCount("analytics-contract-kpis")).toBe(1);
   });
 });
