@@ -4,6 +4,7 @@ import React from "react";
 import { TrendBarChart } from "@/components/review/trend-bar-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDurationLabel } from "@/lib/task-session";
+import { collectDrilldownSessionsForBucket } from "@/lib/services/work-analytics-service";
 import {
   AnalyticsDrilldownProvider,
   useAnalyticsDrilldown,
@@ -23,6 +24,7 @@ type ChartSectionProps = {
   series: WorkAnalyticsDaily[];
   title: string;
   dateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
+  groupBy: "day" | "week" | "month";
   compact?: boolean;
 };
 
@@ -30,16 +32,21 @@ function ChartSection({
   series,
   title,
   dateDrilldownIndex,
+  groupBy,
   compact = false,
 }: ChartSectionProps) {
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const handleBarClick = React.useCallback(
     (date: string, label: string) => {
-      const sessions = dateDrilldownIndex[date] ?? [];
+      const sessions = collectDrilldownSessionsForBucket(
+        date,
+        groupBy,
+        dateDrilldownIndex,
+      );
       openDrilldown({ type: "date", label, sessions });
     },
-    [dateDrilldownIndex, openDrilldown],
+    [dateDrilldownIndex, groupBy, openDrilldown],
   );
 
   return (
@@ -75,16 +82,16 @@ function BreakdownRow({
       onClick={onClick}
       className="analytics-breakdown-row group"
     >
-      <div className="analytics-breakdown-row-head">
+      <span className="analytics-breakdown-row-head">
         <span className="analytics-breakdown-row-title">{title}</span>
         <span className="analytics-breakdown-row-value">
           {formatDurationLabel(workedMinutes * 60)}
         </span>
-      </div>
-      <div className="analytics-breakdown-track" aria-hidden="true">
+      </span>
+      <span className="analytics-breakdown-track" aria-hidden="true">
         <span style={{ width: `${width}%` }} />
-      </div>
-      <p className="analytics-breakdown-row-meta">{meta}</p>
+      </span>
+      <span className="analytics-breakdown-row-meta">{meta}</span>
     </button>
   );
 }
@@ -259,7 +266,9 @@ type InteractiveAnalyticsProps = {
   drilldownIndexes: DrilldownIndexes;
   primarySeries: WorkAnalyticsDaily[];
   primaryTitle: string;
+  primaryGroupBy: "day" | "week" | "month";
   last7DaysSeries: WorkAnalyticsDaily[];
+  recentDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   breakdownBy: string;
   breakdownTitle: string;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
@@ -276,7 +285,9 @@ export function InteractiveAnalytics({
   drilldownIndexes,
   primarySeries,
   primaryTitle,
+  primaryGroupBy,
   last7DaysSeries,
+  recentDateDrilldownIndex,
   breakdownBy,
   breakdownTitle,
   projectBreakdown,
@@ -303,6 +314,7 @@ export function InteractiveAnalytics({
             series={primarySeries}
             title={primaryTitle}
             dateDrilldownIndex={drilldownIndexes.date}
+            groupBy={primaryGroupBy}
           />
         </div>
 
@@ -310,7 +322,8 @@ export function InteractiveAnalytics({
           <ChartSection
             series={last7DaysSeries}
             title="Recent rhythm · 7 days"
-            dateDrilldownIndex={drilldownIndexes.date}
+            dateDrilldownIndex={recentDateDrilldownIndex}
+            groupBy="day"
             compact
           />
 
