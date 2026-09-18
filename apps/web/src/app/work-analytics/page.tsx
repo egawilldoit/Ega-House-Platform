@@ -4,13 +4,35 @@ import { WorkAnalyticsPageView } from "./_components/WorkAnalyticsPageView";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkAnalyticsPage({ searchParams }: { searchParams: Promise<{ range?: string; groupBy?: string; breakdownBy?: string; includeOpen?: string }> }) {
+export default async function WorkAnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    range?: string;
+    groupBy?: string;
+    breakdownBy?: string;
+    includeOpen?: string;
+  }>;
+}) {
   const resolvedSearchParams = await searchParams;
-  const model = await getWorkAnalyticsPageModel(resolvedSearchParams as unknown as Record<string, string | undefined>);
-  if (!model.user) return <div className="p-6">Please log in to view work analytics.</div>;
-  if (model.error) return <div className="p-6">{model.error}</div>;
+  const model = await getWorkAnalyticsPageModel(
+    resolvedSearchParams as unknown as Record<string, string | undefined>,
+  );
+
+  if (!model.user) {
+    return <div className="p-6">Please log in to view work analytics.</div>;
+  }
+
+  if (model.error) {
+    return <div className="p-6">{model.error}</div>;
+  }
+
   return (
-    <AppShell eyebrow="Evidence" title="Analytics" description="Focused time answers — explicit, not decorative.">
+    <AppShell
+      eyebrow="Evidence"
+      title="Analytics"
+      description="See where your focused time goes and how your execution changes over time."
+    >
       <WorkAnalyticsPageView model={model} />
     </AppShell>
   );
