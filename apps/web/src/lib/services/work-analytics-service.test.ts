@@ -14,6 +14,8 @@ import {
   calculateEstimateAccuracy,
   calculateSessionQuality,
   extractSessionDurationsInWindow,
+  buildDrilldownIndexes,
+  collectDrilldownSessionsForBucket,
 } from "./work-analytics-service";
 
 const window = {
@@ -1674,4 +1676,109 @@ test("calculateWorkAnalyticsGroupedSeries with groupBy=week on single week retur
   assert.equal(result.length, 1);
   assert.equal(result[0].date, "2026-04-20");
   assert.equal(result[0].workedMinutes, 60);
+});
+
+
+test("buildDrilldownIndexes scopes entity drilldowns to the selected window and open-session policy", () => {
+  const sessions = [
+    {
+      task_id: "old-task",
+      started_at: "2026-04-26T09:00:00.000Z",
+      ended_at: "2026-04-26T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "old-task",
+        title: "Old task",
+        project_id: "project-1",
+        projects: { id: "project-1", name: "Project 1" },
+      },
+    },
+    {
+      task_id: "selected-task",
+      started_at: "2026-04-27T09:00:00.000Z",
+      ended_at: "2026-04-27T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: {
+        id: "selected-task",
+        title: "Selected task",
+        project_id: "project-1",
+        projects: { id: "project-1", name: "Project 1" },
+      },
+    },
+    {
+      task_id: "open-task",
+      started_at: "2026-04-27T10:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      tasks: {
+        id: "open-task",
+        title: "Open task",
+        project_id: "project-1",
+        projects: { id: "project-1", name: "Project 1" },
+      },
+    },
+  ];
+
+  const selectedWindow = {
+    startIso: "2026-04-27T00:00:00.000Z",
+    endIso: "2026-04-27T12:00:00.000Z",
+  };
+
+  const closedOnly = buildDrilldownIndexes(sessions, selectedWindow, {
+    nowIso: "2026-04-27T12:00:00.000Z",
+    includeOpenSessions: false,
+  });
+  assert.deepEqual(
+    closedOnly.project["project-1"].map((session) => session.taskId),
+    ["selected-task"],
+  );
+  assert.equal(closedOnly.date["2026-04-26"], undefined);
+  assert.equal(closedOnly.task["open-task"], undefined);
+
+  const withOpen = buildDrilldownIndexes(sessions, selectedWindow, {
+    nowIso: "2026-04-27T12:00:00.000Z",
+    includeOpenSessions: true,
+  });
+  assert.deepEqual(
+    withOpen.project["project-1"].map((session) => session.taskId),
+    ["selected-task", "open-task"],
+  );
+  assert.equal(withOpen.task["open-task"][0].durationSeconds, 7200);
+});
+
+test("collectDrilldownSessionsForBucket resolves week and partial-month buckets from exact dates", () => {
+  const makeSession = (taskId: string, startedAt: string) => ({
+    taskId,
+    taskTitle: taskId,
+    projectName: null,
+    projectId: null,
+    goalTitle: null,
+    goalId: null,
+    startedAt,
+    endedAt: startedAt,
+    durationSeconds: 60,
+  });
+
+  const dateIndex = {
+    "2026-04-20": [makeSession("monday", "2026-04-20T09:00:00.000Z")],
+    "2026-04-21": [makeSession("tuesday", "2026-04-21T09:00:00.000Z")],
+    "2026-04-27": [makeSession("next-week", "2026-04-27T09:00:00.000Z")],
+  };
+
+  assert.deepEqual(
+    collectDrilldownSessionsForBucket("2026-04-20", "week", dateIndex).map(
+      (session) => session.taskId,
+    ),
+    ["monday", "tuesday"],
+  );
+
+  // A monthly series bucket is keyed by the first of the month even when the
+  // selected range begins later. Only dates present in the range-filtered index
+  // are returned, so earlier evidence cannot leak into the drawer.
+  assert.deepEqual(
+    collectDrilldownSessionsForBucket("2026-04-01", "month", dateIndex).map(
+      (session) => session.taskId,
+    ),
+    ["monday", "tuesday", "next-week"],
+  );
 });
