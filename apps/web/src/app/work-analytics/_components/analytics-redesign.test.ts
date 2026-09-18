@@ -10,6 +10,7 @@ function read(...segments: string[]) {
 const view = read("app", "work-analytics", "_components", "WorkAnalyticsPageView.tsx");
 const interactive = read("app", "work-analytics", "interactive-analytics.tsx");
 const chart = read("components", "review", "trend-bar-chart.tsx");
+const styles = read("app", "globals.css");
 
 test("EGA-655: analytics keeps four primary metrics in one summary strip", () => {
   assert.match(view, /analytics-kpi-strip/);
@@ -66,7 +67,7 @@ test("EGA-655: supporting analytics use readable allocation and insight surfaces
 test("EGA-655: charts keep keyboard access, labels, empty state and reduced motion", () => {
   assert.match(chart, /<button/);
   assert.match(chart, /aria-label=/);
-  assert.match(chart, /focus-visible/);
+  assert.match(styles, /\.analytics-chart-row-interactive:focus-visible/);
   assert.match(chart, /motion-reduce:transition-none/);
   assert.match(chart, /No tracked time yet/);
   assert.match(chart, /compact\?: boolean/);
