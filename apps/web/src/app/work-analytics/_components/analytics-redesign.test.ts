@@ -92,3 +92,18 @@ test("EGA-655: analytics filters stay compact and URL-authoritative", () => {
   assert.doesNotMatch(filters, /useState/);
   assert.match(filters, /router\.replace/);
 });
+
+
+test("EGA-655: drilldowns respect grouping and recent-chart evidence scope", () => {
+  assert.match(interactive, /collectDrilldownSessionsForBucket/);
+  assert.match(interactive, /groupBy=\{primaryGroupBy\}/);
+  assert.match(view, /recentDateDrilldownIndex=\{report\.recentDateDrilldownIndex\}/);
+  assert.match(interactive, /dateDrilldownIndex=\{recentDateDrilldownIndex\}/);
+  assert.match(interactive, /groupBy="day"/);
+});
+
+test("EGA-655: analytics focus styles use defined design-system focus tokens", () => {
+  assert.doesNotMatch(styles, /--accent-subtle/);
+  assert.match(styles, /\.analytics-filter-select:focus-visible[\s\S]*var\(--ega-focus-ring\)/);
+  assert.match(styles, /\.analytics-open-toggle:focus-visible[\s\S]*var\(--ega-focus-ring\)/);
+});
