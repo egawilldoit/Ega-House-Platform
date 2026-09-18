@@ -1584,9 +1584,10 @@ select {
 }
 
 .analytics-filter-select:focus-visible {
-  outline: none;
+  outline: 2px solid var(--ega-gold);
+  outline-offset: 2px;
   border-color: var(--signal-live);
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  box-shadow: var(--ega-focus-ring);
 }
 
 .analytics-open-toggle {
@@ -1619,7 +1620,7 @@ select {
 
 .analytics-open-toggle.is-active {
   border-color: color-mix(in srgb, var(--signal-live) 45%, var(--border));
-  background: color-mix(in srgb, var(--accent-subtle) 72%, white);
+  background: color-mix(in srgb, var(--signal-live) 10%, var(--ega-surface));
 }
 
 .analytics-open-toggle.is-active strong {
@@ -1627,8 +1628,9 @@ select {
 }
 
 .analytics-open-toggle:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-subtle);
+  outline: 2px solid var(--ega-gold);
+  outline-offset: 2px;
+  box-shadow: var(--ega-focus-ring);
 }
 
 .analytics-filter-progress {
@@ -1917,7 +1919,7 @@ select {
 }
 
 .analytics-chart-row-interactive:hover {
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--signal-live) 9%, var(--ega-surface));
 }
 
 .analytics-chart-row-interactive:focus-visible {
@@ -1980,7 +1982,7 @@ select {
 }
 
 .analytics-breakdown-row:hover {
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--signal-live) 9%, var(--ega-surface));
 }
 
 .analytics-breakdown-row:focus-visible {
@@ -2030,6 +2032,7 @@ select {
 }
 
 .analytics-breakdown-row-meta {
+  display: block;
   margin-top: 0.38rem;
   overflow: hidden;
   text-overflow: ellipsis;
