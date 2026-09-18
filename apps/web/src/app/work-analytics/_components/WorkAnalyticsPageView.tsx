@@ -224,7 +224,9 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
         drilldownIndexes={report.drilldownIndexes}
         primarySeries={report.selectedSeries}
         primaryTitle={`Focus time — ${report.selectedRangeLabel}`}
+        primaryGroupBy={model.filters.groupBy}
         last7DaysSeries={report.last7DaysSeries}
+        recentDateDrilldownIndex={report.recentDateDrilldownIndex}
         breakdownBy={report.breakdownBy}
         breakdownTitle={report.breakdownTitle}
         projectBreakdown={report.projectBreakdown}
