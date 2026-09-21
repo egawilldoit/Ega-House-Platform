@@ -350,15 +350,13 @@ export function TasksListView() {
   if (isError) {
     return (
       <View style={styles.errorWrap} testID="tasks-error">
-        <Card style={styles.errorCard}>
-          <View style={styles.errorRow}>
-            <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
-            <Text style={styles.errorText}>{loadError}</Text>
-          </View>
-        </Card>
-        <View style={styles.centered}>
-          <Button title="Retry" variant="secondary" onPress={onRefresh} />
-        </View>
+        <EmptyState
+          action={<Button title="Retry" onPress={onRefresh} />}
+          description={loadError}
+          icon="alert-circle-outline"
+          title="Tasks unavailable"
+          variant="error"
+        />
       </View>
     );
   }
@@ -463,20 +461,23 @@ export function TasksListView() {
           <View style={styles.emptyWrap}>
             <Card contentStyle={styles.emptyCardContent}>
               <EmptyState
-                icon="clipboard-outline"
-                iconSize={36}
-                title={hasFilters ? 'No tasks match this view' : 'Create your first task'}
-                description={hasFilters ? 'Try a different scope, status, priority, or due-date filter.' : 'Capture the next execution step and keep momentum visible.'}
                 action={
                   hasFilters ? (
-                    <View style={styles.emptyActions}>
-                      <Button title="Clear filters" variant="secondary" size="sm" onPress={clearFilters} />
-                      <Button title="Create task" size="sm" onPress={() => router.push('/(app)/tasks/create')} />
-                    </View>
+                    <Button title="Clear filters" size="sm" onPress={clearFilters} />
                   ) : (
                     <Button title="Create task" onPress={() => router.push('/(app)/tasks/create')} />
                   )
                 }
+                description={hasFilters ? 'Try a different scope, status, priority, or due-date filter.' : 'Capture the next execution step and keep momentum visible.'}
+                icon="clipboard-outline"
+                iconSize={36}
+                secondaryAction={
+                  hasFilters ? (
+                    <Button title="Create task" size="sm" variant="secondary" onPress={() => router.push('/(app)/tasks/create')} />
+                  ) : undefined
+                }
+                title={hasFilters ? 'No tasks match this view' : 'Create your first task'}
+                variant={hasFilters ? 'no-results' : 'first-use'}
               />
             </Card>
           </View>
@@ -500,36 +501,14 @@ const styles = StyleSheet.create({
   cardWrap: {
     marginBottom: mobileTheme.spacing.sm,
   },
-  centered: {
-    alignItems: 'center',
-    marginTop: mobileTheme.spacing.lg,
-  },
   container: {
     flex: 1,
-  },
-  emptyActions: {
-    flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-    justifyContent: 'center',
   },
   emptyCardContent: {
     padding: 0,
   },
   emptyWrap: {
     marginTop: mobileTheme.spacing.sm,
-  },
-  errorCard: {
-    marginTop: mobileTheme.spacing.sm,
-  },
-  errorRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-  },
-  errorText: {
-    color: mobileTheme.colors.danger,
-    flex: 1,
-    fontWeight: mobileTheme.font.semibold,
   },
   errorWrap: {
     paddingHorizontal: mobileTheme.spacing.lg,

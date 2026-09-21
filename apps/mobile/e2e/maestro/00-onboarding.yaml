@@ -1,0 +1,44 @@
+# Journey 0a — first-launch onboarding plus persistence across relaunch.
+# Needs only an installed APK + booted target (no API, no credentials).
+#
+# `clearState` guarantees a first run, so the completion flag (key
+# `ega.mobile.onboarding.v1`) is unset and the public flow opens on step 1.
+# Next/Back navigation is exercised before completing via Skip.
+# The final `launchApp` deliberately does NOT clear state: the app must land
+# directly on welcome with onboarding absent, proving the versioned completion
+# flag survives a restart and actually affects routing.
+#
+# The negative assertion targets step 1's unique description so a regression
+# that replays onboarding fails this flow rather than passing silently.
+appId: com.ega_house.mobile
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Plan what matters today."
+    timeout: 120000
+- assertVisible: "Today"
+- assertVisible: "Next"
+- takeScreenshot: onboarding-today
+- tapOn: "Next"
+- extendedWaitUntil:
+    visible: "Organize tasks and projects without losing context."
+    timeout: 60000
+- assertVisible: "Work"
+- tapOn: "Back"
+- extendedWaitUntil:
+    visible: "Plan what matters today."
+    timeout: 60000
+- tapOn: "Skip.*"
+- extendedWaitUntil:
+    visible: "Tasks, focus sessions.*"
+    timeout: 60000
+- assertVisible: "Get started"
+- takeScreenshot: welcome-after-onboarding
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Tasks, focus sessions.*"
+    timeout: 120000
+- assertNotVisible: "Plan what matters today."
+- takeScreenshot: welcome-after-relaunch

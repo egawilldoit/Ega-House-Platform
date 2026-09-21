@@ -13,7 +13,7 @@ import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChr
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
-import { Card } from '@/components/mobile/ui/Card';
+import { EmptyState } from '@/components/mobile/ui/EmptyState';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { HeaderActions } from '@/components/mobile/ui/HeaderActions';
 import { ScreenHeader } from '@/components/mobile/ui/ScreenHeader';
@@ -116,23 +116,25 @@ export default function TimerScreen() {
           description="Server unavailable"
           rightSlot={<HeaderActions />}
         />
-        <Card style={styles.offlineCard} contentStyle={styles.offlineContent} testID="timer-offline-card">
-          <Ionicons color={mobileTheme.colors.danger} name="cloud-offline-outline" size={20} />
-          <Text style={styles.offlineText}>{loadError}</Text>
-          <Text style={styles.offlineHint}>
-            Nothing is running locally. The timer only runs on the server, so reconnect and retry.
-          </Text>
-          <Button
-            title="Retry"
-            variant="secondary"
-            onPress={() => {
-              workspaceQuery.refetch().catch(() => {
-                // handled by query error state
-              });
-            }}
-            testID="timer-retry"
+        <View style={styles.offlineWrap}>
+          <EmptyState
+            action={
+              <Button
+                title="Retry"
+                onPress={() => {
+                  workspaceQuery.refetch().catch(() => {
+                    // handled by query error state
+                  });
+                }}
+                testID="timer-retry"
+              />
+            }
+            description={`${loadError} The timer runs on the server, so reconnect and retry.`}
+            icon="cloud-offline-outline"
+            title="Timer unavailable"
+            variant="offline"
           />
-        </Card>
+        </View>
       </AppScreen>
     );
   }
@@ -200,23 +202,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.sm,
   },
-  offlineCard: {
-    borderColor: mobileTheme.colors.danger,
+  offlineWrap: {
     marginTop: mobileTheme.spacing.md,
-  },
-  offlineContent: {
-    alignItems: 'flex-start',
-    gap: mobileTheme.spacing.sm,
-  },
-  offlineHint: {
-    color: mobileTheme.colors.textMuted,
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  offlineText: {
-    color: mobileTheme.colors.text,
-    fontSize: 15,
-    fontWeight: mobileTheme.font.semibold,
   },
   skeletonWrap: {
     gap: mobileTheme.spacing.md,

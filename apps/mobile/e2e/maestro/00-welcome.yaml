@@ -7,6 +7,11 @@
 # placeholder texts "Email"/"Password"). Brand text renders as "EGA HOUSE" via
 # textTransform, so it is asserted with a case-insensitive regex.
 #
+# First launch now opens onboarding (key `ega.mobile.onboarding.v1`) before
+# welcome. The wait matches either screen and the onboarding branch is
+# conditional so the flow still passes when the flag survives `clearState`
+# (iOS keychain persistence).
+#
 # Maestro compiles every plain-text selector into textRegex and applies
 # FULL-match semantics (dispatch runs 32661945230/32669157471: substrings like
 # "Tasks, focus sessions" fail against "Tasks, focus sessions, and daily
@@ -17,9 +22,16 @@ appId: com.ega_house.mobile
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "EGA.?HOUSE"
+    visible: "Skip.*|EGA.?HOUSE"
     timeout: 120000
-- assertVisible: "Tasks, focus sessions.*"
+- runFlow:
+    when:
+      visible: "Skip.*"
+    commands:
+      - tapOn: "Skip.*"
+- extendedWaitUntil:
+    visible: "Tasks, focus sessions.*"
+    timeout: 60000
 - assertVisible: "Get started"
 - assertVisible: "Sign in with your EGA House account"
 - takeScreenshot: welcome-screen
