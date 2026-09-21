@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 
-import { AppScreen, Button, Card, EmptyState, FeedbackBanner, SearchField } from '@/components/mobile/ui';
+import { AppScreen, Button, EmptyState, FeedbackBanner, SearchField } from '@/components/mobile/ui';
 import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { useGoalListQuery } from '@/features/goals/query';
@@ -108,13 +108,15 @@ export default function SearchScreen() {
       {isRefreshing && hasAnyData ? <Text style={styles.refreshingHint}>Refreshing…</Text> : null}
 
       {isError && !isLoading && tasks.length === 0 && projects.length === 0 && goals.length === 0 ? (
-        <Card style={styles.errorCard}>
-          <View style={styles.errorCardContent}>
-            <Ionicons color={mobileTheme.colors.danger} name="alert-circle-outline" size={20} />
-            <Text style={styles.errorText}>Unable to load search data. Check your connection.</Text>
-            <Button onPress={handleRetry} size="sm" title="Retry" />
-          </View>
-        </Card>
+        <View style={styles.centered}>
+          <EmptyState
+            action={<Button onPress={handleRetry} size="sm" title="Retry" />}
+            description="Check your connection and try again."
+            icon="alert-circle-outline"
+            title="Unable to load search data"
+            variant="error"
+          />
+        </View>
       ) : null}
 
       {!isLoading && !hasQuery ? (
@@ -130,9 +132,19 @@ export default function SearchScreen() {
       {!isLoading && hasQuery && totalResults === 0 ? (
         <View style={styles.centered}>
           <EmptyState
+            action={
+              <Button
+                onPress={() => {
+                  setRawQuery('');
+                  setDebouncedQuery('');
+                }}
+                title="Clear search"
+              />
+            }
             description={`No results for "${trimmedQuery}". Try a different keyword.`}
             icon="search-outline"
             title="No matches"
+            variant="no-results"
           />
         </View>
       ) : null}
@@ -301,18 +313,6 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.accentDark,
     fontSize: 11,
     fontWeight: mobileTheme.font.bold,
-  },
-  errorCard: {
-    marginTop: mobileTheme.spacing.md,
-  },
-  errorCardContent: {
-    alignItems: 'center',
-    gap: mobileTheme.spacing.sm,
-  },
-  errorText: {
-    color: mobileTheme.colors.danger,
-    fontSize: 13,
-    textAlign: 'center',
   },
   mutedText: {
     color: mobileTheme.colors.textMuted,

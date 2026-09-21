@@ -3,7 +3,16 @@
 Small declarative smoke journeys for the EGA House mobile app. They complement
 the automated ladder (`scripts/ci/mobile-verification-ladder.mjs`): the ladder
 proves install → launch → liveness → UI-rendered; these flows prove the
-*functional* path (login → tasks visible → timer start/stop → logout).
+*functional* path (onboarding → login → tasks visible → timer start/stop →
+logout).
+
+First launch opens onboarding (`app/(public)/onboarding.tsx`, completion flag
+`ega.mobile.onboarding.v1`) before the welcome screen. `00-onboarding.yaml` runs
+inside `suite.yaml`: it covers the three steps plus Back/Next/Skip, then relaunches
+the app without clearing state and asserts onboarding does not return, proving the
+completion flag survives a restart and routes straight to welcome. `00-welcome.yaml`
+and `01-login.yaml` skip onboarding conditionally after `clearState`, so they pass
+on Android (app data cleared) and when the flag survives `clearState` on iOS.
 
 ## Why Maestro (decision record)
 
