@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -10,7 +9,6 @@ import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionShe
 import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
 import { Button } from '@/components/mobile/ui/Button';
-import { Card } from '@/components/mobile/ui/Card';
 import { EmptyState } from '@/components/mobile/ui/EmptyState';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
 import { SegmentedControl } from '@/components/mobile/ui/SegmentedControl';
@@ -189,15 +187,13 @@ export function GoalsListView() {
   if (isError) {
     return (
       <View style={styles.errorWrap} testID="goals-error">
-        <Card style={styles.errorCard}>
-          <View style={styles.errorRow}>
-            <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
-            <Text style={styles.errorText}>{loadError}</Text>
-          </View>
-        </Card>
-        <View style={styles.centered}>
-          <Button title="Retry" variant="secondary" onPress={onRefresh} />
-        </View>
+        <EmptyState
+          action={<Button title="Retry" onPress={onRefresh} />}
+          description={loadError}
+          icon="alert-circle-outline"
+          title="Goals unavailable"
+          variant="error"
+        />
       </View>
     );
   }
@@ -327,10 +323,6 @@ const styles = StyleSheet.create({
   banner: {
     marginTop: mobileTheme.spacing.sm,
   },
-  centered: {
-    alignItems: 'center',
-    marginTop: mobileTheme.spacing.lg,
-  },
   container: {
     flex: 1,
   },
@@ -349,19 +341,6 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.md,
     alignItems: 'center',
     paddingVertical: mobileTheme.spacing.lg,
-  },
-  errorCard: {
-    marginTop: mobileTheme.spacing.sm,
-  },
-  errorRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-  },
-  errorText: {
-    color: mobileTheme.colors.danger,
-    flex: 1,
-    fontWeight: mobileTheme.font.semibold,
   },
   errorWrap: {
     paddingHorizontal: mobileTheme.spacing.lg,

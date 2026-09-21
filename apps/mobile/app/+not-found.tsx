@@ -23,6 +23,7 @@ export default function NotFoundScreen() {
             icon="alert-circle-outline"
             title="This screen does not exist."
             description="Check the URL or return to your workspace. All your tasks, projects, and goals are still safe."
+            variant="error"
             action={
               <Link href="/(app)/(tabs)/today" asChild>
                 <Button title="Go to home screen" testID="not-found-home" />

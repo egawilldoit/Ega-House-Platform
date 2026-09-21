@@ -1,5 +1,4 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -9,7 +8,6 @@ import type { ProjectStatus, ProjectViewFilter } from '@ega/api-client';
 import { ActionSheet, type ActionSheetItem } from '@/components/mobile/ActionSheet';
 import { useBottomChromeMetrics } from '@/components/mobile/navigation/bottomChrome';
 import { mobileTheme } from '@/components/mobile/theme';
-import { Card } from '@/components/mobile/ui/Card';
 import { Button } from '@/components/mobile/ui/Button';
 import { EmptyState } from '@/components/mobile/ui/EmptyState';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
@@ -150,15 +148,13 @@ export function ProjectsListView() {
   if (isError) {
     return (
       <View style={styles.errorWrap} testID="projects-error">
-        <Card style={styles.errorCard}>
-          <View style={styles.errorRow}>
-            <Ionicons name="alert-circle-outline" size={22} color={mobileTheme.colors.danger} />
-            <Text style={styles.errorText}>{loadError}</Text>
-          </View>
-        </Card>
-        <View style={styles.centered}>
-          <Button title="Retry" variant="secondary" onPress={onRefresh} />
-        </View>
+        <EmptyState
+          action={<Button title="Retry" onPress={onRefresh} />}
+          description={loadError}
+          icon="alert-circle-outline"
+          title="Projects unavailable"
+          variant="error"
+        />
       </View>
     );
   }
@@ -214,27 +210,40 @@ export function ProjectsListView() {
         ListEmptyComponent={
           <View style={styles.emptyWrap}>
             <EmptyState
-              icon={view === 'archived' ? 'archive-outline' : 'folder-open-outline'}
-              iconSize={36}
-              title={
-                hasSearch ? 'No projects match search' : filteredProjects.length === 0 && rawProjects.length === 0 ? (view === 'archived' ? 'No archived projects' : view === 'active' ? 'No projects here yet' : 'No projects') : 'No projects match this view'
+              action={
+                rawProjects.length === 0 ? (
+                  view === 'active' ? (
+                    <Button title="Create your first project" onPress={() => router.push('/(app)/projects/create')} />
+                  ) : undefined
+                ) : hasSearch ? (
+                  <Button title="Clear search" onPress={() => setSearchQuery('')} />
+                ) : undefined
               }
               description={
-                hasSearch
-                  ? `No results for “${searchQuery.trim()}”.`
-                  : view === 'active'
+                rawProjects.length === 0
+                  ? view === 'active'
                     ? 'Group goals and tasks under a shared outcome.'
                     : view === 'archived'
                       ? 'Archived projects live here until you need them again.'
                       : 'Nothing to show in this view yet.'
+                  : hasSearch
+                    ? `No results for “${searchQuery.trim()}”.`
+                    : 'Nothing to show in this view yet.'
               }
-              action={
-                view === 'active' && !hasSearch ? (
-                  <Button title="Create your first project" onPress={() => router.push('/(app)/projects/create')} />
-                ) : hasSearch ? (
-                  <Button title="Clear search" variant="secondary" onPress={() => setSearchQuery('')} />
-                ) : undefined
+              icon={view === 'archived' ? 'archive-outline' : 'folder-open-outline'}
+              iconSize={36}
+              title={
+                rawProjects.length === 0
+                  ? view === 'archived'
+                    ? 'No archived projects'
+                    : view === 'active'
+                      ? 'No projects here yet'
+                      : 'No projects'
+                  : hasSearch
+                    ? 'No projects match search'
+                    : 'No projects match this view'
               }
+              variant={rawProjects.length === 0 ? 'first-use' : 'no-results'}
             />
           </View>
         }
@@ -255,10 +264,6 @@ export function ProjectsListView() {
 const styles = StyleSheet.create({
   banner: {
     marginTop: mobileTheme.spacing.sm,
-  },
-  centered: {
-    alignItems: 'center',
-    marginTop: mobileTheme.spacing.lg,
   },
   clearText: {
     color: mobileTheme.colors.accent,
@@ -283,19 +288,6 @@ const styles = StyleSheet.create({
     marginTop: mobileTheme.spacing.md,
     alignItems: 'center',
     paddingVertical: mobileTheme.spacing.lg,
-  },
-  errorCard: {
-    marginTop: mobileTheme.spacing.sm,
-  },
-  errorRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: mobileTheme.spacing.sm,
-  },
-  errorText: {
-    color: mobileTheme.colors.danger,
-    flex: 1,
-    fontWeight: mobileTheme.font.semibold,
   },
   errorWrap: {
     paddingHorizontal: mobileTheme.spacing.lg,
