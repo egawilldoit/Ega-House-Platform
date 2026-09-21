@@ -183,6 +183,8 @@ Zero-count muted vs non-zero clear: caller dims danger/warning chips when count=
 
 - **Press:** `scale 1 → 0.97 → 1`, spring `tension 120 / friction 7` or timing 100–140ms, `useNativeDriver:true`. Uses `AnimatedPressable` / `reanimated` where available. Disabled when `prefers-reduced-motion`.
 - **Selection (segment/thumb):** background/opacity/scale only; no continuous `width/height/margin` animation.
+- **Loading shimmer:** `Skeleton` sweeps one highlight band per surface via `translateX` (`withRepeat` + linear `withTiming`, ~1400ms); geometry is identical before/after load; static (no band) under reduced motion.
+- **Onboarding step:** `opacity + translateX(18)` 200ms ease-out per step; instant step switch under reduced motion.
 - **Route:** stack `opacity + translateY(4–8)` 200ms ease-out; tabs no route animation (instant, preserve scroll).
 - **Sheet:** `translateY` + `opacity`, 260ms spring; backdrop `opacity` 180ms.
 - **Progress:** width animates via `transform: scaleX` or timed style update debounced to 16ms; track uses `backgroundDeep` (`surfaceHigh #E6ECF5`), fill `accentMid→successMid` gradient (Today) or tone color.

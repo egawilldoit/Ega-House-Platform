@@ -77,7 +77,7 @@ Every user-facing screen must preserve its code-truth features. `Before` = origi
 | Stop | GlassButton Stop | Button Stop timer danger 54h stop 22 + handleStop mutateAsync sessionId | YES | `useStopTimerMutation` `TimerScreenContent` |
 | Tracked Today / Sessions / Longest / All Time | summaryCard | TrackedTimeSummary Card 3× centered Today/Sessions/Longest + footer All time | YES | `TrackedTimeSummary.tsx` `workspace.summary` |
 | Offline/stale banner | cloud-offline | staleBanner cloud-offline 14 muted text Can't reach server — showing last synced state when isError && !isFetching | YES | `timer.tsx:138` `showStaleBanner` |
-| Retry | GlassButton Retry | Card offline + Button Retry secondary → workspaceQuery.refetch | YES | `timer.tsx:117-133` `timer-offline-card` |
+| Retry | GlassButton Retry | EmptyState offline (timer-unavailable, cloud-offline, error text preserved) + Button Retry → workspaceQuery.refetch | YES | `timer.tsx` `timer-retry` |
 
 ### Profile (`(tabs)/profile.tsx` canonical `(app)/profile.tsx`)
 | Feature | Before | After | Preserved | Evidence |
