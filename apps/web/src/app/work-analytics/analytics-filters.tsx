@@ -2,7 +2,6 @@
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useMemo, useTransition } from "react";
-import { FilterPill } from "@/components/ui/filter-pill";
 import {
   buildFilterHref,
   DEFAULT_BREAKDOWN_BY,
@@ -38,9 +37,7 @@ const AVAILABLE_BREAKDOWN_BYS: AnalyticsBreakdownBy[] = [
 /**
  * Compact, URL-authoritative analytics filter toolbar.
  *
- * Range / Group by / Breakdown are visible selects (selected state always
- * visible); Include open sessions lives behind one disclosure. The URL remains
- * the single source of truth — no local state can disagree with it.
+ * Selected state always remains visible and the URL is the single source of truth.
  */
 export function AnalyticsFilters() {
   const pathname = usePathname();
@@ -58,7 +55,8 @@ export function AnalyticsFilters() {
   const currentGroupBy: AnalyticsGroupBy =
     (searchParams.get("groupBy") as AnalyticsGroupBy) ?? DEFAULT_GROUP_BY;
   const currentBreakdownBy: AnalyticsBreakdownBy =
-    (searchParams.get("breakdownBy") as AnalyticsBreakdownBy) ?? DEFAULT_BREAKDOWN_BY;
+    (searchParams.get("breakdownBy") as AnalyticsBreakdownBy) ??
+    DEFAULT_BREAKDOWN_BY;
   const currentIncludeOpen = searchParams.get("includeOpen") === "true";
 
   const navigate = useCallback(
@@ -82,12 +80,15 @@ export function AnalyticsFilters() {
           value={currentRange}
           disabled={isPending}
           onChange={(event) =>
-            navigate("range", event.target.value === DEFAULT_RANGE ? null : event.target.value)
+            navigate(
+              "range",
+              event.target.value === DEFAULT_RANGE ? null : event.target.value,
+            )
           }
         >
-          {AVAILABLE_RANGES.map((r) => (
-            <option key={r} value={r}>
-              {RANGE_LABELS[r]}
+          {AVAILABLE_RANGES.map((range) => (
+            <option key={range} value={range}>
+              {RANGE_LABELS[range]}
             </option>
           ))}
         </select>
@@ -101,12 +102,15 @@ export function AnalyticsFilters() {
           value={currentGroupBy}
           disabled={isPending}
           onChange={(event) =>
-            navigate("groupBy", event.target.value === DEFAULT_GROUP_BY ? null : event.target.value)
+            navigate(
+              "groupBy",
+              event.target.value === DEFAULT_GROUP_BY ? null : event.target.value,
+            )
           }
         >
-          {AVAILABLE_GROUP_BYS.map((g) => (
-            <option key={g} value={g}>
-              {GROUP_BY_LABELS[g]}
+          {AVAILABLE_GROUP_BYS.map((groupBy) => (
+            <option key={groupBy} value={groupBy}>
+              {GROUP_BY_LABELS[groupBy]}
             </option>
           ))}
         </select>
@@ -122,71 +126,53 @@ export function AnalyticsFilters() {
           onChange={(event) =>
             navigate(
               "breakdownBy",
-              event.target.value === DEFAULT_BREAKDOWN_BY ? null : event.target.value,
+              event.target.value === DEFAULT_BREAKDOWN_BY
+                ? null
+                : event.target.value,
             )
           }
         >
-          {AVAILABLE_BREAKDOWN_BYS.map((b) => (
-            <option key={b} value={b}>
-              {BREAKDOWN_BY_LABELS[b]}
+          {AVAILABLE_BREAKDOWN_BYS.map((breakdownBy) => (
+            <option key={breakdownBy} value={breakdownBy}>
+              {BREAKDOWN_BY_LABELS[breakdownBy]}
             </option>
           ))}
         </select>
       </label>
 
-      <details className="analytics-filter-more">
-        <summary className="analytics-filter-more-trigger" data-testid="analytics-filter-more">
-          More filters{currentIncludeOpen ? " · open sessions on" : ""}
-        </summary>
-        <div className="analytics-filter-more-panel">
-          <span className="analytics-filter-label">Include open sessions</span>
-          <div className="flex flex-wrap gap-1">
-            <FilterPill
-              onClick={() => navigate("includeOpen", null)}
-              label="Off"
-              active={!currentIncludeOpen}
-              ariaCurrent={!currentIncludeOpen ? "page" : undefined}
-              disabled={isPending}
-            />
-            <FilterPill
-              onClick={() => navigate("includeOpen", "true")}
-              label="On"
-              active={currentIncludeOpen}
-              ariaCurrent={currentIncludeOpen ? "page" : undefined}
-              disabled={isPending}
-            />
-          </div>
-        </div>
-      </details>
-
-      {/* Loading bar — visible during filter transitions */}
-      <div
-        className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--border)] transition-opacity duration-200"
-        aria-hidden="true"
+      <button
+        type="button"
+        className={`analytics-open-toggle ${currentIncludeOpen ? "is-active" : ""}`}
+        data-testid="analytics-filter-more"
+        aria-pressed={currentIncludeOpen}
+        disabled={isPending}
+        onClick={() => navigate("includeOpen", currentIncludeOpen ? null : "true")}
       >
+        <span>Open sessions</span>
+        <strong>{currentIncludeOpen ? "On" : "Off"}</strong>
+      </button>
+
+      <div className="analytics-filter-progress" aria-hidden="true">
         <div
-          className={`h-full w-1/3 rounded-full bg-[var(--signal-live)] transition-all duration-500 ${
-            isPending ? "opacity-100" : "opacity-0"
-          }`}
-          style={{
-            animation: isPending
-              ? "loading-indeterminate 1.4s ease-in-out infinite"
-              : "none",
-          }}
+          className={`analytics-filter-progress-bar ${isPending ? "is-pending" : ""}`}
         />
       </div>
 
       <style jsx>{`
-        @keyframes loading-indeterminate {
+        @keyframes analytics-loading-indeterminate {
           0% {
-            transform: translateX(-100%);
+            transform: translateX(-120%);
           }
           60% {
-            transform: translateX(300%);
+            transform: translateX(310%);
           }
           100% {
-            transform: translateX(300%);
+            transform: translateX(310%);
           }
+        }
+
+        .analytics-filter-progress-bar.is-pending {
+          animation: analytics-loading-indeterminate 1.4s ease-in-out infinite;
         }
       `}</style>
     </div>

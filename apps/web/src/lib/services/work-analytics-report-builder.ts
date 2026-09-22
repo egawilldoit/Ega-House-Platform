@@ -37,6 +37,7 @@ import type {
   WorkAnalyticsTaskBreakdown,
   EstimateAccuracySummary,
   DrilldownIndexes,
+  DrilldownSessionDTO,
   WorkAnalyticsOptions,
 } from "./work-analytics-service";
 import {
@@ -89,6 +90,7 @@ export type WorkAnalyticsReport = {
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
   estimateAccuracy: EstimateAccuracySummary;
   drilldownIndexes: DrilldownIndexes;
+  recentDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -188,11 +190,16 @@ export function buildWorkAnalyticsReport(
   const thisWeekInsights = calculateWorkAnalyticsInsights(sessions, weekWindow, options);
 
   // 6. 7-day and 30-day series for trend charts
+  const recentStartDate = daysAgoIsoDate(6, now);
+  const recentWindow: ExecutionEvidenceWindow = {
+    startIso: `${recentStartDate}T00:00:00.000Z`,
+    endIso: nowIso,
+  };
   const last7DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
-    daysAgoIsoDate(6, now),
+    recentStartDate,
     nowIso.slice(0, 10),
-    filters.groupBy,
+    "day",
     options,
   );
   const last30DaysSeries = calculateWorkAnalyticsGroupedSeries(
@@ -215,8 +222,14 @@ export function buildWorkAnalyticsReport(
   // 9. Estimate accuracy (selected window)
   const estimateAccuracy = calculateEstimateAccuracy(sessions, selectedWindow, options);
 
-  // 10. Compact drilldown indexes (selected window)
+  // 10. Compact drilldown indexes. Entity and primary-chart drilldowns are
+  // selected-window authoritative; the fixed recent chart gets its own 7-day index.
   const drilldownIndexes = buildDrilldownIndexes(sessions, selectedWindow, options);
+  const recentDateDrilldownIndex = buildDrilldownIndexes(
+    sessions,
+    recentWindow,
+    options,
+  ).date;
 
   // 11. Breakdown title
   const breakdownTitle =
@@ -244,5 +257,6 @@ export function buildWorkAnalyticsReport(
     taskBreakdown,
     estimateAccuracy,
     drilldownIndexes,
+    recentDateDrilldownIndex,
   };
 }

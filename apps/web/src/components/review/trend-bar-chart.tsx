@@ -7,8 +7,9 @@ import type { WorkAnalyticsDaily } from "@/lib/services/work-analytics-service";
 type TrendBarChartProps = {
   data: WorkAnalyticsDaily[];
   title: string;
-  /** Called when a bar row is clicked, passing the date string (YYYY-MM-DD) */
+  /** Called when a bar row is clicked, passing the date string (YYYY-MM-DD). */
   onBarClick?: (date: string, label: string) => void;
+  compact?: boolean;
 };
 
 function toDayLabel(date: string) {
@@ -28,20 +29,27 @@ function formatDateShort(date: string) {
   });
 }
 
-export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
+export function TrendBarChart({
+  data,
+  title,
+  onBarClick,
+  compact = false,
+}: TrendBarChartProps) {
   const maxMinutes = data.reduce(
     (max, item) => Math.max(max, item.workedMinutes),
     0,
   );
-
   const totalMinutes = data.reduce((sum, item) => sum + item.workedMinutes, 0);
   const activeDays = data.filter((item) => item.workedMinutes > 0).length;
 
   if (data.length === 0) {
     return (
-      <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-white p-6">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-[color:var(--foreground)]">{title}</h2>
+      <div className="analytics-chart-card">
+        <div className="analytics-chart-heading">
+          <div>
+            <p className="analytics-section-kicker">Trend</p>
+            <h2 className="analytics-chart-title">{title}</h2>
+          </div>
         </div>
         <div className="surface-empty px-4 py-5 text-sm leading-7 text-[color:var(--muted-foreground)]">
           No tracked time yet. Start a timer to build work trend data.
@@ -51,64 +59,65 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
   }
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-white p-6">
-      <div className="mb-4 flex items-start justify-between gap-4">
+    <div className={`analytics-chart-card ${compact ? "analytics-chart-card-compact" : ""}`}>
+      <div className="analytics-chart-heading">
         <div>
-          <h2 className="text-lg font-semibold text-[color:var(--foreground)]">{title}</h2>
-          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-            Daily worked time for the selected window.
-          </p>
+          <p className="analytics-section-kicker">Trend</p>
+          <h2 className="analytics-chart-title">{title}</h2>
+          {!compact ? (
+            <p className="analytics-chart-copy">
+              Daily focused time. Select a day to inspect its sessions.
+            </p>
+          ) : null}
         </div>
-        <div className="text-right text-sm text-[color:var(--muted-foreground)]">
-          <div>
-            <span className="font-semibold text-[color:var(--foreground)]">{formatDurationLabel(totalMinutes * 60)}</span> tracked
-          </div>
-          <div>
-            <span className="font-semibold text-[color:var(--foreground)]">{activeDays}</span> active days
-          </div>
+
+        <div className="analytics-chart-summary" aria-label="Chart summary">
+          <span>
+            <strong>{formatDurationLabel(totalMinutes * 60)}</strong> tracked
+          </span>
+          <span>
+            <strong>{activeDays}</strong> active day{activeDays === 1 ? "" : "s"}
+          </span>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className={compact ? "space-y-1.5" : "space-y-2"}>
         {data.map((entry) => {
           const widthPct =
-            maxMinutes > 0
-              ? Math.max(6, Math.round((entry.workedMinutes / maxMinutes) * 100))
-              : 6;
+            maxMinutes > 0 && entry.workedMinutes > 0
+              ? Math.max(4, Math.round((entry.workedMinutes / maxMinutes) * 100))
+              : 0;
+
+          const duration = formatDurationLabel(entry.workedMinutes * 60);
+          const label = formatDateShort(entry.date);
+          const interactive = Boolean(onBarClick && entry.workedMinutes > 0);
 
           return (
             <button
               key={entry.date}
               type="button"
+              aria-label={`${label}: ${duration}, ${entry.sessionCount} session${entry.sessionCount === 1 ? "" : "s"}`}
               onClick={() => {
-                if (onBarClick && entry.workedMinutes > 0) {
-                  onBarClick(entry.date, formatDateShort(entry.date));
+                if (interactive && onBarClick) {
+                  onBarClick(entry.date, label);
                 }
               }}
-              disabled={!onBarClick || entry.workedMinutes === 0}
-              className={`grid w-full grid-cols-[6rem_minmax(0,1fr)_5rem] items-center gap-3 text-left ${
-                onBarClick && entry.workedMinutes > 0
-                  ? "cursor-pointer rounded-md transition-colors hover:bg-[var(--accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)]"
-                  : ""
-              }`}
+              disabled={!interactive}
+              className={`analytics-chart-row ${interactive ? "analytics-chart-row-interactive" : ""}`}
             >
-              <span className="truncate text-xs font-semibold text-[color:var(--muted-foreground)]">
-                {toDayLabel(entry.date)}
-              </span>
-              <div className="h-3 rounded-full bg-[color:var(--instrument-raised)]">
-                <div
-                  className="h-full rounded-full bg-[var(--signal-live)] transition-all duration-300 motion-reduce:transition-none"
+              <span className="analytics-chart-date">{toDayLabel(entry.date)}</span>
+
+              <span className="analytics-chart-track" aria-hidden="true">
+                <span
+                  className="analytics-chart-bar motion-reduce:transition-none"
                   style={{ width: `${widthPct}%` }}
                 />
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-medium text-[color:var(--foreground)]">
-                  {formatDurationLabel(entry.workedMinutes * 60)}
-                </span>
-                <span className="ml-1 text-xs text-[color:var(--muted-foreground)]">
-                  {entry.sessionCount}
-                </span>
-              </div>
+              </span>
+
+              <span className="analytics-chart-value">
+                <strong>{duration}</strong>
+                <span>{entry.sessionCount}</span>
+              </span>
             </button>
           );
         })}

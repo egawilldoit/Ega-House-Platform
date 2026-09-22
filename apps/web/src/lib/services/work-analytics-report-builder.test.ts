@@ -175,3 +175,50 @@ test("buildWorkAnalyticsReport smoke test with complete session data", () => {
   assert.strictEqual(report.yesterday.workedMinutes, 0);
   assert.strictEqual(report.yesterday.sessionCount, 0);
 });
+
+
+test("buildWorkAnalyticsReport keeps selected drilldowns scoped while recent rhythm stays daily and inspectable", () => {
+  const now = new Date("2026-04-27T12:00:00.000Z");
+  const sessions = [
+    {
+      task_id: "recent-task",
+      started_at: "2026-04-24T09:00:00.000Z",
+      ended_at: "2026-04-24T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "recent-task", title: "Recent task" },
+    },
+    {
+      task_id: "today-task",
+      started_at: "2026-04-27T09:00:00.000Z",
+      ended_at: "2026-04-27T10:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "today-task", title: "Today task" },
+    },
+    {
+      task_id: "open-task",
+      started_at: "2026-04-27T10:00:00.000Z",
+      ended_at: null,
+      duration_seconds: null,
+      tasks: { id: "open-task", title: "Open task" },
+    },
+  ];
+
+  const report = buildWorkAnalyticsReport(
+    sessions,
+    defaultTaskCounts,
+    { ...defaultFilters, range: "today", groupBy: "month", includeOpen: false },
+    now,
+  );
+
+  assert.deepEqual(Object.keys(report.drilldownIndexes.task), ["today-task"]);
+  assert.equal(report.drilldownIndexes.task["recent-task"], undefined);
+  assert.equal(report.drilldownIndexes.task["open-task"], undefined);
+  assert.deepEqual(
+    report.recentDateDrilldownIndex["2026-04-24"].map((session) => session.taskId),
+    ["recent-task"],
+  );
+  assert.equal(report.recentDateDrilldownIndex["2026-04-27"].length, 1);
+  assert.equal(report.last7DaysSeries.length, 7);
+  assert.equal(report.last7DaysSeries[0].date, "2026-04-21");
+  assert.equal(report.last7DaysSeries.at(-1)?.date, "2026-04-27");
+});
