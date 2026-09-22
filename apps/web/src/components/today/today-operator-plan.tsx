@@ -38,7 +38,7 @@ export function TodayOperatorPlan({
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="glass-label text-signal-live">Daily Operator</p>
+            <p className="glass-label">Daily Operator</p>
             <CardTitle className="mt-1 text-xl">Primary plan</CardTitle>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-[color:var(--muted-foreground)]">
               Review the recommended lane before anything is added to Today. Operator suggestions never change work silently.

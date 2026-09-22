@@ -23,7 +23,7 @@ export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps
       <SheetContent closeLabel="Close keyboard shortcuts" className="flex flex-col" aria-labelledby="shortcut-help-title">
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
           <SheetHeader className="min-w-0">
-            <p className="glass-label text-signal-live">Keyboard-first workspace</p>
+            <p className="glass-label">Keyboard-first workspace</p>
             <SheetTitle id="shortcut-help-title">Keyboard shortcuts</SheetTitle>
             <SheetDescription>
               Stay in flow with route jumps and quick actions. Shortcuts pause automatically while you are typing.

@@ -131,7 +131,7 @@ export function TodaySuggestionsPanel({
                 ))}
                 {group.items.length >= 6 ? (
                   <div className="pt-1">
-                    <Link href="/tasks" className="glass-label text-signal-live">
+                    <Link href="/tasks" className="glass-label">
                       Show more in tasks
                     </Link>
                   </div>
@@ -151,7 +151,7 @@ export function TodaySuggestionsPanel({
         <div className="rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3 text-sm text-[color:var(--muted-foreground)]">
           Need a task that isn&apos;t listed here? Open the full queue and add context there.
           <div className="mt-2">
-            <Link href="/tasks" className="glass-label text-signal-live">
+            <Link href="/tasks" className="glass-label">
               Open all tasks
             </Link>
           </div>
