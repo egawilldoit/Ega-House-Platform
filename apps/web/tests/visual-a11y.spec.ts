@@ -190,8 +190,10 @@ test.describe("workspace shell contract", () => {
       host.className = "ega-app-shell app-shell";
       host.dataset.workspaceTheme = "workspace";
       host.dataset.collapsed = "false";
+      // No inline grid-template: the shell stylesheet owns the rail geometry and
+      // must be able to switch to the collapsed track from the data state.
       host.style.cssText =
-        "position:fixed;inset:0;z-index:99999;display:grid;grid-template-columns:var(--sidebar-width) minmax(0,1fr);height:100vh;width:100vw;overflow:hidden";
+        "position:fixed;inset:0;z-index:99999;height:100vh;width:100vw;overflow:hidden";
       host.innerHTML = `
         <aside id="sidebar-contract" class="ega-sidebar app-sidebar workspace-sidebar" data-collapsed="false">
           <div class="sidebar-brand workspace-sidebar-brand">
@@ -302,6 +304,14 @@ test.describe("workspace shell contract", () => {
             .getBoundingClientRect().bottom,
           cardsDoNotOverlap: projectList.getBoundingClientRect().bottom <= systemSection.getBoundingClientRect().top,
           activeFontWeight: Number(getComputedStyle(activeLink).fontWeight),
+          // The project-create control only exists in the expanded state.
+          addProjectSize: (() => {
+            const addProject = document.querySelector<HTMLElement>(
+              "#sidebar-contract .sidebar-section-action",
+            )!;
+            const rect = addProject.getBoundingClientRect();
+            return { width: rect.width, height: rect.height };
+          })(),
         };
       });
 
@@ -316,6 +326,8 @@ test.describe("workspace shell contract", () => {
         expandedLayout.projectSectionBottom,
       );
       expect(expandedLayout.cardsDoNotOverlap).toBe(true);
+      expect(expandedLayout.addProjectSize.width).toBeGreaterThanOrEqual(24);
+      expect(expandedLayout.addProjectSize.height).toBeGreaterThanOrEqual(24);
       // Selected navigation is reinforced by weight, not by colour alone.
       expect(expandedLayout.activeFontWeight).toBeGreaterThanOrEqual(500);
 
@@ -351,7 +363,6 @@ test.describe("workspace shell contract", () => {
           );
         };
         const systemIcon = sidebar.querySelector<SVGElement>('[data-testid="system-icon"]')!;
-        const addProject = sidebar.querySelector<HTMLElement>(".sidebar-section-action")!;
         const createTask = sidebar.querySelector<HTMLElement>('[data-testid="contract-create-task"]')!;
         const railRect = sidebar.getBoundingClientRect();
         const contentRect = main.getBoundingClientRect();
@@ -371,10 +382,6 @@ test.describe("workspace shell contract", () => {
           projectContrast: contrastRatio(
             sidebar.querySelector<HTMLElement>(".sidebar-project-link.selected")!,
           ),
-          addProjectSize: {
-            width: addProject.getBoundingClientRect().width,
-            height: addProject.getBoundingClientRect().height,
-          },
           createTaskSize: {
             width: createTask.getBoundingClientRect().width,
             height: createTask.getBoundingClientRect().height,
@@ -397,11 +404,12 @@ test.describe("workspace shell contract", () => {
       expect(measurements.hasAccessibleLogoutLabel).toBe(true);
       expect(measurements.activeContrast).toBeGreaterThanOrEqual(4.5);
       expect(measurements.projectContrast).toBeGreaterThanOrEqual(4.5);
-      // Touch-safe controls at every width.
-      expect(measurements.addProjectSize.height).toBeGreaterThanOrEqual(24);
+      // The rail keeps a touch-safe primary action.
       expect(measurements.createTaskSize.height).toBeGreaterThanOrEqual(32);
       expect(measurements.systemDividerWidth).toBe("1px");
-      expect(measurements.systemIconWidth).toBeLessThan(16);
+      // Rail icons stay full-size and consistent, never squashed to nothing.
+      expect(measurements.systemIconWidth).toBeGreaterThanOrEqual(14);
+      expect(measurements.systemIconWidth).toBeLessThanOrEqual(18);
 
       await page.locator("#sidebar-contract").evaluate((sidebar) => {
         sidebar.setAttribute("data-collapsed", "false");
