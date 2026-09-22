@@ -46,7 +46,7 @@ function SuggestionCard({
   const taskIsCompleted = isTaskCompletedStatus(task.status);
 
   return (
-    <article className="today-suggestion-card">
+    <article className="task-row">
       <div className="min-w-0">
         <p className="truncate text-sm font-medium text-[color:var(--foreground)]">{task.title}</p>
         <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
@@ -96,14 +96,17 @@ export function TodaySuggestionsPanel({
   activeTimerSessionId,
 }: TodaySuggestionsPanelProps) {
   return (
-    <Card className="today-suggestions-panel">
+    <Card>
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="glass-label text-etch">Queue assist</p>
             <CardTitle className="mt-1 text-xl">Suggestions</CardTitle>
           </div>
-          <span className="today-suggestions-icon" aria-hidden="true">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)]"
+            aria-hidden="true"
+          >
             <Sparkles className="h-4 w-4" />
           </span>
         </div>
@@ -117,7 +120,7 @@ export function TodaySuggestionsPanel({
             </div>
 
             {group.items.length > 0 ? (
-              <div className="space-y-2">
+              <div className="rows overflow-hidden rounded-[var(--radius-md)] border border-[var(--ega-border)]">
                 {group.items.map((task) => (
                   <SuggestionCard
                     key={task.id}
