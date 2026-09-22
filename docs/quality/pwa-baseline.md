@@ -120,16 +120,14 @@ HTML document sizes (local production build, dummy env, single curl each):
 3. **`next` runtime mismatch** — `apps/web/package.json` pins `next@16.3.5`,
    but the installed (hoisted) runtime is `16.2.12`. Resolve before W06 SW
    toolchain pinning.
-4. **State-dependent bell hiding below 420px** —
-   `editorial-shell.css:1227` hides
-   `.workspace-topbar-icon[aria-label="Notifications"]` inside the
-   `max-width: 420px` block, and the aria-label changes with the unread count,
-   so the bell is invisible exactly at 0 unread on small phones. This is a
-   data-dependent accessibility-visibility bug (the exact class of issue the
-   plan's W01 calls out); W01 must replace aria-label-based styling with
-   stable classes. The W00 bell test asserts the current behavior
-   (hidden at 0 unread on ≤420px, visible otherwise) so the regression net
-   matches reality until W01 changes it.
+4. **State-dependent bell hiding below 420px — FIXED** in
+   `feat/web-light-workspace-refactor`. The editorial shell (and
+   `editorial-shell.css`) was replaced by
+   [`workspace.css`](../../apps/web/src/styles/workspace.css); the notification
+   link now carries a stable `data-has-unread` attribute and the ≤420px rule
+   keys off it, so the bell hides only when there is genuinely nothing unread.
+   `tests/visual-a11y.spec.ts` asserts both states against the new stylesheet
+   (the old `workspace-topbar-icon[aria-label]` hook no longer exists).
 5. **Authenticated dataset baseline pending** — payload sizes, navigation
    timings and seeded-data flows for signed-in routes require staging
    credentials (`E2E_AUTH_*`, `E2E_SEED_DATABASE_URL`); the harness in §1 is
