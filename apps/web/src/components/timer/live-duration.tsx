@@ -31,10 +31,16 @@ export function LiveDuration({
   const [elapsedSeconds, setElapsedSeconds] = useState(() =>
     getElapsedDurationSeconds(startedAt),
   );
+  const [renderedStartedAt, setRenderedStartedAt] = useState(startedAt);
+
+  // Adjusting state during render (React's recommended pattern) keeps a changed
+  // start time in sync without a state-setting effect.
+  if (renderedStartedAt !== startedAt) {
+    setRenderedStartedAt(startedAt);
+    setElapsedSeconds(getElapsedDurationSeconds(startedAt));
+  }
 
   useEffect(() => {
-    setElapsedSeconds(getElapsedDurationSeconds(startedAt));
-
     const intervalId = window.setInterval(() => {
       setElapsedSeconds(getElapsedDurationSeconds(startedAt));
     }, 1000);
