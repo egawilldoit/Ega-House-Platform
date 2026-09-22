@@ -22,10 +22,7 @@ test("shared workspace navigation points Help to the real /help route", () => {
   const routeMeta = readFileSync(routeMetaFile, "utf8");
   const navigation = readFileSync(navigationFile, "utf8");
 
-  assert.match(
-    routeMeta,
-    /href:\s*"\/help",\s*index:\s*"S6",\s*label:\s*"Help"/,
-  );
+  assert.match(routeMeta, /href:\s*"\/help",\s*label:\s*"Help"/);
   assert.doesNotMatch(
     routeMeta,
     /href:\s*"\/dashboard"[\s\S]*label:\s*"Help"/,

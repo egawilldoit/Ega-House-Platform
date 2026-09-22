@@ -2,11 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { motion } from "motion/react";
 import {
   BarChart3,
   Bell,
-  Bot,
   CalendarCheck2,
   CheckSquare,
   CircleHelp,
@@ -17,6 +15,7 @@ import {
   Grid2X2,
   House,
   Lightbulb,
+  Bot,
   Plus,
   Power,
   Rocket,
@@ -28,10 +27,7 @@ import {
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
-import {
-  getSidebarTaskSignalBadge,
-  SidebarSignalBadge,
-} from "./shell-signals";
+import { getSidebarTaskSignalBadge, SidebarSignalBadge } from "./shell-signals";
 import { SidebarLogout } from "./sidebar-logout";
 import { COMMAND_ROUTES, SYSTEM_ROUTES, type ShellRouteMeta } from "./shell-route-meta";
 
@@ -75,15 +71,16 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
 };
 
 const PROJECT_COLORS = [
-  "#22c55e",
-  "#06b6d4",
-  "#8b5cf6",
-  "#f59e0b",
-  "#ef4444",
-  "#3b82f6",
-  "#ec4899",
-  "#84cc16",
+  "var(--ega-data-blue)",
+  "var(--ega-data-orange)",
+  "var(--ega-data-purple)",
+  "var(--ega-data-green)",
+  "var(--ega-data-yellow)",
+  "var(--ega-data-slate)",
 ] as const;
+
+/** Compact workspace list: a useful subset stays visible, everything stays reachable. */
+const VISIBLE_PROJECT_LIMIT = 6;
 
 function getProjectColor(name: string) {
   let hash = 0;
@@ -122,24 +119,12 @@ function RouteLink({
     <Link
       href={canonicalUrl.resolve(route.href)}
       aria-current={active ? "page" : undefined}
-      // Keep names and tooltips available when a user collapses the sidebar to icons.
+      // Names and tooltips stay available when the sidebar collapses to an icon rail.
       aria-label={route.label}
       title={route.label}
       className={cn("sidebar-link workspace-nav-link", active && "active")}
       onClick={onNavigate}
     >
-      {active ? (
-        <motion.span
-          className="sidebar-active-indicator"
-          aria-hidden="true"
-          initial={{ opacity: 0, scaleY: 0.4 }}
-          animate={{ opacity: 1, scaleY: 1 }}
-          transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-        />
-      ) : null}
-      <span className="workspace-nav-index" aria-hidden="true">
-        {route.index}
-      </span>
       <span className="sidebar-link-icon" aria-hidden="true">
         <Icon />
       </span>
@@ -163,17 +148,15 @@ export function SidebarNavigation({
   const projectPathSlug = pathname.startsWith("/tasks/projects/")
     ? pathname.split("/")[3]
     : null;
-  const visibleProjects = projects.slice(0, 14);
+  const visibleProjects = projects.slice(0, VISIBLE_PROJECT_LIMIT);
+  const hiddenProjectCount = Math.max(0, projects.length - visibleProjects.length);
 
   return (
     <nav
       className={cn("sidebar-nav workspace-sidebar-nav", compact && "is-compact")}
       aria-label="Workspace navigation"
     >
-      <section className="sidebar-section workspace-nav-section" aria-labelledby="workspace-command-label">
-        <div id="workspace-command-label" className="sidebar-section-label">
-          Command
-        </div>
+      <section className="sidebar-section workspace-nav-section" aria-label="Primary">
         <div className="workspace-nav-list">
           {COMMAND_ROUTES.map((route) => {
             const badge =
@@ -198,10 +181,13 @@ export function SidebarNavigation({
         </div>
       </section>
 
-      <section className="sidebar-section sidebar-project-section workspace-nav-section" aria-labelledby="workspace-projects-label">
+      <section
+        className="sidebar-section sidebar-project-section workspace-nav-section"
+        aria-labelledby="workspace-projects-label"
+      >
         <div className="sidebar-section-heading">
           <div id="workspace-projects-label" className="sidebar-section-label">
-            Projects
+            Workspaces
           </div>
           <Link
             href={canonicalUrl.resolve("/tasks/projects/new")}
@@ -243,8 +229,6 @@ export function SidebarNavigation({
                   </span>
                   {project.activeTaskCount > 0 ? (
                     <span className="sidebar-project-count">{project.activeTaskCount}</span>
-                  ) : project.status !== "active" ? (
-                    <span className="sidebar-project-status">{project.status}</span>
                   ) : null}
                 </Link>
               );
@@ -274,34 +258,16 @@ export function SidebarNavigation({
           <span className="sidebar-link-icon" aria-hidden="true">
             <Folder />
           </span>
-          <span className="workspace-nav-label">View all projects</span>
+          <span className="workspace-nav-label">
+            {hiddenProjectCount > 0 ? `All workspaces (${projects.length})` : "All workspaces"}
+          </span>
         </Link>
       </section>
 
-      <section className="sidebar-section sidebar-general-section workspace-nav-section" aria-labelledby="workspace-system-label">
-        <div id="workspace-system-label" className="sidebar-section-label">
-          System
-        </div>
-
-        <a
-          href="https://hermes.egawilldoit.online/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="sidebar-link workspace-nav-link"
-          aria-label="Hermes"
-          title="Hermes"
-          onClick={onNavigate}
-        >
-          <span className="workspace-nav-index" aria-hidden="true">
-            HX
-          </span>
-          <span className="sidebar-link-icon" aria-hidden="true">
-            <Bot />
-          </span>
-          <span className="workspace-nav-label">Hermes</span>
-          <ExternalLink className="workspace-nav-external" aria-hidden="true" />
-        </a>
-
+      <section
+        className="sidebar-section sidebar-general-section workspace-nav-section"
+        aria-label="System"
+      >
         {SYSTEM_ROUTES.map((route) => (
           <RouteLink
             key={route.href}
@@ -315,6 +281,22 @@ export function SidebarNavigation({
             onNavigate={onNavigate}
           />
         ))}
+
+        <a
+          href="https://hermes.egawilldoit.online/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="sidebar-link workspace-nav-link"
+          aria-label="Hermes"
+          title="Hermes"
+          onClick={onNavigate}
+        >
+          <span className="sidebar-link-icon" aria-hidden="true">
+            <Bot />
+          </span>
+          <span className="workspace-nav-label">Hermes</span>
+          <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        </a>
 
         <SidebarLogout />
       </section>

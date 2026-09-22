@@ -18,6 +18,7 @@ import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { SidebarCreateTaskButton } from "./sidebar-create-task";
 import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
 import { WorkspaceDrawerContext } from "./workspace-drawer-context";
+import { WorkspaceSearchTrigger } from "./workspace-search-trigger";
 
 type WorkspaceNavigationDrawerProps = {
   children: ReactNode;
@@ -201,20 +202,19 @@ export function SidebarMobileDrawer({
   return (
     <WorkspaceNavigationDrawer>
       <div className="workspace-drawer-brand">
-        <Image src="/logo.svg" alt="" width={38} height={38} className="sidebar-brand-logo" />
+        <Image src="/logo.svg" alt="" width={26} height={26} className="sidebar-brand-logo" />
         <div>
           <strong>EGA House</strong>
-          <span>Operating system</span>
         </div>
-        <small>OS / MOBILE</small>
       </div>
-      <div className="workspace-drawer-quick-task flex flex-col gap-2">
-        <InboxCaptureTrigger />
-      </div>
-      <div className="workspace-create-task flex flex-col">
-        <SidebarCreateTaskButton />
+      <div className="px-1.5 pb-1">
+        <WorkspaceSearchTrigger />
       </div>
       <SidebarNavigation projects={projects} metrics={metrics} />
+      <div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--ega-border)] px-1.5 pt-2">
+        <InboxCaptureTrigger />
+        <SidebarCreateTaskButton />
+      </div>
     </WorkspaceNavigationDrawer>
   );
 }
