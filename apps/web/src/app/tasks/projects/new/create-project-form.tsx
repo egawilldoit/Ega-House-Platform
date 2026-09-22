@@ -21,6 +21,9 @@ function normalizeSlug(value: string) {
     .replace(/^-|-$/g, "");
 }
 
+const FIELD_LABEL_CLASS =
+  "text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)]";
+
 export function CreateProjectForm() {
   const initialState: CreateProjectFormState = {
     error: null,
@@ -37,9 +40,9 @@ export function CreateProjectForm() {
   const [slugEdited, setSlugEdited] = useState(Boolean(state.values.slug));
 
   return (
-    <form action={formAction} className="space-y-5">
-      <div className="space-y-2">
-        <label htmlFor="name" className="glass-label text-etch">
+    <form action={formAction} className="flex flex-col gap-5">
+      <div className="flex flex-col gap-2">
+        <label htmlFor="name" className={FIELD_LABEL_CLASS}>
           Name
         </label>
         <Input
@@ -49,6 +52,7 @@ export function CreateProjectForm() {
           autoComplete="off"
           placeholder="Acme Website Relaunch"
           defaultValue={state.values.name}
+          className="h-8 text-[length:var(--text-meta-lg)]"
           onChange={(event) => {
             if (slugEdited) {
               return;
@@ -66,8 +70,8 @@ export function CreateProjectForm() {
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="slug" className="glass-label text-etch">
+      <div className="flex flex-col gap-2">
+        <label htmlFor="slug" className={FIELD_LABEL_CLASS}>
           Slug
         </label>
         <Input
@@ -80,19 +84,20 @@ export function CreateProjectForm() {
           title="Lowercase letters, numbers, and hyphens only."
           placeholder="acme-website-relaunch"
           defaultValue={state.values.slug}
+          className="h-8 text-[length:var(--text-meta-lg)]"
           onChange={(event) => {
             const nextValue = normalizeSlug(event.currentTarget.value);
             setSlugEdited(nextValue.length > 0);
             event.currentTarget.value = nextValue;
           }}
         />
-        <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+        <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
           Lowercase letters, numbers, and hyphens only.
         </p>
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="description" className="glass-label text-etch">
+      <div className="flex flex-col gap-2">
+        <label htmlFor="description" className={FIELD_LABEL_CLASS}>
           Description (optional)
         </label>
         <Textarea
@@ -100,6 +105,7 @@ export function CreateProjectForm() {
           name="description"
           placeholder="What this project is for and what done looks like."
           defaultValue={state.values.description}
+          className="text-[length:var(--text-meta-lg)]"
         />
       </div>
 
@@ -115,7 +121,7 @@ export function CreateProjectForm() {
         </Button>
         <Link
           href="/tasks/projects"
-          className="btn-instrument btn-instrument-muted inline-flex min-h-10 items-center justify-center px-5"
+          className="btn-instrument btn-instrument-muted inline-flex h-8 items-center justify-center px-3 text-sm"
         >
           Cancel
         </Link>

@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,9 @@ type TaskMarkDoneFormProps = {
   defaultCalendarSyncEnabled: boolean;
   defaultCalendarReminderMinutes: number;
   defaultEstimateMinutes: number | null;
+  taskTitle?: string;
+  /** Icon-only submit for dense table/board rows; the title carries the aria-label. */
+  compact?: boolean;
 };
 
 /**
@@ -68,6 +72,8 @@ export function TaskMarkDoneForm({
   defaultCalendarSyncEnabled,
   defaultCalendarReminderMinutes,
   defaultEstimateMinutes,
+  taskTitle,
+  compact = false,
 }: TaskMarkDoneFormProps) {
   const timezoneOffsetRef = useRef<HTMLInputElement>(null);
 
@@ -114,8 +120,15 @@ export function TaskMarkDoneForm({
         value={defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : ""}
       />
       <input type="hidden" name="blockedReason" value="" />
-      <PendingSubmitButton size="sm" type="submit" variant="muted" pendingLabel="Marking done...">
-        Mark done
+      <PendingSubmitButton
+        size="sm"
+        type="submit"
+        variant="muted"
+        aria-label={compact ? `Mark ${taskTitle ?? "task"} done` : undefined}
+        className={compact ? "h-7 w-7 !px-0 max-[761px]:h-8 max-[761px]:w-8" : undefined}
+        pendingLabel="Marking done..."
+      >
+        {compact ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : "Mark done"}
       </PendingSubmitButton>
     </form>
   );

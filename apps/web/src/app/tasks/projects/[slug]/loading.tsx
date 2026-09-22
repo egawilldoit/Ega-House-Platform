@@ -1,108 +1,81 @@
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
-import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function ProjectTaskRowSkeleton() {
   return (
-    <article className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex-1 space-y-2">
-          <Skeleton className="h-5 w-56 max-w-full rounded-sm" />
-          <Skeleton className="h-3 w-32 max-w-full rounded-sm" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-6 w-24 rounded-sm" />
-          <Skeleton className="h-6 w-20 rounded-sm" />
-        </div>
+    <div className="row">
+      <div className="row-main">
+        <Skeleton className="h-4 w-56 max-w-full" />
+        <Skeleton className="h-3 w-40 max-w-full" />
       </div>
-      <div className="mt-3 space-y-2">
-        <Skeleton className="h-4 w-full rounded-sm" />
-        <Skeleton className="h-4 w-10/12 rounded-sm" />
-      </div>
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-[var(--border)] pt-4">
-        <div className="space-y-2 pt-2">
-          <Skeleton className="h-3 w-72 max-w-full rounded-sm" />
-          <Skeleton className="h-3 w-32 max-w-full rounded-sm" />
-        </div>
-        <Skeleton className="h-10 w-44 rounded-sm" />
-      </div>
-    </article>
+      <Skeleton className="h-5 w-20" />
+      <Skeleton className="h-5 w-16" />
+    </div>
   );
 }
 
 export default function ProjectDetailLoadingPage() {
   return (
     <TasksWorkspaceShell
-      eyebrow="Tasks Workspace"
       title="Project"
-      description="Project-scoped task view with direct task creation in the same workspace."
-      actions={<Skeleton className="h-8 w-32 rounded-sm" />}
-      navigation={
-        <>
-          <Badge tone="accent">Project</Badge>
-          <Badge>Tasks</Badge>
-          <Badge>Goals</Badge>
-        </>
-      }
+      description="Project workspace for goals, tasks, and execution controls."
+      actions={<Skeleton className="h-8 w-32" />}
     >
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <Card>
-          <CardHeader className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-2">
-                <CardTitle>
-                  <Skeleton className="h-7 w-44" />
-                </CardTitle>
-                <CardDescription>
-                  <Skeleton className="h-4 w-56 max-w-full" />
-                </CardDescription>
-              </div>
-              <div className="space-y-3">
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Skeleton className="h-6 w-28 rounded-sm" />
-                  <Skeleton className="h-6 w-24 rounded-sm" />
-                  <Skeleton className="h-6 w-24 rounded-sm" />
+      <div className="flex flex-col gap-6">
+        <Card label="Overview" title="Project overview">
+          <CardContent className="flex flex-col gap-4">
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-8/12" />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((index) => (
+                <div key={index} className="flex flex-col gap-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-7 w-12" />
+                  <Skeleton className="h-3 w-24" />
                 </div>
-                <Skeleton className="h-10 w-44 rounded-sm" />
-              </div>
+              ))}
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Skeleton className="h-8 w-28 rounded-sm" />
-              <Skeleton className="h-8 w-28 rounded-sm" />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-1">
-            <ProjectTaskRowSkeleton />
-            <ProjectTaskRowSkeleton />
-            <ProjectTaskRowSkeleton />
+            <Skeleton className="h-28 w-full" />
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <Skeleton className="h-7 w-28" />
-            </CardTitle>
-            <CardDescription>
-              <Skeleton className="h-4 w-full" />
-              <Skeleton className="mt-2 h-4 w-2/3" />
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-1">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-28 w-full" />
-            <Skeleton className="h-10 w-36 rounded-sm" />
-          </CardContent>
-        </Card>
+        <div className="workspace-split-grid">
+          <Card label="Execution" title="Project tasks">
+            <CardContent className="flex flex-col gap-4">
+              <Skeleton className="h-10 w-full" />
+              <div className="rows">
+                <ProjectTaskRowSkeleton />
+                <ProjectTaskRowSkeleton />
+                <ProjectTaskRowSkeleton />
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="workspace-secondary-rail">
+            <Card label="Strategy" title="Project goals">
+              <div className="rows">
+                <ProjectTaskRowSkeleton />
+                <ProjectTaskRowSkeleton />
+              </div>
+            </Card>
+            <Card label="Focus" title="Focus queue">
+              <div className="rows">
+                <ProjectTaskRowSkeleton />
+              </div>
+            </Card>
+            <Card label="Time" title="Time tracking">
+              <CardContent>
+                <Skeleton className="h-8 w-32" />
+              </CardContent>
+            </Card>
+            <Card label="Create" title="New project task">
+              <CardContent>
+                <Skeleton className="h-32 w-full" />
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
     </TasksWorkspaceShell>
   );

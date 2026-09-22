@@ -3,6 +3,8 @@ import Link from "next/link";
 import { FolderKanban } from "lucide-react";
 
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { getTasksPageModel } from "./_lib/tasks-page-model";
 import { TasksPageView } from "./_components/TasksPageView";
 
@@ -41,14 +43,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   return (
     <TasksWorkspaceShell
-      eyebrow="Work"
       title="Tasks"
       description="High-density inventory — filter, sort, move work forward."
-      className="ega-glass-workspace"
       actions={
         <Link
           href="/tasks/projects"
-          className="btn-instrument btn-instrument-muted ega-glass-pill flex h-10 items-center gap-2 rounded-xl px-4 text-sm"
+          className={cn(buttonVariants({ variant: "secondary", size: "md" }), "gap-2")}
         >
           <FolderKanban className="h-4 w-4" aria-hidden="true" />
           Projects
