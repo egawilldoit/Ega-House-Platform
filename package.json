@@ -50,6 +50,8 @@
     "test:ega-runner-pr-loop": "node --import tsx --test scripts/ega-runner/test/pr-loop-*.test.mjs",
     "test:guardrails": "node --test scripts/ci/mobile-delivery-guardrails.test.mjs",
     "test:mobile-ladder": "node --test scripts/ci/mobile-verification-ladder.test.mjs",
+    "test:pwa:auth": "npm run test:pwa:auth --workspace @ega/web",
+    "test:pwa:mobile": "npm run test:pwa:mobile --workspace @ega/web",
     "test:session": "npm run test:session --workspace @ega/web",
     "test:timer-recovery": "npm run test:timer-recovery --workspace @ega/web",
     "typecheck": "npm run typecheck --workspace @ega/web",
