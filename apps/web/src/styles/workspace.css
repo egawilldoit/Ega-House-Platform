@@ -128,7 +128,7 @@
   gap: 24px;
 }
 
-/* Compatibility aliases for the previous shell class names. */
+/* Compatibility alias still consumed by the shell frame. */
 .ega-shell-max {
   width: 100%;
   max-width: var(--content-max);
@@ -136,26 +136,7 @@
   padding-inline: var(--content-gutter);
 }
 
-.ega-shell-title {
-  font-size: var(--text-page);
-}
-
-.ega-shell-eyebrow {
-  font-size: var(--text-meta);
-  font-weight: 500;
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--ega-text-tertiary);
-}
-
-.ega-shell-description {
-  color: var(--ega-text-secondary);
-}
-
-.ega-sidebar {
-  background: var(--ega-bg);
-}
-
+.ega-sidebar,
 .ega-main,
 .workspace-main {
   min-width: 0;
@@ -681,7 +662,7 @@
 }
 
 .workspace-mobile-navigation {
-  display: contents;
+  display: none;
 }
 
 .workspace-nav-trigger {
@@ -1596,6 +1577,7 @@ select.ega-glass-input {
     display: none;
   }
 
+  .workspace-mobile-navigation,
   .topbar-mobile-trigger {
     display: inline-flex;
   }
