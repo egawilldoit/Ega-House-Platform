@@ -10,7 +10,8 @@ describe("Timer — Today control", () => {
     expect(page).not.toContain('<span className="btn-instrument');
     // Must be Link, not span
     expect(page).toMatch(/import Link from "next\/link"/);
-    expect(page).toContain("Today</Link>");
+    // Formatting-robust: the control is a real Link whose child text is Today.
+    expect(page).toMatch(/<Link[\s\S]*?href="\/today"[\s\S]*?>[\s\S]*?Today[\s\S]*?<\/Link>/);
   });
 
   it("has no dead button-styled span", () => {

@@ -27,6 +27,12 @@ type ActiveTimerDisplayProps = {
   totalTrackedDurationSeconds?: number;
 };
 
+/**
+ * The active session, dominant on the Timer surface.
+ *
+ * Elapsed time stays in the isolated `LiveDuration` leaf so the one-second tick
+ * never re-renders this tree.
+ */
 export function ActiveTimerDisplay({
   session,
   taskContextHref,
@@ -34,66 +40,76 @@ export function ActiveTimerDisplay({
   totalTrackedDurationSeconds,
 }: ActiveTimerDisplayProps) {
   return (
-    <div className="active-timer-card space-y-4 rounded-[1.1rem] border border-[var(--border)] bg-gradient-to-br from-[rgba(23,123,82,0.09)] via-white to-[color:var(--instrument-raised)] p-5">
+    <div className="active-timer-card flex flex-col gap-5" data-testid="active-timer-display">
       <div className="active-timer-display-grid">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="signal-dot-live inline-flex h-2.5 w-2.5 rounded-full bg-[var(--signal-live)]" />
-              <Badge tone="accent">Running now</Badge>
-              <Badge tone={getTaskStatusTone(session.tasks?.status ?? "todo")}>
-                {formatTaskToken(session.tasks?.status ?? "todo")}
-              </Badge>
-              <Badge>{formatTaskToken(session.tasks?.priority ?? "medium")}</Badge>
-              {typeof totalTrackedDurationSeconds === "number" ? (
-                <Badge>
-                  Total tracked {formatDurationLabel(totalTrackedDurationSeconds)}
-                </Badge>
-              ) : null}
-            </div>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="active">Running now</Badge>
+            <Badge tone={getTaskStatusTone(session.tasks?.status ?? "todo")}>
+              {formatTaskToken(session.tasks?.status ?? "todo")}
+            </Badge>
+            <Badge tone="muted">{formatTaskToken(session.tasks?.priority ?? "medium")}</Badge>
+          </div>
 
-            <div className="space-y-1.5">
-              <p className="text-lg font-semibold text-[color:var(--foreground)]">
-                {session.tasks?.title ?? "Untitled task"}
-              </p>
-              <p className="text-xs uppercase tracking-[0.2em] text-[color:var(--muted-foreground)]">
-                {session.tasks?.projects?.name ?? "Unknown project"}
-                {session.tasks?.goals?.title ? ` · ${session.tasks.goals.title}` : ""}
-              </p>
-            </div>
+          <div>
+            <p className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+              {session.tasks?.title ?? "Untitled task"}
+            </p>
+            <p className="mt-1 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+              {session.tasks?.projects?.name ?? "Unknown project"}
+              {session.tasks?.goals?.title ? ` · ${session.tasks.goals.title}` : ""}
+            </p>
           </div>
 
           {session.tasks?.description ? (
-            <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
+            <p className="max-w-[70ch] text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
               {session.tasks.description}
             </p>
-          ) : (
-            <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
-              No additional task notes attached to this active session.
-            </p>
-          )}
+          ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge>Started {formatTimerDateTime(session.started_at)}</Badge>
-            {taskContextHref ? (
-              <Link
-                href={taskContextHref}
-                className="btn-instrument btn-instrument-muted h-9 px-4 text-sm"
-              >
-                Open task in project workspace
-              </Link>
+          <dl className="flex flex-wrap gap-x-6 gap-y-2">
+            <div>
+              <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                Started
+              </dt>
+              <dd className="tabular-nums text-[length:var(--text-body)] font-medium">
+                {formatTimerDateTime(session.started_at)}
+              </dd>
+            </div>
+            {typeof totalTrackedDurationSeconds === "number" ? (
+              <div>
+                <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                  Tracked total
+                </dt>
+                <dd className="tabular-nums text-[length:var(--text-body)] font-medium">
+                  {formatDurationLabel(totalTrackedDurationSeconds)}
+                </dd>
+              </div>
             ) : null}
-          </div>
+          </dl>
         </div>
 
-        <LiveDuration startedAt={session.started_at} />
+        <LiveDuration startedAt={session.started_at} label="Elapsed" />
       </div>
 
-      <TimerStopForm
-        sessionId={session.id}
-        returnTo="/timer"
-        disabled={hasSessionConflict}
-      />
+      <div className="flex flex-wrap items-center gap-2 border-t border-[var(--ega-divider)] pt-4">
+        <TimerStopForm
+          sessionId={session.id}
+          returnTo="/timer"
+          disabled={hasSessionConflict}
+          size="lg"
+        >
+          Stop session
+        </TimerStopForm>
+        {taskContextHref ? (
+          <Link
+            href={taskContextHref}
+            className="btn-instrument btn-instrument-muted flex h-9 items-center px-3.5 text-sm"
+          >
+            Open task
+          </Link>
+        ) : null}
+      </div>
     </div>
   );
 }
