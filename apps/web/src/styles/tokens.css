@@ -96,9 +96,11 @@
   --ega-overlay-soft: rgba(23, 23, 23, 0.16);
 
   /* ── Sidebar (light) ─────────────────────────────────── */
+  /* Opaque rail states: translucent tints made text contrast depend on what
+     happened to sit behind the rail. */
   --ega-sidebar: var(--ega-bg);
-  --ega-sidebar-hover: rgba(23, 23, 23, 0.05);
-  --ega-sidebar-selected: rgba(23, 23, 23, 0.07);
+  --ega-sidebar-hover: #eeeeee;
+  --ega-sidebar-selected: #eaeaea;
   --ega-sidebar-text: var(--ega-text);
   --ega-sidebar-muted: var(--ega-text-secondary);
   --ega-sidebar-border: var(--ega-border);
