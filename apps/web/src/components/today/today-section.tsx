@@ -11,8 +11,10 @@ type TodaySectionProps = {
   headerActions?: ReactNode;
   tone?: "muted" | "info" | "warn" | "success";
   compactWhenEmpty?: boolean;
+  description?: string;
 };
 
+/** Secondary Today lane: a titled panel with a count and its rows. */
 export function TodaySection({
   title,
   count,
@@ -21,22 +23,33 @@ export function TodaySection({
   headerActions,
   tone = "muted",
   compactWhenEmpty = false,
+  description,
 }: TodaySectionProps) {
   const isEmpty = count === 0;
 
   return (
-    <Card className={`today-section today-section-${tone}`}>
-      <CardHeader className={isEmpty && compactWhenEmpty ? "pb-3" : "pb-4"}>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="today-section-rail" aria-hidden="true" />
-            <CardTitle className="text-lg">{title}</CardTitle>
+    <Card>
+      <CardHeader className={isEmpty && compactWhenEmpty ? "!py-3" : undefined}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <CardTitle className="truncate">{title}</CardTitle>
             <Badge tone={tone}>{count}</Badge>
           </div>
           {headerActions}
         </div>
+        {description ? (
+          <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            {description}
+          </p>
+        ) : null}
       </CardHeader>
-      <CardContent className={isEmpty && compactWhenEmpty ? "pt-1" : "space-y-3 pt-1"}>
+      <CardContent
+        className={
+          isEmpty
+            ? "!py-0"
+            : "!px-0 !py-0"
+        }
+      >
         {isEmpty ? emptyState : children}
       </CardContent>
     </Card>

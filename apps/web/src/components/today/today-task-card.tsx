@@ -142,14 +142,14 @@ export function TodayTaskCard({
   return (
     <article
       id={`today-task-${task.id}`}
-      className={`today-task-card ${task.hasActiveTimer ? "today-task-card-active" : ""} ${
-        isCompleted ? "today-task-card-completed" : ""
+      className={`task-row ${task.hasActiveTimer ? "task-row-active" : ""} ${
+        isCompleted ? "task-row-completed" : ""
       }`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-start gap-2">
-            <h3 className="min-w-0 text-base font-semibold leading-6 text-[color:var(--foreground)]">{task.title}</h3>
+            <h3 className="task-row-title min-w-0 truncate">{task.title}</h3>
             {task.hasActiveTimer ? <Badge tone="active">Active timer</Badge> : null}
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -158,17 +158,17 @@ export function TodayTaskCard({
             {cardMeta.showDueTodayBadge ? <Badge tone="info">Due today</Badge> : null}
             {task.focusRank ? <Badge tone="info">Pinned #{task.focusRank}</Badge> : null}
           </div>
-          <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+          <p className="mt-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
             {task.projectName}
             {task.goalTitle ? ` · ${task.goalTitle}` : ""}
           </p>
           {description ? (
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--muted-foreground)]">
+            <p className="mt-2 max-w-[70ch] text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
               {description}
             </p>
           ) : null}
           {task.status === "blocked" && task.blockedReason?.trim() ? (
-            <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
+            <p className="feedback-block feedback-block-error mt-2">
               Blocked: {task.blockedReason.trim()}
             </p>
           ) : null}
@@ -184,8 +184,8 @@ export function TodayTaskCard({
         </div>
       </div>
 
-      <div className="today-task-actions">
-        <div className="today-task-primary-actions">
+      <div className="task-row-actions">
+        <div className="flex flex-wrap items-center gap-1.5">
           {isActiveTimerTask ? (
             <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm" />
           ) : startTimerMeta ? (
@@ -203,8 +203,8 @@ export function TodayTaskCard({
           ) : null}
         </div>
 
-        <details className="action-overflow today-action-overflow">
-          <summary className="today-more-button">
+        <details className="action-overflow">
+          <summary className="filter-pill">
             More
             <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
           </summary>

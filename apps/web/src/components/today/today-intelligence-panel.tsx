@@ -42,8 +42,8 @@ export function TodayIntelligencePanel({
   const hasContextSwitch = friction.data?.contextSwitch.isFriction ?? false;
 
   return (
-    <section className="today-intelligence-grid" aria-label="Today intelligence">
-      <Card className="today-intelligence-panel">
+    <section className="workspace-split-grid" aria-label="Today intelligence">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -55,7 +55,7 @@ export function TodayIntelligencePanel({
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           {health.errorMessage || !health.data ? (
-            <div className="today-intelligence-unavailable" role="status">
+            <div className="feedback-block feedback-block-warn" role="status">
               <Badge tone="muted">Unavailable</Badge>
               <p>Workload evidence is unavailable. Your Today plan remains usable.</p>
             </div>
@@ -86,7 +86,7 @@ export function TodayIntelligencePanel({
         </CardContent>
       </Card>
 
-      <Card className="today-intelligence-panel">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -98,7 +98,7 @@ export function TodayIntelligencePanel({
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           {friction.errorMessage || !friction.data ? (
-            <div className="today-intelligence-unavailable" role="status">
+            <div className="feedback-block feedback-block-warn" role="status">
               <Badge tone="muted">Unavailable</Badge>
               <p>Friction signals are unavailable. Core task execution is unaffected.</p>
             </div>

@@ -10,15 +10,14 @@ import {
   StartHerePanel,
 } from "@/components/today/today-cockpit-panels";
 import { TodayIntelligencePanel } from "@/components/today/today-intelligence-panel";
-import { TodayOperatorBriefing } from "@/components/today/today-operator-briefing";
+import { TodayKpiRow } from "@/components/today/today-kpi-row";
 import { TodayOperatorPlan } from "@/components/today/today-operator-plan";
 import { TodaySection } from "@/components/today/today-section";
 import { TodaySuggestionsPanel } from "@/components/today/today-suggestions-panel";
-import { TodaySummaryBar } from "@/components/today/today-summary-bar";
 import { TodayTaskCard } from "@/components/today/today-task-card";
+import { TodayHeaderActions } from "@/components/today/today-header-actions";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -26,6 +25,7 @@ import { formatTaskDueDate } from "@/lib/task-due-date";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
+import { getActiveTimerSession } from "@/lib/services/timer-service";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
@@ -34,26 +34,34 @@ import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from
 
 export const metadata: Metadata = {
   title: "Today",
-  description: "Plan intentional work for today with direct execution controls.",
+  description: "Focus on what matters today. Make progress, one step at a time.",
 };
 
 function PlannerErrorState({ actionError }: { actionError: string | null }) {
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {actionError ? <p className="feedback-block feedback-block-error">{actionError}</p> : null}
-      <Card className="border-[var(--border)] bg-white">
-        <CardContent className="px-6 pb-6 pt-6">
-          <div className="space-y-3" role="status" aria-live="polite">
-            <div>
-              <h2 className="text-base font-semibold text-[color:var(--foreground)]">Today is temporarily unavailable</h2>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                The daily plan could not be read. Your task inventory is still available while we recover the daily view.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href="/today" className="btn-instrument inline-flex h-9 items-center px-3">Retry Today</Link>
-              <Link href="/tasks" className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-3">Open Tasks</Link>
-            </div>
+      <Card>
+        <CardContent className="flex flex-col gap-3" role="status" aria-live="polite">
+          <div>
+            <h2 className="text-[length:var(--text-panel-title)] font-semibold">
+              Today is temporarily unavailable
+            </h2>
+            <p className="mt-1 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
+              The daily plan could not be read. Your task inventory stays available while the daily
+              view recovers.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/today" className="btn-instrument flex h-8 items-center px-3 text-sm">
+              Retry Today
+            </Link>
+            <Link
+              href="/tasks"
+              className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+            >
+              Open Tasks
+            </Link>
           </div>
         </CardContent>
       </Card>
@@ -77,25 +85,35 @@ export default async function TodayPage({
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const operatorProposalId = resolvedSearchParams.operatorProposalId?.slice(0, 80) ?? null;
 
-  const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] = await Promise.all([
-    getOperatorSnapshotData(),
-    getHealthSnapshotData().catch(() => ({ errorMessage: "Workload evidence is unavailable.", data: null, recommendations: [] })),
-    getFrictionRadar().catch(() => ({ errorMessage: "Friction signals are unavailable.", data: null })),
-    getCurrentUser(),
-    operatorProposalId
-      ? getOperatorProposalData({ proposalId: operatorProposalId }).catch(() => ({ data: null, errorMessage: "The approval plan is unavailable." }))
-      : Promise.resolve({ data: null, errorMessage: null }),
-    // Request-memoized and already resolved by AppShell; reusing it keeps the
-    // visible "overdue" metric on the same canonical semantics as the top bar.
-    getWorkspaceShellMetrics(),
-  ]);
+  const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] =
+    await Promise.all([
+      getOperatorSnapshotData(),
+      getHealthSnapshotData().catch(() => ({
+        errorMessage: "Workload evidence is unavailable.",
+        data: null,
+        recommendations: [],
+      })),
+      getFrictionRadar().catch(() => ({
+        errorMessage: "Friction signals are unavailable.",
+        data: null,
+      })),
+      getCurrentUser(),
+      operatorProposalId
+        ? getOperatorProposalData({ proposalId: operatorProposalId }).catch(() => ({
+            data: null,
+            errorMessage: "The approval plan is unavailable.",
+          }))
+        : Promise.resolve({ data: null, errorMessage: null }),
+      // Request-memoized and already resolved by AppShell; reusing it keeps the
+      // visible "overdue" metric on the same canonical semantics as the sidebar.
+      getWorkspaceShellMetrics(),
+    ]);
 
   if (todayResult.errorMessage || !todayResult.data) {
     return (
       <AppShell
-        eyebrow="Execution Workspace"
         title="Today"
-        description="Build an intentional plan, then move directly into execution."
+        description="Focus on what matters today. Make progress, one step at a time."
       >
         <PlannerErrorState actionError={actionError} />
       </AppShell>
@@ -103,8 +121,18 @@ export default async function TodayPage({
   }
 
   const snapshot = todayResult.data;
-  // Map canonical Operator snapshot to the legacy TodayPlannerData shape expected by existing UI.
-  // This keeps the web Today surface on shared semantics without forking ranking.
+
+  // Bounded active-session read, only when the snapshot says a session ran. It
+  // supplies startedAt for the live elapsed display; Today never computes timer
+  // math itself and never loads the full Timer page model.
+  let activeTimerStartedAt: string | null = null;
+  if (snapshot.activeTimer) {
+    const activeTimerResult = await getActiveTimerSession();
+    activeTimerStartedAt = activeTimerResult.data?.startedAt ?? null;
+  }
+
+  // Map the canonical Operator snapshot to the shape the Today surfaces expect.
+  // This keeps web Today on shared semantics without forking ranking.
   const allTasksForLookup = [
     ...snapshot.sections.planned,
     ...snapshot.sections.inProgress,
@@ -121,7 +149,7 @@ export default async function TodayPage({
     ? {
         sessionId: snapshot.activeTimer.sessionId,
         taskId: snapshot.activeTimer.taskId,
-        startedAt: "",
+        startedAt: activeTimerStartedAt ?? "",
         elapsedLabel: "Running now",
         taskTitle: activeTaskForTimer?.title ?? "Active task",
         taskStatus: activeTaskForTimer?.status ?? "in_progress",
@@ -131,6 +159,7 @@ export default async function TodayPage({
         goalTitle: activeTaskForTimer?.goalTitle ?? null,
       }
     : null;
+
   const todayData = {
     date: snapshot.date,
     startHere: snapshot.focus.startHere,
@@ -147,21 +176,23 @@ export default async function TodayPage({
     activeTimer: enrichedActiveTimer,
     signals: snapshot.signals,
   };
+
   const returnTo = "/today";
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
   );
-  const stoppedTaskTitle = [
-    ...todayData.plannedToday,
-    ...todayData.planned,
-    ...todayData.inProgress,
-    ...todayData.blocked,
-    ...todayData.completed,
-    ...todayData.focusQueue,
-    ...todayData.suggestions.pinned,
-    ...todayData.suggestions.inProgress,
-  ].find((task) => task.id === stoppedTaskId)?.title ?? "this task";
+  const stoppedTaskTitle =
+    [
+      ...todayData.plannedToday,
+      ...todayData.planned,
+      ...todayData.inProgress,
+      ...todayData.blocked,
+      ...todayData.completed,
+      ...todayData.focusQueue,
+      ...todayData.suggestions.pinned,
+      ...todayData.suggestions.inProgress,
+    ].find((task) => task.id === stoppedTaskId)?.title ?? "this task";
   const showStoppedTaskPrompt = Boolean(!todayData.activeTimer && stoppedTaskId);
 
   const allTodayCount =
@@ -170,22 +201,16 @@ export default async function TodayPage({
     todayData.summary.blockedCount +
     todayData.summary.completedCount;
 
+  const dueTodayCarryover = [
+    ...todayData.inProgress.filter((task) => !task.isPlannedForToday),
+    ...todayData.planned.filter((task) => !task.isPlannedForToday),
+  ];
+
   return (
     <AppShell
-      eyebrow="Execution Workspace"
-      title="Today / Daily Operator"
-      description={`${formatTaskDueDate(todayData.date)} · Here’s what matters today.`}
-      contentClassName="today-page-content"
-      actions={
-        <div className="flex items-center gap-2">
-          <Link href="/tasks" className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center px-4">
-            Open tasks
-          </Link>
-          <Link href="/timer" className="btn-instrument glass-label flex h-8 items-center px-4">
-            Open timer
-          </Link>
-        </div>
-      }
+      title="Today"
+      description={`${formatTaskDueDate(todayData.date)} · Focus on what matters today. Make progress, one step at a time.`}
+      actions={<TodayHeaderActions />}
     >
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
@@ -193,259 +218,292 @@ export default async function TodayPage({
         tables={["tasks", "task_sessions"]}
       />
 
-      <div className="today-page-stack">
-        {showStoppedTaskPrompt ? (
-          <TimerStopOutcomePrompt
-            taskId={stoppedTaskId ?? ""}
-            taskTitle={stoppedTaskTitle}
-            returnTo={returnTo}
-          />
-        ) : null}
-
-        <TimerActionFeedback
-          actionError={actionError}
-          actionSuccess={actionSuccess}
+      {showStoppedTaskPrompt ? (
+        <TimerStopOutcomePrompt
+          taskId={stoppedTaskId ?? ""}
+          taskTitle={stoppedTaskTitle}
+          returnTo={returnTo}
         />
+      ) : null}
 
-        <TodayOperatorBriefing
-          summary={todayData.summary}
-          hasActiveTimer={Boolean(todayData.activeTimer)}
-          globalOverdueCount={shellMetrics.overdueTaskCount}
-        />
+      <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
 
-        <TodaySummaryBar
-          plannedCount={todayData.summary.plannedCount}
-          inProgressCount={todayData.summary.inProgressCount}
-          blockedCount={todayData.summary.blockedCount}
-          completedCount={todayData.summary.completedCount}
-          totalEstimateMinutes={todayData.summary.totalEstimateMinutes}
-          trackedTodayLabel={todayData.summary.trackedTodayLabel}
-        />
+      <TodayKpiRow
+        summary={todayData.summary}
+        hasActiveTimer={Boolean(todayData.activeTimer)}
+        globalOverdueCount={shellMetrics.overdueTaskCount}
+      />
 
-        <div className="today-cockpit-grid">
+      <div className="workspace-main-rail-grid">
+        <div className="flex flex-col gap-4">
           <StartHerePanel
             task={todayData.startHere}
             returnTo={returnTo}
             activeTimerSessionId={activeTimerSessionId}
           />
-          <div className="today-cockpit-side">
-            <ActiveTimerPanel activeTimer={todayData.activeTimer} returnTo={returnTo} />
-            <FocusQueuePanel
-              tasks={todayData.focusQueue}
-              returnTo={returnTo}
-              activeTimerSessionId={activeTimerSessionId}
-            />
-          </div>
+
+          <FocusQueuePanel
+            tasks={todayData.focusQueue}
+            returnTo={returnTo}
+            activeTimerSessionId={activeTimerSessionId}
+          />
         </div>
 
-        <TodayIntelligencePanel health={healthResult} friction={frictionResult} />
+        <div className="workspace-secondary-rail">
+          <ActiveTimerPanel
+            activeTimer={todayData.activeTimer}
+            returnTo={returnTo}
+            startedAt={activeTimerStartedAt}
+          />
 
-        <TodayOperatorPlan
-          tasks={todayData.focusQueue}
-          proposal={proposalResult.data}
-          proposalError={proposalResult.errorMessage}
-          returnTo={returnTo}
-        />
-
-        <div className="today-work-grid">
-          <div className="today-lane-stack">
-            {allTodayCount === 0 ? (
-              <Card className="border-[var(--border)] bg-white">
-                <CardContent className="space-y-3 px-5 pb-5 pt-5 text-center">
-                  <EmptyState
-                    icon={CalendarCheck2}
-                    title="Nothing planned yet for today"
-                    description="Add tasks from pinned or in-progress suggestions to create a focused execution lane."
-                    action={
-                      <div className="flex flex-wrap items-center justify-center gap-2">
-                        <a href="#pinned-suggestions" className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
-                          Add from pinned
-                        </a>
-                        <Link href="/tasks" className="btn-instrument flex h-8 items-center px-3 text-xs">
-                          Open all tasks
-                        </Link>
-                      </div>
-                    }
-                  />
-                </CardContent>
-              </Card>
-            ) : null}
-
-            {allTodayCount > 0 ? (
-              <>
-                <TodaySection
-                  title="Today Timeline"
-                  count={todayData.scheduledBlocks.length}
-                  tone="muted"
-                  emptyState={
-                    <EmptyState
-                      icon={CircleDashed}
-                      title="No scheduled blocks for today"
-                      description="Scheduled tasks with time ranges will appear here."
-                    />
-                  }
-                >
-                  {todayData.scheduledBlocks.map((task) => (
-                    <TodayTaskCard
-                      key={task.id}
-                      task={task}
-                      returnTo={returnTo}
-                      isCompleted={isTaskCompletedStatus(task.status)}
-                      activeTimerSessionId={activeTimerSessionId}
-                      startTimerLabel="Start Focus Session"
-                      startTimerReturnTo="/timer"
-                    />
-                  ))}
-                </TodaySection>
-
-                <TodaySection
-                  title="Flexible Today backlog"
-                  count={flexibleTodayActionable.length}
-                  tone="muted"
-                  emptyState={
-                    <EmptyState
-                      icon={CircleDashed}
-                      title="No flexible tasks planned for today."
-                      description="Unscheduled tasks planned for today will appear here."
-                    />
-                  }
-                >
-                  {flexibleTodayActionable.map((task) => (
-                    <TodayTaskCard
-                      key={task.id}
-                      task={task}
-                      returnTo={returnTo}
-                      activeTimerSessionId={activeTimerSessionId}
-                    />
-                  ))}
-                </TodaySection>
-
-                <TodaySection
-                  title="Due today / active"
-                  count={todayData.planned.filter((task) => !task.isPlannedForToday).length + todayData.inProgress.filter((task) => !task.isPlannedForToday).length}
-                  tone="info"
-                  emptyState={
-                    <EmptyState
-                      icon={CirclePlay}
-                      title="No due-today carryover"
-                      description="Tasks due today but not manually planned will appear here."
-                    />
-                  }
-                >
-                  {[
-                    ...todayData.inProgress.filter((task) => !task.isPlannedForToday),
-                    ...todayData.planned.filter((task) => !task.isPlannedForToday),
-                  ].map((task) => (
-                    <TodayTaskCard
-                      key={task.id}
-                      task={task}
-                      returnTo={returnTo}
-                      activeTimerSessionId={activeTimerSessionId}
-                    />
-                  ))}
-                </TodaySection>
-
-                <TodaySection
-                  title="Blocked"
-                  count={todayData.blocked.length}
-                  tone="warn"
-                  emptyState={
-                    <EmptyState
-                      icon={CircleOff}
-                      title="No blocked tasks"
-                      description="Blocked work will surface here when status is set to blocked."
-                    />
-                  }
-                >
-                  {todayData.blocked.map((task) => (
-                    <TodayTaskCard
-                      key={task.id}
-                      task={task}
-                      returnTo={returnTo}
-                      activeTimerSessionId={activeTimerSessionId}
-                    />
-                  ))}
-                </TodaySection>
-
-                <TodaySection
-                  title="Completed"
-                  count={todayData.completed.length}
-                  tone="success"
-                  compactWhenEmpty
-                  headerActions={todayData.summary.clearableCompletedCount > 0 ? (
-                    <form action={clearCompletedFromTodayAction}>
-                      <input type="hidden" name="returnTo" value={returnTo} />
-                      <PendingSubmitButton
-                        type="submit"
-                        variant="muted"
-                        size="sm"
-                        className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs"
-                        pendingLabel="Clearing..."
-                      >
-                        Clear completed from Today
-                      </PendingSubmitButton>
-                    </form>
-                  ) : null}
-                  emptyState={
-                    <EmptyState
-                      icon={CircleCheck}
-                      title="No completed items yet"
-                      description="Completed Today tasks will appear here for quick cleanup."
-                    />
-                  }
-                >
-                  {todayData.completed.map((task) => (
-                    <TodayTaskCard
-                      key={task.id}
-                      task={task}
-                      returnTo={returnTo}
-                      isCompleted
-                      activeTimerSessionId={activeTimerSessionId}
-                    />
-                  ))}
-                </TodaySection>
-              </>
-            ) : null}
-          </div>
-
-          <div className="today-assist-stack">
-            <TodaySuggestionsPanel
-              returnTo={returnTo}
-              activeTimerSessionId={activeTimerSessionId}
-              groups={[
-                {
-                  key: "pinned",
-                  title: "Pinned / focus",
-                  emptyText: "No pinned tasks right now.",
-                  items: todayData.suggestions.pinned,
-                },
-                {
-                  key: "in-progress",
-                  title: "Recently active",
-                  emptyText: "No in-progress suggestions right now.",
-                  items: todayData.suggestions.inProgress,
-                },
-              ]}
-            />
-
-            <Card className="border-[var(--border)] bg-white">
-              <CardContent className="space-y-3 px-5 pb-5 pt-5">
-                <p className="glass-label text-etch">Today status</p>
-                <div className="flex flex-wrap gap-2">
-                  <Badge tone="muted">{allTodayCount} in Today</Badge>
-                  <Badge tone="info">{todayData.summary.trackedTodayLabel} tracked</Badge>
-                </div>
-                <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  Move from planning to execution quickly by starting a timer directly from any Today item.
-                </p>
-                <Link href="/timer" className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs">
-                  Open timer workspace
-                </Link>
+          <Card label="Today lane" title="Schedule" data-testid="today-lane">
+            {todayData.scheduledBlocks.length === 0 &&
+            flexibleTodayActionable.length === 0 &&
+            dueTodayCarryover.length === 0 ? (
+              <CardContent>
+                <EmptyState
+                  icon={CircleDashed}
+                  title="Nothing scheduled"
+                  description="Scheduled blocks and today's flexible work appear here as they are planned."
+                />
               </CardContent>
-            </Card>
-          </div>
+            ) : (
+              <ul className="rows">
+                {todayData.scheduledBlocks.map((task) => (
+                  <li key={task.id} className="row">
+                    <span className="row-main">
+                      <span className="row-title">{task.title}</span>
+                      <span className="row-meta">
+                        {task.projectName}
+                        {task.isPlannedForToday ? " · planned" : ""}
+                      </span>
+                    </span>
+                    <Link
+                      href="/timer"
+                      className="btn-instrument btn-instrument-muted flex h-7 items-center px-2.5 text-xs"
+                    >
+                      Focus
+                    </Link>
+                  </li>
+                ))}
+                {dueTodayCarryover.map((task) => (
+                  <li key={`carryover-${task.id}`} className="row">
+                    <span className="row-main">
+                      <span className="row-title">{task.title}</span>
+                      <span className="row-meta">{task.projectName} · due today</span>
+                    </span>
+                    <Link
+                      href="/timer"
+                      className="btn-instrument btn-instrument-muted flex h-7 items-center px-2.5 text-xs"
+                    >
+                      Focus
+                    </Link>
+                  </li>
+                ))}
+                {flexibleTodayActionable.map((task) => (
+                  <li key={`flex-${task.id}`} className="row">
+                    <span className="row-main">
+                      <span className="row-title">{task.title}</span>
+                      <span className="row-meta">
+                        {task.projectName} · flexible
+                      </span>
+                    </span>
+                    <Link
+                      href="/timer"
+                      className="btn-instrument btn-instrument-muted flex h-7 items-center px-2.5 text-xs"
+                    >
+                      Focus
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
         </div>
       </div>
+
+      <TodaySection
+        title="Completed today"
+        count={todayData.completed.length}
+        compactWhenEmpty
+        headerActions={
+          todayData.summary.clearableCompletedCount > 0 ? (
+            <form action={clearCompletedFromTodayAction}>
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <PendingSubmitButton
+                type="submit"
+                variant="secondary"
+                size="sm"
+                pendingLabel="Clearing..."
+              >
+                Clear completed from Today
+              </PendingSubmitButton>
+            </form>
+          ) : null
+        }
+        emptyState={
+          <div className="px-4 py-6">
+            <EmptyState
+              icon={CircleCheck}
+              title="No completed items yet"
+              description="Work you finish today collects here for quick cleanup."
+            />
+          </div>
+        }
+      >
+        {todayData.completed.map((task) => (
+          <TodayTaskCard
+            key={task.id}
+            task={task}
+            returnTo={returnTo}
+            isCompleted
+            activeTimerSessionId={activeTimerSessionId}
+          />
+        ))}
+      </TodaySection>
+
+      <div className="workspace-main-rail-grid">
+        <div className="flex flex-col gap-4">
+          {allTodayCount === 0 ? (
+            <Card>
+              <CardContent>
+                <EmptyState
+                  icon={CalendarCheck2}
+                  title="Nothing planned yet for today"
+                  description="Add tasks from pinned or in-progress suggestions to create a focused execution lane."
+                  action={
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <a
+                        href="#pinned-suggestions"
+                        className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+                      >
+                        Add from pinned
+                      </a>
+                      <Link
+                        href="/tasks"
+                        className="btn-instrument flex h-8 items-center px-3 text-sm"
+                      >
+                        Open all tasks
+                      </Link>
+                    </div>
+                  }
+                />
+              </CardContent>
+            </Card>
+          ) : null}
+
+          <TodaySection
+            title="Blocked"
+            count={todayData.blocked.length}
+            tone="warn"
+            compactWhenEmpty
+            emptyState={
+              <div className="px-4 py-6">
+                <EmptyState
+                  icon={CircleOff}
+                  title="No blocked tasks"
+                  description="Blocked work surfaces here when a task status is set to blocked."
+                />
+              </div>
+            }
+          >
+            {todayData.blocked.map((task) => (
+              <TodayTaskCard
+                key={task.id}
+                task={task}
+                returnTo={returnTo}
+                activeTimerSessionId={activeTimerSessionId}
+              />
+            ))}
+          </TodaySection>
+
+          <TodayOperatorPlan
+            tasks={todayData.focusQueue}
+            proposal={proposalResult.data}
+            proposalError={proposalResult.errorMessage}
+            returnTo={returnTo}
+          />
+        </div>
+
+        <div className="workspace-secondary-rail">
+          <TodaySuggestionsPanel
+            returnTo={returnTo}
+            activeTimerSessionId={activeTimerSessionId}
+            groups={[
+              {
+                key: "pinned",
+                title: "Pinned / focus",
+                emptyText: "No pinned tasks right now.",
+                items: todayData.suggestions.pinned,
+              },
+              {
+                key: "in-progress",
+                title: "Recently active",
+                emptyText: "No in-progress suggestions right now.",
+                items: todayData.suggestions.inProgress,
+              },
+            ]}
+          />
+
+          <TodayIntelligencePanel health={healthResult} friction={frictionResult} />
+        </div>
+      </div>
+
+      {allTodayCount > 0 ? (
+        <div className="workspace-split-grid">
+          <TodaySection
+            title="Due today / active"
+            count={dueTodayCarryover.length}
+            tone="info"
+            description="Tasks due today that are not part of the manual plan."
+            compactWhenEmpty
+            emptyState={
+              <div className="px-4 py-6">
+                <EmptyState
+                  icon={CirclePlay}
+                  title="No due-today carryover"
+                  description="Tasks due today but not manually planned appear here."
+                />
+              </div>
+            }
+          >
+            {dueTodayCarryover.map((task) => (
+              <TodayTaskCard
+                key={task.id}
+                task={task}
+                returnTo={returnTo}
+                activeTimerSessionId={activeTimerSessionId}
+              />
+            ))}
+          </TodaySection>
+
+          <TodaySection
+            title="Flexible today"
+            count={flexibleTodayActionable.length}
+            tone="muted"
+            description="Unscheduled tasks planned for today."
+            compactWhenEmpty
+            emptyState={
+              <div className="px-4 py-6">
+                <EmptyState
+                  icon={CircleDashed}
+                  title="No flexible tasks planned"
+                  description="Unscheduled tasks planned for today appear here."
+                />
+              </div>
+            }
+          >
+            {flexibleTodayActionable.map((task) => (
+              <TodayTaskCard
+                key={task.id}
+                task={task}
+                returnTo={returnTo}
+                activeTimerSessionId={activeTimerSessionId}
+              />
+            ))}
+          </TodaySection>
+        </div>
+      ) : null}
     </AppShell>
   );
 }
