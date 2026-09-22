@@ -11,27 +11,12 @@ type StatCardProps = HTMLAttributes<HTMLDivElement> & {
   variant?: "default" | "green" | "cyan" | "muted";
 };
 
-const variants = {
-  default: "bg-white border-[var(--border)]",
-  green:   "bg-[#e8f5e9] border-[#a5d6a7]",
-  cyan:    "bg-[#e3f2fd] border-[#90caf9]",
-  muted:   "bg-[var(--instrument-raised)] border-[var(--border)]",
-};
-
-const labelColors = {
-  default: "text-[color:var(--muted-foreground)]",
-  green:   "text-[#1b5e20]",
-  cyan:    "text-[#1565c0]",
-  muted:   "text-zinc-500",
-};
-
-const valueColors = {
-  default: "text-[color:var(--foreground)]",
-  green:   "text-[#1b5e20]",
-  cyan:    "text-[#1565c0]",
-  muted:   "text-zinc-700",
-};
-
+/**
+ * KPI card used across dashboards.
+ *
+ * Variants are intentionally neutral: data categories come from charts, not
+ * from tinted card backgrounds.
+ */
 export function StatCard({
   label,
   value,
@@ -45,34 +30,31 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-card)] border px-5 py-4 shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)]",
-        variants[variant],
+        "flex flex-col gap-2 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] px-[18px] py-4",
+        variant === "muted" && "bg-[color:var(--ega-surface-subtle)]",
         className,
       )}
       {...props}
     >
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <p className={cn("text-[11px] font-semibold uppercase tracking-[0.14em]", labelColors[variant])}>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text-secondary)]">
           {label}
         </p>
         {Icon ? (
-          <Icon className={cn("h-4 w-4 shrink-0", valueColors[variant])} aria-hidden="true" />
+          <Icon className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]" aria-hidden="true" />
         ) : null}
       </div>
-      <div className="flex items-end justify-between gap-2">
-        <p
-          className={cn("text-2xl font-bold tracking-tight leading-none", valueColors[variant])}
-          style={{ fontFamily: "var(--font-display)" }}
-        >
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <p className="text-[length:var(--text-metric)] font-semibold leading-none tracking-[var(--tracking-tight)] tabular-nums text-[color:var(--ega-text)]">
           {value}
         </p>
-        {trend && (
-          <span className="pb-0.5 text-xs text-[color:var(--muted-foreground)]">{trend}</span>
-        )}
+        {trend ? <span className="text-[length:var(--text-meta)]">{trend}</span> : null}
       </div>
-      {subtitle && (
-        <p className="mt-1.5 text-xs text-[color:var(--muted-foreground)]">{subtitle}</p>
-      )}
+      {subtitle ? (
+        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+          {subtitle}
+        </p>
+      ) : null}
     </div>
   );
 }

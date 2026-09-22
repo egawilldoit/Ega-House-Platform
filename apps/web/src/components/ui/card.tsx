@@ -6,12 +6,21 @@ type CardProps = HTMLAttributes<HTMLDivElement> & {
   label?: string;
   title?: string;
   action?: ReactNode;
+  /** Flush removes the default panel padding pattern for header/body wrappers. */
+  flush?: boolean;
 };
 
+/**
+ * Default authenticated panel: white surface, 1px neutral border, no shadow.
+ *
+ * Static panels never gain hover elevation; only interactive overlays use
+ * shadows in this system.
+ */
 export function Card({
   label,
   title,
   action,
+  flush = false,
   className,
   children,
   ...props
@@ -19,7 +28,8 @@ export function Card({
   return (
     <div
       className={cn(
-        "ega-glass rounded-[var(--radius-card)] text-[color:var(--foreground)] transition-shadow hover:shadow-[var(--shadow-card-hover)]",
+        "rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] text-[color:var(--ega-text)]",
+        !flush && "overflow-hidden",
         className,
       )}
       {...props}
@@ -27,8 +37,8 @@ export function Card({
       {(label || title || action) && (
         <CardHeader>
           <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              {label ? <div className="sidebar-section-label" style={{ padding: 0 }}>{label}</div> : null}
+            <div className="min-w-0 space-y-0.5">
+              {label ? <PanelLabel>{label}</PanelLabel> : null}
               {title ? <CardTitle>{title}</CardTitle> : null}
             </div>
             {action ? <CardAction>{action}</CardAction> : null}
@@ -40,11 +50,34 @@ export function Card({
   );
 }
 
+export function PanelLabel({
+  className,
+  ...props
+}: HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div
+      className={cn(
+        "text-[length:var(--text-micro)] font-semibold uppercase tracking-[var(--tracking-widest)] text-[color:var(--ega-text-tertiary)]",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function CardHeader({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col gap-2 p-6", className)} {...props} />;
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2 border-b border-[var(--ega-divider)] px-[18px] py-4",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function CardTitle({
@@ -55,7 +88,7 @@ export function CardTitle({
   return (
     <h3
       className={cn(
-        "text-xl font-semibold tracking-tight text-[color:var(--foreground)]",
+        "text-[length:var(--text-panel-title)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]",
         className,
       )}
       {...props}
@@ -72,7 +105,7 @@ export function CardDescription({
   return (
     <p
       className={cn(
-        "text-sm leading-6 text-[color:var(--muted-foreground)]",
+        "text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]",
         className,
       )}
       {...props}
@@ -96,7 +129,7 @@ export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-6 pb-6", className)} {...props} />;
+  return <div className={cn("px-[18px] py-4", className)} {...props} />;
 }
 
 export function CardFooter({
@@ -106,7 +139,7 @@ export function CardFooter({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-t border-[var(--border)] px-6 py-4",
+        "flex items-center gap-3 border-t border-[var(--ega-divider)] px-[18px] py-3",
         className,
       )}
       {...props}

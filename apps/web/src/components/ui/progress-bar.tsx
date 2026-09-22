@@ -9,9 +9,9 @@ type ProgressBarProps = HTMLAttributes<HTMLDivElement> & {
 };
 
 const variants = {
-  green:   "bg-[var(--accent)]",
-  cyan:    "bg-[var(--signal-info)]",
-  neutral: "bg-zinc-300",
+  green: "bg-[var(--ega-data-blue)]",
+  cyan: "bg-[var(--ega-data-purple)]",
+  neutral: "bg-[var(--ega-ink)]",
 };
 
 const sizes = {
@@ -22,7 +22,7 @@ const sizes = {
 export function ProgressBar({
   value,
   max = 100,
-  variant = "green",
+  variant = "neutral",
   size = "sm",
   className,
   ...props
@@ -36,14 +36,14 @@ export function ProgressBar({
       aria-valuemin={0}
       aria-valuemax={max}
       className={cn(
-        "w-full overflow-hidden rounded-full bg-[#e8e5de]",
+        "w-full overflow-hidden rounded-[var(--radius-pill)] bg-[var(--ega-surface-muted)]",
         sizes[size],
         className,
       )}
       {...props}
     >
       <div
-        className={cn("h-full rounded-full transition-all duration-500 ease-out", variants[variant])}
+        className={cn("h-full rounded-[var(--radius-pill)]", variants[variant])}
         style={{ width: `${pct}%` }}
       />
     </div>

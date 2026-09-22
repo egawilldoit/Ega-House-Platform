@@ -26,20 +26,23 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "surface-empty flex flex-col items-center gap-3 px-5 py-6 text-center",
+        "flex flex-col items-center gap-2 px-5 py-8 text-center",
         className,
       )}
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-full border border-[var(--border)] bg-[color:var(--instrument)]">
-        <Icon className="h-4 w-4 text-[color:var(--muted-foreground)]" />
-      </div>
-      <div className="space-y-1">
-        <p className="text-sm font-semibold text-[color:var(--foreground)]">{title}</p>
-        <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">{description}</p>
-      </div>
-      {action ? action : null}
+      <Icon className="h-4 w-4 text-[color:var(--ega-text-tertiary)]" aria-hidden="true" />
+      <p className="text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)]">
+        {title}
+      </p>
+      <p className="max-w-[48ch] text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
+        {description}
+      </p>
+      {action ? <div className="mt-1">{action}</div> : null}
       {actionLabel && actionHref ? (
-        <Link href={actionHref} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
+        <Link
+          href={actionHref}
+          className="btn-instrument btn-instrument-muted mt-1 flex h-8 items-center px-3 text-xs"
+        >
           {actionLabel}
         </Link>
       ) : null}
