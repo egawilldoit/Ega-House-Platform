@@ -78,6 +78,9 @@ function emptyModel(overrides: Partial<Parameters<typeof AuthenticatedHomePage>[
     nextUp: null,
     attention: { overdue: 0, dueToday: 0, reviewMissing: false },
     snapshotUnavailable: false,
+    summary: null,
+    sections: null,
+    focusQueue: [],
     ...overrides,
   };
 }
@@ -145,11 +148,20 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(container.textContent).toContain("Follow-up");
   });
 
-  it("reuses canonical attention counts", async () => {
+  it("reuses canonical attention counts and their canonical destinations", async () => {
     await render(emptyModel({ attention: { overdue: 3, dueToday: 2, reviewMissing: true } }));
-    expect(container.textContent).toContain("3 overdue");
-    expect(container.textContent).toContain("2 due today");
-    expect(container.textContent).toContain("Review due");
+
+    const attention = container.querySelector('[data-testid="home-attention"]');
+    expect(attention).not.toBeNull();
+    expect(attention?.textContent).toContain("Overdue");
+    expect(attention?.textContent).toContain("3");
+    expect(attention?.textContent).toContain("Due today");
+    expect(attention?.textContent).toContain("2");
+    expect(attention?.textContent).toContain("Weekly review due");
+
+    expect(attention?.querySelector('a[href="/tasks?due=overdue"]')).not.toBeNull();
+    expect(attention?.querySelector('a[href="/tasks?due=due_today"]')).not.toBeNull();
+    expect(attention?.querySelector('a[href="/review"]')).not.toBeNull();
   });
 
   it("quick actions dispatch the canonical existing events", async () => {
