@@ -18,7 +18,18 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
     getFrictionRadar().catch(() => ({ errorMessage: "Friction evidence is unavailable.", data: null })),
   ]);
   return (
-    <AppShell eyebrow="Reflection" title="Review" description="What happened and what changes next — evidence, trends, feedback.">
+    <AppShell
+      title="Review"
+      description="What happened and what changes next — evidence, trends, feedback."
+      actions={
+        <a
+          href={`/review/export?weekOf=${model.weekOf}`}
+          className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-[length:var(--text-meta-lg)]"
+        >
+          Export CSV
+        </a>
+      }
+    >
       <ReviewPageView model={model} health={health} friction={friction} />
     </AppShell>
   );

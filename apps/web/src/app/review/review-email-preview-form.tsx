@@ -23,7 +23,7 @@ export function ReviewEmailPreviewForm({ reviewId }: ReviewEmailPreviewFormProps
   const canSend = Boolean(reviewId);
 
   return (
-    <form action={formAction} className="space-y-3">
+    <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="reviewId" value={reviewId ?? ""} />
       <Button type="submit" disabled={!canSend || isPending} className="w-full sm:w-auto">
         {isPending ? "Sending preview..." : "Send preview email"}
@@ -42,7 +42,7 @@ export function ReviewEmailPreviewForm({ reviewId }: ReviewEmailPreviewFormProps
       ) : null}
 
       {state.sent ? (
-        <p className="feedback-block feedback-block-success">
+        <p className="feedback-block">
           Preview email sent{state.messageId ? ` (${state.messageId})` : ""}. Official weekly send state was not changed.
         </p>
       ) : null}

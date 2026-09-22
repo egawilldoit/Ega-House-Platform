@@ -1,32 +1,25 @@
 import Link from "next/link";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function ReviewDetailNotFound() {
   return (
     <AppShell
-      eyebrow="Review Workspace"
       title="Review not found"
       description="The selected review could not be located."
-      navigation={
-        <>
-          <Badge tone="warn">Missing record</Badge>
-        </>
-      }
     >
       <Card>
         <CardHeader>
           <CardTitle>Missing review</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4 pt-1">
-          <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
             This review entry does not exist or was removed.
           </p>
           <Link
             href="/review"
-            className="btn-instrument btn-instrument-muted inline-flex min-h-10 items-center justify-center px-4 text-sm"
+            className="btn-instrument btn-instrument-muted inline-flex h-8 items-center justify-center px-3 text-[length:var(--text-meta-lg)] self-start"
           >
             Back to review workspace
           </Link>

@@ -1,15 +1,35 @@
 import React from "react";
 
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDurationLabel } from "@/lib/task-session";
 import type { DailyTrackedTime } from "@/lib/review-session-heatmap";
 
-const HEATMAP_INTENSITY_CLASSES = [
-  "bg-[color:var(--instrument-raised)] border-[var(--border)]",
-  "bg-[rgba(22,163,74,0.14)] border-[rgba(22,163,74,0.3)]",
-  "bg-[rgba(22,163,74,0.26)] border-[rgba(22,163,74,0.45)]",
-  "bg-[rgba(22,163,74,0.42)] border-[rgba(22,163,74,0.62)]",
-  "bg-[rgba(22,163,74,0.62)] border-[rgba(22,163,74,0.82)]",
-] as const;
+/**
+ * Intensity scale built from the data-blue token (never a status colour).
+ * `color-mix` keeps the scale tied to the token instead of a hard-coded hex.
+ */
+const HEATMAP_INTENSITY_STYLES: React.CSSProperties[] = [
+  {
+    background: "var(--ega-surface-subtle)",
+    borderColor: "var(--ega-border)",
+  },
+  {
+    background: "color-mix(in srgb, var(--ega-data-blue) 14%, var(--ega-surface))",
+    borderColor: "color-mix(in srgb, var(--ega-data-blue) 30%, var(--ega-border))",
+  },
+  {
+    background: "color-mix(in srgb, var(--ega-data-blue) 26%, var(--ega-surface))",
+    borderColor: "color-mix(in srgb, var(--ega-data-blue) 45%, var(--ega-border))",
+  },
+  {
+    background: "color-mix(in srgb, var(--ega-data-blue) 42%, var(--ega-surface))",
+    borderColor: "color-mix(in srgb, var(--ega-data-blue) 62%, var(--ega-border))",
+  },
+  {
+    background: "color-mix(in srgb, var(--ega-data-blue) 64%, var(--ega-surface))",
+    borderColor: "color-mix(in srgb, var(--ega-data-blue) 82%, var(--ega-border))",
+  },
+];
 
 const LEGEND_LABELS = ["None", "Low", "Medium", "High", "Peak"] as const;
 
@@ -53,31 +73,37 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
   const windowEnd = data[data.length - 1]?.date;
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-white p-6 text-[color:var(--foreground)] shadow-[var(--shadow-card)]">
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-semibold text-[color:var(--foreground)]">Session heatmap</h2>
-            <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle>Session heatmap</CardTitle>
+            <CardDescription className="mt-1">
               Daily tracked time across the recent execution window (UTC).
-            </p>
+            </CardDescription>
             {windowStart && windowEnd ? (
-              <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+              <p className="mt-1 text-[length:var(--text-meta)] text-ega-text-tertiary">
                 {formatHeatmapDateLabel(windowStart)} to {formatHeatmapDateLabel(windowEnd)}
               </p>
             ) : null}
           </div>
-          <div className="text-right text-sm text-[color:var(--muted-foreground)]">
-            <div>
-              <span className="font-semibold text-[color:var(--foreground)]">{activeDays}</span> active days
-            </div>
-            <div>
-              <span className="font-semibold text-[color:var(--foreground)]">{formatDurationLabel(totalSeconds)}</span> tracked
-            </div>
+          <div className="text-right text-[length:var(--text-meta)] text-ega-text-secondary">
+            <p>
+              <span className="font-medium tabular-nums text-ega-text">{activeDays}</span> active days
+            </p>
+            <p>
+              <span className="font-medium tabular-nums text-ega-text">
+                {formatDurationLabel(totalSeconds)}
+              </span>{" "}
+              tracked
+            </p>
           </div>
         </div>
+      </CardHeader>
 
+      <CardContent>
         {data.length === 0 ? (
-          <div className="surface-empty px-4 py-5 text-sm leading-7 text-[color:var(--muted-foreground)]">
+          <div className="surface-empty px-4 py-5 text-[length:var(--text-meta-lg)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
             Session heatmap is unavailable for this period.
           </div>
         ) : (
@@ -97,30 +123,56 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
                     role="listitem"
                     title={label}
                     aria-label={label}
-                    className={`h-8 rounded-md border transition-transform duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)] focus-visible:ring-offset-2 ${HEATMAP_INTENSITY_CLASSES[level]}`}
+                    className="h-8 rounded-[var(--radius-xs)] border"
+                    style={HEATMAP_INTENSITY_STYLES[level]}
                   />
                 );
               })}
             </div>
 
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
                 {activeDays === 0
                   ? "No tracked sessions yet. Start a timer to build consistency data."
                   : "Higher intensity indicates more tracked session time for that day."}
-              </div>
-              <div className="flex items-center gap-2 text-xs text-[color:var(--muted-foreground)]" aria-label="Heatmap legend">
+              </p>
+              <div
+                className="flex items-center gap-2 text-[length:var(--text-meta)] text-ega-text-secondary"
+                aria-label="Heatmap legend"
+              >
                 <span>Legend</span>
                 {LEGEND_LABELS.map((label, index) => (
                   <span key={label} className="inline-flex items-center gap-1">
-                    <span className={`h-3 w-3 rounded-sm border ${HEATMAP_INTENSITY_CLASSES[index]}`} />
+                    <span
+                      className="h-3 w-3 rounded-[2px] border"
+                      style={HEATMAP_INTENSITY_STYLES[index]}
+                    />
                     {label}
                   </span>
                 ))}
               </div>
             </div>
+
+            <table className="sr-only">
+              <caption>Daily tracked session time</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Tracked time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((entry) => (
+                  <tr key={entry.date}>
+                    <th scope="row">{entry.date}</th>
+                    <td>{formatDurationLabel(entry.trackedSeconds)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </>
         )}
-    </div>
+      </CardContent>
+    </Card>
   );
 }

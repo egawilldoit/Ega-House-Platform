@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
+import { Clock3, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -9,9 +11,10 @@ import {
   SheetDescription,
   SheetClose,
 } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useAnalyticsDrilldown, type DrilldownData } from "./analytics-drilldown-context";
 import { formatDurationLabel } from "@/lib/task-session";
-import Link from "next/link";
 import type { DrilldownSessionDTO } from "@/lib/services/work-analytics-service";
 
 const DISPLAY_CAP = 50;
@@ -56,67 +59,55 @@ type SessionRowProps = {
 
 function SessionRow({ session }: SessionRowProps) {
   return (
-    <div className="rounded-lg border border-[var(--border)] bg-white p-4 transition-colors hover:bg-[var(--accent-subtle)]">
-      <div className="mb-2">
-        <Link
-          href={`/tasks/${session.taskId}`}
-          className="font-medium text-[color:var(--foreground)] hover:text-[var(--signal-live)] hover:underline"
-        >
-          {session.taskTitle}
-        </Link>
-      </div>
+    <div className="rounded-[var(--radius-lg)] border border-ega-border bg-ega-surface p-3">
+      <Link
+        href={`/tasks/${session.taskId}`}
+        className="text-[length:var(--text-body)] font-medium text-ega-text hover:underline"
+      >
+        {session.taskTitle}
+      </Link>
 
-      <div className="mb-2 space-y-1 text-sm text-[color:var(--muted-foreground)]">
-        <div className="flex items-center gap-2">
-          <span className="font-medium">Start:</span>
-          <span>{formatTimestamp(session.startedAt)}</span>
+      <dl className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 text-[length:var(--text-meta)] text-ega-text-secondary sm:grid-cols-3">
+        <div className="flex gap-1.5">
+          <dt className="text-ega-text-tertiary">Start</dt>
+          <dd className="tabular-nums">{formatTimestamp(session.startedAt)}</dd>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-medium">End:</span>
-          <span>
-            {session.endedAt
-              ? formatTimestamp(session.endedAt)
-              : "Still running"}
-          </span>
+        <div className="flex gap-1.5">
+          <dt className="text-ega-text-tertiary">End</dt>
+          <dd className="tabular-nums">
+            {session.endedAt ? formatTimestamp(session.endedAt) : "Still running"}
+          </dd>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="font-medium">Duration:</span>
-          <span>{formatDurationLabel(session.durationSeconds)}</span>
+        <div className="flex gap-1.5">
+          <dt className="text-ega-text-tertiary">Duration</dt>
+          <dd className="tabular-nums">{formatDurationLabel(session.durationSeconds)}</dd>
         </div>
-      </div>
+      </dl>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[color:var(--muted-foreground)]">
-        {session.projectName && (
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[length:var(--text-meta)] text-ega-text-tertiary">
+        {session.projectName ? (
           <Link
             href={`/tasks/projects/${session.projectId}`}
-            className="hover:text-[var(--signal-live)] hover:underline"
+            className="hover:text-ega-text hover:underline"
           >
-            📁 {session.projectName}
+            Project: {session.projectName}
           </Link>
-        )}
-        {session.goalTitle && (
+        ) : null}
+        {session.goalTitle ? (
           <Link
             href={`/tasks/goals/${session.goalId}`}
-            className="hover:text-[var(--signal-live)] hover:underline"
+            className="hover:text-ega-text hover:underline"
           >
-            🎯 {session.goalTitle}
+            Goal: {session.goalTitle}
           </Link>
-        )}
+        ) : null}
         <Link
           href={`/tasks/${session.taskId}`}
-          className="hover:text-[var(--signal-live)] hover:underline"
+          className="hover:text-ega-text hover:underline"
         >
-          🔗 View task
+          View task
         </Link>
       </div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="rounded-lg border border-dashed border-[var(--border)] bg-[var(--bg-muted)] p-8 text-center text-sm text-[color:var(--muted-foreground)]">
-      No sessions found for this selection.
     </div>
   );
 }
@@ -157,41 +148,37 @@ export function AnalyticsDrilldownDrawer({
 
   return (
     <Sheet open={!!drilldown} onOpenChange={(open) => !open && closeDrilldown()}>
-      <SheetContent aria-labelledby="analytics-drilldown-title" className={className}>
+      <SheetContent
+        aria-labelledby="analytics-drilldown-title"
+        className={`bg-ega-bg! backdrop-blur-none! ${className ?? ""}`}
+      >
         <div className="flex h-full flex-col">
-          <SheetHeader className="border-b border-[var(--border)] px-6 py-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <SheetTitle id="analytics-drilldown-title">{drawerTitle(drilldown)}</SheetTitle>
-                <SheetDescription className="mt-1">
-                  {drawerDescription(drilldown)}
-                </SheetDescription>
+          <SheetHeader className="border-b border-ega-divider px-6 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <SheetTitle
+                  id="analytics-drilldown-title"
+                  className="font-sans! text-[length:var(--text-panel-title)]! tracking-[var(--tracking-tight)]! text-ega-text!"
+                >
+                  {drawerTitle(drilldown)}
+                </SheetTitle>
+                <SheetDescription className="mt-1">{drawerDescription(drilldown)}</SheetDescription>
               </div>
               <SheetClose>
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[color:var(--muted-foreground)] hover:bg-[var(--accent-subtle)] hover:text-[color:var(--foreground)]"
-                  aria-label="Close drilldown"
-                >
-                  <svg
-                    width="16"
-                    height="16"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  >
-                    <path d="M4 4l8 8M12 4l-8 8" />
-                  </svg>
-                </button>
+                <Button variant="ghost" size="sm" aria-label="Close drilldown">
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </Button>
               </SheetClose>
             </div>
           </SheetHeader>
 
           <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
             {visibleSessions.length === 0 ? (
-              <EmptyState />
+              <EmptyState
+                icon={Clock3}
+                title="No sessions found"
+                description="No tracked sessions belong to this selection."
+              />
             ) : (
               <>
                 {visibleSessions.map((session, idx) => (
@@ -204,7 +191,7 @@ export function AnalyticsDrilldownDrawer({
                   <button
                     type="button"
                     onClick={() => setShowAll(true)}
-                    className="w-full rounded-md border border-dashed border-[var(--border)] bg-[var(--bg-muted)] py-3 text-center text-sm font-medium text-[color:var(--muted-foreground)] hover:bg-[var(--accent-subtle)] hover:text-[color:var(--foreground)] transition-colors"
+                    className="w-full rounded-[var(--radius-lg)] border border-dashed border-ega-border-strong bg-ega-surface-subtle py-3 text-center text-[length:var(--text-meta-lg)] font-medium text-ega-text-secondary transition-colors hover:bg-ega-surface-hover hover:text-ega-text"
                   >
                     Show {hiddenCount} more
                   </button>
