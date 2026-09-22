@@ -5,7 +5,7 @@ import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-r
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
-import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { AuthenticatedHomePage } from "./_components/authenticated-home-page";
 import { buildHomeModel } from "./_lib/home-page-model";
@@ -22,10 +22,11 @@ export const metadata: Metadata = {
  * for unauthenticated visitors and is a separate component tree.
  */
 export default async function HomeRoute() {
-  const [snapshotResult, metrics, user] = await Promise.all([
+  const [snapshotResult, metrics, user, identity] = await Promise.all([
     getOperatorSnapshotData(),
     getWorkspaceShellMetrics(),
     getCurrentUser(),
+    getShellIdentity(),
   ]);
 
   // Bounded active-session read, only when the canonical Operator snapshot says
@@ -41,9 +42,8 @@ export default async function HomeRoute() {
 
   return (
     <AppShell
-      eyebrow="Workspace"
-      title="Home"
-      description="What to do now, what needs attention, and what to start quickly."
+      title={`Welcome back, ${identity.name}`}
+      description="What to do now, what needs attention, and what to start next."
     >
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}

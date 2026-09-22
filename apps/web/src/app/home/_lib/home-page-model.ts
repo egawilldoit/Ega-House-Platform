@@ -23,6 +23,12 @@ export type HomeModel = {
   nextUp: OperatorTask | null;
   attention: HomeAttention;
   snapshotUnavailable: boolean;
+  /** Canonical today counts from the Operator snapshot; null when unavailable. */
+  summary: OperatorSnapshot["summary"] | null;
+  /** Canonical today sections, used for progress context (never re-ranked). */
+  sections: OperatorSnapshot["sections"] | null;
+  /** Canonical focus queue preview in its canonical order. */
+  focusQueue: OperatorTask[];
 };
 
 function findTask(snapshot: OperatorSnapshot, taskId: string): OperatorTask | null {
@@ -92,5 +98,8 @@ export function buildHomeModel(input: {
       reviewMissing: metrics.reviewMissing,
     },
     snapshotUnavailable: snapshot === null,
+    summary: snapshot?.summary ?? null,
+    sections: snapshot?.sections ?? null,
+    focusQueue: queue,
   };
 }
