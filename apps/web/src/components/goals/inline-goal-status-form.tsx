@@ -1,3 +1,5 @@
+import { ChevronDown } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { GOAL_STATUS_VALUES, formatTaskToken } from "@/lib/task-domain";
 
@@ -17,19 +19,22 @@ export function InlineGoalStatusForm({
   error,
 }: InlineGoalStatusFormProps) {
   return (
-    <form action={action} className="space-y-3">
-      <input type="hidden" name="goalId" value={goalId} />
-      <input type="hidden" name="returnTo" value={returnTo} />
+    <details className="w-full sm:w-auto" open={Boolean(error)}>
+      <summary className="filter-pill list-none cursor-pointer">
+        <span>Status: {formatTaskToken(defaultStatus)}</span>
+        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+      </summary>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--border)] bg-white/80 p-3">
-        <label className="space-y-2">
-          <span className="glass-label text-etch">
-            Status
-          </span>
+      <form action={action} className="mt-3 flex flex-wrap items-end gap-2">
+        <input type="hidden" name="goalId" value={goalId} />
+        <input type="hidden" name="returnTo" value={returnTo} />
+
+        <label className="flex flex-col gap-1.5">
+          <span className="glass-label">Update status</span>
           <select
             name="status"
             defaultValue={defaultStatus}
-            className="input-instrument min-h-9 min-w-32 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
+            className="input-instrument h-8 min-w-32 px-2.5 text-[length:var(--text-meta-lg)]"
           >
             {GOAL_STATUS_VALUES.map((statusValue) => (
               <option key={statusValue} value={statusValue}>
@@ -39,16 +44,16 @@ export function InlineGoalStatusForm({
           </select>
         </label>
 
-        <Button size="sm" type="submit" variant="muted">
-          Save
+        <Button size="sm" type="submit" variant="secondary">
+          Save status
         </Button>
-      </div>
 
-      {error ? (
-        <p className="feedback-block feedback-block-error">
-          {error}
-        </p>
-      ) : null}
-    </form>
+        {error ? (
+          <p role="alert" className="feedback-block feedback-block-error w-full">
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </details>
   );
 }
