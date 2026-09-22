@@ -15,14 +15,30 @@ export default async function ShutdownPage({ searchParams }: { searchParams: Pro
   const model = await getShutdownPageModel(resolvedSearchParams);
   if (model.shutdownResult.errorMessage || !model.shutdownResult.data) {
     return (
-      <AppShell eyebrow="Ritual" title="Shutdown" description="Close the day — completion, carry-over, reflection.">
+      <AppShell title="Shutdown" description="Close the day — completion, carry-over, reflection.">
         <ShutdownErrorView />
       </AppShell>
     );
   }
   const data = model.shutdownResult.data;
   return (
-    <AppShell eyebrow="Ritual" title="Shutdown" description={`${formatTaskDueDate(data.date)} · Close the loop on today and set up tomorrow.`} actions={<div className="flex items-center gap-2"><Link href="/today" className="btn-instrument btn-instrument-muted glass-label flex h-8 items-center px-4">Open today</Link><Link href="/review" className="btn-instrument flex h-8 items-center px-4">Review</Link></div>}>
+    <AppShell
+      title="Shutdown"
+      description={`${formatTaskDueDate(data.date)} · Close the loop on today and set up tomorrow.`}
+      actions={
+        <div className="flex items-center gap-2">
+          <Link
+            href="/today"
+            className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs"
+          >
+            Open today
+          </Link>
+          <Link href="/review" className="btn-instrument inline-flex h-8 items-center px-3 text-xs">
+            Review
+          </Link>
+        </div>
+      }
+    >
       <ShutdownPageView model={model} />
     </AppShell>
   );

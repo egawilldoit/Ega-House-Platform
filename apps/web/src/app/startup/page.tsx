@@ -13,13 +13,13 @@ export default async function StartupPage({ searchParams }: { searchParams: Prom
   const model = await getStartupPageModel(resolvedSearchParams);
   if (model.startupResult.errorMessage || !model.startupResult.data) {
     return (
-      <AppShell eyebrow="Ritual" title="Startup" description="Intentional daily start — priorities, attention, focus decision.">
+      <AppShell title="Startup" description="Intentional daily start — priorities, attention, focus decision.">
         <StartupErrorView actionError={model.actionError} />
       </AppShell>
     );
   }
   return (
-    <AppShell eyebrow="Ritual" title="Startup" description={`${model.startupResult.data.week.weekStart} · Set priorities for the week, then move to execution.`}>
+    <AppShell title="Startup" description={`${model.startupResult.data.week.weekStart} · Set priorities for the week, then move to execution.`}>
       <StartupPageView model={model} />
     </AppShell>
   );

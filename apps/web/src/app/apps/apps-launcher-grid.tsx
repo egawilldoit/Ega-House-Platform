@@ -3,8 +3,10 @@
 import type { KeyboardEvent } from "react";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { LayoutDashboard, Target, Timer, ListChecks, NotebookTabs } from "lucide-react";
+import { ArrowRight, LayoutDashboard, Target, Timer, ListChecks, NotebookTabs } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import type { AppsLauncherIconKey, AppsLauncherItem } from "./launcher-items";
 import { focusShellHeadingFromShortcutNavigation } from "@/components/layout/workspace-keyboard-shortcuts";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -22,13 +24,6 @@ const ICON_MAP: Record<AppsLauncherIconKey, typeof LayoutDashboard> = {
 type AppsLauncherGridProps = {
   items: AppsLauncherItem[];
 };
-
-function getGridColumnCount() {
-  if (typeof window === "undefined") {
-    return 2;
-  }
-  return window.matchMedia("(min-width: 768px)").matches ? 2 : 1;
-}
 
 export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
   const tileRefs = useRef<Array<HTMLAnchorElement | null>>([]);
@@ -54,7 +49,7 @@ export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
       currentIndex: index,
       key: event.key,
       totalItems: items.length,
-      columns: getGridColumnCount(),
+      columns: 1,
     });
 
     if (nextIndex !== null) {
@@ -70,38 +65,45 @@ export function AppsLauncherGrid({ items }: AppsLauncherGridProps) {
   };
 
   return (
-    <section
-      aria-label="Apps launcher"
-      className="grid gap-4 sm:grid-cols-2"
-    >
-      {items.map((item, index) => {
-        const Icon = ICON_MAP[item.icon];
-        return (
-          <Link
-            key={item.id}
-            href={canonicalUrl.resolve(item.href)}
-            ref={(node) => {
-              tileRefs.current[index] = node;
-            }}
-            onKeyDown={(event) => handleTileKeyDown(event, index)}
-            className="group rounded-[1.05rem] border border-[var(--border)] bg-white p-5 transition-precise hover:border-[var(--accent-soft)] hover:bg-[color:var(--instrument)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-          >
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 rounded-lg border border-[var(--border)] bg-[color:var(--instrument-raised)] p-2 text-[color:var(--muted-foreground)] transition-precise group-hover:text-[color:var(--foreground)] group-focus-visible:text-[color:var(--foreground)]">
-                <Icon className="size-4" strokeWidth={1.7} aria-hidden="true" />
-              </span>
-              <span className="flex-1">
-                <span className="block text-sm font-semibold text-[color:var(--foreground)]">
-                  {item.label}
+    <section aria-label="Apps launcher">
+      <Card>
+        <div className="rows">
+          {items.map((item, index) => {
+            const Icon = ICON_MAP[item.icon];
+            return (
+              <Link
+                key={item.id}
+                href={canonicalUrl.resolve(item.href)}
+                ref={(node) => {
+                  tileRefs.current[index] = node;
+                }}
+                onKeyDown={(event) => handleTileKeyDown(event, index)}
+                className="row"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface-subtle text-ega-text-secondary">
+                  <Icon className="h-4 w-4" strokeWidth={1.7} aria-hidden="true" />
                 </span>
-                <span className="mt-1 block text-sm leading-6 text-[color:var(--muted-foreground)]">
-                  {item.description}
+                <span className="row-main">
+                  <span className="row-title">{item.label}</span>
+                  <span className="row-meta">{item.description}</span>
                 </span>
-              </span>
-            </div>
-          </Link>
-        );
-      })}
+                <Badge
+                  tone={item.available ? "active" : "muted"}
+                  className="shrink-0"
+                >
+                  {item.available ? "Available" : "Unavailable"}
+                </Badge>
+                <span className="row-actions">
+                  <span className="flex h-7 shrink-0 items-center gap-1 rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface px-2.5 text-[length:var(--text-meta)] font-medium text-ega-text">
+                    Open
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </Card>
     </section>
   );
 }

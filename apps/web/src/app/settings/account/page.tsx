@@ -5,6 +5,7 @@ import {
   updateCalendarDefaultsAction,
 } from "@/app/settings/account/actions";
 import { AppShell } from "@/components/layout/app-shell";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -14,6 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getCalendarIntegrationSettings } from "@/lib/services/calendar-settings-service";
 import {
   type GoogleCalendarOAuthFailureCode,
@@ -47,11 +49,10 @@ export default async function AccountSettingsPage({
 
   return (
     <AppShell
-      eyebrow="System"
       title="Settings"
       description="Account controls and integrations."
     >
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+      <div className="flex max-w-3xl flex-col gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Google Calendar</CardTitle>
@@ -59,7 +60,7 @@ export default async function AccountSettingsPage({
               Connect Calendar for scheduled task sync defaults.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex flex-col gap-4">
             {feedbackError ? (
               <div role="alert" className="feedback-block feedback-block-error">
                 {feedbackError}
@@ -67,63 +68,65 @@ export default async function AccountSettingsPage({
             ) : null}
 
             {success ? (
-              <div className="feedback-block feedback-block-success">
+              <div role="status" className="feedback-block feedback-block-success">
                 {success}
               </div>
             ) : null}
 
-            <div className="ega-glass-soft rounded-[1rem] p-4">
-              <p className="glass-label text-etch">Connection</p>
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-[color:var(--foreground)]">
-                    {settings.connected ? "Connected" : "Disconnected"}
-                  </p>
-                  <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                    {settings.googleAccountEmail ?? "No Google account connected."}
-                  </p>
-                </div>
-                {settings.connected ? (
-                  <form action={disconnectGoogleCalendarAction}>
-                    <Button type="submit" variant="danger" size="sm">
-                      Disconnect
-                    </Button>
-                  </form>
-                ) : (
-                  <form
-                    action="/api/integrations/google-calendar/connect"
-                    method="get"
-                  >
-                    <Button type="submit" size="sm">
-                      Connect Google Calendar
-                    </Button>
-                  </form>
-                )}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <Badge tone={settings.connected ? "active" : "muted"}>
+                  {settings.connected ? "Connected" : "Disconnected"}
+                </Badge>
+                <p className="min-w-0 truncate text-[length:var(--text-body)] text-ega-text-secondary">
+                  {settings.googleAccountEmail ?? "No Google account connected."}
+                </p>
               </div>
+              {settings.connected ? null : (
+                <form
+                  action="/api/integrations/google-calendar/connect"
+                  method="get"
+                >
+                  <Button type="submit" size="sm">
+                    Connect Google Calendar
+                  </Button>
+                </form>
+              )}
             </div>
+          </CardContent>
+        </Card>
 
-            <form action={updateCalendarDefaultsAction} className="space-y-4">
-              <div className="ega-glass-soft rounded-[1rem] p-4">
-                <label className="flex items-start gap-3">
-                  <input
-                    type="checkbox"
-                    name="scheduledTaskSyncEnabled"
-                    defaultChecked={settings.scheduledTaskSyncEnabled}
-                    className="mt-1 h-4 w-4"
-                  />
-                  <span>
-                    <span className="glass-label text-etch">
-                      Default scheduled tasks to Calendar sync
-                    </span>
-                    <span className="mt-1 block text-xs text-[color:var(--muted-foreground)]">
-                      Applies only when Calendar is connected and a task has a schedule block.
-                    </span>
+        <Card>
+          <CardHeader>
+            <CardTitle>Calendar defaults</CardTitle>
+            <CardDescription>
+              Defaults applied to task scheduling forms.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form action={updateCalendarDefaultsAction} className="flex flex-col gap-5">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="scheduledTaskSyncEnabled"
+                  defaultChecked={settings.scheduledTaskSyncEnabled}
+                  className="mt-0.5 h-4 w-4 accent-[var(--ega-ink)]"
+                />
+                <span>
+                  <span className="block text-[length:var(--text-body)] font-medium text-ega-text">
+                    Default scheduled tasks to Calendar sync
                   </span>
-                </label>
-              </div>
+                  <span className="mt-1 block text-[length:var(--text-meta)] text-ega-text-secondary">
+                    Applies only when Calendar is connected and a task has a schedule block.
+                  </span>
+                </span>
+              </label>
 
-              <div className="space-y-2">
-                <label htmlFor="defaultReminderMinutes" className="glass-label text-etch">
+              <div className="flex flex-col gap-2">
+                <label
+                  htmlFor="defaultReminderMinutes"
+                  className="text-[length:var(--text-body)] font-medium text-ega-text"
+                >
                   Default reminder minutes
                 </label>
                 <Input
@@ -134,11 +137,15 @@ export default async function AccountSettingsPage({
                   max="10080"
                   step="5"
                   defaultValue={settings.defaultReminderMinutes}
-                  className="ega-glass-input h-10 rounded-xl"
+                  className="h-9 w-full max-w-xs"
                 />
               </div>
 
-              <Button type="submit">Save Calendar defaults</Button>
+              <div>
+                <PendingSubmitButton type="submit" pendingLabel="Saving...">
+                  Save Calendar defaults
+                </PendingSubmitButton>
+              </div>
             </form>
           </CardContent>
         </Card>
@@ -150,21 +157,48 @@ export default async function AccountSettingsPage({
               Current defaults used by task scheduling forms.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm text-[color:var(--muted-foreground)]">
-            <div className="flex items-center justify-between gap-3">
-              <span>Calendar sync default</span>
-              <span className="font-medium text-[color:var(--foreground)]">
+          <dl className="rows">
+            <div className="row">
+              <dt className="flex-1 text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+                Calendar sync default
+              </dt>
+              <dd className="tabular-nums text-[length:var(--text-body)] font-medium text-ega-text">
                 {settings.connected && settings.scheduledTaskSyncEnabled ? "On" : "Off"}
-              </span>
+              </dd>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <span>Reminder</span>
-              <span className="font-medium text-[color:var(--foreground)]">
+            <div className="row">
+              <dt className="flex-1 text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+                Reminder
+              </dt>
+              <dd className="tabular-nums text-[length:var(--text-body)] font-medium text-ega-text">
                 {settings.defaultReminderMinutes} minutes
-              </span>
+              </dd>
             </div>
-          </CardContent>
+          </dl>
         </Card>
+
+        {settings.connected ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Disconnect Google Calendar</CardTitle>
+              <CardDescription>
+                Remove the stored Calendar connection and turn off Calendar sync defaults.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form action={disconnectGoogleCalendarAction}>
+                <PendingSubmitButton
+                  type="submit"
+                  variant="danger"
+                  size="sm"
+                  pendingLabel="Disconnecting..."
+                >
+                  Disconnect
+                </PendingSubmitButton>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </AppShell>
   );

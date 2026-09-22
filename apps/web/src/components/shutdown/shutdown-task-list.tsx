@@ -1,11 +1,11 @@
 import Link from "next/link";
+import { NotebookPen } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskDueDate } from "@/lib/task-due-date";
-import { NotebookPen } from "lucide-react";
 
 type ShutdownTaskListItem = {
   id: string;
@@ -38,69 +38,66 @@ export function ShutdownTaskList({
   returnTo = "/shutdown",
 }: ShutdownTaskListProps) {
   return (
-    <Card className="border-[var(--border)] bg-white">
-      <CardContent className="space-y-4 p-5">
-        <div>
-          <h2 className="text-sm font-semibold text-[color:var(--foreground)]">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-[color:var(--muted-foreground)]">{description}</p>
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
+          </div>
+          <Badge tone="muted">{tasks.length}</Badge>
         </div>
+      </CardHeader>
 
-        {tasks.length === 0 ? (
-          <EmptyState
-            icon={NotebookPen}
-            title={`No ${title.toLowerCase()} yet`}
-            description={emptyMessage}
-          />
-        ) : (
-          <div className="space-y-2">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                className="rounded-[0.95rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-3"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-[color:var(--foreground)]">
-                      {task.title}
-                    </p>
-                    <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                      {task.projectSlug ? (
-                        <Link href={`/tasks/projects/${task.projectSlug}`} className="hover:underline">
-                          {task.projectName}
-                        </Link>
-                      ) : (
-                        task.projectName
-                      )}
-                      {task.goalTitle ? ` · ${task.goalTitle}` : ""}
-                    </p>
-                  </div>
-                  <StatusBadge status={task.status} />
-                </div>
+      {tasks.length === 0 ? (
+        <EmptyState
+          icon={NotebookPen}
+          title={`No ${title.toLowerCase()} yet`}
+          description={emptyMessage}
+        />
+      ) : (
+        <ul className="rows">
+          {tasks.map((task) => (
+            <li key={task.id} className="row">
+              <div className="row-main">
+                <span className="row-title">{task.title}</span>
+                <span className="row-meta">
+                  {task.projectSlug ? (
+                    <Link href={`/tasks/projects/${task.projectSlug}`} className="hover:underline">
+                      {task.projectName}
+                    </Link>
+                  ) : (
+                    task.projectName
+                  )}
+                  {task.goalTitle ? ` · ${task.goalTitle}` : ""}
+                  {` · ${task.dueDate ? `due ${formatTaskDueDate(task.dueDate)}` : "no due date"}`}
+                </span>
+                {task.blockedReason ? (
+                  <span className="row-meta text-[color:var(--status-overdue)]">
+                    Blocked: {task.blockedReason}
+                  </span>
+                ) : null}
+              </div>
 
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge tone="muted">
-                    {task.dueDate ? `Due ${formatTaskDueDate(task.dueDate)}` : "No due date"}
-                  </Badge>
-                  {task.blockedReason ? <Badge tone="warn">Blocked: {task.blockedReason}</Badge> : null}
-                </div>
-
+              <div className="row-actions flex-wrap justify-end">
+                <StatusBadge status={task.status} />
                 {action && actionLabel ? (
-                  <form action={action} className="mt-3">
+                  <form action={action}>
                     <input type="hidden" name="taskId" value={task.id} />
                     <input type="hidden" name="returnTo" value={returnTo} />
                     <button
                       type="submit"
-                      className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs"
+                      className="btn-instrument btn-instrument-muted inline-flex h-7 items-center px-2.5 text-xs"
                     >
                       {actionLabel}
                     </button>
                   </form>
                 ) : null}
               </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
+            </li>
+          ))}
+        </ul>
+      )}
     </Card>
   );
 }
