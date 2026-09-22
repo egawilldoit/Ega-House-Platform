@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChevronRight } from "lucide-react";
 
 import {
   createAuthenticatedActor,
@@ -33,8 +34,13 @@ import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
 import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Metric } from "@/components/ui/metric";
 import {
   isProjectArchivedStatus,
   normalizeProjectViewFilter,
@@ -71,6 +77,7 @@ import {
   isTaskStatus,
 } from "@/lib/task-domain";
 import type { Tables } from "@/lib/supabase/database.types";
+import { cn } from "@/lib/utils";
 
 type TaskRow = Pick<
   Tables<"tasks">,
@@ -178,49 +185,6 @@ async function getProjectDetail(slug: string) {
   };
 }
 
-function getTimeProgressPercent(seconds: number) {
-  const targetSeconds = 8 * 60 * 60;
-  return Math.max(0, Math.min(100, Math.round((seconds / targetSeconds) * 100)));
-}
-
-function ProgressRing({ percent, label }: { percent: number; label: string }) {
-  const radius = 42;
-  const circumference = 2 * Math.PI * radius;
-  const dashOffset = circumference * (1 - percent / 100);
-
-  return (
-    <div className="relative flex h-32 w-32 items-center justify-center">
-      <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100" aria-hidden="true">
-        <circle
-          className="stroke-[color:var(--border)]"
-          cx="50"
-          cy="50"
-          fill="none"
-          r={radius}
-          strokeWidth="6"
-        />
-        <circle
-          className="stroke-[var(--signal-live)]"
-          cx="50"
-          cy="50"
-          fill="none"
-          r={radius}
-          strokeDasharray={circumference}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          strokeWidth="6"
-        />
-      </svg>
-      <div className="absolute flex flex-col items-center">
-        <span className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
-          {label}
-        </span>
-        <span className="glass-label text-etch">Logged</span>
-      </div>
-    </div>
-  );
-}
-
 export async function generateMetadata({ params }: ProjectDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
   const projectDetail = await getProjectDetail(slug);
@@ -286,6 +250,10 @@ export default async function ProjectDetailPage({
     activeView === "active"
       ? `/tasks/projects/${project.slug}`
       : `/tasks/projects/${project.slug}?view=${activeView}`;
+  const deleteHref =
+    activeView === "active"
+      ? `/tasks/projects/${project.slug}/delete`
+      : `/tasks/projects/${project.slug}/delete?view=${activeView}`;
   let returnTo = buildTaskFilterReturnPath(`/tasks/projects/${project.slug}`, {
     status: activeStatus,
     priority: activePriority,
@@ -317,19 +285,27 @@ export default async function ProjectDetailPage({
   );
 
   const focusedTask = filteredTasks[0] ?? null;
-  const siblingTasks = filteredTasks.slice(1);
   const focusQueue = sortFocusQueueTasks(filteredTasks);
   const focusedDurationSeconds = focusedTask ? taskTotalDurations[focusedTask.id] ?? 0 : 0;
   const completedRelatedTasks = filteredTasks.filter((task) => task.status === "done").length;
+  const completedProjectTasks = tasks.filter((task) => task.status === "done").length;
+  const openProjectTasks = tasks.length - completedProjectTasks;
+  const projectStatusChips = statusCounts.map((entry) => (
+    <Badge key={entry.status} tone={getTaskStatusTone(entry.status)}>
+      {entry.count} {formatTaskToken(entry.status)}
+    </Badge>
+  ));
+  const archiveError =
+    projectUpdateProjectId === project.id && projectUpdateField === "archive"
+      ? projectUpdateError
+      : null;
 
   return (
     <TasksWorkspaceShell
-      eyebrow={project.slug}
-      title={focusedTask?.title ?? project.name}
+      title={project.name}
       description={
-        focusedTask?.description?.trim() ||
         project.description?.trim() ||
-        "Project-scoped task detail view for the active execution slice."
+        "Project workspace for goals, tasks, and execution controls."
       }
       actions={
         <Link
@@ -340,145 +316,194 @@ export default async function ProjectDetailPage({
         </Link>
       }
     >
-      <div className="mb-8 flex flex-wrap items-center gap-2 border-b border-[var(--border)] pb-5">
-        <Link href={baseProjectsHref} className="glass-label text-etch transition hover:text-signal-live">
-          Projects
-        </Link>
-        <span className="glass-label text-etch">/</span>
-        <span className="glass-label text-etch">{project.name}</span>
-        {focusedTask ? (
-          <>
-            <span className="glass-label text-etch">/</span>
-            <span className="glass-label text-[color:var(--foreground)]">
-              {focusedTask.id.slice(0, 8).toUpperCase()}
-            </span>
-          </>
-        ) : null}
-      </div>
+      <div className="flex flex-col gap-6">
+        <Card
+          label="Overview"
+          title={project.name}
+          action={
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge tone={getTaskStatusTone(project.status)}>
+                {formatTaskToken(project.status)}
+              </Badge>
+              {projectIsArchived ? <Badge tone="warn">Archived</Badge> : null}
+              <Badge tone="muted">{goals.length} goals</Badge>
+            </div>
+          }
+        >
+          <CardContent className="flex flex-col gap-4">
+            <p className="max-w-[80ch] text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
+              {project.description?.trim() ||
+                "No description has been added for this project yet."}
+            </p>
 
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(20rem,0.92fr)]">
-        <div className="space-y-6">
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="px-8 pb-8 pt-8">
-              <div className="mb-6 flex flex-wrap items-center gap-2">
-                <Badge tone={getTaskStatusTone(focusedTask?.status ?? project.status)}>
-                  {formatTaskToken(focusedTask?.status ?? project.status)}
-                </Badge>
-                {projectIsArchived ? <Badge tone="warn">Archived Project</Badge> : null}
-                {focusedTask ? <Badge>{formatTaskToken(focusedTask.priority)}</Badge> : null}
-                {focusedTask?.focus_rank ? <Badge tone="info">Pinned #{focusedTask.focus_rank}</Badge> : null}
-              </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Metric label="Tasks" value={tasks.length} caption="in this project" />
+              <Metric label="Completed" value={completedProjectTasks} caption="tasks marked done" />
+              <Metric label="Open" value={openProjectTasks} caption="tasks not done" />
+              <Metric label="Goals" value={goals.length} caption="linked to this project" />
+            </div>
 
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,0.55fr)]">
-                <div>
-                  <h2 className="text-4xl font-semibold tracking-tight text-[color:var(--foreground)]">
-                    {focusedTask?.title ?? project.name}
-                  </h2>
-                  <div className="mt-4 space-y-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
-                    <p>
-                      {focusedTask?.description?.trim() ||
-                        project.description?.trim() ||
-                        "No description has been added for this task yet."}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {statusCounts.length ? (
+                projectStatusChips
+              ) : (
+                <span className="text-[length:var(--text-meta-lg)] text-ega-text-tertiary">
+                  No task activity yet
+                </span>
+              )}
+            </div>
+
+            {focusedTask ? (
+              <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="glass-label">Current focus</p>
+                    <p className="mt-1 truncate text-[length:var(--text-body)] font-medium text-ega-text">
+                      {focusedTask.title}
                     </p>
-                    {focusedTask?.status === "blocked" && focusedTask.blocked_reason?.trim() ? (
-                      <p className="rounded-[0.9rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
-                        Blocked: {focusedTask.blocked_reason.trim()}
-                      </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge tone={getTaskStatusTone(focusedTask.status)}>
+                      {formatTaskToken(focusedTask.status)}
+                    </Badge>
+                    <Badge tone="muted">{formatTaskToken(focusedTask.priority)}</Badge>
+                    {focusedTask.focus_rank ? (
+                      <Badge tone="info">Pinned #{focusedTask.focus_rank}</Badge>
                     ) : null}
-                    {projectIsArchived && !focusedTask ? (
-                      <p className="rounded-[0.9rem] border border-[var(--border)] bg-white/70 px-3 py-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                        This project is archived for reference. Linked goals and tasks remain visible here and keep their own current states until you update them directly.
-                      </p>
-                    ) : null}
-                    {focusedTask ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
-                        {focusedTask.estimate_minutes ? (
-                          <Badge tone="muted">Est. {formatTaskEstimate(focusedTask.estimate_minutes)}</Badge>
-                        ) : null}
-                        {focusedTask.task_recurrences[0] ? (
-                          <Badge tone="info">
-                            {formatTaskRecurrenceRule(focusedTask.task_recurrences[0].rule)}
-                          </Badge>
-                        ) : null}
-                      </div>
+                    {focusedTask.task_recurrences[0] ? (
+                      <Badge tone="info">
+                        {formatTaskRecurrenceRule(focusedTask.task_recurrences[0].rule)}
+                      </Badge>
                     ) : null}
                   </div>
                 </div>
 
-                <div className="grid gap-3 rounded-[1.1rem] border border-[var(--border)] bg-white/70 p-4 sm:grid-cols-3 lg:grid-cols-1">
+                {focusedTask.status === "blocked" && focusedTask.blocked_reason?.trim() ? (
+                  <p className="feedback-block feedback-block-warn mt-3">
+                    Blocked: {focusedTask.blocked_reason.trim()}
+                  </p>
+                ) : null}
+
+                <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
-                    <p className="glass-label text-etch">Project</p>
-                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                      {project.name}
-                    </p>
+                    <dt className="glass-label">Goal</dt>
+                    <dd className="mt-1 text-[length:var(--text-body)] text-ega-text">
+                      {focusedTask.goals?.title ?? "No linked goal"}
+                    </dd>
                   </div>
                   <div>
-                    <p className="glass-label text-etch">Goal</p>
-                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                      {focusedTask?.goals?.title ?? "No linked goal"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="glass-label text-etch">Due</p>
-                    <div className="mt-2">
-                      {focusedTask?.due_date ? (
+                    <dt className="glass-label">Due</dt>
+                    <dd className="mt-1">
+                      {focusedTask.due_date ? (
                         <TaskDueDateLabel
                           dueDate={focusedTask.due_date}
                           status={focusedTask.status}
-                          textClassName="text-sm font-medium text-[color:var(--foreground)]"
                         />
                       ) : (
-                        <p className="text-sm font-medium text-[color:var(--foreground)]">
+                        <span className="text-[length:var(--text-body)] text-ega-text">
                           No due date
-                        </p>
+                        </span>
                       )}
-                    </div>
+                    </dd>
                   </div>
                   <div>
-                    <p className="glass-label text-etch">Estimate</p>
-                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                      {focusedTask?.estimate_minutes
+                    <dt className="glass-label">Estimate</dt>
+                    <dd className="mt-1 text-[length:var(--text-body)] text-ega-text">
+                      {focusedTask.estimate_minutes
                         ? formatTaskEstimate(focusedTask.estimate_minutes)
                         : "No estimate"}
-                    </p>
+                    </dd>
                   </div>
                   <div>
-                    <p className="glass-label text-etch">Updated</p>
-                    <p className="mt-2 text-sm font-medium text-[color:var(--foreground)]">
-                      {focusedTask ? formatTimerDateTime(focusedTask.updated_at) : "No updates"}
-                    </p>
+                    <dt className="glass-label">Updated</dt>
+                    <dd className="mt-1 text-[length:var(--text-body)] text-ega-text">
+                      {formatTimerDateTime(focusedTask.updated_at)}
+                    </dd>
                   </div>
-                </div>
+                </dl>
               </div>
-            </CardContent>
-          </Card>
+            ) : (
+              <p className="surface-empty px-4 py-4 text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                No tasks match the current project filters.
+              </p>
+            )}
+          </CardContent>
 
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="px-8 pb-8 pt-8">
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
-                    Related Tasks
-                  </h3>
-                  <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-                    {completedRelatedTasks}/{filteredTasks.length} completed in the current slice.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {statusCounts.length ? (
-                    statusCounts.map((entry) => (
-                      <Badge key={entry.status} tone={getTaskStatusTone(entry.status)}>
-                        {entry.count} {formatTaskToken(entry.status)}
-                      </Badge>
-                    ))
-                  ) : (
-                    <Badge>No task activity yet</Badge>
-                  )}
-                </div>
+          <CardFooter className="flex-wrap justify-between gap-3">
+            <div className="min-w-0">
+              {projectIsArchived ? (
+                <p className="max-w-[60ch] text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                  Archived projects stay available for reference. Archiving does not automatically
+                  archive linked goals or tasks.
+                </p>
+              ) : (
+                <InlineProjectStatusForm
+                  action={updateProjectStatusAction}
+                  projectId={project.id}
+                  returnTo={returnTo}
+                  defaultStatus={project.status}
+                  error={
+                    projectUpdateProjectId === project.id && projectUpdateField === "status"
+                      ? projectUpdateError
+                      : null
+                  }
+                />
+              )}
+            </div>
+
+            <div className="flex flex-col items-end gap-2">
+              {archiveError ? (
+                <p role="alert" className="feedback-block feedback-block-error">
+                  {archiveError}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <form action={projectIsArchived ? unarchiveProjectAction : archiveProjectAction}>
+                  <input type="hidden" name="projectId" value={project.id} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <Button
+                    type="submit"
+                    variant={projectIsArchived ? "secondary" : "danger"}
+                    size="sm"
+                  >
+                    {projectIsArchived ? "Unarchive project" : "Archive project"}
+                  </Button>
+                </form>
+                {projectIsArchived ? (
+                  <Link
+                    href={deleteHref}
+                    className={cn(buttonVariants({ variant: "danger", size: "sm" }))}
+                  >
+                    Delete permanently
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          </CardFooter>
+        </Card>
+
+        <div className="workspace-split-grid">
+          <Card
+            label="Execution"
+            title="Project tasks"
+            action={
+              <Badge tone="muted">
+                {completedRelatedTasks}/{filteredTasks.length} done
+              </Badge>
+            }
+          >
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {statusCounts.length ? (
+                  projectStatusChips
+                ) : (
+                  <span className="text-[length:var(--text-meta-lg)] text-ega-text-tertiary">
+                    No task activity yet
+                  </span>
+                )}
               </div>
 
-              <div className="mb-6">
+              <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] px-3 py-2">
                 <TaskFilterControls
                   basePath={taskFilterBasePath}
                   activeStatus={activeStatus}
@@ -488,170 +513,86 @@ export default async function ProjectDetailPage({
                   includePriority
                 />
               </div>
+
               {taskUpdateSuccess ? (
-                <p className="feedback-block feedback-block-success mb-6">{taskUpdateSuccess}</p>
+                <p role="status" className="feedback-block">
+                  {taskUpdateSuccess}
+                </p>
               ) : null}
 
-              <div className="mb-6 border-t border-[var(--border)] pt-4">
-                {!projectIsArchived ? (
-                  <InlineProjectStatusForm
-                    action={updateProjectStatusAction}
-                    projectId={project.id}
-                    returnTo={returnTo}
-                    defaultStatus={project.status}
-                    error={
-                      projectUpdateProjectId === project.id && projectUpdateField === "status"
-                        ? projectUpdateError
-                        : null
-                    }
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-                      Archived projects can be restored at any time. Archiving does not automatically archive linked goals or tasks.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge tone="muted">{goals.length} goals linked</Badge>
-                      <Badge tone="muted">{tasks.length} tasks linked</Badge>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-6 border-t border-[var(--border)] pt-4">
-                {projectUpdateProjectId === project.id && projectUpdateField === "archive" ? (
-                  <p className="feedback-block feedback-block-error mb-3">{projectUpdateError}</p>
-                ) : null}
-                <form action={projectIsArchived ? unarchiveProjectAction : archiveProjectAction}>
-                  <input type="hidden" name="projectId" value={project.id} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <Button
-                    type="submit"
-                    variant={projectIsArchived ? "muted" : "danger"}
-                    size="sm"
-                  >
-                    {projectIsArchived ? "Unarchive Project" : "Archive Project"}
-                  </Button>
-                </form>
-              </div>
-
-              {focusedTask ? (
-                <div className="space-y-3">
-                  <article className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-medium text-[color:var(--foreground)]">
-                          {focusedTask.title}
-                        </p>
-                        <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
-                          Focused task
-                        </p>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <TaskDueDateLabel dueDate={focusedTask.due_date} status={focusedTask.status} />
-                          {focusedTask.estimate_minutes ? (
-                            <Badge tone="muted">Est. {formatTaskEstimate(focusedTask.estimate_minutes)}</Badge>
-                          ) : null}
-                          {focusedTask.task_recurrences[0] ? (
-                            <Badge tone="info">
-                              {formatTaskRecurrenceRule(focusedTask.task_recurrences[0].rule)}
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge tone={getTaskStatusTone(focusedTask.status)}>
-                          {formatTaskToken(focusedTask.status)}
-                        </Badge>
-                        <Badge>{formatTaskToken(focusedTask.priority)}</Badge>
-                        {focusedTask.focus_rank ? (
-                          <Badge tone="info">Pinned #{focusedTask.focus_rank}</Badge>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-4 border-t border-[var(--border)] pt-4">
-                      <div className="mb-4">
-                        <TaskReminderPanel
-                          taskId={focusedTask.id}
-                          reminders={focusedTask.task_reminders}
-                          returnTo={returnTo}
-                          createAction={createTaskReminderAction}
-                          cancelAction={cancelTaskReminderAction}
-                        />
-                      </div>
-                      <InlineTaskUpdateForm
-                        action={updateTaskInlineAction}
-                        deleteAction={deleteTaskAction}
-                        taskId={focusedTask.id}
-                        taskTitle={focusedTask.title}
-                        returnTo={returnTo}
-                        defaultStatus={focusedTask.status}
-                        defaultPriority={focusedTask.priority}
-                        defaultDueDate={focusedTask.due_date}
-                        defaultEstimateMinutes={focusedTask.estimate_minutes}
-                        defaultScheduledStartAt={focusedTask.scheduled_start_at}
-                        defaultScheduledEndAt={focusedTask.scheduled_end_at}
-                        defaultCalendarSyncEnabled={focusedTask.calendar_sync_enabled}
-                        defaultCalendarReminderMinutes={focusedTask.calendar_reminder_minutes}
-                        defaultBlockedReason={focusedTask.blocked_reason}
-                        defaultRecurrenceRule={focusedTask.task_recurrences[0]?.rule ?? null}
-                        error={taskUpdateTaskId === focusedTask.id ? taskUpdateError : null}
-                      />
-                      <div className="mt-3">
-                        <FocusPinToggleForm
-                          action={focusedTask.focus_rank ? unpinTaskAction : pinTaskAction}
-                          taskId={focusedTask.id}
-                          returnTo={returnTo}
-                          isPinned={focusedTask.focus_rank !== null}
-                          compact
-                        />
-                      </div>
-                    </div>
-                  </article>
-
-                  {siblingTasks.map((task) => {
+              {filteredTasks.length ? (
+                <ul className="rows">
+                  {filteredTasks.map((task, index) => {
                     const inlineError = taskUpdateTaskId === task.id ? taskUpdateError : null;
 
                     return (
-                      <article
+                      <li
                         key={task.id}
                         id={`task-${task.id}`}
-                        className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
+                        className="scroll-mt-24 border-b border-[var(--ega-divider)] last:border-b-0"
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-[color:var(--foreground)]">
-                              {task.title}
-                            </p>
-                            <p className="mt-1 text-[0.625rem] uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
-                              {task.goals?.title ?? "No linked goal"}
-                            </p>
+                        <details className="group" open={Boolean(inlineError)}>
+                          <summary className="row cursor-pointer list-none">
+                            <span className="row-main">
+                              <span className="row-title">
+                                {task.title}
+                                {index === 0 ? <span className="sr-only"> (current focus)</span> : null}
+                              </span>
+                              <span className="row-meta">
+                                {task.goals?.title ?? "No linked goal"}
+                                {" · Updated "}
+                                {formatTimerDateTime(task.updated_at)}
+                              </span>
+                            </span>
+                            <span className="row-actions">
+                              {task.status === "blocked" && task.blocked_reason?.trim() ? (
+                                <span className="hidden sm:inline-flex">
+                                  <Badge tone="error">Blocked</Badge>
+                                </span>
+                              ) : null}
+                              <Badge tone={getTaskStatusTone(task.status)}>
+                                {formatTaskToken(task.status)}
+                              </Badge>
+                              <span className="hidden sm:inline-flex">
+                                <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
+                              </span>
+                              {task.focus_rank ? (
+                                <span className="hidden sm:inline-flex">
+                                  <Badge tone="info">#{task.focus_rank}</Badge>
+                                </span>
+                              ) : null}
+                              <ChevronRight
+                                className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)] transition-transform group-open:rotate-90"
+                                aria-hidden="true"
+                              />
+                            </span>
+                          </summary>
+
+                          <div className="flex flex-col gap-3 border-t border-[var(--ega-divider)] bg-[color:var(--ega-surface-subtle)] px-4 py-3">
+                            {task.due_date || task.estimate_minutes || task.task_recurrences[0] ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                {task.due_date ? (
+                                  <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
+                                ) : null}
+                                {task.estimate_minutes ? (
+                                  <Badge tone="muted">
+                                    Est. {formatTaskEstimate(task.estimate_minutes)}
+                                  </Badge>
+                                ) : null}
+                                {task.task_recurrences[0] ? (
+                                  <Badge tone="info">
+                                    {formatTaskRecurrenceRule(task.task_recurrences[0].rule)}
+                                  </Badge>
+                                ) : null}
+                              </div>
+                            ) : null}
+
                             {task.status === "blocked" && task.blocked_reason?.trim() ? (
-                              <p className="mt-2 rounded-[0.8rem] border border-[rgba(220,38,38,0.18)] bg-[rgba(220,38,38,0.06)] px-3 py-2 text-sm leading-6 text-[var(--signal-error)]">
+                              <p className="feedback-block feedback-block-warn">
                                 Blocked: {task.blocked_reason.trim()}
                               </p>
                             ) : null}
-                            <div className="mt-2 flex flex-wrap items-center gap-2">
-                              <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
-                              {task.estimate_minutes ? (
-                                <Badge tone="muted">Est. {formatTaskEstimate(task.estimate_minutes)}</Badge>
-                              ) : null}
-                              {task.task_recurrences[0] ? (
-                                <Badge tone="info">
-                                  {formatTaskRecurrenceRule(task.task_recurrences[0].rule)}
-                                </Badge>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge tone={getTaskStatusTone(task.status)}>
-                              {formatTaskToken(task.status)}
-                            </Badge>
-                            <Badge>{formatTaskToken(task.priority)}</Badge>
-                            {task.focus_rank ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
-                          </div>
-                        </div>
-                        <div className="mt-4 border-t border-[var(--border)] pt-4">
-                          <div className="mb-4">
+
                             <TaskReminderPanel
                               taskId={task.id}
                               reminders={task.task_reminders}
@@ -659,26 +600,26 @@ export default async function ProjectDetailPage({
                               createAction={createTaskReminderAction}
                               cancelAction={cancelTaskReminderAction}
                             />
-                          </div>
-                          <InlineTaskUpdateForm
-                            action={updateTaskInlineAction}
-                            deleteAction={deleteTaskAction}
-                            taskId={task.id}
-                            taskTitle={task.title}
-                            returnTo={returnTo}
-                            defaultStatus={task.status}
-                            defaultPriority={task.priority}
-                            defaultDueDate={task.due_date}
-                            defaultEstimateMinutes={task.estimate_minutes}
-                            defaultScheduledStartAt={task.scheduled_start_at}
-                            defaultScheduledEndAt={task.scheduled_end_at}
-                            defaultCalendarSyncEnabled={task.calendar_sync_enabled}
-                            defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
-                            defaultBlockedReason={task.blocked_reason}
-                            defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
-                            error={inlineError}
-                          />
-                          <div className="mt-3">
+
+                            <InlineTaskUpdateForm
+                              action={updateTaskInlineAction}
+                              deleteAction={deleteTaskAction}
+                              taskId={task.id}
+                              taskTitle={task.title}
+                              returnTo={returnTo}
+                              defaultStatus={task.status}
+                              defaultPriority={task.priority}
+                              defaultDueDate={task.due_date}
+                              defaultEstimateMinutes={task.estimate_minutes}
+                              defaultScheduledStartAt={task.scheduled_start_at}
+                              defaultScheduledEndAt={task.scheduled_end_at}
+                              defaultCalendarSyncEnabled={task.calendar_sync_enabled}
+                              defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
+                              defaultBlockedReason={task.blocked_reason}
+                              defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
+                              error={inlineError}
+                            />
+
                             <FocusPinToggleForm
                               action={task.focus_rank ? unpinTaskAction : pinTaskAction}
                               taskId={task.id}
@@ -687,123 +628,134 @@ export default async function ProjectDetailPage({
                               compact
                             />
                           </div>
-                        </div>
-                      </article>
+                        </details>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               ) : (
-                <div className="surface-empty px-4 py-5 text-sm leading-7 text-[color:var(--muted-foreground)]">
+                <p className="surface-empty px-4 py-5 text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
                   No tasks match the current project filters.
-                </div>
+                </p>
               )}
             </CardContent>
           </Card>
-        </div>
 
-        <div className="space-y-6">
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="px-6 pb-6 pt-6">
-              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
-                Focus Queue
-              </h3>
-              <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                Project-specific pinned order, kept separate from priority labels.
-              </p>
-              <div className="mt-4 space-y-3">
-                {focusQueue.length > 0 ? (
-                  focusQueue.slice(0, 4).map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-center justify-between gap-3 rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-3"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
-                          {task.title}
-                        </p>
-                        <p className="mt-1 text-[10px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-                          #{task.focus_rank}
-                        </p>
+          <div className="workspace-secondary-rail">
+            <Card
+              label="Strategy"
+              title="Project goals"
+              action={<Badge tone="muted">{goals.length}</Badge>}
+            >
+              {goals.length ? (
+                <ul className="rows">
+                  {goals.map((goal) => (
+                    <li key={goal.id} className="row">
+                      <Link
+                        href={`/goals?view=all&goal=${goal.id}#goal-${goal.id}`}
+                        className="row-main"
+                      >
+                        <span className="row-title">{goal.title}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <CardContent>
+                  <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                    No goals are linked to this project yet.
+                  </p>
+                </CardContent>
+              )}
+            </Card>
+
+            <Card
+              label="Focus"
+              title="Focus queue"
+              action={<Badge tone="muted">{focusQueue.length}</Badge>}
+            >
+              {focusQueue.length > 0 ? (
+                <ul className="rows">
+                  {focusQueue.slice(0, 4).map((task) => (
+                    <li key={task.id} className="row">
+                      <span className="row-main">
+                        <span className="row-title">{task.title}</span>
+                        <span className="row-meta">#{task.focus_rank}</span>
+                      </span>
+                      <div className="row-actions">
+                        <FocusPinToggleForm
+                          action={unpinTaskAction}
+                          taskId={task.id}
+                          returnTo={returnTo}
+                          isPinned
+                          compact
+                        />
                       </div>
-                      <FocusPinToggleForm
-                        action={unpinTaskAction}
-                        taskId={task.id}
-                        returnTo={returnTo}
-                        isPinned
-                        compact
-                      />
-                    </div>
-                  ))
-                ) : (
-                  <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <CardContent>
+                  <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
                     Pin tasks in this project to build a focused execution order.
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                  </p>
+                </CardContent>
+              )}
+            </Card>
 
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="px-6 pb-6 pt-6">
-              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
-                Time Tracking
-              </h3>
-              <div className="flex flex-col items-center py-4">
-                <ProgressRing
-                  percent={getTimeProgressPercent(focusedDurationSeconds)}
-                  label={formatDurationLabel(focusedDurationSeconds)}
+            <Card label="Time" title="Time tracking">
+              <CardContent className="flex flex-col gap-3">
+                <Metric
+                  label="Focused task duration"
+                  value={formatDurationLabel(focusedDurationSeconds)}
+                  caption="Logged against the currently focused task in this project slice."
                 />
-                <p className="mt-4 text-xs uppercase tracking-[0.16em] text-[color:var(--muted-foreground)]">
-                  Focused task duration
+                <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                  Session totals come from tracked timer history for this task.
                 </p>
-              </div>
-              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-                Logged against the currently focused task in this project slice.
-              </p>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="px-6 pb-6 pt-6">
-              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
-                Recent Activity
-              </h3>
-              <div className="mt-5 space-y-3">
-                {tasks.slice(0, 3).map((task) => (
-                  <div
-                    key={task.id}
-                    className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4"
-                  >
-                    <p className="text-sm font-medium text-[color:var(--foreground)]">
-                      {task.title}
-                    </p>
-                    <div className="mt-1 space-y-1">
-                      <p className="text-xs text-[color:var(--muted-foreground)]">
-                        Updated {formatTimerDateTime(task.updated_at)}
-                      </p>
-                      <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+            <Card label="Activity" title="Recent activity">
+              {tasks.length ? (
+                <ul className="rows">
+                  {tasks.slice(0, 3).map((task) => (
+                    <li key={task.id} className="row">
+                      <span className="row-main">
+                        <span className="row-title">{task.title}</span>
+                        <span className="row-meta">
+                          Updated {formatTimerDateTime(task.updated_at)}
+                        </span>
+                      </span>
+                      <span className="row-actions">
+                        <Badge tone={getTaskStatusTone(task.status)}>
+                          {formatTaskToken(task.status)}
+                        </Badge>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <CardContent>
+                  <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                    No task activity has been recorded for this project yet.
+                  </p>
+                </CardContent>
+              )}
+            </Card>
 
-          <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-            <CardContent className="px-6 pb-6 pt-6">
-              <h3 className="text-lg font-semibold tracking-tight text-[color:var(--foreground)]">
-                Create Related Task
-              </h3>
-              <p className="mt-2 text-sm text-[color:var(--muted-foreground)]">
-                {projectIsArchived
-                  ? `Restore ${project.name} before adding new execution work.`
-                  : `New tasks created here stay attached to ${project.name}.`}
-              </p>
-              <div className="mt-4">
+            <Card label="Create" title="New project task">
+              <CardContent className="flex flex-col gap-3">
+                <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                  {projectIsArchived
+                    ? `Restore ${project.name} before adding new execution work.`
+                    : `New tasks created here stay attached to ${project.name}.`}
+                </p>
                 {projectIsArchived ? (
-                  <div className="surface-empty px-4 py-4 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                    This archived project remains visible for review, but new tasks should wait until the project is active again.
-                  </div>
+                  <p className="surface-empty px-4 py-4 text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                    This archived project remains visible for review, but new tasks should wait
+                    until the project is active again.
+                  </p>
                 ) : (
                   <CreateTaskForm
                     projects={[{ id: project.id, name: project.name }]}
@@ -817,9 +769,9 @@ export default async function ProjectDetailPage({
                     calendarDefaults={calendarFormDefaults}
                   />
                 )}
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </TasksWorkspaceShell>

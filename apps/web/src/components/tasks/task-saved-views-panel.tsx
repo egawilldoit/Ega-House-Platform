@@ -1,4 +1,3 @@
-import React from "react";
 import Link from "next/link";
 
 import {
@@ -9,7 +8,7 @@ import {
 import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { Input } from "@/components/ui/input";
@@ -181,28 +180,38 @@ export function TaskSavedViewsPanel({
     const isEditable = canEditTaskSavedView(view);
 
     return (
-      <div key={view.id} className="ega-glass-soft rounded-[1rem] p-4 transition-precise hover:border-[rgba(23,123,82,0.16)] hover:bg-[rgba(255,255,255,0.7)]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+      <div
+        key={view.id}
+        className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-3"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium text-[color:var(--foreground)]">{view.name}</p>
+              <p className="text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)]">
+                {view.name}
+              </p>
               {isEditable ? (
-                <Badge tone="muted" className="ega-glass-pill">
+                <Badge tone="muted">
                   Updated {new Date(view.updated_at).toLocaleDateString("en-GB")}
                 </Badge>
               ) : (
-                <Badge tone="info" className="ega-glass-pill">Built-in</Badge>
+                <Badge tone="info">Built-in</Badge>
               )}
             </div>
-            <p className="mt-2 text-xs leading-6 text-[color:var(--muted-foreground)]">
+            <p className="mt-1 text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
               {describeSavedView(view, projectOptions, goalOptions)}
             </p>
           </div>
-          <Link href={getTaskSavedViewHref(view, activeLayout)} className="glass-label text-signal-live">Open</Link>
+          <Link
+            href={getTaskSavedViewHref(view, activeLayout)}
+            className="btn-instrument btn-instrument-muted flex h-7 shrink-0 items-center px-2.5 text-xs"
+          >
+            Open
+          </Link>
         </div>
 
         {isEditable ? (
-          <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 xl:flex-row xl:items-end">
+          <div className="mt-3 flex flex-col gap-2 border-t border-[var(--ega-divider)] pt-3 xl:flex-row xl:items-end">
             <form action={updateTaskSavedViewAction} className="flex-1">
               <input type="hidden" name="viewId" value={view.id} />
               <input type="hidden" name="returnTo" value={currentReturnPath} />
@@ -216,19 +225,31 @@ export function TaskSavedViewsPanel({
               <input type="hidden" name="estimateMax" value={currentFilters.estimateMaxMinutes ?? ""} />
               <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
               <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1 space-y-2">
-                  <label htmlFor={`view-name-${view.id}`} className="glass-label text-etch">Name</label>
-                  <Input id={`view-name-${view.id}`} name="name" defaultValue={view.name} maxLength={80} className="ega-glass-input h-10 rounded-xl" />
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex-1 space-y-1">
+                  <label htmlFor={`view-name-${view.id}`} className="glass-label text-etch">
+                    Name
+                  </label>
+                  <Input
+                    id={`view-name-${view.id}`}
+                    name="name"
+                    defaultValue={view.name}
+                    maxLength={80}
+                    className="h-8 px-2.5 text-[length:var(--text-meta-lg)]"
+                  />
                 </div>
-                <Button type="submit" variant="muted" className="sm:shrink-0">Update to current filters</Button>
+                <Button type="submit" variant="muted" size="sm" className="sm:shrink-0">
+                  Update to current filters
+                </Button>
               </div>
             </form>
 
             <form action={deleteTaskSavedViewAction}>
               <input type="hidden" name="viewId" value={view.id} />
               <input type="hidden" name="returnTo" value={currentReturnPath} />
-              <Button type="submit" variant="danger">Delete</Button>
+              <Button type="submit" variant="danger" size="sm">
+                Delete
+              </Button>
             </form>
           </div>
         ) : null}
@@ -239,33 +260,21 @@ export function TaskSavedViewsPanel({
   return (
     <Card
       id="saved-views"
-      className="ega-glass rounded-[1.35rem]"
+      title="Saved views"
+      action={<Badge tone="muted">{savedViews.length} saved</Badge>}
     >
-      <CardHeader className="gap-3 pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-xl">Saved views</CardTitle>
-            <CardDescription>
-              Save custom filters to instantly return to the views that matter most.
-            </CardDescription>
-          </div>
-          <span className="ega-glass-pill flex h-10 w-10 items-center justify-center rounded-full text-[var(--signal-live)]">
-            <Bookmark className="h-4 w-4" aria-hidden="true" />
-          </span>
-        </div>
-      </CardHeader>
-
-      <CardContent className="space-y-4 pt-1">
+      <CardContent className="flex flex-col gap-3">
         {feedback?.error ? (
-          <div role="alert" className="feedback-block feedback-block-error">{feedback.error}</div>
+          <div role="alert" className="feedback-block feedback-block-error">
+            {feedback.error}
+          </div>
         ) : null}
-        {feedback?.success ? (
-          <div className="feedback-block feedback-block-success">{feedback.success}</div>
-        ) : null}
+        {feedback?.success ? <div className="feedback-block">{feedback.success}</div> : null}
 
-        <Badge tone="muted" className="ega-glass-pill">{savedViews.length} saved</Badge>
-
-        <form action={createTaskSavedViewAction} className="ega-glass-soft rounded-[1rem] p-3">
+        <form
+          action={createTaskSavedViewAction}
+          className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-3"
+        >
           <input type="hidden" name="returnTo" value={currentReturnPath} />
           <input type="hidden" name="status" value={currentFilters.status ?? ""} />
           <input type="hidden" name="project" value={currentFilters.projectId ?? ""} />
@@ -278,102 +287,106 @@ export function TaskSavedViewsPanel({
           <input type="hidden" name="dueWithin" value={currentFilters.dueWithinDays ?? ""} />
           <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <div className="flex-1">
-              <label htmlFor="saved-view-name" className="sr-only">Save current filters as</label>
+              <label htmlFor="saved-view-name" className="sr-only">
+                Save current filters as
+              </label>
               <Input
                 id="saved-view-name"
                 name="name"
                 maxLength={80}
                 placeholder="e.g. Due today · Content"
-                className="ega-glass-input h-11 rounded-xl"
+                className="h-8 px-2.5 text-[length:var(--text-meta-lg)]"
               />
             </div>
-            <Button type="submit" className="h-11 rounded-xl sm:shrink-0">Save view</Button>
+            <Button type="submit" size="sm" className="sm:shrink-0">
+              Save view
+            </Button>
           </div>
         </form>
 
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-2">
-            <FilterPill
-              href={allTasksHref}
-              label="All tasks"
-              active={currentReturnPath === allTasksHref}
-              ariaCurrent={currentReturnPath === allTasksHref ? "page" : undefined}
-            />
-            {orderedSavedViews.map((view) => {
-              const isActive = areTaskSavedViewFiltersEqual(
-                currentFilters,
-                getSavedViewFilters(view),
-              );
+        <div className="flex flex-wrap gap-1.5">
+          <FilterPill
+            href={allTasksHref}
+            label="All tasks"
+            active={currentReturnPath === allTasksHref}
+            ariaCurrent={currentReturnPath === allTasksHref ? "page" : undefined}
+          />
+          {orderedSavedViews.map((view) => {
+            const isActive = areTaskSavedViewFiltersEqual(
+              currentFilters,
+              getSavedViewFilters(view),
+            );
 
-              return (
-                <FilterPill
-                  key={view.id}
-                  href={getTaskSavedViewHref(view, activeLayout)}
-                  label={view.name}
-                  active={isActive}
-                  ariaCurrent={isActive ? "page" : undefined}
-                />
-              );
-            })}
-          </div>
+            return (
+              <FilterPill
+                key={view.id}
+                href={getTaskSavedViewHref(view, activeLayout)}
+                label={view.name}
+                active={isActive}
+                ariaCurrent={isActive ? "page" : undefined}
+              />
+            );
+          })}
+        </div>
 
-          {savedViews.length > 0 ? (
-            <div className="space-y-4">
-              {defaultViews.length > 0 ? (
-                <section aria-labelledby="default-saved-views-heading" className="space-y-3">
-                  <div className="flex flex-wrap items-end justify-between gap-2">
-                    <div>
-                      <h3 id="default-saved-views-heading" className="text-sm font-semibold text-[color:var(--foreground)]">
-                        Default views
-                      </h3>
-                      <p className="text-xs text-[color:var(--muted-foreground)]">
-                        Ready-made views for common execution modes.
-                      </p>
-                    </div>
-                    <Badge tone="muted" className="ega-glass-pill">{defaultViews.length} built-in</Badge>
-                  </div>
-
-                  <div className="space-y-3">
-                    {defaultViews.map(renderSavedViewCard)}
-                  </div>
-                </section>
-              ) : null}
-
-              <section aria-labelledby="custom-saved-views-heading" className="space-y-3">
+        {savedViews.length > 0 ? (
+          <div className="flex flex-col gap-4">
+            {defaultViews.length > 0 ? (
+              <section aria-labelledby="default-saved-views-heading" className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-end justify-between gap-2">
                   <div>
-                    <h3 id="custom-saved-views-heading" className="text-sm font-semibold text-[color:var(--foreground)]">
-                      Custom views
+                    <h3
+                      id="default-saved-views-heading"
+                      className="text-[length:var(--text-meta-lg)] font-semibold text-[color:var(--ega-text)]"
+                    >
+                      Default views
                     </h3>
-                    <p className="text-xs text-[color:var(--muted-foreground)]">
-                      Saved from your current filters.
+                    <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                      Ready-made views for common execution modes.
                     </p>
                   </div>
-                  <Badge tone="muted" className="ega-glass-pill">{customViews.length} saved</Badge>
+                  <Badge tone="muted">{defaultViews.length} built-in</Badge>
                 </div>
 
-                {customViews.length > 0 ? (
-                  <div className="space-y-3">
-                    {customViews.map(renderSavedViewCard)}
-                  </div>
-                ) : (
-                  <div className="ega-glass-soft rounded-[1rem] p-4 text-xs text-[color:var(--muted-foreground)]">
-                    No custom views yet.
-                  </div>
-                )}
+                <div className="flex flex-col gap-2">{defaultViews.map(renderSavedViewCard)}</div>
               </section>
-            </div>
-          ) : (
-            <EmptyState
-              icon={Bookmark}
-              title="No saved views yet"
-              description="Create a saved view to quickly reapply filters."
-              className="min-h-40 justify-center"
-            />
-          )}
-        </div>
+            ) : null}
+
+            <section aria-labelledby="custom-saved-views-heading" className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <h3
+                    id="custom-saved-views-heading"
+                    className="text-[length:var(--text-meta-lg)] font-semibold text-[color:var(--ega-text)]"
+                  >
+                    Custom views
+                  </h3>
+                  <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                    Saved from your current filters.
+                  </p>
+                </div>
+                <Badge tone="muted">{customViews.length} saved</Badge>
+              </div>
+
+              {customViews.length > 0 ? (
+                <div className="flex flex-col gap-2">{customViews.map(renderSavedViewCard)}</div>
+              ) : (
+                <div className="rounded-[var(--radius-md)] border border-dashed border-[var(--ega-border-strong)] bg-[var(--ega-surface-subtle)] p-3 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                  No custom views yet.
+                </div>
+              )}
+            </section>
+          </div>
+        ) : (
+          <EmptyState
+            icon={Bookmark}
+            title="No saved views yet"
+            description="Create a saved view to quickly reapply filters."
+            className="min-h-40 justify-center"
+          />
+        )}
       </CardContent>
     </Card>
   );

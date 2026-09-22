@@ -73,17 +73,21 @@ export default async function ProjectDeletePage({
 
   if (!previewResult.ok) {
     return (
-      <div className="mx-auto w-full max-w-2xl space-y-4 p-6">
-        <Card>
-          <CardContent className="space-y-3 p-6">
-            <h1 className="text-lg font-semibold">Unable to load deletion impact</h1>
-            <p className="feedback-block feedback-block-error">{previewResult.errorMessage}</p>
-            <Link href={projectsHref} className="text-sm underline">
+      <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-6 py-10">
+        <Card label="Deletion" title="Unable to load deletion impact">
+          <CardContent className="flex flex-col gap-3">
+            <p role="alert" className="feedback-block feedback-block-error">
+              {previewResult.errorMessage}
+            </p>
+            <Link
+              href={projectsHref}
+              className="text-[length:var(--text-body)] font-medium text-ega-text-secondary hover:text-ega-text"
+            >
               Back to projects
             </Link>
           </CardContent>
         </Card>
-      </div>
+      </main>
     );
   }
 
@@ -105,19 +109,24 @@ export default async function ProjectDeletePage({
   };
 
   return (
-    <div className="mx-auto w-full max-w-2xl space-y-4 p-6">
-      <div className="flex items-center gap-2">
-        <Badge>Archived</Badge>
-        <h1 className="text-xl font-semibold">Delete {preview.projectName} permanently?</h1>
-      </div>
+    <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-6 py-10">
+      <header className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="warn">Archived</Badge>
+          <span className="glass-label">Permanent deletion</span>
+        </div>
+        <h1 className="text-[length:var(--text-page)] font-semibold tracking-[var(--tracking-tight)] text-ega-text">
+          Delete {preview.projectName} permanently?
+        </h1>
+        <p className="text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
+          Deleting “{preview.projectName}” will permanently remove its project-owned records. This
+          surface is the only path to project purge.
+        </p>
+      </header>
 
-      <Card>
-        <CardContent className="space-y-4 p-6">
-          <p className="text-sm leading-6">
-            Deleting “{preview.projectName}” will permanently remove:
-          </p>
-
-          <ul className="list-disc space-y-1 pl-5 text-sm leading-6">
+      <Card label="Impact" title="What will be removed">
+        <CardContent className="flex flex-col gap-4">
+          <ul className="list-disc space-y-1 pl-5 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text">
             <li>{formatCount(impact.taskCount, "task", "tasks")}</li>
             <li>{formatCount(impact.goalCount, "goal", "goals")}</li>
             <li>
@@ -137,40 +146,48 @@ export default async function ProjectDeletePage({
             ) : null}
           </ul>
 
-          <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+          <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
             Ideas and saved task views will be preserved but unlinked.
           </p>
 
           <p className="feedback-block feedback-block-error">This cannot be undone.</p>
+        </CardContent>
+      </Card>
 
+      <Card label="Confirmation" title="Confirm deletion">
+        <CardContent className="flex flex-col gap-4">
           {purgeError ? (
-            <p className="feedback-block feedback-block-error">{purgeError}</p>
+            <p role="alert" className="feedback-block feedback-block-error">
+              {purgeError}
+            </p>
           ) : null}
 
-          <form action={purgeProjectAction} className="space-y-3">
+          <form action={purgeProjectAction} className="flex flex-col gap-4">
             <input type="hidden" name="projectId" value={project.id} />
             <input type="hidden" name="slug" value={project.slug} />
             <input type="hidden" name="expectedTaskCount" value={impact.taskCount} />
             <input type="hidden" name="expectedGoalCount" value={impact.goalCount} />
             <input type="hidden" name="returnTo" value={projectsHref} />
-            <label className="block space-y-2">
-              <span className="glass-label text-etch">
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[length:var(--text-body)] font-medium text-ega-text">
                 Type {preview.projectName} to confirm
               </span>
               <input
                 type="text"
                 name="confirmationName"
                 autoComplete="off"
-                className="input-instrument min-h-9 w-full px-3 py-0 text-sm"
+                className="input-instrument h-8 w-full px-2.5 text-[length:var(--text-meta-lg)]"
               />
             </label>
-            <div className="flex flex-wrap gap-2">
+
+            <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" variant="danger" size="sm">
                 Purge project permanently
               </Button>
               <Link
                 href={projectsHref}
-                className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs"
+                className="btn-instrument btn-instrument-muted inline-flex h-7 items-center px-2.5 text-xs"
               >
                 Cancel
               </Link>
@@ -178,6 +195,6 @@ export default async function ProjectDeletePage({
           </form>
         </CardContent>
       </Card>
-    </div>
+    </main>
   );
 }

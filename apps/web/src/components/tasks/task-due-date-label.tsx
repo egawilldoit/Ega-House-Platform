@@ -13,20 +13,28 @@ type TaskDueDateLabelProps = {
 function getDueDateBadgeConfig(state: ReturnType<typeof getTaskDueDateState>) {
   switch (state) {
     case "overdue":
-      return { label: "Overdue", tone: "error" as const, textClassName: "text-signal-error" };
+      return {
+        label: "Overdue",
+        tone: "error" as const,
+        textClassName: "text-[color:var(--status-overdue)]",
+      };
     case "today":
-      return { label: "Due today", tone: "info" as const, textClassName: "text-signal-live" };
+      return {
+        label: "Due today",
+        tone: "info" as const,
+        textClassName: "text-[color:var(--status-info)]",
+      };
     case "soon":
       return {
         label: "Due soon",
         tone: "warn" as const,
-        textClassName: "text-[color:var(--foreground)]",
+        textClassName: "text-[color:var(--ega-text)]",
       };
     default:
       return {
         label: null,
         tone: "muted" as const,
-        textClassName: "text-[color:var(--muted-foreground)]",
+        textClassName: "text-[color:var(--ega-text-secondary)]",
       };
   }
 }

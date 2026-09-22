@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { MoreHorizontal, X } from "lucide-react";
+import { MoreHorizontal, Play, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +40,12 @@ type TaskCardActionsProps = {
   error?: string | null;
   overflowActions?: ReactNode;
   reminders?: ReactNode;
+  /**
+   * Dense rendering for table/board rows: the same forms and wiring with
+   * icon-only controls that carry explicit aria-labels. Default rendering is
+   * unchanged for every other surface.
+   */
+  compact?: boolean;
 };
 
 /**
@@ -52,6 +58,7 @@ type TaskCardActionsProps = {
 export function TaskCardActions({
   startTimerAction,
   reminders,
+  compact = false,
   ...inlineProps
 }: TaskCardActionsProps) {
   const [manualOpen, setManualOpen] = useState(false);
@@ -77,13 +84,30 @@ export function TaskCardActions({
   }
 
   return (
-    <div className="tasks-card-actions flex flex-wrap items-center gap-2">
+    <div
+      className={
+        compact
+          ? "flex flex-wrap items-center gap-1.5 max-[761px]:gap-2"
+          : "flex flex-wrap items-center gap-2"
+      }
+    >
       {!isArchived && !isCompleted ? (
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={inlineProps.taskId} />
           <input type="hidden" name="returnTo" value={inlineProps.returnTo} />
-          <Button type="submit" size="sm" variant="muted">
-            Start timer
+          <Button
+            type="submit"
+            size="sm"
+            variant="muted"
+            aria-label={compact ? `Start timer for ${inlineProps.taskTitle}` : undefined}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-8 max-[761px]:w-8" : undefined}
+            data-testid={compact ? `task-start-timer-${inlineProps.taskId}` : undefined}
+          >
+            {compact ? (
+              <Play className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              "Start timer"
+            )}
           </Button>
         </form>
       ) : null}
@@ -92,6 +116,7 @@ export function TaskCardActions({
         <TaskMarkDoneForm
           action={inlineProps.action}
           taskId={inlineProps.taskId}
+          taskTitle={inlineProps.taskTitle}
           returnTo={inlineProps.returnTo}
           defaultPriority={inlineProps.defaultPriority}
           defaultDueDate={inlineProps.defaultDueDate}
@@ -100,6 +125,7 @@ export function TaskCardActions({
           defaultCalendarSyncEnabled={inlineProps.defaultCalendarSyncEnabled}
           defaultCalendarReminderMinutes={inlineProps.defaultCalendarReminderMinutes}
           defaultEstimateMinutes={inlineProps.defaultEstimateMinutes}
+          compact={compact}
         />
       ) : null}
 
@@ -111,9 +137,10 @@ export function TaskCardActions({
             variant="muted"
             aria-label={`More options for ${inlineProps.taskTitle}`}
             data-testid={`task-more-options-${inlineProps.taskId}`}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-8 max-[761px]:w-8" : undefined}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-            More options
+            {compact ? null : "More options"}
           </Button>
         </SheetTrigger>
 

@@ -61,9 +61,9 @@ function FilterPills({
   hrefForValue: (value: string | null) => string;
 }) {
   return (
-    <fieldset className="tasks-filter-group space-y-2">
+    <fieldset className="flex flex-col gap-2">
       <legend className="glass-label text-etch">{label}</legend>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {options.map((option) => {
           const isActive = option.value === activeValue;
 
@@ -153,10 +153,10 @@ export function TaskFilterControls({
   const hasActiveFilters = activeChips.length > 0;
 
   return (
-    <div className="tasks-filter-toolbar">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       <button
         type="button"
-        className="tasks-filter-trigger"
+        className="filter-pill"
         data-testid="tasks-filter-trigger"
         aria-expanded={open}
         aria-controls={panelId}
@@ -165,38 +165,51 @@ export function TaskFilterControls({
         <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
         <span>Filters</span>
         {hasActiveFilters ? (
-          <span className="tasks-filter-count" aria-label={`${activeChips.length} active filters`}>
+          <span
+            className="inline-flex h-4 min-w-4 items-center justify-center rounded-[var(--radius-pill)] bg-[var(--ega-surface-muted)] px-1 text-[length:var(--text-micro)] font-semibold tabular-nums text-[color:var(--ega-text-secondary)]"
+            aria-label={`${activeChips.length} active filters`}
+          >
             {activeChips.length}
           </span>
         ) : null}
       </button>
 
-      <div className="tasks-active-filters" data-testid="tasks-active-filters" aria-label="Active filters">
+      <div
+        className="flex min-w-0 flex-wrap items-center gap-1.5"
+        data-testid="tasks-active-filters"
+        aria-label="Active filters"
+      >
         {hasActiveFilters ? (
           <>
             {activeChips.map((chip) => (
               <Link
                 key={chip.key}
                 href={chip.removeHref}
-                className="filter-pill filter-pill-active tasks-filter-chip"
+                className="filter-pill filter-pill-active"
                 aria-label={`Remove ${chip.label} filter`}
               >
                 <span>{chip.label}</span>
                 <X className="h-3 w-3" aria-hidden="true" />
               </Link>
             ))}
-            <Link href={clearHref} className="tasks-filter-clear" data-testid="tasks-filter-clear">
+            <Link
+              href={clearHref}
+              className="text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)] hover:underline"
+              data-testid="tasks-filter-clear"
+            >
               Clear filters
             </Link>
           </>
         ) : (
-          <span className="tasks-filter-empty text-xs text-[color:var(--muted-foreground)]">No active filters</span>
+          <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+            No active filters
+          </span>
         )}
       </div>
 
-      <div className="tasks-filter-sort" role="group" aria-label="Sort tasks">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort tasks">
         <span className="glass-label text-etch">Sort</span>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {sortOptions.map((option) => {
             const isActive = option.value === activeSort;
             return (
@@ -213,7 +226,12 @@ export function TaskFilterControls({
       </div>
 
       {open ? (
-        <div id={panelId} className="tasks-filter-panel" role="region" aria-label="Task filter options">
+        <div
+          id={panelId}
+          className="flex w-full basis-full flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-3"
+          role="region"
+          aria-label="Task filter options"
+        >
           <FilterPills
             label="Status"
             options={statusOptions}
