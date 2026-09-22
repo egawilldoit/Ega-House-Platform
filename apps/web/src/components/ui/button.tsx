@@ -3,26 +3,30 @@ import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "default" | "muted" | "ghost" | "danger";
+  variant?: "primary" | "secondary" | "default" | "muted" | "ghost" | "danger";
   size?: "sm" | "md" | "lg";
 };
 
 const variantClasses = {
+  primary: "btn-instrument",
   default: "btn-instrument",
-  muted:   "btn-instrument btn-instrument-muted",
-  ghost:   "border border-transparent bg-transparent text-[color:var(--muted-foreground)] hover:border-[var(--border)] hover:bg-[var(--secondary)] hover:text-[color:var(--foreground)]",
-  danger:  "border border-[rgba(198,40,40,0.18)] bg-[rgba(198,40,40,0.05)] text-signal-error hover:bg-[rgba(198,40,40,0.1)]",
+  secondary: "btn-instrument btn-instrument-muted",
+  muted: "btn-instrument btn-instrument-muted",
+  ghost:
+    "border border-transparent bg-transparent text-[color:var(--ega-text-secondary)] hover:border-[var(--ega-border)] hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)]",
+  danger:
+    "border border-[var(--status-overdue-border)] bg-[var(--status-overdue-bg)] text-[color:var(--status-overdue)] hover:border-[color:var(--status-overdue)]",
 };
 
 const sizeClasses = {
-  sm: "h-8 px-3 text-xs",
-  md: "h-9 px-4 text-sm",
-  lg: "h-10 px-5 text-sm",
+  sm: "h-7 px-2.5 text-xs",
+  md: "h-8 px-3 text-sm",
+  lg: "h-9 px-3.5 text-sm",
 };
 
 export function Button({
   className,
-  variant = "default",
+  variant = "primary",
   size = "md",
   type = "button",
   ...props
@@ -33,7 +37,7 @@ export function Button({
       className={cn(
         variantClasses[variant],
         sizeClasses[size],
-        "transition-precise disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]",
+        "rounded-[var(--radius-sm)] font-medium transition-[background-color,border-color,color] duration-[var(--duration-fast)] disabled:cursor-not-allowed disabled:opacity-40",
         className,
       )}
       {...props}
@@ -42,6 +46,6 @@ export function Button({
 }
 
 /* Export buttonVariants for compatibility with existing code referencing it */
-export function buttonVariants({ variant = "default", size = "md" }: { variant?: ButtonProps["variant"]; size?: ButtonProps["size"] } = {}) {
-  return cn(variantClasses[variant ?? "default"], sizeClasses[size ?? "md"]);
+export function buttonVariants({ variant = "primary", size = "md" }: { variant?: ButtonProps["variant"]; size?: ButtonProps["size"] } = {}) {
+  return cn(variantClasses[variant ?? "primary"], sizeClasses[size ?? "md"]);
 }

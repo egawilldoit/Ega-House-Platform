@@ -1,87 +1,129 @@
-/* EGA Command OS — Authoritative Design Tokens
- * Single semantic authority per Wave 1.
- * Imported first in globals.css. All other files must consume these vars.
+/* EGA House — Authoritative design tokens for the authenticated workspace.
+ *
+ * One semantic authority. Imported first in globals.css; every other surface
+ * consumes these variables (directly or through Tailwind `@theme` utilities).
+ *
+ * Design character: light, quiet, professional, dense, precise, fast to scan.
+ * Surfaces are white on a neutral canvas, separated by 1px borders and
+ * whitespace. Shadows are reserved for overlays, never for static panels.
  */
 
 :root {
-  /* ── Foundation ───────────────────────────── */
-  --ega-bg: #F7F3EA;
-  --ega-surface: #FFFFFF;
-  --ega-sidebar: #161F2C;
-  --ega-border: #E8E2D3;
-  --ega-text: #1A1A18;
-  --ega-text-secondary: #6B6963;
-  --ega-text-tertiary: #9A9793;
+  /* ── Canvas and surfaces ─────────────────────────────── */
+  --ega-bg: #f2f2f2;
+  --ega-surface: #ffffff;
+  --ega-surface-subtle: #fafafa;
+  --ega-surface-hover: #f5f5f5;
+  --ega-surface-selected: #f0f0f0;
+  --ega-surface-muted: #ededed;
 
-  /* ── Brand ──────────────────────────────── */
-  --ega-gold: #E0A23A;
-  --ega-gold-soft: #FBEFDA;
-  --ega-gold-strong: #C98E2E;
-  --ega-gold-ring: rgba(224, 162, 58, 0.24);
+  /* ── Borders ─────────────────────────────────────────── */
+  --ega-border: #e5e5e5;
+  --ega-border-strong: #d6d6d6;
+  --ega-border-subtle: rgba(23, 23, 23, 0.06);
+  --ega-divider: #eeeeee;
 
-  /* ── Status ─────────────────────────────── */
-  --status-healthy: #3E8F6B;
-  --status-risk: #D97B3F;
-  --status-overdue: #C24B4B;
-  --status-pending: #8B8880;
+  /* ── Text ────────────────────────────────────────────── */
+  --ega-text: #171717;
+  --ega-text-secondary: #707070;
+  --ega-text-tertiary: #9a9a9a;
 
-  --status-healthy-bg: #E8F5EE;
-  --status-risk-bg: #FFF0E6;
-  --status-overdue-bg: #FDECEC;
-  --status-pending-bg: #F2F1EF;
+  /* ── Data visualisation categories ───────────────────── */
+  /* Data categories are NOT status semantics. */
+  --ega-data-blue: #3b82f6;
+  --ega-data-blue-soft: #dbeafe;
+  --ega-data-orange: #f97316;
+  --ega-data-orange-soft: #ffedd5;
+  --ega-data-yellow: #eab308;
+  --ega-data-yellow-soft: #fef3c7;
+  --ega-data-green: #22c55e;
+  --ega-data-green-soft: #dcfce7;
+  --ega-data-purple: #8b5cf6;
+  --ega-data-purple-soft: #ede9fe;
+  --ega-data-slate: #64748b;
+  --ega-data-slate-soft: #e2e8f0;
 
-  --status-healthy-border: rgba(62, 143, 107, 0.18);
-  --status-risk-border: rgba(217, 123, 63, 0.18);
-  --status-overdue-border: rgba(194, 75, 75, 0.18);
-  --status-pending-border: rgba(139, 136, 128, 0.16);
+  /* ── Status ──────────────────────────────────────────── */
+  /* Status is NOT chart colour. */
+  --status-healthy: #15803d;
+  --status-risk: #b45309;
+  --status-overdue: #b91c1c;
+  --status-pending: #6b7280;
+  --status-info: #1d4ed8;
 
-  /* ── Category ───────────────────────────── */
-  --category-deep-work: #B5754A;
-  --category-meeting: #5B6FCC;
-  --category-review: #93588F;
-  --category-focus: #2E8C8C;
-  --category-admin: #6E7A8A;
+  --status-healthy-bg: #f0fdf4;
+  --status-risk-bg: #fffbeb;
+  --status-overdue-bg: #fef2f2;
+  --status-pending-bg: #f5f5f5;
+  --status-info-bg: #eff6ff;
 
-  /* ── Derived Surfaces ───────────────────── */
-  --ega-surface-subtle: #FDFCF9;
-  --ega-surface-hover: #F5F1E8;
-  --ega-surface-selected: var(--ega-gold-soft);
-  --ega-surface-muted: #EDE9E1;
+  --status-healthy-border: #bbf7d0;
+  --status-risk-border: #fde68a;
+  --status-overdue-border: #fecaca;
+  --status-pending-border: #e5e5e5;
+  --status-info-border: #bfdbfe;
 
-  --ega-border-strong: #D8D0BE;
-  --ega-border-subtle: rgba(26, 26, 24, 0.06);
-  --ega-divider: rgba(26, 26, 24, 0.08);
+  /* ── Priority ────────────────────────────────────────── */
+  --priority-high: #b91c1c;
+  --priority-high-bg: #fef2f2;
+  --priority-high-border: #fecaca;
+  --priority-medium: #b45309;
+  --priority-medium-bg: #fffbeb;
+  --priority-medium-border: #fde68a;
+  --priority-low: #475569;
+  --priority-low-bg: #f8fafc;
+  --priority-low-border: #e2e8f0;
 
-  --ega-overlay: rgba(22, 31, 44, 0.52);
-  --ega-overlay-soft: rgba(22, 31, 44, 0.24);
+  /* ── Accent (neutral ink; no editorial gold) ─────────── */
+  --ega-ink: #171717;
+  --ega-ink-hover: #2e2e2e;
+  --ega-accent: #171717;
+  --ega-accent-soft: #f0f0f0;
+  --ega-accent-ring: rgba(23, 23, 23, 0.12);
 
-  --ega-focus-ring: 0 0 0 3px var(--ega-gold-ring);
-  --ega-focus-ring-strong: 0 0 0 3px rgba(224, 162, 58, 0.32);
+  /* Legacy alias shims — neutralised intentionally. Live usages must migrate. */
+  --ega-gold: var(--ega-ink);
+  --ega-gold-soft: var(--ega-accent-soft);
+  --ega-gold-strong: #000000;
+  --ega-gold-ring: var(--ega-accent-ring);
 
-  --ega-sidebar-hover: rgba(255, 255, 255, 0.06);
-  --ega-sidebar-selected: var(--ega-gold);
-  --ega-sidebar-text: #E8E6E1;
-  --ega-sidebar-muted: #8A9199;
-  --ega-sidebar-border: rgba(255, 255, 255, 0.08);
+  /* ── Focus ───────────────────────────────────────────── */
+  --ega-focus-ring: 0 0 0 3px rgba(23, 23, 23, 0.08);
+  --ega-focus-ring-strong: 0 0 0 3px rgba(23, 23, 23, 0.16);
+  --ega-focus-outline: 2px solid var(--ega-text);
 
-  --ega-disabled: #C4C1BC;
-  --ega-skeleton: #EDE9E1;
-  --ega-skeleton-shimmer: #F5F1E8;
+  --ega-overlay: rgba(23, 23, 23, 0.42);
+  --ega-overlay-soft: rgba(23, 23, 23, 0.16);
 
-  /* ── Shadow ─────────────────────────────── */
-  --ega-shadow-sm: 0 1px 2px rgba(22, 31, 44, 0.06), 0 1px 3px rgba(22, 31, 44, 0.04);
-  --ega-shadow-md: 0 4px 12px rgba(22, 31, 44, 0.07), 0 1px 3px rgba(22, 31, 44, 0.05);
-  --ega-shadow-lg: 0 12px 32px rgba(22, 31, 44, 0.09), 0 4px 12px rgba(22, 31, 44, 0.06);
-  --ega-shadow-sidebar: 12px 0 32px rgba(22, 31, 44, 0.08);
+  /* ── Sidebar (light) ─────────────────────────────────── */
+  --ega-sidebar: var(--ega-bg);
+  --ega-sidebar-hover: rgba(23, 23, 23, 0.05);
+  --ega-sidebar-selected: rgba(23, 23, 23, 0.07);
+  --ega-sidebar-text: var(--ega-text);
+  --ega-sidebar-muted: var(--ega-text-secondary);
+  --ega-sidebar-border: var(--ega-border);
 
-  /* ── Radius ─────────────────────────────── */
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 16px;
+  /* ── Feedback ────────────────────────────────────────── */
+  --ega-disabled: #c4c4c4;
+  --ega-skeleton: #ececec;
+  --ega-skeleton-shimmer: #f5f5f5;
+
+  /* ── Shadow (overlays only) ──────────────────────────── */
+  --ega-shadow-sm: 0 1px 2px rgba(23, 23, 23, 0.05);
+  --ega-shadow-md: 0 6px 16px rgba(23, 23, 23, 0.08), 0 1px 3px rgba(23, 23, 23, 0.04);
+  --ega-shadow-lg: 0 16px 40px rgba(23, 23, 23, 0.12), 0 4px 10px rgba(23, 23, 23, 0.05);
+  --ega-shadow-sidebar: none;
+  --ega-shadow-panel: none;
+
+  /* ── Radius ──────────────────────────────────────────── */
+  --radius-xs: 6px;
+  --radius-sm: 8px;   /* controls */
+  --radius-md: 10px;  /* compact panels, menu items */
+  --radius-lg: 12px;  /* cards and panels */
+  --radius-xl: 16px;  /* large shell surfaces */
   --radius-pill: 999px;
 
-  /* ── Spacing scale (4-based) ───────────── */
+  /* ── Spacing (4px base) ──────────────────────────────── */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -92,48 +134,51 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  /* ── Typography scale ───────────────────── */
+  /* ── Typography scale ────────────────────────────────── */
   --text-micro: 0.6875rem;   /* 11px */
   --text-meta: 0.75rem;      /* 12px */
   --text-meta-lg: 0.8125rem; /* 13px */
   --text-body: 0.875rem;     /* 14px */
   --text-body-lg: 0.9375rem; /* 15px */
-  --text-section: 1rem;      /* 16px */
-  --text-title-sm: 1.125rem; /* 18px */
-  --text-title: 1.5rem;      /* 24px */
-  --text-page: clamp(1.75rem, 2.5vw, 2.25rem); /* 28–36px */
+  --text-panel-title: 1rem;  /* 16px */
+  --text-section: 1.25rem;   /* 20px */
+  --text-metric: 1.5rem;     /* 24px */
+  --text-metric-lg: 1.75rem; /* 28px */
+  --text-page: 1.75rem;      /* 28px */
 
-  --leading-tight: 1.1;
+  --leading-tight: 1.15;
+  --leading-snug: 1.35;
   --leading-normal: 1.5;
-  --leading-relaxed: 1.65;
+  --leading-relaxed: 1.6;
 
   --tracking-tight: -0.02em;
   --tracking-normal: 0;
-  --tracking-wide: 0.06em;
-  --tracking-widest: 0.12em;
+  --tracking-wide: 0.04em;
+  --tracking-widest: 0.08em;
 
-  /* ── Motion ─────────────────────────────── */
+  /* ── Motion ──────────────────────────────────────────── */
   --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-  --duration-fast: 120ms;
-  --duration-base: 180ms;
-  --duration-slow: 240ms;
-  --duration-enter: 320ms;
+  --duration-fast: 110ms;
+  --duration-base: 160ms;
+  --duration-slow: 220ms;
+  --duration-enter: 260ms;
 
-  /* ── Layout ─────────────────────────────── */
-  --sidebar-width: 280px;
+  /* ── Layout ──────────────────────────────────────────── */
+  --sidebar-width: 264px;
+  --sidebar-collapsed-width: 72px;
   --topbar-height: 56px;
-  --content-max: 1760px;
+  --content-max: 1600px;
+  --content-gutter: 24px;
   --radius-card: var(--radius-lg);
 
-  /* ── Sidebar legacy shim (for editorial compat) ── */
+  /* ── Legacy shims (kept until last live consumer migrates) ── */
   --workspace-sidebar-width: var(--sidebar-width);
   --workspace-topbar-height: var(--topbar-height);
 }
 
-/* ── Dark / high-contrast adjustments (future) ── */
-@media (prefers-color-scheme: dark) {
+@media (min-width: 1536px) {
   :root {
-    /* Keep light as default for Command OS; dark is opt-in via data-theme if needed */
+    --content-gutter: 32px;
   }
 }
