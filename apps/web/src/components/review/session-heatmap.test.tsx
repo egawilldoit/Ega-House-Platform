@@ -32,7 +32,9 @@ test("renders legend and day metadata for heatmap data", () => {
   assert.match(markup, /aria-label="Heatmap legend"/);
   assert.match(markup, /aria-label="Wed, Apr 15, 2026: 20m 0s tracked"/);
   assert.match(markup, /title="Thu, Apr 16, 2026: 1h 0m 0s tracked"/);
-  assert.match(markup, /tabindex="0"/);
+  // Screen-reader users get a table equivalent instead of a focusable grid cell.
+  assert.match(markup, /<table class="sr-only">/);
+  assert.match(markup, /Daily tracked session time/);
 });
 
 test("renders an empty-state message when no day data is provided", () => {

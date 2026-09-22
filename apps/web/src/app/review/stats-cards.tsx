@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { CompactStat } from "@/components/ui/metric";
 import { formatDurationLabel } from "@/lib/task-session";
 import { formatTaskToken } from "@/lib/task-domain";
 
@@ -18,37 +19,23 @@ function formatStatusToken(status: string) {
 
 export function StatsCards({ stats }: StatsCardsProps) {
   return (
-    <div className="space-y-3">
-      {/* Readout rows */}
-      {[
-        { label: "Tasks created", value: stats.tasksCreated },
-        { label: "Sessions logged", value: stats.sessionsLogged },
-        { label: "Goals touched", value: stats.goalsTouched },
-      ].map((row) => (
-        <div key={row.label} className="flex items-center justify-between border-b pb-2" style={{ borderColor: "var(--border)" }}>
-          <span className="glass-label text-etch">{row.label}</span>
-          <span className="font-mono tabular text-base font-medium" style={{ color: "var(--foreground)" }}>{row.value}</span>
-        </div>
-      ))}
-
-      {/* Focus time — highlighted */}
-      <div className="instrument-border rounded-sm px-4 py-3" style={{ borderColor: "rgba(34,197,94,0.2)", background: "rgba(34,197,94,0.05)" }}>
-        <div className="flex items-center justify-between">
-          <span className="glass-label text-signal-live">Focus time</span>
-          <span className="font-mono tabular text-lg font-medium text-signal-live">{formatDurationLabel(stats.trackedSeconds)}</span>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <CompactStat label="Tasks created" value={stats.tasksCreated} />
+        <CompactStat label="Sessions logged" value={stats.sessionsLogged} />
+        <CompactStat label="Focus time" value={formatDurationLabel(stats.trackedSeconds)} />
+        <CompactStat label="Goals touched" value={stats.goalsTouched} />
       </div>
 
-      {/* Goal breakdown */}
-      {stats.goalStatusCounts.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
+      {stats.goalStatusCounts.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
           {stats.goalStatusCounts.map((entry) => (
             <Badge key={entry.status} tone="muted">
               {entry.count} {formatStatusToken(entry.status)}
             </Badge>
           ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

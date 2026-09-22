@@ -37,6 +37,8 @@ test("buildWorkAnalyticsReport returns full report shape with no sessions", () =
   assert.ok(Array.isArray(report.taskBreakdown), "taskBreakdown should be an array");
   assert.ok(report.estimateAccuracy, "estimateAccuracy should exist");
   assert.ok(report.drilldownIndexes, "drilldownIndexes should exist");
+  assert.ok(report.recentDateDrilldownIndex, "recentDateDrilldownIndex should exist");
+  assert.ok(report.trendDateDrilldownIndex, "trendDateDrilldownIndex should exist");
 
   // Verify zero/empty defaults
   assert.strictEqual(report.summary.todayWorkedMinutes, 0);
@@ -174,4 +176,44 @@ test("buildWorkAnalyticsReport smoke test with complete session data", () => {
   // Yesterday should be zero (no sessions that started yesterday)
   assert.strictEqual(report.yesterday.workedMinutes, 0);
   assert.strictEqual(report.yesterday.sessionCount, 0);
+});
+
+test("recent chart drilldown indexes stay scoped to their own chart windows", () => {
+  const now = new Date("2026-04-27T12:00:00.000Z");
+  const makeSession = (taskId: string, startedAt: string, endedAt: string) => ({
+    task_id: taskId,
+    started_at: startedAt,
+    ended_at: endedAt,
+    duration_seconds: 3600,
+    tasks: { id: taskId, title: taskId, project_id: "p1", projects: { id: "p1", name: "P1" } },
+  });
+
+  const sessions = [
+    // Inside the selected window and both recent windows.
+    makeSession("today", "2026-04-27T09:00:00.000Z", "2026-04-27T10:00:00.000Z"),
+    // 20 days back: inside the 30-day trend window only.
+    makeSession("older", "2026-04-07T09:00:00.000Z", "2026-04-07T10:00:00.000Z"),
+    // 60 days back: outside every chart window on this page.
+    makeSession("ancient", "2026-02-26T09:00:00.000Z", "2026-02-26T10:00:00.000Z"),
+  ];
+
+  const report = buildWorkAnalyticsReport(
+    sessions,
+    defaultTaskCounts,
+    { ...defaultFilters, range: "7d" },
+    now,
+  );
+
+  // The fixed 7-day rhythm only indexes the last seven days.
+  assert.ok(report.recentDateDrilldownIndex["2026-04-27"]);
+  assert.equal(report.recentDateDrilldownIndex["2026-04-07"], undefined);
+  assert.equal(report.recentDateDrilldownIndex["2026-02-26"], undefined);
+
+  // The fixed 30-day trend indexes both recent dates but not older evidence.
+  assert.ok(report.trendDateDrilldownIndex["2026-04-27"]);
+  assert.ok(report.trendDateDrilldownIndex["2026-04-07"]);
+  assert.equal(report.trendDateDrilldownIndex["2026-02-26"], undefined);
+
+  // The selected-window index follows the selected range, not the chart windows.
+  assert.equal(report.drilldownIndexes.date["2026-04-07"], undefined);
 });

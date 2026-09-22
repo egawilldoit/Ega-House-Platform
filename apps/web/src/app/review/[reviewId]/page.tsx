@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -43,9 +42,9 @@ async function getReview(reviewId: string) {
 
 function DetailField({ label, value }: { label: string; value: string | null }) {
   return (
-    <article className="rounded-[1.25rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
-      <p className="text-overline">{label}</p>
-      <p className="mt-2 whitespace-pre-wrap text-sm leading-7 text-[color:var(--foreground)]">
+    <article className="rounded-[var(--radius-lg)] border border-ega-border bg-ega-surface-subtle px-4 py-3">
+      <p className="glass-label">{label}</p>
+      <p className="mt-1.5 whitespace-pre-wrap text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text">
         {toFieldValue(value)}
       </p>
     </article>
@@ -62,22 +61,15 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
 
   return (
     <AppShell
-      eyebrow="Review Workspace"
       title="Past review detail"
-      description="Inspect a full weekly review entry and its captured reflection fields."
+      description={`${formatIsoDate(review.week_start)} — ${formatIsoDate(review.week_end)} · saved reflection fields.`}
       actions={
         <Link
           href="/review"
-          className="btn-instrument btn-instrument-muted inline-flex min-h-12 items-center justify-center px-5 text-sm"
+          className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-[length:var(--text-meta-lg)]"
         >
           Back to review workspace
         </Link>
-      }
-      navigation={
-        <>
-          <Badge tone="accent">{formatIsoDate(review.week_start)}</Badge>
-          <Badge>{formatIsoDate(review.week_end)}</Badge>
-        </>
       }
     >
       <div className="workspace-main-rail-grid">
@@ -88,7 +80,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
               {formatIsoDate(review.week_start)} to {formatIsoDate(review.week_end)}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3 pt-1">
+          <CardContent className="flex flex-col gap-3">
             {getReviewDetailFields(review).map((field) => (
               <DetailField key={field.label} label={field.label} value={field.value} />
             ))}
@@ -100,15 +92,15 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
             <CardTitle>Record metadata</CardTitle>
             <CardDescription>Lifecycle timestamps for this review record.</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-2 pt-1 text-sm leading-7 text-[color:var(--muted-foreground)]">
+          <CardContent className="flex flex-col gap-2 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
             <p>
-              <span className="text-[color:var(--foreground)]">Created:</span> {formatDateTime(review.created_at)}
+              <span className="text-ega-text">Created:</span> {formatDateTime(review.created_at)}
             </p>
             <p>
-              <span className="text-[color:var(--foreground)]">Updated:</span> {formatDateTime(review.updated_at)}
+              <span className="text-ega-text">Updated:</span> {formatDateTime(review.updated_at)}
             </p>
-            <p>
-              <span className="text-[color:var(--foreground)]">Review ID:</span> {review.id}
+            <p className="break-all">
+              <span className="text-ega-text">Review ID:</span> {review.id}
             </p>
           </CardContent>
         </Card>
