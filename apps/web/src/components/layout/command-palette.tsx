@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { CornerDownLeft, Search } from "lucide-react";
 
 import { searchWorkspaceAction } from "@/app/search/actions";
-import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
+import { COMMAND_PALETTE_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
 import { WORKSPACE_SEARCH_MIN_QUERY_LENGTH } from "@/lib/workspace-search";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -20,7 +20,7 @@ import {
   type CommandPaletteSection,
 } from "./command-palette-model";
 
-export const COMMAND_PALETTE_EVENT = "ega:open-command-palette";
+export { COMMAND_PALETTE_EVENT };
 
 const SEARCH_DEBOUNCE_MS = 180;
 
