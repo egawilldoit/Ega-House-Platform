@@ -87,7 +87,9 @@ test("ReviewPageView renders the weekly review workspace", () => {
   assert.match(markup, /Ship the refactor/);
   assert.match(markup, /Waiting on review/);
   assert.match(markup, /href="\/review\/review-1"/);
-  assert.match(markup, /href="\/tasks\/task-1"/);
+  // Blocked work links to the canonical task anchor on /tasks; there is no
+  // /tasks/[id] route.
+  assert.match(markup, /href="\/tasks#task-task-1"/);
 });
 
 test("ReviewPageView keeps saved review editing and the regenerate href", () => {

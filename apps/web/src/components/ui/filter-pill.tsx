@@ -33,7 +33,6 @@ export function FilterPill({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        aria-current={ariaCurrent}
         aria-pressed={active}
         className={classes}
       >

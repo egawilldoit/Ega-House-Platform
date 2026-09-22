@@ -100,7 +100,10 @@ describe("EGA-654 navigation structure", () => {
     expect(css).toMatch(/data-collapsed="true"[\s\S]*?\.workspace-nav-label,/);
     expect(css).toContain("max-height: min(31dvh, 18rem);");
     expect(css).toContain("overflow-y: auto;");
-    expect(css).toMatch(/@media \(min-width: 761px\) and \(max-width: 1080px\)/);
+    // The tablet rail width is a token override, owned by tokens.css.
+    expect(read("styles", "tokens.css")).toMatch(
+      /@media \(min-width: 761px\) and \(max-width: 1080px\)/,
+    );
 
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
     // Names are unconditional (not gated on the compact prop).

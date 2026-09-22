@@ -293,7 +293,7 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
           <StatCard label="Completed" value={completedProjects} subtitle="status done" />
         </div>
 
-        <Card flush>
+        <Card clip>
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">

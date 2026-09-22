@@ -38,7 +38,7 @@ const faq = [
   {
     question: "Where should I start each day?",
     answer:
-      "Open /dashboard first for the operational snapshot, then move into /tasks or /timer based on your priority queue.",
+      "Open /today first for the current plan, then move into /tasks or /timer based on your priority queue.",
   },
   {
     question: "How do I connect tasks to strategy?",
@@ -71,7 +71,7 @@ const helpGroups: HelpGroup[] = [
         id: "getting-started-priorities",
         title: "1. Confirm your priorities",
         detail:
-          "Use /dashboard to check today's load, active projects, and timer state before starting work.",
+          "Use /today to check today's load, active projects, and timer state before starting work.",
       },
       {
         id: "getting-started-tasks",
@@ -90,7 +90,7 @@ const helpGroups: HelpGroup[] = [
         id: "shortcuts-sidebar",
         title: "Route jumps",
         detail:
-          "Use the left sidebar for direct route jumps between /dashboard, /tasks, /goals, /timer, and /review.",
+          "Use the left sidebar for direct route jumps between /today, /tasks, /goals, /timer, and /review.",
       },
       {
         id: "shortcuts-search",
@@ -130,10 +130,10 @@ export default async function HelpPage() {
       description="Workflow guide — Projects → Goals → Tasks → Timer → Review."
       actions={
         <Link
-          href="/dashboard"
+          href="/today"
           className="btn-instrument btn-instrument-muted flex h-8 items-center gap-2 px-3 text-sm"
         >
-          Back to Dashboard
+          Back to Today
         </Link>
       }
     >

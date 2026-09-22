@@ -108,9 +108,9 @@ export function StartHerePanel({
       label="Start here"
       title={task.title}
       data-testid="today-start-here"
-      action={<Badge tone={task.hasActiveTimer ? "active" : "info"}>
-        {task.hasActiveTimer ? "Timer running" : "Top priority"}
-      </Badge>}
+      action={
+        task.hasActiveTimer ? <Badge tone="active">Timer running</Badge> : null
+      }
     >
       <CardContent className="flex flex-col gap-3">
         {task.description ? (
@@ -195,7 +195,7 @@ export function FocusQueuePanel({
     <Card
       label="Queue"
       title="Today's focus queue"
-      action={<Badge tone="muted">{queue.length}</Badge>}
+      action={<Badge tone="muted">{tasks.length}</Badge>}
       data-testid="today-focus-queue"
     >
       {queue.length > 0 ? (

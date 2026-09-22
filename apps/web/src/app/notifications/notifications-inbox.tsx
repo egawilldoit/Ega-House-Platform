@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Bell, ExternalLink } from "lucide-react";
 
 import {
@@ -45,12 +44,20 @@ function NotificationRow({ row }: { row: NotificationInboxRow }) {
       <div className="row-main">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {row.targetHref ? (
-            <Link
-              href={row.targetHref}
-              className={cn("row-title hover:underline", row.isUnread && "font-semibold")}
-            >
-              {row.title}
-            </Link>
+            // Opens through the canonical action so the read transition the row
+            // shows is actually persisted; a plain link would leave it unread.
+            <form action={openNotificationAction} className="contents">
+              <input type="hidden" name="notificationId" value={row.id} />
+              <button
+                type="submit"
+                className={cn(
+                  "row-title text-left hover:underline",
+                  row.isUnread && "font-semibold",
+                )}
+              >
+                {row.title}
+              </button>
+            </form>
           ) : (
             <span className={cn("row-title", row.isUnread && "font-semibold")}>
               {row.title}

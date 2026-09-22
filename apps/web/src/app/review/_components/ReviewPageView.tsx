@@ -286,7 +286,7 @@ export function ReviewPageView({
                   {weeklyStats.blockedTasks.map((task) => (
                     <li key={task.id} className="row px-0!">
                       <span className="row-main">
-                        <Link href={`/tasks/${task.id}`} className="row-title hover:underline">
+                        <Link href={`/tasks#task-${task.id}`} className="row-title hover:underline">
                           {task.title}
                         </Link>
                         <span className="row-meta">

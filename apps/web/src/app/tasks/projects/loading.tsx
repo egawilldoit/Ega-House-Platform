@@ -34,7 +34,7 @@ export default function TasksProjectsLoadingPage() {
           ))}
         </div>
 
-        <Card flush label="Directory" title="Project directory">
+        <Card clip label="Directory" title="Project directory">
           <div className="rows">
             <ProjectRowSkeleton />
             <ProjectRowSkeleton />

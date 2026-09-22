@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Clock3, Hourglass, Target, Timer } from "lucide-react";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -34,7 +35,35 @@ function ContextStat({ label, value }: { label: string; value: string }) {
 
 export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel }) {
   if (model.error || !model.report) {
-    return <div className="p-6">{model.error ?? "Failed to load work analytics data."}</div>;
+    return (
+      <Card>
+        <CardContent className="flex flex-col gap-3" role="status" aria-live="polite">
+          <div>
+            <h2 className="text-[length:var(--text-panel-title)] font-semibold">
+              Analytics could not be loaded
+            </h2>
+            <p className="mt-1 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
+              {model.error ??
+                "The analytics report did not come back. Your tasks and sessions are unaffected."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/today"
+              className="btn-instrument flex h-8 items-center px-3 text-sm"
+            >
+              Open Today
+            </Link>
+            <Link
+              href="/work-analytics"
+              className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+            >
+              Retry
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+    );
   }
   const report = model.report;
   const tasksWithEstimates =
