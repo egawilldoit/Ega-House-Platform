@@ -6,7 +6,6 @@ import {
   CircleAlert,
   Clock3,
   Flame,
-  Inbox,
   ListChecks,
   Timer,
 } from "lucide-react";
@@ -371,20 +370,6 @@ function DegradedNotice() {
   );
 }
 
-function QuickActionPanel() {
-  return (
-    <Card label="Shortcuts" title="Quick actions">
-      <CardContent className="flex flex-col gap-3">
-        <HomeQuickActions />
-        <p className="flex items-center gap-1.5 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-          <Inbox className="h-3.5 w-3.5" aria-hidden="true" />
-          Capture lands in Ideas. Create task opens the shared quick-task sheet.
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
 export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
   const summary = model.summary;
 
@@ -443,7 +428,6 @@ export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
           <div className="workspace-secondary-rail">
             <FocusQueuePanel model={model} />
             <AttentionPanel model={model} />
-            <QuickActionPanel />
           </div>
         </div>
       </DashboardSection>
