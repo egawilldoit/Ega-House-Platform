@@ -257,6 +257,20 @@ function QuickTaskSheetPanel({
     Boolean(parsedSingleCommand.projectError)
     || Boolean(parsedSingleCommand.goalError)
     || Boolean(parsedSingleCommand.blockedError);
+  const exampleProject = projects[0] ?? null;
+  const exampleGoal =
+    goals.find((goal) => goal.project_id === exampleProject?.id) ?? null;
+  const commandPlaceholder = exampleProject
+    ? [
+        "Ship auth fix",
+        `#${exampleProject.name.replace(/\s+/g, "")}`,
+        exampleGoal ? `/${exampleGoal.title.replace(/\s+/g, "")}` : null,
+        "today high 45m",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "Ship auth fix today high 45m";
+
   const selectedProjectName =
     projects.find((project) => project.id === singleProjectId)?.name ?? "No project";
   const selectedGoalName =
@@ -438,16 +452,16 @@ function QuickTaskSheetPanel({
     <>
       <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
         <span
-          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--ega-gold-soft)] text-[var(--ega-gold-strong)] ring-1 ring-[var(--ega-gold-ring)]"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]"
           aria-hidden="true"
         >
           <Plus className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="glass-label text-signal-live">Execution Capture</p>
+          <p className="glass-label">Create task</p>
           <DialogPrimitive.Title
             id="quick-task-sheet-title"
-            className="font-display text-2xl font-semibold tracking-[-0.04em] text-[color:var(--foreground)]"
+            className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]"
           >
             Quick task
           </DialogPrimitive.Title>
@@ -540,7 +554,7 @@ function QuickTaskSheetPanel({
                       <Input
                         id="quick-task-command"
                         required
-                        placeholder="Ship auth fix #ExecutionOS /Launch today high 45m @blocked:Waiting-on-API"
+                        placeholder={commandPlaceholder}
                         value={singleCommand}
                         onChange={(event) => setSingleCommand(event.target.value)}
                         className="h-10"
@@ -949,7 +963,7 @@ function QuickTaskSheetPanel({
                 <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="glass-label text-signal-live">Batch builder</p>
+                      <p className="glass-label">Batch entry</p>
                       <h3 className="mt-1 text-base font-semibold text-[color:var(--foreground)]">
                         Add multiple tasks visually
                       </h3>

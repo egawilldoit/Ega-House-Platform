@@ -196,7 +196,7 @@ export function InboxCaptureSheet() {
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
           <SheetHeader className="min-w-0">
-            <p className="glass-label text-signal-live">Inbox Capture</p>
+            <p className="glass-label">Inbox Capture</p>
             <SheetTitle>Capture</SheetTitle>
             <SheetDescription>
               Write first. Smart Inbox keeps the raw capture intact while you decide what it becomes.

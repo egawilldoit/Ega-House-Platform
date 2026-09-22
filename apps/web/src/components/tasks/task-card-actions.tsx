@@ -151,7 +151,7 @@ export function TaskCardActions({
         >
           <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
             <SheetHeader className="min-w-0">
-              <p className="glass-label text-signal-live">Task settings</p>
+              <p className="glass-label">Task settings</p>
               <SheetTitle>Advanced settings</SheetTitle>
               <SheetDescription>{inlineProps.taskTitle}</SheetDescription>
             </SheetHeader>
