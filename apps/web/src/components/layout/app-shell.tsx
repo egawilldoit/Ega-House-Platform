@@ -16,10 +16,6 @@ type AppShellProps = {
   actions?: ReactNode;
   className?: string;
   contentClassName?: string;
-  /** @deprecated Editorial eyebrow. Navigation now derives its own breadcrumb. */
-  eyebrow?: string;
-  /** @deprecated Legacy navigation slot – no longer rendered. */
-  navigation?: ReactNode;
 };
 
 // Request-level only — see SHELL-PERSISTENCE-EVALUATION.md
