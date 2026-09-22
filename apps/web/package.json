@@ -13,7 +13,9 @@
     "test:session": "tsx --test src/lib/supabase/cookie-options.test.ts",
     "test:timer-recovery": "tsx --test src/app/timer/session-recovery.test.ts",
     "test:auth-session:e2e": "playwright test tests/auth-session.e2e.spec.ts",
-    "test:visual": "playwright test tests/visual-a11y.spec.ts"
+    "test:visual": "playwright test tests/visual-a11y.spec.ts",
+    "test:pwa:mobile": "playwright test tests/pwa-mobile.e2e.spec.ts",
+    "test:pwa:auth": "playwright test --config playwright.pwa-auth.config.ts"
   },
   "dependencies": {
     "@ega/application": "0.1.0",
