@@ -24,18 +24,21 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
   const [state, formAction] = useActionState(convertIdeaNoteAction, initialState);
 
   return (
-    <details className="mt-3 rounded-xl border border-[rgba(15,23,42,0.08)] bg-white/70 p-3">
-      <summary className="flex cursor-pointer items-center gap-2 text-sm font-medium text-[color:var(--foreground)]">
-        <ArrowRight className="h-4 w-4 text-[color:var(--accent)]" aria-hidden="true" />
+    <details className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)]">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--ega-text)]">
+        <ArrowRight className="h-4 w-4 text-[color:var(--ega-text-secondary)]" aria-hidden="true" />
         Convert to task
       </summary>
-      <form action={formAction} className="mt-4 space-y-3">
+      <form
+        action={formAction}
+        className="flex flex-col gap-3 border-t border-[var(--ega-divider)] px-3 py-3"
+      >
         <input type="hidden" name="id" value={note.id} />
-        <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+        <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
           Choose a project to create a task from this idea. The Inbox item will remain linked as converted.
         </p>
-        <div className="space-y-2">
-          <label htmlFor={`idea-${note.id}-conversion-project`} className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`idea-${note.id}-conversion-project`} className="glass-label">
             Project
           </label>
           <select
@@ -43,7 +46,7 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
             name="projectId"
             required
             defaultValue={note.project_id ?? ""}
-            className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+            className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
           >
             <option value="">Choose a project</option>
             {projectOptions.map((project) => (
@@ -55,13 +58,13 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
         </div>
 
         {projectOptions.length === 0 ? (
-          <p className="text-sm text-signal-warning" role="status">
+          <p className="feedback-block feedback-block-warn" role="status">
             Create a project before converting an idea into a task.
           </p>
         ) : null}
 
         {state.error ? (
-          <p className="text-sm text-signal-error" role="alert">
+          <p className="feedback-block feedback-block-error" role="alert">
             {state.error}
           </p>
         ) : null}
@@ -69,7 +72,7 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
         <PendingSubmitButton
           type="submit"
           size="sm"
-          className="gap-2 rounded-xl"
+          className="gap-2 self-start"
           disabled={projectOptions.length === 0}
           pendingLabel="Converting..."
         >

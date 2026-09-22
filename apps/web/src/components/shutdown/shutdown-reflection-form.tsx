@@ -36,12 +36,12 @@ export function ShutdownReflectionForm({
   }, [friction, tomorrowStart, win]);
 
   return (
-    <form action={action} className="space-y-3">
+    <form action={action} className="flex flex-col gap-3">
       <input type="hidden" name="returnTo" value={returnTo} />
       <input type="hidden" name="reflectionNote" value={reflectionNote} />
 
-      <div className="space-y-2">
-        <label htmlFor="shutdown-win" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="shutdown-win" className="glass-label">
           Today&apos;s win
         </label>
         <Textarea
@@ -54,8 +54,8 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="shutdown-friction" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="shutdown-friction" className="glass-label">
           Friction or blocker
         </label>
         <Textarea
@@ -68,8 +68,8 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="shutdown-tomorrow" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="shutdown-tomorrow" className="glass-label">
           Tomorrow starts with
         </label>
         <div className="flex flex-wrap gap-2">
@@ -94,10 +94,9 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <Button type="submit" variant="muted" size="sm" disabled={!reflectionNote.trim()}>
+      <Button type="submit" variant="muted" size="sm" disabled={!reflectionNote.trim()} className="w-fit">
         Save note
       </Button>
     </form>
   );
 }
-

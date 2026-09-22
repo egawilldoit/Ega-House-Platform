@@ -32,15 +32,18 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
   const [state, formAction] = useActionState(updateIdeaNoteAction, initialState);
 
   return (
-    <details className="mt-4 rounded-xl border border-[rgba(15,23,42,0.08)] bg-white/70 p-3">
-      <summary className="cursor-pointer text-sm font-medium text-[color:var(--foreground)]">
+    <details className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)]">
+      <summary className="cursor-pointer list-none px-3 py-2 text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--ega-text)]">
         Edit
       </summary>
-      <form action={formAction} className="mt-4 space-y-4">
+      <form
+        action={formAction}
+        className="flex flex-col gap-4 border-t border-[var(--ega-divider)] px-3 py-3"
+      >
         <input type="hidden" name="id" value={note.id} />
 
-        <div className="space-y-2">
-          <label htmlFor={`idea-${note.id}-title`} className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`idea-${note.id}-title`} className="glass-label">
             Title
           </label>
           <Input
@@ -48,20 +51,20 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
             name="title"
             required
             defaultValue={note.title}
-            className="ega-glass-input h-10 rounded-xl"
+            className="h-9"
           />
         </div>
 
         <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-2">
-            <label htmlFor={`idea-${note.id}-type`} className="glass-label text-etch">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`idea-${note.id}-type`} className="glass-label">
               Type
             </label>
             <select
               id={`idea-${note.id}-type`}
               name="type"
               defaultValue={note.type || DEFAULT_IDEA_NOTE_TYPE}
-              className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+              className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
             >
               {IDEA_NOTE_TYPES.map((type) => (
                 <option key={type} value={type}>
@@ -71,15 +74,15 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
             </select>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor={`idea-${note.id}-project`} className="glass-label text-etch">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`idea-${note.id}-project`} className="glass-label">
               Project
             </label>
             <select
               id={`idea-${note.id}-project`}
               name="projectId"
               defaultValue={note.project_id ?? ""}
-              className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+              className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
             >
               <option value="">No project</option>
               {projectOptions.map((project) => (
@@ -90,15 +93,15 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
             </select>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor={`idea-${note.id}-priority`} className="glass-label text-etch">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`idea-${note.id}-priority`} className="glass-label">
               Priority
             </label>
             <select
               id={`idea-${note.id}-priority`}
               name="priority"
               defaultValue={note.priority ?? ""}
-              className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+              className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
             >
               <option value="">No priority</option>
               {IDEA_NOTE_PRIORITIES.map((priority) => (
@@ -109,8 +112,8 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
             </select>
           </div>
 
-          <div className="space-y-2">
-            <label htmlFor={`idea-${note.id}-status`} className="glass-label text-etch">
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`idea-${note.id}-status`} className="glass-label">
               Status
             </label>
             <select
@@ -121,7 +124,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
                   ? note.status
                   : "inbox"
               }
-              className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+              className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
             >
               {MANUAL_IDEA_NOTE_STATUSES.map((status) => (
                 <option key={status} value={status}>
@@ -132,48 +135,48 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor={`idea-${note.id}-body`} className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`idea-${note.id}-body`} className="glass-label">
             Body
           </label>
           <Textarea
             id={`idea-${note.id}-body`}
             name="body"
             defaultValue={note.body ?? ""}
-            className="ega-glass-input min-h-24 rounded-xl"
+            className="min-h-24"
           />
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor={`idea-${note.id}-tags`} className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor={`idea-${note.id}-tags`} className="glass-label">
             Tags
           </label>
           <Input
             id={`idea-${note.id}-tags`}
             name="tagsInput"
             defaultValue={note.tags.join(", ")}
-            className="ega-glass-input h-10 rounded-xl"
+            className="h-9"
           />
         </div>
 
         {state.error ? (
-          <p className="text-sm text-signal-error" role="alert">
+          <p className="feedback-block feedback-block-error" role="alert">
             {state.error}
           </p>
         ) : null}
 
         {state.success ? (
-          <p className="text-sm text-signal-live" role="status">
+          <p className="feedback-block" role="status">
             {state.success}
           </p>
         ) : null}
 
         <div className="flex flex-wrap gap-2">
-          <PendingSubmitButton type="submit" size="sm" className="gap-2 rounded-xl">
+          <PendingSubmitButton type="submit" size="sm" className="gap-2">
             <Save className="h-4 w-4" aria-hidden="true" />
             Save
           </PendingSubmitButton>
-          <Button type="reset" variant="muted" size="sm" className="rounded-xl">
+          <Button type="reset" variant="muted" size="sm">
             Reset
           </Button>
         </div>
