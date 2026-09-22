@@ -13,7 +13,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSection } from "@/components/ui/dashboard-section";
-import { MetricDelta } from "@/components/ui/metric";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -384,7 +383,7 @@ export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
         <div className="kpi-grid">
           <StatCard
             label="Due today"
-            value={summary ? summary.dueTodayCount : "—"}
+            value={model.attention.dueToday}
             subtitle="tasks due today"
           />
           <StatCard
@@ -401,11 +400,6 @@ export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
             label="Overdue"
             value={model.attention.overdue}
             subtitle="tasks past due"
-            trend={
-              summary && summary.overdueCount === model.attention.overdue ? (
-                <MetricDelta value="in sync" direction="flat" />
-              ) : null
-            }
           />
         </div>
       </DashboardSection>

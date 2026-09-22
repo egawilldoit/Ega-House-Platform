@@ -27,7 +27,7 @@ const WORKSPACE_LINKS: Array<{ href: `/${string}`; label: string; description: s
 export function WorkspaceErrorFallback({
   reset,
   scopeLabel,
-  homeHref = "/home",
+  homeHref = "/",
 }: WorkspaceErrorFallbackProps) {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--ega-bg)] px-6 py-12">
@@ -43,8 +43,8 @@ export function WorkspaceErrorFallback({
                 This screen could not load
               </h1>
               <p className="mt-2 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
-                The data for this surface did not come back. Retrying is safe — nothing was
-                changed, and no partially saved work was kept.
+                The data for this surface did not come back. Retrying is safe, and your saved
+                work is unaffected.
               </p>
             </div>
 

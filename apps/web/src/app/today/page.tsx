@@ -11,6 +11,7 @@ import {
 } from "@/components/today/today-cockpit-panels";
 import { TodayIntelligencePanel } from "@/components/today/today-intelligence-panel";
 import { TodayKpiRow } from "@/components/today/today-kpi-row";
+import { TodayLanePanel } from "@/components/today/today-lane-panel";
 import { TodayOperatorPlan } from "@/components/today/today-operator-plan";
 import { TodaySection } from "@/components/today/today-section";
 import { TodaySuggestionsPanel } from "@/components/today/today-suggestions-panel";
@@ -256,69 +257,13 @@ export default async function TodayPage({
             startedAt={activeTimerStartedAt}
           />
 
-          <Card label="Today lane" title="Schedule" data-testid="today-lane">
-            {todayData.scheduledBlocks.length === 0 &&
-            flexibleTodayActionable.length === 0 &&
-            dueTodayCarryover.length === 0 ? (
-              <CardContent>
-                <EmptyState
-                  icon={CircleDashed}
-                  title="Nothing scheduled"
-                  description="Scheduled blocks and today's flexible work appear here as they are planned."
-                />
-              </CardContent>
-            ) : (
-              <ul className="rows">
-                {todayData.scheduledBlocks.map((task) => (
-                  <li key={task.id} className="row">
-                    <span className="row-main">
-                      <span className="row-title">{task.title}</span>
-                      <span className="row-meta">
-                        {task.projectName}
-                        {task.isPlannedForToday ? " · planned" : ""}
-                      </span>
-                    </span>
-                    <Link
-                      href="/timer"
-                      className="btn-instrument btn-instrument-muted flex h-7 items-center px-2.5 text-xs"
-                    >
-                      Focus
-                    </Link>
-                  </li>
-                ))}
-                {dueTodayCarryover.map((task) => (
-                  <li key={`carryover-${task.id}`} className="row">
-                    <span className="row-main">
-                      <span className="row-title">{task.title}</span>
-                      <span className="row-meta">{task.projectName} · due today</span>
-                    </span>
-                    <Link
-                      href="/timer"
-                      className="btn-instrument btn-instrument-muted flex h-7 items-center px-2.5 text-xs"
-                    >
-                      Focus
-                    </Link>
-                  </li>
-                ))}
-                {flexibleTodayActionable.map((task) => (
-                  <li key={`flex-${task.id}`} className="row">
-                    <span className="row-main">
-                      <span className="row-title">{task.title}</span>
-                      <span className="row-meta">
-                        {task.projectName} · flexible
-                      </span>
-                    </span>
-                    <Link
-                      href="/timer"
-                      className="btn-instrument btn-instrument-muted flex h-7 items-center px-2.5 text-xs"
-                    >
-                      Focus
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
+          <TodayLanePanel
+            scheduledBlocks={todayData.scheduledBlocks}
+            dueTodayCarryover={dueTodayCarryover}
+            flexibleTasks={flexibleTodayActionable}
+            returnTo={returnTo}
+            activeTimerSessionId={activeTimerSessionId}
+          />
         </div>
       </div>
 

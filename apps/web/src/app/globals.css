@@ -85,6 +85,10 @@
   --color-status-info: var(--status-info);
 }
 
+/* Document resets live in the `base` layer so Tailwind utilities can refine
+   them — an unlayered reset would silently win over every utility. */
+@layer base {
+
 *,
 *::before,
 *::after {
@@ -163,9 +167,11 @@ h4 {
   outline-offset: 2px;
   box-shadow: var(--ega-focus-ring);
 }
+}
 
 /* ─── Shared utility classes ─── */
 
+@layer components {
 .bg-instrument {
   background: var(--instrument);
 }
@@ -254,6 +260,7 @@ h4 {
   border-radius: var(--radius-md);
   background: var(--ega-surface);
   box-shadow: var(--ega-shadow-md);
+}
 }
 
 @media (prefers-reduced-motion: reduce) {

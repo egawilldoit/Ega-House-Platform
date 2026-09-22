@@ -189,6 +189,7 @@ export function InboxCaptureSheet() {
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
+        closeLabel="Close capture panel"
         className="flex flex-col"
         aria-label="Inbox quick capture sheet"
         data-testid="inbox-quick-capture-sheet"

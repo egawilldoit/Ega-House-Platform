@@ -42,7 +42,7 @@ export function TodayIntelligencePanel({
   const hasContextSwitch = friction.data?.contextSwitch.isFriction ?? false;
 
   return (
-    <section className="workspace-split-grid" aria-label="Today intelligence">
+    <section className="flex flex-col gap-4" aria-label="Today intelligence">
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">

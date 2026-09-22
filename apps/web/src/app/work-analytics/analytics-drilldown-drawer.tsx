@@ -61,7 +61,7 @@ function SessionRow({ session }: SessionRowProps) {
   return (
     <div className="rounded-[var(--radius-lg)] border border-ega-border bg-ega-surface p-3">
       <Link
-        href={`/tasks/${session.taskId}`}
+        href={`/tasks#task-${session.taskId}`}
         className="text-[length:var(--text-body)] font-medium text-ega-text hover:underline"
       >
         {session.taskTitle}
@@ -87,7 +87,7 @@ function SessionRow({ session }: SessionRowProps) {
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[length:var(--text-meta)] text-ega-text-tertiary">
         {session.projectName ? (
           <Link
-            href={`/tasks/projects/${session.projectId}`}
+            href={`/tasks?project=${session.projectId}`}
             className="hover:text-ega-text hover:underline"
           >
             Project: {session.projectName}
@@ -95,14 +95,14 @@ function SessionRow({ session }: SessionRowProps) {
         ) : null}
         {session.goalTitle ? (
           <Link
-            href={`/tasks/goals/${session.goalId}`}
+            href={`/tasks?goal=${session.goalId}`}
             className="hover:text-ega-text hover:underline"
           >
             Goal: {session.goalTitle}
           </Link>
         ) : null}
         <Link
-          href={`/tasks/${session.taskId}`}
+          href={`/tasks#task-${session.taskId}`}
           className="hover:text-ega-text hover:underline"
         >
           View task
@@ -148,7 +148,7 @@ export function AnalyticsDrilldownDrawer({
 
   return (
     <Sheet open={!!drilldown} onOpenChange={(open) => !open && closeDrilldown()}>
-      <SheetContent
+      <SheetContent closeLabel="Close session details"
         aria-labelledby="analytics-drilldown-title"
         className={`bg-ega-bg! backdrop-blur-none! ${className ?? ""}`}
       >

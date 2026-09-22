@@ -5,7 +5,14 @@
  *
  * Rule of thumb applied here:
  *   1px border + whitespace first, shadow only for overlays.
+ *
+ * These rules live in the `components` layer on purpose: Tailwind utilities are
+ * in `utilities`, so a call site can always refine a shared class with a
+ * utility (`glass-label text-[color:…]`, `Button text-xs`) and have it win.
+ * Unlayered rules would silently defeat every such refinement.
  */
+
+@layer components {
 
 /* ══════════════════════════════════════════════════════════════
    1. Shell layout
@@ -1207,37 +1214,36 @@ select.ega-glass-input {
   overflow-y: visible;
 }
 
-.workspace-drawer-panel .workspace-nav-label,
-.workspace-drawer-panel .sidebar-section-label,
-.workspace-drawer-panel .sidebar-badge,
-.workspace-drawer-panel .sidebar-project-count,
-.workspace-drawer-panel .sidebar-project-status,
-.workspace-drawer-panel .workspace-search-label,
-.workspace-drawer-panel .workspace-search kbd,
-.workspace-drawer-panel .workspace-brand-copy,
-.workspace-drawer-panel .sidebar-section-action {
-  display: revert;
-}
-
-.workspace-drawer-panel .workspace-nav-label {
+/* The drawer always shows full labels, even when the desktop rail was left
+   collapsed (the collapsed rule is more specific, so it must be re-declared
+   here with equal specificity and later source order). */
+.app-shell .workspace-drawer-panel .workspace-nav-label {
   display: block;
 }
 
-.workspace-drawer-panel .sidebar-badge,
-.workspace-drawer-panel .sidebar-project-count,
-.workspace-drawer-panel .sidebar-project-status {
+.app-shell .workspace-drawer-panel .sidebar-section-label,
+.app-shell .workspace-drawer-panel .sidebar-badge,
+.app-shell .workspace-drawer-panel .sidebar-project-count,
+.app-shell .workspace-drawer-panel .sidebar-project-status,
+.app-shell .workspace-drawer-panel .workspace-search-label,
+.app-shell .workspace-drawer-panel .workspace-search kbd,
+.app-shell .workspace-drawer-panel .workspace-brand-copy,
+.app-shell .workspace-drawer-panel .sidebar-section-action {
+  display: revert;
+}
+
+.app-shell .workspace-drawer-panel .sidebar-badge,
+.app-shell .workspace-drawer-panel .sidebar-project-count,
+.app-shell .workspace-drawer-panel .sidebar-project-status,
+.app-shell .workspace-drawer-panel .sidebar-section-action {
   display: inline-flex;
 }
 
-.workspace-drawer-panel .sidebar-section-action {
-  display: inline-flex;
-}
-
-.workspace-drawer-panel .sidebar-brand {
+.app-shell .workspace-drawer-panel .sidebar-brand {
   justify-content: flex-start;
 }
 
-.workspace-drawer-panel .sidebar-link {
+.app-shell .workspace-drawer-panel .sidebar-link {
   justify-content: flex-start;
   padding-inline: 10px;
   gap: 10px;
@@ -1561,12 +1567,6 @@ select.ega-glass-input {
    11. Responsive
    ══════════════════════════════════════════════════════════════ */
 
-@media (min-width: 761px) and (max-width: 1080px) {
-  :root {
-    --sidebar-width: 240px;
-  }
-}
-
 @media (max-width: 760px) {
   .app-shell,
   .app-shell[data-collapsed="true"] {
@@ -1622,4 +1622,6 @@ select.ega-glass-input {
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
   }
+}
+
 }

@@ -6,8 +6,11 @@ type CardProps = HTMLAttributes<HTMLDivElement> & {
   label?: string;
   title?: string;
   action?: ReactNode;
-  /** Flush removes the default panel padding pattern for header/body wrappers. */
-  flush?: boolean;
+  /**
+   * Clips the panel contents to its radius. Off by default: a panel must never
+   * clip a row-level disclosure menu that opens past its edge.
+   */
+  clip?: boolean;
 };
 
 /**
@@ -20,7 +23,7 @@ export function Card({
   label,
   title,
   action,
-  flush = false,
+  clip = false,
   className,
   children,
   ...props
@@ -29,7 +32,7 @@ export function Card({
     <div
       className={cn(
         "rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] text-[color:var(--ega-text)]",
-        !flush && "overflow-hidden",
+        clip && "overflow-hidden",
         className,
       )}
       {...props}

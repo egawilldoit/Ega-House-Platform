@@ -148,7 +148,7 @@ function RecentSessionsTable({
   }
 
   return (
-    <Card flush>
+    <Card clip>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">

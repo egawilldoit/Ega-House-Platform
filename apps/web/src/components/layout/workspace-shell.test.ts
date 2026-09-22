@@ -125,9 +125,12 @@ describe("light workspace shell", () => {
     expect(tokens).toContain("--ega-shadow-panel: none");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("overflow-x: clip");
-    expect(css).toContain("@media (min-width: 761px) and (max-width: 1080px)");
+    expect(tokens).toContain("@media (min-width: 761px) and (max-width: 1080px)");
     expect(css).toContain("@media (max-width: 760px)");
     expect(css).toContain("@media (max-width: 420px)");
+
+    // Component rules stay in the components layer so token utilities can refine them.
+    expect(css).toContain("@layer components");
 
     // No editorial residue in the authenticated shell stylesheet.
     expect(css).not.toContain("citrus");

@@ -58,7 +58,7 @@ export default function WorkAnalyticsLoadingPage() {
 
         <div className="flex flex-col gap-4">
           <Skeleton className="h-5 w-52 rounded-sm" />
-          <Card flush>
+          <Card clip>
             <CardContent className="space-y-3">
               <Skeleton className="h-8 w-full rounded-sm" />
               {Array.from({ length: 6 }).map((_, index) => (

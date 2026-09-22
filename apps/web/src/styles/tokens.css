@@ -184,3 +184,10 @@
     --content-gutter: 32px;
   }
 }
+
+/* Tablet widths keep a narrower rail; desktop uses --sidebar-width. */
+@media (min-width: 761px) and (max-width: 1080px) {
+  :root {
+    --sidebar-width: 240px;
+  }
+}

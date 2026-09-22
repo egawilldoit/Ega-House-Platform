@@ -24,7 +24,7 @@ export default function TasksLoadingPage() {
       actions={<Skeleton className="h-8 w-24" />}
     >
       <div className="workspace-main-rail-grid">
-        <Card flush>
+        <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
             <div className="flex flex-wrap items-center gap-2">
               <Skeleton className="h-8 w-20" />

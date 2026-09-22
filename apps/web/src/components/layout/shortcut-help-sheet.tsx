@@ -20,7 +20,7 @@ type ShortcutHelpSheetProps = {
 export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex flex-col" aria-labelledby="shortcut-help-title">
+      <SheetContent closeLabel="Close keyboard shortcuts" className="flex flex-col" aria-labelledby="shortcut-help-title">
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
           <SheetHeader className="min-w-0">
             <p className="glass-label text-signal-live">Keyboard-first workspace</p>

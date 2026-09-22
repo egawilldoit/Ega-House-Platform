@@ -145,6 +145,7 @@ export function TaskCardActions({
         </SheetTrigger>
 
         <SheetContent
+        closeLabel="Close task options"
           aria-label={`Advanced task settings for ${inlineProps.taskTitle}`}
           className="flex flex-col"
         >

@@ -17,7 +17,7 @@ import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TaskSavedViewsPanel } from "@/components/tasks/task-saved-views-panel";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
@@ -109,7 +109,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
   return (
     <div className="workspace-main-rail-grid">
       <div className="flex min-w-0 flex-col gap-4">
-        <Card flush>
+        <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Task views">
@@ -312,6 +312,12 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
         />
 
         <Card label="Create" title="Quick add task">
+          <CardHeader className="!border-b-0 !pb-0">
+            <CardDescription>
+              The canonical task form, so every field stays available without a second
+              creation flow.
+            </CardDescription>
+          </CardHeader>
           <CardContent>
             {projects.length === 0 ? (
               <div className="flex flex-col gap-3">
@@ -326,18 +332,20 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 </Link>
               </div>
             ) : (
-              <>
-                <CardDescription className="mb-3">
-                  Open a new task directly into the current queue.
-                </CardDescription>
-                <CreateTaskForm
-                  projects={projects}
-                  goals={goals}
-                  projectId={activeProjectId ?? undefined}
-                  returnTo={returnPath}
-                  calendarDefaults={calendarFormDefaults}
-                />
-              </>
+              <details className="action-overflow">
+                <summary className="filter-pill w-full justify-center">
+                  Open task form
+                </summary>
+                <div className="mt-3">
+                  <CreateTaskForm
+                    projects={projects}
+                    goals={goals}
+                    projectId={activeProjectId ?? undefined}
+                    returnTo={returnPath}
+                    calendarDefaults={calendarFormDefaults}
+                  />
+                </div>
+              </details>
             )}
           </CardContent>
         </Card>
