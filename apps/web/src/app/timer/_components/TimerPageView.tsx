@@ -1,142 +1,355 @@
 import Link from "next/link";
+
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
+import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
+import { DashboardSection } from "@/components/ui/dashboard-section";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DataLegend, Metric } from "@/components/ui/metric";
 import { formatDurationLabel } from "@/lib/task-session";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import { resolveSessionConflictAction, startTimerAction, updateSessionTimingAction } from "../actions";
 import { getTimerStartEmptyStateCopy, getTimerStartTaskOptions } from "../task-selection";
 import { Clock3 } from "lucide-react";
 import type { TimerPageModel } from "../_lib/timer-page-model";
-import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 
 function getTaskContextHref(taskId: string | null | undefined, projectSlug: string | null | undefined) {
   if (!taskId || !projectSlug) return null;
   return `/tasks/projects/${projectSlug}#task-${taskId}`;
 }
 
-function MetricCard({ label, value, detail, tone = "default" }: { label: string; value: string; detail: string; tone?: "default" | "active" }) {
+const DISTRIBUTION_COLORS = [
+  "var(--ega-data-blue)",
+  "var(--ega-data-orange)",
+  "var(--ega-data-purple)",
+  "var(--ega-data-green)",
+  "var(--ega-data-yellow)",
+  "var(--ega-data-slate)",
+] as const;
+
+function isSameLocalDay(iso: string) {
+  const started = new Date(iso);
+  const now = new Date();
   return (
-    <Card className="border-[var(--border)] bg-white">
-      <CardHeader className="pb-3"><p className="glass-label text-etch">{label}</p></CardHeader>
-      <CardContent className="pt-0">
-        <p className={`text-4xl font-semibold tracking-tight ${tone === "active" ? "text-signal-live" : "text-[color:var(--foreground)]"}`}>{value}</p>
-        <p className={`mt-2 text-sm ${tone === "active" ? "text-signal-live" : "text-[color:var(--muted-foreground)]"}`}>{detail}</p>
-      </CardContent>
-    </Card>
+    started.getFullYear() === now.getFullYear() &&
+    started.getMonth() === now.getMonth() &&
+    started.getDate() === now.getDate()
   );
 }
 
 export function TimerPageView({ model }: { model: TimerPageModel }) {
-  const { stoppedTaskId, ownerUserId, tasks, openSessions, todayTaskBreakdown, todayTotalDurationSeconds, sessionHistory, activeSession, trackedTotalSeconds } = model;
+  const {
+    stoppedTaskId,
+    ownerUserId,
+    tasks,
+    openSessions,
+    todayTaskBreakdown,
+    todayTotalDurationSeconds,
+    sessionHistory,
+    activeSession,
+    trackedTotalSeconds,
+  } = model;
+
   const recoveredExtraSessionCount = Math.max(0, openSessions.length - 1);
   const hasSessionConflict = recoveredExtraSessionCount > 0;
-  const activeTaskContextHref = getTaskContextHref(activeSession?.task_id, activeSession?.tasks?.projects?.slug);
-  const longestSession = sessionHistory.reduce((longest, s) => (s.durationSeconds > (longest?.durationSeconds ?? 0) ? s : longest), sessionHistory[0] ?? null);
-  const topBreakdown = todayTaskBreakdown.slice(0, 3);
+  const activeTaskContextHref = getTaskContextHref(
+    activeSession?.task_id,
+    activeSession?.tasks?.projects?.slug,
+  );
+  const longestSession = sessionHistory.reduce(
+    (longest, session) =>
+      session.durationSeconds > (longest?.durationSeconds ?? 0) ? session : longest,
+    sessionHistory[0] ?? null,
+  );
+  const topBreakdown = todayTaskBreakdown.slice(0, 6);
   const sessionControlTaskOptions = getTimerStartTaskOptions(tasks).slice(0, 100);
   const sessionControlEmptyStateCopy = getTimerStartEmptyStateCopy(tasks.length);
-  const stoppedTaskTitle = tasks.find((t) => t.id === stoppedTaskId)?.title ?? "this task";
+  const stoppedTaskTitle = tasks.find((task) => task.id === stoppedTaskId)?.title ?? "this task";
   const showStoppedTaskPrompt = Boolean(!activeSession && stoppedTaskId);
+  const todayRows = sessionHistory.filter((entry) => isSameLocalDay(entry.startedAt));
+  const earlierRows = sessionHistory.filter((entry) => !isSameLocalDay(entry.startedAt));
 
   return (
-    <>
-      <OwnerScopedRealtimeRefresh ownerUserId={ownerUserId} channelPrefix="timer" tables={["task_sessions"]} />
+    <div className="flex flex-col gap-6">
+      <OwnerScopedRealtimeRefresh
+        ownerUserId={ownerUserId}
+        channelPrefix="timer"
+        tables={["task_sessions"]}
+      />
+
       {hasSessionConflict ? (
-        <div className="feedback-block feedback-block-warn mb-5 flex items-center justify-between gap-4 px-5 py-4">
-          <p className="glass-label text-signal-warn">{recoveredExtraSessionCount} extra open session{recoveredExtraSessionCount > 1 ? "s" : ""} detected.</p>
-          <form action={resolveSessionConflictAction}><input type="hidden" name="returnTo" value="/timer" /><Button type="submit" variant="muted" size="sm">Resolve</Button></form>
+        <div className="feedback-block feedback-block-warn justify-between">
+          <p>
+            {recoveredExtraSessionCount} extra open session
+            {recoveredExtraSessionCount > 1 ? "s" : ""} detected. Resolve before starting new work.
+          </p>
+          <form action={resolveSessionConflictAction}>
+            <input type="hidden" name="returnTo" value="/timer" />
+            <Button type="submit" variant="secondary" size="sm">
+              Resolve
+            </Button>
+          </form>
         </div>
       ) : null}
-      <div className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="Tracked Total" value={formatDurationLabel(trackedTotalSeconds)} detail="Captured across loaded task sessions" tone="active" />
-        <MetricCard label="Today Total" value={formatDurationLabel(todayTotalDurationSeconds)} detail={todayTaskBreakdown.length > 0 ? `${todayTaskBreakdown.length} task bucket${todayTaskBreakdown.length === 1 ? "" : "s"} today` : "No sessions captured today"} />
-        <MetricCard label="Longest Session" value={longestSession ? formatDurationLabel(longestSession.durationSeconds) : "--"} detail={longestSession ? longestSession.taskTitle : "No completed sessions yet"} />
-      </div>
-      <div className="workspace-main-rail-grid mt-6">
-        <Card className="border-[var(--border)] bg-white">
-          <CardHeader className="pb-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="glass-label text-signal-live">Recent Entries</p>
-                <CardTitle className="mt-2 text-xl">Session timeline</CardTitle>
-                <CardDescription>Recent completed work grouped by recency, with duration and project context.</CardDescription>
+
+      {showStoppedTaskPrompt ? (
+        <TimerStopOutcomePrompt
+          taskId={stoppedTaskId ?? ""}
+          taskTitle={stoppedTaskTitle}
+          returnTo="/timer"
+        />
+      ) : null}
+
+      <Card
+        label="Current session"
+        title={activeSession ? "Focus in progress" : "Start a focus session"}
+        action={
+          activeSession ? null : <Badge tone="muted">Idle</Badge>
+        }
+      >
+        <CardContent>
+          {activeSession ? (
+            <ActiveTimerDisplay
+              session={activeSession}
+              taskContextHref={activeTaskContextHref}
+              hasSessionConflict={hasSessionConflict}
+              totalTrackedDurationSeconds={trackedTotalSeconds}
+            />
+          ) : (
+            <form action={startTimerAction} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="taskId" className="glass-label">
+                  Select task
+                </label>
+                <select
+                  id="taskId"
+                  name="taskId"
+                  required
+                  disabled={sessionControlTaskOptions.length === 0}
+                  className="input-instrument h-8 w-full max-w-xl px-2.5 text-sm"
+                >
+                  {sessionControlTaskOptions.length === 0 ? (
+                    <option value="">{sessionControlEmptyStateCopy}</option>
+                  ) : (
+                    sessionControlTaskOptions.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        {task.title}
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
-              <CardAction><Link href="/tasks" className="glass-label text-signal-live">View Tasks</Link></CardAction>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {sessionHistory.length === 0 ? <EmptyState icon={Clock3} title="No completed sessions yet" description="Start a timer from a task to begin building session history." /> : (
-              <div className="space-y-6">
-                {["Today", "Earlier"].map((groupLabel) => {
-                  const rows = sessionHistory.filter((e) => {
-                    const started = new Date(e.startedAt);
-                    const now = new Date();
-                    const sameDay = started.getFullYear() === now.getFullYear() && started.getMonth() === now.getMonth() && started.getDate() === now.getDate();
-                    return groupLabel === "Today" ? sameDay : !sameDay;
-                  });
-                  if (rows.length === 0) return null;
-                  return (
-                    <div key={groupLabel}>
-                      <p className="glass-label text-etch mb-3 border-b border-[var(--border)] pb-2">{groupLabel}</p>
-                      <div className="space-y-2">
-                        {rows.slice(0, 6).map((entry) => (
-                          <div key={entry.id} id={`session-${entry.id}`} className="grid gap-3 rounded-[1rem] border border-transparent px-3 py-3 transition hover:border-[var(--border)] hover:bg-[color:var(--instrument-raised)] md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-                            <div className="flex items-center gap-4"><span className="h-2.5 w-2.5 rounded-full bg-[var(--signal-live)]" /><div className="min-w-0"><p className="truncate text-sm font-medium text-[color:var(--foreground)]">{entry.taskTitle}</p><p className="mt-1 text-xs text-[color:var(--muted-foreground)]">{entry.projectName}</p></div></div>
-                            <div className="text-left md:text-right"><p className="text-base font-semibold text-[color:var(--foreground)]">{formatDurationLabel(entry.durationSeconds)}</p><p className="text-xs text-[color:var(--muted-foreground)]">{formatTimerDateTime(entry.startedAt)}{entry.endedAt ? ` - ${formatTimerDateTime(entry.endedAt)}` : ""}</p></div>
-                            <div className="md:col-span-2"><details className="rounded-[0.85rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-2"><summary className="cursor-pointer text-xs uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">Correct timing</summary><p className="mt-2 text-xs text-[color:var(--muted-foreground)]">Adjust the actual time worked for this session.</p>{entry.endedAt ? <SessionTimingEditor sessionId={entry.id} startedAt={entry.startedAt} endedAt={entry.endedAt} returnTo="/timer" action={updateSessionTimingAction} /> : null}</details></div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+              <input type="hidden" name="returnTo" value="/timer" />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="submit"
+                  disabled={sessionControlTaskOptions.length === 0 || hasSessionConflict}
+                >
+                  Start session
+                </Button>
+                <Link
+                  href="/tasks"
+                  className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+                >
+                  Open tasks
+                </Link>
               </div>
-            )}
+            </form>
+          )}
+        </CardContent>
+        {activeSession ? (
+          <CardFooter className="justify-end">
+            <TimerStopForm
+              sessionId={activeSession.id}
+              returnTo="/timer"
+              disabled={hasSessionConflict}
+            />
+          </CardFooter>
+        ) : null}
+      </Card>
+
+      <div className="kpi-grid">
+        <Card label="Tracked total">
+          <CardContent>
+            <Metric
+              label="All loaded sessions"
+              value={formatDurationLabel(trackedTotalSeconds)}
+              caption={`${sessionHistory.length} completed session${
+                sessionHistory.length === 1 ? "" : "s"
+              }`}
+            />
           </CardContent>
         </Card>
-        <div className="space-y-6">
-          <Card className="border-[var(--border)] bg-white">
-            <CardHeader className="pb-4">
-              <p className="glass-label text-signal-live">Session Control</p>
-              <CardTitle className="text-xl">Focus controls</CardTitle>
-              <CardDescription>Start, stop, or recover the active session without leaving the timer workspace.</CardDescription>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {showStoppedTaskPrompt ? <div className="mb-4"><TimerStopOutcomePrompt taskId={stoppedTaskId ?? ""} taskTitle={stoppedTaskTitle} returnTo="/timer" /></div> : null}
-              {activeSession ? <ActiveTimerDisplay session={activeSession} taskContextHref={activeTaskContextHref} hasSessionConflict={hasSessionConflict} totalTrackedDurationSeconds={trackedTotalSeconds} /> : (
-                <form action={startTimerAction} className="space-y-3">
-                  <div className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4"><label htmlFor="taskId" className="glass-label text-etch">Select task</label><select id="taskId" name="taskId" required disabled={sessionControlTaskOptions.length === 0} className="input-instrument mt-2 h-10 w-full text-sm">{sessionControlTaskOptions.length === 0 ? <option value="">{sessionControlEmptyStateCopy}</option> : sessionControlTaskOptions.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></div>
-                  <input type="hidden" name="returnTo" value="/timer" /><Button type="submit" disabled={sessionControlTaskOptions.length === 0 || hasSessionConflict} className="w-full">Start Session</Button>
-                </form>
-              )}
+        <Card label="Today total">
+          <CardContent>
+            <Metric
+              label="Tracked today"
+              value={formatDurationLabel(todayTotalDurationSeconds)}
+              caption={
+                todayTaskBreakdown.length > 0
+                  ? `${todayTaskBreakdown.length} task bucket${
+                      todayTaskBreakdown.length === 1 ? "" : "s"
+                    } today`
+                  : "No sessions captured today"
+              }
+            />
+          </CardContent>
+        </Card>
+        <Card label="Longest session">
+          <CardContent>
+            <Metric
+              label="Single session"
+              value={longestSession ? formatDurationLabel(longestSession.durationSeconds) : "—"}
+              caption={longestSession ? longestSession.taskTitle : "No completed sessions yet"}
+            />
+          </CardContent>
+        </Card>
+      </div>
+
+      <DashboardSection
+        title="Today's focus"
+        description="Where today's tracked time went, by task."
+      >
+        <Card>
+          {topBreakdown.length === 0 ? (
+            <CardContent>
+              <EmptyState
+                icon={Clock3}
+                title="No time tracked today"
+                description="Start a session from a task and today's distribution will build itself."
+              />
             </CardContent>
-            {activeSession ? (
-              <CardFooter className="flex-wrap justify-between">
-                <div className="flex flex-wrap gap-3">{activeTaskContextHref ? <Link href={activeTaskContextHref} className="btn-instrument btn-instrument-muted flex h-8 items-center px-4">Open Task</Link> : null}</div>
-                <TimerStopForm sessionId={activeSession.id} returnTo="/timer" disabled={hasSessionConflict}>Stop Timer</TimerStopForm>
-              </CardFooter>
-            ) : null}
-          </Card>
-          <Card className="border-[var(--border)] bg-white">
-            <CardHeader className="pb-4">
-              <div className="flex items-start justify-between gap-4"><div><p className="glass-label text-etch">Project Allocation</p><CardTitle className="mt-2 text-xl">Today&apos;s distribution</CardTitle><CardDescription>A compact view of where focused time is going across today&apos;s task mix.</CardDescription></div><CardAction><Badge tone="muted">{todayTaskBreakdown.length} tasks</Badge></CardAction></div>
-            </CardHeader>
-            <CardContent className="pt-0">
-              <div className="grid gap-5 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
-                <div className="flex justify-center lg:justify-start"><div className="relative flex h-36 w-36 items-center justify-center rounded-full" style={{ background: `conic-gradient(var(--signal-live) 0deg ${todayTotalDurationSeconds > 0 && topBreakdown[0] ? (topBreakdown[0].durationSeconds / todayTotalDurationSeconds) * 360 : 0}deg, rgba(34,197,94,0.4) ${todayTotalDurationSeconds > 0 && topBreakdown[0] ? (topBreakdown[0].durationSeconds / todayTotalDurationSeconds) * 360 : 0}deg ${todayTotalDurationSeconds > 0 && topBreakdown[1] ? ((topBreakdown[0]?.durationSeconds ?? 0) + topBreakdown[1].durationSeconds) / todayTotalDurationSeconds * 360 : 0}deg, rgba(228,228,231,0.9) 0deg 360deg)` }}><div className="flex h-24 w-24 flex-col items-center justify-center rounded-full bg-[color:var(--instrument)]"><span className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">{todayTaskBreakdown.length}</span><span className="glass-label text-etch">Tasks</span></div></div></div>
-                <div className="space-y-3">{topBreakdown.length > 0 ? topBreakdown.map((row, index) => (<div key={row.taskId} className="flex items-center justify-between rounded-[0.95rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-3 text-sm"><div className="flex min-w-0 items-center gap-2"><span className={`h-3 w-3 rounded-sm ${index === 0 ? "bg-[var(--signal-live)]" : index === 1 ? "bg-[rgba(34,197,94,0.4)]" : "bg-[rgba(20,32,19,0.18)]"}`} /><span className="truncate text-[color:var(--foreground)]">{row.taskTitle}</span></div><span className="font-medium text-[color:var(--foreground)]">{todayTotalDurationSeconds > 0 ? `${Math.round((row.durationSeconds / todayTotalDurationSeconds) * 100)}%` : "0%"}</span></div>)) : <div className="surface-empty px-4 py-4 text-sm text-[color:var(--muted-foreground)]">No project allocation data yet today.</div>}</div>
+          ) : (
+            <CardContent>
+              <div className="workspace-split-grid">
+                <div className="flex flex-col gap-3">
+                  {topBreakdown.map((row) => {
+                    const percent =
+                      todayTotalDurationSeconds > 0
+                        ? Math.round((row.durationSeconds / todayTotalDurationSeconds) * 100)
+                        : 0;
+                    return (
+                      <div key={row.taskId} className="flex flex-col gap-1.5">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="min-w-0 truncate text-[length:var(--text-body)]">
+                            {row.taskTitle}
+                          </span>
+                          <span className="shrink-0 tabular-nums text-[length:var(--text-meta-lg)] font-medium">
+                            {formatDurationLabel(row.durationSeconds)}
+                          </span>
+                        </div>
+                        <div className="progress-track">
+                          <div
+                            className="progress-fill"
+                            style={{
+                              width: `${percent}%`,
+                              background: "var(--ega-data-blue)",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <DataLegend
+                  items={topBreakdown.map((row, index) => ({
+                    label: row.taskTitle,
+                    value:
+                      todayTotalDurationSeconds > 0
+                        ? `${Math.round((row.durationSeconds / todayTotalDurationSeconds) * 100)}%`
+                        : "0%",
+                    color: DISTRIBUTION_COLORS[index % DISTRIBUTION_COLORS.length],
+                  }))}
+                />
               </div>
             </CardContent>
-            <CardFooter><p className="text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">Allocation is based on time captured within today&apos;s session window.</p></CardFooter>
-          </Card>
-        </div>
-      </div>
-    </>
+          )}
+        </Card>
+      </DashboardSection>
+
+      <DashboardSection
+        title="Recent sessions"
+        description="Completed sessions with the canonical timing correction editor."
+      >
+        <Card>
+          {sessionHistory.length === 0 ? (
+            <CardContent>
+              <EmptyState
+                icon={Clock3}
+                title="No completed sessions yet"
+                description="Start a timer from a task to begin building session history."
+              />
+            </CardContent>
+          ) : (
+            <>
+              {[
+                { label: "Today", rows: todayRows },
+                { label: "Earlier", rows: earlierRows },
+              ]
+                .filter((group) => group.rows.length > 0)
+                .map((group) => (
+                  <div key={group.label}>
+                    <CardHeader className="!py-2.5">
+                      <p className="glass-label">{group.label}</p>
+                    </CardHeader>
+                    <ul className="rows">
+                      {group.rows.slice(0, 8).map((entry) => (
+                        <li
+                          key={entry.id}
+                          id={`session-${entry.id}`}
+                          className="task-row scroll-mt-24"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="row-title">{entry.taskTitle}</p>
+                              <p className="row-meta">{entry.projectName}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <span className="tabular-nums text-[length:var(--text-body)] font-semibold">
+                                {formatDurationLabel(entry.durationSeconds)}
+                              </span>
+                              <span className="tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                                {formatTimerDateTime(entry.startedAt)}
+                                {entry.endedAt ? ` – ${formatTimerDateTime(entry.endedAt)}` : ""}
+                              </span>
+                            </div>
+                          </div>
+                          <details className="action-overflow">
+                            <summary className="filter-pill">Correct timing</summary>
+                            <div className="action-overflow-menu w-full max-w-md">
+                              <p className="row-meta mb-2">
+                                Adjust the actual time worked for this session.
+                              </p>
+                              {entry.endedAt ? (
+                                <SessionTimingEditor
+                                  sessionId={entry.id}
+                                  startedAt={entry.startedAt}
+                                  endedAt={entry.endedAt}
+                                  returnTo="/timer"
+                                  action={updateSessionTimingAction}
+                                />
+                              ) : null}
+                            </div>
+                          </details>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </>
+          )}
+        </Card>
+      </DashboardSection>
+    </div>
   );
 }
