@@ -38,7 +38,7 @@ test("FocusTrendChart renders bars, a supplied trend line and an accessible tabl
   assert.match(markup, /role="button"/);
   assert.match(markup, /tabindex="0"/);
   assert.match(markup, /<table class="sr-only">/);
-  assert.match(markup, /2h 15m 0s/);
+  assert.match(markup, /2h 15m/);
 });
 
 test("FocusTrendChart draws no trend line when no second series is supplied", () => {
@@ -59,6 +59,41 @@ test("FocusTrendChart draws no trend line when no second series is supplied", ()
 
   assert.doesNotMatch(markup, /data-testid="chart-trend-line"/);
   assert.match(markup, /class="chart-bar"/);
+  assert.match(markup, /Daily focus/);
+  assert.doesNotMatch(markup, /7-day average/);
+});
+
+test("FocusTrendChart legend names both series with the real chart colours", () => {
+  const data = [
+    { date: "2026-09-14", workedMinutes: 60, sessionCount: 2 },
+    { date: "2026-09-15", workedMinutes: 30, sessionCount: 1 },
+  ];
+  const trendData = [
+    { date: "2026-09-14", workedMinutes: 45, sessionCount: 0 },
+    { date: "2026-09-15", workedMinutes: 45, sessionCount: 0 },
+  ];
+
+  const markup = renderToStaticMarkup(
+    <FocusTrendChart
+      data={data}
+      trendData={trendData}
+      variant="bars"
+      showTrendLine
+      ariaLabel="Legend"
+      tableCaption="Legend"
+    />,
+  );
+
+  assert.match(markup, /Chart legend/);
+  assert.match(markup, /Daily focus/);
+  assert.match(markup, /7-day average/);
+  assert.ok(markup.indexOf("Daily focus") < markup.indexOf("7-day average"));
+  assert.match(markup, /color-mix\(in srgb, var\(--ega-data-blue\) 30%, var\(--ega-surface\)\)/);
+  assert.match(markup, /background:var\(--ega-data-blue\)/);
+  assert.doesNotMatch(
+    markup,
+    /--ega-data-orange|--ega-data-green|--ega-data-purple|--ega-data-yellow|--ega-data-slate/,
+  );
 });
 
 test("WeekdayDistributionChart renders seven buckets with an accessible table", async () => {
@@ -82,7 +117,7 @@ test("WeekdayDistributionChart renders seven buckets with an accessible table", 
   assert.match(markup, /role="img"/);
   assert.match(markup, /aria-label="Weekday distribution"/);
   assert.match(markup, /<table class="sr-only">/);
-  assert.match(markup, /1h 0m 0s/);
+  assert.match(markup, /1h/);
   assert.equal((markup.match(/class="chart-bar"/g) ?? []).length, 7);
 });
 

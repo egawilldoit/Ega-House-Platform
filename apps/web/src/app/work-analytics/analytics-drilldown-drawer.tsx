@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useAnalyticsDrilldown, type DrilldownData } from "./analytics-drilldown-context";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { DrilldownSessionDTO } from "@/lib/services/work-analytics-service";
 
 const DISPLAY_CAP = 50;
@@ -50,7 +50,7 @@ function drawerDescription(data: DrilldownData): string {
     (sum, s) => sum + s.durationSeconds,
     0,
   );
-  return `${count} session${count !== 1 ? "s" : ""} · ${formatDurationLabel(totalSeconds)} total`;
+  return `${count} session${count !== 1 ? "s" : ""} · ${formatDisplayDuration(totalSeconds, "minute")} total`;
 }
 
 type SessionRowProps = {
@@ -80,7 +80,7 @@ function SessionRow({ session }: SessionRowProps) {
         </div>
         <div className="flex gap-1.5">
           <dt className="text-ega-text-tertiary">Duration</dt>
-          <dd className="tabular-nums">{formatDurationLabel(session.durationSeconds)}</dd>
+          <dd className="tabular-nums">{formatDisplayDuration(session.durationSeconds, "second")}</dd>
         </div>
       </dl>
 

@@ -30,8 +30,8 @@ test("renders legend and day metadata for heatmap data", () => {
   assert.match(markup, /Fri, Apr 16, 2026|Thu, Apr 16, 2026/);
   assert.match(markup, /tracked/);
   assert.match(markup, /aria-label="Heatmap legend"/);
-  assert.match(markup, /aria-label="Wed, Apr 15, 2026: 20m 0s tracked"/);
-  assert.match(markup, /title="Thu, Apr 16, 2026: 1h 0m 0s tracked"/);
+  assert.match(markup, /aria-label="Wed, Apr 15, 2026: 20m tracked"/);
+  assert.match(markup, /title="Thu, Apr 16, 2026: 1h tracked"/);
   // Screen-reader users get a table equivalent instead of a focusable grid cell.
   assert.match(markup, /<table class="sr-only">/);
   assert.match(markup, /Daily tracked session time/);

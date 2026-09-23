@@ -9,7 +9,7 @@ import { DashboardSection } from "@/components/ui/dashboard-section";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDateTime, formatIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import { formatTaskToken } from "@/lib/task-domain";
 import { ReviewEmailPreviewForm } from "../review-email-preview-form";
 import { ReviewForm } from "../review-form";
@@ -34,7 +34,7 @@ function MostTrackedList({
   rows,
 }: {
   title: string;
-  rows: { id: string; label: string; href: string | null; trackedLabel: string; sessionCount: number; detail: string }[];
+  rows: { id: string; label: string; href: string | null; trackedSeconds: number; sessionCount: number; detail: string }[];
 }) {
   return (
     <div className="min-w-0">
@@ -64,7 +64,7 @@ function MostTrackedList({
               </span>
               <span className="shrink-0 text-right">
                 <span className="block text-[length:var(--text-body)] font-medium tabular-nums text-ega-text">
-                  {row.trackedLabel}
+                  {formatDisplayDuration(row.trackedSeconds, "minute")}
                 </span>
                 <span className="block text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
                   {row.sessionCount} session{row.sessionCount === 1 ? "" : "s"}
@@ -134,7 +134,7 @@ export function ReviewPageView({
           <StatCard
             label="Focused time"
             icon={Clock3}
-            value={formatDurationLabel(weeklyStats.trackedSeconds)}
+            value={formatDisplayDuration(weeklyStats.trackedSeconds, "minute")}
             subtitle={`${weeklyStats.sessionsLogged} sessions logged`}
           />
           <StatCard

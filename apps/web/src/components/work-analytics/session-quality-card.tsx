@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { CompactStat } from "@/components/ui/metric";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { SessionQuality } from "@/lib/services/work-analytics-service";
 
 type SessionQualityCardProps = {
@@ -33,20 +33,23 @@ export function SessionQualityCard({ quality }: SessionQualityCardProps) {
             <div className="grid grid-cols-3 gap-3">
               <CompactStat
                 label="Average"
-                value={formatDurationLabel(
+                value={formatDisplayDuration(
                   Math.round(quality.averageSessionLengthMinutes) * 60,
+                  "minute",
                 )}
               />
               <CompactStat
                 label="Median"
-                value={formatDurationLabel(
+                value={formatDisplayDuration(
                   Math.round(quality.medianSessionLengthMinutes) * 60,
+                  "minute",
                 )}
               />
               <CompactStat
                 label="Longest"
-                value={formatDurationLabel(
+                value={formatDisplayDuration(
                   Math.round(quality.longestSessionMinutes) * 60,
+                  "minute",
                 )}
               />
             </div>

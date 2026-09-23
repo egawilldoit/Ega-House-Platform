@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { WorkAnalyticsDaily } from "@/lib/services/work-analytics-service";
 
 type TrendBarChartProps = {
@@ -55,7 +55,7 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
           <span className="font-medium tabular-nums text-ega-text">
-            {formatDurationLabel(totalMinutes * 60)}
+            {formatDisplayDuration(totalMinutes * 60, "minute")}
           </span>{" "}
           tracked
         </p>
@@ -100,7 +100,7 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
               </span>
               <span className="text-right">
                 <span className="text-[length:var(--text-meta)] font-medium tabular-nums text-ega-text">
-                  {formatDurationLabel(entry.workedMinutes * 60)}
+                  {formatDisplayDuration(entry.workedMinutes * 60, "minute")}
                 </span>
                 <span className="ml-1 text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
                   {entry.sessionCount}
@@ -124,7 +124,7 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
           {data.map((entry) => (
             <tr key={entry.date}>
               <th scope="row">{entry.date}</th>
-              <td>{formatDurationLabel(entry.workedMinutes * 60)}</td>
+              <td>{formatDisplayDuration(entry.workedMinutes * 60, "minute")}</td>
               <td>{entry.sessionCount}</td>
             </tr>
           ))}

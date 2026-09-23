@@ -19,8 +19,11 @@ import {
   WeekdayDistributionChart,
   type AllocationSegment,
 } from "@/components/work-analytics/analytics-charts";
-import { formatDurationLabel } from "@/lib/task-session";
-import { formatDisplayDate, formatDisplayTime } from "@/lib/presentation-format";
+import {
+  formatDisplayDate,
+  formatDisplayDuration,
+  formatDisplayTime,
+} from "@/lib/presentation-format";
 import {
   AnalyticsDrilldownProvider,
   useAnalyticsDrilldown,
@@ -96,9 +99,10 @@ function AnalyticsPanel({
   action,
   bodyClassName,
   children,
-}: AnalyticsPanelProps) {
+  level = "standard",
+}: AnalyticsPanelProps & { level?: "hero" | "standard" | "compact" }) {
   return (
-    <Card>
+    <Card level={level}>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -204,7 +208,7 @@ function RecentSessionsTable({
                   {session.taskTitle}
                 </td>
                 <td className="whitespace-nowrap text-right tabular-nums">
-                  {formatDurationLabel(session.durationSeconds)}
+                  {formatDisplayDuration(session.durationSeconds, "second")}
                 </td>
                 <td className="hidden sm:table-cell">
                   {session.endedAt ? (
@@ -255,7 +259,7 @@ function BreakdownAllocation({
           key: entry.goalId ?? "__no-goal__",
           label: entry.goalTitle,
           value: entry.workedMinutes,
-          detail: formatDurationLabel(entry.workedMinutes * 60),
+          detail: formatDisplayDuration(entry.workedMinutes * 60, "minute"),
           onSelect: () =>
             openDrilldown({
               type: "goal",
@@ -268,7 +272,7 @@ function BreakdownAllocation({
             key: entry.taskId,
             label: entry.taskTitle,
             value: entry.workedMinutes,
-            detail: formatDurationLabel(entry.workedMinutes * 60),
+            detail: formatDisplayDuration(entry.workedMinutes * 60, "minute"),
             onSelect: () =>
               openDrilldown({
                 type: "task",
@@ -280,7 +284,7 @@ function BreakdownAllocation({
             key: entry.projectId ?? "__unknown__",
             label: entry.projectName,
             value: entry.workedMinutes,
-            detail: formatDurationLabel(entry.workedMinutes * 60),
+            detail: formatDisplayDuration(entry.workedMinutes * 60, "minute"),
             onSelect: () =>
               openDrilldown({
                 type: "project",
@@ -301,7 +305,7 @@ function BreakdownAllocation({
     >
       <AllocationDonut
         segments={segments}
-        totalLabel={formatDurationLabel(totalMinutes * 60)}
+        totalLabel={formatDisplayDuration(totalMinutes * 60, "minute")}
         ariaLabel={`Focused time allocation by ${dimension}`}
         emptyMessage={`No tracked time by ${dimension} in this range yet.`}
       />
@@ -477,6 +481,7 @@ function AnalyticsSection({
     >
       <AnalyticsPanel
         title={primaryTitle}
+        level="hero"
         description={
           showsTrendLine
             ? "Bars are tracked focus per day; the line is their 7-day average."

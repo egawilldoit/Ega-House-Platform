@@ -1,5 +1,5 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { DailyTrackedTime } from "@/lib/review-session-heatmap";
 
 type WeekBarChartProps = {
@@ -50,7 +50,7 @@ export function WeekBarChart({ data }: WeekBarChartProps) {
                   />
                 </span>
                 <span className="text-right text-[length:var(--text-meta)] tabular-nums text-ega-text-secondary">
-                  {formatDurationLabel(entry.trackedSeconds)}
+                  {formatDisplayDuration(entry.trackedSeconds, "minute")}
                 </span>
               </div>
             );
@@ -69,7 +69,7 @@ export function WeekBarChart({ data }: WeekBarChartProps) {
             {data.map((entry) => (
               <tr key={entry.date}>
                 <th scope="row">{entry.date}</th>
-                <td>{formatDurationLabel(entry.trackedSeconds)}</td>
+                <td>{formatDisplayDuration(entry.trackedSeconds, "minute")}</td>
               </tr>
             ))}
           </tbody>

@@ -92,6 +92,30 @@ test("ReviewPageView renders the weekly review workspace", () => {
   assert.match(markup, /href="\/tasks#task-task-1"/);
 });
 
+test("dashboard durations render at minute precision through the central formatter", () => {
+  const preciseSeconds = 3 * 3600 + 53 * 60 + 53;
+  const preciseModel = {
+    ...model,
+    data: {
+      ...model.data,
+      weeklyStats: { ...model.data.weeklyStats, trackedSeconds: preciseSeconds },
+      mostTrackedInsights: {
+        ...model.data.mostTrackedInsights,
+        tasks: [
+          { ...model.data.mostTrackedInsights.tasks[0], trackedSeconds: preciseSeconds },
+        ],
+      },
+    },
+  } as unknown as ReviewPageModel;
+
+  const markup = renderToStaticMarkup(<ReviewPageView model={preciseModel} />);
+
+  // 3h 53m 53s must round to 3h 54m on KPI and caption surfaces.
+  assert.match(markup, /3h 54m/);
+  assert.doesNotMatch(markup, /3h 53m 53s/);
+  assert.doesNotMatch(markup, /2h 0m 0s/);
+});
+
 test("ReviewPageView keeps saved review editing and the regenerate href", () => {
   const savedModel = {
     ...model,
