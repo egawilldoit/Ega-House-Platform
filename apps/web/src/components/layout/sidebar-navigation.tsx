@@ -24,6 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { formatDisplayCount } from "@/lib/presentation-format";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -51,7 +52,17 @@ type SidebarNavigationProps = {
   metrics: WorkspaceShellMetrics;
   compact?: boolean;
   onNavigate?: () => void;
+  className?: string;
 };
+
+/**
+ * The row's accessible name and tooltip both say what the compact number
+ * counts, using the canonical `activeTaskCount` field.
+ */
+function getProjectAccessibleLabel(project: SidebarProject) {
+  if (project.activeTaskCount <= 0) return project.name;
+  return `${project.name} — ${formatDisplayCount(project.activeTaskCount)} active tasks`;
+}
 
 const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/home": House,
@@ -139,6 +150,7 @@ export function SidebarNavigation({
   metrics,
   compact = false,
   onNavigate,
+  className,
 }: SidebarNavigationProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -153,7 +165,7 @@ export function SidebarNavigation({
 
   return (
     <nav
-      className={cn("sidebar-nav workspace-sidebar-nav", compact && "is-compact")}
+      className={cn("sidebar-nav workspace-sidebar-nav", compact && "is-compact", className)}
       aria-label="Workspace navigation"
     >
       <section className="sidebar-section workspace-nav-section" aria-label="Primary">
@@ -211,8 +223,8 @@ export function SidebarNavigation({
                   key={project.id}
                   href={canonicalUrl.resolve(`/tasks?project=${project.id}`)}
                   aria-current={selected ? "page" : undefined}
-                  aria-label={project.name}
-                  title={project.name}
+                  aria-label={getProjectAccessibleLabel(project)}
+                  title={getProjectAccessibleLabel(project)}
                   className={cn(
                     "sidebar-link sidebar-project-link",
                     selected && "selected",
@@ -228,7 +240,9 @@ export function SidebarNavigation({
                     {project.name}
                   </span>
                   {project.activeTaskCount > 0 ? (
-                    <span className="sidebar-project-count">{project.activeTaskCount}</span>
+                    <span className="sidebar-project-count" aria-hidden="true">
+                      {formatDisplayCount(project.activeTaskCount)}
+                    </span>
                   ) : null}
                 </Link>
               );
