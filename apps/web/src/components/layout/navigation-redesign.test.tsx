@@ -108,7 +108,9 @@ describe("EGA-654 navigation structure", () => {
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
     // Names are unconditional (not gated on the compact prop).
     expect(navigation).toContain("aria-label={route.label}");
-    expect(navigation).toContain("aria-label={project.name}");
+    // The project row names what its compact count counts.
+    expect(navigation).toContain("aria-label={getProjectAccessibleLabel(project)}");
+    expect(navigation).toContain("activeTaskCount");
   });
 });
 

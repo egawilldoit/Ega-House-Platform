@@ -178,7 +178,8 @@ describe("light workspace shell", () => {
     expect(shell).toContain("const [collapsed, setCollapsed] = useState(false)");
     expect(shell).toContain('data-collapsed={collapsed ? "true" : "false"}');
     expect(navigation).toContain("aria-label={route.label}");
-    expect(navigation).toContain("aria-label={project.name}");
+    expect(navigation).toContain("aria-label={getProjectAccessibleLabel(project)}");
+    expect(navigation).toContain("activeTaskCount");
     expect(navigation).toContain('aria-label="View all projects"');
     expect(logout).toContain('aria-label={isPending ? "Signing out" : "Logout"}');
     expect(logout).toContain("workspace-nav-label");
