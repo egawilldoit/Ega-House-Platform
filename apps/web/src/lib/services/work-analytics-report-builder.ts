@@ -25,6 +25,8 @@ import {
   calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
   calculateEstimateAccuracy,
+  calculateRollingAverageSeries,
+  calculateWeekdayDistribution,
   buildDrilldownIndexes,
 } from "./work-analytics-service";
 import type {
@@ -41,6 +43,7 @@ import type {
   WorkAnalyticsOptions,
 } from "./work-analytics-service";
 import {
+  buildComparisonLabel,
   computeDateRangeForWindow,
   computeLast30DaysWindow,
   computeWindowForRange,
@@ -77,6 +80,22 @@ export type WorkAnalyticsReport = {
   selectedRangeLabel: string;
   selectedSummary: WorkAnalyticsSelectedSummary;
   selectedSeries: WorkAnalyticsDaily[];
+  /**
+   * Like-for-like comparison for the selected range: the immediately preceding
+   * equal-length window, never the fixed 7-day context.
+   */
+  selectedComparison: WorkAnalyticsInsights;
+  /** Canonical label naming the comparison window actually used. */
+  selectedComparisonLabel: string;
+  /** Trailing mean of the selected daily series, for the chart's second dimension. */
+  selectedSeriesRollingAverage: WorkAnalyticsDaily[];
+  /** Weekday distribution of the fixed 30-day series. */
+  weekdayDistribution: Array<{
+    weekday: number;
+    label: string;
+    workedMinutes: number;
+    sessionCount: number;
+  }>;
   summary: WorkAnalyticsCoreSummary;
   last7DaysSeries: WorkAnalyticsDaily[];
   last30DaysSeries: WorkAnalyticsDaily[];
@@ -92,8 +111,6 @@ export type WorkAnalyticsReport = {
   drilldownIndexes: DrilldownIndexes;
   /** Date drilldowns for the fixed recent-7-day chart, scoped to its own window. */
   recentDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
-  /** Date drilldowns for the fixed 30-day trend chart, scoped to its own window. */
-  trendDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -173,6 +190,13 @@ export function buildWorkAnalyticsReport(
     options,
   );
 
+  // 2b. Selected-range comparison. `calculateWorkAnalyticsInsights` is window
+  //     parametric, so passing the selected window yields a like-for-like
+  //     previous period instead of borrowing the fixed 7-day context.
+  const selectedComparison = calculateWorkAnalyticsInsights(sessions, selectedWindow, options);
+  const selectedComparisonLabel = buildComparisonLabel(filters.range, selectedWindow);
+  const selectedSeriesRollingAverage = calculateRollingAverageSeries(selectedSeries, 7);
+
   // 3. Fixed 30-day context (uses its own exact calendar windows and the 30-day task counts).
   const monthWindow = computeLast30DaysWindow(now);
   const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts.last30d, options);
@@ -207,10 +231,6 @@ export function buildWorkAnalyticsReport(
     options,
   );
   const trendStartDate = daysAgoIsoDate(29, now);
-  const trendWindow: ExecutionEvidenceWindow = {
-    startIso: `${trendStartDate}T00:00:00.000Z`,
-    endIso: nowIso,
-  };
   const last30DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     trendStartDate,
@@ -218,6 +238,8 @@ export function buildWorkAnalyticsReport(
     "day",
     options,
   );
+
+  const weekdayDistribution = calculateWeekdayDistribution(last30DaysSeries);
 
   // 7. Breakdowns (selected window)
   const breakdownBy: AnalyticsBreakdownBy = filters.breakdownBy;
@@ -239,11 +261,6 @@ export function buildWorkAnalyticsReport(
     recentWindow,
     options,
   ).date;
-  const trendDateDrilldownIndex = buildDrilldownIndexes(
-    sessions,
-    trendWindow,
-    options,
-  ).date;
 
   // 11. Breakdown title
   const breakdownTitle =
@@ -258,6 +275,10 @@ export function buildWorkAnalyticsReport(
     selectedRangeLabel: RANGE_LABELS[filters.range],
     selectedSummary,
     selectedSeries,
+    selectedComparison,
+    selectedComparisonLabel,
+    selectedSeriesRollingAverage,
+    weekdayDistribution,
     summary,
     last7DaysSeries,
     last30DaysSeries,
@@ -272,6 +293,5 @@ export function buildWorkAnalyticsReport(
     estimateAccuracy,
     drilldownIndexes,
     recentDateDrilldownIndex,
-    trendDateDrilldownIndex,
   };
 }

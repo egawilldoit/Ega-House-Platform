@@ -38,7 +38,6 @@ test("buildWorkAnalyticsReport returns full report shape with no sessions", () =
   assert.ok(report.estimateAccuracy, "estimateAccuracy should exist");
   assert.ok(report.drilldownIndexes, "drilldownIndexes should exist");
   assert.ok(report.recentDateDrilldownIndex, "recentDateDrilldownIndex should exist");
-  assert.ok(report.trendDateDrilldownIndex, "trendDateDrilldownIndex should exist");
 
   // Verify zero/empty defaults
   assert.strictEqual(report.summary.todayWorkedMinutes, 0);
@@ -209,10 +208,12 @@ test("recent chart drilldown indexes stay scoped to their own chart windows", ()
   assert.equal(report.recentDateDrilldownIndex["2026-04-07"], undefined);
   assert.equal(report.recentDateDrilldownIndex["2026-02-26"], undefined);
 
-  // The fixed 30-day trend indexes both recent dates but not older evidence.
-  assert.ok(report.trendDateDrilldownIndex["2026-04-27"]);
-  assert.ok(report.trendDateDrilldownIndex["2026-04-07"]);
-  assert.equal(report.trendDateDrilldownIndex["2026-02-26"], undefined);
+  // The fixed 30-day series (source of the weekday distribution) covers both
+  // recent dates but never older evidence.
+  const trendDates = report.last30DaysSeries.map((point) => point.date);
+  assert.ok(trendDates.includes("2026-04-27"));
+  assert.ok(trendDates.includes("2026-04-07"));
+  assert.ok(!trendDates.includes("2026-02-26"));
 
   // The selected-window index follows the selected range, not the chart windows.
   assert.equal(report.drilldownIndexes.date["2026-04-07"], undefined);
