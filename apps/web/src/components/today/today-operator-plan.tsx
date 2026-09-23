@@ -39,8 +39,8 @@ export function TodayOperatorPlan({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="glass-label">Daily Operator</p>
-            <CardTitle className="mt-1 text-xl">Primary plan</CardTitle>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-[color:var(--muted-foreground)]">
+            <CardTitle className="mt-1 text-[length:var(--text-section)]">Primary plan</CardTitle>
+            <p className="mt-1 max-w-2xl text-[length:var(--text-meta)] leading-5 text-[color:var(--ega-text-secondary)]">
               Review the recommended lane before anything is added to Today. Operator suggestions never change work silently.
             </p>
           </div>
@@ -60,8 +60,8 @@ export function TodayOperatorPlan({
                 <div key={task.id} className="row">
                   <span className="rank" aria-hidden="true">{index + 1}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-[color:var(--foreground)]">{task.title}</p>
-                    <p className="mt-1 truncate text-xs text-[color:var(--muted-foreground)]">
+                    <p className="truncate text-[length:var(--text-body)] font-semibold text-[color:var(--ega-text)]">{task.title}</p>
+                    <p className="mt-1 truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                       {task.projectName}{task.goalTitle ? ` · ${task.goalTitle}` : ""}
                       {task.estimateMinutes ? ` · ${formatTaskEstimate(task.estimateMinutes)}` : ""}
                     </p>

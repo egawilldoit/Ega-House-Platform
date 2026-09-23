@@ -257,7 +257,7 @@ export function TodayTaskCard({
                 <form action={markTodayTaskBlockedAction} className="space-y-2">
                   <input type="hidden" name="taskId" value={task.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <label className="glass-label text-etch" htmlFor={`blocked-reason-${task.id}`}>
+                  <label className="form-label" htmlFor={`blocked-reason-${task.id}`}>
                     Blocked reason
                   </label>
                   <textarea

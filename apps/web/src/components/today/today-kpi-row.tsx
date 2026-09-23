@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 import { StatCard } from "@/components/ui/stat-card";
-import { formatDisplayEstimate } from "@/lib/presentation-format";
+import { formatDisplayDuration, formatDisplayEstimate } from "@/lib/presentation-format";
 import type { TodayPlan } from "@ega/application";
 
 const COMPACT_STAT_CARD = "pt-2.5 pb-2.5 leading-snug";
@@ -33,6 +33,8 @@ export function TodayKpiRow({
   globalOverdueCount,
 }: TodayKpiRowProps) {
   const plannedDetailed = formatDisplayEstimate(summary.totalEstimateMinutes);
+  // KPI strip: minute precision, so a tracked total never reads with seconds.
+  const trackedDetailed = formatDisplayDuration(summary.trackedTodaySeconds, "minute");
 
   return (
     <div className="kpi-grid" data-testid="today-kpi-row">
@@ -63,7 +65,7 @@ export function TodayKpiRow({
       <StatCard
         label="Tracked today"
         icon={Timer}
-        value={hasActiveTimer ? `${summary.trackedTodayLabel} + live` : summary.trackedTodayLabel}
+        value={hasActiveTimer ? `${trackedDetailed} + live` : trackedDetailed}
         subtitle="focus time logged"
         data-testid="today-kpi-tracked"
         className={COMPACT_STAT_CARD}

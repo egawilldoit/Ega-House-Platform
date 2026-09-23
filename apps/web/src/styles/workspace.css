@@ -1021,6 +1021,21 @@ select.ega-glass-input {
   color: var(--ega-text-tertiary);
 }
 
+/* Form field labels.
+ *
+ * `.glass-label` is a short uppercase section eyebrow; shouting every field
+ * name in caps made forms read as a different system. Field labels use this
+ * readable sentence-case style instead, at the same control rhythm. */
+.form-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--text-meta-lg);
+  font-weight: 500;
+  letter-spacing: var(--tracking-normal);
+  text-transform: none;
+  color: var(--ega-text-secondary);
+}
+
 .text-etch {
   color: var(--ega-text-tertiary);
 }

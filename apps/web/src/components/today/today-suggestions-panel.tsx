@@ -48,8 +48,8 @@ function SuggestionCard({
   return (
     <article className="task-row">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-[color:var(--foreground)]">{task.title}</p>
-        <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+        <p className="truncate text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)]">{task.title}</p>
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
           {task.projectName}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -87,7 +87,7 @@ function SuggestionCard({
           </form>
         ) : null}
 
-        <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
+        <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-[length:var(--text-meta)]">
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           Open
         </Link>
@@ -107,7 +107,7 @@ export function TodaySuggestionsPanel({
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="glass-label text-etch">Queue assist</p>
-            <CardTitle className="mt-1 text-xl">Suggestions</CardTitle>
+            <CardTitle className="mt-1 text-[length:var(--text-section)]">Suggestions</CardTitle>
           </div>
           <span
             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)]"

@@ -43,7 +43,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
         <input type="hidden" name="id" value={note.id} />
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`idea-${note.id}-title`} className="glass-label">
+          <label htmlFor={`idea-${note.id}-title`} className="form-label">
             Title
           </label>
           <Input
@@ -57,7 +57,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
 
         <div className="grid gap-3 md:grid-cols-4">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`idea-${note.id}-type`} className="glass-label">
+            <label htmlFor={`idea-${note.id}-type`} className="form-label">
               Type
             </label>
             <select
@@ -75,7 +75,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`idea-${note.id}-project`} className="glass-label">
+            <label htmlFor={`idea-${note.id}-project`} className="form-label">
               Project
             </label>
             <select
@@ -94,7 +94,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`idea-${note.id}-priority`} className="glass-label">
+            <label htmlFor={`idea-${note.id}-priority`} className="form-label">
               Priority
             </label>
             <select
@@ -113,7 +113,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`idea-${note.id}-status`} className="glass-label">
+            <label htmlFor={`idea-${note.id}-status`} className="form-label">
               Status
             </label>
             <select
@@ -136,7 +136,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`idea-${note.id}-body`} className="glass-label">
+          <label htmlFor={`idea-${note.id}-body`} className="form-label">
             Body
           </label>
           <Textarea
@@ -148,7 +148,7 @@ export function EditIdeaNoteForm({ note, projectOptions }: EditIdeaNoteFormProps
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`idea-${note.id}-tags`} className="glass-label">
+          <label htmlFor={`idea-${note.id}-tags`} className="form-label">
             Tags
           </label>
           <Input

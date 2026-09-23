@@ -14,6 +14,20 @@ test("Today hides the Start Here task from Up next without changing queue data",
   assert.match(page, /excludeTaskId=\{todayData\.startHere\?\.id \?\? null\}/);
 });
 
+test("Today labels the focus queue as suggestions, not the planned-today lane", () => {
+  const panels = read("components", "today", "today-cockpit-panels.tsx");
+
+  assert.match(panels, /title="Suggested next"/);
+  assert.doesNotMatch(panels, /title="Up next"/);
+});
+
+test("Today keeps the plan-empty state a compact one-liner, not a chart-sized empty block", () => {
+  const page = read("app", "today", "page.tsx");
+
+  assert.match(page, /Nothing planned yet for today\./);
+  assert.doesNotMatch(page, /title="Nothing planned yet for today"/);
+});
+
 test("Today keeps the completed-today empty state compact", () => {
   const page = read("app", "today", "page.tsx");
 

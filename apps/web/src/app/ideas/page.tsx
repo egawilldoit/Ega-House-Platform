@@ -287,7 +287,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
             <input type="hidden" name="view" value={activeView} />
             <div className="panel-body grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(180px,1.5fr)_repeat(5,minmax(120px,1fr))]">
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="idea-filter-q" className="glass-label">
+                <label htmlFor="idea-filter-q" className="form-label">
                   Search
                 </label>
                 <Input
@@ -300,7 +300,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="idea-filter-type" className="glass-label">
+                <label htmlFor="idea-filter-type" className="form-label">
                   Type
                 </label>
                 <select
@@ -319,7 +319,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="idea-filter-status" className="glass-label">
+                <label htmlFor="idea-filter-status" className="form-label">
                   Status
                 </label>
                 <select
@@ -338,7 +338,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="idea-filter-project" className="glass-label">
+                <label htmlFor="idea-filter-project" className="form-label">
                   Project
                 </label>
                 <select
@@ -358,7 +358,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="idea-filter-priority" className="glass-label">
+                <label htmlFor="idea-filter-priority" className="form-label">
                   Priority
                 </label>
                 <select
@@ -378,7 +378,7 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="idea-filter-tag" className="glass-label">
+                <label htmlFor="idea-filter-tag" className="form-label">
                   Tag
                 </label>
                 <Input

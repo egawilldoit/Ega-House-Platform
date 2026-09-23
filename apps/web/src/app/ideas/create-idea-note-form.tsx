@@ -43,7 +43,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="title" className="glass-label">
+        <label htmlFor="title" className="form-label">
           Title
         </label>
         <Input
@@ -58,7 +58,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
 
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="type" className="glass-label">
+          <label htmlFor="type" className="form-label">
             Type
           </label>
           <select
@@ -76,7 +76,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="projectId" className="glass-label">
+          <label htmlFor="projectId" className="form-label">
             Project
           </label>
           <select
@@ -95,7 +95,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label htmlFor="priority" className="glass-label">
+          <label htmlFor="priority" className="form-label">
             Priority
           </label>
           <select
@@ -115,7 +115,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="body" className="glass-label">
+        <label htmlFor="body" className="form-label">
           Body (optional)
         </label>
         <Textarea
@@ -128,7 +128,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="tagsInput" className="glass-label">
+        <label htmlFor="tagsInput" className="form-label">
           Tags
         </label>
         <Input

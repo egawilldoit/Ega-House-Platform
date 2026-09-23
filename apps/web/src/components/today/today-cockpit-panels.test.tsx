@@ -46,11 +46,51 @@ test("Up next hides the Start Here task and keeps the canonical queue order", ()
     />,
   );
 
-  assert.match(markup, /Up next/);
+  // The queue is a suggestion lane, not the planned-today lane.
+  assert.match(markup, /Suggested next/);
+  assert.doesNotMatch(markup, /Up next/);
   assert.doesNotMatch(markup, /Start here work/);
   assert.ok(markup.indexOf("First queued") < markup.indexOf("Second queued"));
   assert.match(markup, /name="taskId" value="first"/);
   assert.match(markup, /name="taskId" value="second"/);
+});
+
+test("Up next badge equals the number of rows the panel actually renders", () => {
+  const markup = renderToStaticMarkup(
+    <FocusQueuePanel
+      tasks={[
+        task({ id: "start", title: "Start here work" }),
+        task({ id: "first", title: "First queued" }),
+        task({ id: "second", title: "Second queued" }),
+        task({ id: "third", title: "Third queued" }),
+      ]}
+      returnTo="/today"
+      activeTimerSessionId={null}
+      excludeTaskId="start"
+    />,
+  );
+
+  const badge = markup.match(/data-testid="today-focus-queue-count"[^>]*>(\d+)</);
+  const renderedRows = (markup.match(/<li/g) ?? []).length;
+
+  assert.equal(Number(badge?.[1]), 3);
+  assert.equal(renderedRows, 3);
+  assert.equal(Number(badge?.[1]), renderedRows);
+});
+
+test("Up next badge reads zero when only Start Here is queued", () => {
+  const markup = renderToStaticMarkup(
+    <FocusQueuePanel
+      tasks={[task({ id: "start", title: "Start here work" })]}
+      returnTo="/today"
+      activeTimerSessionId={null}
+      excludeTaskId="start"
+    />,
+  );
+
+  assert.match(markup, /Queue is empty/);
+  assert.match(markup, /data-testid="today-focus-queue-count"[^>]*>0</);
+  assert.equal((markup.match(/<li/g) ?? []).length, 0);
 });
 
 test("Up next keeps the per-row stop wiring when a queued task is running", () => {
@@ -96,6 +136,7 @@ test("Up next still renders every canonical task when no exclusion is supplied",
 
   assert.match(markup, /First queued/);
   assert.match(markup, /name="taskId" value="first"/);
+  assert.match(markup, /data-testid="today-focus-queue-count"[^>]*>1</);
 });
 
 test("Start Here keeps its own timer action when it is hidden from Up next", () => {
