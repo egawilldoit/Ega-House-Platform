@@ -16,14 +16,14 @@ export default async function TimerPage({ searchParams }: { searchParams: Promis
   return (
     <AppShell
       title="Timer"
-      description="The active session is primary: elapsed time, stop, and the canonical session history."
+      description="Track focused work and review your recent sessions."
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/today"
             className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
           >
-            Today
+            Open Today
           </Link>
           <a
             href="/timer/export"

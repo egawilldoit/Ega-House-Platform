@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Clock3, Ellipsis } from "lucide-react";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
@@ -6,21 +7,20 @@ import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { DashboardSection } from "@/components/ui/dashboard-section";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataLegend, Metric } from "@/components/ui/metric";
-import { formatDurationLabel } from "@/lib/task-session";
-import { formatTimerDateTime } from "@/lib/timer-domain";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import {
+  DISPLAY_EMPTY,
+  formatDisplayDate,
+  formatDisplayDuration,
+  formatDisplayPercent,
+  formatDisplayTimeRange,
+} from "@/lib/presentation-format";
 import { resolveSessionConflictAction, startTimerAction, updateSessionTimingAction } from "../actions";
 import { getTimerStartEmptyStateCopy, getTimerStartTaskOptions } from "../task-selection";
-import { Clock3 } from "lucide-react";
 import type { TimerPageModel } from "../_lib/timer-page-model";
 
 function getTaskContextHref(taskId: string | null | undefined, projectSlug: string | null | undefined) {
@@ -95,9 +95,14 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
           </p>
           <form action={resolveSessionConflictAction}>
             <input type="hidden" name="returnTo" value="/timer" />
-            <Button type="submit" variant="secondary" size="sm">
+            <PendingSubmitButton
+              type="submit"
+              variant="secondary"
+              size="sm"
+              pendingLabel="Resolving…"
+            >
               Resolve
-            </Button>
+            </PendingSubmitButton>
           </form>
         </div>
       ) : null}
@@ -110,22 +115,43 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
         />
       ) : null}
 
-      <Card
-        label="Current session"
-        title={activeSession ? "Focus in progress" : "Start a focus session"}
-        action={
-          activeSession ? null : <Badge tone="muted">Idle</Badge>
-        }
-      >
-        <CardContent>
-          {activeSession ? (
+      {activeSession ? (
+        <Card
+          label="Current session"
+          title="Focus in progress"
+          className="border-[color:var(--ega-border-strong)]"
+        >
+          <CardContent>
             <ActiveTimerDisplay
               session={activeSession}
               taskContextHref={activeTaskContextHref}
               hasSessionConflict={hasSessionConflict}
               totalTrackedDurationSeconds={trackedTotalSeconds}
             />
-          ) : (
+          </CardContent>
+          <CardFooter className="justify-end">
+            <TimerStopForm
+              sessionId={activeSession.id}
+              returnTo="/timer"
+              disabled={hasSessionConflict}
+            />
+          </CardFooter>
+        </Card>
+      ) : (
+        <Card
+          label="Current session"
+          action={<Badge tone="muted">Idle</Badge>}
+          className="border-[color:var(--ega-border-strong)]"
+        >
+          <CardContent className="flex flex-col gap-5 py-6 sm:py-8">
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-[length:var(--text-page)] font-semibold leading-[var(--leading-tight)] tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+                Start a focus session
+              </h2>
+              <p className="max-w-[60ch] text-[length:var(--text-body-lg)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
+                Select a task, then start the timer.
+              </p>
+            </div>
             <form action={startTimerAction} className="flex flex-col gap-3">
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="taskId" className="glass-label">
@@ -151,12 +177,13 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
               </div>
               <input type="hidden" name="returnTo" value="/timer" />
               <div className="flex flex-wrap items-center gap-2">
-                <Button
+                <PendingSubmitButton
                   type="submit"
                   disabled={sessionControlTaskOptions.length === 0 || hasSessionConflict}
+                  pendingLabel="Starting…"
                 >
                   Start session
-                </Button>
+                </PendingSubmitButton>
                 <Link
                   href="/tasks"
                   className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
@@ -165,25 +192,16 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                 </Link>
               </div>
             </form>
-          )}
-        </CardContent>
-        {activeSession ? (
-          <CardFooter className="justify-end">
-            <TimerStopForm
-              sessionId={activeSession.id}
-              returnTo="/timer"
-              disabled={hasSessionConflict}
-            />
-          </CardFooter>
-        ) : null}
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="kpi-grid">
         <Card label="Tracked total">
           <CardContent>
             <Metric
               label="All loaded sessions"
-              value={formatDurationLabel(trackedTotalSeconds)}
+              value={formatDisplayDuration(trackedTotalSeconds)}
               caption={`${sessionHistory.length} completed session${
                 sessionHistory.length === 1 ? "" : "s"
               }`}
@@ -194,7 +212,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
           <CardContent>
             <Metric
               label="Tracked today"
-              value={formatDurationLabel(todayTotalDurationSeconds)}
+              value={formatDisplayDuration(todayTotalDurationSeconds)}
               caption={
                 todayTaskBreakdown.length > 0
                   ? `${todayTaskBreakdown.length} task bucket${
@@ -209,7 +227,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
           <CardContent>
             <Metric
               label="Single session"
-              value={longestSession ? formatDurationLabel(longestSession.durationSeconds) : "—"}
+              value={longestSession ? formatDisplayDuration(longestSession.durationSeconds) : DISPLAY_EMPTY}
               caption={longestSession ? longestSession.taskTitle : "No completed sessions yet"}
             />
           </CardContent>
@@ -223,20 +241,18 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
         <Card>
           {topBreakdown.length === 0 ? (
             <CardContent>
-              <EmptyState
-                icon={Clock3}
-                title="No time tracked today"
-                description="Start a session from a task and today's distribution will build itself."
-              />
+              <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                No time tracked today — start a session to build today&apos;s distribution.
+              </p>
             </CardContent>
           ) : (
             <CardContent>
               <div className="workspace-split-grid">
                 <div className="flex flex-col gap-3">
                   {topBreakdown.map((row) => {
-                    const percent =
+                    const sharePercent =
                       todayTotalDurationSeconds > 0
-                        ? Math.round((row.durationSeconds / todayTotalDurationSeconds) * 100)
+                        ? (row.durationSeconds / todayTotalDurationSeconds) * 100
                         : 0;
                     return (
                       <div key={row.taskId} className="flex flex-col gap-1.5">
@@ -245,14 +261,14 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                             {row.taskTitle}
                           </span>
                           <span className="shrink-0 tabular-nums text-[length:var(--text-meta-lg)] font-medium">
-                            {formatDurationLabel(row.durationSeconds)}
+                            {formatDisplayDuration(row.durationSeconds)}
                           </span>
                         </div>
-                        <div className="progress-track">
+                        <div className="progress-track" aria-hidden="true">
                           <div
                             className="progress-fill"
                             style={{
-                              width: `${percent}%`,
+                              width: `${Math.round(sharePercent)}%`,
                               background: "var(--ega-data-blue)",
                             }}
                           />
@@ -264,10 +280,11 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                 <DataLegend
                   items={topBreakdown.map((row, index) => ({
                     label: row.taskTitle,
-                    value:
+                    value: formatDisplayPercent(
                       todayTotalDurationSeconds > 0
-                        ? `${Math.round((row.durationSeconds / todayTotalDurationSeconds) * 100)}%`
-                        : "0%",
+                        ? (row.durationSeconds / todayTotalDurationSeconds) * 100
+                        : 0,
+                    ),
                     color: DISTRIBUTION_COLORS[index % DISTRIBUTION_COLORS.length],
                   }))}
                 />
@@ -279,7 +296,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
 
       <DashboardSection
         title="Recent sessions"
-        description="Completed sessions with the canonical timing correction editor."
+        description="Review recent sessions or correct their timing."
       >
         <Card>
           {sessionHistory.length === 0 ? (
@@ -291,63 +308,104 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
               />
             </CardContent>
           ) : (
-            <>
-              {[
-                { label: "Today", rows: todayRows },
-                { label: "Earlier", rows: earlierRows },
-              ]
-                .filter((group) => group.rows.length > 0)
-                .map((group) => (
-                  <div key={group.label}>
-                    <CardHeader className="!py-2.5">
-                      <p className="glass-label">{group.label}</p>
-                    </CardHeader>
-                    <ul className="rows">
-                      {group.rows.slice(0, 8).map((entry) => (
-                        <li
-                          key={entry.id}
-                          id={`session-${entry.id}`}
-                          className="task-row scroll-mt-24"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="row-title">{entry.taskTitle}</p>
-                              <p className="row-meta">{entry.projectName}</p>
-                            </div>
-                            <div className="flex flex-wrap items-center gap-3">
-                              <span className="tabular-nums text-[length:var(--text-body)] font-semibold">
-                                {formatDurationLabel(entry.durationSeconds)}
-                              </span>
-                              <span className="tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                                {formatTimerDateTime(entry.startedAt)}
-                                {entry.endedAt ? ` – ${formatTimerDateTime(entry.endedAt)}` : ""}
-                              </span>
-                            </div>
-                          </div>
-                          <details className="action-overflow">
-                            <summary className="filter-pill">Correct timing</summary>
-                            <div className="action-overflow-menu w-full max-w-md">
-                              <p className="row-meta mb-2">
-                                Adjust the actual time worked for this session.
-                              </p>
-                              {entry.endedAt ? (
-                                <SessionTimingEditor
-                                  sessionId={entry.id}
-                                  startedAt={entry.startedAt}
-                                  endedAt={entry.endedAt}
-                                  returnTo="/timer"
-                                  action={updateSessionTimingAction}
-                                />
-                              ) : null}
-                            </div>
-                          </details>
-                        </li>
-                      ))}
-                    </ul>
+            [
+              { label: "Today", rows: todayRows },
+              { label: "Earlier", rows: earlierRows },
+            ]
+              .filter((group) => group.rows.length > 0)
+              .map((group) => (
+                <div key={group.label}>
+                  <div className="flex items-center border-b border-[var(--ega-divider)] px-[18px] py-2.5">
+                    <p className="glass-label">{group.label}</p>
                   </div>
-                ))}
-            </>
-          )}
+                  <div className="overflow-x-auto">
+                    <table className="data-table table-fixed max-[761px]:block min-[761px]:min-w-[46rem]">
+                      <thead className="max-[761px]:hidden">
+                        <tr>
+                          <th scope="col">Task</th>
+                          <th scope="col" className="w-[9rem]">
+                            Project
+                          </th>
+                          <th scope="col" className="w-[12rem]">
+                            Date / Time
+                          </th>
+                          <th scope="col" className="w-[7rem] text-right">
+                            Duration
+                          </th>
+                          <th scope="col" className="w-[5rem] text-right">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="max-[761px]:block">
+                        {group.rows.slice(0, 8).map((entry) => (
+                          <tr
+                            key={entry.id}
+                            id={`session-${entry.id}`}
+                            className="scroll-mt-24 max-[761px]:flex max-[761px]:flex-col max-[761px]:gap-2 max-[761px]:border-b max-[761px]:border-[var(--ega-divider)] max-[761px]:px-3.5 max-[761px]:py-3 max-[761px]:last:border-b-0"
+                          >
+                            <td className="max-[761px]:contents">
+                              <div className="row-main">
+                                <span className="row-title" title={entry.taskTitle}>
+                                  {entry.taskTitle}
+                                </span>
+                                <span className="min-[761px]:hidden text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                                  {entry.projectName} ·{" "}
+                                  {formatDisplayDate(entry.startedAt, "compact")} ·{" "}
+                                  {formatDisplayTimeRange(entry.startedAt, entry.endedAt)}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="max-[761px]:hidden">
+                              <span className="block truncate text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                                {entry.projectName}
+                              </span>
+                            </td>
+                            <td className="max-[761px]:hidden whitespace-nowrap">
+                              <span className="tabular-nums text-[length:var(--text-meta-lg)] text-[color:var(--ega-text)]">
+                                {formatDisplayDate(entry.startedAt, "compact")}
+                              </span>
+                              <span className="ml-2 tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                                {formatDisplayTimeRange(entry.startedAt, entry.endedAt)}
+                              </span>
+                            </td>
+                            <td className="numeric max-[761px]:hidden text-right text-[length:var(--text-body)] font-semibold">
+                              {formatDisplayDuration(entry.durationSeconds, "second")}
+                            </td>
+                            <td className="max-[761px]:contents">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <details className="action-overflow">
+                                  <summary
+                                    className="filter-pill h-7 w-7 justify-center px-0"
+                                    aria-label="Correct session timing"
+                                    title="Correct session timing"
+                                  >
+                                    <Ellipsis className="h-4 w-4" aria-hidden="true" />
+                                  </summary>
+                                  <div className="action-overflow-menu w-full max-w-md">
+                                    <p className="row-meta mb-2">
+                                      Adjust the actual time worked for this session.
+                                    </p>
+                                    {entry.endedAt ? (
+                                      <SessionTimingEditor
+                                        sessionId={entry.id}
+                                        startedAt={entry.startedAt}
+                                        endedAt={entry.endedAt}
+                                        returnTo="/timer"
+                                        action={updateSessionTimingAction}
+                                      />
+                                    ) : null}
+                                  </div>
+                                </details>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )))}
         </Card>
       </DashboardSection>
     </div>
