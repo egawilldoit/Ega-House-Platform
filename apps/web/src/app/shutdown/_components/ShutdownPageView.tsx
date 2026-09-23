@@ -1,4 +1,6 @@
 import Link from "next/link";
+
+import { formatDisplayDate } from "@/lib/presentation-format";
 import { ShutdownReflectionForm } from "@/components/shutdown/shutdown-reflection-form";
 import { ShutdownTaskList } from "@/components/shutdown/shutdown-task-list";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +56,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
             tasks={data.unfinishedCarryForward}
             action={carryForwardTaskToTomorrowAction}
             actionLabel="Carry to tomorrow"
+            actionPendingLabel="Carrying forward…"
             returnTo="/shutdown"
           />
           <ShutdownTaskList
@@ -76,6 +79,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
           tasks={data.tomorrowShortlist}
           action={carryForwardTaskToTomorrowAction}
           actionLabel="Add to tomorrow"
+          actionPendingLabel="Carrying forward…"
           returnTo="/shutdown"
         />
       </DashboardSection>
@@ -114,7 +118,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
                 {data.currentWeekReview ? (
                   <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] p-3">
                     <p className="text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text)]">
-                      Updated {new Date(data.currentWeekReview.updatedAt).toLocaleDateString("en-US")}
+                      Updated {formatDisplayDate(data.currentWeekReview.updatedAt, "detail")}
                     </p>
                     <p className="mt-1 line-clamp-3 text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
                       {(data.currentWeekReview.nextSteps || data.currentWeekReview.summary || "No weekly notes yet.").trim()}

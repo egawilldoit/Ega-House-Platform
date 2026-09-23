@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/layout/app-shell";
+import { formatDisplayDate, formatDisplayDateTime } from "@/lib/presentation-format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { DashboardSection } from "@/components/ui/dashboard-section";
@@ -69,11 +70,15 @@ export default async function FrictionRadarPage() {
   return (
     <AppShell
       title="Workflow Friction"
-      description={`Deterministic stale (${thresholdDays}d), estimate, context-switch, neglected-goal, and imbalance signals. Generated ${new Date(generatedAt).toLocaleString()}${evidenceWindow ? ` · Window ${new Date(evidenceWindow.startIso).toLocaleDateString()} → ${new Date(evidenceWindow.endIso).toLocaleDateString()}` : ""}.`}
+      description={`Where work is stalling, based on staleness over ${thresholdDays} days, estimate drift, context switching, neglected goals, and workload balance. Updated ${formatDisplayDateTime(generatedAt)}${
+        evidenceWindow
+          ? ` · ${formatDisplayDate(evidenceWindow.startIso, "compact")} – ${formatDisplayDate(evidenceWindow.endIso, "compact")}`
+          : ""
+      }.`}
     >
       <DashboardSection
         title="Signal summary"
-        description="Real counts from the current friction read model."
+        description="Real counts from your current friction signals."
       >
         <div className="kpi-grid">
           <StatCard label="Blocked" value={blocked.length} subtitle="active blocked tasks" />
@@ -136,7 +141,7 @@ export default async function FrictionRadarPage() {
                     {task.blockedReason ? `Reason: ${task.blockedReason}` : "No blocker reason provided"}
                   </span>
                   <span className="row-meta">
-                    Updated {new Date(task.updatedAt).toLocaleDateString()}
+                    Updated {formatDisplayDate(task.updatedAt, "detail")}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 self-start">
@@ -169,7 +174,7 @@ export default async function FrictionRadarPage() {
                 <span className="row-main self-start">
                   <span className="row-title">{task.title}</span>
                   <span className="row-meta">
-                    Updated {new Date(task.updatedAt).toLocaleDateString()}
+                    Updated {formatDisplayDate(task.updatedAt, "detail")}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 self-start">
@@ -200,7 +205,7 @@ export default async function FrictionRadarPage() {
                 <span className="row-main self-start">
                   <span className="row-title">{goal.title}</span>
                   <span className="row-meta">
-                    Updated {new Date(goal.updatedAt).toLocaleDateString()}
+                    Updated {formatDisplayDate(goal.updatedAt, "detail")}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 self-start">
@@ -302,8 +307,8 @@ export default async function FrictionRadarPage() {
                 <span className="row-main self-start">
                   <span className="row-title">{goal.title}</span>
                   <span className="row-meta">
-                    Window {new Date(goal.window.startIso).toLocaleDateString()} →{" "}
-                    {new Date(goal.window.endIso).toLocaleDateString()}
+                    Period {formatDisplayDate(goal.window.startIso, "compact")} –{" "}
+                    {formatDisplayDate(goal.window.endIso, "compact")}
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 self-start">

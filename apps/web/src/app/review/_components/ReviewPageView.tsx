@@ -161,7 +161,7 @@ export function ReviewPageView({
       {health && friction ? (
         <DashboardSection
           title="Insights"
-          description="Workload and friction signals derived from the same week of evidence."
+          description="Workload and friction signals from this week."
         >
           <WeeklyIntelligenceSummary health={health} friction={friction} />
         </DashboardSection>
@@ -193,7 +193,7 @@ export function ReviewPageView({
               <p className="mb-4 text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
                 {selectedReview && !shouldUseGeneratedDraft
                   ? "Saved content is loaded for editing. Regenerate only when you want to replace these fields with activity-derived draft text."
-                  : "Activity-derived draft is editable before save and stored in the canonical weekly review record."}
+                  : "The draft is editable before saving to your weekly review."}
               </p>
               <ReviewForm
                 key={`${selectedWeekOf}:${selectedReview?.id ?? "new"}:${shouldUseGeneratedDraft ? "generated" : "saved"}`}
@@ -209,7 +209,7 @@ export function ReviewPageView({
           )}
 
           <Card
-            label="Evidence"
+            label="Signals"
             title="Most tracked this week"
             action={<Badge tone="muted">Task sessions</Badge>}
           >
