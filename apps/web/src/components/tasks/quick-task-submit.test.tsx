@@ -51,3 +51,10 @@ test("quick task modal does not pin the footer to an empty full-height form", ()
   assert.doesNotMatch(source, /mt-auto flex items-center justify-between border-t/);
   assert.doesNotMatch(source, /mt-auto flex flex-col items-stretch justify-between/);
 });
+
+test("quick task dialog sizes to its content instead of reserving full height", () => {
+  // A short state (for example "project required") must not render a tall empty
+  // panel; long forms still grow to the cap and scroll internally.
+  assert.match(source, /max-h-\[min\(50rem,calc\(100dvh-2rem\)\)\]/);
+  assert.doesNotMatch(source, /h-\[calc\(100dvh-2rem\)\]/);
+});
