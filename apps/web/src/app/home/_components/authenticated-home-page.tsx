@@ -4,7 +4,6 @@ import {
   CalendarCheck2,
   CheckCircle2,
   CircleAlert,
-  Clock3,
   Flame,
   ListChecks,
   Timer,
@@ -19,6 +18,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { LiveDuration } from "@/components/timer/live-duration";
 import {
   formatDisplayDate,
+  formatDisplayDuration,
   formatDisplayEstimate,
   formatDisplayPercent,
 } from "@/lib/presentation-format";
@@ -28,6 +28,12 @@ import type { HomeModel } from "../_lib/home-page-model";
 import { HomeQuickActions } from "./home-quick-actions";
 
 type HomeTask = NonNullable<HomeModel["startHere"]>;
+
+/**
+ * Strongest existing card level: the same stronger-border treatment the Timer
+ * page uses for its primary panel. The primary Home panel takes it so Start
+ * Here (or the running timer) reads above the quiet KPI and secondary cards.
+ */
 
 function TaskContext({ projectName, goalTitle }: { projectName: string; goalTitle: string | null }) {
   return (
@@ -45,7 +51,9 @@ function TaskMeta({ task }: { task: HomeTask }) {
       {task.priority === "high" || task.priority === "urgent" ? (
         <Badge tone="warn">{formatTaskToken(task.priority)}</Badge>
       ) : null}
-      {task.estimateMinutes ? <Badge tone="muted">{task.estimateMinutes}m</Badge> : null}
+      {task.estimateMinutes ? (
+        <Badge tone="muted">{formatDisplayEstimate(task.estimateMinutes)}</Badge>
+      ) : null}
     </div>
   );
 }
@@ -55,7 +63,11 @@ function ActiveTimerPanel({ model }: { model: HomeModel }) {
   if (!activeTimer) return null;
 
   return (
-    <Card data-testid="home-active-timer">
+    <Card
+      data-testid="home-active-timer"
+      data-task-id={activeTimer.taskId}
+      level="hero"
+    >
       <CardContent className="flex flex-col gap-3">
         <p className="glass-label inline-flex items-center gap-1.5 text-[color:var(--status-healthy)]">
           <Timer className="h-3.5 w-3.5" aria-hidden="true" />
@@ -99,7 +111,7 @@ function StartHerePanel({ model }: { model: HomeModel }) {
 
   if (!task) {
     return (
-      <Card data-testid="home-start-here-empty">
+      <Card level="hero" data-testid="home-start-here-empty">
         <CardContent className="flex flex-col gap-2">
           <p className="glass-label">Start here</p>
           <h3 className="text-[length:var(--text-panel-title)] font-semibold">
@@ -115,9 +127,9 @@ function StartHerePanel({ model }: { model: HomeModel }) {
   }
 
   return (
-    <Card data-testid="home-start-here">
+    <Card data-testid="home-start-here" data-task-id={task.id} level="hero">
       <CardContent className="flex flex-col gap-3">
-        <p className="glass-label text-[color:var(--status-healthy)]">Start here</p>
+        <p className="glass-label">Start here</p>
         <div>
           <h3 className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)]">
             {task.title}
@@ -170,9 +182,10 @@ function ProgressPanel({ model }: { model: HomeModel }) {
           </p>
           <Link
             href="/today"
-            className="text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)]"
+            className="btn-instrument btn-instrument-muted flex h-8 items-center gap-2 px-3 text-sm"
           >
             Plan today
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </CardContent>
       </Card>
@@ -265,7 +278,7 @@ function FocusQueuePanel({ model }: { model: HomeModel }) {
       ) : (
         <ul className="rows">
           {queue.map((task, index) => (
-            <li key={task.id} className="row">
+            <li key={task.id} className="row" data-task-id={task.id}>
               <span
                 className="w-4 shrink-0 tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]"
                 aria-hidden="true"
@@ -297,7 +310,12 @@ function AttentionPanel({ model }: { model: HomeModel }) {
   const clear = overdue === 0 && dueToday === 0 && !reviewMissing;
 
   return (
-    <Card label="Signals" title="Needs attention" data-testid="home-attention">
+    <Card
+      label="Signals"
+      title="Needs attention"
+      data-testid="home-attention"
+      className="bg-[color:var(--ega-surface-subtle)]"
+    >
       <CardContent className="flex flex-col gap-2">
         {overdue > 0 ? (
           <Link
@@ -353,35 +371,6 @@ function AttentionPanel({ model }: { model: HomeModel }) {
   );
 }
 
-function NextUpRow({ model }: { model: HomeModel }) {
-  const task = model.nextUp;
-  if (!task) return null;
-
-  return (
-    <Card data-testid="home-next-up">
-      <CardContent className="flex flex-wrap items-center justify-between gap-3 !py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <Clock3 className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]" aria-hidden="true" />
-          <div className="min-w-0">
-            <p className="glass-label">Next up</p>
-            <p className="truncate text-[length:var(--text-body)] font-medium">{task.title}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <TaskContext projectName={task.projectName} goalTitle={task.goalTitle} />
-          <Link
-            href="/tasks"
-            className="btn-instrument btn-instrument-muted flex h-8 items-center gap-2 px-3 text-sm"
-          >
-            Open tasks
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function DegradedNotice() {
   return (
     <div className="feedback-block feedback-block-warn" data-testid="home-degraded" role="status">
@@ -419,7 +408,9 @@ export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
           />
           <StatCard
             label="Focus time"
-            value={summary ? summary.trackedTodayLabel : "—"}
+            value={
+              summary ? formatDisplayDuration(summary.trackedTodaySeconds, "minute") : "—"
+            }
             subtitle="time tracked today"
             className="pt-2.5 pb-2.5 leading-snug"
           />
@@ -444,7 +435,6 @@ export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
               <StartHerePanel model={model} />
             )}
             <ProgressPanel model={model} />
-            <NextUpRow model={model} />
           </div>
 
           <div className="workspace-secondary-rail">

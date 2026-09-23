@@ -2,10 +2,28 @@ import type { HTMLAttributes, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * Three panel weights, so hierarchy is a system rather than a per-page choice.
+ *
+ * - `hero`     — the one dominant surface on a screen (Start Here, the active
+ *                timer session, goal detail, the primary chart). Stronger
+ *                border and roomier padding; never a shadow.
+ * - `standard` — the default data card.
+ * - `compact`  — support surfaces and summary strips.
+ */
+export type CardLevel = "hero" | "standard" | "compact";
+
+const LEVEL_CLASSES: Record<CardLevel, string> = {
+  hero: "border-[var(--ega-border-strong)] [--panel-pad:20px]",
+  standard: "border-[var(--ega-border)] [--panel-pad:18px]",
+  compact: "border-[var(--ega-border)] [--panel-pad:13px]",
+};
+
 type CardProps = HTMLAttributes<HTMLDivElement> & {
   label?: string;
   title?: string;
   action?: ReactNode;
+  level?: CardLevel;
   /**
    * Clips the panel contents to its radius. Off by default: a panel must never
    * clip a row-level disclosure menu that opens past its edge.
@@ -23,6 +41,7 @@ export function Card({
   label,
   title,
   action,
+  level = "standard",
   clip = false,
   className,
   children,
@@ -31,7 +50,8 @@ export function Card({
   return (
     <div
       className={cn(
-        "rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] text-[color:var(--ega-text)]",
+        "rounded-[var(--radius-lg)] border bg-[color:var(--ega-surface)] text-[color:var(--ega-text)]",
+        LEVEL_CLASSES[level],
         clip && "overflow-hidden",
         className,
       )}
@@ -75,7 +95,7 @@ export function CardHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 border-b border-[var(--ega-divider)] px-[18px] py-4",
+        "flex flex-col gap-2 border-b border-[var(--ega-divider)] px-[var(--panel-pad,18px)] py-4",
         className,
       )}
       {...props}
@@ -132,7 +152,7 @@ export function CardContent({
   className,
   ...props
 }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-[18px] py-4", className)} {...props} />;
+  return <div className={cn("px-[var(--panel-pad,18px)] py-4", className)} {...props} />;
 }
 
 export function CardFooter({
@@ -142,7 +162,7 @@ export function CardFooter({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 border-t border-[var(--ega-divider)] px-[18px] py-3",
+        "flex items-center gap-3 border-t border-[var(--ega-divider)] px-[var(--panel-pad,18px)] py-3",
         className,
       )}
       {...props}

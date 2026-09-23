@@ -120,6 +120,38 @@ test("EGA-647: Today KPI row keeps planned, in-progress and completed counts fro
   assert.match(markup, /tasks past due across the workspace/);
 });
 
+test("EGA-647: tracked KPI renders minute precision instead of raw seconds", () => {
+  const plan = buildTodayPlan({
+    today: TODAY,
+    selectedRows: [],
+    pinnedRows: [],
+    inProgressRows: [],
+    activeTimer: null,
+    trackedTodaySeconds: 59 * 60 + 23,
+  });
+
+  const markup = renderKpi({ plan, globalOverdueCount: 0 });
+
+  assert.match(markup, />59m</);
+  assert.doesNotMatch(markup, /23s/);
+  assert.doesNotMatch(markup, /59m 23s/);
+});
+
+test("EGA-647: tracked KPI keeps positive sub-minute work visible", () => {
+  const plan = buildTodayPlan({
+    today: TODAY,
+    selectedRows: [],
+    pinnedRows: [],
+    inProgressRows: [],
+    activeTimer: null,
+    trackedTodaySeconds: 30,
+  });
+
+  const markup = renderKpi({ plan, globalOverdueCount: 0 });
+
+  assert.match(markup, /&lt;1m/);
+});
+
 test("EGA-647: active timer is surfaced in the tracked metric instead of a fake duration", () => {
   const plan = buildPlan([sourceTask({ id: "todo", plannedForDate: TODAY })]);
 

@@ -218,7 +218,7 @@ export function InboxCaptureSheet() {
         <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
           <form onSubmit={handleSubmit} className="space-y-4" aria-label="Inbox quick capture form">
             <div className="space-y-2">
-              <label htmlFor="inbox-capture-title" className="glass-label text-etch">
+              <label htmlFor="inbox-capture-title" className="form-label">
                 Thought
               </label>
               <Input
@@ -239,7 +239,7 @@ export function InboxCaptureSheet() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="inbox-capture-body" className="glass-label text-etch">
+              <label htmlFor="inbox-capture-body" className="form-label">
                 Context (optional)
               </label>
               <Textarea
@@ -308,8 +308,8 @@ export function InboxCaptureSheet() {
           </form>
 
           <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">
-            Press <kbd className="rounded border bg-white px-1 py-0.5 text-[10px]">Esc</kbd> to close.
-            Shortcut: <kbd className="rounded border bg-white px-1 py-0.5 text-[10px]">Ctrl+Shift+I</kbd> to capture.
+            Press <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Esc</kbd> to close.
+            Shortcut: <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Ctrl+Shift+I</kbd> to capture.
           </p>
         </div>
       </SheetContent>

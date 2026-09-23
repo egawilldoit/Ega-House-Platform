@@ -161,10 +161,43 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(empty?.textContent).toContain("Nothing queued");
   });
 
-  it("shows at most one Next up item", async () => {
-    await render(emptyModel({ nextUp: task({ id: "n", title: "Follow-up" }) }));
-    expect(container.querySelectorAll('[data-testid="home-next-up"]').length).toBe(1);
+  it("renders each task id in exactly one Home surface and drops the next-up strip", async () => {
+    await render(
+      emptyModel({
+        startHere: task({ id: "a", title: "Start task" }),
+        nextUp: task({ id: "b", title: "Follow-up" }),
+        focusQueue: [
+          task({ id: "a", title: "Start task" }),
+          task({ id: "b", title: "Follow-up" }),
+          task({ id: "c", title: "Third task" }),
+        ],
+      }),
+    );
+
+    const renderedIds = [...container.querySelectorAll("[data-task-id]")].map((element) =>
+      element.getAttribute("data-task-id"),
+    );
+    expect(renderedIds.length).toBeGreaterThan(0);
+    expect(new Set(renderedIds).size).toBe(renderedIds.length);
+    expect(container.querySelector('[data-testid="home-next-up"]')).toBeNull();
     expect(container.textContent).toContain("Follow-up");
+  });
+
+  it("formats the Focus time KPI at minute precision, never seconds", async () => {
+    await render(emptyModel({ summary: summary({ trackedTodaySeconds: 59 * 60 + 23 }) }));
+
+    const text = container.querySelector('[data-testid="home-workspace"]')?.textContent ?? "";
+    expect(text).toContain("Focus time");
+    expect(text).toContain("59m");
+    expect(text).not.toContain("23s");
+  });
+
+  it("renders positive sub-minute focus time as <1m, never 0m", async () => {
+    await render(emptyModel({ summary: summary({ trackedTodaySeconds: 30 }) }));
+
+    expect(container.querySelector('[data-testid="home-workspace"]')?.textContent).toContain(
+      "<1m",
+    );
   });
 
   it("scopes the Progress counts to today and formats the planned load centrally", async () => {

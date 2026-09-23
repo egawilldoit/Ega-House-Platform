@@ -308,28 +308,28 @@ export default async function TodayPage({
         <div className="flex flex-col gap-4">
           {allTodayCount === 0 ? (
             <Card>
-              <CardContent>
-                <EmptyState
-                  icon={CalendarCheck2}
-                  title="Nothing planned yet for today"
-                  description="Add tasks from pinned or in-progress suggestions to create a focused execution lane."
-                  action={
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <a
-                        href="#pinned-suggestions"
-                        className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
-                      >
-                        Add from pinned
-                      </a>
-                      <Link
-                        href="/tasks"
-                        className="btn-instrument flex h-8 items-center px-3 text-sm"
-                      >
-                        Open all tasks
-                      </Link>
-                    </div>
-                  }
-                />
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 py-3">
+                <p className="flex items-center gap-2 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                  <CalendarCheck2
+                    className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+                    aria-hidden="true"
+                  />
+                  Nothing planned yet for today. Add work from pinned or in-progress suggestions.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <a
+                    href="#pinned-suggestions"
+                    className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+                  >
+                    Add from pinned
+                  </a>
+                  <Link
+                    href="/tasks"
+                    className="btn-instrument flex h-8 items-center px-3 text-sm"
+                  >
+                    Open all tasks
+                  </Link>
+                </div>
               </CardContent>
             </Card>
           ) : null}

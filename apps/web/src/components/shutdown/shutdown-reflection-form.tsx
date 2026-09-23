@@ -41,7 +41,7 @@ export function ShutdownReflectionForm({
       <input type="hidden" name="reflectionNote" value={reflectionNote} />
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="shutdown-win" className="glass-label">
+        <label htmlFor="shutdown-win" className="form-label">
           Today&apos;s win
         </label>
         <Textarea
@@ -55,7 +55,7 @@ export function ShutdownReflectionForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="shutdown-friction" className="glass-label">
+        <label htmlFor="shutdown-friction" className="form-label">
           Friction or blocker
         </label>
         <Textarea
@@ -69,7 +69,7 @@ export function ShutdownReflectionForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label htmlFor="shutdown-tomorrow" className="glass-label">
+        <label htmlFor="shutdown-tomorrow" className="form-label">
           Tomorrow starts with
         </label>
         <div className="flex flex-wrap gap-2">

@@ -191,18 +191,25 @@ export function FocusQueuePanel({
   activeTimerSessionId: string | null;
   excludeTaskId?: string | null;
 }) {
-  const queue = tasks.filter((task) => task.id !== excludeTaskId).slice(0, 7);
+  // Canonical focus queue order is preserved; only the Start Here task (which
+  // has its own panel above) is excluded. The badge must count exactly the rows
+  // this panel renders, not the canonical queue length.
+  const visibleUpNext = tasks.filter((task) => task.id !== excludeTaskId).slice(0, 7);
 
   return (
     <Card
       label="Queue"
-      title="Up next"
-      action={<Badge tone="muted">{tasks.length}</Badge>}
+      title="Suggested next"
+      action={
+        <Badge tone="muted" data-testid="today-focus-queue-count">
+          {visibleUpNext.length}
+        </Badge>
+      }
       data-testid="today-focus-queue"
     >
-      {queue.length > 0 ? (
+      {visibleUpNext.length > 0 ? (
         <ul className="rows">
-          {queue.map((task, index) => (
+          {visibleUpNext.map((task, index) => (
             <li
               key={task.id}
               className={`row items-start ${task.hasActiveTimer ? "row-link" : ""}`}
@@ -267,8 +274,8 @@ export function ActiveTimerPanel({
               aria-hidden="true"
             />
             <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
-              Start a session from Start here or Up next. The timer keeps running
-              across the workspace while it is active.
+              Start a session from Start here or Suggested next. The timer keeps
+              running across the workspace while it is active.
             </p>
           </div>
           <Link

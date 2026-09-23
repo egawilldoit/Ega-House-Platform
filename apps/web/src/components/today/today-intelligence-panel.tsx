@@ -48,7 +48,7 @@ export function TodayIntelligencePanel({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="glass-label text-etch">Workload</p>
-              <CardTitle className="mt-1 text-lg">Health &amp; recovery</CardTitle>
+              <CardTitle className="mt-1 text-[length:var(--text-panel-title)]">Health &amp; recovery</CardTitle>
             </div>
             <Activity className="h-5 w-5 text-signal-live" aria-hidden="true" />
           </div>
@@ -67,18 +67,18 @@ export function TodayIntelligencePanel({
                 </Badge>
                 <Badge tone="muted">{health.data.rollingWorkload.totalTrackedLabel} this week</Badge>
               </div>
-              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
                 {healthRecommendation?.message ??
                   (health.data.quality.quality === "insufficient"
                     ? "Track a few sessions to make workload guidance more useful."
                     : "No workload guidance is needed right now.")}
               </p>
               {healthRecommendation ? (
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+                <p className="glass-label">
                   Recommendation · {healthRecommendation.title}
                 </p>
               ) : null}
-              <p className="text-xs text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                 Workload guidance only — not medical advice.
               </p>
             </>
@@ -110,7 +110,7 @@ export function TodayIntelligencePanel({
                 </Badge>
                 {hasContextSwitch ? <Badge tone="warn">Context switching high</Badge> : null}
               </div>
-              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
                 {estimateSignal
                   ? `${estimateSignal.title} is ${Math.abs(estimateSignal.percentError)}% ${estimateSignal.status === "over" ? "over" : "under"} estimate.`
                   : hasContextSwitch
@@ -120,7 +120,7 @@ export function TodayIntelligencePanel({
                       : "Your current work lane is not showing a strong friction pattern."}
               </p>
               {frictionCount > 0 ? (
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+                <p className="glass-label">
                   Recommendation · protect one clear next step
                 </p>
               ) : null}
