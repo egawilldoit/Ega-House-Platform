@@ -184,17 +184,19 @@ export function FocusQueuePanel({
   tasks,
   returnTo,
   activeTimerSessionId,
+  excludeTaskId,
 }: {
   tasks: TodayPlannerTask[];
   returnTo: string;
   activeTimerSessionId: string | null;
+  excludeTaskId?: string | null;
 }) {
-  const queue = tasks.slice(0, 7);
+  const queue = tasks.filter((task) => task.id !== excludeTaskId).slice(0, 7);
 
   return (
     <Card
       label="Queue"
-      title="Today's focus queue"
+      title="Up next"
       action={<Badge tone="muted">{tasks.length}</Badge>}
       data-testid="today-focus-queue"
     >
@@ -265,7 +267,7 @@ export function ActiveTimerPanel({
               aria-hidden="true"
             />
             <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
-              Start a session from Start here or the focus queue. The timer keeps running
+              Start a session from Start here or Up next. The timer keeps running
               across the workspace while it is active.
             </p>
           </div>

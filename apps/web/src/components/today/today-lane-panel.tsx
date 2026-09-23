@@ -1,12 +1,11 @@
 import { startTimerAction } from "@/app/timer/actions";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
-import { CircleDashed, Play, Square } from "lucide-react";
+import { Play, Square } from "lucide-react";
 
 type TodayLanePanelProps = {
   scheduledBlocks: TodayPlannerTask[];
@@ -49,10 +48,10 @@ function LaneRow({
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
-          <Button type="submit" size="sm" variant="secondary">
+          <PendingSubmitButton type="submit" size="sm" variant="secondary" pendingLabel="Starting…">
             <Play className="h-3.5 w-3.5" aria-hidden="true" />
             Focus
-          </Button>
+          </PendingSubmitButton>
         </form>
       )}
     </li>
@@ -79,11 +78,9 @@ export function TodayLanePanel({
     <Card label="Today lane" title="Schedule" data-testid="today-lane">
       {isEmpty ? (
         <CardContent>
-          <EmptyState
-            icon={CircleDashed}
-            title="Nothing scheduled"
-            description="Scheduled blocks and today's flexible work appear here as they are planned."
-          />
+          <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+            Nothing scheduled for today yet.
+          </p>
         </CardContent>
       ) : (
         <ul className="rows">

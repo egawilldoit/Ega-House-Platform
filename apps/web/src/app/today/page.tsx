@@ -22,7 +22,7 @@ import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-pr
 import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
-import { formatTaskDueDate } from "@/lib/task-due-date";
+import { formatDisplayDate } from "@/lib/presentation-format";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
@@ -31,7 +31,7 @@ import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
-import { CalendarCheck2, CircleCheck, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
+import { CalendarCheck2, CircleDashed, CircleOff, CirclePlay } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Today",
@@ -90,7 +90,7 @@ export default async function TodayPage({
     await Promise.all([
       getOperatorSnapshotData(),
       getHealthSnapshotData().catch(() => ({
-        errorMessage: "Workload evidence is unavailable.",
+        errorMessage: "Workload guidance is unavailable.",
         data: null,
         recommendations: [],
       })),
@@ -210,7 +210,7 @@ export default async function TodayPage({
   return (
     <AppShell
       title="Today"
-      description={`${formatTaskDueDate(todayData.date)} · Focus on what matters today. Make progress, one step at a time.`}
+      description={`${formatDisplayDate(todayData.date, "detail")} · Focus on what matters today. Make progress, one step at a time.`}
       actions={<TodayHeaderActions />}
     >
       <OwnerScopedRealtimeRefresh
@@ -247,6 +247,7 @@ export default async function TodayPage({
             tasks={todayData.focusQueue}
             returnTo={returnTo}
             activeTimerSessionId={activeTimerSessionId}
+            excludeTaskId={todayData.startHere?.id ?? null}
           />
         </div>
 
@@ -287,13 +288,9 @@ export default async function TodayPage({
           ) : null
         }
         emptyState={
-          <div className="px-4 py-6">
-            <EmptyState
-              icon={CircleCheck}
-              title="No completed items yet"
-              description="Work you finish today collects here for quick cleanup."
-            />
-          </div>
+          <p className="px-4 py-4 text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+            Nothing completed yet today. Finished work collects here.
+          </p>
         }
       >
         {todayData.completed.map((task) => (

@@ -17,7 +17,11 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { LiveDuration } from "@/components/timer/live-duration";
-import { formatDurationLabel } from "@/lib/task-session";
+import {
+  formatDisplayDate,
+  formatDisplayEstimate,
+  formatDisplayPercent,
+} from "@/lib/presentation-format";
 import { formatTaskToken } from "@/lib/task-domain";
 
 import type { HomeModel } from "../_lib/home-page-model";
@@ -157,6 +161,24 @@ function ProgressPanel({ model }: { model: HomeModel }) {
     summary.plannedCount + summary.inProgressCount + summary.completedCount;
   const ratio = queueTotal > 0 ? Math.round((summary.completedCount / queueTotal) * 100) : null;
 
+  if (ratio === null) {
+    return (
+      <Card label="Today" title="Progress" data-testid="home-progress">
+        <CardContent className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+            Nothing is planned for today yet.
+          </p>
+          <Link
+            href="/today"
+            className="text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)]"
+          >
+            Plan today
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card
       label="Today"
@@ -164,28 +186,28 @@ function ProgressPanel({ model }: { model: HomeModel }) {
       data-testid="home-progress"
     >
       <CardContent className="flex flex-col gap-4">
-        {ratio === null ? (
-          <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
-            Nothing is planned for today yet.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[length:var(--text-metric)] font-semibold tabular-nums">
-                {ratio}%
-              </span>
-              <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-                {summary.completedCount} of {queueTotal} today
-              </span>
-            </div>
-            <ProgressBar value={ratio} max={100} size="md" />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-[length:var(--text-metric)] font-semibold tabular-nums">
+              {formatDisplayPercent(ratio)}
+            </span>
+            <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+              {summary.completedCount} of {queueTotal} today
+            </span>
           </div>
-        )}
+          <ProgressBar
+            value={ratio}
+            max={100}
+            size="md"
+            label="Today's progress"
+            valueText={`${ratio}% of today's planned work completed`}
+          />
+        </div>
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
           <div>
             <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-              Planned
+              Planned today
             </dt>
             <dd className="tabular-nums text-[length:var(--text-body-lg)] font-semibold">
               {summary.plannedCount}
@@ -193,7 +215,7 @@ function ProgressPanel({ model }: { model: HomeModel }) {
           </div>
           <div>
             <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-              In progress
+              In progress today
             </dt>
             <dd className="tabular-nums text-[length:var(--text-body-lg)] font-semibold">
               {summary.inProgressCount}
@@ -205,7 +227,7 @@ function ProgressPanel({ model }: { model: HomeModel }) {
             </dt>
             <dd className="tabular-nums text-[length:var(--text-body-lg)] font-semibold">
               {summary.totalEstimateMinutes > 0
-                ? formatDurationLabel(summary.totalEstimateMinutes * 60)
+                ? formatDisplayEstimate(summary.totalEstimateMinutes)
                 : "—"}
             </dd>
           </div>
@@ -216,12 +238,14 @@ function ProgressPanel({ model }: { model: HomeModel }) {
 }
 
 function FocusQueuePanel({ model }: { model: HomeModel }) {
-  const queue = model.focusQueue.slice(0, 5);
+  const queue = model.focusQueue
+    .filter((task) => task.id !== model.startHere?.id)
+    .slice(0, 5);
 
   return (
     <Card
       label="Queue"
-      title="Focus queue"
+      title="Up next"
       action={
         <Link
           href="/tasks"
@@ -235,7 +259,7 @@ function FocusQueuePanel({ model }: { model: HomeModel }) {
       {queue.length === 0 ? (
         <CardContent>
           <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
-            The focus queue is empty.
+            Nothing else queued right now.
           </p>
         </CardContent>
       ) : (
@@ -252,12 +276,12 @@ function FocusQueuePanel({ model }: { model: HomeModel }) {
                 <span className="row-title">{task.title}</span>
                 <span className="row-meta">
                   {task.projectName}
-                  {task.dueDate ? ` · due ${task.dueDate}` : ""}
+                  {task.dueDate ? ` · due ${formatDisplayDate(task.dueDate, "compact")}` : ""}
                 </span>
               </span>
               {task.estimateMinutes ? (
                 <span className="shrink-0 tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-                  {task.estimateMinutes}m
+                  {formatDisplayEstimate(task.estimateMinutes)}
                 </span>
               ) : null}
             </li>
@@ -385,21 +409,25 @@ export function AuthenticatedHomePage({ model }: { model: HomeModel }) {
             label="Due today"
             value={model.attention.dueToday}
             subtitle="tasks due today"
+            className="pt-2.5 pb-2.5 leading-snug"
           />
           <StatCard
             label="Completed"
             value={summary ? summary.completedCount : "—"}
             subtitle="tasks completed today"
+            className="pt-2.5 pb-2.5 leading-snug"
           />
           <StatCard
             label="Focus time"
             value={summary ? summary.trackedTodayLabel : "—"}
             subtitle="time tracked today"
+            className="pt-2.5 pb-2.5 leading-snug"
           />
           <StatCard
             label="Overdue"
             value={model.attention.overdue}
             subtitle="tasks past due"
+            className="pt-2.5 pb-2.5 leading-snug"
           />
         </div>
       </DashboardSection>

@@ -7,8 +7,10 @@ import {
 } from "lucide-react";
 
 import { StatCard } from "@/components/ui/stat-card";
-import { formatTaskEstimate } from "@/lib/task-estimate";
+import { formatDisplayEstimate } from "@/lib/presentation-format";
 import type { TodayPlan } from "@ega/application";
+
+const COMPACT_STAT_CARD = "pt-2.5 pb-2.5 leading-snug";
 
 export type TodayKpiRowProps = {
   summary: TodayPlan["summary"];
@@ -30,30 +32,33 @@ export function TodayKpiRow({
   hasActiveTimer,
   globalOverdueCount,
 }: TodayKpiRowProps) {
-  const plannedDetailed = formatTaskEstimate(summary.totalEstimateMinutes);
+  const plannedDetailed = formatDisplayEstimate(summary.totalEstimateMinutes);
 
   return (
     <div className="kpi-grid" data-testid="today-kpi-row">
       <StatCard
-        label="Planned"
+        label="Planned today"
         icon={CalendarCheck2}
         value={summary.plannedCount}
         subtitle={plannedDetailed ? `${plannedDetailed} planned load` : "tasks planned for today"}
         data-testid="today-kpi-planned"
+        className={COMPACT_STAT_CARD}
       />
       <StatCard
-        label="In progress"
+        label="In progress today"
         icon={CirclePlay}
         value={summary.inProgressCount}
         subtitle="tasks in progress"
         data-testid="today-kpi-in-progress"
+        className={COMPACT_STAT_CARD}
       />
       <StatCard
-        label="Completed"
+        label="Completed today"
         icon={CheckCircle2}
         value={summary.completedCount}
         subtitle="tasks completed today"
         data-testid="today-kpi-completed"
+        className={COMPACT_STAT_CARD}
       />
       <StatCard
         label="Tracked today"
@@ -61,6 +66,7 @@ export function TodayKpiRow({
         value={hasActiveTimer ? `${summary.trackedTodayLabel} + live` : summary.trackedTodayLabel}
         subtitle="focus time logged"
         data-testid="today-kpi-tracked"
+        className={COMPACT_STAT_CARD}
       />
       <StatCard
         label="Overdue"
@@ -68,6 +74,7 @@ export function TodayKpiRow({
         value={globalOverdueCount}
         subtitle="tasks past due across the workspace"
         data-testid="today-kpi-overdue"
+        className={COMPACT_STAT_CARD}
       />
     </div>
   );
