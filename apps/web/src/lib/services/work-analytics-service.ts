@@ -83,6 +83,65 @@ export type WorkAnalyticsDaily = {
   completedTaskCount?: number; // undefined if not computed
 };
 
+/**
+ * Rolling average of a canonical daily series.
+ *
+ * Used to add a second dimension to the daily focus chart: the bars stay the
+ * actual daily values and the line is their trailing mean. Values are derived
+ * from the same canonical series the bars come from — never invented, and the
+ * first `windowSize - 1` points carry the mean of what is available so the line
+ * cannot imply data that does not exist.
+ */
+export function calculateRollingAverageSeries(
+  series: WorkAnalyticsDaily[],
+  windowSize = 7,
+): WorkAnalyticsDaily[] {
+  const size = Math.max(1, Math.floor(windowSize));
+
+  return series.map((point, index) => {
+    const start = Math.max(0, index - size + 1);
+    const slice = series.slice(start, index + 1);
+    const total = slice.reduce((sum, entry) => sum + entry.workedMinutes, 0);
+    const workedMinutes = slice.length > 0 ? Math.round(total / slice.length) : 0;
+
+    return {
+      date: point.date,
+      workedMinutes,
+      sessionCount: 0,
+    };
+  });
+}
+
+/**
+ * Weekday distribution of a canonical daily series (Monday-first).
+ *
+ * Adds information the period charts cannot show: which weekdays actually carry
+ * focus time. Minutes are summed from the supplied series only.
+ */
+export function calculateWeekdayDistribution(
+  series: WorkAnalyticsDaily[],
+): Array<{ weekday: number; label: string; workedMinutes: number; sessionCount: number }> {
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const totals = labels.map((label, weekday) => ({
+    weekday,
+    label,
+    workedMinutes: 0,
+    sessionCount: 0,
+  }));
+
+  for (const point of series) {
+    const date = new Date(`${point.date}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime())) continue;
+    const mondayFirstIndex = (date.getUTCDay() + 6) % 7;
+    const bucket = totals[mondayFirstIndex];
+    if (!bucket) continue;
+    bucket.workedMinutes += point.workedMinutes;
+    bucket.sessionCount += point.sessionCount;
+  }
+
+  return totals;
+}
+
 export type WorkAnalyticsProjectBreakdown = {
   projectId: string | null;
   projectName: string;
