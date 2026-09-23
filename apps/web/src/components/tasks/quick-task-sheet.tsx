@@ -106,6 +106,16 @@ function createEmptyDraft(defaultProjectId: string): MultiTaskDraft {
   };
 }
 
+/**
+ * Primary submit for both creation modes.
+ *
+ * It must use the canonical Button system: the previous legacy variables
+ * resolved to the same near-black for both the surface and the label, which
+ * rendered the primary action as an unreadable black rectangle.
+ *
+ * The disabled treatment keeps the label legible on a neutral surface instead
+ * of fading the whole control, so "why can I not submit" stays answerable.
+ */
 function QuickTaskSubmitButton({
   label,
   pending,
@@ -118,9 +128,11 @@ function QuickTaskSubmitButton({
   return (
     <Button
       type="submit"
+      variant="primary"
+      size="lg"
       disabled={pending || disabled}
       aria-busy={pending}
-      className="inline-flex min-h-12 min-w-36 items-center justify-center gap-2 rounded-lg border border-[var(--ega-gold-strong)] bg-[var(--ega-gold)] px-5 font-semibold text-[var(--ega-text)] shadow-[var(--ega-shadow-sm)] transition-[background-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:bg-[var(--ega-gold-strong)] hover:shadow-[var(--ega-shadow-md)] active:translate-y-0 active:shadow-none focus-visible:ring-2 focus-visible:ring-[var(--ega-gold)] disabled:translate-y-0 disabled:shadow-none motion-reduce:transition-none"
+      className="inline-flex min-h-11 min-w-36 items-center justify-center gap-2 px-4 font-semibold disabled:border-[var(--ega-border)] disabled:bg-[var(--ega-surface-muted)] disabled:text-[color:var(--ega-text-secondary)] disabled:opacity-100"
     >
       {pending ? (
         <span
@@ -130,7 +142,7 @@ function QuickTaskSubmitButton({
       ) : (
         <Plus className="h-4 w-4" aria-hidden="true" />
       )}
-      <span>{pending ? "Creating..." : label}</span>
+      <span>{pending ? "Creating\u2026" : label}</span>
     </Button>
   );
 }
@@ -524,7 +536,7 @@ function QuickTaskSheetPanel({
             <TabsContent value="single" className="flex min-h-0 flex-1 flex-col gap-4">
               <form
                 action={singleAction}
-                className="flex min-h-full flex-col gap-4 pb-2"
+                className="flex flex-col gap-4 pb-2"
                 onSubmit={(event) => {
                   if (hasCommandError) {
                     event.preventDefault();
@@ -770,8 +782,8 @@ function QuickTaskSheetPanel({
                       </div>
 
                       <details className="group sm:col-span-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--ega-surface)]">
-                        <summary className="flex min-h-[4.5rem] cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--ega-surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ega-gold)] [&::-webkit-details-marker]:hidden">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgba(5,150,105,0.1)] text-signal-live">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--ega-surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ega-text)] [&::-webkit-details-marker]:hidden">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]">
                             <CalendarClock className="h-4 w-4" aria-hidden="true" />
                           </span>
                           <span className="min-w-0 flex-1">
@@ -795,7 +807,7 @@ function QuickTaskSheetPanel({
                         <div className="space-y-5 border-t border-[var(--border)] p-4">
                           <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-white/70">
                             <div className="flex items-start gap-3 border-b border-[var(--border)] px-4 py-3">
-                              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(5,150,105,0.1)] text-signal-live">
+                              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]">
                                 <CalendarClock className="h-4 w-4" aria-hidden="true" />
                               </span>
                               <span className="min-w-0">
@@ -937,7 +949,7 @@ function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex items-center justify-between border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex items-center justify-between border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
                   <DialogPrimitive.Close asChild>
                     <Button
                       type="button"
@@ -957,7 +969,7 @@ function QuickTaskSheetPanel({
             </TabsContent>
 
             <TabsContent value="multi" className="flex min-h-0 flex-1 flex-col gap-4">
-              <form action={bulkAction} className="flex min-h-full flex-col gap-4">
+              <form action={bulkAction} className="flex flex-col gap-4">
                 <input type="hidden" name="returnTo" value={DEFAULT_RETURN_TO} />
                 <input type="hidden" name="rows" value={serializedBulkRows} />
                 <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
@@ -1227,7 +1239,7 @@ function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex flex-col items-stretch justify-between gap-2 border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex flex-col items-stretch justify-between gap-2 border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
                   <p className="text-xs text-[color:var(--muted-foreground)]" aria-live="polite">
                     {invalidDraftCount > 0
                       ? `${invalidDraftCount} of ${drafts.length} task${drafts.length === 1 ? "" : "s"} need attention`
@@ -1318,9 +1330,10 @@ export function QuickTaskSheet({
         <DialogPrimitive.Trigger asChild>
           <Button
             type="button"
-            className="mx-2.5 mt-3 flex h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-3 rounded-lg border border-[var(--ega-gold)]/50 bg-[var(--ega-sidebar)] px-3 py-2.5 text-left text-[var(--ega-surface)] shadow-sm transition-colors hover:border-[var(--ega-gold)] hover:bg-[rgba(255,255,255,0.08)]"
+            variant="secondary"
+            className="mx-2.5 mt-3 flex h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-3 px-3 py-2.5 text-left"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--ega-gold)] text-[var(--ega-text)]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]">
               <Plus className="h-4 w-4" aria-hidden="true" />
             </span>
             <span className="min-w-0">
