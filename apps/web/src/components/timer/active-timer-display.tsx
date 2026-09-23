@@ -23,7 +23,7 @@ type ActiveTimerDisplayProps = {
   session: ActiveTimerSession;
   taskContextHref?: string | null;
   hasSessionConflict?: boolean;
-  totalTrackedDurationSeconds?: number;
+  taskTrackedTotalSeconds?: number;
 };
 
 /**
@@ -36,7 +36,7 @@ export function ActiveTimerDisplay({
   session,
   taskContextHref,
   hasSessionConflict = false,
-  totalTrackedDurationSeconds,
+  taskTrackedTotalSeconds,
 }: ActiveTimerDisplayProps) {
   return (
     <div className="active-timer-card flex flex-col gap-5" data-testid="active-timer-display">
@@ -75,13 +75,13 @@ export function ActiveTimerDisplay({
                 {formatDisplayDateTime(session.started_at)}
               </dd>
             </div>
-            {typeof totalTrackedDurationSeconds === "number" ? (
+            {typeof taskTrackedTotalSeconds === "number" ? (
               <div>
                 <dt className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                  Tracked total
+                  Task tracked total
                 </dt>
                 <dd className="tabular-nums text-[length:var(--text-body)] font-medium">
-                  {formatDisplayDuration(totalTrackedDurationSeconds)}
+                  {formatDisplayDuration(taskTrackedTotalSeconds)}
                 </dd>
               </div>
             ) : null}

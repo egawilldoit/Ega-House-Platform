@@ -186,3 +186,112 @@ test("TimerPageView shows the active session with canonical date and minute tota
   assert.match(markup, /Sep 22, 3:52 PM/);
   assert.match(markup, />189h 9m</);
 });
+
+test("TimerPageView keeps exactly one stop control in the active state", () => {
+  const markup = renderToStaticMarkup(
+    <TimerPageView
+      model={buildModel({
+        openSessions: [activeSession],
+        activeSession,
+      })}
+    />,
+  );
+
+  const stopControls = markup.match(/Stop (?:session|timer)/g) ?? [];
+  assert.deepEqual(stopControls, ["Stop session"]);
+  assert.doesNotMatch(markup, /Stop timer/);
+});
+
+test("TimerPageView scopes the active hero total to the active task", () => {
+  const markup = renderToStaticMarkup(
+    <TimerPageView
+      model={buildModel({
+        openSessions: [activeSession],
+        activeSession,
+        taskTotalDurations: { "task-1": 95 * 60 + 30 },
+      })}
+    />,
+  );
+
+  assert.match(markup, /Task tracked total/);
+  assert.match(markup, />1h 36m</);
+  assert.equal(
+    (markup.match(/>Tracked total</g) ?? []).length,
+    1,
+    "the global total must stay in the summary row only",
+  );
+});
+
+test("TimerPageView never relabels the global tracked total as task-scoped", () => {
+  const markup = renderToStaticMarkup(
+    <TimerPageView
+      model={buildModel({
+        openSessions: [activeSession],
+        activeSession,
+        taskTotalDurations: {},
+      })}
+    />,
+  );
+
+  assert.doesNotMatch(markup, /Task tracked total/);
+  assert.equal((markup.match(/>Tracked total</g) ?? []).length, 1);
+  assert.match(markup, />189h 9m</);
+});
+
+test("TimerPageView renders a single live elapsed representation in the active hero", () => {
+  const markup = renderToStaticMarkup(
+    <TimerPageView
+      model={buildModel({
+        openSessions: [activeSession],
+        activeSession,
+      })}
+    />,
+  );
+
+  assert.match(markup, /Elapsed/);
+  assert.doesNotMatch(markup, / elapsed/);
+});
+
+test("TimerPageView names distinct tasks tracked today without implementation language", () => {
+  const markup = renderToStaticMarkup(
+    <TimerPageView
+      model={buildModel({
+        todayTaskBreakdown: [
+          { taskId: "task-1", taskTitle: "Ship the workspace refinement", durationSeconds: 1800 },
+          { taskId: "task-2", taskTitle: "Review the timer copy", durationSeconds: 600 },
+        ],
+        todayTotalDurationSeconds: 2400,
+      })}
+    />,
+  );
+
+  assert.match(markup, /2 tasks tracked today/);
+  assert.doesNotMatch(markup, /bucket/i);
+});
+
+test("TimerPageView renders positive sub-minute work as <1m consistent with its legend", () => {
+  const markup = renderToStaticMarkup(
+    <TimerPageView
+      model={buildModel({
+        todayTaskBreakdown: [
+          { taskId: "task-1", taskTitle: "Finish EGA MCP V1", durationSeconds: 18 },
+        ],
+        todayTotalDurationSeconds: 3600,
+      })}
+    />,
+  );
+
+  assert.match(markup, /Finish EGA MCP V1/);
+  assert.match(markup, /&lt;1m/);
+  assert.match(markup, /0\.5%/);
+  assert.ok(!markup.includes(">0m<"), "positive sub-minute work rendered as 0m");
+});
+
+test("TimerPageView uses the idle hero width for task metadata", () => {
+  const markup = renderToStaticMarkup(<TimerPageView model={buildModel()} />);
+
+  assert.match(markup, /Ready to track/);
+  assert.match(markup, /1 open task available/);
+  assert.match(markup, /lg:grid-cols-\[minmax\(0,1fr\)_18rem\]/);
+  assert.doesNotMatch(markup, /max-w-xl/, "the selector must not leave half the hero unused");
+});

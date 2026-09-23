@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { formatDisplayDuration } from "@/lib/presentation-format";
 import {
   formatDurationClock,
   getElapsedDurationSeconds,
@@ -60,12 +59,6 @@ export function LiveDuration({
         suppressHydrationWarning
       >
         {formatDurationClock(elapsedSeconds)}
-      </p>
-      <p
-        className="mt-0.5 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
-        suppressHydrationWarning
-      >
-        {formatDisplayDuration(elapsedSeconds, "minute")} elapsed
       </p>
     </div>
   );

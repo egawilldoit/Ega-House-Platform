@@ -100,7 +100,7 @@ export function TimerStopOutcomePrompt({
 
         {selectedOutcome === "blocked" ? (
           <div className="space-y-2">
-            <label htmlFor={blockedReasonId} className="glass-label text-etch">
+            <label htmlFor={blockedReasonId} className="form-label">
               Blocked reason
             </label>
             <textarea

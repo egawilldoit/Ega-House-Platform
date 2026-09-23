@@ -85,6 +85,37 @@ test("GoalsPageView keeps linked task navigation and the create goal form wired 
   assert.match(markup, /<summary[^>]*>[\s\S]*New goal/);
 });
 
+test("GoalsPageView places the single create form in the directory action region", () => {
+  const markup = renderToStaticMarkup(<GoalsPageView model={model} />);
+
+  assert.match(markup, /aria-label="Goal views"[\s\S]*New goal/);
+  assert.equal(
+    (markup.match(/name="title"/g) ?? []).length,
+    1,
+    "the create goal form must exist exactly once",
+  );
+  assert.doesNotMatch(markup, /New goal<\/h3>/, "the dedicated create card must be gone");
+});
+
+test("GoalsPageView speaks one progress language for task-derived completion", () => {
+  const markup = renderToStaticMarkup(<GoalsPageView model={model} />);
+
+  assert.match(markup, /Linked task completion/);
+  assert.match(markup, /1 \/ 2 tasks/);
+  assert.match(markup, /1 of 2 linked tasks done/);
+  assert.doesNotMatch(markup, />Progress</, "the bare Progress label must be gone");
+});
+
+test("GoalsPageView keeps the create guidance when no projects exist", () => {
+  const markup = renderToStaticMarkup(
+    <GoalsPageView model={{ ...model, projects: [] } as unknown as GoalsPageModel} />,
+  );
+
+  assert.match(markup, /New goal/);
+  assert.match(markup, /Create a project first to attach a goal to the workspace\./);
+  assert.doesNotMatch(markup, /name="title"/);
+});
+
 test("GoalsPageView keeps goal editing behind one primary Edit goal disclosure", () => {
   const markup = renderToStaticMarkup(<GoalsPageView model={model} />);
 
