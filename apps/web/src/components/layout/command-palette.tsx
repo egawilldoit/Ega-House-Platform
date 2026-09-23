@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
-import { CornerDownLeft, Search } from "lucide-react";
+import { CornerDownLeft, Search, X } from "lucide-react";
 
 import { searchWorkspaceAction } from "@/app/search/actions";
 import { COMMAND_PALETTE_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
@@ -270,6 +270,15 @@ export function CommandPalette() {
               Searching…
             </span>
           ) : null}
+          <button
+            type="button"
+            aria-label="Close command palette"
+            title="Close"
+            onClick={closePalette}
+            className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-[color:var(--ega-text-tertiary)] transition-[background-color,color] hover:bg-[var(--ega-surface-hover)] hover:text-[color:var(--ega-text)]"
+          >
+            <X aria-hidden="true" className="h-4 w-4" />
+          </button>
         </div>
 
         <div id={listId} role="listbox" aria-label="Search results" className="max-h-[46vh] overflow-y-auto p-2">
