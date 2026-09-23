@@ -3,17 +3,17 @@ import { Clock3, Ellipsis } from "lucide-react";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
-import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { SessionTimingEditor } from "@/components/timer/session-timing-editor";
 import { TimerStopOutcomePrompt } from "@/components/timer/timer-stop-outcome-prompt";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSection } from "@/components/ui/dashboard-section";
 import { EmptyState } from "@/components/ui/empty-state";
 import { DataLegend, Metric } from "@/components/ui/metric";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   DISPLAY_EMPTY,
+  formatDisplayCount,
   formatDisplayDate,
   formatDisplayDuration,
   formatDisplayPercent,
@@ -58,6 +58,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
     sessionHistory,
     activeSession,
     trackedTotalSeconds,
+    taskTotalDurations,
   } = model;
 
   const recoveredExtraSessionCount = Math.max(0, openSessions.length - 1);
@@ -71,13 +72,22 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
       session.durationSeconds > (longest?.durationSeconds ?? 0) ? session : longest,
     sessionHistory[0] ?? null,
   );
-  const topBreakdown = todayTaskBreakdown.slice(0, 6);
+  const topBreakdown = todayTaskBreakdown.slice(0, 6).map((row) => ({
+    ...row,
+    sharePercent:
+      todayTotalDurationSeconds > 0
+        ? (row.durationSeconds / todayTotalDurationSeconds) * 100
+        : 0,
+  }));
   const sessionControlTaskOptions = getTimerStartTaskOptions(tasks).slice(0, 100);
   const sessionControlEmptyStateCopy = getTimerStartEmptyStateCopy(tasks.length);
   const stoppedTaskTitle = tasks.find((task) => task.id === stoppedTaskId)?.title ?? "this task";
   const showStoppedTaskPrompt = Boolean(!activeSession && stoppedTaskId);
   const todayRows = sessionHistory.filter((entry) => isSameLocalDay(entry.startedAt));
   const earlierRows = sessionHistory.filter((entry) => !isSameLocalDay(entry.startedAt));
+  const taskTrackedTotalSeconds = activeSession
+    ? taskTotalDurations[activeSession.task_id]
+    : undefined;
 
   return (
     <div className="flex flex-col gap-6">
@@ -119,79 +129,110 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
         <Card
           label="Current session"
           title="Focus in progress"
-          className="border-[color:var(--ega-border-strong)]"
+          level="hero"
         >
           <CardContent>
             <ActiveTimerDisplay
               session={activeSession}
               taskContextHref={activeTaskContextHref}
               hasSessionConflict={hasSessionConflict}
-              totalTrackedDurationSeconds={trackedTotalSeconds}
+              taskTrackedTotalSeconds={taskTrackedTotalSeconds}
             />
           </CardContent>
-          <CardFooter className="justify-end">
-            <TimerStopForm
-              sessionId={activeSession.id}
-              returnTo="/timer"
-              disabled={hasSessionConflict}
-            />
-          </CardFooter>
         </Card>
       ) : (
         <Card
           label="Current session"
           action={<Badge tone="muted">Idle</Badge>}
-          className="border-[color:var(--ega-border-strong)]"
+          level="hero"
         >
-          <CardContent className="flex flex-col gap-5 py-6 sm:py-8">
-            <div className="flex flex-col gap-1.5">
-              <h2 className="text-[length:var(--text-page)] font-semibold leading-[var(--leading-tight)] tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
-                Start a focus session
-              </h2>
-              <p className="max-w-[60ch] text-[length:var(--text-body-lg)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
-                Select a task, then start the timer.
-              </p>
+          <CardContent className="py-6 sm:py-8">
+            <div
+              className={
+                sessionControlTaskOptions.length > 0
+                  ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start"
+                  : "max-w-3xl"
+              }
+            >
+              <div className="flex min-w-0 flex-col gap-5">
+                <div className="flex flex-col gap-1.5">
+                  <h2 className="text-[length:var(--text-page)] font-semibold leading-[var(--leading-tight)] tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
+                    Start a focus session
+                  </h2>
+                  <p className="max-w-[60ch] text-[length:var(--text-body-lg)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
+                    Select a task, then start the timer.
+                  </p>
+                </div>
+                <form action={startTimerAction} className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="taskId" className="form-label">
+                      Select task
+                    </label>
+                    <select
+                      id="taskId"
+                      name="taskId"
+                      required
+                      disabled={sessionControlTaskOptions.length === 0}
+                      className="input-instrument h-8 w-full px-2.5 text-sm"
+                    >
+                      {sessionControlTaskOptions.length === 0 ? (
+                        <option value="">{sessionControlEmptyStateCopy}</option>
+                      ) : (
+                        sessionControlTaskOptions.map((task) => (
+                          <option key={task.id} value={task.id}>
+                            {task.title}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+                  <input type="hidden" name="returnTo" value="/timer" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PendingSubmitButton
+                      type="submit"
+                      disabled={sessionControlTaskOptions.length === 0 || hasSessionConflict}
+                      pendingLabel="Starting…"
+                    >
+                      Start session
+                    </PendingSubmitButton>
+                    <Link
+                      href="/tasks"
+                      className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
+                    >
+                      Open tasks
+                    </Link>
+                  </div>
+                </form>
+              </div>
+
+              {sessionControlTaskOptions.length > 0 ? (
+                <aside className="flex min-w-0 flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-4">
+                  <p className="glass-label">Ready to track</p>
+                  <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+                    {`${formatDisplayCount(sessionControlTaskOptions.length)} open task${
+                      sessionControlTaskOptions.length === 1 ? "" : "s"
+                    } available`}
+                  </p>
+                  <ul className="flex flex-col gap-2">
+                    {sessionControlTaskOptions.slice(0, 3).map((task) => (
+                      <li key={task.id} className="min-w-0">
+                        <p
+                          className="truncate text-[length:var(--text-meta-lg)] text-[color:var(--ega-text)]"
+                          title={task.title}
+                        >
+                          {task.title}
+                        </p>
+                        {task.projects ? (
+                          <p className="truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+                            {task.projects.name}
+                          </p>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </aside>
+              ) : null}
             </div>
-            <form action={startTimerAction} className="flex flex-col gap-3">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="taskId" className="glass-label">
-                  Select task
-                </label>
-                <select
-                  id="taskId"
-                  name="taskId"
-                  required
-                  disabled={sessionControlTaskOptions.length === 0}
-                  className="input-instrument h-8 w-full max-w-xl px-2.5 text-sm"
-                >
-                  {sessionControlTaskOptions.length === 0 ? (
-                    <option value="">{sessionControlEmptyStateCopy}</option>
-                  ) : (
-                    sessionControlTaskOptions.map((task) => (
-                      <option key={task.id} value={task.id}>
-                        {task.title}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-              <input type="hidden" name="returnTo" value="/timer" />
-              <div className="flex flex-wrap items-center gap-2">
-                <PendingSubmitButton
-                  type="submit"
-                  disabled={sessionControlTaskOptions.length === 0 || hasSessionConflict}
-                  pendingLabel="Starting…"
-                >
-                  Start session
-                </PendingSubmitButton>
-                <Link
-                  href="/tasks"
-                  className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
-                >
-                  Open tasks
-                </Link>
-              </div>
-            </form>
           </CardContent>
         </Card>
       )}
@@ -215,9 +256,9 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
               value={formatDisplayDuration(todayTotalDurationSeconds)}
               caption={
                 todayTaskBreakdown.length > 0
-                  ? `${todayTaskBreakdown.length} task bucket${
+                  ? `${formatDisplayCount(todayTaskBreakdown.length)} task${
                       todayTaskBreakdown.length === 1 ? "" : "s"
-                    } today`
+                    } tracked today`
                   : "No sessions captured today"
               }
             />
@@ -250,10 +291,6 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
               <div className="workspace-split-grid">
                 <div className="flex flex-col gap-3">
                   {topBreakdown.map((row) => {
-                    const sharePercent =
-                      todayTotalDurationSeconds > 0
-                        ? (row.durationSeconds / todayTotalDurationSeconds) * 100
-                        : 0;
                     return (
                       <div key={row.taskId} className="flex flex-col gap-1.5">
                         <div className="flex items-baseline justify-between gap-3">
@@ -268,7 +305,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                           <div
                             className="progress-fill"
                             style={{
-                              width: `${Math.round(sharePercent)}%`,
+                              width: `${Math.round(row.sharePercent)}%`,
                               background: "var(--ega-data-blue)",
                             }}
                           />
@@ -280,11 +317,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                 <DataLegend
                   items={topBreakdown.map((row, index) => ({
                     label: row.taskTitle,
-                    value: formatDisplayPercent(
-                      todayTotalDurationSeconds > 0
-                        ? (row.durationSeconds / todayTotalDurationSeconds) * 100
-                        : 0,
-                    ),
+                    value: formatDisplayPercent(row.sharePercent),
                     color: DISTRIBUTION_COLORS[index % DISTRIBUTION_COLORS.length],
                   }))}
                 />

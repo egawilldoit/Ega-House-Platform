@@ -85,16 +85,33 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
         label="Directory"
         title="Goals"
         action={
-          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Goal views">
-            {GOAL_VIEWS.map((view) => (
-              <FilterPill
-                key={view.value}
-                label={view.label}
-                href={`/goals?view=${view.value}`}
-                active={activeView === view.value}
-                ariaCurrent={activeView === view.value ? "page" : undefined}
-              />
-            ))}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Goal views">
+              {GOAL_VIEWS.map((view) => (
+                <FilterPill
+                  key={view.value}
+                  label={view.label}
+                  href={`/goals?view=${view.value}`}
+                  active={activeView === view.value}
+                  ariaCurrent={activeView === view.value ? "page" : undefined}
+                />
+              ))}
+            </div>
+            <details className="action-overflow">
+              <summary className="btn-instrument flex h-8 cursor-pointer list-none items-center gap-1.5 px-3 text-sm">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New goal
+              </summary>
+              <div className="action-overflow-menu w-[min(42rem,calc(100vw-2.5rem))] p-4">
+                {projects.length === 0 ? (
+                  <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                    Create a project first to attach a goal to the workspace.
+                  </p>
+                ) : (
+                  <CreateGoalForm projects={projects} />
+                )}
+              </div>
+            </details>
           </div>
         }
       >
@@ -103,6 +120,9 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
             {goals.map((goal) => {
               const isSelected = goal.id === focusedGoal?.id;
               const goalHealth = goal.health;
+              const completedTaskCount = goal.linkedTasks.filter(
+                (task) => task.status === "done",
+              ).length;
 
               return (
                 <li
@@ -132,14 +152,18 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
                     </span>
                   </Link>
 
-                  <div className="hidden w-28 shrink-0 sm:block">
+                  <div className="hidden w-32 shrink-0 sm:block">
                     <div className="mb-1 text-right text-[length:var(--text-meta)] tabular-nums text-ega-text-secondary">
-                      {formatDisplayPercent(goal.progressPercent)}
+                      {`${formatDisplayCount(completedTaskCount)} / ${formatDisplayCount(
+                        goal.linkedTasks.length,
+                      )} tasks`}
                     </div>
                     <ProgressBar
                       value={goal.progressPercent}
                       label={`${goal.title} linked task completion`}
-                      valueText={`${goal.progressPercent}% of linked tasks done`}
+                      valueText={`${formatDisplayCount(completedTaskCount)} of ${formatDisplayCount(
+                        goal.linkedTasks.length,
+                      )} linked tasks done`}
                     />
                   </div>
 
@@ -170,34 +194,6 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
             }
           />
         )}
-      </Card>
-
-      <Card
-        label="Create"
-        title="New goal"
-        action={
-          <Badge tone="muted">
-            {formatDisplayCount(projects.length)} project{projects.length === 1 ? "" : "s"}
-          </Badge>
-        }
-      >
-        <CardContent>
-          {projects.length === 0 ? (
-            <p className="surface-empty px-4 py-4 text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-ega-text-secondary">
-              Create a project first to attach a goal to the workspace.
-            </p>
-          ) : (
-            <details className="action-overflow w-full">
-              <summary className="btn-instrument flex h-8 w-full cursor-pointer list-none items-center justify-center gap-1.5 px-3 text-sm">
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                New goal
-              </summary>
-              <div className="mt-3">
-                <CreateGoalForm projects={projects} />
-              </div>
-            </details>
-          )}
-        </CardContent>
       </Card>
     </div>
   );
@@ -255,6 +251,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
 
           <Card
             id={`goal-${focusedGoal.id}`}
+            level="hero"
             className="scroll-mt-24"
             label="Goal detail"
             title={focusedGoal.title}
@@ -277,7 +274,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
             <CardContent className="flex flex-col gap-4">
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <Metric
-                  label="Progress"
+                  label="Linked task completion"
                   value={formatDisplayPercent(focusedGoal.progressPercent)}
                   caption={`${formatDisplayCount(completedLinkedTasks)} of ${formatDisplayCount(linkedTasks.length)} linked task${linkedTasks.length === 1 ? "" : "s"} done`}
                 />
