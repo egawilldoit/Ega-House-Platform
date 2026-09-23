@@ -137,7 +137,7 @@ test("quick task parsed preview includes goal status and blocked reason", () => 
   assert.match(singleModeSection, /label: "Goal"/);
   assert.match(singleModeSection, /parsedSingleCommand\.goalName \?\? selectedGoalName/);
   assert.match(singleModeSection, /label: "Status"/);
-  assert.match(singleModeSection, /formatTaskToken\(singleStatus\)/);
+  assert.match(singleModeSection, /formatDisplayStatus\(singleStatus\)/);
   assert.match(singleModeSection, /label: "Blocked reason"/);
   assert.match(singleModeSection, /singleBlockedReason \|\| "Required"/);
 });
@@ -213,4 +213,78 @@ test("quick task multi mode does not render worked-time UI", () => {
   assert.doesNotMatch(multiModeSection, /quick-task-worked-to/);
   assert.doesNotMatch(multiModeSection, /name="workedTimeStartedAt"/);
   assert.doesNotMatch(multiModeSection, /name="workedTimeEndedAt"/);
+});
+
+test("quick task single mode rebuilds metadata as one equal two-column grid", () => {
+  assert.match(singleModeSection, /grid grid-cols-1 gap-4 sm:grid-cols-2/);
+
+  // `className` strings contain brackets, so compare them literally instead of
+  // building a regex that would treat them as a character class.
+  const assertControl = (id: string, expectedClass: string) => {
+    const controlStart = singleModeSection.indexOf(`id="${id}"`);
+    assert.notEqual(controlStart, -1, `missing control: ${id}`);
+    // Slice to the end of the element itself: self-closing inputs end with "/>"
+    // and selects with "</select>". Prop values can be long, so a fixed window
+    // is unreliable.
+    const selfClosing = singleModeSection.indexOf("/>", controlStart);
+    const selectClose = singleModeSection.indexOf("</select>", controlStart);
+    const candidates = [selfClosing, selectClose].filter((index) => index !== -1);
+    const elementEnd = candidates.length > 0 ? Math.min(...candidates) : controlStart + 600;
+    const element = singleModeSection.slice(controlStart, elementEnd);
+    assert.ok(
+      element.includes(expectedClass),
+      `${id} must carry "${expectedClass}"`,
+    );
+  };
+
+  assertControl("quick-task-command", 'className="h-11 w-full text-[length:var(--text-body-lg)]"');
+  assertControl("quick-task-project", 'className="input-instrument h-11 w-full text-sm"');
+  assertControl("quick-task-goal", 'className="input-instrument h-11 w-full text-sm"');
+  assertControl("quick-task-status", 'className="input-instrument h-11 w-full text-sm"');
+  assertControl("quick-task-priority", 'className="input-instrument h-11 w-full text-sm"');
+  assertControl("quick-task-due-date", 'className="h-11 w-full"');
+  assertControl("quick-task-estimate", 'className="h-11 w-full"');
+
+  assert.doesNotMatch(singleModeSection, /xl:grid-cols|grid-cols-5/);
+});
+
+test("quick task single mode presents More details as a quiet disclosure", () => {
+  assert.match(singleModeSection, /<details className="group">/);
+  assert.doesNotMatch(singleModeSection, /<details className="group sm:col-span-2/);
+  const optionalDetails = getSection(singleModeSection, "<details", "</details>");
+  assert.doesNotMatch(optionalDetails, /ega-glass-soft|bg-white/);
+  assert.match(optionalDetails, /<summary[\s\S]+More details[\s\S]+<\/summary>/);
+});
+
+test("quick task status options use canonical display labels in both modes", () => {
+  const singleStatusOptions = getSection(
+    singleModeSection,
+    'id="quick-task-status"',
+    "</select>",
+  );
+  assert.match(singleStatusOptions, /\{formatDisplayStatus\(status\)\}/);
+  assert.doesNotMatch(singleStatusOptions, /formatTaskToken/);
+
+  const multiStatusOptions = getSection(
+    multiModeSection,
+    "id={`draft-${draft.id}-status`}",
+    "</select>",
+  );
+  assert.match(multiStatusOptions, /\{formatDisplayStatus\(status\)\}/);
+  assert.doesNotMatch(multiStatusOptions, /formatTaskToken/);
+});
+
+test("quick task calendar reminder carries a unit", () => {
+  const reminderField = getSection(
+    singleModeSection,
+    'name="calendarReminderMinutes"',
+    "</div>",
+  );
+  assert.match(reminderField, /minutes before/);
+});
+
+test("quick task sheets carry no legacy gold tokens or hard-coded whites", () => {
+  assert.doesNotMatch(quickTaskSheetSource, /ega-gold/);
+  assert.doesNotMatch(quickTaskSheetSource, /bg-white/);
+  assert.doesNotMatch(quickTaskSheetSource, /accent-\[rgb\(/);
 });
