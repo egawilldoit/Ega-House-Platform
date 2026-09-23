@@ -242,3 +242,61 @@ describe("TaskCardActions compact dense rows", () => {
     expect(container.querySelector('[data-testid="task-more-options-task-1"]')).not.toBeNull();
   });
 });
+
+describe("Advanced task settings layout polish", () => {
+  async function openEditor() {
+    await renderCard();
+    await click(container.querySelector('[data-testid="task-more-options-task-1"]')!);
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    return dialog!;
+  }
+
+  it("sizes the sheet to its content with a capped viewport height", async () => {
+    const dialog = await openEditor();
+
+    expect(dialog.className).toContain("h-fit");
+    expect(dialog.className).toContain("max-h-[min(50rem,calc(100dvh-2rem))]");
+  });
+
+  it("renders canonical status labels and the calendar reminder unit", async () => {
+    const dialog = await openEditor();
+
+    const todoOption = dialog.querySelector<HTMLOptionElement>(
+      'select[name="status"] option[value="todo"]',
+    );
+    expect(todoOption?.textContent).toBe("To do");
+
+    const reminderInput = dialog.querySelector<HTMLInputElement>(
+      'input[name="calendarReminderMinutes"]:not([type="hidden"])',
+    );
+    expect(reminderInput?.value).toBe("30");
+    expect(dialog.textContent).toContain("minutes before");
+  });
+
+  it("groups the reminder slot and keeps destructive actions in the overflow", async () => {
+    const dialog = await openEditor();
+
+    const reminderHeading = Array.from(dialog.querySelectorAll("p")).find(
+      (node) => node.textContent === "Reminder",
+    );
+    expect(reminderHeading).not.toBeUndefined();
+    expect(dialog.textContent).toContain("Reminder controls");
+
+    const save = Array.from(dialog.querySelectorAll("button")).find(
+      (button) => button.textContent === "Save changes",
+    );
+    expect(save).not.toBeUndefined();
+    expect(save?.className).toContain("btn-instrument");
+    expect(save?.className).not.toContain("status-overdue");
+
+    const overflow = dialog.querySelector(".action-overflow");
+    expect(overflow?.textContent).toContain("Archive");
+    expect(overflow?.textContent).toContain("Delete task");
+
+    const archive = Array.from(overflow?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent === "Archive",
+    );
+    expect(archive?.className).toContain("status-overdue");
+  });
+});

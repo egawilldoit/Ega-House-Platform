@@ -230,7 +230,7 @@ export function TaskSavedViewsPanel({
                 <input type="hidden" name="tasks" value={currentFilters.activeTasks ? "active" : ""} />
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="flex-1 space-y-1">
-                    <label htmlFor={`view-name-${view.id}`} className="glass-label text-etch">
+                    <label htmlFor={`view-name-${view.id}`} className="form-label">
                       Name
                     </label>
                     <Input

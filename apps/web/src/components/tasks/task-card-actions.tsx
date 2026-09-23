@@ -147,11 +147,11 @@ export function TaskCardActions({
         </SheetTrigger>
 
         <SheetContent
-        closeLabel="Close task options"
+          closeLabel="Close task options"
           aria-label={`Advanced task settings for ${inlineProps.taskTitle}`}
-          className="flex flex-col"
+          className="flex h-fit max-h-[min(50rem,calc(100dvh-2rem))] flex-col min-[761px]:w-[calc(100%-var(--sidebar-width))]"
         >
-          <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ega-border)] px-5 pb-4 pt-5 sm:px-6">
             <SheetHeader className="min-w-0">
               <p className="glass-label">Task settings</p>
               <SheetTitle>Advanced settings</SheetTitle>
@@ -169,9 +169,14 @@ export function TaskCardActions({
             </SheetClose>
           </div>
 
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            {reminders}
-            <InlineTaskUpdateForm {...inlineProps} />
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+            {reminders ? (
+              <section className="space-y-3">
+                <p className="glass-label text-etch">Reminder</p>
+                {reminders}
+              </section>
+            ) : null}
+            <InlineTaskUpdateForm {...inlineProps} stickyFooter />
           </div>
         </SheetContent>
       </Sheet>
