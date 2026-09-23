@@ -9,6 +9,11 @@ type InlineGoalHealthFormProps = {
   returnTo: string;
   defaultHealth: string | null;
   error?: string | null;
+  /**
+   * Renders only the form so a parent disclosure can own the "Edit goal"
+   * affordance; standalone rendering keeps its own disclosure.
+   */
+  embedded?: boolean;
 };
 
 export function InlineGoalHealthForm({
@@ -17,8 +22,46 @@ export function InlineGoalHealthForm({
   returnTo,
   defaultHealth,
   error,
+  embedded = false,
 }: InlineGoalHealthFormProps) {
   const currentHealth = toGoalHealthOrNull(defaultHealth);
+  const form = (
+    <form
+      action={action}
+      className={embedded ? "flex flex-wrap items-end gap-2" : "mt-3 flex flex-wrap items-end gap-2"}
+    >
+      <input type="hidden" name="goalId" value={goalId} />
+      <input type="hidden" name="returnTo" value={returnTo} />
+
+      <label className="flex flex-col gap-1.5">
+        <span className="glass-label">Update health</span>
+        <select
+          name="health"
+          defaultValue={defaultHealth ?? ""}
+          className="input-instrument h-8 min-w-36 px-2.5 text-[length:var(--text-meta-lg)]"
+        >
+          <option value="">Not set</option>
+          {GOAL_HEALTH_VALUES.map((healthValue) => (
+            <option key={healthValue} value={healthValue}>
+              {getGoalHealthLabel(healthValue)}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <Button size="sm" type="submit" variant="secondary">
+        Save health
+      </Button>
+
+      {error ? (
+        <p role="alert" className="feedback-block feedback-block-error w-full">
+          {error}
+        </p>
+      ) : null}
+    </form>
+  );
+
+  if (embedded) return form;
 
   return (
     <details className="w-full sm:w-auto" open={Boolean(error)}>
@@ -26,37 +69,7 @@ export function InlineGoalHealthForm({
         <span>Health: {currentHealth ? getGoalHealthLabel(currentHealth) : "Not set"}</span>
         <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
       </summary>
-
-      <form action={action} className="mt-3 flex flex-wrap items-end gap-2">
-        <input type="hidden" name="goalId" value={goalId} />
-        <input type="hidden" name="returnTo" value={returnTo} />
-
-        <label className="flex flex-col gap-1.5">
-          <span className="glass-label">Update health</span>
-          <select
-            name="health"
-            defaultValue={defaultHealth ?? ""}
-            className="input-instrument h-8 min-w-36 px-2.5 text-[length:var(--text-meta-lg)]"
-          >
-            <option value="">Not set</option>
-            {GOAL_HEALTH_VALUES.map((healthValue) => (
-              <option key={healthValue} value={healthValue}>
-                {getGoalHealthLabel(healthValue)}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <Button size="sm" type="submit" variant="secondary">
-          Save health
-        </Button>
-
-        {error ? (
-          <p role="alert" className="feedback-block feedback-block-error w-full">
-            {error}
-          </p>
-        ) : null}
-      </form>
+      {form}
     </details>
   );
 }

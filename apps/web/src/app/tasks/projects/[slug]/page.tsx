@@ -34,13 +34,14 @@ import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
 import { buildTaskFilterReturnPath } from "@/components/tasks/task-filter-url";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
 import { Metric } from "@/components/ui/metric";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   isProjectArchivedStatus,
   normalizeProjectViewFilter,
@@ -461,13 +462,14 @@ export default async function ProjectDetailPage({
                 <form action={projectIsArchived ? unarchiveProjectAction : archiveProjectAction}>
                   <input type="hidden" name="projectId" value={project.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <Button
+                  <PendingSubmitButton
                     type="submit"
                     variant={projectIsArchived ? "secondary" : "danger"}
                     size="sm"
+                    pendingLabel={projectIsArchived ? "Unarchiving…" : "Archiving…"}
                   >
                     {projectIsArchived ? "Unarchive project" : "Archive project"}
-                  </Button>
+                  </PendingSubmitButton>
                 </form>
                 {projectIsArchived ? (
                   <Link

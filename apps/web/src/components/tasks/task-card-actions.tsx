@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { MoreHorizontal, Play, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   Sheet,
   SheetClose,
@@ -95,20 +96,21 @@ export function TaskCardActions({
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={inlineProps.taskId} />
           <input type="hidden" name="returnTo" value={inlineProps.returnTo} />
-          <Button
+          <PendingSubmitButton
             type="submit"
             size="sm"
             variant="muted"
             aria-label={compact ? `Start timer for ${inlineProps.taskTitle}` : undefined}
-            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-8 max-[761px]:w-8" : undefined}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
             data-testid={compact ? `task-start-timer-${inlineProps.taskId}` : undefined}
+            pendingLabel="Starting…"
           >
             {compact ? (
               <Play className="h-3.5 w-3.5" aria-hidden="true" />
             ) : (
               "Start timer"
             )}
-          </Button>
+          </PendingSubmitButton>
         </form>
       ) : null}
 
@@ -137,7 +139,7 @@ export function TaskCardActions({
             variant="muted"
             aria-label={`More options for ${inlineProps.taskTitle}`}
             data-testid={`task-more-options-${inlineProps.taskId}`}
-            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-8 max-[761px]:w-8" : undefined}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
             {compact ? null : "More options"}

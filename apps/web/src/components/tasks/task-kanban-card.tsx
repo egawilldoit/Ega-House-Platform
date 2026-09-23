@@ -5,8 +5,7 @@ import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { buttonVariants } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import {
@@ -155,10 +154,16 @@ export function TaskKanbanCard({
               {showTimerAction ? (
                 <form action={startTimerAction}>
                   <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                  <Button type="submit" size="sm" variant="default" className="gap-1.5 px-2.5">
+                  <PendingSubmitButton
+                    type="submit"
+                    size="sm"
+                    variant="default"
+                    className="gap-1.5 px-2.5"
+                    pendingLabel="Starting…"
+                  >
                     <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
                     Start timer
-                  </Button>
+                  </PendingSubmitButton>
                 </form>
               ) : null}
             </div>
@@ -249,12 +254,15 @@ export function TaskKanbanCard({
                                   placeholder="What is blocking this?"
                                 />
                               </label>
-                              <button
+                              <PendingSubmitButton
                                 type="submit"
-                                className={`${buttonVariants({ size: "sm", variant: "danger" })} w-full justify-center`}
+                                size="sm"
+                                variant="danger"
+                                className="w-full justify-center"
+                                pendingLabel="Saving…"
                               >
                                 Save Blocked
-                              </button>
+                              </PendingSubmitButton>
                             </form>
                           </details>
                         ) : (
@@ -265,14 +273,18 @@ export function TaskKanbanCard({
                               nextStatus={status}
                               blockedReasonValue=""
                             />
-                            <button
+                            <PendingSubmitButton
                               type="submit"
-                              className={buttonVariants({ size: "sm", variant: "muted" })}
+                              size="sm"
+                              variant="muted"
+                              pendingLabel={
+                                task.status === "done" && status === "todo" ? "Reopening…" : "Moving…"
+                              }
                             >
                               {task.status === "done" && status === "todo"
                                 ? "Reopen"
                                 : getTaskKanbanStatusActionLabel(status)}
-                            </button>
+                            </PendingSubmitButton>
                           </form>
                         ),
                       )}
@@ -297,9 +309,14 @@ export function TaskKanbanCard({
                       {archiveAction ? (
                         <form action={archiveAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                          <Button type="submit" size="sm" variant="danger">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="danger"
+                            pendingLabel="Archiving…"
+                          >
                             Archive
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
 
@@ -307,9 +324,14 @@ export function TaskKanbanCard({
                         <form action={deleteAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <Button type="submit" size="sm" variant="danger">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="danger"
+                            pendingLabel="Deleting…"
+                          >
                             Delete
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
                     </div>
@@ -323,9 +345,14 @@ export function TaskKanbanCard({
                       {unarchiveAction ? (
                         <form action={unarchiveAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                          <Button type="submit" size="sm" variant="muted">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="muted"
+                            pendingLabel="Restoring…"
+                          >
                             Restore
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
 
@@ -333,9 +360,14 @@ export function TaskKanbanCard({
                         <form action={deleteAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <Button type="submit" size="sm" variant="danger">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="danger"
+                            pendingLabel="Deleting…"
+                          >
                             Delete
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
                     </div>

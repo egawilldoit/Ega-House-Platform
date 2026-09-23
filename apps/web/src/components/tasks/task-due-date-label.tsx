@@ -1,6 +1,7 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
-import { formatTaskDueDate, getTaskDueDateState } from "@/lib/task-due-date";
+import { formatDisplayDate } from "@/lib/presentation-format";
+import { getTaskDueDateState } from "@/lib/task-due-date";
 import { cn } from "@/lib/utils";
 
 type TaskDueDateLabelProps = {
@@ -61,7 +62,7 @@ export function TaskDueDateLabel({
           textClassName,
         )}
       >
-        Due {formatTaskDueDate(dueDate)}
+        Due {formatDisplayDate(dueDate, "detail")}
       </span>
       {badgeConfig.label ? <Badge tone={badgeConfig.tone}>{badgeConfig.label}</Badge> : null}
     </div>

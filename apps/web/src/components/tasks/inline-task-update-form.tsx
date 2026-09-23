@@ -125,7 +125,7 @@ export function TaskMarkDoneForm({
         type="submit"
         variant="muted"
         aria-label={compact ? `Mark ${taskTitle ?? "task"} done` : undefined}
-        className={compact ? "h-7 w-7 !px-0 max-[761px]:h-8 max-[761px]:w-8" : undefined}
+        className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
         pendingLabel="Marking done..."
       >
         {compact ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : "Mark done"}

@@ -166,7 +166,9 @@ describe("TasksPageView workspace composition", () => {
   it("keeps view and layout switches URL-authoritative and filter-preserving", async () => {
     await render();
 
-    expect(findLink("Active")?.getAttribute("href")).toBe(
+    // The display label is "Current"; the query value stays the not-archived
+    // scope (no `archive` param), exactly as before.
+    expect(findLink("Current")?.getAttribute("href")).toBe(
       "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc",
     );
     expect(findLink("Archived")?.getAttribute("href")).toBe(
@@ -182,8 +184,9 @@ describe("TasksPageView workspace composition", () => {
       "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc&layout=kanban",
     );
 
-    expect(findLink("Active")?.getAttribute("aria-current")).toBe("page");
+    expect(findLink("Current")?.getAttribute("aria-current")).toBe("page");
     expect(findLink("List")?.getAttribute("aria-current")).toBe("page");
+    expect(findLink("Active")).toBeUndefined();
   });
 
   it("defaults to the dense table and switches to the kanban board", async () => {
@@ -203,28 +206,26 @@ describe("TasksPageView workspace composition", () => {
     expect(board?.querySelectorAll(".tasks-kanban-column").length).toBe(4);
   });
 
-  it("renders neutral count chips and dispatches the canonical new-task event", async () => {
+  it("renders one quiet summary line and exactly one page-level new-task CTA", async () => {
     const quickTask = vi.fn();
     window.addEventListener(QUICK_TASK_EVENT, quickTask);
 
     await render();
 
-    expect(container.textContent).toContain("1 visible");
-    expect(container.textContent).toContain("3 total");
-    expect(container.textContent).toContain("1 blocked");
+    const summary = container.querySelector('[data-testid="tasks-summary"]');
+    expect(summary?.textContent).toBe("1 shown · 3 total · 1 overdue · 1 in progress · 1 blocked");
+
+    // The rail no longer duplicates the primary CTA; the toolbar owns it.
+    expect(container.querySelectorAll('[data-testid="tasks-new-task"]').length).toBe(1);
+    expect(container.querySelector('[data-testid="tasks-rail-new-task"]')).toBeNull();
 
     await act(async () => {
       container
         .querySelector('[data-testid="tasks-new-task"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    await act(async () => {
-      container
-        .querySelector('[data-testid="tasks-rail-new-task"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
 
-    expect(quickTask).toHaveBeenCalledTimes(2);
+    expect(quickTask).toHaveBeenCalledTimes(1);
     // The surface reuses the shell's single QuickTaskSheet.
     expect(container.querySelector('[role="dialog"]')).toBeNull();
 
@@ -239,6 +240,17 @@ describe("TasksPageView workspace composition", () => {
     expect(container.textContent).toContain("Saved views");
     expect(container.textContent).toContain("Quick add task");
     expect(container.querySelector('[data-testid="mock-create-task-form"]')).not.toBeNull();
+  });
+
+  it("keeps the empty pinned section compact and lets it grow when work is pinned", async () => {
+    await render(buildModel({ focusQueue: [], tasks: [] }));
+
+    const pinnedEmpty = container.textContent;
+    expect(pinnedEmpty).toContain("No pinned tasks.");
+    expect(container.querySelector(".rows")).toBeNull();
+
+    await render();
+    expect(container.querySelectorAll(".rows .row").length).toBeGreaterThan(0);
   });
 
   it("renders filter-aware and truly-empty list states", async () => {

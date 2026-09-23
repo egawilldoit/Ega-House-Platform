@@ -2,7 +2,7 @@ import React from "react";
 import { CalendarClock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 
 type TaskReminderPanelProps = {
@@ -84,9 +84,9 @@ export function TaskReminderPanel({
               className="input-instrument h-8 w-full px-2.5 text-[length:var(--text-meta-lg)]"
             />
           </label>
-          <Button type="submit" size="sm" variant="muted">
+          <PendingSubmitButton type="submit" size="sm" variant="muted" pendingLabel="Creating…">
             Create
-          </Button>
+          </PendingSubmitButton>
         </form>
 
         {currentPendingReminder ? (
@@ -95,9 +95,15 @@ export function TaskReminderPanel({
             <input type="hidden" name="reminderId" value={currentPendingReminder.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="status" value="cancelled" />
-            <Button type="submit" size="sm" variant="danger" className="w-full justify-center">
+            <PendingSubmitButton
+              type="submit"
+              size="sm"
+              variant="danger"
+              className="w-full justify-center"
+              pendingLabel="Cancelling…"
+            >
               Cancel
-            </Button>
+            </PendingSubmitButton>
           </form>
         ) : null}
       </div>

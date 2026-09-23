@@ -10,8 +10,8 @@ import { SupabaseProjectsRepository } from "@ega/data-access";
 
 import { purgeProjectAction } from "@/app/tasks/projects/actions";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   isProjectArchivedStatus,
   normalizeProjectViewFilter,
@@ -182,9 +182,9 @@ export default async function ProjectDeletePage({
             </label>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="submit" variant="danger" size="sm">
+              <PendingSubmitButton type="submit" variant="danger" size="sm" pendingLabel="Deleting…">
                 Purge project permanently
-              </Button>
+              </PendingSubmitButton>
               <Link
                 href={projectsHref}
                 className="btn-instrument btn-instrument-muted inline-flex h-7 items-center px-2.5 text-xs"
