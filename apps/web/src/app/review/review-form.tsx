@@ -29,7 +29,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
   return (
     <form action={formAction} className="flex flex-col gap-4">
       <div className="space-y-2">
-        <label htmlFor="weekOf" className="glass-label">
+        <label htmlFor="weekOf" className="form-label">
           Week date
         </label>
         <Input
@@ -43,7 +43,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="summary" className="glass-label">
+        <label htmlFor="summary" className="form-label">
           Summary
         </label>
         <Textarea
@@ -59,7 +59,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <label htmlFor="wins" className="glass-label">
+          <label htmlFor="wins" className="form-label">
             Wins
           </label>
           <Textarea
@@ -72,7 +72,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="blockers" className="glass-label">
+          <label htmlFor="blockers" className="form-label">
             Blockers
           </label>
           <Textarea
@@ -86,7 +86,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="next_steps" className="glass-label">
+        <label htmlFor="next_steps" className="form-label">
           Next steps
         </label>
         <Textarea

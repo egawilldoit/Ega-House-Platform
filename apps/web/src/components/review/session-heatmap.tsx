@@ -1,7 +1,7 @@
 import React from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { DailyTrackedTime } from "@/lib/review-session-heatmap";
 
 /**
@@ -93,7 +93,7 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
             </p>
             <p>
               <span className="font-medium tabular-nums text-ega-text">
-                {formatDurationLabel(totalSeconds)}
+                {formatDisplayDuration(totalSeconds, "minute")}
               </span>{" "}
               tracked
             </p>
@@ -115,7 +115,7 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
             >
               {data.map((entry) => {
                 const level = getSessionHeatmapIntensityLevel(entry.trackedSeconds, maxSeconds);
-                const label = `${formatHeatmapDateLabel(entry.date)}: ${formatDurationLabel(entry.trackedSeconds)} tracked`;
+                const label = `${formatHeatmapDateLabel(entry.date)}: ${formatDisplayDuration(entry.trackedSeconds, "minute")} tracked`;
 
                 return (
                   <div
@@ -165,7 +165,7 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
                 {data.map((entry) => (
                   <tr key={entry.date}>
                     <th scope="row">{entry.date}</th>
-                    <td>{formatDurationLabel(entry.trackedSeconds)}</td>
+                    <td>{formatDisplayDuration(entry.trackedSeconds, "minute")}</td>
                   </tr>
                 ))}
               </tbody>

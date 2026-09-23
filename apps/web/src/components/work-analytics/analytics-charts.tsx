@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import { cn } from "@/lib/utils";
 import type { WorkAnalyticsDaily } from "@/lib/services/work-analytics-service";
 
@@ -30,6 +30,8 @@ const ALLOCATION_COLORS = [
   "var(--ega-data-yellow)",
   "var(--ega-data-slate)",
 ] as const;
+
+const CHART_BAR_FILL = "color-mix(in srgb, var(--ega-data-blue) 30%, var(--ega-surface))";
 
 function toIsoUtcDate(date: string) {
   return new Date(`${date}T00:00:00.000Z`);
@@ -193,6 +195,7 @@ export function FocusTrendChart({
   const labelStep = Math.max(1, Math.ceil(data.length / 8));
   const activePoint = points.find((point) => point.date === activeDate) ?? null;
   const interactive = Boolean(onBucketClick);
+  const showsTrendLine = showTrendLine && variant === "bars" && trendPoints.length > 1;
 
   const activate = (date: string, label: string) => {
     if (!onBucketClick) return;
@@ -255,6 +258,7 @@ export function FocusTrendChart({
                     stroke={active ? "var(--ega-text)" : "none"}
                     strokeWidth={active ? 1 : 0}
                     vectorEffect="non-scaling-stroke"
+                    style={active ? undefined : { fill: CHART_BAR_FILL }}
                   />
                 );
               })
@@ -279,7 +283,7 @@ export function FocusTrendChart({
             </>
           ) : null}
 
-          {showTrendLine && variant === "bars" && trendPoints.length > 1 ? (
+          {showsTrendLine ? (
             <path
               className="chart-line"
               d={linePath}
@@ -298,8 +302,9 @@ export function FocusTrendChart({
                 key={`hit-${point.date}`}
                 role={interactive ? "button" : undefined}
                 tabIndex={interactive ? 0 : undefined}
-                aria-label={`${formatBucketLabelLong(point.date)}: ${formatDurationLabel(
+                aria-label={`${formatBucketLabelLong(point.date)}: ${formatDisplayDuration(
                   point.workedMinutes * 60,
+                  "minute",
                 )}, ${point.sessionCount} session${point.sessionCount === 1 ? "" : "s"}`}
                 className={cn(
                   "outline-none",
@@ -354,7 +359,7 @@ export function FocusTrendChart({
           >
             <p className="font-medium text-ega-text">{formatBucketLabelLong(activePoint.date)}</p>
             <p className="tabular-nums text-ega-text-secondary">
-              {formatDurationLabel(activePoint.workedMinutes * 60)} · {activePoint.sessionCount}{" "}
+              {formatDisplayDuration(activePoint.workedMinutes * 60, "minute")} · {activePoint.sessionCount}{" "}
               session{activePoint.sessionCount === 1 ? "" : "s"}
             </p>
             {onBucketClick ? (
@@ -363,6 +368,32 @@ export function FocusTrendChart({
           </div>
         ) : null}
       </div>
+
+      {variant === "bars" ? (
+        <ul
+          className="mt-2 flex flex-wrap items-center gap-4 text-[length:var(--text-meta)] text-ega-text-secondary"
+          aria-label="Chart legend"
+        >
+          <li className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
+              style={{ background: CHART_BAR_FILL }}
+            />
+            Daily focus
+          </li>
+          {showsTrendLine ? (
+            <li className="inline-flex items-center gap-1.5">
+              <span
+                aria-hidden="true"
+                className="h-0.5 w-4 shrink-0 rounded-full"
+                style={{ background: "var(--ega-data-blue)" }}
+              />
+              7-day average
+            </li>
+          ) : null}
+        </ul>
+      ) : null}
 
       <table className="sr-only">
         <caption>{tableCaption}</caption>
@@ -377,7 +408,7 @@ export function FocusTrendChart({
           {data.map((item) => (
             <tr key={item.date}>
               <th scope="row">{item.date}</th>
-              <td>{formatDurationLabel(item.workedMinutes * 60)}</td>
+              <td>{formatDisplayDuration(item.workedMinutes * 60, "minute")}</td>
               <td>{item.sessionCount}</td>
             </tr>
           ))}
@@ -432,7 +463,7 @@ export function AllocationDonut({
           key: "__other__",
           label: "Other",
           value: restValue,
-          detail: formatDurationLabel(restValue * 60),
+          detail: formatDisplayDuration(restValue * 60, "minute"),
           onSelect: undefined,
         },
       ]
@@ -608,6 +639,7 @@ export function WeekdayDistributionChart({
               y={PAD_TOP + plotHeight - barHeight}
               width={barWidth}
               height={barHeight}
+              style={{ fill: CHART_BAR_FILL }}
             />
           );
         })}
@@ -632,7 +664,7 @@ export function WeekdayDistributionChart({
           {data.map((entry) => (
             <tr key={entry.label}>
               <th scope="row">{entry.label}</th>
-              <td>{formatDurationLabel(entry.workedMinutes * 60)}</td>
+              <td>{formatDisplayDuration(entry.workedMinutes * 60, "minute")}</td>
               <td>{entry.sessionCount}</td>
             </tr>
           ))}

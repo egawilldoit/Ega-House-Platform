@@ -5,21 +5,26 @@ import { Card, CardContent } from "@/components/ui/card";
 import { DashboardSection } from "@/components/ui/dashboard-section";
 import { MetricDelta } from "@/components/ui/metric";
 import { StatCard } from "@/components/ui/stat-card";
-import { formatDurationLabel } from "@/lib/task-session";
+import {
+  DISPLAY_EMPTY,
+  formatDisplayDuration,
+  formatDisplayDurationDelta,
+  formatDisplayMultiple,
+  formatDisplayPercent,
+} from "@/lib/presentation-format";
 import { InteractiveAnalytics } from "../interactive-analytics";
 import type { WorkAnalyticsPageModel } from "../_lib/work-analytics-page-model";
 
 function signedPercent(value: number | null) {
-  if (value === null) return "--";
-  return `${value >= 0 ? "+" : ""}${value}%`;
+  return formatDisplayPercent(value, { signed: true });
 }
 
 function signedDuration(minutes: number) {
-  return `${minutes >= 0 ? "+" : "-"}${formatDurationLabel(Math.abs(minutes) * 60)}`;
+  return formatDisplayDurationDelta(minutes * 60, "minute");
 }
 
 function formatMinutes(minutes: number) {
-  return formatDurationLabel(minutes * 60);
+  return formatDisplayDuration(minutes * 60, "minute");
 }
 
 function ContextStat({ label, value }: { label: string; value: string }) {
@@ -72,6 +77,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     report.estimateAccuracy.exactCount;
   const weekDelta = report.thisWeekInsights;
   const groupBy = model.filters?.groupBy ?? "day";
+  const estimateRatio =
+    report.estimateAccuracy.totalEstimatedMinutes > 0
+      ? report.estimateAccuracy.totalTrackedMinutes /
+        report.estimateAccuracy.totalEstimatedMinutes
+      : null;
 
   const weekChangeLabel =
     weekDelta.percentChange === null
@@ -121,25 +131,27 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
             data-testid="analytics-kpi-estimate-variance"
             label="Estimate variance"
             icon={Target}
-            value={signedPercent(report.estimateAccuracy.estimateDeltaPercent)}
+            value={estimateRatio === null ? DISPLAY_EMPTY : signedDuration(report.estimateAccuracy.estimateDeltaMinutes)}
             trend={
-              <MetricDelta
-                value={signedDuration(report.estimateAccuracy.estimateDeltaMinutes)}
-                direction={
-                  report.estimateAccuracy.estimateDeltaMinutes > 0
-                    ? "up"
-                    : report.estimateAccuracy.estimateDeltaMinutes < 0
-                      ? "down"
-                      : "flat"
-                }
-                higherIsBetter={false}
-                label="Tracked vs estimated"
-              />
+              estimateRatio === null ? undefined : (
+                <MetricDelta
+                  value={formatDisplayMultiple(estimateRatio)}
+                  direction={
+                    report.estimateAccuracy.estimateDeltaMinutes > 0
+                      ? "up"
+                      : report.estimateAccuracy.estimateDeltaMinutes < 0
+                        ? "down"
+                        : "flat"
+                  }
+                  higherIsBetter={false}
+                  label="estimate"
+                />
+              )
             }
             subtitle={
-              report.estimateAccuracy.totalEstimatedMinutes > 0
-                ? `Estimated ${formatMinutes(report.estimateAccuracy.totalEstimatedMinutes)} · tracked ${formatMinutes(report.estimateAccuracy.totalTrackedMinutes)}`
-                : `No estimate on ${report.estimateAccuracy.noEstimateCount} tasks`
+              estimateRatio === null
+                ? `No estimate on ${report.estimateAccuracy.noEstimateCount} tasks`
+                : `${signedPercent(report.estimateAccuracy.estimateDeltaPercent)} variance · Estimated ${formatMinutes(report.estimateAccuracy.totalEstimatedMinutes)} · tracked ${formatMinutes(report.estimateAccuracy.totalTrackedMinutes)}`
             }
           />
         </div>
@@ -182,29 +194,36 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <MetricDelta
-                    value={signedPercent(report.estimateAccuracy.estimateDeltaPercent)}
-                    direction={
-                      report.estimateAccuracy.estimateDeltaMinutes > 0
-                        ? "up"
-                        : report.estimateAccuracy.estimateDeltaMinutes < 0
-                          ? "down"
-                          : "flat"
-                    }
-                    higherIsBetter={false}
-                    label="vs estimated"
-                  />
-                  <span className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-                    {report.estimateAccuracy.estimateDeltaMinutes === 0
-                      ? "on estimate"
-                      : `${signedDuration(report.estimateAccuracy.estimateDeltaMinutes)} ${
-                          report.estimateAccuracy.estimateDeltaMinutes > 0
+                {estimateRatio === null ? (
+                  <p className="text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                    No estimated tasks in this range.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <MetricDelta
+                      value={signedDuration(report.estimateAccuracy.estimateDeltaMinutes)}
+                      direction={
+                        report.estimateAccuracy.estimateDeltaMinutes > 0
+                          ? "up"
+                          : report.estimateAccuracy.estimateDeltaMinutes < 0
+                            ? "down"
+                            : "flat"
+                      }
+                      higherIsBetter={false}
+                      label={
+                        report.estimateAccuracy.estimateDeltaMinutes === 0
+                          ? "on estimate"
+                          : report.estimateAccuracy.estimateDeltaMinutes > 0
                             ? "over estimate"
                             : "under estimate"
-                        }`}
-                  </span>
-                </div>
+                      }
+                    />
+                    <span className="text-[length:var(--text-meta)] text-ega-text-tertiary">
+                      {formatDisplayMultiple(estimateRatio)} estimate ·{" "}
+                      {signedPercent(report.estimateAccuracy.estimateDeltaPercent)} variance
+                    </span>
+                  </div>
+                )}
                 <p className="text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-ega-text-secondary">
                   Tasks with estimates {tasksWithEstimates} ({report.estimateAccuracy.overCount} over,{" "}
                   {report.estimateAccuracy.underCount} under, {report.estimateAccuracy.exactCount}{" "}

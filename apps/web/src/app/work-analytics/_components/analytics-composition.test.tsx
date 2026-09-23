@@ -156,6 +156,23 @@ test("WorkAnalyticsPageView renders the reference composition", () => {
   assert.match(markup, /<table class="sr-only">/);
 });
 
+test("estimate variance leads with the absolute delta, then the ratio, then the percentage", () => {
+  const markup = renderToStaticMarkup(<WorkAnalyticsPageView model={model} />);
+  const start = markup.indexOf('data-testid="analytics-kpi-estimate-variance"');
+  assert.ok(start > -1, "expected the estimate variance KPI card");
+  const card = markup.slice(start, start + 2000);
+
+  const absoluteIndex = card.indexOf("+1h");
+  const ratioIndex = card.indexOf("1.3×");
+  const percentIndex = card.indexOf("+25%");
+
+  assert.ok(absoluteIndex > -1, "expected the absolute delta on the estimate KPI");
+  assert.ok(ratioIndex > -1, "expected the ratio on the estimate KPI");
+  assert.ok(percentIndex > -1, "expected the demoted percentage on the estimate KPI");
+  assert.ok(absoluteIndex < ratioIndex, "the absolute delta must lead the ratio");
+  assert.ok(ratioIndex < percentIndex, "the ratio must lead the percentage");
+});
+
 test("a chart bucket click opens the drilldown for its sessions", async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   const container = document.createElement("div");
@@ -176,7 +193,7 @@ test("a chart bucket click opens the drilldown for its sessions", async () => {
   const bodyText = document.body.textContent ?? "";
   assert.match(bodyText, /Sessions on Sep 14/);
   assert.match(bodyText, /Ship the refactor/);
-  assert.match(bodyText, /1h 0m 0s total/);
+  assert.match(bodyText, /1h total/);
 
   await act(async () => {
     root.unmount();

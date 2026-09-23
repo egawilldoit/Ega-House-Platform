@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { CompactStat } from "@/components/ui/metric";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import { formatTaskToken } from "@/lib/task-domain";
 
 export type WeeklyStats = {
@@ -23,7 +23,7 @@ export function StatsCards({ stats }: StatsCardsProps) {
       <div className="grid grid-cols-2 gap-x-4 gap-y-3">
         <CompactStat label="Tasks created" value={stats.tasksCreated} />
         <CompactStat label="Sessions logged" value={stats.sessionsLogged} />
-        <CompactStat label="Focus time" value={formatDurationLabel(stats.trackedSeconds)} />
+        <CompactStat label="Focus time" value={formatDisplayDuration(stats.trackedSeconds, "minute")} />
         <CompactStat label="Goals touched" value={stats.goalsTouched} />
       </div>
 
