@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Textarea } from "@/components/ui/textarea";
 
 const QUICK_STARTERS = [
@@ -94,9 +94,16 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <Button type="submit" variant="muted" size="sm" disabled={!reflectionNote.trim()} className="w-fit">
+      <PendingSubmitButton
+        type="submit"
+        variant="muted"
+        size="sm"
+        disabled={!reflectionNote.trim()}
+        className="w-fit"
+        pendingLabel="Saving…"
+      >
         Save note
-      </Button>
+      </PendingSubmitButton>
     </form>
   );
 }

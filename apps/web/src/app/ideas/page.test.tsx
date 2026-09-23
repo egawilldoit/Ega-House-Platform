@@ -30,6 +30,21 @@ test("ideas page filter form contains search, type, status, project, priority in
   assert.match(source, /name="tag"/, "Should have tag input");
 });
 
+test("ideas page filter submit uses the canonical pending control", () => {
+  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
+
+  assert.match(
+    source,
+    /<PendingSubmitButton[^>]*pendingLabel="Applying…"/,
+    "Apply filters should surface an in-flight pending label",
+  );
+  assert.match(
+    source,
+    /import \{ PendingSubmitButton \} from "@\/components\/ui\/pending-submit-button"/,
+    "Apply filters should use the shared pending submit primitive",
+  );
+});
+
 test("ideas page uses link-based view switches (All/Inbox/Archived)", () => {
   const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
 
