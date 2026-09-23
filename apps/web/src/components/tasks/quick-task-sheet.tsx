@@ -1364,7 +1364,7 @@ export function QuickTaskSheet({
             }
             lastFocusedElementRef.current = null;
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex h-[calc(100dvh-2rem)] max-h-[50rem] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
         >
           {open ? (
             <QuickTaskSheetPanel
