@@ -57,13 +57,13 @@ export function TodayIntelligencePanel({
           {health.errorMessage || !health.data ? (
             <div className="feedback-block feedback-block-warn" role="status">
               <Badge tone="muted">Unavailable</Badge>
-              <p>Workload evidence is unavailable. Your Today plan remains usable.</p>
+              <p>Workload guidance is unavailable. Your Today plan remains usable.</p>
             </div>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={health.data.quality.quality === "sufficient" ? "success" : "info"}>
-                  {health.data.quality.quality === "sufficient" ? "Evidence ready" : "Evidence limited"}
+                  {health.data.quality.quality === "sufficient" ? "Enough data" : "Limited data"}
                 </Badge>
                 <Badge tone="muted">{health.data.rollingWorkload.totalTrackedLabel} this week</Badge>
               </div>
@@ -71,7 +71,7 @@ export function TodayIntelligencePanel({
                 {healthRecommendation?.message ??
                   (health.data.quality.quality === "insufficient"
                     ? "Track a few sessions to make workload guidance more useful."
-                    : "No workload guidance is needed from the available evidence.")}
+                    : "No workload guidance is needed right now.")}
               </p>
               {healthRecommendation ? (
                 <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">

@@ -71,6 +71,25 @@ async function render(model: Parameters<typeof AuthenticatedHomePage>[0]["model"
   });
 }
 
+type HomeSummary = NonNullable<Parameters<typeof AuthenticatedHomePage>[0]["model"]["summary"]>;
+
+function summary(overrides: Partial<HomeSummary> = {}): HomeSummary {
+  return {
+    plannedCount: 0,
+    inProgressCount: 0,
+    blockedCount: 0,
+    completedCount: 0,
+    selectedCount: 0,
+    clearableCompletedCount: 0,
+    overdueCount: 0,
+    dueTodayCount: 0,
+    totalEstimateMinutes: 0,
+    trackedTodaySeconds: 0,
+    trackedTodayLabel: "0m",
+    ...overrides,
+  };
+}
+
 function emptyModel(overrides: Partial<Parameters<typeof AuthenticatedHomePage>[0]["model"]> = {}) {
   return {
     activeTimer: null,
@@ -146,6 +165,69 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     await render(emptyModel({ nextUp: task({ id: "n", title: "Follow-up" }) }));
     expect(container.querySelectorAll('[data-testid="home-next-up"]').length).toBe(1);
     expect(container.textContent).toContain("Follow-up");
+  });
+
+  it("scopes the Progress counts to today and formats the planned load centrally", async () => {
+    await render(
+      emptyModel({
+        summary: summary({
+          plannedCount: 2,
+          inProgressCount: 1,
+          completedCount: 3,
+          totalEstimateMinutes: 90,
+        }),
+      }),
+    );
+
+    const progress = container.querySelector('[data-testid="home-progress"]');
+    expect(progress?.textContent).toContain("Planned today");
+    expect(progress?.textContent).toContain("In progress today");
+    expect(progress?.textContent).toContain("2");
+    expect(progress?.textContent).toContain("1");
+    expect(progress?.textContent).toContain("1h 30m");
+    expect(progress?.textContent).toContain("50%");
+  });
+
+  it("keeps the Progress empty state compact with a link to Today", async () => {
+    await render(emptyModel({ summary: summary() }));
+
+    const progress = container.querySelector('[data-testid="home-progress"]');
+    expect(progress?.textContent).toContain("Nothing is planned for today yet.");
+    expect(progress?.querySelector('a[href="/today"]')).not.toBeNull();
+    expect(progress?.querySelector("dl")).toBeNull();
+  });
+
+  it("hides Start Here from Up next while preserving canonical queue order", async () => {
+    await render(
+      emptyModel({
+        startHere: task({ id: "a", title: "Start task" }),
+        focusQueue: [
+          task({ id: "a", title: "Start task" }),
+          task({ id: "b", title: "Second task" }),
+          task({ id: "c", title: "Third task" }),
+        ],
+      }),
+    );
+
+    const panel = container.querySelector('[data-testid="home-focus-queue"]');
+    const text = panel?.textContent ?? "";
+    expect(text).toContain("Up next");
+    expect(text).not.toContain("Start task");
+    expect(text.indexOf("Second task")).toBeGreaterThan(-1);
+    expect(text.indexOf("Second task")).toBeLessThan(text.indexOf("Third task"));
+  });
+
+  it("shows a compact Up next line when Start Here is the only queued task", async () => {
+    await render(
+      emptyModel({
+        startHere: task({ id: "a", title: "Start task" }),
+        focusQueue: [task({ id: "a", title: "Start task" })],
+      }),
+    );
+
+    const panel = container.querySelector('[data-testid="home-focus-queue"]');
+    expect(panel?.textContent).toContain("Nothing else queued right now.");
+    expect(panel?.textContent).not.toContain("Start task");
   });
 
   it("reuses canonical attention counts and their canonical destinations", async () => {

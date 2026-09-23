@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -69,6 +71,20 @@ test("EGA-648: every lane row can start its own focus session with the canonical
   assert.match(markup, /flexible/);
 });
 
+test("EGA-648: lane Focus submits use the canonical pending control", () => {
+  const source = readFileSync(
+    resolve(import.meta.dirname, "./today-lane-panel.tsx"),
+    "utf-8",
+  );
+
+  assert.match(
+    source,
+    /import \{ PendingSubmitButton \} from "@\/components\/ui\/pending-submit-button"/,
+    "Focus should use the shared pending submit primitive",
+  );
+  assert.match(source, /pendingLabel="Starting…"/);
+});
+
 test("EGA-648: a running task shows Stop instead of a second start action", () => {
   const markup = render({
     scheduledBlocks: [task({ id: "running", hasActiveTimer: true, status: "in_progress" })],
@@ -95,4 +111,5 @@ test("EGA-648: completed lane rows expose no timer action", () => {
 test("EGA-648: an empty lane states that nothing is scheduled", () => {
   const markup = render();
   assert.match(markup, /Nothing scheduled/);
+  assert.doesNotMatch(markup, /Scheduled blocks and today's flexible work appear here/);
 });

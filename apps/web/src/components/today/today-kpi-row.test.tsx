@@ -113,6 +113,11 @@ test("EGA-647: Today KPI row keeps planned, in-progress and completed counts fro
   assert.match(card("today-kpi-in-progress"), />1</);
   assert.match(card("today-kpi-completed"), />1</);
   assert.ok(markup.includes('data-testid="today-kpi-tracked"'));
+  assert.match(markup, /Planned today/);
+  assert.match(markup, /In progress today/);
+  assert.match(markup, /Completed today/);
+  assert.match(markup, /Tracked today/);
+  assert.match(markup, /tasks past due across the workspace/);
 });
 
 test("EGA-647: active timer is surfaced in the tracked metric instead of a fake duration", () => {

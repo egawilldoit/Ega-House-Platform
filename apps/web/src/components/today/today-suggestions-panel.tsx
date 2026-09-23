@@ -5,9 +5,9 @@ import { addTaskToTodayAction } from "@/app/today/actions";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
 import { ExternalLink, Lightbulb, PlusCircle, Sparkles } from "lucide-react";
@@ -63,10 +63,16 @@ function SuggestionCard({
         <form action={addTaskToTodayAction}>
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
-          <Button type="submit" size="sm" variant="default" aria-label={`Add ${task.title} to Today`}>
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="default"
+            aria-label={`Add ${task.title} to Today`}
+            pendingLabel="Adding…"
+          >
             <PlusCircle className="h-3.5 w-3.5" aria-hidden="true" />
             Add to Today
-          </Button>
+          </PendingSubmitButton>
         </form>
 
         {isActiveTimerTask ? (
@@ -75,9 +81,9 @@ function SuggestionCard({
           <form action={startTimerAction}>
             <input type="hidden" name="taskId" value={task.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="ghost">
+            <PendingSubmitButton type="submit" size="sm" variant="ghost" pendingLabel="Starting…">
               Start timer
-            </Button>
+            </PendingSubmitButton>
           </form>
         ) : null}
 
