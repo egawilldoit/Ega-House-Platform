@@ -99,10 +99,59 @@ describe("TasksListTable dense inventory", () => {
       "Goal",
       "Priority",
       "Due",
-      "Est.",
       "Status",
       "Actions",
     ]);
+  });
+
+  it("lets the table fill its column with content-responsive tracks", async () => {
+    await renderTable();
+
+    const table = container.querySelector("table.data-table");
+    expect(table?.classList.contains("min-[761px]:w-full")).toBe(true);
+    // The old 51rem floor forced an inner scroll on a 1280 desktop; the new
+    // floor only engages below tablet width, where the wrapper scrolls.
+    expect(table?.classList.contains("min-[761px]:min-w-[44rem]")).toBe(true);
+    expect(table?.className).not.toContain("min-w-[51rem]");
+
+    const headerWidths = Array.from(container.querySelectorAll("thead th")).map(
+      (header) => header.getAttribute("class") ?? "",
+    );
+    // Secondary columns are percentage tracks; only the Task column is auto.
+    expect(headerWidths[1]).toContain("w-[12.5%]");
+    expect(headerWidths[2]).toContain("w-[12%]");
+    expect(headerWidths[3]).toContain("w-[11%]");
+    expect(headerWidths[6]).toContain("w-[11%]");
+  });
+
+  it("keeps a title tooltip on project and goal values and shows the estimate in the task cell", async () => {
+    await renderTable();
+
+    const projectSpan = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.textContent === "EGA House",
+    );
+    expect(projectSpan?.getAttribute("title")).toBe("EGA House");
+    expect(projectSpan?.classList.contains("truncate")).toBe(true);
+
+    const goalSpan = Array.from(container.querySelectorAll("span")).find(
+      (span) => span.textContent === "Tighten weekly review",
+    );
+    expect(goalSpan?.getAttribute("title")).toBe("Tighten weekly review");
+
+    // The estimate column was folded into the Task cell (hidden on phones,
+    // where the phone meta badge carries it instead).
+    const estimateBadge = Array.from(container.querySelectorAll("span")).find(
+      (span) =>
+        span.textContent === "Est. 1h 15m" && span.classList.contains("max-[761px]:hidden"),
+    );
+    expect(estimateBadge).not.toBeUndefined();
+
+    // Desktop due cell is compact; the phone label keeps the full date.
+    const dueCell = Array.from(container.querySelectorAll("span")).find((span) =>
+      span.getAttribute("title") === "May 1, 2026",
+    );
+    expect(dueCell?.textContent).toContain("May 1");
+    expect(dueCell?.textContent).not.toContain("2026");
   });
 
   it("keeps the #task-<id> anchor and one progressive-disclosure editor per row", async () => {

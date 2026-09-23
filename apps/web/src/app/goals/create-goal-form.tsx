@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { GOAL_HEALTH_VALUES, getGoalHealthLabel } from "@/lib/goal-health";
 import { GOAL_NEXT_STEP_MAX_LENGTH } from "@/lib/goal-next-step";
-import { GOAL_STATUS_VALUES, formatTaskToken } from "@/lib/task-domain";
+import { formatDisplayStatus } from "@/lib/presentation-format";
+import { GOAL_STATUS_VALUES } from "@/lib/task-domain";
 
 import { type CreateGoalFormState, createGoalAction } from "./actions";
 
@@ -98,7 +99,7 @@ export function CreateGoalForm({ projects }: CreateGoalFormProps) {
           >
             {GOAL_STATUS_VALUES.map((status) => (
               <option key={status} value={status}>
-                {formatTaskToken(status)}
+                {formatDisplayStatus(status)}
               </option>
             ))}
           </select>

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+
+import { formatDisplayDate } from "@/lib/presentation-format";
 import { ChevronDown, FolderKanban, Plus } from "lucide-react";
 
 import {
@@ -17,10 +19,11 @@ import {
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatCard } from "@/components/ui/stat-card";
 import {
@@ -143,7 +146,11 @@ function ProjectRow({
       <td className="hidden md:table-cell">
         <div className="flex items-center gap-2">
           <div className="w-16 shrink-0">
-            <ProgressBar value={project.progressPercent} />
+            <ProgressBar
+              value={project.progressPercent}
+              label={`${project.name} linked task completion`}
+              valueText={`${project.progressPercent}% of linked tasks done`}
+            />
           </div>
           <span className="text-[length:var(--text-meta-lg)] font-medium tabular-nums text-ega-text">
             {project.progressPercent}%
@@ -155,7 +162,7 @@ function ProjectRow({
       </td>
 
       <td className="hidden whitespace-nowrap tabular-nums text-ega-text-secondary xl:table-cell">
-        {new Date(project.updatedAt).toLocaleDateString("en-US")}
+        {formatDisplayDate(project.updatedAt, "detail")}
       </td>
 
       <td className="w-[92px]">
@@ -195,14 +202,15 @@ function ProjectRow({
               <form action={isArchived ? unarchiveProjectAction : archiveProjectAction}>
                 <input type="hidden" name="projectId" value={project.id} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <Button
+                <PendingSubmitButton
                   type="submit"
                   variant={isArchived ? "secondary" : "danger"}
                   size="sm"
                   className="w-full justify-center"
+                  pendingLabel={isArchived ? "Unarchiving…" : "Archiving…"}
                 >
                   {isArchived ? "Unarchive project" : "Archive project"}
-                </Button>
+                </PendingSubmitButton>
               </form>
 
               {isArchived ? (

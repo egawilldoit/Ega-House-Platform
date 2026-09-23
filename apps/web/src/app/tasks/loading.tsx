@@ -20,10 +20,10 @@ export default function TasksLoadingPage() {
   return (
     <TasksWorkspaceShell
       title="Tasks"
-      description="High-density inventory — filter, sort, move work forward."
+      description="Find, organize, and move your work forward."
       actions={<Skeleton className="h-8 w-24" />}
     >
-      <div className="workspace-main-rail-grid">
+      <div className="workspace-main-rail-grid xl:grid-cols-[minmax(0,1fr)_clamp(13rem,14vw,15rem)]">
         <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -49,8 +49,6 @@ export default function TasksLoadingPage() {
         </Card>
 
         <div className="workspace-secondary-rail">
-          <Skeleton className="h-8 w-full" />
-
           <Card label="Focus" title="Pinned tasks">
             <CardContent className="flex flex-col gap-2">
               <Skeleton className="h-4 w-48 max-w-full" />

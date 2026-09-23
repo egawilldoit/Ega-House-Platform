@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, ChevronRight, Target } from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Target } from "lucide-react";
 
 import { InlineGoalHealthForm } from "@/components/goals/inline-goal-health-form";
 import { InlineGoalNextStepForm } from "@/components/goals/inline-goal-next-step-form";
@@ -17,14 +17,24 @@ import { Metric } from "@/components/ui/metric";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { isGoalArchivedStatus } from "@/lib/goal-archive";
 import { getGoalHealthLabel, getGoalHealthTone } from "@/lib/goal-health";
-import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
+import {
+  formatDisplayCount,
+  formatDisplayDate,
+  formatDisplayPercent,
+  formatDisplayStatus,
+} from "@/lib/presentation-format";
+import { getTaskStatusTone } from "@/lib/task-domain";
 
 import { archiveGoalAction, unarchiveGoalAction, updateGoalHealthAction, updateGoalNextStepAction, updateGoalStatusAction } from "../actions";
 import { CreateGoalForm } from "../create-goal-form";
 import type { GoalsPageModel } from "../_lib/goals-page-model";
 
+/**
+ * `active` is the not-archived scope and it contains Draft goals, so the tab is
+ * labelled "Current" rather than claiming a status.
+ */
 const GOAL_VIEWS = [
-  { value: "active", label: "Active" },
+  { value: "active", label: "Current" },
   { value: "archived", label: "Archived" },
   { value: "all", label: "All" },
 ] as const;
@@ -50,8 +60,24 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
       total + goal.linkedTasks.filter((task) => task.status === "done").length,
     0,
   );
-  const overallProgress =
+  // `summary` counts every goal status in the workspace, so non-archived is exact.
+  const currentGoalCount = Math.max(0, summary.total - summary.archived);
+  const linkedTaskCompletion =
     linkedTaskTotal > 0 ? Math.round((linkedTaskDone / linkedTaskTotal) * 100) : null;
+
+  const healthError =
+    focusedGoal && goalUpdateGoalId === focusedGoal.id && goalUpdateField === "health"
+      ? goalUpdateError
+      : null;
+  const statusError =
+    focusedGoal && goalUpdateGoalId === focusedGoal.id && goalUpdateField === "status"
+      ? goalUpdateError
+      : null;
+  const nextStepError =
+    focusedGoal && goalUpdateGoalId === focusedGoal.id && goalUpdateField === "next_step"
+      ? goalUpdateError
+      : null;
+  const editGoalHasError = Boolean(healthError || statusError || nextStepError);
 
   const directory = (
     <div className="flex min-w-0 flex-col gap-4">
@@ -100,7 +126,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
                     <span className="row-meta">
                       {goal.projectName ?? "Unassigned project"}
                       {" · "}
-                      {goal.linkedTasks.length} linked task
+                      {formatDisplayCount(goal.linkedTasks.length)} linked task
                       {goal.linkedTasks.length === 1 ? "" : "s"}
                       {isGoalArchivedStatus(goal.status) ? " · Archived" : ""}
                     </span>
@@ -108,14 +134,18 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
 
                   <div className="hidden w-28 shrink-0 sm:block">
                     <div className="mb-1 text-right text-[length:var(--text-meta)] tabular-nums text-ega-text-secondary">
-                      {goal.progressPercent}%
+                      {formatDisplayPercent(goal.progressPercent)}
                     </div>
-                    <ProgressBar value={goal.progressPercent} />
+                    <ProgressBar
+                      value={goal.progressPercent}
+                      label={`${goal.title} linked task completion`}
+                      valueText={`${goal.progressPercent}% of linked tasks done`}
+                    />
                   </div>
 
                   <span className="row-actions">
                     <Badge tone={getTaskStatusTone(goal.status)}>
-                      {formatTaskToken(goal.status)}
+                      {formatDisplayStatus(goal.status)}
                     </Badge>
                     <Badge tone={goalHealth ? getGoalHealthTone(goalHealth) : "muted"}>
                       {goalHealth ? getGoalHealthLabel(goalHealth) : "Health not set"}
@@ -135,7 +165,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
             title={summary.total > 0 ? "No goals in this view" : "No goals yet"}
             description={
               summary.total > 0
-                ? "Archived goals are hidden from the default view. Switch to Archived or All to review them."
+                ? "Archived goals are hidden from the Current view. Switch to Archived or All to review them."
                 : "Create a goal to start tracking progress against a defined outcome."
             }
           />
@@ -145,7 +175,11 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
       <Card
         label="Create"
         title="New goal"
-        action={<Badge tone="muted">{projects.length} project{projects.length === 1 ? "" : "s"}</Badge>}
+        action={
+          <Badge tone="muted">
+            {formatDisplayCount(projects.length)} project{projects.length === 1 ? "" : "s"}
+          </Badge>
+        }
       >
         <CardContent>
           {projects.length === 0 ? (
@@ -153,7 +187,15 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
               Create a project first to attach a goal to the workspace.
             </p>
           ) : (
-            <CreateGoalForm projects={projects} />
+            <details className="action-overflow w-full">
+              <summary className="btn-instrument flex h-8 w-full cursor-pointer list-none items-center justify-center gap-1.5 px-3 text-sm">
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                New goal
+              </summary>
+              <div className="mt-3">
+                <CreateGoalForm projects={projects} />
+              </div>
+            </details>
           )}
         </CardContent>
       </Card>
@@ -165,33 +207,44 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
       <div className="kpi-grid">
         <div className="kpi-card">
           <Metric
-            label="Active goals"
-            value={summary.active}
-            caption={`${summary.total} goals in the workspace`}
+            label="Current goals"
+            value={formatDisplayCount(currentGoalCount)}
+            caption="Non-archived goals"
+          />
+        </div>
+        <div className="kpi-card">
+          <Metric
+            label="Active status"
+            value={formatDisplayCount(summary.active)}
+            caption="Goals set to active"
+          />
+        </div>
+        <div className="kpi-card">
+          <Metric
+            label="Archived"
+            value={formatDisplayCount(summary.archived)}
+            caption="Hidden from the Current view"
           />
         </div>
         <div className="kpi-card">
           <Metric
             label="At health risk"
-            value={atRiskGoalCount}
+            value={formatDisplayCount(atRiskGoalCount)}
             caption="At risk or off track in this view"
           />
         </div>
-        <div className="kpi-card">
-          <Metric
-            label="Completed"
-            value={summary.completed}
-            caption={`${summary.archived} archived`}
-          />
-        </div>
-        {overallProgress !== null ? (
+        {linkedTaskCompletion !== null ? (
           <div className="kpi-card">
             <Metric
-              label="Overall progress"
-              value={`${overallProgress}%`}
-              caption={`${linkedTaskDone}/${linkedTaskTotal} linked tasks done in this view`}
+              label="Linked task completion"
+              value={formatDisplayPercent(linkedTaskCompletion)}
+              caption={`${formatDisplayCount(linkedTaskDone)} of ${formatDisplayCount(linkedTaskTotal)} linked tasks done in this view`}
             />
-            <ProgressBar value={overallProgress} />
+            <ProgressBar
+              value={linkedTaskCompletion}
+              label="Linked task completion"
+              valueText={`${linkedTaskCompletion}% of linked tasks done`}
+            />
           </div>
         ) : null}
       </div>
@@ -208,7 +261,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
             action={
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={getTaskStatusTone(focusedGoal.status)}>
-                  {formatTaskToken(focusedGoal.status)}
+                  {formatDisplayStatus(focusedGoal.status)}
                 </Badge>
                 {focusedGoalHealth ? (
                   <Badge tone={getGoalHealthTone(focusedGoalHealth)}>
@@ -225,18 +278,22 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
               <div className="flex flex-wrap items-end justify-between gap-4">
                 <Metric
                   label="Progress"
-                  value={`${focusedGoal.progressPercent}%`}
-                  caption={`${completedLinkedTasks} of ${linkedTasks.length} linked task${linkedTasks.length === 1 ? "" : "s"} done`}
+                  value={formatDisplayPercent(focusedGoal.progressPercent)}
+                  caption={`${formatDisplayCount(completedLinkedTasks)} of ${formatDisplayCount(linkedTasks.length)} linked task${linkedTasks.length === 1 ? "" : "s"} done`}
                 />
                 <div className="text-right">
                   <p className="glass-label">Updated</p>
                   <p className="text-[length:var(--text-meta-lg)] tabular-nums text-ega-text-secondary">
-                    {new Date(focusedGoal.updatedAt).toLocaleDateString("en-US")}
+                    {formatDisplayDate(focusedGoal.updatedAt, "detail")}
                   </p>
                 </div>
               </div>
 
-              <ProgressBar value={focusedGoal.progressPercent} />
+              <ProgressBar
+                value={focusedGoal.progressPercent}
+                label={`${focusedGoal.title} linked task completion`}
+                valueText={`${focusedGoal.progressPercent}% of linked tasks done`}
+              />
 
               <dl className="grid gap-3 sm:grid-cols-2">
                 <div>
@@ -270,7 +327,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
               <div className="flex flex-col gap-2 border-t border-[var(--ega-divider)] pt-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="glass-label">Linked tasks</p>
-                  <Badge tone="muted">{linkedTasks.length}</Badge>
+                  <Badge tone="muted">{formatDisplayCount(linkedTasks.length)}</Badge>
                 </div>
 
                 {linkedTasks.length > 0 ? (
@@ -285,7 +342,7 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
                         </Link>
                         <span className="row-actions">
                           <Badge tone={getTaskStatusTone(task.status)}>
-                            {formatTaskToken(task.status)}
+                            {formatDisplayStatus(task.status)}
                           </Badge>
                         </span>
                       </li>
@@ -299,43 +356,49 @@ export function GoalsPageView({ model }: { model: GoalsPageModel }) {
               </div>
 
               <div className="flex flex-wrap items-start gap-2 border-t border-[var(--ega-divider)] pt-4">
-                <InlineGoalHealthForm
-                  action={updateGoalHealthAction}
-                  goalId={focusedGoal.id}
-                  returnTo={goalReturnTo}
-                  defaultHealth={focusedGoal.health}
-                  error={
-                    goalUpdateGoalId === focusedGoal.id && goalUpdateField === "health"
-                      ? goalUpdateError
-                      : null
-                  }
-                />
-                {!focusedGoalIsArchived ? (
-                  <InlineGoalStatusForm
-                    action={updateGoalStatusAction}
-                    goalId={focusedGoal.id}
-                    returnTo={goalReturnTo}
-                    defaultStatus={focusedGoal.status}
-                    error={
-                      goalUpdateGoalId === focusedGoal.id && goalUpdateField === "status"
-                        ? goalUpdateError
-                        : null
-                    }
-                  />
-                ) : null}
-                <InlineGoalNextStepForm
-                  action={updateGoalNextStepAction}
-                  goalId={focusedGoal.id}
-                  returnTo={goalReturnTo}
-                  defaultNextStep={focusedGoal.nextStep}
-                  error={
-                    goalUpdateGoalId === focusedGoal.id && goalUpdateField === "next_step"
-                      ? goalUpdateError
-                      : null
-                  }
-                />
-                <details className="w-full sm:w-auto" open={Boolean(archiveError)}>
+                <details className="w-full sm:w-auto" open={editGoalHasError}>
                   <summary className="filter-pill list-none cursor-pointer">
+                    <span>Edit goal</span>
+                    <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-3">
+                    <InlineGoalHealthForm
+                      embedded
+                      action={updateGoalHealthAction}
+                      goalId={focusedGoal.id}
+                      returnTo={goalReturnTo}
+                      defaultHealth={focusedGoal.health}
+                      error={healthError}
+                    />
+                    {!focusedGoalIsArchived ? (
+                      <InlineGoalStatusForm
+                        embedded
+                        action={updateGoalStatusAction}
+                        goalId={focusedGoal.id}
+                        returnTo={goalReturnTo}
+                        defaultStatus={focusedGoal.status}
+                        error={statusError}
+                      />
+                    ) : null}
+                    <InlineGoalNextStepForm
+                      embedded
+                      action={updateGoalNextStepAction}
+                      goalId={focusedGoal.id}
+                      returnTo={goalReturnTo}
+                      defaultNextStep={focusedGoal.nextStep}
+                      error={nextStepError}
+                    />
+                  </div>
+                </details>
+
+                <details className="w-full sm:w-auto" open={Boolean(archiveError)}>
+                  <summary
+                    className={
+                      focusedGoalIsArchived
+                        ? "filter-pill list-none cursor-pointer"
+                        : "filter-pill list-none cursor-pointer text-[color:var(--status-overdue)]"
+                    }
+                  >
                     <span>{focusedGoalIsArchived ? "Restore goal" : "Archive goal"}</span>
                     <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
                   </summary>

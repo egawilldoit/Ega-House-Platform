@@ -17,10 +17,11 @@ import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TaskSavedViewsPanel } from "@/components/tasks/task-saved-views-panel";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
+import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
 import { TasksListTable, type TaskListActions } from "./tasks-list-table";
@@ -32,8 +33,12 @@ function getTaskSignalTone(status: string, priority: string) {
   return "bg-[var(--ega-text-tertiary)]";
 }
 
+/**
+ * `active` is the not-archived scope (done tasks stay visible), so the tab is
+ * labelled "Current" rather than claiming a status.
+ */
 const TASK_VIEWS = [
-  { value: "active", label: "Active" },
+  { value: "active", label: "Current" },
   { value: "archived", label: "Archived" },
   { value: "all", label: "All" },
 ] as const;
@@ -67,8 +72,15 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
 
   const listHref = buildTaskListUrl("/tasks", { ...taskUrlFilters, view: activeView, layout: "list" });
   const kanbanHref = buildTaskListUrl("/tasks", { ...taskUrlFilters, view: activeView, layout: "kanban" });
-  const archivedTaskCount = summary.archived;
   const hasAnyTasks = summary.total > 0;
+  const summaryParts = [
+    `${formatDisplayCount(tasks.length)} shown`,
+    `${formatDisplayCount(summary.total)} total`,
+  ];
+  if (overdueCount > 0) summaryParts.push(`${formatDisplayCount(overdueCount)} overdue`);
+  if (inProgressCount > 0) summaryParts.push(`${formatDisplayCount(inProgressCount)} in progress`);
+  if (blockedCount > 0) summaryParts.push(`${formatDisplayCount(blockedCount)} blocked`);
+  if (dueSoonCount > 0) summaryParts.push(`${formatDisplayCount(dueSoonCount)} due soon`);
 
   const taskListActions: TaskListActions = {
     updateAction: updateTaskInlineAction,
@@ -99,15 +111,13 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
           >
             Reset filters
           </Link>
-        ) : (
-          <TasksNewTaskButton label="New task" />
-        )
+        ) : undefined
       }
     />
   );
 
   return (
-    <div className="workspace-main-rail-grid">
+    <div className="workspace-main-rail-grid xl:grid-cols-[minmax(0,1fr)_clamp(13rem,14vw,15rem)]">
       <div className="flex min-w-0 flex-col gap-4">
         <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
@@ -148,15 +158,12 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge tone="muted" className="tabular-nums">{tasks.length} visible</Badge>
-                <Badge tone="muted" className="tabular-nums">{summary.total} total</Badge>
-                {archivedTaskCount > 0 ? <Badge tone="muted" className="tabular-nums">{archivedTaskCount} archived</Badge> : null}
-                {blockedCount > 0 ? <Badge tone="muted" className="tabular-nums">{blockedCount} blocked</Badge> : null}
-                {inProgressCount > 0 ? <Badge tone="muted" className="tabular-nums">{inProgressCount} in progress</Badge> : null}
-                {overdueCount > 0 ? <Badge tone="muted" className="tabular-nums">{overdueCount} overdue</Badge> : null}
-                {dueSoonCount > 0 ? <Badge tone="muted" className="tabular-nums">{dueSoonCount} due soon</Badge> : null}
-              </div>
+              <p
+                className="min-w-0 text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]"
+                data-testid="tasks-summary"
+              >
+                {summaryParts.join(" · ")}
+              </p>
 
               <div className="ml-auto">
                 <TasksNewTaskButton testId="tasks-new-task" />
@@ -254,19 +261,11 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
       </div>
 
       <aside className="workspace-secondary-rail">
-        <TasksNewTaskButton
-          label="New task"
-          testId="tasks-rail-new-task"
-          className="w-full justify-center"
-        />
-
         <Card label="Focus" title="Pinned tasks">
           {focusQueue.length === 0 ? (
-            <CardContent>
-              <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
-                Pin tasks from the queue to build a deliberate focus order.
-              </p>
-            </CardContent>
+            <p className="px-[18px] py-3 text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-[color:var(--ega-text-tertiary)]">
+              No pinned tasks. Pin from the queue to build a focus order.
+            </p>
           ) : (
             <ul className="rows">
               {focusQueue.slice(0, 5).map((task) => (
@@ -312,12 +311,6 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
         />
 
         <Card label="Create" title="Quick add task">
-          <CardHeader className="!border-b-0 !pb-0">
-            <CardDescription>
-              The canonical task form, so every field stays available without a second
-              creation flow.
-            </CardDescription>
-          </CardHeader>
           <CardContent>
             {projects.length === 0 ? (
               <div className="flex flex-col gap-3">

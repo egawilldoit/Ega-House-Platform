@@ -200,11 +200,7 @@ export function TaskFilterControls({
               Clear filters
             </Link>
           </>
-        ) : (
-          <span className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
-            No active filters
-          </span>
-        )}
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort tasks">

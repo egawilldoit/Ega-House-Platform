@@ -4,11 +4,15 @@ import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { formatTaskDueDate, getTaskDueDateState } from "@/lib/task-due-date";
-import { formatTaskEstimate } from "@/lib/task-estimate";
+import { getTaskDueDateState } from "@/lib/task-due-date";
 import { isTaskArchived } from "@/lib/task-archive";
-import { formatTaskToken } from "@/lib/task-domain";
-import { formatDurationLabel } from "@/lib/task-session";
+import {
+  formatDisplayDate,
+  formatDisplayDuration,
+  formatDisplayEstimate,
+  formatDisplayStatus,
+  formatDisplayToken,
+} from "@/lib/presentation-format";
 import type { TaskRecord } from "@/lib/services/task-service";
 
 export type TaskListActions = {
@@ -50,6 +54,15 @@ type TasksListTableProps = {
  *
  * Keeping a single render preserves the `#task-<id>` anchor and mounts exactly
  * one progressive-disclosure editor per task at every width.
+ *
+ * Width policy: the table fills its column (`w-full`) and the secondary columns
+ * use percentage tracks, so the Task column takes every pixel left over. The
+ * 44rem floor only engages below tablet width, where the wrapper scrolls;
+ * at 1280/1440 the table fits without an inner scroll. Project/Goal get the
+ * largest secondary tracks and truncate with a `title` tooltip only for
+ * genuinely long names. The estimate lives in the Task cell instead of its own
+ * column; it stays visible on desktop and the phone meta block carries it
+ * below 761px.
  */
 export function TasksListTable({
   tasks,
@@ -61,29 +74,26 @@ export function TasksListTable({
 }: TasksListTableProps) {
   return (
     <div className="overflow-x-auto">
-      <table className="data-table table-fixed max-[761px]:block min-[761px]:min-w-[51rem] min-[761px]:leading-none">
+      <table className="data-table table-fixed max-[761px]:block min-[761px]:w-full min-[761px]:min-w-[44rem] min-[761px]:leading-none [&_td]:px-2 [&_th]:px-2">
         <thead className="max-[761px]:hidden">
           <tr>
             <th scope="col">Task</th>
-            <th scope="col" className="w-[5rem]">
+            <th scope="col" className="w-[12.5%]">
               Project
             </th>
-            <th scope="col" className="w-[5rem]">
+            <th scope="col" className="w-[12%]">
               Goal
             </th>
-            <th scope="col" className="w-[6rem]">
+            <th scope="col" className="w-[11%]">
               Priority
             </th>
-            <th scope="col" className="w-[9.5rem]">
+            <th scope="col" className="w-[15.5%]">
               Due
             </th>
-            <th scope="col" className="w-[4rem] text-right">
-              Est.
-            </th>
-            <th scope="col" className="w-[6.5rem]">
+            <th scope="col" className="w-[14%]">
               Status
             </th>
-            <th scope="col" className="w-[7.5rem] text-right">
+            <th scope="col" className="w-[11%] text-right">
               Actions
             </th>
           </tr>
@@ -134,8 +144,9 @@ function TaskDueCell({ dueDate, status }: { dueDate: string | null; status: stri
   return (
     <span
       className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[length:var(--text-meta)] tabular-nums ${DUE_STATE_CLASS[dueState]}`}
+      title={formatDisplayDate(dueDate, "detail")}
     >
-      {formatTaskDueDate(dueDate)}
+      {formatDisplayDate(dueDate, "compact")}
       {stateLabel ? <span>· {stateLabel}</span> : null}
     </span>
   );
@@ -158,7 +169,9 @@ function TaskListRow({
   const isPinned = task.focus_rank !== null;
   const projectName = task.projects?.name ?? null;
   const goalTitle = task.goals?.title ?? null;
-  const estimateLabel = task.estimate_minutes ? formatTaskEstimate(task.estimate_minutes) : null;
+  const estimateLabel = task.estimate_minutes
+    ? formatDisplayEstimate(task.estimate_minutes)
+    : null;
   const trackedLabel = typeof trackedSeconds === "number" ? trackedSeconds : null;
 
   const rowActions = (
@@ -224,6 +237,11 @@ function TaskListRow({
                 {task.description}
               </span>
             ) : null}
+            {estimateLabel ? (
+              <Badge tone="muted" className="max-[761px]:hidden">
+                Est. {estimateLabel}
+              </Badge>
+            ) : null}
             {isPinned ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
             {archived ? <Badge tone="muted">Archived</Badge> : null}
           </div>
@@ -237,13 +255,13 @@ function TaskListRow({
             data-testid={`task-phone-meta-${task.id}`}
           >
             <div className="flex flex-wrap items-center gap-1.5">
-              <StatusBadge status={task.status} />
+              <StatusBadge status={task.status} label={formatDisplayStatus(task.status)} />
               <Badge tone={task.priority === "urgent" || task.priority === "high" ? "warn" : "muted"}>
-                {formatTaskToken(task.priority)}
+                {formatDisplayToken(task.priority)}
               </Badge>
               {estimateLabel ? <Badge tone="muted">Est. {estimateLabel}</Badge> : null}
               {trackedLabel !== null ? (
-                <Badge tone="muted">Tracked {formatDurationLabel(trackedLabel)}</Badge>
+                <Badge tone="muted">Tracked {formatDisplayDuration(trackedLabel, "second")}</Badge>
               ) : null}
               <TaskDueDateLabel dueDate={task.due_date} status={task.status} />
             </div>
@@ -257,20 +275,26 @@ function TaskListRow({
       </td>
 
       <td className="max-[761px]:hidden">
-        <span className="block truncate text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+        <span
+          className="block truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
+          title={projectName ?? undefined}
+        >
           {projectName ?? "—"}
         </span>
       </td>
 
       <td className="max-[761px]:hidden">
-        <span className="block truncate text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+        <span
+          className="block truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
+          title={goalTitle ?? undefined}
+        >
           {goalTitle ?? "—"}
         </span>
       </td>
 
       <td className="max-[761px]:hidden">
         <Badge tone={task.priority === "urgent" || task.priority === "high" ? "warn" : "muted"}>
-          {formatTaskToken(task.priority)}
+          {formatDisplayToken(task.priority)}
         </Badge>
       </td>
 
@@ -278,12 +302,8 @@ function TaskListRow({
         <TaskDueCell dueDate={task.due_date} status={task.status} />
       </td>
 
-      <td className="numeric max-[761px]:hidden text-right text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-        {estimateLabel ?? "—"}
-      </td>
-
       <td className="max-[761px]:hidden">
-        <StatusBadge status={task.status} />
+        <StatusBadge status={task.status} label={formatDisplayStatus(task.status)} />
       </td>
 
       <td className="max-[761px]:contents">

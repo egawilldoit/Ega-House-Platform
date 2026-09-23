@@ -44,7 +44,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   return (
     <TasksWorkspaceShell
       title="Tasks"
-      description="High-density inventory — filter, sort, move work forward."
+      description="Find, organize, and move your work forward."
       actions={
         <Link
           href="/tasks/projects"

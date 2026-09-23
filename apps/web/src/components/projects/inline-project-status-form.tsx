@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   PROJECT_STATUS_VALUES,
   formatTaskToken,
@@ -39,9 +39,15 @@ export function InlineProjectStatusForm({
         </select>
       </label>
 
-      <Button size="sm" type="submit" variant="secondary" className="self-start">
+      <PendingSubmitButton
+        size="sm"
+        type="submit"
+        variant="secondary"
+        className="self-start"
+        pendingLabel="Saving…"
+      >
         Save status
-      </Button>
+      </PendingSubmitButton>
 
       {error ? (
         <p role="alert" className="feedback-block feedback-block-error">
