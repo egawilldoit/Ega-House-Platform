@@ -8,7 +8,7 @@ import { EditIdeaNoteForm } from "@/app/ideas/edit-idea-note-form";
 import { IdeaNoteArchiveControls } from "@/app/ideas/idea-note-archive-controls";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -19,6 +19,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   IDEA_NOTE_PRIORITIES,
   IDEA_NOTE_TYPES,
@@ -392,10 +393,10 @@ export default async function IdeasPage({ searchParams }: IdeasPageProps) {
 
             <div className="panel-footer">
               <div className="flex flex-wrap items-center gap-2">
-                <Button type="submit" size="sm" className="gap-2">
+                <PendingSubmitButton type="submit" size="sm" className="gap-2" pendingLabel="Applying…">
                   <Search className="h-4 w-4" aria-hidden="true" />
                   Apply filters
-                </Button>
+                </PendingSubmitButton>
                 <Link
                   href="/ideas"
                   className={cn(buttonVariants({ variant: "muted", size: "sm" }))}

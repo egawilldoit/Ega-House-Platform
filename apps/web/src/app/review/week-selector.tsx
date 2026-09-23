@@ -1,8 +1,8 @@
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { formatIsoDate } from "@/lib/review-week";
 
 type WeekSelectorProps = {
@@ -39,9 +39,9 @@ export function WeekSelector({
               className="h-8 max-w-xs px-2 text-[length:var(--text-meta-lg)]"
             />
           </div>
-          <Button type="submit" variant="muted" size="md">
+          <PendingSubmitButton type="submit" variant="muted" size="md" pendingLabel="Viewing…">
             View week
-          </Button>
+          </PendingSubmitButton>
         </form>
 
         <div className="flex flex-wrap items-center justify-between gap-3">

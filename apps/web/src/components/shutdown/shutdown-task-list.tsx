@@ -4,6 +4,7 @@ import { NotebookPen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskDueDate } from "@/lib/task-due-date";
 
@@ -24,6 +25,7 @@ type ShutdownTaskListProps = {
   emptyMessage: string;
   tasks: ShutdownTaskListItem[];
   actionLabel?: string;
+  actionPendingLabel?: string;
   action?: (formData: FormData) => Promise<void>;
   returnTo?: string;
 };
@@ -34,6 +36,7 @@ export function ShutdownTaskList({
   emptyMessage,
   tasks,
   actionLabel,
+  actionPendingLabel,
   action,
   returnTo = "/shutdown",
 }: ShutdownTaskListProps) {
@@ -85,12 +88,15 @@ export function ShutdownTaskList({
                   <form action={action}>
                     <input type="hidden" name="taskId" value={task.id} />
                     <input type="hidden" name="returnTo" value={returnTo} />
-                    <button
+                    <PendingSubmitButton
                       type="submit"
-                      className="btn-instrument btn-instrument-muted inline-flex h-7 items-center px-2.5 text-xs"
+                      size="sm"
+                      variant="muted"
+                      className="inline-flex items-center"
+                      pendingLabel={actionPendingLabel ?? `${actionLabel}…`}
                     >
                       {actionLabel}
-                    </button>
+                    </PendingSubmitButton>
                   </form>
                 ) : null}
               </div>
