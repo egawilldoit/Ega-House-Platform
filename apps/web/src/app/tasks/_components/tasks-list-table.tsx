@@ -57,12 +57,14 @@ type TasksListTableProps = {
  *
  * Width policy: the table fills its column (`w-full`) and the secondary columns
  * use percentage tracks, so the Task column takes every pixel left over. The
- * 44rem floor only engages below tablet width, where the wrapper scrolls;
- * at 1280/1440 the table fits without an inner scroll. Project/Goal get the
- * largest secondary tracks and truncate with a `title` tooltip only for
- * genuinely long names. The estimate lives in the Task cell instead of its own
- * column; it stays visible on desktop and the phone meta block carries it
- * below 761px.
+ * tracks follow the column priority — Task, then Project, then Goal, then the
+ * compact state columns — instead of giving every column an equal share, and
+ * Project/Goal get enough room that ordinary names do not truncate. Truncation
+ * keeps a `title` tooltip and only engages for genuinely long values. The 44rem
+ * floor only engages below tablet width, where the wrapper scrolls.
+ *
+ * The estimate lives in the Task cell instead of its own column; it stays
+ * visible on desktop and the phone meta block carries it below 761px.
  */
 export function TasksListTable({
   tasks,
@@ -78,22 +80,22 @@ export function TasksListTable({
         <thead className="max-[761px]:hidden">
           <tr>
             <th scope="col">Task</th>
-            <th scope="col" className="w-[12.5%]">
+            <th scope="col" className="w-[16%]">
               Project
             </th>
-            <th scope="col" className="w-[12%]">
+            <th scope="col" className="w-[14%]">
               Goal
             </th>
-            <th scope="col" className="w-[11%]">
+            <th scope="col" className="w-[9%]">
               Priority
             </th>
-            <th scope="col" className="w-[15.5%]">
+            <th scope="col" className="w-[11%]">
               Due
             </th>
-            <th scope="col" className="w-[14%]">
+            <th scope="col" className="w-[11%]">
               Status
             </th>
-            <th scope="col" className="w-[11%] text-right">
+            <th scope="col" className="w-[8%] text-right">
               Actions
             </th>
           </tr>

@@ -232,25 +232,26 @@ describe("TasksPageView workspace composition", () => {
     window.removeEventListener(QUICK_TASK_EVENT, quickTask);
   });
 
-  it("renders the right rail with pinned tasks, saved views, and the canonical quick-add form", async () => {
+  it("no longer renders a secondary rail: no Focus, Pinned tasks or Saved views", async () => {
     await render();
 
-    expect(container.textContent).toContain("Pinned tasks");
-    expect(container.textContent).toContain("Draft weekly execution review");
-    expect(container.textContent).toContain("Saved views");
-    expect(container.textContent).toContain("Quick add task");
-    expect(container.querySelector('[data-testid="mock-create-task-form"]')).not.toBeNull();
+    // The product decision is to remove these surfaces from /tasks entirely, not
+    // to hide them: nothing may render and no empty column may remain.
+    expect(container.querySelector(".workspace-secondary-rail")).toBeNull();
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.textContent).not.toContain("Pinned tasks");
+    expect(container.textContent).not.toContain("Saved views");
+    expect(container.textContent).not.toContain("Quick add task");
+    expect(container.textContent).not.toContain("No pinned tasks.");
   });
 
-  it("keeps the empty pinned section compact and lets it grow when work is pinned", async () => {
-    await render(buildModel({ focusQueue: [], tasks: [] }));
-
-    const pinnedEmpty = container.textContent;
-    expect(pinnedEmpty).toContain("No pinned tasks.");
-    expect(container.querySelector(".rows")).toBeNull();
-
+  it("gives the inventory the reclaimed width instead of leaving a rail column", async () => {
     await render();
-    expect(container.querySelectorAll(".rows .row").length).toBeGreaterThan(0);
+
+    const root = container.firstElementChild;
+    // The inventory wrapper must not reserve a second grid track for a rail.
+    expect(root?.className).not.toContain("workspace-main-rail-grid");
+    expect(container.querySelectorAll("table.data-table").length).toBe(1);
   });
 
   it("renders filter-aware and truly-empty list states", async () => {

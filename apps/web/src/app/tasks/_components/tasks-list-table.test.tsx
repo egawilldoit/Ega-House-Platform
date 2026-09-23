@@ -117,11 +117,22 @@ describe("TasksListTable dense inventory", () => {
     const headerWidths = Array.from(container.querySelectorAll("thead th")).map(
       (header) => header.getAttribute("class") ?? "",
     );
-    // Secondary columns are percentage tracks; only the Task column is auto.
-    expect(headerWidths[1]).toContain("w-[12.5%]");
-    expect(headerWidths[2]).toContain("w-[12%]");
-    expect(headerWidths[3]).toContain("w-[11%]");
-    expect(headerWidths[6]).toContain("w-[11%]");
+    const trackOf = (index: number) => {
+      const match = headerWidths[index]?.match(/w-\[(\d+(?:\.\d+)?)%\]/);
+      return match ? Number(match[1]) : null;
+    };
+
+    // The Task column stays auto so it takes the remaining width.
+    expect(headerWidths[0]).not.toMatch(/w-\[/);
+    // Every other column is a percentage track...
+    for (const index of [1, 2, 3, 4, 5, 6]) {
+      expect(trackOf(index)).not.toBeNull();
+    }
+    // ...and the tracks follow the column priority instead of an equal share:
+    // Project and Goal get real room, the compact state columns get less.
+    expect(trackOf(1)!).toBeGreaterThanOrEqual(trackOf(2)!);
+    expect(trackOf(2)!).toBeGreaterThan(trackOf(3)!);
+    expect(trackOf(1)!).toBeGreaterThan(trackOf(4)!);
   });
 
   it("keeps a title tooltip on project and goal values and shows the estimate in the task cell", async () => {
