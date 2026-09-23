@@ -20,7 +20,7 @@ export default async function ReviewPage({ searchParams }: { searchParams: Promi
   return (
     <AppShell
       title="Review"
-      description="What happened and what changes next — evidence, trends, feedback."
+      description="What happened this week, and what to change next."
       actions={
         <a
           href={`/review/export?weekOf=${model.weekOf}`}

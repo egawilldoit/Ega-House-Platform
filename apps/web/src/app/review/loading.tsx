@@ -22,7 +22,7 @@ export default function ReviewLoadingPage() {
   return (
     <AppShell
       title="Review"
-      description="What happened and what changes next — evidence, trends, feedback."
+      description="What happened this week, and what to change next."
     >
       <div className="flex flex-col gap-6">
         <Card>
