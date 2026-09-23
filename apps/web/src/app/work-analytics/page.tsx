@@ -13,7 +13,7 @@ export default async function WorkAnalyticsPage({ searchParams }: { searchParams
   return (
     <AppShell
       title="Analytics"
-      description="Focused time answers — explicit, not decorative."
+      description="See where your focused time goes."
       actions={<AnalyticsFilters />}
     >
       <WorkAnalyticsPageView model={model} />

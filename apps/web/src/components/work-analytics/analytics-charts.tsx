@@ -106,6 +106,13 @@ type FocusTrendChartProps = {
   /** "bars" draws the daily bars (optionally with a trend line); "line" draws an area trend. */
   variant?: "bars" | "line";
   showTrendLine?: boolean;
+  /**
+   * Second dimension for the trend line. When omitted no line is drawn: the
+   * line previously re-plotted the bar values, which added no information.
+   * Supply a derived series such as a trailing average.
+   */
+  trendData?: WorkAnalyticsDaily[];
+  trendLabel?: string;
   height?: number;
   className?: string;
   onBucketClick?: (date: string, label: string) => void;
@@ -117,6 +124,8 @@ export function FocusTrendChart({
   tableCaption,
   variant = "bars",
   showTrendLine = false,
+  trendData,
+  trendLabel,
   height = DEFAULT_HEIGHT,
   className,
   onBucketClick,
@@ -155,7 +164,20 @@ export function FocusTrendChart({
     };
   });
 
-  const linePath = points
+  const hasTrendSeries =
+    Array.isArray(trendData) && trendData.length === data.length && trendData.some((entry) => entry.workedMinutes > 0);
+
+  const trendPoints = hasTrendSeries
+    ? (trendData as WorkAnalyticsDaily[]).map((item, index) => {
+        const ratio = maxMinutes > 0 ? item.workedMinutes / maxMinutes : 0;
+        return {
+          centerX: points[index]?.centerX ?? PAD_LEFT,
+          y: PAD_TOP + plotHeight - ratio * plotHeight,
+        };
+      })
+    : [];
+
+  const linePath = trendPoints
     .map((point, index) => `${index === 0 ? "M" : "L"} ${point.centerX} ${point.y}`)
     .join(" ");
   const areaPath = `${linePath} L ${points[points.length - 1]?.centerX ?? PAD_LEFT} ${
@@ -257,8 +279,15 @@ export function FocusTrendChart({
             </>
           ) : null}
 
-          {showTrendLine && variant === "bars" ? (
-            <path className="chart-line" d={linePath} vectorEffect="non-scaling-stroke" />
+          {showTrendLine && variant === "bars" && trendPoints.length > 1 ? (
+            <path
+              className="chart-line"
+              d={linePath}
+              vectorEffect="non-scaling-stroke"
+              data-testid="chart-trend-line"
+            >
+              {trendLabel ? <title>{trendLabel}</title> : null}
+            </path>
           ) : null}
 
           {/* Hit targets: full-height bands keep keyboard and pointer access reliable. */}
@@ -433,7 +462,7 @@ export function AllocationDonut({
   }
 
   return (
-    <div className={cn("flex flex-col gap-4 sm:flex-row sm:items-center", className)}>
+    <div className={cn("flex flex-wrap items-center gap-4", className)}>
       <div className="relative mx-auto h-36 w-36 shrink-0" role="img" aria-label={ariaLabel}>
         <svg viewBox="0 0 140 140" className="h-full w-full -rotate-90">
           <circle
@@ -468,7 +497,7 @@ export function AllocationDonut({
         </div>
       </div>
 
-      <ul className="flex min-w-0 flex-1 flex-col gap-1">
+      <ul className="flex min-w-[13rem] flex-1 flex-col gap-1">
         {chartSegments.map((segment, index) => {
           const row = (
             <>
@@ -477,7 +506,10 @@ export function AllocationDonut({
                 className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
                 style={{ background: ALLOCATION_COLORS[index % ALLOCATION_COLORS.length] }}
               />
-              <span className="min-w-0 flex-1 truncate text-left text-ega-text-secondary">
+              <span
+                className="line-clamp-2 min-w-0 flex-1 break-words text-left text-ega-text-secondary"
+                title={segment.label}
+              >
                 {segment.label}
               </span>
               <span className="shrink-0 tabular-nums font-medium text-ega-text">
@@ -506,5 +538,107 @@ export function AllocationDonut({
         })}
       </ul>
     </div>
+  );
+}
+
+type WeekdayDistributionChartProps = {
+  data: Array<{ weekday: number; label: string; workedMinutes: number; sessionCount: number }>;
+  ariaLabel: string;
+  tableCaption: string;
+  height?: number;
+  className?: string;
+};
+
+/**
+ * Weekday distribution of focus time.
+ *
+ * A distinct dimension from any period chart: it answers which weekdays carry
+ * the work. Values come from the canonical series aggregation.
+ */
+export function WeekdayDistributionChart({
+  data,
+  ariaLabel,
+  tableCaption,
+  height = 160,
+  className,
+}: WeekdayDistributionChartProps) {
+  const maxMinutes = data.reduce((max, entry) => Math.max(max, entry.workedMinutes), 0);
+
+  if (data.length === 0 || maxMinutes <= 0) {
+    return (
+      <div className="px-1 py-6 text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+        No tracked time in this window yet. Start a timer to build weekday patterns.
+      </div>
+    );
+  }
+
+  const plotHeight = height - PAD_TOP - PAD_BOTTOM;
+  const plotWidth = 100;
+  const band = plotWidth / data.length;
+  const barWidth = band * 0.5;
+
+  return (
+    <figure className={cn("chart-figure", className)}>
+      <svg
+        role="img"
+        aria-label={ariaLabel}
+        viewBox={`0 0 100 ${height}`}
+        preserveAspectRatio="none"
+        className="chart-svg"
+        style={{ height }}
+      >
+        {[0, 0.25, 0.5, 0.75, 1].map((ratio) => (
+          <line
+            key={ratio}
+            className="chart-grid-line"
+            x1={0}
+            x2={100}
+            y1={PAD_TOP + plotHeight * (1 - ratio)}
+            y2={PAD_TOP + plotHeight * (1 - ratio)}
+          />
+        ))}
+        {data.map((entry, index) => {
+          const ratio = entry.workedMinutes / maxMinutes;
+          const barHeight = Math.max(1, ratio * plotHeight);
+          return (
+            <rect
+              key={entry.label}
+              className="chart-bar"
+              x={band * index + (band - barWidth) / 2}
+              y={PAD_TOP + plotHeight - barHeight}
+              width={barWidth}
+              height={barHeight}
+            />
+          );
+        })}
+      </svg>
+      <div className="flex justify-between text-[length:var(--text-micro)] text-[color:var(--ega-text-tertiary)]">
+        {data.map((entry) => (
+          <span key={entry.label} className="flex-1 text-center">
+            {entry.label}
+          </span>
+        ))}
+      </div>
+      <table className="sr-only">
+        <caption>{tableCaption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Weekday</th>
+            <th scope="col">Focused time</th>
+            <th scope="col">Sessions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((entry) => (
+            <tr key={entry.label}>
+              <th scope="row">{entry.label}</th>
+              <td>{formatDurationLabel(entry.workedMinutes * 60)}</td>
+              <td>{entry.sessionCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <figcaption className="chart-caption">{tableCaption}</figcaption>
+    </figure>
   );
 }

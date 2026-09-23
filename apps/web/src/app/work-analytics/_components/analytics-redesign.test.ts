@@ -14,7 +14,7 @@ const svgChart = read("components", "work-analytics", "analytics-charts.tsx");
 
 test("EGA-655: analytics exposes a four-metric primary KPI strip", () => {
   assert.match(view, /kpi-grid/);
-  for (const label of ["Focused time", "Sessions", "Average session", "Estimate accuracy"]) {
+  for (const label of ["Focused time", "Sessions", "Average session", "Estimate variance"]) {
     assert.match(view, new RegExp(label));
   }
   const kpiCount = (view.match(/data-testid="analytics-kpi-/g) ?? []).length;
