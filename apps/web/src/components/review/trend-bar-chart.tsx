@@ -94,7 +94,7 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
               </span>
               <span className="block h-3 overflow-hidden rounded-[3px] bg-ega-surface-muted">
                 <span
-                  className="block h-full rounded-[3px] bg-data-blue-soft transition-all duration-300 motion-reduce:transition-none group-hover:bg-data-blue"
+                  className="block h-full rounded-[3px] bg-data-blue-soft transition-[background-color] duration-[var(--duration-base)] motion-reduce:transition-none group-hover:bg-data-blue"
                   style={{ width: `${widthPct}%` }}
                 />
               </span>

@@ -191,7 +191,13 @@ h4 {
 }
 
 .transition-precise {
-  transition: all var(--transition-precise);
+  transition:
+    color var(--transition-precise),
+    background-color var(--transition-precise),
+    border-color var(--transition-precise),
+    box-shadow var(--transition-precise),
+    opacity var(--transition-precise),
+    transform var(--transition-precise);
 }
 
 .border-border {
