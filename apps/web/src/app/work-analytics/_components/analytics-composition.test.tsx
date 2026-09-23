@@ -89,8 +89,26 @@ const report: WorkAnalyticsReport = {
   projectBreakdown: [{ projectId: "p1", projectName: "Alpha", workedMinutes: 200, sessionCount: 6 }],
   goalBreakdown: [],
   taskBreakdown: [],
+  selectedComparison: {
+    previousPeriodWorkedMinutes: 30,
+    deltaMinutes: 30,
+    percentChange: 100,
+    bestDay: null,
+    lowestNonZeroDay: null,
+    daysWorkedCount: 1,
+    currentStreak: 1,
+    averageSessionLength: 60,
+    longestSession: 60,
+    shortestNonZeroSession: 60,
+  },
+  selectedComparisonLabel: "vs previous 30 days",
+  selectedSeriesRollingAverage: [
+    { date: "2026-09-14", workedMinutes: 60, sessionCount: 0 },
+  ],
+  weekdayDistribution: [
+    { weekday: 0, label: "Mon", workedMinutes: 60, sessionCount: 1 },
+  ],
   recentDateDrilldownIndex: { "2026-09-14": [session] },
-  trendDateDrilldownIndex: { "2026-09-14": [session] },
   estimateAccuracy: {
     totalEstimatedMinutes: 240,
     totalTrackedMinutes: 300,
@@ -123,17 +141,17 @@ test("WorkAnalyticsPageView renders the reference composition", () => {
 
   assert.match(markup, /Focused time/);
   assert.match(markup, /Average session/);
-  assert.match(markup, /Estimate accuracy/);
+  assert.match(markup, /Estimate variance/);
   assert.match(markup, /Focused time over time/);
   assert.match(markup, /Rhythm and allocation/);
   assert.match(markup, /Weekly rhythm/);
   assert.match(markup, /Project breakdown/);
-  assert.match(markup, /Focus trend/);
+  assert.match(markup, /Weekday pattern/);
   assert.match(markup, /Recent focus sessions/);
   assert.match(markup, /Ship the refactor/);
   assert.match(markup, /View all/);
   assert.match(markup, /Month-to-date/);
-  assert.match(markup, /MoM delta/);
+  assert.match(markup, /Change vs previous month/);
   assert.match(markup, /role="img"/);
   assert.match(markup, /<table class="sr-only">/);
 });

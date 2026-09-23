@@ -82,7 +82,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     <div className="flex flex-col gap-6" data-testid="work-analytics-workspace">
       <DashboardSection
         title="Execution overview"
-        description={`Focused time, session volume, and estimate accuracy for ${report.selectedRangeLabel}.`}
+        description={`Focused time, session volume, and estimate variance for ${report.selectedRangeLabel}.`}
       >
         <div className="kpi-grid">
           <StatCard
@@ -91,11 +91,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
             icon={Clock3}
             value={formatMinutes(report.selectedSummary.workedMinutes)}
             trend={
-              weekDelta.percentChange === null ? undefined : (
+              report.selectedComparison.percentChange === null ? undefined : (
                 <MetricDelta
-                  value={signedPercent(weekDelta.percentChange)}
-                  direction={weekDelta.deltaMinutes >= 0 ? "up" : "down"}
-                  label="vs prior 7d"
+                  value={signedPercent(report.selectedComparison.percentChange)}
+                  direction={report.selectedComparison.deltaMinutes >= 0 ? "up" : "down"}
+                  label={report.selectedComparisonLabel}
                 />
               )
             }
@@ -118,8 +118,8 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
             subtitle={`per session · ${report.selectedRangeLabel}`}
           />
           <StatCard
-            data-testid="analytics-kpi-estimate-accuracy"
-            label="Estimate accuracy"
+            data-testid="analytics-kpi-estimate-variance"
+            label="Estimate variance"
             icon={Target}
             value={signedPercent(report.estimateAccuracy.estimateDeltaPercent)}
             trend={
@@ -133,10 +133,14 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                       : "flat"
                 }
                 higherIsBetter={false}
-                label="tracked vs estimate"
+                label="Tracked vs estimated"
               />
             }
-            subtitle={`No estimate on ${report.estimateAccuracy.noEstimateCount} tasks`}
+            subtitle={
+              report.estimateAccuracy.totalEstimatedMinutes > 0
+                ? `Estimated ${formatMinutes(report.estimateAccuracy.totalEstimatedMinutes)} · tracked ${formatMinutes(report.estimateAccuracy.totalTrackedMinutes)}`
+                : `No estimate on ${report.estimateAccuracy.noEstimateCount} tasks`
+            }
           />
         </div>
       </DashboardSection>
@@ -144,11 +148,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
       <InteractiveAnalytics
         drilldownIndexes={report.drilldownIndexes}
         recentDateDrilldownIndex={report.recentDateDrilldownIndex}
-        trendDateDrilldownIndex={report.trendDateDrilldownIndex}
         primarySeries={report.selectedSeries}
+        selectedSeriesRollingAverage={report.selectedSeriesRollingAverage}
+        weekdayDistribution={report.weekdayDistribution}
         primaryTitle={`Focus time — ${report.selectedRangeLabel}`}
         last7DaysSeries={report.last7DaysSeries}
-        last30DaysSeries={report.last30DaysSeries}
         breakdownBy={report.breakdownBy}
         breakdownTitle={report.breakdownTitle}
         projectBreakdown={report.projectBreakdown}
@@ -158,11 +162,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
         groupBy={groupBy}
       >
         <DashboardSection
-          title="Accuracy and context"
-          description="How tracking compares with estimates, and the windows these numbers come from."
+          title="Estimates and context"
+          description="How tracked time compares with what you estimated, plus the surrounding periods."
         >
           <div className="grid gap-4 lg:grid-cols-3">
-            <Card label="Estimate accuracy" title="Tracked vs estimated">
+            <Card label="Estimate variance" title="Tracked vs estimated">
               <CardContent className="flex flex-col gap-4" data-testid="analytics-accuracy">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="min-w-0">
@@ -189,10 +193,16 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                           : "flat"
                     }
                     higherIsBetter={false}
-                    label="vs estimate"
+                    label="vs estimated"
                   />
                   <span className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-                    {signedDuration(report.estimateAccuracy.estimateDeltaMinutes)}
+                    {report.estimateAccuracy.estimateDeltaMinutes === 0
+                      ? "on estimate"
+                      : `${signedDuration(report.estimateAccuracy.estimateDeltaMinutes)} ${
+                          report.estimateAccuracy.estimateDeltaMinutes > 0
+                            ? "over estimate"
+                            : "under estimate"
+                        }`}
                   </span>
                 </div>
                 <p className="text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-ega-text-secondary">
@@ -238,70 +248,101 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
               </CardContent>
             </Card>
 
-            <Card label="Context" title="Windows and months">
-              <CardContent>
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-3" data-testid="analytics-context">
-                  <ContextStat
-                    label="Today"
-                    value={`${formatMinutes(report.summary.todayWorkedMinutes)} · ${
-                      report.summary.todaySessionCount
-                    } sessions`}
-                  />
-                  <ContextStat
-                    label="Yesterday"
-                    value={`${formatMinutes(report.yesterday.workedMinutes)} · ${
-                      report.yesterday.sessionCount
-                    } sessions`}
-                  />
-                  <ContextStat
-                    label="Last 7 days"
-                    value={`${formatMinutes(report.summary.last7DaysWorkedMinutes)} · ${
-                      report.summary.last7DaysSessionCount
-                    } sessions`}
-                  />
-                  <ContextStat
-                    label="Last 30 days"
-                    value={`${formatMinutes(report.summary.last30DaysWorkedMinutes)} · ${
-                      report.summary.last30DaysSessionCount
-                    } sessions`}
-                  />
-                  <ContextStat
-                    label="Avg session"
-                    value={formatMinutes(report.summary.averageSessionLengthMinutes)}
-                  />
-                  <ContextStat
-                    label="Month-to-date"
-                    value={`${formatMinutes(report.monthComparison.currentMonthMinutes)} · ${
-                      report.monthComparison.currentMonthSessionCount
-                    } sessions`}
-                  />
-                  <ContextStat
-                    label="Previous month"
-                    value={`${formatMinutes(report.monthComparison.previousMonthMinutes)} · ${
-                      report.monthComparison.previousMonthSessionCount
-                    } sessions`}
-                  />
-                  <ContextStat
-                    label="MoM delta"
-                    value={`${signedPercent(report.monthComparison.percentChange)}${
-                      report.monthComparison.hasPreviousData
-                        ? ` · ${signedDuration(report.monthComparison.deltaMinutes)} vs prev`
-                        : " · no previous month data"
-                    }`}
-                  />
-                  <ContextStat
-                    label="Avg active day"
-                    value={`${formatMinutes(
-                      report.monthComparison.currentMonthAvgPerActiveDayMinutes,
-                    )} (${report.monthComparison.currentMonthActiveDays} days)`}
-                  />
-                  <ContextStat
-                    label="Selected range"
-                    value={`${formatMinutes(report.selectedSummary.workedMinutes)} · ${
-                      report.selectedSummary.sessionCount
-                    } sessions`}
-                  />
-                </dl>
+            <Card label="Context" title="Period context">
+              <CardContent className="flex flex-col gap-5" data-testid="analytics-context">
+                <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-4">
+                  <p className="glass-label">Selected period</p>
+                  <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className="text-[length:var(--text-metric)] font-semibold tabular-nums text-ega-text">
+                      {formatMinutes(report.selectedSummary.workedMinutes)}
+                    </span>
+                    <span className="text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+                      {report.selectedRangeLabel} · {report.selectedSummary.sessionCount} sessions ·{" "}
+                      {report.selectedSummary.activeDays} active days
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[length:var(--text-meta)] text-ega-text-tertiary">
+                    {report.selectedComparisonLabel.replace(/^vs /, "Compared with ")}:{" "}
+                    {formatMinutes(report.selectedComparison.previousPeriodWorkedMinutes)}
+                    {report.selectedComparison.percentChange === null
+                      ? ""
+                      : ` (${signedPercent(report.selectedComparison.percentChange)})`}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="glass-label">Calendar context</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3">
+                    <ContextStat
+                      label="Month-to-date"
+                      value={`${formatMinutes(report.monthComparison.currentMonthMinutes)} · ${
+                        report.monthComparison.currentMonthSessionCount
+                      } sessions`}
+                    />
+                    <ContextStat
+                      label="Previous month"
+                      value={`${formatMinutes(report.monthComparison.previousMonthMinutes)} · ${
+                        report.monthComparison.previousMonthSessionCount
+                      } sessions`}
+                    />
+                    <ContextStat
+                      label="Change vs previous month"
+                      value={`${signedPercent(report.monthComparison.percentChange)}${
+                        report.monthComparison.hasPreviousData
+                          ? ` · ${signedDuration(report.monthComparison.deltaMinutes)}`
+                          : " · no previous month data"
+                      }`}
+                    />
+                    <ContextStat
+                      label="Average active day"
+                      value={`${formatMinutes(
+                        report.monthComparison.currentMonthAvgPerActiveDayMinutes,
+                      )} (${report.monthComparison.currentMonthActiveDays} days)`}
+                    />
+                  </dl>
+                </div>
+
+                <div>
+                  <p className="glass-label">Recent trends</p>
+                  <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3">
+                    <ContextStat
+                      label="Today"
+                      value={`${formatMinutes(report.summary.todayWorkedMinutes)} · ${
+                        report.summary.todaySessionCount
+                      } sessions`}
+                    />
+                    <ContextStat
+                      label="Yesterday"
+                      value={`${formatMinutes(report.yesterday.workedMinutes)} · ${
+                        report.yesterday.sessionCount
+                      } sessions`}
+                    />
+                    <ContextStat
+                      label="Last 7 days"
+                      value={`${formatMinutes(report.summary.last7DaysWorkedMinutes)} · ${
+                        report.summary.last7DaysSessionCount
+                      } sessions`}
+                    />
+                    <ContextStat
+                      label="Change vs prior 7 days"
+                      value={`${signedPercent(weekDelta.percentChange)}${
+                        weekDelta.percentChange === null
+                          ? " · no prior 7-day data"
+                          : ` · ${signedDuration(weekDelta.deltaMinutes)}`
+                      }`}
+                    />
+                    <ContextStat
+                      label="Last 30 days"
+                      value={`${formatMinutes(report.summary.last30DaysWorkedMinutes)} · ${
+                        report.summary.last30DaysSessionCount
+                      } sessions`}
+                    />
+                    <ContextStat
+                      label="Average session"
+                      value={formatMinutes(report.summary.averageSessionLengthMinutes)}
+                    />
+                  </dl>
+                </div>
               </CardContent>
             </Card>
           </div>

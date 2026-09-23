@@ -16,9 +16,11 @@ import { TrendBarChart } from "@/components/review/trend-bar-chart";
 import {
   AllocationDonut,
   FocusTrendChart,
+  WeekdayDistributionChart,
   type AllocationSegment,
 } from "@/components/work-analytics/analytics-charts";
 import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDate, formatDisplayTime } from "@/lib/presentation-format";
 import {
   AnalyticsDrilldownProvider,
   useAnalyticsDrilldown,
@@ -71,17 +73,11 @@ function allIndexedSessions(dateIndex: Record<string, DrilldownSessionDTO[]>) {
 }
 
 function formatSessionDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+  return formatDisplayDate(iso, "compact");
 }
 
 function formatSessionTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDisplayTime(iso);
 }
 
 // ---- Panels ---------------------------------------------------------------
@@ -198,10 +194,15 @@ function RecentSessionsTable({
                   {formatSessionTime(session.startedAt)}
                   {session.endedAt ? ` – ${formatSessionTime(session.endedAt)}` : ""}
                 </td>
-                <td className="hidden max-w-[12rem] truncate md:table-cell">
+                <td
+                  className="hidden max-w-[12rem] truncate md:table-cell"
+                  title={session.projectName ?? undefined}
+                >
                   {session.projectName ?? "—"}
                 </td>
-                <td className="max-w-[16rem] truncate font-medium">{session.taskTitle}</td>
+                <td className="max-w-[16rem] truncate font-medium" title={session.taskTitle}>
+                  {session.taskTitle}
+                </td>
                 <td className="whitespace-nowrap text-right tabular-nums">
                   {formatDurationLabel(session.durationSeconds)}
                 </td>
@@ -313,11 +314,9 @@ function BreakdownAllocation({
 type InteractiveAnalyticsProps = {
   drilldownIndexes: DrilldownIndexes;
   recentDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
-  trendDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   primarySeries: WorkAnalyticsDaily[];
   primaryTitle: string;
   last7DaysSeries: WorkAnalyticsDaily[];
-  last30DaysSeries: WorkAnalyticsDaily[];
   breakdownBy: string;
   breakdownTitle: string;
   projectBreakdown: WorkAnalyticsProjectBreakdown[];
@@ -325,17 +324,22 @@ type InteractiveAnalyticsProps = {
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
   selectedRangeLabel: string;
   groupBy: AnalyticsGroupBy;
+  selectedSeriesRollingAverage: WorkAnalyticsDaily[];
+  weekdayDistribution: Array<{
+    weekday: number;
+    label: string;
+    workedMinutes: number;
+    sessionCount: number;
+  }>;
   children?: React.ReactNode;
 };
 
 export function InteractiveAnalytics({
   drilldownIndexes,
   recentDateDrilldownIndex,
-  trendDateDrilldownIndex,
   primarySeries,
   primaryTitle,
   last7DaysSeries,
-  last30DaysSeries,
   breakdownBy,
   breakdownTitle,
   projectBreakdown,
@@ -343,6 +347,8 @@ export function InteractiveAnalytics({
   taskBreakdown,
   selectedRangeLabel,
   groupBy,
+  selectedSeriesRollingAverage,
+  weekdayDistribution,
   children,
 }: InteractiveAnalyticsProps) {
   return (
@@ -355,12 +361,13 @@ export function InteractiveAnalytics({
             dateDrilldownIndex={drilldownIndexes.date}
             groupBy={groupBy}
             selectedRangeLabel={selectedRangeLabel}
+            rollingAverageSeries={selectedSeriesRollingAverage}
           />
         </div>
 
         <DashboardSection
           title="Rhythm and allocation"
-          description="Short-term rhythm, where focused time went, and the 30-day trend."
+          description="Short-term rhythm, where focused time went, and which weekdays carry it."
         >
           <div className="grid gap-4 lg:grid-cols-3" data-testid="analytics-secondary-grid">
             <AnalyticsPanel
@@ -386,11 +393,16 @@ export function InteractiveAnalytics({
               selectedRangeLabel={selectedRangeLabel}
             />
 
-            <FocusTrendPanel
-              series={last30DaysSeries}
-              dateDrilldownIndex={trendDateDrilldownIndex}
-              groupBy="day"
-            />
+            <AnalyticsPanel
+              title="Weekday pattern"
+              description="Focused time by weekday across the last 30 days."
+            >
+              <WeekdayDistributionChart
+                data={weekdayDistribution}
+                ariaLabel="Focused time by weekday across the last 30 days"
+                tableCaption="Focused time by weekday across the last 30 days"
+              />
+            </AnalyticsPanel>
           </div>
         </DashboardSection>
 
@@ -439,13 +451,16 @@ function AnalyticsSection({
   dateDrilldownIndex,
   groupBy,
   selectedRangeLabel,
+  rollingAverageSeries,
 }: {
   primarySeries: WorkAnalyticsDaily[];
   primaryTitle: string;
   dateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   groupBy: AnalyticsGroupBy;
   selectedRangeLabel: string;
+  rollingAverageSeries?: WorkAnalyticsDaily[];
 }) {
+  const showsTrendLine = groupBy === "day" && (rollingAverageSeries?.length ?? 0) > 1;
   const { openDrilldown } = useAnalyticsDrilldown();
 
   const handleBucketClick = React.useCallback(
@@ -462,13 +477,19 @@ function AnalyticsSection({
     >
       <AnalyticsPanel
         title={primaryTitle}
-        description="Bars are tracked focus; the line follows the same daily values."
+        description={
+          showsTrendLine
+            ? "Bars are tracked focus per day; the line is their 7-day average."
+            : `Tracked focus per ${groupBy} for ${selectedRangeLabel}.`
+        }
         action={<Badge tone="muted">{selectedRangeLabel}</Badge>}
       >
         <FocusTrendChart
           data={primarySeries}
           variant="bars"
-          showTrendLine
+          showTrendLine={showsTrendLine}
+          trendData={showsTrendLine ? rollingAverageSeries : undefined}
+          trendLabel="7-day average"
           height={260}
           ariaLabel={`Focused time per ${groupBy} for ${selectedRangeLabel}`}
           tableCaption={`Focused time per ${groupBy} for ${selectedRangeLabel}`}
@@ -499,39 +520,5 @@ function WeeklyRhythm({
 
   return (
     <TrendBarChart data={series} title="Weekly rhythm" onBarClick={handleBarClick} />
-  );
-}
-
-function FocusTrendPanel({
-  series,
-  dateDrilldownIndex,
-  groupBy,
-}: {
-  series: WorkAnalyticsDaily[];
-  dateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
-  groupBy: AnalyticsGroupBy;
-}) {
-  const { openDrilldown } = useAnalyticsDrilldown();
-
-  const handlePointClick = React.useCallback(
-    (date: string, label: string) => {
-      openBucketDrilldown(openDrilldown, dateDrilldownIndex, date, groupBy, label);
-    },
-    [dateDrilldownIndex, groupBy, openDrilldown],
-  );
-
-  return (
-    <AnalyticsPanel
-      title="Focus trend"
-      description="Daily focused time across the last 30 days."
-    >
-      <FocusTrendChart
-        data={series}
-        variant="line"
-        ariaLabel="Focused time per day across the last 30 days"
-        tableCaption="Focused time per day across the last 30 days"
-        onBucketClick={handlePointClick}
-      />
-    </AnalyticsPanel>
   );
 }

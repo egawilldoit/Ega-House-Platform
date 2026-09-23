@@ -20,7 +20,7 @@ export default function WorkAnalyticsLoadingPage() {
   return (
     <AppShell
       title="Analytics"
-      description="Focused time answers — explicit, not decorative."
+      description="See where your focused time goes."
     >
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4">
