@@ -100,11 +100,15 @@ export type DurationPrecision = "minute" | "second";
 /**
  * Durations are rendered at one of two semantic levels.
  *
- * - "minute" (dashboards, KPI strips, totals): seconds are noise.
- *     83h 10m 0s -> "83h 10m"
- *     11h 0m 0s  -> "11h"
- *     45m 0s     -> "45m"
- *     0          -> "0m"
+ * - "minute" (dashboards, KPI strips, totals): seconds are noise, and the
+ *   value is rounded to the nearest minute so a total never reads lower than
+ *   the work it summarises.
+ *     83h 10m 0s  -> "83h 10m"
+ *     11h 0m 0s   -> "11h"
+ *     3h 53m 53s  -> "3h 54m"
+ *     45m 0s      -> "45m"
+ *     0           -> "0m"
+ *     30s         -> "<1m"  (positive work never renders as zero)
  * - "second" (individual session rows): seconds stay meaningful.
  *     1h 20m 23s -> "1h 20m 23s"
  *
@@ -127,10 +131,19 @@ export function formatDisplayDuration(
     return `${remainingSeconds}s`;
   }
 
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  // Minute precision: round rather than floor, and never let positive tracked
+  // work render as zero.
+  if (safe === 0) return "0m";
+  if (safe < 60) return "<1m";
+
+  const totalMinutes = Math.round(safe / 60);
+  const roundedHours = Math.floor(totalMinutes / 60);
+  const roundedMinutes = totalMinutes % 60;
+
+  if (roundedHours > 0) {
+    return roundedMinutes > 0 ? `${roundedHours}h ${roundedMinutes}m` : `${roundedHours}h`;
   }
-  return `${minutes}m`;
+  return `${roundedMinutes}m`;
 }
 
 /** Minute-based estimate labels keep the existing short product convention. */

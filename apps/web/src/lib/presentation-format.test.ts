@@ -83,9 +83,27 @@ test("formatDisplayDuration: minute precision drops noise and empty units", () =
   assert.equal(formatDisplayDuration(11 * 3600), "11h");
   assert.equal(formatDisplayDuration(45 * 60), "45m");
   assert.equal(formatDisplayDuration(0), "0m");
-  assert.equal(formatDisplayDuration(59), "0m");
   assert.equal(formatDisplayDuration(189 * 3600 + 9 * 60 + 25), "189h 9m");
   assert.equal(formatDisplayDuration(null), DISPLAY_EMPTY);
+});
+
+test("minute precision rounds to the nearest minute instead of flooring", () => {
+  // 3h 53m 53s must read as 3h 54m, not 3h 53m.
+  assert.equal(formatDisplayDuration(3 * 3600 + 53 * 60 + 53), "3h 54m");
+  assert.equal(formatDisplayDuration(59 * 60 + 23), "59m");
+  assert.equal(formatDisplayDuration(90), "2m");
+  assert.equal(formatDisplayDuration(2 * 3600 + 59 * 60 + 40), "3h");
+});
+
+test("positive sub-minute work never renders as zero", () => {
+  assert.equal(formatDisplayDuration(1), "<1m");
+  assert.equal(formatDisplayDuration(30), "<1m");
+  assert.equal(formatDisplayDuration(59), "<1m");
+  // Genuinely zero stays zero.
+  assert.equal(formatDisplayDuration(0), "0m");
+  // Second precision is unaffected and keeps the exact value.
+  assert.equal(formatDisplayDuration(30, "second"), "30s");
+  assert.equal(formatDisplayDuration(1, "second"), "1s");
 });
 
 test("formatDisplayDuration: second precision keeps session-level detail", () => {
