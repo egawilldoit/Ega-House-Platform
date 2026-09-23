@@ -3,10 +3,9 @@ import Link from "next/link";
 import { LiveDuration } from "@/components/timer/live-duration";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
+import { formatDisplayDateTime, formatDisplayDuration } from "@/lib/presentation-format";
 import { formatTaskToken, getTaskStatusTone } from "@/lib/task-domain";
-import { formatDurationLabel } from "@/lib/task-session";
 import type { Tables } from "@/lib/supabase/database.types";
-import { formatTimerDateTime } from "@/lib/timer-domain";
 
 type ActiveTimerSession = Pick<Tables<"task_sessions">, "id" | "started_at" | "task_id"> & {
   tasks:
@@ -73,7 +72,7 @@ export function ActiveTimerDisplay({
                 Started
               </dt>
               <dd className="tabular-nums text-[length:var(--text-body)] font-medium">
-                {formatTimerDateTime(session.started_at)}
+                {formatDisplayDateTime(session.started_at)}
               </dd>
             </div>
             {typeof totalTrackedDurationSeconds === "number" ? (
@@ -82,7 +81,7 @@ export function ActiveTimerDisplay({
                   Tracked total
                 </dt>
                 <dd className="tabular-nums text-[length:var(--text-body)] font-medium">
-                  {formatDurationLabel(totalTrackedDurationSeconds)}
+                  {formatDisplayDuration(totalTrackedDurationSeconds)}
                 </dd>
               </div>
             ) : null}

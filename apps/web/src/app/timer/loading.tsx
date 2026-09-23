@@ -6,7 +6,7 @@ export default function TimerLoadingPage() {
   return (
     <AppShell
       title="Timer"
-      description="The active session is primary: elapsed time, stop, and the canonical session history."
+      description="Track focused work and review your recent sessions."
     >
       <div className="flex flex-col gap-6">
         <Card>
