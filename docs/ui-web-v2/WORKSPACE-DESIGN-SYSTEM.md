@@ -33,8 +33,8 @@ does not change product semantics.
 | Border | `--ega-border` | `#e5e5e5` |
 | Border strong | `--ega-border-strong` | `#d6d6d6` |
 | Text | `--ega-text` | `#171717` |
-| Text secondary | `--ega-text-secondary` | `#707070` |
-| Text tertiary | `--ega-text-tertiary` | `#9a9a9a` |
+| Text secondary | `--ega-text-secondary` | `#5c5c5c` |
+| Text tertiary | `--ega-text-tertiary` | `#6a6a6a` |
 | Ink (primary action) | `--ega-ink` | `#171717` |
 
 Data categories and status semantics are **separate namespaces**:

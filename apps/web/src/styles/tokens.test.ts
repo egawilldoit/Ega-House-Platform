@@ -16,8 +16,8 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(tokens).toContain("--ega-border: #e5e5e5");
     expect(tokens).toContain("--ega-border-strong: #d6d6d6");
     expect(tokens).toContain("--ega-text: #171717");
-    expect(tokens).toContain("--ega-text-secondary: #707070");
-    expect(tokens).toContain("--ega-text-tertiary: #9a9a9a");
+    expect(tokens).toContain("--ega-text-secondary: #5c5c5c");
+    expect(tokens).toContain("--ega-text-tertiary: #6a6a6a");
 
     // Data categories and status semantics stay separate namespaces.
     expect(tokens).toContain("--ega-data-blue");

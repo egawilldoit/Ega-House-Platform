@@ -24,9 +24,13 @@
   --ega-divider: #eeeeee;
 
   /* ── Text ────────────────────────────────────────────── */
+  /* Ramp values are contrast-measured against every surface these are used on
+     (surface, canvas, subtle, muted, hover). WCAG AA 4.5:1 is enforced by
+     styles/tokens-contrast.test.ts, so a future palette tweak cannot silently
+     regress readability. Hierarchy stays stepped: 16:1 / 6:1 / 5.4:1. */
   --ega-text: #171717;
-  --ega-text-secondary: #707070;
-  --ega-text-tertiary: #9a9a9a;
+  --ega-text-secondary: #5c5c5c;
+  --ega-text-tertiary: #6a6a6a;
 
   /* ── Data visualisation categories ───────────────────── */
   /* Data categories are NOT status semantics. */
@@ -48,7 +52,7 @@
   --status-healthy: #15803d;
   --status-risk: #b45309;
   --status-overdue: #b91c1c;
-  --status-pending: #6b7280;
+  --status-pending: #656d7a;
   --status-info: #1d4ed8;
 
   --status-healthy-bg: #f0fdf4;
