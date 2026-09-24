@@ -738,6 +738,44 @@ async function getVisibleTaskById(supabase: SupabaseServerClient, taskId: string
   };
 }
 
+/**
+ * Counts for the task list summary.
+ *
+ * Only counts are needed, so this issues two count-only (HEAD) queries instead
+ * of transferring every task row just to read `archived_at`. `total` and
+ * `active` come from the same owner-scoped (RLS) set the previous full-row read
+ * used, so the summary values are unchanged; `archived` is derived as
+ * total - active.
+ */
+export async function getTasksSummary(supabase: SupabaseServerClient): Promise<{
+  total: number;
+  active: number;
+  archived: number;
+  unavailable: boolean;
+}> {
+  const [totalResult, activeResult] = await Promise.all([
+    supabase.from("tasks").select("id", { count: "exact", head: true }),
+    supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .is("archived_at", null),
+  ]);
+
+  const unavailable = isTasksArchivedAtMissing(activeResult.error);
+  if (totalResult.error || (activeResult.error && !unavailable)) {
+    const error = totalResult.error ?? activeResult.error;
+    throw new Error(`Failed to load task summary: ${error?.message ?? "unknown error"}`);
+  }
+
+  if (unavailable) {
+    return { total: 0, active: 0, archived: 0, unavailable: true };
+  }
+
+  const total = totalResult.count ?? 0;
+  const active = activeResult.count ?? 0;
+  return { total, active, archived: Math.max(0, total - active), unavailable: false };
+}
+
 export async function getTasksWorkspaceData(
   filters: TasksWorkspaceFilters,
   options?: { supabase?: SupabaseServerClient; todayIsoDate?: string },
@@ -751,7 +789,7 @@ export async function getTasksWorkspaceData(
     "id, name, status, project_id, goal_id, due_filter, sort_value, definition_json, updated_at";
   const savedViewSelectLegacy =
     "id, name, status, project_id, goal_id, due_filter, sort_value, updated_at";
-  const [projectsResult, goalsResult, initialSavedViewsResult, taskSummaryResult] = await Promise.all([
+  const [projectsResult, goalsResult, initialSavedViewsResult, taskSummary] = await Promise.all([
     supabase.from("projects").select("id, name, slug").order("name", { ascending: true }),
     supabase
       .from("goals")
@@ -761,7 +799,7 @@ export async function getTasksWorkspaceData(
       .from("task_saved_views")
       .select(savedViewSelectWithDefinition)
       .order("updated_at", { ascending: false }),
-    supabase.from("tasks").select("archived_at"),
+    getTasksSummary(supabase),
   ]);
   let savedViewsResult: {
     data: TaskSavedViewSelectRow[] | null;
@@ -790,11 +828,6 @@ export async function getTasksWorkspaceData(
 
   if (savedViewsResult.error && !savedViewsUnavailable) {
     throw new Error(`Failed to load saved views: ${savedViewsResult.error.message}`);
-  }
-
-  const taskSummaryUnavailable = isTasksArchivedAtMissing(taskSummaryResult.error);
-  if (taskSummaryResult.error && !taskSummaryUnavailable) {
-    throw new Error(`Failed to load task summary: ${taskSummaryResult.error.message}`);
   }
 
   const activeProjectId =
@@ -878,15 +911,13 @@ export async function getTasksWorkspaceData(
     goals: visibleGoals,
     tasks: tasksWithReminders,
     taskTotalDurations,
-    summary: {
-      total: taskSummaryUnavailable ? tasks.length : (taskSummaryResult.data ?? []).length,
-      active: taskSummaryUnavailable
-        ? tasks.length
-        : (taskSummaryResult.data ?? []).filter((task) => !task.archived_at).length,
-      archived: taskSummaryUnavailable
-        ? 0
-        : (taskSummaryResult.data ?? []).filter((task) => task.archived_at).length,
-    },
+    summary: taskSummary.unavailable
+      ? { total: tasks.length, active: tasks.length, archived: 0 }
+      : {
+          total: taskSummary.total,
+          active: taskSummary.active,
+          archived: taskSummary.archived,
+        },
     savedViews: savedViewsUnavailable
       ? []
       : [
