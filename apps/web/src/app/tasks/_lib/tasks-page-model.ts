@@ -14,8 +14,6 @@ import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
-import { getCalendarIntegrationSettings, getCalendarTaskFormDefaults } from "@/lib/services/calendar-settings-service";
-import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 
 export type TasksSearchParams = {
@@ -99,31 +97,21 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
 
 export async function getTasksPageModel(searchParams: TasksSearchParams) {
   const parsed = parseTasksSearchParams(searchParams);
-  const [workspaceData, calendarSettingsResult] = await Promise.all([
-    getTasksWorkspaceData({
-      activeStatus: parsed.activeStatus,
-      requestedProjectId: parsed.projectParam,
-      requestedGoalId: parsed.goalParam,
-      activeDueFilter: parsed.activeDueFilter,
-      activeSort: parsed.activeSort,
-      activeView: parsed.activeView,
-      activeTasksOnly: parsed.savedViewDefinitionFilters.activeTasks,
-      activePriorityValues: parsed.savedViewDefinitionFilters.priorityValues,
-      activeEstimateMinMinutes: parsed.savedViewDefinitionFilters.estimateMinMinutes,
-      activeEstimateMaxMinutes: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
-      activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
-    }),
-    getCalendarIntegrationSettings(),
-  ]);
-  const calendarFormDefaults = getCalendarTaskFormDefaults(calendarSettingsResult.data);
-  const { projects, goals, tasks, taskTotalDurations, summary, savedViews, savedViewsUnavailable, activeProjectId, activeGoalId } =
+  const workspaceData = await getTasksWorkspaceData({
+    activeStatus: parsed.activeStatus,
+    requestedProjectId: parsed.projectParam,
+    requestedGoalId: parsed.goalParam,
+    activeDueFilter: parsed.activeDueFilter,
+    activeSort: parsed.activeSort,
+    activeView: parsed.activeView,
+    activeTasksOnly: parsed.savedViewDefinitionFilters.activeTasks,
+    activePriorityValues: parsed.savedViewDefinitionFilters.priorityValues,
+    activeEstimateMinMinutes: parsed.savedViewDefinitionFilters.estimateMinMinutes,
+    activeEstimateMaxMinutes: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
+    activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
+  });
+  const { projects, goals, tasks, taskTotalDurations, summary, savedViews, activeProjectId, activeGoalId } =
     workspaceData;
-  const resolvedSavedViewFeedback = {
-    error:
-      parsed.savedViewFeedback.error ??
-      (savedViewsUnavailable ? "Saved views are temporarily unavailable while database schema updates propagate." : null),
-    success: parsed.savedViewFeedback.success,
-  };
   const returnPath = buildTaskListUrl("/tasks", {
     status: parsed.activeStatus,
     priority: parsed.savedViewDefinitionFilters.priorityValues.join(","),
@@ -151,7 +139,6 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     due: parsed.activeDueFilter,
     sort: parsed.activeSort,
   };
-  const focusQueue = sortFocusQueueTasks(tasks);
   const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
   const blockedCount = tasks.filter((t) => t.status === "blocked").length;
@@ -166,13 +153,10 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     taskTotalDurations,
     summary,
     savedViews,
-    resolvedSavedViewFeedback,
-    calendarFormDefaults,
     activeProjectId,
     activeGoalId,
     returnPath,
     taskUrlFilters,
-    focusQueue,
     kanbanBoard,
     inProgressCount,
     blockedCount,
