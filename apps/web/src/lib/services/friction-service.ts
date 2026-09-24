@@ -4,6 +4,7 @@ import { SupabaseExecutionEvidenceRepository, SupabaseFrictionRepository, Supaba
 import { FRICTION_NEGLECTED_GOAL_WINDOW_DAYS } from "@ega/domain/friction";
 
 import { createClient } from "@/lib/supabase/server";
+import { getRequestTimeContextRepository } from "@/lib/request-time-context";
 import { getCurrentUser } from "@/lib/services/auth-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -13,7 +14,9 @@ export async function getFrictionRadar(options?: {
   now?: Date;
 }) {
   const supabase = options?.supabase ?? (await createClient());
-  const user = await getCurrentUser({ supabase });
+  const user = options?.supabase
+    ? await getCurrentUser({ supabase })
+    : await getCurrentUser();
   if (!user) {
     return { data: null, errorMessage: "Authentication required." as const };
   }
@@ -24,7 +27,9 @@ export async function getFrictionRadar(options?: {
 
   let evidenceWindow: { startIso: string; endIso: string };
   try {
-    const tzRepo = new SupabaseTimeContextRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient);
+    const tzRepo = options?.supabase
+      ? new SupabaseTimeContextRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient)
+      : await getRequestTimeContextRepository();
     const windowResult = await resolveFrictionEvidenceWindow(actor, tzRepo, { now });
     if (windowResult.ok) {
       evidenceWindow = { startIso: windowResult.data.startIso, endIso: windowResult.data.endIso };
