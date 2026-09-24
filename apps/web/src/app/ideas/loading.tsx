@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function IdeasLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Ideas"
       description="Capture thoughts now, sort them into work later."
     >
@@ -40,6 +40,6 @@ export default function IdeasLoadingPage() {
           ))}
         </Card>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

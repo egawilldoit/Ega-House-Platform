@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function SettingsLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Settings"
       description="Account and calendar controls."
     >
@@ -19,6 +19,6 @@ export default function SettingsLoadingPage() {
           </Card>
         ))}
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

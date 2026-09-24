@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function TimerLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Timer"
       description="Track focused work and review your recent sessions."
     >
@@ -37,6 +37,6 @@ export default function TimerLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ShutdownLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Shutdown"
       description="Close the day: what moved, what carries forward, and what to note."
     >
@@ -25,6 +25,6 @@ export default function ShutdownLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

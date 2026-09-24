@@ -1,4 +1,4 @@
-import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,7 +18,7 @@ function ProjectRowSkeleton() {
 
 export default function TasksProjectsLoadingPage() {
   return (
-    <TasksWorkspaceShell
+    <WorkspaceSkeletonShell
       title="Projects"
       description="Project directory — status, active work, progress, and recency."
       actions={<Skeleton className="h-8 w-28" />}
@@ -43,6 +43,6 @@ export default function TasksProjectsLoadingPage() {
           </div>
         </Card>
       </div>
-    </TasksWorkspaceShell>
+    </WorkspaceSkeletonShell>
   );
 }
