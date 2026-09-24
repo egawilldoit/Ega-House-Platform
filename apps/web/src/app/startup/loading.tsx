@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function StartupLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Startup"
       description="Start the day deliberately: attention, priorities, and one focus."
     >
@@ -19,6 +19,6 @@ export default function StartupLoadingPage() {
           </Card>
         ))}
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NotificationsLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Notifications"
       description="Reminders and updates across your workspace."
     >
@@ -27,6 +27,6 @@ export default function NotificationsLoadingPage() {
           </div>
         ))}
       </Card>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }
