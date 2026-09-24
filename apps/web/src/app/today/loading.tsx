@@ -1,18 +1,15 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-function SectionSkeleton() {
+function PanelSkeleton({ rows = 3 }: { rows?: number }) {
   return (
-    <Card className="border-[var(--border)] bg-white">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between gap-3">
-          <Skeleton className="h-5 w-28 rounded-sm" />
-          <Skeleton className="h-6 w-10 rounded-sm" />
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 pt-1">
-        <Skeleton className="h-28 w-full rounded-sm" />
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <Skeleton className="h-5 w-32" />
+        {Array.from({ length: rows }).map((_, index) => (
+          <Skeleton key={index} className="h-12 w-full" />
+        ))}
       </CardContent>
     </Card>
   );
@@ -21,38 +18,26 @@ function SectionSkeleton() {
 export default function TodayLoadingPage() {
   return (
     <AppShell
-      eyebrow="Execution Workspace"
       title="Today"
-      description="Build an intentional plan, then move directly into execution."
-      actions={<Skeleton className="h-8 w-36 rounded-sm" />}
+      description="Focus on what matters today. Make progress, one step at a time."
+      actions={<Skeleton className="h-8 w-48" />}
     >
-      <div className="space-y-6">
-        <Card className="border-[var(--border)] bg-white">
-          <CardContent className="grid gap-3 px-5 pb-5 pt-5 sm:grid-cols-2 xl:grid-cols-6">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-20 w-full rounded-sm" />
-            ))}
-          </CardContent>
-        </Card>
+      <div className="flex flex-col gap-6">
+        <div className="kpi-grid">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton key={index} className="h-24 w-full rounded-[var(--radius-lg)]" />
+          ))}
+        </div>
 
         <div className="workspace-main-rail-grid">
-          <div className="space-y-4">
-            <SectionSkeleton />
-            <SectionSkeleton />
-            <SectionSkeleton />
-            <SectionSkeleton />
+          <div className="flex flex-col gap-4">
+            <PanelSkeleton rows={2} />
+            <PanelSkeleton rows={5} />
           </div>
-
-          <Card className="border-[var(--border)] bg-white">
-            <CardHeader className="pb-4">
-              <Skeleton className="h-5 w-28 rounded-sm" />
-            </CardHeader>
-            <CardContent className="space-y-3 pt-1">
-              <Skeleton className="h-24 w-full rounded-sm" />
-              <Skeleton className="h-24 w-full rounded-sm" />
-              <Skeleton className="h-24 w-full rounded-sm" />
-            </CardContent>
-          </Card>
+          <div className="workspace-secondary-rail">
+            <PanelSkeleton rows={3} />
+            <PanelSkeleton rows={4} />
+          </div>
         </div>
       </div>
     </AppShell>

@@ -34,13 +34,13 @@ export function TodayOperatorPlan({
     : [];
 
   return (
-    <Card className="today-operator-plan-panel">
+    <Card>
       <CardHeader className="pb-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="glass-label text-signal-live">Daily Operator</p>
-            <CardTitle className="mt-1 text-xl">Primary plan</CardTitle>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-[color:var(--muted-foreground)]">
+            <p className="glass-label">Daily Operator</p>
+            <CardTitle className="mt-1 text-[length:var(--text-section)]">Primary plan</CardTitle>
+            <p className="mt-1 max-w-2xl text-[length:var(--text-meta)] leading-5 text-[color:var(--ega-text-secondary)]">
               Review the recommended lane before anything is added to Today. Operator suggestions never change work silently.
             </p>
           </div>
@@ -49,7 +49,7 @@ export function TodayOperatorPlan({
       </CardHeader>
       <CardContent className="space-y-4 pt-0">
         {proposalError ? (
-          <div className="today-intelligence-unavailable" role="status">
+          <div className="feedback-block feedback-block-warn" role="status">
             <Badge tone="muted">Unavailable</Badge>
             <p>{proposalError} Your current Today work remains unchanged.</p>
           </div>
@@ -57,11 +57,11 @@ export function TodayOperatorPlan({
           <>
             <div className="space-y-2">
               {planTasks.length > 0 ? planTasks.map((task, index) => (
-                <div key={task.id} className="today-operator-plan-row">
-                  <span className="today-focus-rank" aria-hidden="true">{index + 1}</span>
+                <div key={task.id} className="row">
+                  <span className="rank" aria-hidden="true">{index + 1}</span>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-[color:var(--foreground)]">{task.title}</p>
-                    <p className="mt-1 truncate text-xs text-[color:var(--muted-foreground)]">
+                    <p className="truncate text-[length:var(--text-body)] font-semibold text-[color:var(--ega-text)]">{task.title}</p>
+                    <p className="mt-1 truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                       {task.projectName}{task.goalTitle ? ` · ${task.goalTitle}` : ""}
                       {task.estimateMinutes ? ` · ${formatTaskEstimate(task.estimateMinutes)}` : ""}
                     </p>
@@ -77,14 +77,14 @@ export function TodayOperatorPlan({
                 <form action={approveOperatorProposalAction}>
                   <input type="hidden" name="proposalId" value={proposal.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <button type="submit" className="btn-instrument h-9 px-3">Approve plan</button>
+                  <button type="submit" className="btn-instrument h-9 px-3 text-sm">Approve plan</button>
                 </form>
               ) : null}
               {proposal.status === "approved" ? (
                 <form action={applyApprovedOperatorProposalAction}>
                   <input type="hidden" name="proposalId" value={proposal.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <button type="submit" className="btn-instrument h-9 px-3">Apply to Today</button>
+                  <button type="submit" className="btn-instrument h-9 px-3 text-sm">Apply to Today</button>
                 </form>
               ) : null}
               <Link href="/tasks" className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-3">Adjust in Tasks</Link>
@@ -100,7 +100,7 @@ export function TodayOperatorPlan({
               {tasks.slice(0, 6).map((task) => <input key={task.id} type="hidden" name="taskId" value={task.id} />)}
               <input type="hidden" name="returnTo" value={returnTo} />
               <div className="flex flex-wrap items-center gap-2">
-                <button type="submit" className="btn-instrument h-9 px-3" disabled={tasks.length === 0}>Prepare approval plan</button>
+                <button type="submit" className="btn-instrument h-9 px-3 text-sm" disabled={tasks.length === 0}>Prepare approval plan</button>
                 <Link href="/tasks" className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-3">Adjust in Tasks</Link>
               </div>
             </form>

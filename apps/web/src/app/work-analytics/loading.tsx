@@ -1,129 +1,72 @@
 import { AppShell } from "@/components/layout/app-shell";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+
+function PanelSkeleton({ bodyHeight = "h-48" }: { bodyHeight?: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <Skeleton className="h-4 w-32 rounded-sm" />
+        <Skeleton className="mt-1 h-3 w-48 rounded-sm" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className={`w-full rounded-sm ${bodyHeight}`} />
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function WorkAnalyticsLoadingPage() {
   return (
     <AppShell
-      eyebrow="Execution"
-      title="Work Analytics"
-      description="Worked time/session signals for today, week, and recent trend."
+      title="Analytics"
+      description="See where your focused time goes."
     >
-      {/* Filter pills skeleton */}
-      <div className="mb-6">
-        <div className="flex flex-wrap items-start gap-4">
-          {["Range", "Group by", "Breakdown", "Include open sessions"].map(
-            (label) => (
-              <fieldset key={label}>
-                <legend className="mb-1 text-xs font-medium text-[color:var(--muted-foreground)]">
-                  {label}
-                </legend>
-                <div className="flex flex-wrap gap-1">
-                  <Skeleton className="h-7 w-16 rounded-full" />
-                  <Skeleton className="h-7 w-20 rounded-full" />
-                </div>
-              </fieldset>
-            ),
-          )}
-        </div>
-      </div>
-
-      {/* Core summary cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">
-                <Skeleton className="h-4 w-16 rounded-sm" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-20 rounded-sm" />
-              <Skeleton className="mt-1 h-3 w-24 rounded-sm" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Secondary info row */}
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">
-                <Skeleton className="h-4 w-20 rounded-sm" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-16 rounded-sm" />
-              <Skeleton className="mt-1 h-3 w-28 rounded-sm" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Month comparison row */}
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">
-                <Skeleton className="h-4 w-24 rounded-sm" />
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-8 w-16 rounded-sm" />
-              <Skeleton className="mt-1 h-3 w-28 rounded-sm" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Estimate accuracy + Interactive section */}
-      <div className="mt-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">
-              <Skeleton className="h-4 w-28 rounded-sm" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i}>
-                  <Skeleton className="h-3 w-16 rounded-sm" />
-                  <Skeleton className="mt-1 h-6 w-12 rounded-sm" />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Trend charts / breakdown skeleton */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              <Skeleton className="h-4 w-24 rounded-sm" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-48 w-full rounded-sm" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              <Skeleton className="h-4 w-28 rounded-sm" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-8 w-full rounded-sm" />
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-5 w-44 rounded-sm" />
+          <div className="kpi-grid">
+            {Array.from({ length: 4 }).map((_, index) => (
+              <div
+                key={index}
+                className="flex flex-col gap-2 rounded-[var(--radius-lg)] border border-ega-border bg-ega-surface px-[18px] py-4"
+              >
+                <Skeleton className="h-3 w-20 rounded-sm" />
+                <Skeleton className="h-6 w-24 rounded-sm" />
+                <Skeleton className="h-3 w-28 rounded-sm" />
+              </div>
             ))}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        <PanelSkeleton bodyHeight="h-64" />
+
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-5 w-56 rounded-sm" />
+          <div className="grid gap-4 lg:grid-cols-3">
+            <PanelSkeleton bodyHeight="h-40" />
+            <PanelSkeleton bodyHeight="h-40" />
+            <PanelSkeleton bodyHeight="h-40" />
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          <PanelSkeleton bodyHeight="h-32" />
+          <PanelSkeleton bodyHeight="h-32" />
+          <PanelSkeleton bodyHeight="h-32" />
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-5 w-52 rounded-sm" />
+          <Card clip>
+            <CardContent className="space-y-3">
+              <Skeleton className="h-8 w-full rounded-sm" />
+              {Array.from({ length: 6 }).map((_, index) => (
+                <Skeleton key={index} className="h-11 w-full rounded-sm" />
+              ))}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </AppShell>
   );

@@ -41,9 +41,9 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
   );
 
   return (
-    <form action={formAction} className="space-y-4">
-      <div className="space-y-2">
-        <label htmlFor="title" className="glass-label text-etch">
+    <form action={formAction} className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="title" className="form-label">
           Title
         </label>
         <Input
@@ -52,20 +52,20 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
           required
           placeholder="Follow up on onboarding insight"
           defaultValue={state.values.title}
-          className="ega-glass-input h-10 rounded-xl"
+          className="h-9"
         />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="space-y-2">
-          <label htmlFor="type" className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="type" className="form-label">
             Type
           </label>
           <select
             id="type"
             name="type"
             defaultValue={state.values.type || DEFAULT_IDEA_NOTE_TYPE}
-            className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+            className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
           >
             {IDEA_NOTE_TYPES.map((type) => (
               <option key={type} value={type}>
@@ -75,15 +75,15 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
           </select>
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="projectId" className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="projectId" className="form-label">
             Project
           </label>
           <select
             id="projectId"
             name="projectId"
             defaultValue={state.values.projectId}
-            className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+            className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
           >
             <option value="">No project</option>
             {projectOptions.map((project) => (
@@ -94,15 +94,15 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
           </select>
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="priority" className="glass-label text-etch">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="priority" className="form-label">
             Priority
           </label>
           <select
             id="priority"
             name="priority"
             defaultValue={state.values.priority}
-            className="ega-glass-input h-10 w-full rounded-xl px-3 text-sm"
+            className="input-instrument h-9 w-full px-2.5 text-[length:var(--text-meta-lg)]"
           >
             <option value="">No priority</option>
             {IDEA_NOTE_PRIORITIES.map((priority) => (
@@ -114,8 +114,8 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
         </div>
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="body" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="body" className="form-label">
           Body (optional)
         </label>
         <Textarea
@@ -123,12 +123,12 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
           name="body"
           placeholder="Add context, links, or next thoughts."
           defaultValue={state.values.body}
-          className="ega-glass-input min-h-28 rounded-xl"
+          className="min-h-24"
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="tagsInput" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="tagsInput" className="form-label">
           Tags
         </label>
         <Input
@@ -136,21 +136,21 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
           name="tagsInput"
           placeholder="ops, product, follow-up"
           defaultValue={state.values.tagsInput}
-          className="ega-glass-input h-10 rounded-xl"
+          className="h-9"
         />
-        <p className="text-xs text-[color:var(--muted-foreground)]">
+        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
           Separate tags with commas.
         </p>
       </div>
 
       {state.error ? (
-        <p className="text-sm text-signal-error" role="alert">
+        <p className="feedback-block feedback-block-error" role="alert">
           {state.error}
         </p>
       ) : null}
 
       {state.success ? (
-        <p className="text-sm text-signal-live" role="status">
+        <p className="feedback-block" role="status">
           {state.success}
         </p>
       ) : null}
@@ -159,7 +159,7 @@ export function CreateIdeaNoteForm({ projectOptions }: CreateIdeaNoteFormProps) 
         type="submit"
         size="lg"
         disabled={isPending}
-        className="w-full justify-center gap-2 rounded-xl sm:w-auto"
+        className="w-full justify-center gap-2 sm:w-auto"
       >
         <Lightbulb className="h-4 w-4" aria-hidden="true" />
         {isPending ? "Capturing..." : "Capture idea"}

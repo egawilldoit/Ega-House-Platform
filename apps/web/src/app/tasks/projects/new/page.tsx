@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 
-import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
-import { Badge } from "@/components/ui/badge";
+import { AppShell } from "@/components/layout/app-shell";
 import {
   Card,
   CardContent,
@@ -19,32 +18,23 @@ export const metadata: Metadata = {
 
 export default function NewProjectPage() {
   return (
-    <TasksWorkspaceShell
-      eyebrow="Tasks Workspace"
-      title="Create Project"
+    <AppShell
+      title="New project"
       description="Add a project to anchor goals and tasks in the workspace."
-      navigation={
-        <>
-          <Badge tone="accent">Create</Badge>
-          <Badge>Projects</Badge>
-          <Badge>Tasks MVP</Badge>
-        </>
-      }
     >
       <div className="mx-auto w-full max-w-3xl">
         <Card>
           <CardHeader>
             <CardTitle>New project</CardTitle>
             <CardDescription>
-              Name and slug are required. Slugs are normalized to lowercase,
-              hyphenated format.
+              Name and slug are required. Slugs are normalized to lowercase, hyphenated format.
             </CardDescription>
           </CardHeader>
-          <CardContent className="pt-1">
+          <CardContent>
             <CreateProjectForm />
           </CardContent>
         </Card>
       </div>
-    </TasksWorkspaceShell>
+    </AppShell>
   );
 }

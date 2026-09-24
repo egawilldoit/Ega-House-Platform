@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { formatDisplayDate } from "@/lib/presentation-format";
+import { ChevronDown, FolderKanban, Plus } from "lucide-react";
+
 import {
   createAuthenticatedActor,
   getProjectsReadModel,
@@ -16,8 +19,13 @@ import {
 import { InlineProjectStatusForm } from "@/components/projects/inline-project-status-form";
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterPill } from "@/components/ui/filter-pill";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
+import { ProgressBar } from "@/components/ui/progress-bar";
+import { StatCard } from "@/components/ui/stat-card";
 import {
   type ProjectViewFilter,
   isProjectArchivedStatus,
@@ -33,36 +41,14 @@ export const metadata: Metadata = {
   description: "Projects list with task context for the tasks workspace.",
 };
 
-function formatStatusLabel(status: string) {
-  return status
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (value) => value.toUpperCase());
-}
+const PROJECT_VIEWS = [
+  { value: "active", label: "Active" },
+  { value: "archived", label: "Archived" },
+  { value: "all", label: "All" },
+] as const;
 
-function formatPriorityLabel(priority: string) {
-  return priority.charAt(0).toUpperCase() + priority.slice(1);
-}
-
-function getStatusTone(status: string) {
-  return getTaskStatusTone(status);
-}
-
-function getProjectProgressTone(project: ProjectCardReadModel) {
-  if (project.status === "done") {
-    return "bg-[var(--signal-live)] text-signal-live";
-  }
-
-  if (project.status === "paused") {
-    return "bg-[var(--etch)] text-etch";
-  }
-
-  if (project.progressPercent < 20 && project.taskCount > 0) {
-    return "bg-[var(--signal-error)] text-signal-error";
-  }
-
-  return "bg-[var(--signal-info)] text-[var(--signal-info)]";
+function getProjectViewHref(view: ProjectViewFilter) {
+  return `/tasks/projects?view=${view}`;
 }
 
 async function getProjectsWithTaskContext(view: ProjectViewFilter) {
@@ -80,39 +66,7 @@ async function getProjectsWithTaskContext(view: ProjectViewFilter) {
   return result.data;
 }
 
-function EmptyState({ hasArchivedProjects }: { hasArchivedProjects: boolean }) {
-  return (
-    <Card className="surface-empty bg-white max-w-3xl">
-      <CardContent className="space-y-5 px-8 pb-8 pt-8">
-        <Badge tone="info" className="w-fit">
-          Projects
-        </Badge>
-        <div className="space-y-3">
-          <h2 className="text-2xl font-semibold tracking-tight text-[color:var(--foreground)]">
-            No projects yet
-          </h2>
-          <p className="max-w-2xl text-sm leading-7 text-[color:var(--muted-foreground)]">
-            {hasArchivedProjects
-              ? "Archived projects are hidden from the default view. Switch to Archived or All to inspect them."
-              : "The tasks workspace is wired to the live database, but there are no project rows to render yet. Once projects exist, this view will summarize status, completion pressure, and direct task context."}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href="/tasks/projects/new" className={cn(buttonVariants({ variant: "muted" }), "")}>
-            Create first project
-          </Link>
-          <p className="text-sm leading-7 text-[color:var(--muted-foreground)]">
-            {hasArchivedProjects
-              ? "Archived projects remain reachable through explicit project views."
-              : "Create one project to start attaching goals and tasks."}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProjectCard({
+function ProjectRow({
   project,
   returnTo,
   inlineError,
@@ -125,8 +79,9 @@ function ProjectCard({
   archiveError?: string | null;
   activeView: ProjectViewFilter;
 }) {
-  const progressTone = getProjectProgressTone(project);
   const isArchived = isProjectArchivedStatus(project.status);
+  const openTaskCount = project.taskCount - project.completedTaskCount;
+  const openStatusCounts = project.statusCounts.filter((entry) => entry.status !== "done");
   const detailHref = `/tasks/projects/${project.slug}${
     activeView === "active" ? "" : `?view=${activeView}`
   }`;
@@ -135,146 +90,168 @@ function ProjectCard({
   }`;
 
   return (
-    <Card
-      id={`project-${project.id}`}
-      className="h-full scroll-mt-24 border-[var(--border)] bg-white transition hover:border-[var(--border-strong)]"
-    >
-      <CardContent className="flex h-full flex-col px-6 pb-6 pt-6">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <Badge tone={getStatusTone(project.status)}>{formatTaskToken(project.status)}</Badge>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {isArchived ? <Badge tone="warn">Archived</Badge> : null}
-            <span className="glass-label text-etch">{project.slug}</span>
-          </div>
+    <tr id={`project-${project.id}`} className="scroll-mt-24">
+      <td>
+        <div className="flex min-w-0 items-center gap-2">
+          <Link
+            href={detailHref}
+            className="truncate text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)] hover:underline"
+          >
+            {project.name}
+          </Link>
+          <span className="hidden truncate text-[length:var(--text-meta)] text-ega-text-tertiary md:inline">
+            {project.slug}
+          </span>
         </div>
+        <span className="mt-1 flex flex-wrap items-center gap-1.5 sm:hidden">
+          <Badge tone={getTaskStatusTone(project.status)}>
+            {formatTaskToken(project.status)}
+          </Badge>
+          {isArchived ? <Badge tone="warn">Archived</Badge> : null}
+        </span>
+      </td>
 
-        <div className="mb-5 flex-1 space-y-4">
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold tracking-tight text-[color:var(--foreground)]">
-              <Link href={detailHref} className="transition hover:text-[var(--signal-live)]">
-                {project.name}
-              </Link>
-            </h2>
-            <p className="line-clamp-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
-              {project.description?.trim() || "No project description added yet."}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 text-sm text-[color:var(--muted-foreground)]">
-            <span className="glass-label text-[color:var(--foreground)]">
-              {project.completedTaskCount}/{project.taskCount}
-            </span>
-            <span>tasks completed</span>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[color:var(--instrument-raised)]">
-              <div
-                className={`h-full rounded-full ${progressTone.split(" ")[0]}`}
-                style={{ width: `${project.progressPercent}%` }}
-              />
-            </div>
-            <span className={`glass-label ${progressTone.split(" ")[1]}`}>
-              {project.progressPercent}%
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {project.statusCounts.length ? (
-              project.statusCounts.map((entry) => (
-                <Badge key={entry.status} tone={getStatusTone(entry.status)}>
-                  {entry.count} {formatStatusLabel(entry.status)}
-                </Badge>
-              ))
-            ) : (
-              <Badge>No task activity yet</Badge>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="glass-label text-etch">Recent tasks</p>
-              <Link href={detailHref} className="glass-label text-signal-live">
-                Open
-              </Link>
-            </div>
-
-            {project.recentTasks.length ? (
-              <div className="space-y-2">
-                {project.recentTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="rounded-[1rem] border border-[var(--border)] bg-[color:var(--instrument-raised)] px-3 py-3"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <p className="text-sm font-medium leading-6 text-[color:var(--foreground)]">
-                        {task.title}
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <Badge tone={getStatusTone(task.status)}>
-                          {formatStatusLabel(task.status)}
-                        </Badge>
-                        <Badge>{formatPriorityLabel(task.priority)}</Badge>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="surface-empty px-4 py-4 text-sm leading-7 text-[color:var(--muted-foreground)]">
-                No tasks are attached to this project yet.
-              </div>
-            )}
-          </div>
+      <td className="hidden sm:table-cell">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge tone={getTaskStatusTone(project.status)}>
+            {formatTaskToken(project.status)}
+          </Badge>
+          {isArchived ? <Badge tone="warn">Archived</Badge> : null}
         </div>
+      </td>
 
-        <div className="mt-auto border-t border-[var(--border)] pt-4">
-          {!isArchived ? (
-            <InlineProjectStatusForm
-              action={updateProjectStatusAction}
-              projectId={project.id}
-              returnTo={returnTo}
-              defaultStatus={project.status}
-              error={inlineError}
+      <td className="hidden lg:table-cell">
+        {project.taskCount === 0 ? (
+          <span className="text-[length:var(--text-meta-lg)] text-ega-text-tertiary">
+            No tasks
+          </span>
+        ) : openTaskCount === 0 ? (
+          <span className="text-[length:var(--text-meta-lg)] text-ega-text-secondary">
+            All tasks done
+          </span>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[length:var(--text-meta-lg)] font-medium tabular-nums text-ega-text">
+              {openTaskCount} open
+            </span>
+            {openStatusCounts.map((entry) => (
+              <Badge key={entry.status} tone={getTaskStatusTone(entry.status)}>
+                {entry.count} {formatTaskToken(entry.status)}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </td>
+
+      <td className="hidden md:table-cell">
+        <div className="flex items-center gap-2">
+          <div className="w-16 shrink-0">
+            <ProgressBar
+              value={project.progressPercent}
+              label={`${project.name} linked task completion`}
+              valueText={`${project.progressPercent}% of linked tasks done`}
             />
-          ) : (
-            <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-              Archived projects stay visible for reference. Linked goals and tasks keep their
-              current states until you update those records directly.
-            </p>
-          )}
+          </div>
+          <span className="text-[length:var(--text-meta-lg)] font-medium tabular-nums text-ega-text">
+            {project.progressPercent}%
+          </span>
+          <span className="text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
+            {project.completedTaskCount}/{project.taskCount}
+          </span>
+        </div>
+      </td>
 
-          <div className="mt-4 border-t border-[var(--border)] pt-4">
-            {archiveError ? <p className="feedback-block feedback-block-error mb-3">{archiveError}</p> : null}
-            {isArchived ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <form action={unarchiveProjectAction}>
-                  <input type="hidden" name="projectId" value={project.id} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <Button type="submit" variant="muted" size="sm">
-                    Unarchive Project
-                  </Button>
-                </form>
+      <td className="hidden whitespace-nowrap tabular-nums text-ega-text-secondary xl:table-cell">
+        {formatDisplayDate(project.updatedAt, "detail")}
+      </td>
+
+      <td className="w-[92px]">
+        <div className="flex flex-col items-end gap-2">
+          {inlineError ? (
+            <p role="alert" className="feedback-block feedback-block-error">
+              {inlineError}
+            </p>
+          ) : null}
+          {archiveError ? (
+            <p role="alert" className="feedback-block feedback-block-error">
+              {archiveError}
+            </p>
+          ) : null}
+
+          <details className="action-overflow">
+            <summary className="btn-instrument btn-instrument-muted flex h-7 cursor-pointer items-center gap-1 px-2.5 text-xs">
+              <span className="hidden sm:inline">Actions</span>
+              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="sr-only sm:hidden">Actions</span>
+            </summary>
+            <div className="action-overflow-menu flex flex-col gap-3">
+              {isArchived ? (
+                <p className="text-[length:var(--text-meta)] leading-[var(--leading-snug)] text-ega-text-secondary">
+                  Archived projects stay available for reference. Restore the project to change its
+                  status.
+                </p>
+              ) : (
+                <InlineProjectStatusForm
+                  action={updateProjectStatusAction}
+                  projectId={project.id}
+                  returnTo={returnTo}
+                  defaultStatus={project.status}
+                />
+              )}
+
+              <form action={isArchived ? unarchiveProjectAction : archiveProjectAction}>
+                <input type="hidden" name="projectId" value={project.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <PendingSubmitButton
+                  type="submit"
+                  variant={isArchived ? "secondary" : "danger"}
+                  size="sm"
+                  className="w-full justify-center"
+                  pendingLabel={isArchived ? "Unarchiving…" : "Archiving…"}
+                >
+                  {isArchived ? "Unarchive project" : "Archive project"}
+                </PendingSubmitButton>
+              </form>
+
+              {isArchived ? (
                 <Link
                   href={deleteHref}
-                  className={buttonVariants({ variant: "danger", size: "sm" })}
+                  className={cn(buttonVariants({ variant: "danger", size: "sm" }), "w-full justify-center")}
                 >
                   Delete permanently
                 </Link>
-              </div>
-            ) : (
-              <form action={archiveProjectAction}>
-                <input type="hidden" name="projectId" value={project.id} />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <Button type="submit" variant="danger" size="sm">
-                  Archive Project
-                </Button>
-              </form>
-            )}
-          </div>
+              ) : null}
+            </div>
+          </details>
         </div>
-      </CardContent>
-    </Card>
+      </td>
+    </tr>
+  );
+}
+
+function ProjectsEmptyState({
+  hasArchivedProjects,
+}: {
+  hasArchivedProjects: boolean;
+}) {
+  return (
+    <EmptyState
+      icon={FolderKanban}
+      title="No projects yet"
+      description={
+        hasArchivedProjects
+          ? "Archived projects are hidden from the default view. Switch to Archived or All to inspect them."
+          : "No project rows exist yet. Create one to start attaching goals and tasks."
+      }
+      action={
+        <Link
+          href="/tasks/projects/new"
+          className="btn-instrument btn-instrument-muted inline-flex h-8 items-center px-3 text-xs"
+        >
+          Create first project
+        </Link>
+      }
+    />
   );
 }
 
@@ -301,99 +278,99 @@ export default async function TasksProjectsPage({ searchParams }: TasksProjectsP
 
   return (
     <TasksWorkspaceShell
-      eyebrow="Portfolio Overview"
       title="Projects"
-      description="Command index for project status, task pressure, and direct entry into each project workspace."
+      description="Project directory — status, active work, progress, and recency."
       actions={
-        <Link href="/tasks/projects/new" className={cn(buttonVariants({ variant: "default" }), "")}>
-          New Project
+        <Link
+          href="/tasks/projects/new"
+          className={cn(buttonVariants({ variant: "primary" }), "flex h-8 items-center gap-2 px-3")}
+        >
+          <Plus className="h-4 w-4" aria-hidden="true" />
+          New project
         </Link>
       }
     >
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <Link
-          href="/tasks/projects?view=active"
-          className={`glass-label rounded-full px-3 py-1 ${
-            activeView === "active"
-              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
-              : "text-[color:var(--muted-foreground)]"
-          }`}
-        >
-          Active
-        </Link>
-        <Link
-          href="/tasks/projects?view=archived"
-          className={`glass-label rounded-full px-3 py-1 ${
-            activeView === "archived"
-              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
-              : "text-[color:var(--muted-foreground)]"
-          }`}
-        >
-          Archived
-        </Link>
-        <Link
-          href="/tasks/projects?view=all"
-          className={`glass-label rounded-full px-3 py-1 ${
-            activeView === "all"
-              ? "border-[rgba(23,123,82,0.28)] bg-[rgba(23,123,82,0.08)] text-signal-live"
-              : "text-[color:var(--muted-foreground)]"
-          }`}
-        >
-          All
-        </Link>
-        <Badge tone="muted">{totalProjects} total</Badge>
-        <Badge tone={archivedProjects > 0 ? "warn" : "muted"}>{archivedProjects} archived</Badge>
-      </div>
-
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-6 border-b border-[var(--border)] pb-6">
-        <div className="flex items-center gap-5">
-          <div className="text-right">
-            <p className="glass-label text-etch">Total</p>
-            <p className="text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">
-              {totalProjects}
-            </p>
-          </div>
-          <div className="h-12 w-px bg-[var(--border)]" />
-          <div className="text-right">
-            <p className="glass-label text-signal-live">Active</p>
-            <p className="text-3xl font-semibold tracking-tight text-signal-live">
-              {activeProjects}
-            </p>
-          </div>
-          <div className="h-12 w-px bg-[var(--border)]" />
-          <div className="text-right">
-            <p className="glass-label text-etch">Completed</p>
-            <p className="text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">
-              {completedProjects}
-            </p>
-          </div>
+      <div className="flex flex-col gap-6">
+        <div className="kpi-grid">
+          <StatCard
+            label="Projects"
+            value={totalProjects}
+            subtitle={`${archivedProjects} archived`}
+          />
+          <StatCard label="Active" value={activeProjects} subtitle="status active" />
+          <StatCard label="Completed" value={completedProjects} subtitle="status done" />
         </div>
-      </div>
 
-      {projects.length ? (
-        <div className="grid items-start gap-6 lg:grid-cols-2 2xl:grid-cols-3">
-          {projects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              returnTo={`/tasks/projects?view=${activeView}`}
-              inlineError={
-                projectUpdateProjectId === project.id && projectUpdateField === "status"
-                  ? projectUpdateError
-                  : null
-              }
-              archiveError={
-                projectUpdateProjectId === project.id && projectUpdateField === "archive"
-                  ? projectUpdateError
-                  : null
-              }
-              activeView={activeView}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState hasArchivedProjects={archivedProjects > 0} />
-      )}
+        <Card clip>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <CardTitle>Project directory</CardTitle>
+                <CardDescription className="mt-1">
+                  {projects.length} shown · {totalProjects} total · {archivedProjects} archived
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Project views">
+                {PROJECT_VIEWS.map((view) => (
+                  <FilterPill
+                    key={view.value}
+                    label={view.label}
+                    href={getProjectViewHref(view.value)}
+                    active={activeView === view.value}
+                    ariaCurrent={activeView === view.value ? "page" : undefined}
+                  />
+                ))}
+              </div>
+            </div>
+          </CardHeader>
+          {projects.length ? (
+            <table className="data-table table-fixed">
+              <thead>
+                <tr>
+                  <th scope="col">Project</th>
+                  <th scope="col" className="hidden sm:table-cell">
+                    Status
+                  </th>
+                  <th scope="col" className="hidden lg:table-cell">
+                    Active work
+                  </th>
+                  <th scope="col" className="hidden md:table-cell">
+                    Progress
+                  </th>
+                  <th scope="col" className="hidden xl:table-cell">
+                    Updated
+                  </th>
+                  <th scope="col" className="w-[92px] text-right">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((project) => (
+                  <ProjectRow
+                    key={project.id}
+                    project={project}
+                    returnTo={`/tasks/projects?view=${activeView}`}
+                    inlineError={
+                      projectUpdateProjectId === project.id && projectUpdateField === "status"
+                        ? projectUpdateError
+                        : null
+                    }
+                    archiveError={
+                      projectUpdateProjectId === project.id && projectUpdateField === "archive"
+                        ? projectUpdateError
+                        : null
+                    }
+                    activeView={activeView}
+                  />
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <ProjectsEmptyState hasArchivedProjects={archivedProjects > 0} />
+          )}
+        </Card>
+      </div>
     </TasksWorkspaceShell>
   );
 }

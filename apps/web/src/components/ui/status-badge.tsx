@@ -3,13 +3,15 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const STATUS_COPY: Record<string, string> = {
-  todo: "Todo",
+  todo: "To do",
   in_progress: "In progress",
   done: "Done",
   blocked: "Blocked",
   due_today: "Due today",
   due_soon: "Due soon",
   urgent: "Urgent",
+  active: "Active",
+  archived: "Archived",
 };
 
 const STATUS_TONE: Record<string, "muted" | "info" | "warn" | "success" | "error"> = {
@@ -20,6 +22,8 @@ const STATUS_TONE: Record<string, "muted" | "info" | "warn" | "success" | "error
   due_today: "warn",
   due_soon: "warn",
   urgent: "error",
+  active: "success",
+  archived: "muted",
 };
 
 type StatusBadgeProps = {

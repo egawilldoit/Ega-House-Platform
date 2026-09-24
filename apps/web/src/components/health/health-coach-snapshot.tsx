@@ -11,15 +11,15 @@ type Props = {
 function formatQualityLabel(quality: HealthWorkloadSnapshotDto["quality"]["quality"]): string {
   switch (quality) {
     case "sufficient":
-      return "Evidence quality: sufficient";
+      return "Based on: enough recent sessions";
     case "insufficient":
-      return "Evidence quality: not enough recent sessions";
+      return "Based on: not enough recent sessions";
     case "provisional":
-      return "Evidence quality: provisional — includes an active session";
+      return "Based on: a session still running";
     case "suspect":
-      return "Evidence quality: check data — some sessions were incomplete";
+      return "Based on: some sessions were incomplete";
     default:
-      return "Evidence quality: unknown";
+      return "Based on: not enough data yet";
   }
 }
 
@@ -137,7 +137,8 @@ export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }:
         </div>
 
         <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
-          Window {snapshot.window.startIso.slice(0, 10)} → {snapshot.window.endIso.slice(0, 10)} · Evidence: {snapshot.quality.reasons.join(", ") || "ok"}
+          {snapshot.window.startIso.slice(0, 10)} to {snapshot.window.endIso.slice(0, 10)} ·{" "}
+          {snapshot.quality.reasons.join(", ") || "data looks complete"}
         </p>
 
         {recommendations && recommendations.length > 0 ? (
@@ -152,7 +153,9 @@ export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }:
                 </div>
                 <p className="mt-2 text-sm font-medium">{rec.title}</p>
                 <p className="mt-1 text-sm leading-5 text-[color:var(--muted-foreground)]">{rec.message}</p>
-                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">Evidence: {rec.evidence.metric} {rec.evidence.value} (threshold {rec.evidence.threshold}) · {rec.copyKey}</p>
+                <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                  {rec.evidence.metric} {rec.evidence.value} (guide {rec.evidence.threshold})
+                </p>
               </div>
             ))}
           </div>

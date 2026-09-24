@@ -5,9 +5,9 @@ import { addTaskToTodayAction } from "@/app/today/actions";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
 import { ExternalLink, Lightbulb, PlusCircle, Sparkles } from "lucide-react";
@@ -46,10 +46,10 @@ function SuggestionCard({
   const taskIsCompleted = isTaskCompletedStatus(task.status);
 
   return (
-    <article className="today-suggestion-card">
+    <article className="task-row">
       <div className="min-w-0">
-        <p className="truncate text-sm font-medium text-[color:var(--foreground)]">{task.title}</p>
-        <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+        <p className="truncate text-[length:var(--text-body)] font-medium text-[color:var(--ega-text)]">{task.title}</p>
+        <p className="mt-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
           {task.projectName}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -63,10 +63,16 @@ function SuggestionCard({
         <form action={addTaskToTodayAction}>
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
-          <Button type="submit" size="sm" variant="default" aria-label={`Add ${task.title} to Today`}>
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="default"
+            aria-label={`Add ${task.title} to Today`}
+            pendingLabel="Adding…"
+          >
             <PlusCircle className="h-3.5 w-3.5" aria-hidden="true" />
             Add to Today
-          </Button>
+          </PendingSubmitButton>
         </form>
 
         {isActiveTimerTask ? (
@@ -75,13 +81,13 @@ function SuggestionCard({
           <form action={startTimerAction}>
             <input type="hidden" name="taskId" value={task.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
-            <Button type="submit" size="sm" variant="ghost">
+            <PendingSubmitButton type="submit" size="sm" variant="ghost" pendingLabel="Starting…">
               Start timer
-            </Button>
+            </PendingSubmitButton>
           </form>
         ) : null}
 
-        <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-xs">
+        <Link href={getTaskHref(task)} className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-[length:var(--text-meta)]">
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
           Open
         </Link>
@@ -96,14 +102,17 @@ export function TodaySuggestionsPanel({
   activeTimerSessionId,
 }: TodaySuggestionsPanelProps) {
   return (
-    <Card className="today-suggestions-panel">
+    <Card>
       <CardHeader className="pb-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="glass-label text-etch">Queue assist</p>
-            <CardTitle className="mt-1 text-xl">Suggestions</CardTitle>
+            <CardTitle className="mt-1 text-[length:var(--text-section)]">Suggestions</CardTitle>
           </div>
-          <span className="today-suggestions-icon" aria-hidden="true">
+          <span
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-xs)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)]"
+            aria-hidden="true"
+          >
             <Sparkles className="h-4 w-4" />
           </span>
         </div>
@@ -117,7 +126,7 @@ export function TodaySuggestionsPanel({
             </div>
 
             {group.items.length > 0 ? (
-              <div className="space-y-2">
+              <div className="rows overflow-hidden rounded-[var(--radius-md)] border border-[var(--ega-border)]">
                 {group.items.map((task) => (
                   <SuggestionCard
                     key={task.id}
@@ -128,7 +137,7 @@ export function TodaySuggestionsPanel({
                 ))}
                 {group.items.length >= 6 ? (
                   <div className="pt-1">
-                    <Link href="/tasks" className="glass-label text-signal-live">
+                    <Link href="/tasks" className="glass-label">
                       Show more in tasks
                     </Link>
                   </div>
@@ -148,7 +157,7 @@ export function TodaySuggestionsPanel({
         <div className="rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-4 py-3 text-sm text-[color:var(--muted-foreground)]">
           Need a task that isn&apos;t listed here? Open the full queue and add context there.
           <div className="mt-2">
-            <Link href="/tasks" className="glass-label text-signal-live">
+            <Link href="/tasks" className="glass-label">
               Open all tasks
             </Link>
           </div>

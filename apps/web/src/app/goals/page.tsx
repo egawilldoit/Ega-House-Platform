@@ -23,7 +23,10 @@ export default async function GoalsPage({ searchParams }: GoalsPageProps) {
   const model = await getGoalsPageModel(resolvedSearchParams);
 
   return (
-    <AppShell eyebrow="Direction" title={model.focusedGoal?.title ?? "Goals"} description="Objectives with health, progress, and next step.">
+    <AppShell
+      title="Goals"
+      description="Objectives with health, progress, next step, and linked tasks."
+    >
       <GoalsPageView model={model} />
     </AppShell>
   );

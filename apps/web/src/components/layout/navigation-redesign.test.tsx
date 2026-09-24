@@ -70,43 +70,47 @@ describe("EGA-654 compact top-bar signals", () => {
 });
 
 describe("EGA-654 navigation structure", () => {
-  it("top bar uses one compact signal cluster with canonical destinations preserved", () => {
+  it("keeps search in the sidebar and the top bar restrained", () => {
     const topBar = read("components", "layout", "top-bar.tsx");
-    expect(topBar).toContain("TopBarCompactSignals");
+    const sidebar = read("components", "layout", "sidebar.tsx");
+    const searchTrigger = read("components", "layout", "workspace-search-trigger.tsx");
+
+    expect(topBar).not.toContain("TopBarCompactSignals");
     expect(topBar).not.toContain("TopBarSignalCluster");
-    // Timer, search, notifications and profile remain present.
-    expect(topBar).toContain("workspace-search-trigger");
+    expect(topBar).not.toContain("ega-topbar-upgrade-pill");
+    expect(topBar).not.toContain("workspace-shortcut-control");
     expect(topBar).toContain("/notifications");
     expect(topBar).toContain("Account settings");
+
+    // One search implementation, owned by the sidebar trigger.
+    expect(sidebar).toContain("<WorkspaceSearchTrigger />");
+    expect(searchTrigger).toContain("COMMAND_PALETTE_EVENT");
   });
 
-  it("EGA-654: tablet sidebar and accessibility contract agree", () => {
+  it("EGA-654: sidebar state and accessibility contract agree", () => {
     const sidebar = read("components", "layout", "sidebar.tsx");
     expect(sidebar).toContain('data-collapsed={collapsed ? "true" : "false"}');
     expect(sidebar).toContain('data-testid="sidebar-collapse-toggle"');
     expect(sidebar).toContain("compact={collapsed}");
 
-    const css = read("components", "layout", "editorial-shell.css");
-    expect(css).toContain('.workspace-sidebar[data-collapsed="true"]');
-    expect(css).toContain("@media (prefers-reduced-motion: no-preference)");
-    expect(css).toContain(".sidebar-active-indicator");
+    const css = read("styles", "workspace.css");
+    expect(css).toContain('.app-shell[data-collapsed="true"]');
+    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     // Icon-only states hide the text wrappers explicitly, not only via font-size.
-    expect(css).toContain(".workspace-capture-trigger-copy");
-    expect(css).toContain(".workspace-create-task-copy");
-    // Tablet widths keep labels visible and the collapse control available.
-    expect(css).toMatch(
-      /@media \(min-width: 761px\) and \(max-width: 1180px\)[\s\S]*?--workspace-sidebar-width:\s*clamp\(15rem, 24vw, 17rem\)/,
-    );
-    expect(css).toMatch(/@media \(min-width: 761px\)[\s\S]*?data-collapsed="true"/);
+    expect(css).toMatch(/data-collapsed="true"[\s\S]*?\.workspace-nav-label,/);
     expect(css).toContain("max-height: min(31dvh, 18rem);");
     expect(css).toContain("overflow-y: auto;");
-    expect(css).not.toMatch(/@media \(max-width: 1180px\)[\s\S]*?\.workspace-sidebar-collapse\s*\{[\s\S]*?display:\s*none/);
+    // The tablet rail width is a token override, owned by tokens.css.
+    expect(read("styles", "tokens.css")).toMatch(
+      /@media \(min-width: 761px\) and \(max-width: 1080px\)/,
+    );
 
     const navigation = read("components", "layout", "sidebar-navigation.tsx");
-    expect(navigation).toContain("sidebar-active-indicator");
     // Names are unconditional (not gated on the compact prop).
     expect(navigation).toContain("aria-label={route.label}");
-    expect(navigation).toContain("aria-label={project.name}");
+    // The project row names what its compact count counts.
+    expect(navigation).toContain("aria-label={getProjectAccessibleLabel(project)}");
+    expect(navigation).toContain("activeTaskCount");
   });
 });
 

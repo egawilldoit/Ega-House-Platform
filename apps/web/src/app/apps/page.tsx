@@ -13,12 +13,11 @@ export const metadata: Metadata = {
 export default async function AppsIndexPage() {
   return (
     <AppShell
-      eyebrow="Surfaces"
       title="Apps"
       description="Open the module you need without leaving context."
     >
-      <div className="space-y-4">
-        <p className="glass-label text-etch">
+      <div className="flex flex-col gap-3">
+        <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
           Navigate with mouse, tab, or arrow keys. Press Enter or Space to open.
         </p>
         <AppsLauncherGrid items={APPS_LAUNCHER_ITEMS} />

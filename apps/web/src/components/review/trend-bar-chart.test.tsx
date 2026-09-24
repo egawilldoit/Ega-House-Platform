@@ -23,11 +23,11 @@ test("renders chart with daily data", () => {
 
   assert.match(markup, /Last 7 days/);
   assert.match(markup, /active days/);
-  assert.match(markup, /1h 30m 0s/); // Total: 90 minutes
+  assert.match(markup, /1h 30m/); // Total: 90 minutes
   assert.match(markup, /tracked/);
   assert.match(markup, /Mon, Apr 20/);
-  assert.match(markup, /1h 0m 0s/);
-  assert.match(markup, /30m 0s/);
+  assert.match(markup, /1h/);
+  assert.match(markup, /30m/);
 });
 
 test("renders chart with a single session day", () => {
@@ -39,6 +39,6 @@ test("renders chart with a single session day", () => {
 
   assert.match(markup, /Today/);
   assert.match(markup, /active days/);
-  assert.match(markup, /1h 30m 0s/);
+  assert.match(markup, /1h 30m/);
   assert.match(markup, /Mon, Apr 27/);
 });

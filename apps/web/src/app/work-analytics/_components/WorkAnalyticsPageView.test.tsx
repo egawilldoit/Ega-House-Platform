@@ -8,8 +8,8 @@ describe("WorkAnalytics — restored capabilities", () => {
   it("exposes Month Comparison (monthComparison)", () => {
     expect(view).toContain("Month-to-date");
     expect(view).toContain("Previous month");
-    expect(view).toContain("MoM delta");
-    expect(view).toContain("Avg active day");
+    expect(view).toContain("Change vs previous month");
+    expect(view).toContain("Average active day");
     expect(view).toContain("report.monthComparison.currentMonthMinutes");
     expect(view).toContain("report.monthComparison.previousMonthMinutes");
     expect(view).toContain("report.monthComparison.deltaMinutes");
@@ -17,7 +17,7 @@ describe("WorkAnalytics — restored capabilities", () => {
   });
 
   it("exposes Estimate Accuracy (estimateAccuracy)", () => {
-    expect(view).toContain("Estimate accuracy");
+    expect(view).toContain("Estimate variance");
     expect(view).toContain("report.estimateAccuracy.totalEstimatedMinutes");
     expect(view).toContain("report.estimateAccuracy.totalTrackedMinutes");
     expect(view).toContain("report.estimateAccuracy.estimateDeltaMinutes");

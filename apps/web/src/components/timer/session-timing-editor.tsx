@@ -67,7 +67,7 @@ export function SessionTimingEditor({
     <form ref={formRef} action={action} className="mt-3 space-y-3">
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <div>
-          <label htmlFor={`session-date-${sessionId}`} className="glass-label text-etch">
+          <label htmlFor={`session-date-${sessionId}`} className="form-label">
             Date
           </label>
           <input
@@ -81,7 +81,7 @@ export function SessionTimingEditor({
           />
         </div>
         <div>
-          <label htmlFor={`session-start-${sessionId}`} className="glass-label text-etch">
+          <label htmlFor={`session-start-${sessionId}`} className="form-label">
             Start time
           </label>
           <input
@@ -95,7 +95,7 @@ export function SessionTimingEditor({
           />
         </div>
         <div>
-          <label htmlFor={`session-end-${sessionId}`} className="glass-label text-etch">
+          <label htmlFor={`session-end-${sessionId}`} className="form-label">
             End time
           </label>
           <input

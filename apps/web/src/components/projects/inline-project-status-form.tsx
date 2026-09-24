@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   PROJECT_STATUS_VALUES,
   formatTaskToken,
@@ -20,35 +20,37 @@ export function InlineProjectStatusForm({
   error,
 }: InlineProjectStatusFormProps) {
   return (
-    <form action={action} className="space-y-3">
+    <form action={action} className="flex flex-col gap-2">
       <input type="hidden" name="projectId" value={projectId} />
       <input type="hidden" name="returnTo" value={returnTo} />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--border)] bg-white/80 p-2.5">
-        <label className="space-y-2">
-          <span className="glass-label text-etch">
-            Status
-          </span>
-          <select
-            name="status"
-            defaultValue={defaultStatus}
-            className="input-instrument min-h-9 min-w-32 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
-          >
-            {PROJECT_STATUS_VALUES.filter((statusValue) => statusValue !== "archived").map((statusValue) => (
-              <option key={statusValue} value={statusValue}>
-                {formatTaskToken(statusValue)}
-              </option>
-            ))}
-          </select>
-        </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="glass-label">Status</span>
+        <select
+          name="status"
+          defaultValue={defaultStatus}
+          className="input-instrument h-8 w-full px-2.5 text-[length:var(--text-meta-lg)]"
+        >
+          {PROJECT_STATUS_VALUES.filter((statusValue) => statusValue !== "archived").map((statusValue) => (
+            <option key={statusValue} value={statusValue}>
+              {formatTaskToken(statusValue)}
+            </option>
+          ))}
+        </select>
+      </label>
 
-        <Button size="sm" type="submit" variant="muted">
-          Save
-        </Button>
-      </div>
+      <PendingSubmitButton
+        size="sm"
+        type="submit"
+        variant="secondary"
+        className="self-start"
+        pendingLabel="Saving…"
+      >
+        Save status
+      </PendingSubmitButton>
 
       {error ? (
-        <p className="feedback-block feedback-block-error">
+        <p role="alert" className="feedback-block feedback-block-error">
           {error}
         </p>
       ) : null}

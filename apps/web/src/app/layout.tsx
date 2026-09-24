@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Instrument_Sans, Sora, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "../styles/workspace.css";
 import { MotionProvider } from "@/components/motion-provider";
 
 const instrumentSans = Instrument_Sans({

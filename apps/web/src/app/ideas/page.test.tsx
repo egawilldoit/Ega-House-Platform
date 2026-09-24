@@ -30,23 +30,44 @@ test("ideas page filter form contains search, type, status, project, priority in
   assert.match(source, /name="tag"/, "Should have tag input");
 });
 
-test("ideas page uses Link for view switches (Active/Archived/All)", () => {
+test("ideas page filter submit uses the canonical pending control", () => {
   const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
 
-  // View switches should use Link, not forms
   assert.match(
     source,
-    /Link[^>]*href=\{getIdeaViewHref\("active/,
-    "Active view should use Link",
+    /<PendingSubmitButton[^>]*pendingLabel="Applying…"/,
+    "Apply filters should surface an in-flight pending label",
   );
   assert.match(
     source,
-    /Link[^>]*href=\{getIdeaViewHref\("archived/,
-    "Archived view should use Link",
+    /import \{ PendingSubmitButton \} from "@\/components\/ui\/pending-submit-button"/,
+    "Apply filters should use the shared pending submit primitive",
+  );
+});
+
+test("ideas page uses link-based view switches (All/Inbox/Archived)", () => {
+  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
+
+  // View switches should be anchors (FilterPill renders a Link when given an
+  // href), never form submissions.
+  assert.match(
+    source,
+    /FilterPill[^>]*href=\{getIdeaViewHref\("all/,
+    "All view should use a link-based FilterPill",
   );
   assert.match(
     source,
-    /Link[^>]*href=\{getIdeaViewHref\("all/,
-    "All view should use Link",
+    /FilterPill[^>]*href=\{getIdeaViewHref\("active/,
+    "Inbox view should use a link-based FilterPill",
+  );
+  assert.match(
+    source,
+    /FilterPill[^>]*href=\{getIdeaViewHref\("archived/,
+    "Archived view should use a link-based FilterPill",
+  );
+  assert.doesNotMatch(
+    source,
+    /<form[^>]*getIdeaViewHref/,
+    "View switches must not be form submissions",
   );
 });

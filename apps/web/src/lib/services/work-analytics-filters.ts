@@ -225,6 +225,50 @@ export const RANGE_LABELS: Record<AnalyticsRange, string> = {
   qtd: "Quarter to date",
 };
 
+/**
+ * Human label for the window a selected-range comparison actually uses.
+ *
+ * Rolling ranges compare against the immediately preceding equal-length window;
+ * `prev-month` compares against the previous calendar month. Calendar-to-date
+ * ranges (mtm/qtd) are duration-matched, so the label states the real day count
+ * instead of implying a calendar-equivalent period.
+ */
+export function buildComparisonLabel(
+  range: AnalyticsRange,
+  window: { startIso: string; endIso: string },
+): string {
+  switch (range) {
+    case "today":
+      return "vs previous day";
+    case "7d":
+      return "vs previous 7 days";
+    case "30d":
+      return "vs previous 30 days";
+    case "prev-month":
+      return "vs previous month";
+    default: {
+      const startMs = new Date(window.startIso).getTime();
+      const endMs = new Date(window.endIso).getTime();
+      const days = Math.max(1, Math.round((endMs - startMs) / 86_400_000));
+      return `vs previous ${days} days`;
+    }
+  }
+}
+
+/** Window immediately before `window` with the same duration. */
+export function computePreviousEquivalentWindow(window: {
+  startIso: string;
+  endIso: string;
+}): { startIso: string; endIso: string } {
+  const startMs = new Date(window.startIso).getTime();
+  const endMs = new Date(window.endIso).getTime();
+  const durationMs = Math.max(0, endMs - startMs);
+  return {
+    startIso: new Date(startMs - durationMs).toISOString(),
+    endIso: window.startIso,
+  };
+}
+
 export const GROUP_BY_LABELS: Record<AnalyticsGroupBy, string> = {
   day: "Daily",
   week: "Weekly",

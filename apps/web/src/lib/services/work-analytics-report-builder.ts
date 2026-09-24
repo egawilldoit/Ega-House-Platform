@@ -25,6 +25,8 @@ import {
   calculateWorkAnalyticsGoalBreakdown,
   calculateWorkAnalyticsTaskBreakdown,
   calculateEstimateAccuracy,
+  calculateRollingAverageSeries,
+  calculateWeekdayDistribution,
   buildDrilldownIndexes,
 } from "./work-analytics-service";
 import type {
@@ -37,9 +39,11 @@ import type {
   WorkAnalyticsTaskBreakdown,
   EstimateAccuracySummary,
   DrilldownIndexes,
+  DrilldownSessionDTO,
   WorkAnalyticsOptions,
 } from "./work-analytics-service";
 import {
+  buildComparisonLabel,
   computeDateRangeForWindow,
   computeLast30DaysWindow,
   computeWindowForRange,
@@ -76,6 +80,22 @@ export type WorkAnalyticsReport = {
   selectedRangeLabel: string;
   selectedSummary: WorkAnalyticsSelectedSummary;
   selectedSeries: WorkAnalyticsDaily[];
+  /**
+   * Like-for-like comparison for the selected range: the immediately preceding
+   * equal-length window, never the fixed 7-day context.
+   */
+  selectedComparison: WorkAnalyticsInsights;
+  /** Canonical label naming the comparison window actually used. */
+  selectedComparisonLabel: string;
+  /** Trailing mean of the selected daily series, for the chart's second dimension. */
+  selectedSeriesRollingAverage: WorkAnalyticsDaily[];
+  /** Weekday distribution of the fixed 30-day series. */
+  weekdayDistribution: Array<{
+    weekday: number;
+    label: string;
+    workedMinutes: number;
+    sessionCount: number;
+  }>;
   summary: WorkAnalyticsCoreSummary;
   last7DaysSeries: WorkAnalyticsDaily[];
   last30DaysSeries: WorkAnalyticsDaily[];
@@ -89,6 +109,8 @@ export type WorkAnalyticsReport = {
   taskBreakdown: WorkAnalyticsTaskBreakdown[];
   estimateAccuracy: EstimateAccuracySummary;
   drilldownIndexes: DrilldownIndexes;
+  /** Date drilldowns for the fixed recent-7-day chart, scoped to its own window. */
+  recentDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -168,6 +190,13 @@ export function buildWorkAnalyticsReport(
     options,
   );
 
+  // 2b. Selected-range comparison. `calculateWorkAnalyticsInsights` is window
+  //     parametric, so passing the selected window yields a like-for-like
+  //     previous period instead of borrowing the fixed 7-day context.
+  const selectedComparison = calculateWorkAnalyticsInsights(sessions, selectedWindow, options);
+  const selectedComparisonLabel = buildComparisonLabel(filters.range, selectedWindow);
+  const selectedSeriesRollingAverage = calculateRollingAverageSeries(selectedSeries, 7);
+
   // 3. Fixed 30-day context (uses its own exact calendar windows and the 30-day task counts).
   const monthWindow = computeLast30DaysWindow(now);
   const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts.last30d, options);
@@ -187,21 +216,30 @@ export function buildWorkAnalyticsReport(
   const weekWindow = windowFromDays(7, now);
   const thisWeekInsights = calculateWorkAnalyticsInsights(sessions, weekWindow, options);
 
-  // 6. 7-day and 30-day series for trend charts
+  // 6. 7-day and 30-day series for trend charts. The recent chart is a fixed
+  // daily rhythm, so it always groups by day regardless of the selected grouping.
+  const recentStartDate = daysAgoIsoDate(6, now);
+  const recentWindow: ExecutionEvidenceWindow = {
+    startIso: `${recentStartDate}T00:00:00.000Z`,
+    endIso: nowIso,
+  };
   const last7DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
-    daysAgoIsoDate(6, now),
+    recentStartDate,
     nowIso.slice(0, 10),
-    filters.groupBy,
+    "day",
     options,
   );
+  const trendStartDate = daysAgoIsoDate(29, now);
   const last30DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
-    daysAgoIsoDate(29, now),
+    trendStartDate,
     nowIso.slice(0, 10),
-    filters.groupBy,
+    "day",
     options,
   );
+
+  const weekdayDistribution = calculateWeekdayDistribution(last30DaysSeries);
 
   // 7. Breakdowns (selected window)
   const breakdownBy: AnalyticsBreakdownBy = filters.breakdownBy;
@@ -215,8 +253,14 @@ export function buildWorkAnalyticsReport(
   // 9. Estimate accuracy (selected window)
   const estimateAccuracy = calculateEstimateAccuracy(sessions, selectedWindow, options);
 
-  // 10. Compact drilldown indexes (selected window)
+  // 10. Compact drilldown indexes. Entity and primary-chart drilldowns are
+  // selected-window authoritative; the fixed recent chart gets its own 7-day index.
   const drilldownIndexes = buildDrilldownIndexes(sessions, selectedWindow, options);
+  const recentDateDrilldownIndex = buildDrilldownIndexes(
+    sessions,
+    recentWindow,
+    options,
+  ).date;
 
   // 11. Breakdown title
   const breakdownTitle =
@@ -231,6 +275,10 @@ export function buildWorkAnalyticsReport(
     selectedRangeLabel: RANGE_LABELS[filters.range],
     selectedSummary,
     selectedSeries,
+    selectedComparison,
+    selectedComparisonLabel,
+    selectedSeriesRollingAverage,
+    weekdayDistribution,
     summary,
     last7DaysSeries,
     last30DaysSeries,
@@ -244,5 +292,6 @@ export function buildWorkAnalyticsReport(
     taskBreakdown,
     estimateAccuracy,
     drilldownIndexes,
+    recentDateDrilldownIndex,
   };
 }

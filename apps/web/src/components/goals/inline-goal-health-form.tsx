@@ -1,5 +1,7 @@
+import { ChevronDown } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { GOAL_HEALTH_VALUES, getGoalHealthLabel } from "@/lib/goal-health";
+import { GOAL_HEALTH_VALUES, getGoalHealthLabel, toGoalHealthOrNull } from "@/lib/goal-health";
 
 type InlineGoalHealthFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -7,6 +9,11 @@ type InlineGoalHealthFormProps = {
   returnTo: string;
   defaultHealth: string | null;
   error?: string | null;
+  /**
+   * Renders only the form so a parent disclosure can own the "Edit goal"
+   * affordance; standalone rendering keeps its own disclosure.
+   */
+  embedded?: boolean;
 };
 
 export function InlineGoalHealthForm({
@@ -15,35 +22,54 @@ export function InlineGoalHealthForm({
   returnTo,
   defaultHealth,
   error,
+  embedded = false,
 }: InlineGoalHealthFormProps) {
-  return (
-    <form action={action} className="space-y-3">
+  const currentHealth = toGoalHealthOrNull(defaultHealth);
+  const form = (
+    <form
+      action={action}
+      className={embedded ? "flex flex-wrap items-end gap-2" : "mt-3 flex flex-wrap items-end gap-2"}
+    >
       <input type="hidden" name="goalId" value={goalId} />
       <input type="hidden" name="returnTo" value={returnTo} />
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-[var(--border)] bg-white/80 p-3">
-        <label className="space-y-2">
-          <span className="glass-label text-etch">Health</span>
-          <select
-            name="health"
-            defaultValue={defaultHealth ?? ""}
-            className="input-instrument min-h-9 min-w-36 px-3 py-0 text-[10px] uppercase tracking-[0.14em]"
-          >
-            <option value="">Not set</option>
-            {GOAL_HEALTH_VALUES.map((healthValue) => (
-              <option key={healthValue} value={healthValue}>
-                {getGoalHealthLabel(healthValue)}
-              </option>
-            ))}
-          </select>
-        </label>
+      <label className="flex flex-col gap-1.5">
+        <span className="glass-label">Update health</span>
+        <select
+          name="health"
+          defaultValue={defaultHealth ?? ""}
+          className="input-instrument h-8 min-w-36 px-2.5 text-[length:var(--text-meta-lg)]"
+        >
+          <option value="">Not set</option>
+          {GOAL_HEALTH_VALUES.map((healthValue) => (
+            <option key={healthValue} value={healthValue}>
+              {getGoalHealthLabel(healthValue)}
+            </option>
+          ))}
+        </select>
+      </label>
 
-        <Button size="sm" type="submit" variant="muted">
-          Save
-        </Button>
-      </div>
+      <Button size="sm" type="submit" variant="secondary">
+        Save health
+      </Button>
 
-      {error ? <p className="feedback-block feedback-block-error">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="feedback-block feedback-block-error w-full">
+          {error}
+        </p>
+      ) : null}
     </form>
+  );
+
+  if (embedded) return form;
+
+  return (
+    <details className="w-full sm:w-auto" open={Boolean(error)}>
+      <summary className="filter-pill list-none cursor-pointer">
+        <span>Health: {currentHealth ? getGoalHealthLabel(currentHealth) : "Not set"}</span>
+        <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+      </summary>
+      {form}
+    </details>
   );
 }
