@@ -1,4 +1,4 @@
-import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,7 +18,7 @@ function TaskRowSkeleton() {
 
 export default function TasksLoadingPage() {
   return (
-    <TasksWorkspaceShell
+    <WorkspaceSkeletonShell
       title="Tasks"
       description="Find, organize, and move your work forward."
       actions={<Skeleton className="h-8 w-24" />}
@@ -49,6 +49,6 @@ export default function TasksLoadingPage() {
           <TaskRowSkeleton />
         </div>
       </Card>
-    </TasksWorkspaceShell>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -17,7 +17,7 @@ function PanelSkeleton({ rows }: { rows: number }) {
 
 export default function HomeLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Home"
       description="What to do now, what needs attention, and what to start next."
     >
@@ -45,6 +45,6 @@ export default function HomeLoadingPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }
