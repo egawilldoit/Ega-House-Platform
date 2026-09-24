@@ -94,7 +94,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
       description={
         hasAnyTasks
           ? "Reset one or more filters to bring the execution queue back into view."
-          : "Create a task to start the execution queue. Filters and saved views stay available."
+          : "Create a task to start the execution queue."
       }
       action={
         hasAnyTasks ? (
