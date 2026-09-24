@@ -1,6 +1,7 @@
 import { createAuthenticatedActor, getOperatorSnapshot, type OperatorSnapshot } from "@ega/application";
 import { SupabaseTimeContextRepository, SupabaseTodayReadPort } from "@ega/data-access";
 import { createClient } from "@/lib/supabase/server";
+import { getRequestTimeContextRepository } from "@/lib/request-time-context";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -17,14 +18,18 @@ export async function getOperatorSnapshotData(options?: {
 
   let user;
   try {
-    user = await requireAuthenticatedUser({ supabase });
+    user = options?.supabase
+      ? await requireAuthenticatedUser({ supabase })
+      : await requireAuthenticatedUser();
   } catch {
     return { data: null, errorMessage: "Authentication required." };
   }
 
   const actor = createAuthenticatedActor(user.id);
   const port = new SupabaseTodayReadPort(supabase as never);
-  const timeContextRepo = new SupabaseTimeContextRepository(supabase as never);
+  const timeContextRepo = options?.supabase
+    ? new SupabaseTimeContextRepository(supabase as never)
+    : await getRequestTimeContextRepository();
 
   const result = await getOperatorSnapshot(actor, port, timeContextRepo, { now, requestedTimezone: options?.requestedTimezone });
   if (!result.ok) {

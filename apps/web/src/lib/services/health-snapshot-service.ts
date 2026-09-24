@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
+import { getRequestTimeContextRepository } from "@/lib/request-time-context";
+import { getCurrentUser } from "@/lib/services/auth-service";
 import { getHealthWorkloadSnapshot, type HealthWorkloadSnapshot } from "@ega/application/health/workload-snapshot";
 import { getHealthRecommendations, type HealthRecommendation } from "@ega/application/health/recommendations";
 import { SupabaseExecutionEvidenceRepository, SupabaseTimeContextRepository } from "@ega/data-access";
@@ -19,9 +21,9 @@ export async function getHealthSnapshotData(options?: {
   const supabase = options?.supabase ?? (await createClient());
   const now = options?.now ?? new Date();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser(
+    options?.supabase ? { supabase: options.supabase } : undefined,
+  );
 
   if (!user) {
     return { errorMessage: "Authentication required.", data: null, recommendations: [] };
@@ -31,7 +33,9 @@ export async function getHealthSnapshotData(options?: {
 
   // Use request-scoped client that carries the authenticated token so RLS applies.
   // createClient() already returns a scoped client when called from server components.
-  const timeRepo = new SupabaseTimeContextRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient);
+  const timeRepo = options?.supabase
+    ? new SupabaseTimeContextRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient)
+    : await getRequestTimeContextRepository();
   const evidenceRepo = new SupabaseExecutionEvidenceRepository(supabase as unknown as import("@supabase/supabase-js").SupabaseClient);
 
   const result = await getHealthWorkloadSnapshot(actor, timeRepo, evidenceRepo, {
