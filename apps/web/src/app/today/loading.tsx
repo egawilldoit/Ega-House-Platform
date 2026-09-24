@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -17,7 +17,7 @@ function PanelSkeleton({ rows = 3 }: { rows?: number }) {
 
 export default function TodayLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Today"
       description="Focus on what matters today. Make progress, one step at a time."
       actions={<Skeleton className="h-8 w-48" />}
@@ -40,6 +40,6 @@ export default function TodayLoadingPage() {
           </div>
         </div>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

@@ -1,10 +1,10 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function FrictionLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Friction"
       description="Where work stalls, and what to do about it."
     >
@@ -29,6 +29,6 @@ export default function FrictionLoadingPage() {
           ))}
         </Card>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }

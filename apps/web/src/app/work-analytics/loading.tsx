@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,7 +18,7 @@ function PanelSkeleton({ bodyHeight = "h-48" }: { bodyHeight?: string }) {
 
 export default function WorkAnalyticsLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Analytics"
       description="See where your focused time goes."
     >
@@ -68,6 +68,6 @@ export default function WorkAnalyticsLoadingPage() {
           </Card>
         </div>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }
