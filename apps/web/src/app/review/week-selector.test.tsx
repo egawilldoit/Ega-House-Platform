@@ -61,6 +61,21 @@ test("week selector shows current week date range and review count", () => {
   );
 });
 
+test("week selector submit uses the canonical pending control", () => {
+  const source = readFileSync(WEEKS_SELECTOR_PATH, "utf-8");
+
+  assert.match(
+    source,
+    /<PendingSubmitButton[^>]*pendingLabel="Viewing…"/,
+    "View week should surface an in-flight pending label",
+  );
+  assert.match(
+    source,
+    /import \{ PendingSubmitButton \} from "@\/components\/ui\/pending-submit-button"/,
+    "View week should use the shared pending submit primitive",
+  );
+});
+
 test("week selector GET form preserves no-JS fallback behavior", () => {
   const source = readFileSync(WEEKS_SELECTOR_PATH, "utf-8");
 

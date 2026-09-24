@@ -1,110 +1,54 @@
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function TaskRowSkeleton() {
   return (
-    <article className="rounded-sm border border-[var(--border)] bg-[color:var(--instrument-raised)] px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex-1 space-y-3">
-          <div className="flex items-start gap-3">
-            <Skeleton className="mt-2 h-2 w-2 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <Skeleton className="h-5 w-56 max-w-full rounded-sm" />
-              <Skeleton className="h-3 w-40 max-w-full rounded-sm" />
-            </div>
-          </div>
-          <Skeleton className="h-4 w-full rounded-sm" />
-          <Skeleton className="h-4 w-11/12 rounded-sm" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-6 w-24 rounded-sm" />
-          <Skeleton className="h-6 w-20 rounded-sm" />
-        </div>
+    <div className="flex items-center gap-3 border-b border-[var(--ega-divider)] px-3.5 py-3 last:border-b-0">
+      <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <Skeleton className="h-4 w-56 max-w-full" />
+        <Skeleton className="h-3 w-36 max-w-full" />
       </div>
-      <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-[var(--border)] pt-4">
-        <div className="flex-1 space-y-2 pt-2">
-          <Skeleton className="h-3 w-20 max-w-full rounded-sm" />
-          <Skeleton className="h-4 w-24 max-w-full rounded-sm" />
-        </div>
-        <Skeleton className="h-10 w-80 max-w-full rounded-sm" />
-      </div>
-    </article>
+      <Skeleton className="hidden h-5 w-20 sm:block" />
+      <Skeleton className="hidden h-5 w-16 md:block" />
+      <Skeleton className="h-7 w-24 shrink-0" />
+    </div>
   );
 }
 
 export default function TasksLoadingPage() {
   return (
     <TasksWorkspaceShell
-      eyebrow="Execution Workspace"
       title="Tasks"
-      description="Active execution queue with inline state control and task initialization."
-      actions={<Skeleton className="h-8 w-24 rounded-sm" />}
+      description="Find, organize, and move your work forward."
+      actions={<Skeleton className="h-8 w-24" />}
     >
-      <div className="workspace-main-rail-grid">
-        <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-          <CardContent className="px-6 pb-6 pt-6">
-            <div className="mb-5 flex items-end justify-between gap-4">
-              <div className="space-y-2">
-                <Skeleton className="h-3 w-36 rounded-sm" />
-                <Skeleton className="h-4 w-48 rounded-sm" />
-              </div>
-            </div>
-
-            <div className="mb-6 space-y-4">
-              <div className="space-y-2">
-                <Skeleton className="h-3 w-14 rounded-sm" />
-                <div className="flex flex-wrap gap-2">
-                  <Skeleton className="h-8 w-20 rounded-sm" />
-                  <Skeleton className="h-8 w-28 rounded-sm" />
-                  <Skeleton className="h-8 w-24 rounded-sm" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-3 w-16 rounded-sm" />
-                <div className="flex flex-wrap gap-2">
-                  <Skeleton className="h-8 w-24 rounded-sm" />
-                  <Skeleton className="h-8 w-32 rounded-sm" />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <TaskRowSkeleton />
-              <TaskRowSkeleton />
-              <TaskRowSkeleton />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-[var(--border)] bg-[color:var(--instrument)]">
-          <CardContent className="px-6 pb-6 pt-6">
-            <div className="mb-5 space-y-2">
-              <Skeleton className="h-3 w-28 rounded-sm" />
-              <Skeleton className="h-4 w-48 rounded-sm" />
-            </div>
-            <div className="space-y-4">
-              <Skeleton className="h-3 w-12 rounded-sm" />
-              <Skeleton className="h-10 w-full rounded-sm" />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Skeleton className="h-3 w-16 rounded-sm" />
-                  <Skeleton className="h-10 w-full rounded-sm" />
-                </div>
-                <div className="space-y-2">
-                  <Skeleton className="h-3 w-16 rounded-sm" />
-                  <Skeleton className="h-10 w-full rounded-sm" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Skeleton className="h-3 w-24 rounded-sm" />
-                <Skeleton className="h-28 w-full rounded-sm" />
-              </div>
-              <Skeleton className="h-10 w-40 rounded-sm" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Mirrors the rail-free composition: one full-width inventory card with a
+          two-row toolbar. */}
+      <Card clip>
+        <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-20" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="ml-auto h-8 w-24" />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="ml-auto h-4 w-40" />
+          </div>
+        </div>
+        <div>
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+        </div>
+      </Card>
     </TasksWorkspaceShell>
   );
 }

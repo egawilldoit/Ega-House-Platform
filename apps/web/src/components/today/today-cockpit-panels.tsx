@@ -2,17 +2,18 @@ import Link from "next/link";
 
 import { startTimerAction } from "@/app/timer/actions";
 import { completeTodayTaskAction } from "@/app/today/actions";
-import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TimerStopForm } from "@/components/timer/timer-stop-form";
+import { LiveDuration } from "@/components/timer/live-duration";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TodayPlannerTask } from "@/lib/services/today-planner-service";
 import type { ActiveTimerSession } from "@/lib/services/timer-service";
 import { formatTaskToken, isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { getTodayTaskHref } from "@/components/today/today-task-card";
 import { Clock3, ExternalLink, ListChecks, Play, Radio, Square } from "lucide-react";
 
@@ -22,7 +23,7 @@ type TodayCockpitActionProps = {
   activeTimerSessionId: string | null;
 };
 
-function TodayCockpitActions({
+export function TodayCockpitActions({
   task,
   returnTo,
   activeTimerSessionId,
@@ -31,14 +32,9 @@ function TodayCockpitActions({
   const taskIsCompleted = isTaskCompletedStatus(task.status);
 
   return (
-    <div className="today-cockpit-actions">
+    <div className="task-row-actions">
       {isActiveTimerTask ? (
-        <TimerStopForm
-          sessionId={isActiveTimerTask}
-          returnTo={returnTo}
-          size="sm"
-          className="today-cockpit-action-button"
-        >
+        <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm">
           <Square className="h-3.5 w-3.5" aria-hidden="true" />
           Stop timer
         </TimerStopForm>
@@ -46,7 +42,7 @@ function TodayCockpitActions({
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={task.id} />
           <input type="hidden" name="returnTo" value={returnTo} />
-          <Button type="submit" size="sm" className="today-cockpit-action-button">
+          <Button type="submit" size="sm" variant="primary">
             <Play className="h-3.5 w-3.5" aria-hidden="true" />
             Start timer
           </Button>
@@ -60,8 +56,7 @@ function TodayCockpitActions({
           <PendingSubmitButton
             type="submit"
             size="sm"
-            variant="muted"
-            className="today-cockpit-action-button"
+            variant="secondary"
             pendingLabel="Saving..."
           >
             Done
@@ -71,7 +66,7 @@ function TodayCockpitActions({
 
       <Link
         href={getTodayTaskHref(task)}
-        className="btn-instrument btn-instrument-muted today-cockpit-action-button flex h-8 items-center px-3 text-xs"
+        className="btn-instrument btn-instrument-muted flex h-7 items-center gap-1.5 px-2.5 text-xs"
       >
         <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
         Open
@@ -91,14 +86,14 @@ export function StartHerePanel({
 }) {
   if (!task) {
     return (
-      <Card className="today-start-panel">
-        <CardContent className="px-5 py-5">
+      <Card>
+        <CardContent>
           <EmptyState
             icon={ListChecks}
             title="No actionable task ready"
-            description="Plan a task for today or pin one in the task queue to create a clear starting point."
+            description="Plan a task for today or pin focus work to create a clear starting point."
             action={
-              <Link href="/tasks" className="btn-instrument flex h-8 items-center px-3 text-xs">
+              <Link href="/tasks" className="btn-instrument flex h-8 items-center px-3 text-sm">
                 Open tasks
               </Link>
             }
@@ -109,15 +104,29 @@ export function StartHerePanel({
   }
 
   return (
-    <Card className="today-start-panel">
-      <CardHeader className="pb-3">
-        <p className="glass-label text-signal-live">Start here</p>
-        <CardTitle className="text-2xl">{task.title}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4 pt-0">
+    <Card
+      label="Start here"
+      title={task.title}
+      data-testid="today-start-here"
+      action={
+        task.hasActiveTimer ? <Badge tone="active">Timer running</Badge> : null
+      }
+    >
+      <CardContent className="flex flex-col gap-3">
+        {task.description ? (
+          <p className="max-w-[70ch] text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-[color:var(--ega-text-secondary)]">
+            {task.description}
+          </p>
+        ) : null}
+
+        <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+          {task.projectName}
+          {task.goalTitle ? ` · ${task.goalTitle}` : ""}
+        </p>
+
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone={task.hasActiveTimer ? "active" : "info"}>
-            {task.hasActiveTimer ? "Timer running" : formatTaskToken(task.status)}
+          <Badge tone={task.hasActiveTimer ? "active" : "muted"}>
+            {formatTaskToken(task.status)}
           </Badge>
           <Badge tone="muted">{formatTaskToken(task.priority)}</Badge>
           {task.isPlannedForToday ? <Badge tone="info">Planned today</Badge> : null}
@@ -125,19 +134,9 @@ export function StartHerePanel({
           {task.estimateMinutes ? (
             <Badge tone="muted">Est. {formatTaskEstimate(task.estimateMinutes)}</Badge>
           ) : null}
-        </div>
-        <p className="text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-          {task.projectName}
-          {task.goalTitle ? ` · ${task.goalTitle}` : ""}
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
           <TaskDueDateLabel dueDate={task.dueDate} status={task.status} />
-          {task.description ? (
-            <span className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-              {task.description}
-            </span>
-          ) : null}
         </div>
+
         <TodayCockpitActions
           task={task}
           returnTo={returnTo}
@@ -148,80 +147,110 @@ export function StartHerePanel({
   );
 }
 
+/** Compact per-row primary action for the focus queue. */
+function TodayQueueRowAction({
+  task,
+  returnTo,
+  activeTimerSessionId,
+}: TodayCockpitActionProps) {
+  const isActiveTimerTask = task.hasActiveTimer ? activeTimerSessionId : null;
+
+  if (isActiveTimerTask) {
+    return (
+      <TimerStopForm sessionId={isActiveTimerTask} returnTo={returnTo} size="sm">
+        <Square className="h-3.5 w-3.5" aria-hidden="true" />
+        Stop
+      </TimerStopForm>
+    );
+  }
+
+  if (isTaskCompletedStatus(task.status)) {
+    return null;
+  }
+
+  return (
+    <form action={startTimerAction}>
+      <input type="hidden" name="taskId" value={task.id} />
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <Button type="submit" size="sm" variant="secondary">
+        <Play className="h-3.5 w-3.5" aria-hidden="true" />
+        Start
+      </Button>
+    </form>
+  );
+}
+
 export function FocusQueuePanel({
   tasks,
   returnTo,
   activeTimerSessionId,
+  excludeTaskId,
 }: {
   tasks: TodayPlannerTask[];
   returnTo: string;
   activeTimerSessionId: string | null;
+  excludeTaskId?: string | null;
 }) {
-  const queue = tasks.slice(0, 6);
+  // Canonical focus queue order is preserved; only the Start Here task (which
+  // has its own panel above) is excluded. The badge must count exactly the rows
+  // this panel renders, not the canonical queue length.
+  const visibleUpNext = tasks.filter((task) => task.id !== excludeTaskId).slice(0, 7);
 
   return (
-    <Card className="today-focus-panel">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="glass-label text-etch">Execution lane</p>
-            <CardTitle className="mt-1 text-xl">Next up</CardTitle>
-            <p className="mt-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
-              Deterministic signals rank the next step. Starting work is always your call.
-            </p>
-          </div>
-          <Badge tone="muted">{queue.length}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2 pt-0">
-        {queue.length > 0 ? (
-          queue.map((task, index) => (
-            <article key={task.id} className="today-focus-row">
-              <div className="today-focus-rank">{index + 1}</div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[color:var(--foreground)]">
-                  {task.title}
-                </p>
-                <p className="mt-1 truncate text-xs text-[color:var(--muted-foreground)]">
+    <Card
+      label="Queue"
+      title="Suggested next"
+      action={
+        <Badge tone="muted" data-testid="today-focus-queue-count">
+          {visibleUpNext.length}
+        </Badge>
+      }
+      data-testid="today-focus-queue"
+    >
+      {visibleUpNext.length > 0 ? (
+        <ul className="rows">
+          {visibleUpNext.map((task, index) => (
+            <li
+              key={task.id}
+              className={`row items-start ${task.hasActiveTimer ? "row-link" : ""}`}
+            >
+              <span className="rank mt-0.5" aria-hidden="true">
+                {index + 1}
+              </span>
+              <span className="row-main">
+                <span className="row-title">{task.title}</span>
+                <span className="row-meta">
                   {task.projectName}
                   {task.goalTitle ? ` · ${task.goalTitle}` : ""}
-                </p>
-                <p className="mt-1 text-xs font-medium text-[color:var(--foreground)]">
-                  {task.hasActiveTimer
-                    ? "Already in motion"
-                    : task.dueBucket === "overdue"
-                      ? "Clear the overdue lane"
-                      : task.isPlannedForToday
-                        ? "Planned for today"
-                        : task.focusRank
-                          ? `Pinned focus #${task.focusRank}`
-                          : "Best available next step"}
-                  {task.estimateMinutes ? ` · ${formatTaskEstimate(task.estimateMinutes)}` : ""}
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Badge tone={task.hasActiveTimer ? "active" : "muted"}>
-                    {task.hasActiveTimer ? "Active" : formatTaskToken(task.priority)}
-                  </Badge>
-                  {task.isPlannedForToday ? <Badge tone="info">Planned</Badge> : null}
-                  <TaskDueDateLabel dueDate={task.dueDate} status={task.status} />
-                </div>
-              </div>
-              <TodayCockpitActions
-                task={task}
-                returnTo={returnTo}
-                activeTimerSessionId={activeTimerSessionId}
-              />
-            </article>
-          ))
-        ) : (
+                  {task.estimateMinutes
+                    ? ` · ${formatTaskEstimate(task.estimateMinutes)}`
+                    : ""}
+                </span>
+              </span>
+              <span className="flex flex-wrap items-center justify-end gap-1.5">
+                {task.dueBucket === "overdue" ? (
+                  <Badge tone="error">Overdue</Badge>
+                ) : task.isPlannedForToday ? (
+                  <Badge tone="info">Planned</Badge>
+                ) : null}
+                <TodayQueueRowAction
+                  task={task}
+                  returnTo={returnTo}
+                  activeTimerSessionId={activeTimerSessionId}
+                />
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <CardContent>
           <EmptyState
             icon={ListChecks}
             title="Queue is empty"
             description="Add a task to Today or pin focus work to build a short execution queue."
-            className="py-5"
           />
-        )}
-      </CardContent>
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -229,25 +258,32 @@ export function FocusQueuePanel({
 export function ActiveTimerPanel({
   activeTimer,
   returnTo,
+  startedAt,
 }: {
   activeTimer: ActiveTimerSession | null;
   returnTo: string;
+  startedAt?: string | null;
 }) {
   if (!activeTimer) {
     return (
-      <Card className="today-active-timer-panel">
-        <CardContent className="px-5 py-5">
+      <Card label="Focus session" title="No session running" data-testid="today-timer-idle">
+        <CardContent className="flex flex-col gap-3">
           <div className="flex items-start gap-3">
-            <span className="today-active-timer-icon" aria-hidden="true">
-              <Clock3 className="h-4 w-4" />
-            </span>
-            <div>
-              <p className="glass-label text-etch">Active timer</p>
-              <p className="mt-1 text-sm leading-6 text-[color:var(--muted-foreground)]">
-                No session is running. Start one from Start here or the focus queue.
-              </p>
-            </div>
+            <Clock3
+              className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]"
+              aria-hidden="true"
+            />
+            <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
+              Start a session from Start here or Suggested next. The timer keeps
+              running across the workspace while it is active.
+            </p>
           </div>
+          <Link
+            href="/timer"
+            className="btn-instrument btn-instrument-muted flex h-8 w-fit items-center px-3 text-sm"
+          >
+            Open timer
+          </Link>
         </CardContent>
       </Card>
     );
@@ -258,39 +294,39 @@ export function ActiveTimerPanel({
     : `/tasks#task-${activeTimer.taskId}`;
 
   return (
-    <Card className="today-active-timer-panel today-active-timer-panel-live">
-      <CardContent className="space-y-4 px-5 py-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="glass-label text-signal-live">Active timer</p>
-            <h2 className="mt-1 truncate text-xl font-semibold text-[color:var(--foreground)]">
-              {activeTimer.taskTitle}
-            </h2>
-            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
-              {activeTimer.projectName}
-              {activeTimer.goalTitle ? ` · ${activeTimer.goalTitle}` : ""}
-            </p>
-          </div>
-          <span className="today-active-timer-icon" aria-hidden="true">
-            <Radio className="h-4 w-4" />
-          </span>
-        </div>
+    <Card
+      label="Focus session"
+      title={activeTimer.taskTitle}
+      action={
+        <span className="inline-flex items-center gap-1 text-[length:var(--text-meta)] font-medium text-[color:var(--status-healthy)]">
+          <Radio className="h-3.5 w-3.5" aria-hidden="true" />
+          Live
+        </span>
+      }
+      data-testid="today-timer-active"
+    >
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
+          {activeTimer.projectName}
+          {activeTimer.goalTitle ? ` · ${activeTimer.goalTitle}` : ""}
+        </p>
+
+        {startedAt ? <LiveDuration startedAt={startedAt} label="Elapsed" /> : null}
+
         <div className="flex flex-wrap items-center gap-2">
-          <Badge tone="active">{activeTimer.elapsedLabel}</Badge>
           <Badge tone="muted">{formatTaskToken(activeTimer.taskStatus)}</Badge>
           <Badge tone="muted">{formatTaskToken(activeTimer.taskPriority)}</Badge>
         </div>
-        <div className="today-cockpit-actions">
-          <TimerStopForm
-            sessionId={activeTimer.sessionId}
-            returnTo={returnTo}
-            size="sm"
-            className="today-cockpit-action-button"
-          >
+
+        <div className="task-row-actions">
+          <TimerStopForm sessionId={activeTimer.sessionId} returnTo={returnTo} size="md">
             <Square className="h-3.5 w-3.5" aria-hidden="true" />
-            Stop timer
+            Stop session
           </TimerStopForm>
-          <Link href={taskHref} className="btn-instrument btn-instrument-muted today-cockpit-action-button flex h-8 items-center px-3 text-xs">
+          <Link
+            href={taskHref}
+            className="btn-instrument btn-instrument-muted flex h-8 items-center gap-1.5 px-3 text-sm"
+          >
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             Open task
           </Link>

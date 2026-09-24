@@ -27,24 +27,24 @@ export function IdeaNoteArchiveControls({ noteId, mode }: IdeaNoteArchiveControl
   const Icon = mode === "archive" ? Archive : RotateCcw;
 
   return (
-    <form action={formAction} className="mt-4 flex flex-wrap items-center gap-2">
+    <form action={formAction} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="id" value={noteId} />
       <PendingSubmitButton
         type="submit"
         size="sm"
         variant={mode === "archive" ? "muted" : "default"}
-        className="gap-2 rounded-xl"
+        className="gap-2"
       >
         <Icon className="h-4 w-4" aria-hidden="true" />
         {mode === "archive" ? "Archive" : "Restore"}
       </PendingSubmitButton>
       {state.error ? (
-        <p className="text-sm text-signal-error" role="alert">
+        <p className="feedback-block feedback-block-error" role="alert">
           {state.error}
         </p>
       ) : null}
       {state.success ? (
-        <p className="text-sm text-signal-live" role="status">
+        <p className="feedback-block" role="status">
           {state.success}
         </p>
       ) : null}

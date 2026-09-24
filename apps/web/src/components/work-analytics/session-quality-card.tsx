@@ -1,5 +1,6 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatDurationLabel } from "@/lib/task-session";
+import { Card, CardContent } from "@/components/ui/card";
+import { CompactStat } from "@/components/ui/metric";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { SessionQuality } from "@/lib/services/work-analytics-service";
 
 type SessionQualityCardProps = {
@@ -7,9 +8,9 @@ type SessionQualityCardProps = {
 };
 
 function progressColor(value: number, threshold: number): string {
-  if (value >= threshold) return "text-red-500";
-  if (value > threshold * 0.5) return "text-amber-500";
-  return "text-green-600";
+  if (value >= threshold) return "text-status-overdue";
+  if (value > threshold * 0.5) return "text-status-risk";
+  return "text-status-healthy";
 }
 
 /**
@@ -21,87 +22,74 @@ export function SessionQualityCard({ quality }: SessionQualityCardProps) {
   const hasData = quality.totalSessions > 0;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Session quality</CardTitle>
-      </CardHeader>
+    <Card label="Quality" title="Session quality">
       <CardContent>
         {!hasData ? (
-          <div className="text-sm text-muted-foreground">
+          <p className="text-[length:var(--text-meta-lg)] text-ega-text-secondary">
             No session data in this period.
-          </div>
+          </p>
         ) : (
-          <div className="space-y-3">
-            {/* Session lengths */}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <div className="text-xs text-muted-foreground">Average</div>
-                <div className="text-lg font-semibold">
-                  {formatDurationLabel(
-                    Math.round(quality.averageSessionLengthMinutes) * 60,
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Median</div>
-                <div className="text-lg font-semibold">
-                  {formatDurationLabel(
-                    Math.round(quality.medianSessionLengthMinutes) * 60,
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Longest</div>
-                <div className="text-lg font-semibold">
-                  {formatDurationLabel(
-                    Math.round(quality.longestSessionMinutes) * 60,
-                  )}
-                </div>
-              </div>
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-3 gap-3">
+              <CompactStat
+                label="Average"
+                value={formatDisplayDuration(
+                  Math.round(quality.averageSessionLengthMinutes) * 60,
+                  "minute",
+                )}
+              />
+              <CompactStat
+                label="Median"
+                value={formatDisplayDuration(
+                  Math.round(quality.medianSessionLengthMinutes) * 60,
+                  "minute",
+                )}
+              />
+              <CompactStat
+                label="Longest"
+                value={formatDisplayDuration(
+                  Math.round(quality.longestSessionMinutes) * 60,
+                  "minute",
+                )}
+              />
             </div>
 
-            {/* Fragmentation counts */}
             <div>
-              <div className="mb-1 text-xs text-muted-foreground">
-                Fragmentation
-              </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">&lt;5 min</span>
-                  <span className={progressColor(quality.sessionsUnder5Min, 5)}>
+              <p className="glass-label">Fragmentation</p>
+              <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[length:var(--text-meta-lg)]">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-ega-text-secondary">&lt;5 min</dt>
+                  <dd className={`tabular-nums ${progressColor(quality.sessionsUnder5Min, 5)}`}>
                     {quality.sessionsUnder5Min}
-                  </span>
+                  </dd>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">&lt;15 min</span>
-                  <span
-                    className={progressColor(quality.sessionsUnder15Min, 10)}
-                  >
+                <div className="flex justify-between gap-2">
+                  <dt className="text-ega-text-secondary">&lt;15 min</dt>
+                  <dd className={`tabular-nums ${progressColor(quality.sessionsUnder15Min, 10)}`}>
                     {quality.sessionsUnder15Min}
-                  </span>
+                  </dd>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">&gt;90 min</span>
-                  <span className={progressColor(quality.sessionsOver90Min, 3)}>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-ega-text-secondary">&gt;90 min</dt>
+                  <dd className={`tabular-nums ${progressColor(quality.sessionsOver90Min, 3)}`}>
                     {quality.sessionsOver90Min}
-                  </span>
+                  </dd>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">&gt;180 min</span>
-                  <span
-                    className={progressColor(quality.sessionsOver180Min, 2)}
+                <div className="flex justify-between gap-2">
+                  <dt className="text-ega-text-secondary">&gt;180 min</dt>
+                  <dd
+                    className={`tabular-nums ${progressColor(quality.sessionsOver180Min, 2)}`}
                   >
                     {quality.sessionsOver180Min}
-                  </span>
+                  </dd>
                 </div>
-              </div>
+              </dl>
             </div>
 
-            {/* Total sessions */}
-            <div className="text-xs text-muted-foreground">
+            <p className="text-[length:var(--text-meta)] text-ega-text-tertiary">
               {quality.totalSessions} total session
               {quality.totalSessions !== 1 ? "s" : ""}
-            </div>
+            </p>
           </div>
         )}
       </CardContent>

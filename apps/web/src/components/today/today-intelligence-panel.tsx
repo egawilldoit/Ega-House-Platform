@@ -42,43 +42,43 @@ export function TodayIntelligencePanel({
   const hasContextSwitch = friction.data?.contextSwitch.isFriction ?? false;
 
   return (
-    <section className="today-intelligence-grid" aria-label="Today intelligence">
-      <Card className="today-intelligence-panel">
+    <section className="flex flex-col gap-4" aria-label="Today intelligence">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="glass-label text-etch">Workload</p>
-              <CardTitle className="mt-1 text-lg">Health &amp; recovery</CardTitle>
+              <CardTitle className="mt-1 text-[length:var(--text-panel-title)]">Health &amp; recovery</CardTitle>
             </div>
             <Activity className="h-5 w-5 text-signal-live" aria-hidden="true" />
           </div>
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           {health.errorMessage || !health.data ? (
-            <div className="today-intelligence-unavailable" role="status">
+            <div className="feedback-block feedback-block-warn" role="status">
               <Badge tone="muted">Unavailable</Badge>
-              <p>Workload evidence is unavailable. Your Today plan remains usable.</p>
+              <p>Workload guidance is unavailable. Your Today plan remains usable.</p>
             </div>
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone={health.data.quality.quality === "sufficient" ? "success" : "info"}>
-                  {health.data.quality.quality === "sufficient" ? "Evidence ready" : "Evidence limited"}
+                  {health.data.quality.quality === "sufficient" ? "Enough data" : "Limited data"}
                 </Badge>
                 <Badge tone="muted">{health.data.rollingWorkload.totalTrackedLabel} this week</Badge>
               </div>
-              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
                 {healthRecommendation?.message ??
                   (health.data.quality.quality === "insufficient"
                     ? "Track a few sessions to make workload guidance more useful."
-                    : "No workload guidance is needed from the available evidence.")}
+                    : "No workload guidance is needed right now.")}
               </p>
               {healthRecommendation ? (
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+                <p className="glass-label">
                   Recommendation · {healthRecommendation.title}
                 </p>
               ) : null}
-              <p className="text-xs text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                 Workload guidance only — not medical advice.
               </p>
             </>
@@ -86,7 +86,7 @@ export function TodayIntelligencePanel({
         </CardContent>
       </Card>
 
-      <Card className="today-intelligence-panel">
+      <Card>
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -98,7 +98,7 @@ export function TodayIntelligencePanel({
         </CardHeader>
         <CardContent className="space-y-3 pt-0">
           {friction.errorMessage || !friction.data ? (
-            <div className="today-intelligence-unavailable" role="status">
+            <div className="feedback-block feedback-block-warn" role="status">
               <Badge tone="muted">Unavailable</Badge>
               <p>Friction signals are unavailable. Core task execution is unaffected.</p>
             </div>
@@ -110,7 +110,7 @@ export function TodayIntelligencePanel({
                 </Badge>
                 {hasContextSwitch ? <Badge tone="warn">Context switching high</Badge> : null}
               </div>
-              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+              <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
                 {estimateSignal
                   ? `${estimateSignal.title} is ${Math.abs(estimateSignal.percentError)}% ${estimateSignal.status === "over" ? "over" : "under"} estimate.`
                   : hasContextSwitch
@@ -120,7 +120,7 @@ export function TodayIntelligencePanel({
                       : "Your current work lane is not showing a strong friction pattern."}
               </p>
               {frictionCount > 0 ? (
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--foreground)]">
+                <p className="glass-label">
                   Recommendation · protect one clear next step
                 </p>
               ) : null}

@@ -1,6 +1,6 @@
 import React from "react";
 
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { cn } from "@/lib/utils";
 
 type FocusPinToggleFormProps = {
@@ -26,7 +26,7 @@ export function FocusPinToggleForm({
     <form action={action} className={className ?? "inline-flex"}>
       <input type="hidden" name="taskId" value={taskId} />
       <input type="hidden" name="returnTo" value={returnTo} />
-      <Button
+      <PendingSubmitButton
         type="submit"
         size="sm"
         variant={isPinned ? "muted" : "ghost"}
@@ -34,9 +34,10 @@ export function FocusPinToggleForm({
           compact ? "h-7 px-2 text-[10px] uppercase tracking-[0.14em]" : undefined,
           fullWidth ? "w-full justify-center" : undefined,
         )}
+        pendingLabel={isPinned ? "Unpinning…" : "Pinning…"}
       >
         {isPinned ? "Unpin" : "Pin"}
-      </Button>
+      </PendingSubmitButton>
     </form>
   );
 }

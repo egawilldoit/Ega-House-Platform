@@ -1,16 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import {
   getSidebarTaskSignalBadge,
-  TopBarSignalCluster,
+  getTopBarAttentionSignal,
+  getTopBarShellSignals,
+  getTopBarTimerSignal,
 } from "./shell-signals";
 
-test("renders the top bar signal cluster with actionable shell signals only", () => {
+test("shell signals stay actionable, ordered, and canonical", () => {
   const metrics = buildWorkspaceShellMetrics({
     hasActiveTimer: true,
     blockedTaskCount: 1,
@@ -19,16 +19,16 @@ test("renders the top bar signal cluster with actionable shell signals only", ()
     hasCurrentWeekReview: false,
   });
 
-  const markup = renderToStaticMarkup(<TopBarSignalCluster metrics={metrics} />);
-
-  assert.match(markup, /Timer active/);
-  assert.match(markup, /2 overdue/);
-  assert.match(markup, /3 due today/);
-  assert.match(markup, /1 blocked/);
-  assert.match(markup, /Review due/);
+  const signals = getTopBarShellSignals(metrics);
+  assert.deepEqual(
+    signals.map((signal) => signal.href),
+    ["/timer", "/tasks?due=overdue", "/tasks?due=due_today", "/tasks?status=blocked", "/review"],
+  );
+  assert.equal(getTopBarTimerSignal(metrics)?.label, "Timer active");
+  assert.equal(getTopBarAttentionSignal(metrics)?.label, "2 overdue");
 });
 
-test("keeps shell signal rendering clean when there is nothing actionable", () => {
+test("keeps shell signal semantics clean when there is nothing actionable", () => {
   const metrics = buildWorkspaceShellMetrics({
     hasActiveTimer: false,
     blockedTaskCount: 0,
@@ -37,8 +37,36 @@ test("keeps shell signal rendering clean when there is nothing actionable", () =
     hasCurrentWeekReview: true,
   });
 
-  const markup = renderToStaticMarkup(<TopBarSignalCluster metrics={metrics} />);
-
-  assert.equal(markup, "");
+  assert.equal(getTopBarShellSignals(metrics).length, 0);
+  assert.equal(getTopBarAttentionSignal(metrics), null);
+  assert.equal(getTopBarTimerSignal(metrics), null);
   assert.equal(getSidebarTaskSignalBadge(metrics), null);
+});
+
+test("sidebar task badge prioritizes overdue over due-today over blocked", () => {
+  assert.equal(
+    getSidebarTaskSignalBadge(
+      buildWorkspaceShellMetrics({
+        hasActiveTimer: false,
+        blockedTaskCount: 4,
+        overdueTaskCount: 0,
+        dueTodayTaskCount: 2,
+        hasCurrentWeekReview: true,
+      }),
+    )?.tone,
+    "warn",
+  );
+
+  assert.equal(
+    getSidebarTaskSignalBadge(
+      buildWorkspaceShellMetrics({
+        hasActiveTimer: false,
+        blockedTaskCount: 4,
+        overdueTaskCount: 1,
+        dueTodayTaskCount: 2,
+        hasCurrentWeekReview: true,
+      }),
+    )?.tone,
+    "error",
+  );
 });

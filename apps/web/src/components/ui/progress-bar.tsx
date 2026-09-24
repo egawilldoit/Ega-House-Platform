@@ -6,12 +6,20 @@ type ProgressBarProps = HTMLAttributes<HTMLDivElement> & {
   max?: number;
   variant?: "green" | "cyan" | "neutral";
   size?: "sm" | "md";
+  /**
+   * Accessible name for what this bar measures. Required in practice: a bare
+   * progressbar announces a percentage with no subject, and work progress,
+   * linked-task completion and time allocation must not sound identical.
+   */
+  label?: string;
+  /** Spoken value, e.g. "63% of today's planned work". */
+  valueText?: string;
 };
 
 const variants = {
-  green:   "bg-[var(--accent)]",
-  cyan:    "bg-[var(--signal-info)]",
-  neutral: "bg-zinc-300",
+  green: "bg-[var(--ega-data-blue)]",
+  cyan: "bg-[var(--ega-data-purple)]",
+  neutral: "bg-[var(--ega-ink)]",
 };
 
 const sizes = {
@@ -22,28 +30,34 @@ const sizes = {
 export function ProgressBar({
   value,
   max = 100,
-  variant = "green",
+  variant = "neutral",
   size = "sm",
+  label,
+  valueText,
   className,
   ...props
 }: ProgressBarProps) {
-  const pct = Math.min(100, Math.max(0, (value / max) * 100));
+  const safeMax = max > 0 ? max : 100;
+  const pct = Math.min(100, Math.max(0, (value / safeMax) * 100));
+  const rounded = Math.round(pct);
 
   return (
     <div
       role="progressbar"
-      aria-valuenow={value}
+      aria-label={label}
+      aria-valuenow={rounded}
+      aria-valuetext={valueText ?? `${rounded}%`}
       aria-valuemin={0}
-      aria-valuemax={max}
+      aria-valuemax={100}
       className={cn(
-        "w-full overflow-hidden rounded-full bg-[#e8e5de]",
+        "w-full overflow-hidden rounded-[var(--radius-pill)] bg-[var(--ega-surface-muted)]",
         sizes[size],
         className,
       )}
       {...props}
     >
       <div
-        className={cn("h-full rounded-full transition-all duration-500 ease-out", variants[variant])}
+        className={cn("h-full rounded-[var(--radius-pill)]", variants[variant])}
         style={{ width: `${pct}%` }}
       />
     </div>

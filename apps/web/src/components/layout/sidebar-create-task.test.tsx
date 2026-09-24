@@ -40,8 +40,7 @@ describe("SidebarCreateTaskButton (EGA-649)", () => {
     expect(button?.getAttribute("aria-haspopup")).toBe("dialog");
     expect(button?.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+N Meta+Shift+N");
     expect(button?.textContent).toContain("Create task");
-    expect(button?.textContent).toContain("Single or batch");
-    expect(button?.className).toContain("min-h-12");
+    expect(button?.className).toContain("workspace-create-task-trigger");
   });
 
   it("dispatches the canonical quick-task event and does not mount its own task surface", async () => {

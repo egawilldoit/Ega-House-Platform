@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { formatDurationLabel } from "@/lib/task-session";
 import {
   formatDurationClock,
   getElapsedDurationSeconds,
@@ -10,16 +9,37 @@ import {
 
 type LiveDurationProps = {
   startedAt: string;
+  /** Visual size of the elapsed clock. */
+  size?: "md" | "lg";
+  label?: string;
+  className?: string;
 };
 
-export function LiveDuration({ startedAt }: LiveDurationProps) {
+/**
+ * Isolated 1-second tick.
+ *
+ * The ticking state deliberately lives in this leaf component so parent trees
+ * never re-render once per second.
+ */
+export function LiveDuration({
+  startedAt,
+  size = "lg",
+  label = "Elapsed",
+  className,
+}: LiveDurationProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(() =>
     getElapsedDurationSeconds(startedAt),
   );
+  const [renderedStartedAt, setRenderedStartedAt] = useState(startedAt);
+
+  // Adjusting state during render (React's recommended pattern) keeps a changed
+  // start time in sync without a state-setting effect.
+  if (renderedStartedAt !== startedAt) {
+    setRenderedStartedAt(startedAt);
+    setElapsedSeconds(getElapsedDurationSeconds(startedAt));
+  }
 
   useEffect(() => {
-    setElapsedSeconds(getElapsedDurationSeconds(startedAt));
-
     const intervalId = window.setInterval(() => {
       setElapsedSeconds(getElapsedDurationSeconds(startedAt));
     }, 1000);
@@ -28,18 +48,17 @@ export function LiveDuration({ startedAt }: LiveDurationProps) {
   }, [startedAt]);
 
   return (
-    <div className="space-y-2 rounded-xl border border-[rgba(22,163,74,0.14)] bg-[rgba(22,163,74,0.045)] px-4 py-4 shadow-sm">
-      <p className="text-[11px] font-medium uppercase tracking-[0.24em] text-signal-live">
-        Running duration
-      </p>
+    <div className={className}>
+      <p className="glass-label">{label}</p>
       <p
-        className="font-mono text-3xl font-semibold tracking-[0.14em] text-[color:var(--foreground)] sm:text-4xl"
+        className={
+          size === "lg"
+            ? "mt-1 font-mono text-3xl font-semibold tabular-nums tracking-[0.06em] text-[color:var(--ega-text)] sm:text-4xl"
+            : "mt-0.5 font-mono text-xl font-semibold tabular-nums tracking-[0.04em] text-[color:var(--ega-text)]"
+        }
         suppressHydrationWarning
       >
         {formatDurationClock(elapsedSeconds)}
-      </p>
-      <p className="text-sm text-[color:var(--muted-foreground)]" suppressHydrationWarning>
-        {formatDurationLabel(elapsedSeconds)} elapsed
       </p>
     </div>
   );

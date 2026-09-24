@@ -31,6 +31,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { workspaceShortcutEvents } from "@/components/layout/workspace-keyboard-shortcuts";
 import { parseQuickTaskCommand } from "@/lib/quick-task-command-parser";
 import {
+  formatDisplayDate,
+  formatDisplayEstimate,
+  formatDisplayStatus,
+} from "@/lib/presentation-format";
+import {
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
   formatTaskToken,
@@ -65,6 +70,9 @@ type QuickTaskSheetPanelProps = {
 };
 
 const DEFAULT_RETURN_TO = "/tasks";
+
+const FIELD_LABEL =
+  "form-label";
 
 type MultiTaskDraft = {
   id: string;
@@ -106,6 +114,16 @@ function createEmptyDraft(defaultProjectId: string): MultiTaskDraft {
   };
 }
 
+/**
+ * Primary submit for both creation modes.
+ *
+ * It must use the canonical Button system: the previous legacy variables
+ * resolved to the same near-black for both the surface and the label, which
+ * rendered the primary action as an unreadable black rectangle.
+ *
+ * The disabled treatment keeps the label legible on a neutral surface instead
+ * of fading the whole control, so "why can I not submit" stays answerable.
+ */
 function QuickTaskSubmitButton({
   label,
   pending,
@@ -118,9 +136,11 @@ function QuickTaskSubmitButton({
   return (
     <Button
       type="submit"
+      variant="primary"
+      size="lg"
       disabled={pending || disabled}
       aria-busy={pending}
-      className="inline-flex min-h-12 min-w-36 items-center justify-center gap-2 rounded-lg border border-[var(--ega-gold-strong)] bg-[var(--ega-gold)] px-5 font-semibold text-[var(--ega-text)] shadow-[var(--ega-shadow-sm)] transition-[background-color,box-shadow,transform] duration-150 hover:-translate-y-px hover:bg-[var(--ega-gold-strong)] hover:shadow-[var(--ega-shadow-md)] active:translate-y-0 active:shadow-none focus-visible:ring-2 focus-visible:ring-[var(--ega-gold)] disabled:translate-y-0 disabled:shadow-none motion-reduce:transition-none"
+      className="inline-flex min-h-11 min-w-36 items-center justify-center gap-2 px-4 font-semibold disabled:border-[var(--ega-border)] disabled:bg-[var(--ega-surface-muted)] disabled:text-[color:var(--ega-text-secondary)] disabled:opacity-100"
     >
       {pending ? (
         <span
@@ -130,7 +150,7 @@ function QuickTaskSubmitButton({
       ) : (
         <Plus className="h-4 w-4" aria-hidden="true" />
       )}
-      <span>{pending ? "Creating..." : label}</span>
+      <span>{pending ? "Creating\u2026" : label}</span>
     </Button>
   );
 }
@@ -257,6 +277,20 @@ function QuickTaskSheetPanel({
     Boolean(parsedSingleCommand.projectError)
     || Boolean(parsedSingleCommand.goalError)
     || Boolean(parsedSingleCommand.blockedError);
+  const exampleProject = projects[0] ?? null;
+  const exampleGoal =
+    goals.find((goal) => goal.project_id === exampleProject?.id) ?? null;
+  const commandPlaceholder = exampleProject
+    ? [
+        "Ship auth fix",
+        `#${exampleProject.name.replace(/\s+/g, "")}`,
+        exampleGoal ? `/${exampleGoal.title.replace(/\s+/g, "")}` : null,
+        "today high 45m",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "Ship auth fix today high 45m";
+
   const selectedProjectName =
     projects.find((project) => project.id === singleProjectId)?.name ?? "No project";
   const selectedGoalName =
@@ -436,24 +470,24 @@ function QuickTaskSheetPanel({
 
   return (
     <>
-      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ega-border)] px-5 pb-4 pt-5 sm:px-6">
         <span
-          className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[var(--ega-gold-soft)] text-[var(--ega-gold-strong)] ring-1 ring-[var(--ega-gold-ring)]"
+          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]"
           aria-hidden="true"
         >
           <Plus className="h-4 w-4" />
         </span>
         <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="glass-label text-signal-live">Execution Capture</p>
+          <p className="glass-label">Create task</p>
           <DialogPrimitive.Title
             id="quick-task-sheet-title"
-            className="font-display text-2xl font-semibold tracking-[-0.04em] text-[color:var(--foreground)]"
+            className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]"
           >
             Quick task
           </DialogPrimitive.Title>
           <DialogPrimitive.Description
             id="quick-task-sheet-description"
-            className="max-w-lg text-sm leading-5 text-[color:var(--muted-foreground)]"
+            className="max-w-lg text-[length:var(--text-body)] leading-5 text-[color:var(--ega-text-secondary)]"
           >
             Capture one task now, or switch to batch to stage several at once.
           </DialogPrimitive.Description>
@@ -473,9 +507,9 @@ function QuickTaskSheetPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
         {projects.length === 0 ? (
-          <div className="rounded-[1.15rem] border border-[var(--border)] bg-[color:var(--instrument)] p-5">
+          <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-5">
             <p className="glass-label text-etch">Project required</p>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--muted-foreground)]">
+            <p className="mt-2 text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
               Create a project first. Tasks stay scoped to visible projects, so quick capture
               remains unavailable until a project exists.
             </p>
@@ -510,7 +544,7 @@ function QuickTaskSheetPanel({
             <TabsContent value="single" className="flex min-h-0 flex-1 flex-col gap-4">
               <form
                 action={singleAction}
-                className="flex min-h-full flex-col gap-4 pb-2"
+                className="flex flex-col gap-4 pb-2"
                 onSubmit={(event) => {
                   if (hasCommandError) {
                     event.preventDefault();
@@ -531,19 +565,18 @@ function QuickTaskSheetPanel({
                 />
                 <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
-                <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     <div className="space-y-2">
-                      <label htmlFor="quick-task-command" className="glass-label text-etch">
+                      <label htmlFor="quick-task-command" className={FIELD_LABEL}>
                         Command
                       </label>
                       <Input
                         id="quick-task-command"
                         required
-                        placeholder="Ship auth fix #ExecutionOS /Launch today high 45m @blocked:Waiting-on-API"
+                        placeholder={commandPlaceholder}
                         value={singleCommand}
                         onChange={(event) => setSingleCommand(event.target.value)}
-                        className="h-10"
+                        className="h-11 w-full text-[length:var(--text-body-lg)]"
                       />
                       <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
                         Use #Project, /Goal, today or tomorrow, high or urgent, 45m, and
@@ -570,7 +603,7 @@ function QuickTaskSheetPanel({
                           },
                           {
                             label: "Due",
-                            value: singleDueDate || "—",
+                            value: formatDisplayDate(singleDueDate, "detail"),
                             Icon: CalendarClock,
                           },
                           {
@@ -580,12 +613,14 @@ function QuickTaskSheetPanel({
                           },
                           {
                             label: "Estimate",
-                            value: singleEstimateMinutes ? `${singleEstimateMinutes}m` : "—",
+                            value: formatDisplayEstimate(
+                              singleEstimateMinutes ? Number(singleEstimateMinutes) : null,
+                            ),
                             Icon: Clock3,
                           },
                           {
                             label: "Status",
-                            value: formatTaskToken(singleStatus),
+                            value: formatDisplayStatus(singleStatus),
                             Icon: CircleCheck,
                           },
                           ...(singleStatus === "blocked"
@@ -600,7 +635,7 @@ function QuickTaskSheetPanel({
                         ].map(({ label, value, Icon }) => (
                           <span
                             key={label}
-                            className="inline-flex min-h-8 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--ega-surface)] px-2.5 text-xs text-[color:var(--muted-foreground)]"
+                            className="inline-flex min-h-8 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2.5 text-xs text-[color:var(--muted-foreground)]"
                           >
                             <Icon
                               className="h-3.5 w-3.5 text-[color:var(--foreground)]"
@@ -625,9 +660,9 @@ function QuickTaskSheetPanel({
                         </div>
                       ))}
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <label htmlFor="quick-task-project" className="glass-label text-etch">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="min-w-0 space-y-2">
+                        <label htmlFor="quick-task-project" className={FIELD_LABEL}>
                           Project
                         </label>
                         <select
@@ -638,7 +673,7 @@ function QuickTaskSheetPanel({
                             setSingleProjectId(event.target.value);
                             setSingleGoalId("");
                           }}
-                          className="input-instrument h-10 text-sm"
+                          className="input-instrument h-11 w-full text-sm"
                         >
                           {projects.map((project) => (
                             <option key={project.id} value={project.id}>
@@ -648,8 +683,8 @@ function QuickTaskSheetPanel({
                         </select>
                       </div>
 
-                      <div className="space-y-2">
-                        <label htmlFor="quick-task-goal" className="glass-label text-etch">
+                      <div className="min-w-0 space-y-2">
+                        <label htmlFor="quick-task-goal" className={FIELD_LABEL}>
                           Goal
                         </label>
                         <select
@@ -657,7 +692,7 @@ function QuickTaskSheetPanel({
                           name="goalId"
                           value={singleGoalId}
                           onChange={(event) => setSingleGoalId(event.target.value)}
-                          className="input-instrument h-10 text-sm"
+                          className="input-instrument h-11 w-full text-sm"
                         >
                           <option value="">No goal</option>
                           {singleGoals.map((goal) => (
@@ -667,11 +702,9 @@ function QuickTaskSheetPanel({
                           ))}
                         </select>
                       </div>
-                    </div>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <label htmlFor="quick-task-status" className="glass-label text-etch">
+                      <div className="min-w-0 space-y-2">
+                        <label htmlFor="quick-task-status" className={FIELD_LABEL}>
                           Status
                         </label>
                         <select
@@ -679,48 +712,18 @@ function QuickTaskSheetPanel({
                           name="status"
                           value={singleStatus}
                           onChange={(event) => setSingleStatus(event.target.value)}
-                          className="input-instrument h-10 text-sm"
+                          className="input-instrument h-11 w-full text-sm"
                         >
                           {TASK_STATUS_VALUES.map((status) => (
                             <option key={status} value={status}>
-                              {formatTaskToken(status)}
+                              {formatDisplayStatus(status)}
                             </option>
                           ))}
                         </select>
                       </div>
 
-                      <div className="space-y-2">
-                        <label htmlFor="quick-task-due-date" className="glass-label text-etch">
-                          Due date
-                        </label>
-                        <Input
-                          id="quick-task-due-date"
-                          name="dueDate"
-                          type="date"
-                          value={singleDueDate}
-                          onChange={(event) => setSingleDueDate(event.target.value)}
-                          className="h-10"
-                        />
-                      </div>
-
-                      {singleStatus === "blocked" ? (
-                        <div className="space-y-2 sm:col-span-2">
-                          <label htmlFor="quick-task-blocked-reason" className="glass-label text-etch">
-                            Blocked reason
-                          </label>
-                          <Textarea
-                            id="quick-task-blocked-reason"
-                            name="blockedReason"
-                            placeholder="What is currently blocking this task?"
-                            value={singleBlockedReason}
-                            onChange={(event) => setSingleBlockedReason(event.target.value)}
-                            className="min-h-20 resize-none"
-                          />
-                        </div>
-                      ) : null}
-
-                      <div className="space-y-2">
-                        <label htmlFor="quick-task-priority" className="glass-label text-etch">
+                      <div className="min-w-0 space-y-2">
+                        <label htmlFor="quick-task-priority" className={FIELD_LABEL}>
                           Priority
                         </label>
                         <select
@@ -728,7 +731,7 @@ function QuickTaskSheetPanel({
                           name="priority"
                           value={singlePriority}
                           onChange={(event) => setSinglePriority(event.target.value)}
-                          className="input-instrument h-10 text-sm"
+                          className="input-instrument h-11 w-full text-sm"
                         >
                           {TASK_PRIORITY_VALUES.map((priority) => (
                             <option key={priority} value={priority}>
@@ -738,8 +741,22 @@ function QuickTaskSheetPanel({
                         </select>
                       </div>
 
-                      <div className="space-y-2">
-                        <label htmlFor="quick-task-estimate" className="glass-label text-etch">
+                      <div className="min-w-0 space-y-2">
+                        <label htmlFor="quick-task-due-date" className={FIELD_LABEL}>
+                          Due date
+                        </label>
+                        <Input
+                          id="quick-task-due-date"
+                          name="dueDate"
+                          type="date"
+                          value={singleDueDate}
+                          onChange={(event) => setSingleDueDate(event.target.value)}
+                          className="h-11 w-full"
+                        />
+                      </div>
+
+                      <div className="min-w-0 space-y-2">
+                        <label htmlFor="quick-task-estimate" className={FIELD_LABEL}>
                           Estimate (minutes)
                         </label>
                         <Input
@@ -751,104 +768,103 @@ function QuickTaskSheetPanel({
                           inputMode="numeric"
                           value={singleEstimateMinutes}
                           onChange={(event) => setSingleEstimateMinutes(event.target.value)}
-                          className="h-10"
+                          className="h-11 w-full"
                         />
                       </div>
 
-                      <details className="group sm:col-span-2 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--ega-surface)]">
-                        <summary className="flex min-h-[4.5rem] cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors hover:bg-[var(--ega-surface-subtle)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--ega-gold)] [&::-webkit-details-marker]:hidden">
-                          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgba(5,150,105,0.1)] text-signal-live">
-                            <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                              <span className="text-sm font-semibold text-[color:var(--foreground)]">
-                                More details
-                              </span>
-                              <span className="rounded-full bg-[var(--ega-surface-subtle)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
-                                Optional
-                              </span>
-                            </span>
-                            <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
-                              Calendar scheduling, reminders, worked time, and description
-                            </span>
-                          </span>
-                          <ChevronDown
-                            className="h-4 w-4 shrink-0 text-[color:var(--muted-foreground)] transition-transform group-open:rotate-180"
-                            aria-hidden="true"
+                      {singleStatus === "blocked" ? (
+                        <div className="min-w-0 space-y-2 sm:col-span-2">
+                          <label htmlFor="quick-task-blocked-reason" className={FIELD_LABEL}>
+                            Blocked reason
+                          </label>
+                          <Textarea
+                            id="quick-task-blocked-reason"
+                            name="blockedReason"
+                            placeholder="What is currently blocking this task?"
+                            value={singleBlockedReason}
+                            onChange={(event) => setSingleBlockedReason(event.target.value)}
+                            className="min-h-20 w-full resize-none"
                           />
-                        </summary>
-                        <div className="space-y-5 border-t border-[var(--border)] p-4">
-                          <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-white/70">
-                            <div className="flex items-start gap-3 border-b border-[var(--border)] px-4 py-3">
-                              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[rgba(5,150,105,0.1)] text-signal-live">
-                                <CalendarClock className="h-4 w-4" aria-hidden="true" />
-                              </span>
-                              <span className="min-w-0">
-                                <span className="glass-label text-etch">Calendar handoff</span>
-                                <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
-                                  Add a scheduled window and queue a Google Calendar event from quick
-                                  capture.
-                                </span>
-                              </span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <details className="group">
+                      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-sm font-medium text-[color:var(--ega-text-secondary)] transition-colors hover:text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ega-text)] [&::-webkit-details-marker]:hidden">
+                        <ChevronDown
+                          className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
+                          aria-hidden="true"
+                        />
+                        <span>More details</span>
+                        <span className="text-xs font-normal text-[color:var(--muted-foreground)]">
+                          Optional
+                        </span>
+                      </summary>
+                      <div className="mt-3 space-y-5 border-t border-[var(--ega-border)] pt-4">
+                        <section className="space-y-3">
+                          <p className="glass-label flex items-center gap-2 text-etch">
+                            <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+                            Calendar handoff
+                          </p>
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="min-w-0 space-y-2">
+                              <label
+                                htmlFor="quick-task-scheduled-from"
+                                className={FIELD_LABEL}
+                              >
+                                Scheduled from
+                              </label>
+                              <Input
+                                id="quick-task-scheduled-from"
+                                name="scheduledStartAt"
+                                type="datetime-local"
+                                defaultValue={singleState.values.scheduledStartAt}
+                                className="h-11 w-full"
+                              />
                             </div>
 
-                            <div className="grid gap-3 p-4 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <label
-                                  htmlFor="quick-task-scheduled-from"
-                                  className="glass-label text-etch"
-                                >
-                                  Scheduled from
-                                </label>
-                                <Input
-                                  id="quick-task-scheduled-from"
-                                  name="scheduledStartAt"
-                                  type="datetime-local"
-                                  defaultValue={singleState.values.scheduledStartAt}
-                                  className="h-10 bg-white/90"
-                                />
-                              </div>
-
-                              <div className="space-y-2">
-                                <label
-                                  htmlFor="quick-task-scheduled-to"
-                                  className="glass-label text-etch"
-                                >
-                                  Scheduled to
-                                </label>
-                                <Input
-                                  id="quick-task-scheduled-to"
-                                  name="scheduledEndAt"
-                                  type="datetime-local"
-                                  defaultValue={singleState.values.scheduledEndAt}
-                                  className="h-10 bg-white/90"
-                                />
-                              </div>
-
-                              <label className="flex items-start gap-3 rounded-xl border border-[rgba(5,150,105,0.18)] bg-white/80 p-3 sm:col-span-2">
-                                <input
-                                  type="checkbox"
-                                  name="calendarSyncEnabled"
-                                  defaultChecked={singleState.values.calendarSyncEnabled === "on"}
-                                  className="mt-1 h-4 w-4 accent-[rgb(5,150,105)]"
-                                />
-                                <span className="min-w-0">
-                                  <span className="glass-label text-etch">Sync to Calendar</span>
-                                  <span className="mt-1 block text-xs leading-5 text-[color:var(--muted-foreground)]">
-                                    Creates a calendar job after this task is saved.
-                                  </span>
-                                </span>
+                            <div className="min-w-0 space-y-2">
+                              <label
+                                htmlFor="quick-task-scheduled-to"
+                                className={FIELD_LABEL}
+                              >
+                                Scheduled to
                               </label>
+                              <Input
+                                id="quick-task-scheduled-to"
+                                name="scheduledEndAt"
+                                type="datetime-local"
+                                defaultValue={singleState.values.scheduledEndAt}
+                                className="h-11 w-full"
+                              />
+                            </div>
 
-                              <div className="space-y-2 sm:col-span-2">
-                                <label
-                                  htmlFor="quick-task-calendar-reminder"
-                                  className="glass-label flex items-center gap-2 text-etch"
-                                >
-                                  <BellRing className="h-3.5 w-3.5 text-signal-warn" aria-hidden="true" />
-                                  Calendar reminder
-                                </label>
+                            <label className="flex items-start gap-3 sm:col-span-2">
+                              <input
+                                type="checkbox"
+                                name="calendarSyncEnabled"
+                                defaultChecked={singleState.values.calendarSyncEnabled === "on"}
+                                className="mt-0.5 h-4 w-4 accent-[var(--ega-ink)]"
+                              />
+                              <span className="min-w-0">
+                                <span className="block text-sm font-medium text-[color:var(--ega-text)]">
+                                  Sync to Calendar
+                                </span>
+                                <span className="mt-0.5 block text-xs leading-5 text-[color:var(--muted-foreground)]">
+                                  Creates a calendar job after this task is saved.
+                                </span>
+                              </span>
+                            </label>
+
+                            <div className="min-w-0 space-y-2 sm:col-span-2">
+                              <label
+                                htmlFor="quick-task-calendar-reminder"
+                                className="flex items-center gap-2 text-xs font-medium text-[color:var(--ega-text-secondary)]"
+                              >
+                                <BellRing className="h-3.5 w-3.5 text-signal-warn" aria-hidden="true" />
+                                Calendar reminder
+                              </label>
+                              <div className="flex flex-wrap items-center gap-2">
                                 <Input
                                   id="quick-task-calendar-reminder"
                                   name="calendarReminderMinutes"
@@ -857,65 +873,70 @@ function QuickTaskSheetPanel({
                                   max="10080"
                                   step="5"
                                   defaultValue={singleState.values.calendarReminderMinutes}
-                                  className="h-10 bg-white/90"
+                                  className="h-11 w-28"
                                 />
+                                <span className="text-sm text-[color:var(--ega-text-secondary)]">
+                                  minutes before
+                                </span>
                               </div>
                             </div>
                           </div>
+                        </section>
 
-                          <div className="space-y-3">
-                            <p className="glass-label text-etch">Already worked on this?</p>
-                            <div className="grid gap-3 sm:grid-cols-2">
-                              <div className="space-y-2">
-                                <label
-                                  htmlFor="quick-task-worked-from"
-                                  className="glass-label text-etch"
-                                >
-                                  From
-                                </label>
-                                <Input
-                                  id="quick-task-worked-from"
-                                  name="workedTimeStartedAt"
-                                  type="datetime-local"
-                                  defaultValue={singleState.values.workedTimeStartedAt}
-                                  className="h-10"
-                                />
-                              </div>
+                        <section className="space-y-3">
+                          <p className="text-sm font-medium text-[color:var(--ega-text)]">
+                            Already worked on this?
+                          </p>
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="min-w-0 space-y-2">
+                              <label
+                                htmlFor="quick-task-worked-from"
+                                className={FIELD_LABEL}
+                              >
+                                From
+                              </label>
+                              <Input
+                                id="quick-task-worked-from"
+                                name="workedTimeStartedAt"
+                                type="datetime-local"
+                                defaultValue={singleState.values.workedTimeStartedAt}
+                                className="h-11 w-full"
+                              />
+                            </div>
 
-                              <div className="space-y-2">
-                                <label
-                                  htmlFor="quick-task-worked-to"
-                                  className="glass-label text-etch"
-                                >
-                                  To
-                                </label>
-                                <Input
-                                  id="quick-task-worked-to"
-                                  name="workedTimeEndedAt"
-                                  type="datetime-local"
-                                  defaultValue={singleState.values.workedTimeEndedAt}
-                                  className="h-10"
-                                />
-                              </div>
+                            <div className="min-w-0 space-y-2">
+                              <label
+                                htmlFor="quick-task-worked-to"
+                                className={FIELD_LABEL}
+                              >
+                                To
+                              </label>
+                              <Input
+                                id="quick-task-worked-to"
+                                name="workedTimeEndedAt"
+                                type="datetime-local"
+                                defaultValue={singleState.values.workedTimeEndedAt}
+                                className="h-11 w-full"
+                              />
                             </div>
                           </div>
-                          <div className="space-y-2">
-                            <label htmlFor="quick-task-description" className="glass-label text-etch">
-                              Description
-                            </label>
-                            <Textarea
-                              id="quick-task-description"
-                              name="description"
-                              placeholder="Capture scope, constraint, or delivery note."
-                              defaultValue={singleState.values.description}
-                              className="min-h-24 resize-none"
-                            />
-                          </div>
+                        </section>
+
+                        <div className="space-y-2">
+                          <label htmlFor="quick-task-description" className={FIELD_LABEL}>
+                            Description
+                          </label>
+                          <Textarea
+                            id="quick-task-description"
+                            name="description"
+                            placeholder="Capture scope, constraint, or delivery note."
+                            defaultValue={singleState.values.description}
+                            className="min-h-24 w-full resize-none"
+                          />
                         </div>
-                      </details>
-                    </div>
+                      </div>
+                    </details>
                   </div>
-                </div>
 
                 {singleState.error ? (
                   <div role="alert" className="feedback-block feedback-block-error">
@@ -923,7 +944,7 @@ function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex items-center justify-between border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex items-center justify-between border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
                   <DialogPrimitive.Close asChild>
                     <Button
                       type="button"
@@ -943,13 +964,13 @@ function QuickTaskSheetPanel({
             </TabsContent>
 
             <TabsContent value="multi" className="flex min-h-0 flex-1 flex-col gap-4">
-              <form action={bulkAction} className="flex min-h-full flex-col gap-4">
+              <form action={bulkAction} className="flex flex-col gap-4">
                 <input type="hidden" name="returnTo" value={DEFAULT_RETURN_TO} />
                 <input type="hidden" name="rows" value={serializedBulkRows} />
-                <div className="rounded-[1.1rem] border border-[var(--border)] bg-[color:var(--instrument)] p-4">
+                <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="glass-label text-signal-live">Batch builder</p>
+                      <p className="glass-label">Batch entry</p>
                       <h3 className="mt-1 text-base font-semibold text-[color:var(--foreground)]">
                         Add multiple tasks visually
                       </h3>
@@ -987,10 +1008,10 @@ function QuickTaskSheetPanel({
                     return (
                       <div
                         key={draft.id}
-                        className={`rounded-[1rem] border px-4 py-4 shadow-sm ${
+                        className={`rounded-[var(--radius-md)] border px-4 py-4 ${
                           draftErrors.length > 0
-                            ? "border-[rgba(198,40,40,0.18)] bg-[rgba(198,40,40,0.04)]"
-                            : "border-[var(--border)] bg-white"
+                            ? "border-[var(--status-overdue-border)] bg-[var(--status-overdue-bg)]"
+                            : "border-[var(--ega-border)] bg-[var(--ega-surface)]"
                         }`}
                       >
                         <div className="mb-4 flex items-center justify-between gap-3">
@@ -1027,7 +1048,7 @@ function QuickTaskSheetPanel({
 
                         <div className="space-y-4">
                           <div className="space-y-2">
-                            <label htmlFor={`draft-${draft.id}-title`} className="glass-label text-etch">Title</label>
+                            <label htmlFor={`draft-${draft.id}-title`} className={FIELD_LABEL}>Title</label>
                             <Input
                               id={`draft-${draft.id}-title`}
                               value={draft.title}
@@ -1035,20 +1056,20 @@ function QuickTaskSheetPanel({
                                 updateDraftField(draft.id, "title", event.target.value)
                               }
                               placeholder="What needs to be done?"
-                              className="h-10"
+                              className="h-11 w-full"
                             />
                           </div>
 
-                          <div className="grid gap-3 sm:grid-cols-2">
-                            <div className="space-y-2">
-                              <label htmlFor={`draft-${draft.id}-project`} className="glass-label text-etch">Project</label>
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="min-w-0 space-y-2">
+                              <label htmlFor={`draft-${draft.id}-project`} className={FIELD_LABEL}>Project</label>
                               <select
                                 id={`draft-${draft.id}-project`}
                                 value={draft.projectId}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "projectId", event.target.value)
                                 }
-                                className="input-instrument h-10 text-sm"
+                                className="input-instrument h-11 w-full text-sm"
                               >
                                 {projects.map((project) => (
                                   <option key={project.id} value={project.id}>
@@ -1058,15 +1079,15 @@ function QuickTaskSheetPanel({
                               </select>
                             </div>
 
-                            <div className="space-y-2">
-                              <label htmlFor={`draft-${draft.id}-goal`} className="glass-label text-etch">Goal</label>
+                            <div className="min-w-0 space-y-2">
+                              <label htmlFor={`draft-${draft.id}-goal`} className={FIELD_LABEL}>Goal</label>
                               <select
                                 id={`draft-${draft.id}-goal`}
                                 value={draft.goalId}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "goalId", event.target.value)
                                 }
-                                className="input-instrument h-10 text-sm"
+                                className="input-instrument h-11 w-full text-sm"
                               >
                                 <option value="">No goal</option>
                                 {draftGoals.map((goal) => (
@@ -1077,33 +1098,33 @@ function QuickTaskSheetPanel({
                               </select>
                             </div>
 
-                            <div className="space-y-2">
-                              <label htmlFor={`draft-${draft.id}-status`} className="glass-label text-etch">Status</label>
+                            <div className="min-w-0 space-y-2">
+                              <label htmlFor={`draft-${draft.id}-status`} className={FIELD_LABEL}>Status</label>
                               <select
                                 id={`draft-${draft.id}-status`}
                                 value={draft.status}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "status", event.target.value)
                                 }
-                                className="input-instrument h-10 text-sm"
+                                className="input-instrument h-11 w-full text-sm"
                               >
                                 {TASK_STATUS_VALUES.map((status) => (
                                   <option key={status} value={status}>
-                                    {formatTaskToken(status)}
+                                    {formatDisplayStatus(status)}
                                   </option>
                                 ))}
                               </select>
                             </div>
 
-                            <div className="space-y-2">
-                              <label htmlFor={`draft-${draft.id}-priority`} className="glass-label text-etch">Priority</label>
+                            <div className="min-w-0 space-y-2">
+                              <label htmlFor={`draft-${draft.id}-priority`} className={FIELD_LABEL}>Priority</label>
                               <select
                                 id={`draft-${draft.id}-priority`}
                                 value={draft.priority}
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "priority", event.target.value)
                                 }
-                                className="input-instrument h-10 text-sm"
+                                className="input-instrument h-11 w-full text-sm"
                               >
                                 {TASK_PRIORITY_VALUES.map((priority) => (
                                   <option key={priority} value={priority}>
@@ -1114,8 +1135,8 @@ function QuickTaskSheetPanel({
                             </div>
 
                             {draft.status === "blocked" ? (
-                              <div className="space-y-2 sm:col-span-2">
-                                <label htmlFor={`draft-${draft.id}-blocked-reason`} className="glass-label text-etch">Blocked reason</label>
+                              <div className="min-w-0 space-y-2 sm:col-span-2">
+                                <label htmlFor={`draft-${draft.id}-blocked-reason`} className={FIELD_LABEL}>Blocked reason</label>
                                 <Textarea
                                   id={`draft-${draft.id}-blocked-reason`}
                                   value={draft.blockedReason}
@@ -1123,13 +1144,13 @@ function QuickTaskSheetPanel({
                                     updateDraftField(draft.id, "blockedReason", event.target.value)
                                   }
                                   placeholder="What is currently blocking this task?"
-                                  className="min-h-20 resize-none"
+                                  className="min-h-20 w-full resize-none"
                                 />
                               </div>
                             ) : null}
 
-                            <div className="space-y-2">
-                              <label htmlFor={`draft-${draft.id}-due-date`} className="glass-label text-etch">Due date</label>
+                            <div className="min-w-0 space-y-2">
+                              <label htmlFor={`draft-${draft.id}-due-date`} className={FIELD_LABEL}>Due date</label>
                               <Input
                                 id={`draft-${draft.id}-due-date`}
                                 type="date"
@@ -1137,12 +1158,12 @@ function QuickTaskSheetPanel({
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "dueDate", event.target.value)
                                 }
-                                className="h-10"
+                                className="h-11 w-full"
                               />
                             </div>
 
-                            <div className="space-y-2">
-                              <label htmlFor={`draft-${draft.id}-estimate-minutes`} className="glass-label text-etch">Estimate (minutes)</label>
+                            <div className="min-w-0 space-y-2">
+                              <label htmlFor={`draft-${draft.id}-estimate-minutes`} className={FIELD_LABEL}>Estimate (minutes)</label>
                               <Input
                                 id={`draft-${draft.id}-estimate-minutes`}
                                 type="number"
@@ -1153,13 +1174,13 @@ function QuickTaskSheetPanel({
                                 onChange={(event) =>
                                   updateDraftField(draft.id, "estimateMinutes", event.target.value)
                                 }
-                                className="h-10"
+                                className="h-11 w-full"
                               />
                             </div>
                           </div>
 
                           <div className="space-y-2">
-                            <label htmlFor={`draft-${draft.id}-description`} className="glass-label text-etch">Description</label>
+                            <label htmlFor={`draft-${draft.id}-description`} className={FIELD_LABEL}>Description</label>
                             <Textarea
                               id={`draft-${draft.id}-description`}
                               value={draft.description}
@@ -1167,13 +1188,13 @@ function QuickTaskSheetPanel({
                                 updateDraftField(draft.id, "description", event.target.value)
                               }
                               placeholder="Optional note for this task."
-                              className="min-h-24 resize-none"
+                              className="min-h-24 w-full resize-none"
                             />
                           </div>
                         </div>
 
                         {draftErrors.length > 0 ? (
-                          <div className="mt-3 space-y-1.5 rounded-[0.9rem] border border-[rgba(198,40,40,0.14)] bg-[rgba(198,40,40,0.04)] px-3 py-3 text-xs leading-5 text-signal-error">
+                          <div className="feedback-block feedback-block-error mt-3 flex-col">
                             {draftErrors.map((error) => (
                               <p key={`${draft.id}-${error}`}>{error}</p>
                             ))}
@@ -1198,7 +1219,7 @@ function QuickTaskSheetPanel({
                 ) : null}
 
                 {bulkState.skippedLines.length > 0 ? (
-                  <div className="rounded-[1rem] border border-[var(--border)] bg-white/80 p-3">
+                  <div className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-3">
                     <p className="glass-label text-etch">Skipped tasks</p>
                     <div className="mt-2 space-y-1.5 text-xs leading-5 text-[color:var(--muted-foreground)]">
                       {bulkState.skippedLines.map((entry, index) => (
@@ -1213,7 +1234,7 @@ function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 mt-auto flex flex-col items-stretch justify-between gap-2 border-t border-[var(--border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex flex-col items-stretch justify-between gap-2 border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
                   <p className="text-xs text-[color:var(--muted-foreground)]" aria-live="polite">
                     {invalidDraftCount > 0
                       ? `${invalidDraftCount} of ${drafts.length} task${drafts.length === 1 ? "" : "s"} need attention`
@@ -1304,9 +1325,10 @@ export function QuickTaskSheet({
         <DialogPrimitive.Trigger asChild>
           <Button
             type="button"
-            className="mx-2.5 mt-3 flex h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-3 rounded-lg border border-[var(--ega-gold)]/50 bg-[var(--ega-sidebar)] px-3 py-2.5 text-left text-[var(--ega-surface)] shadow-sm transition-colors hover:border-[var(--ega-gold)] hover:bg-[rgba(255,255,255,0.08)]"
+            variant="secondary"
+            className="mx-2.5 mt-3 flex h-auto w-[calc(100%-1.25rem)] items-center justify-start gap-3 px-3 py-2.5 text-left"
           >
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--ega-gold)] text-[var(--ega-text)]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]">
               <Plus className="h-4 w-4" aria-hidden="true" />
             </span>
             <span className="min-w-0">
@@ -1337,7 +1359,7 @@ export function QuickTaskSheet({
             }
             lastFocusedElementRef.current = null;
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex h-[calc(100dvh-2rem)] max-h-[50rem] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
         >
           {open ? (
             <QuickTaskSheetPanel

@@ -5,8 +5,7 @@ import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { buttonVariants } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import {
@@ -117,10 +116,8 @@ export function TaskKanbanCard({
     <article
       id={`task-${task.id}`}
       className={cn(
-        "scroll-mt-24 rounded-[0.9rem] border bg-[rgba(255,255,255,0.62)] p-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.05)] sm:p-3",
-        isBlocked
-          ? "border-[rgba(198,40,40,0.28)] bg-[rgba(198,40,40,0.05)]"
-          : "border-[rgba(15,23,42,0.08)]",
+        "scroll-mt-24 rounded-[var(--radius-md)] border bg-[color:var(--ega-surface)] p-3",
+        isBlocked ? "border-[var(--status-overdue-border)]" : "border-[var(--ega-border)]",
       )}
     >
       <div className="flex items-start gap-2.5">
@@ -131,10 +128,10 @@ export function TaskKanbanCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
-              <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--foreground)]">
+              <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--ega-text)]">
                 {task.title}
               </h3>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-[color:var(--muted-foreground)]">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-[color:var(--ega-text-secondary)]">
                 {projectName ? (
                   <span className="inline-flex min-w-0 items-center gap-1.5">
                     <Folder className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -157,10 +154,16 @@ export function TaskKanbanCard({
               {showTimerAction ? (
                 <form action={startTimerAction}>
                   <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                  <Button type="submit" size="sm" variant="default" className="gap-1.5 px-2.5">
+                  <PendingSubmitButton
+                    type="submit"
+                    size="sm"
+                    variant="default"
+                    className="gap-1.5 px-2.5"
+                    pendingLabel="Starting…"
+                  >
                     <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
                     Start timer
-                  </Button>
+                  </PendingSubmitButton>
                 </form>
               ) : null}
             </div>
@@ -175,14 +178,14 @@ export function TaskKanbanCard({
           </div>
 
           {isBlocked && task.blocked_reason ? (
-            <p className="line-clamp-2 rounded-[0.75rem] border border-[rgba(198,40,40,0.16)] bg-[rgba(198,40,40,0.05)] px-2 py-1.5 text-xs leading-5 text-[var(--signal-error)]">
+            <p className="line-clamp-2 rounded-[var(--radius-sm)] border border-[var(--status-overdue-border)] bg-[var(--status-overdue-bg)] px-2 py-1.5 text-xs leading-5 text-[color:var(--status-overdue)]">
               Blocked: {task.blocked_reason}
             </p>
           ) : null}
 
           {showDetails ? (
-            <details className="group border-t border-[rgba(15,23,42,0.08)] pt-2">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-[color:var(--muted-foreground)] transition-precise hover:text-[color:var(--foreground)]">
+            <details className="group border-t border-[var(--ega-divider)] pt-2">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 text-xs font-semibold text-[color:var(--ega-text-secondary)] transition-[color] duration-[var(--duration-fast)] hover:text-[color:var(--ega-text)]">
                 Details
                 <ChevronDown
                   className="h-3.5 w-3.5 transition-transform group-open:rotate-180"
@@ -191,7 +194,7 @@ export function TaskKanbanCard({
               </summary>
               <div className="mt-2 space-y-3">
                 {goalName || estimateLabel || trackedLabel || recurrenceLabel || task.blocked_reason ? (
-                  <dl className="grid gap-2 rounded-[0.75rem] border border-[rgba(15,23,42,0.08)] bg-[rgba(255,255,255,0.46)] p-2 text-xs leading-5">
+                  <dl className="grid gap-2 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-2 text-xs leading-5">
                     {goalName ? (
                       <TaskKanbanDetailItem label="Goal">{goalName}</TaskKanbanDetailItem>
                     ) : null}
@@ -229,8 +232,8 @@ export function TaskKanbanCard({
                     <div className="tasks-kanban-card-actions mt-2 flex flex-wrap gap-1.5">
                       {nextStatuses.map((status) =>
                         status === "blocked" ? (
-                          <details key={status} className="w-full rounded-[0.75rem] border border-[rgba(198,40,40,0.16)] bg-[rgba(198,40,40,0.04)] p-2">
-                            <summary className="cursor-pointer text-xs font-semibold text-[var(--signal-error)]">
+                          <details key={status} className="w-full rounded-[var(--radius-sm)] border border-[var(--status-overdue-border)] bg-[var(--status-overdue-bg)] p-2">
+                            <summary className="cursor-pointer text-xs font-semibold text-[color:var(--status-overdue)]">
                               Block
                             </summary>
                             <form action={updateAction} className="mt-2 space-y-2">
@@ -251,12 +254,15 @@ export function TaskKanbanCard({
                                   placeholder="What is blocking this?"
                                 />
                               </label>
-                              <button
+                              <PendingSubmitButton
                                 type="submit"
-                                className={`${buttonVariants({ size: "sm", variant: "danger" })} w-full justify-center`}
+                                size="sm"
+                                variant="danger"
+                                className="w-full justify-center"
+                                pendingLabel="Saving…"
                               >
                                 Save Blocked
-                              </button>
+                              </PendingSubmitButton>
                             </form>
                           </details>
                         ) : (
@@ -267,14 +273,18 @@ export function TaskKanbanCard({
                               nextStatus={status}
                               blockedReasonValue=""
                             />
-                            <button
+                            <PendingSubmitButton
                               type="submit"
-                              className={buttonVariants({ size: "sm", variant: "muted" })}
+                              size="sm"
+                              variant="muted"
+                              pendingLabel={
+                                task.status === "done" && status === "todo" ? "Reopening…" : "Moving…"
+                              }
                             >
                               {task.status === "done" && status === "todo"
                                 ? "Reopen"
                                 : getTaskKanbanStatusActionLabel(status)}
-                            </button>
+                            </PendingSubmitButton>
                           </form>
                         ),
                       )}
@@ -299,9 +309,14 @@ export function TaskKanbanCard({
                       {archiveAction ? (
                         <form action={archiveAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                          <Button type="submit" size="sm" variant="danger">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="danger"
+                            pendingLabel="Archiving…"
+                          >
                             Archive
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
 
@@ -309,9 +324,14 @@ export function TaskKanbanCard({
                         <form action={deleteAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <Button type="submit" size="sm" variant="danger">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="danger"
+                            pendingLabel="Deleting…"
+                          >
                             Delete
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
                     </div>
@@ -325,9 +345,14 @@ export function TaskKanbanCard({
                       {unarchiveAction ? (
                         <form action={unarchiveAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
-                          <Button type="submit" size="sm" variant="muted">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="muted"
+                            pendingLabel="Restoring…"
+                          >
                             Restore
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
 
@@ -335,9 +360,14 @@ export function TaskKanbanCard({
                         <form action={deleteAction}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <Button type="submit" size="sm" variant="danger">
+                          <PendingSubmitButton
+                            type="submit"
+                            size="sm"
+                            variant="danger"
+                            pendingLabel="Deleting…"
+                          >
                             Delete
-                          </Button>
+                          </PendingSubmitButton>
                         </form>
                       ) : null}
                     </div>
@@ -386,7 +416,7 @@ function TaskKanbanDetailItem({
   return (
     <div className="grid gap-0.5">
       <dt className="glass-label text-etch">{label}</dt>
-      <dd className="text-[color:var(--foreground)]">{children}</dd>
+      <dd className="text-[color:var(--ega-text)]">{children}</dd>
     </div>
   );
 }

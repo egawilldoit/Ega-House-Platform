@@ -1,25 +1,19 @@
 import { cache } from "react";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 
 import { cn } from "@/lib/utils";
-import { Sidebar, type SidebarGoal, type SidebarProject } from "./sidebar";
-import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
-import { TopBar } from "./top-bar";
+import type { SidebarGoal, SidebarProject } from "./sidebar";
+import { WorkspaceShell } from "./workspace-shell";
 import { WorkspaceKeyboardShortcuts } from "./workspace-keyboard-shortcuts";
 import { GlobalQuickActionControllers } from "./global-quick-action-controllers";
-import "./editorial-shell.css";
-import "./editorial-shell-responsive.css";
 
 type AppShellProps = {
   children: ReactNode;
-  eyebrow?: string;
   title: string;
   description?: string;
   actions?: ReactNode;
-  /** Legacy – no longer rendered */
-  navigation?: ReactNode;
   className?: string;
   contentClassName?: string;
 };
@@ -92,62 +86,36 @@ const getSidebarGoals = cache(async (): Promise<SidebarGoal[]> => {
 
 export async function AppShell({
   children,
-  eyebrow,
   title,
   description,
   actions,
   className,
   contentClassName,
 }: AppShellProps) {
-  const [projects, goals, metrics] = await Promise.all([
+  const [projects, goals, metrics, identity] = await Promise.all([
     getSidebarProjects(),
     getSidebarGoals(),
     getWorkspaceShellMetrics(),
+    getShellIdentity(),
   ]);
 
   return (
-    <div
-      data-workspace-theme="editorial"
-      className={cn(
-        "ega-app-shell text-foreground selection:bg-secondary selection:text-foreground",
-        className,
-      )}
-    >
-      <Sidebar projects={projects} metrics={metrics} />
+    <>
+      <WorkspaceKeyboardShortcuts />
+      <GlobalQuickActionControllers projects={projects} goals={goals} />
 
-      <main className="ega-main workspace-main">
-        <WorkspaceKeyboardShortcuts />
-        <GlobalQuickActionControllers projects={projects} goals={goals} />
-        <TopBar
-          metrics={metrics}
-          mobileNavigation={
-            <SidebarMobileDrawer projects={projects} metrics={metrics} />
-          }
-        />
-
-        <div className="workspace-scroll-region">
-          <div className="ega-page-header workspace-page-header">
-            <div className="ega-shell-max ega-shell-page-head workspace-page-head">
-              <div className="workspace-page-heading">
-                {eyebrow ? <div className="ega-shell-eyebrow">{eyebrow}</div> : null}
-                <h1
-                  tabIndex={-1}
-                  data-shell-page-title
-                  className="ega-shell-title focus:outline-none"
-                >
-                  {title}
-                </h1>
-                {description ? (
-                  <p className="ega-shell-description">{description}</p>
-                ) : null}
-              </div>
-              {actions ? <div className="workspace-page-actions">{actions}</div> : null}
-            </div>
-          </div>
-
-          <div className={cn("ega-content ega-shell-max", contentClassName)}>{children}</div>
-        </div>
-      </main>
-    </div>
+      <WorkspaceShell
+        projects={projects}
+        metrics={metrics}
+        identity={identity}
+        title={title}
+        description={description}
+        actions={actions}
+        className={cn(className)}
+        contentClassName={contentClassName}
+      >
+        {children}
+      </WorkspaceShell>
+    </>
   );
 }

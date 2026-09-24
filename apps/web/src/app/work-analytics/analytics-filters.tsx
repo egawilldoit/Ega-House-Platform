@@ -35,6 +35,12 @@ const AVAILABLE_BREAKDOWN_BYS: AnalyticsBreakdownBy[] = [
   "task",
 ];
 
+const SELECT_CLASS =
+  "h-8 rounded-[var(--radius-sm)] border border-ega-border bg-ega-surface px-2 text-[length:var(--text-meta-lg)] font-medium text-ega-text transition-colors duration-[var(--duration-fast)] hover:border-ega-border-strong disabled:cursor-not-allowed disabled:opacity-50";
+
+const FILTER_LABEL_CLASS =
+  "text-[length:var(--text-meta)] font-medium text-ega-text-tertiary";
+
 /**
  * Compact, URL-authoritative analytics filter toolbar.
  *
@@ -73,12 +79,19 @@ export function AnalyticsFilters() {
   );
 
   return (
-    <div className="analytics-filter-controls analytics-filter-controls-compact">
-      <label className="analytics-filter-field">
-        <span className="analytics-filter-label">Range</span>
+    <div
+      className="relative flex flex-wrap items-center gap-x-3 gap-y-2"
+      data-testid="analytics-filters"
+      data-pending={isPending ? "true" : "false"}
+    >
+      <div className="flex items-center gap-1.5">
+        <label htmlFor="analytics-filter-range" className={FILTER_LABEL_CLASS}>
+          Range
+        </label>
         <select
-          className="analytics-filter-select"
+          id="analytics-filter-range"
           data-testid="analytics-filter-range"
+          className={SELECT_CLASS}
           value={currentRange}
           disabled={isPending}
           onChange={(event) =>
@@ -91,13 +104,16 @@ export function AnalyticsFilters() {
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <label className="analytics-filter-field">
-        <span className="analytics-filter-label">Group by</span>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor="analytics-filter-group-by" className={FILTER_LABEL_CLASS}>
+          Group by
+        </label>
         <select
-          className="analytics-filter-select"
+          id="analytics-filter-group-by"
           data-testid="analytics-filter-group-by"
+          className={SELECT_CLASS}
           value={currentGroupBy}
           disabled={isPending}
           onChange={(event) =>
@@ -110,13 +126,16 @@ export function AnalyticsFilters() {
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <label className="analytics-filter-field">
-        <span className="analytics-filter-label">Breakdown</span>
+      <div className="flex items-center gap-1.5">
+        <label htmlFor="analytics-filter-breakdown" className={FILTER_LABEL_CLASS}>
+          Breakdown
+        </label>
         <select
-          className="analytics-filter-select"
+          id="analytics-filter-breakdown"
           data-testid="analytics-filter-breakdown"
+          className={SELECT_CLASS}
           value={currentBreakdownBy}
           disabled={isPending}
           onChange={(event) =>
@@ -132,15 +151,18 @@ export function AnalyticsFilters() {
             </option>
           ))}
         </select>
-      </label>
+      </div>
 
-      <details className="analytics-filter-more">
-        <summary className="analytics-filter-more-trigger" data-testid="analytics-filter-more">
-          More filters{currentIncludeOpen ? " · open sessions on" : ""}
+      <details className="relative">
+        <summary
+          className="filter-pill list-none [&::-webkit-details-marker]:hidden"
+          data-testid="analytics-filter-more"
+        >
+          More filters{currentIncludeOpen ? " · open on" : ""}
         </summary>
-        <div className="analytics-filter-more-panel">
-          <span className="analytics-filter-label">Include open sessions</span>
-          <div className="flex flex-wrap gap-1">
+        <div className="absolute right-0 z-30 mt-1 w-52 rounded-[var(--radius-lg)] border border-ega-border bg-ega-surface p-3 shadow-[var(--ega-shadow-md)]">
+          <span className={FILTER_LABEL_CLASS}>Include open sessions</span>
+          <div className="mt-2 flex flex-wrap gap-1">
             <FilterPill
               onClick={() => navigate("includeOpen", null)}
               label="Off"
@@ -160,21 +182,21 @@ export function AnalyticsFilters() {
       </details>
 
       {/* Loading bar — visible during filter transitions */}
-      <div
-        className="h-0.5 w-full overflow-hidden rounded-full bg-[var(--border)] transition-opacity duration-200"
+      <span
         aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 -bottom-1 h-0.5 overflow-hidden rounded-[var(--radius-pill)] bg-ega-border transition-opacity duration-200 ${
+          isPending ? "opacity-100" : "opacity-0"
+        }`}
       >
-        <div
-          className={`h-full w-1/3 rounded-full bg-[var(--signal-live)] transition-all duration-500 ${
-            isPending ? "opacity-100" : "opacity-0"
-          }`}
+        <span
+          className="block h-full w-1/3 rounded-[var(--radius-pill)] bg-ega-ink"
           style={{
             animation: isPending
               ? "loading-indeterminate 1.4s ease-in-out infinite"
               : "none",
           }}
         />
-      </div>
+      </span>
 
       <style jsx>{`
         @keyframes loading-indeterminate {

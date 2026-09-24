@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { formatDurationLabel } from "@/lib/task-session";
+import { formatDisplayDuration } from "@/lib/presentation-format";
 import type { WorkAnalyticsDaily } from "@/lib/services/work-analytics-service";
 
 type TrendBarChartProps = {
@@ -39,42 +39,39 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-white p-6">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-[color:var(--foreground)]">{title}</h2>
-        </div>
-        <div className="surface-empty px-4 py-5 text-sm leading-7 text-[color:var(--muted-foreground)]">
+      <figure className="chart-figure">
+        <figcaption className="sr-only">{title}</figcaption>
+        <div className="surface-empty px-4 py-5 text-[length:var(--text-meta-lg)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
           No tracked time yet. Start a timer to build work trend data.
         </div>
-      </div>
+      </figure>
     );
   }
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-[var(--border)] bg-white p-6">
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-[color:var(--foreground)]">{title}</h2>
-          <p className="mt-1 text-sm text-[color:var(--muted-foreground)]">
-            Daily worked time for the selected window.
-          </p>
-        </div>
-        <div className="text-right text-sm text-[color:var(--muted-foreground)]">
-          <div>
-            <span className="font-semibold text-[color:var(--foreground)]">{formatDurationLabel(totalMinutes * 60)}</span> tracked
-          </div>
-          <div>
-            <span className="font-semibold text-[color:var(--foreground)]">{activeDays}</span> active days
-          </div>
-        </div>
+    <figure className="chart-figure">
+      <figcaption className="sr-only">{title}</figcaption>
+
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+          <span className="font-medium tabular-nums text-ega-text">
+            {formatDisplayDuration(totalMinutes * 60, "minute")}
+          </span>{" "}
+          tracked
+        </p>
+        <p className="text-[length:var(--text-meta)] text-ega-text-secondary">
+          <span className="font-medium tabular-nums text-ega-text">{activeDays}</span> active days
+        </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="mt-3 space-y-1.5">
         {data.map((entry) => {
           const widthPct =
             maxMinutes > 0
               ? Math.max(6, Math.round((entry.workedMinutes / maxMinutes) * 100))
               : 6;
+
+          const interactive = Boolean(onBarClick && entry.workedMinutes > 0);
 
           return (
             <button
@@ -85,34 +82,54 @@ export function TrendBarChart({ data, title, onBarClick }: TrendBarChartProps) {
                   onBarClick(entry.date, formatDateShort(entry.date));
                 }
               }}
-              disabled={!onBarClick || entry.workedMinutes === 0}
-              className={`grid w-full grid-cols-[6rem_minmax(0,1fr)_5rem] items-center gap-3 text-left ${
-                onBarClick && entry.workedMinutes > 0
-                  ? "cursor-pointer rounded-md transition-colors hover:bg-[var(--accent-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--signal-live)]"
+              disabled={!interactive}
+              className={`group grid w-full grid-cols-[5.5rem_minmax(0,1fr)_4.5rem] items-center gap-3 rounded-[var(--radius-sm)] px-1 py-0.5 text-left ${
+                interactive
+                  ? "cursor-pointer transition-colors hover:bg-ega-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ega-text"
                   : ""
               }`}
             >
-              <span className="truncate text-xs font-semibold text-[color:var(--muted-foreground)]">
+              <span className="truncate text-[length:var(--text-meta)] font-medium text-ega-text-secondary">
                 {toDayLabel(entry.date)}
               </span>
-              <div className="h-3 rounded-full bg-[color:var(--instrument-raised)]">
-                <div
-                  className="h-full rounded-full bg-[var(--signal-live)] transition-all duration-300 motion-reduce:transition-none"
+              <span className="block h-3 overflow-hidden rounded-[3px] bg-ega-surface-muted">
+                <span
+                  className="block h-full rounded-[3px] bg-data-blue-soft transition-[background-color] duration-[var(--duration-base)] motion-reduce:transition-none group-hover:bg-data-blue"
                   style={{ width: `${widthPct}%` }}
                 />
-              </div>
-              <div className="text-right">
-                <span className="text-xs font-medium text-[color:var(--foreground)]">
-                  {formatDurationLabel(entry.workedMinutes * 60)}
+              </span>
+              <span className="text-right">
+                <span className="text-[length:var(--text-meta)] font-medium tabular-nums text-ega-text">
+                  {formatDisplayDuration(entry.workedMinutes * 60, "minute")}
                 </span>
-                <span className="ml-1 text-xs text-[color:var(--muted-foreground)]">
+                <span className="ml-1 text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
                   {entry.sessionCount}
                 </span>
-              </div>
+              </span>
             </button>
           );
         })}
       </div>
-    </div>
+
+      <table className="sr-only">
+        <caption>{title} — daily focused time</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col">Focused time</th>
+            <th scope="col">Sessions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((entry) => (
+            <tr key={entry.date}>
+              <th scope="row">{entry.date}</th>
+              <td>{formatDisplayDuration(entry.workedMinutes * 60, "minute")}</td>
+              <td>{entry.sessionCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </figure>
   );
 }

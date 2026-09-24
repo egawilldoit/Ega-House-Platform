@@ -27,9 +27,9 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form action={formAction} className="flex flex-col gap-4">
       <div className="space-y-2">
-        <label htmlFor="weekOf" className="glass-label text-etch">
+        <label htmlFor="weekOf" className="form-label">
           Week date
         </label>
         <Input
@@ -38,12 +38,12 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
           name="weekOf"
           required
           defaultValue={state.values.weekOf}
-          className="h-10"
+          className="h-8 px-2 text-[length:var(--text-meta-lg)]"
         />
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="summary" className="glass-label text-etch">
+        <label htmlFor="summary" className="form-label">
           Summary
         </label>
         <Textarea
@@ -59,7 +59,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
-          <label htmlFor="wins" className="glass-label text-etch">
+          <label htmlFor="wins" className="form-label">
             Wins
           </label>
           <Textarea
@@ -72,7 +72,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="blockers" className="glass-label text-etch">
+          <label htmlFor="blockers" className="form-label">
             Blockers
           </label>
           <Textarea
@@ -86,7 +86,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label htmlFor="next_steps" className="glass-label text-etch">
+        <label htmlFor="next_steps" className="form-label">
           Next steps
         </label>
         <Textarea
@@ -105,7 +105,7 @@ export function ReviewForm({ defaultValues }: ReviewFormProps) {
       ) : null}
 
       {state.saved ? (
-        <p className="feedback-block feedback-block-success">
+        <p className="feedback-block">
           {state.saveMode === "created"
             ? "Weekly review created. You can keep editing this week and save again."
             : "Weekly review updated. You can keep editing this week and save again."}

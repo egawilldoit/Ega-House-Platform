@@ -121,14 +121,14 @@ export function CreateTaskForm({
               Set the title and attach the task to the right execution context.
             </p>
           </div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-[color:var(--muted-foreground)]">
+          <p className="glass-label">
             {availableGoalCount} goal{availableGoalCount === 1 ? "" : "s"} available
           </p>
         </div>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label htmlFor="title" className="glass-label text-etch">
+            <label htmlFor="title" className="form-label">
               Title
             </label>
             <Input
@@ -145,7 +145,7 @@ export function CreateTaskForm({
             <div className="space-y-2">
               <label
                 htmlFor="projectId"
-                className="glass-label text-etch"
+                className="form-label"
               >
                 Project
               </label>
@@ -175,7 +175,7 @@ export function CreateTaskForm({
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="goalId" className="glass-label text-etch">
+              <label htmlFor="goalId" className="form-label">
                 Goal (optional)
               </label>
               <select
@@ -207,7 +207,7 @@ export function CreateTaskForm({
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <label htmlFor="status" className="glass-label text-etch">
+              <label htmlFor="status" className="form-label">
                 Initial status
               </label>
               <select
@@ -227,7 +227,7 @@ export function CreateTaskForm({
 
             {selectedStatus === "blocked" ? (
               <div className="space-y-2 sm:col-span-2">
-                <label htmlFor="blockedReason" className="glass-label text-etch">
+                <label htmlFor="blockedReason" className="form-label">
                   Blocked reason
                 </label>
                 <Textarea
@@ -241,7 +241,7 @@ export function CreateTaskForm({
             ) : null}
 
             <div className="space-y-2">
-              <label htmlFor="dueDate" className="glass-label text-etch">
+              <label htmlFor="dueDate" className="form-label">
                 Due date (optional)
               </label>
               <Input
@@ -256,7 +256,7 @@ export function CreateTaskForm({
             <div className="space-y-2">
               <label
                 htmlFor="priority"
-                className="glass-label text-etch"
+                className="form-label"
               >
                 Priority
               </label>
@@ -275,7 +275,7 @@ export function CreateTaskForm({
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="estimateMinutes" className="glass-label text-etch">
+              <label htmlFor="estimateMinutes" className="form-label">
                 Estimate (minutes)
               </label>
               <Input
@@ -292,7 +292,7 @@ export function CreateTaskForm({
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="recurrenceRule" className="glass-label text-etch">
+              <label htmlFor="recurrenceRule" className="form-label">
                 Repeat
               </label>
               <select
@@ -316,7 +316,7 @@ export function CreateTaskForm({
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label htmlFor="scheduledStartAt" className="glass-label text-etch">
+                  <label htmlFor="scheduledStartAt" className="form-label">
                     From
                   </label>
                   <Input
@@ -328,7 +328,7 @@ export function CreateTaskForm({
                   />
                 </div>
                 <div className="space-y-2">
-                  <label htmlFor="scheduledEndAt" className="glass-label text-etch">
+                  <label htmlFor="scheduledEndAt" className="form-label">
                     To
                   </label>
                   <Input
@@ -341,7 +341,7 @@ export function CreateTaskForm({
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_12rem]">
-                <label className="flex items-start gap-3 rounded-xl border border-[rgba(15,23,42,0.08)] p-3">
+                <label className="flex items-start gap-3 rounded-xl border border-[var(--ega-border)] p-3">
                   <input
                     type="checkbox"
                     name="calendarSyncEnabled"
@@ -356,7 +356,7 @@ export function CreateTaskForm({
                   </span>
                 </label>
                 <div className="space-y-2">
-                  <label htmlFor="calendarReminderMinutes" className="glass-label text-etch">
+                  <label htmlFor="calendarReminderMinutes" className="form-label">
                     Reminder
                   </label>
                   <Input
@@ -379,7 +379,7 @@ export function CreateTaskForm({
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <label htmlFor="workedTimeStartedAt" className="glass-label text-etch">
+                  <label htmlFor="workedTimeStartedAt" className="form-label">
                     From
                   </label>
                   <Input
@@ -392,7 +392,7 @@ export function CreateTaskForm({
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="workedTimeEndedAt" className="glass-label text-etch">
+                  <label htmlFor="workedTimeEndedAt" className="form-label">
                     To
                   </label>
                   <Input
@@ -410,7 +410,7 @@ export function CreateTaskForm({
           <div className="space-y-2">
             <label
               htmlFor="description"
-              className="glass-label text-etch"
+              className="form-label"
             >
               Description (optional)
             </label>

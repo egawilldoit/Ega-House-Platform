@@ -2,7 +2,6 @@
 
 import { Plus } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import { useWorkspaceDrawer } from "./workspace-drawer-context";
 
@@ -25,10 +24,9 @@ export function SidebarCreateTaskButton() {
   }
 
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
-      className="workspace-create-task-trigger mx-2.5 h-auto min-h-12 w-[calc(100%-1.25rem)] items-center justify-start gap-3 px-3 py-2.5 text-left"
+      className="workspace-create-task-trigger"
       aria-label="Create task"
       title="Create task"
       aria-haspopup="dialog"
@@ -36,20 +34,11 @@ export function SidebarCreateTaskButton() {
       data-testid="sidebar-create-task"
       onClick={openCreateTask}
     >
-      <span className="workspace-create-task-icon flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border">
-        <Plus className="h-[1.125rem] w-[1.125rem]" aria-hidden="true" />
-      </span>
-      <span className="workspace-create-task-copy flex min-w-0 flex-1 items-center justify-between gap-2">
-        <span className="min-w-0">
-          <span className="block text-sm font-semibold leading-5 tracking-normal">Create task</span>
-          <span className="mt-0.5 block text-xs leading-4 text-[var(--workspace-muted)]">
-            Single or batch
-          </span>
-        </span>
-        <kbd className="workspace-create-task-shortcut shrink-0" aria-hidden="true">
-          Ctrl/⌘ ⇧ N
-        </kbd>
-      </span>
-    </Button>
+      <Plus aria-hidden="true" />
+      <span className="workspace-nav-label">Create task</span>
+      <kbd className="ml-auto shrink-0 text-[10px] font-medium text-white/60" aria-hidden="true">
+        ⇧⌘N
+      </kbd>
+    </button>
   );
 }

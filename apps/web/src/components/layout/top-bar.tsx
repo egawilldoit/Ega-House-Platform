@@ -2,107 +2,61 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Bell, Keyboard, Search } from "lucide-react";
+import { Bell } from "lucide-react";
 
-import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
+import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
-import { Tooltip } from "@/components/ui/tooltip";
-import { getShellRouteMeta } from "./shell-route-meta";
-import { TopBarCompactSignals } from "./shell-signals";
-import { COMMAND_PALETTE_EVENT } from "./command-palette";
-import { workspaceShortcutEvents } from "./workspace-keyboard-shortcuts";
 
 type TopBarProps = {
   metrics: WorkspaceShellMetrics;
+  identity: ShellIdentity;
   mobileNavigation?: ReactNode;
 };
 
-export function TopBar({ metrics, mobileNavigation }: TopBarProps) {
-  const pathname = usePathname();
-  const route = getShellRouteMeta(pathname);
+/**
+ * Restrained workspace top bar: navigation trigger on the left, account
+ * controls on the right. Search lives in the sidebar, and attention signals
+ * live on their canonical navigation rows rather than as competing badges.
+ *
+ * The notification link carries a stable `data-has-unread` state so styling
+ * never depends on dynamic accessible text.
+ */
+export function TopBar({ metrics, identity, mobileNavigation }: TopBarProps) {
   const canonicalUrl = useCanonicalUrl();
+  const unreadCount = metrics.unreadNotificationCount;
+  const notificationLabel =
+    unreadCount > 0 ? `Notifications (${unreadCount} unread)` : "Notifications";
 
   return (
-    <header className="ega-topbar workspace-topbar">
-      <div className="ega-shell-max ega-topbar-row workspace-topbar-row">
-        <div className="workspace-route-meta">
-          {mobileNavigation}
-          <span className="workspace-route-index" aria-hidden="true">
-            {route.index}
+    <header className="app-topbar ega-topbar workspace-topbar">
+      <div className="app-topbar-context">{mobileNavigation}</div>
+
+      <div className="app-topbar-actions">
+        <Link
+          href={canonicalUrl.resolve("/notifications")}
+          className="topbar-icon-button topbar-notification"
+          aria-label={notificationLabel}
+          title={notificationLabel}
+          data-has-unread={unreadCount > 0 ? "true" : "false"}
+        >
+          <Bell aria-hidden="true" />
+          {unreadCount > 0 ? <span className="notification-dot" aria-hidden="true" /> : null}
+        </Link>
+
+        <Link
+          href={canonicalUrl.resolve("/settings/account")}
+          className="topbar-account"
+          aria-label={`Account settings for ${identity.email || identity.name}`}
+          suppressHydrationWarning
+        >
+          <span className="topbar-account-copy">
+            <span className="topbar-account-name">{identity.name}</span>
+            <span className="topbar-account-email">{identity.email}</span>
           </span>
-          <span className="workspace-route-copy">
-            <small>{route.eyebrow}</small>
-            <strong>{route.label}</strong>
+          <span className="topbar-avatar" aria-hidden="true">
+            {identity.initials}
           </span>
-        </div>
-
-        <div className="shell-search workspace-shell-search">
-          <Search aria-hidden="true" />
-          <button
-            type="button"
-            className="workspace-search-trigger"
-            aria-haspopup="dialog"
-            onClick={() => window.dispatchEvent(new CustomEvent(COMMAND_PALETTE_EVENT))}
-          >
-            <span className="sr-only">Search tasks, goals, and projects</span>
-            <span aria-hidden="true">Search tasks, goals, projects…</span>
-          </button>
-          <kbd>Ctrl K</kbd>
-        </div>
-
-        <div className="topbar-actions workspace-topbar-actions">
-          <TopBarCompactSignals metrics={metrics} />
-
-          <Link href={canonicalUrl.resolve("/apps")} className="ega-topbar-upgrade-pill">
-            Apps
-          </Link>
-
-          <Link
-            href={canonicalUrl.resolve("/notifications")}
-            className="workspace-topbar-icon"
-            aria-label={
-              metrics.unreadNotificationCount > 0
-                ? `Notifications (${metrics.unreadNotificationCount} unread)`
-                : "Notifications"
-            }
-            title="Notifications"
-          >
-            <Bell aria-hidden="true" />
-            {metrics.unreadNotificationCount > 0 ? (
-              <>
-                <span className="workspace-notification-signal" aria-hidden="true" />
-                <span className="sr-only">
-                  {metrics.unreadNotificationCount} unread notification{metrics.unreadNotificationCount === 1 ? "" : "s"}
-                </span>
-              </>
-            ) : null}
-          </Link>
-
-          <Tooltip content="Keyboard shortcuts (?)">
-            <button
-              type="button"
-              className="workspace-topbar-control workspace-shortcut-control"
-              aria-label="Open keyboard shortcuts"
-              onClick={() => window.dispatchEvent(new CustomEvent(workspaceShortcutEvents.openHelp))}
-            >
-              <Keyboard aria-hidden="true" />
-              <span>Shortcuts</span>
-              <kbd>?</kbd>
-            </button>
-          </Tooltip>
-
-          <Tooltip content="User menu">
-            <Link
-              href={canonicalUrl.resolve("/settings/account")}
-              className="ega-topbar-avatar"
-              aria-label="Account settings"
-              suppressHydrationWarning
-            >
-              EG
-            </Link>
-          </Tooltip>
-        </div>
+        </Link>
       </div>
     </header>
   );

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Textarea } from "@/components/ui/textarea";
 
 const QUICK_STARTERS = [
@@ -36,12 +36,12 @@ export function ShutdownReflectionForm({
   }, [friction, tomorrowStart, win]);
 
   return (
-    <form action={action} className="space-y-3">
+    <form action={action} className="flex flex-col gap-3">
       <input type="hidden" name="returnTo" value={returnTo} />
       <input type="hidden" name="reflectionNote" value={reflectionNote} />
 
-      <div className="space-y-2">
-        <label htmlFor="shutdown-win" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="shutdown-win" className="form-label">
           Today&apos;s win
         </label>
         <Textarea
@@ -54,8 +54,8 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="shutdown-friction" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="shutdown-friction" className="form-label">
           Friction or blocker
         </label>
         <Textarea
@@ -68,8 +68,8 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <div className="space-y-2">
-        <label htmlFor="shutdown-tomorrow" className="glass-label text-etch">
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="shutdown-tomorrow" className="form-label">
           Tomorrow starts with
         </label>
         <div className="flex flex-wrap gap-2">
@@ -94,10 +94,16 @@ export function ShutdownReflectionForm({
         />
       </div>
 
-      <Button type="submit" variant="muted" size="sm" disabled={!reflectionNote.trim()}>
+      <PendingSubmitButton
+        type="submit"
+        variant="muted"
+        size="sm"
+        disabled={!reflectionNote.trim()}
+        className="w-fit"
+        pendingLabel="Saving…"
+      >
         Save note
-      </Button>
+      </PendingSubmitButton>
     </form>
   );
 }
-

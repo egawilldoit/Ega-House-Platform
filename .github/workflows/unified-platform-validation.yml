@@ -374,8 +374,8 @@ jobs:
         run: npm run build
       - name: Install Playwright Chromium
         run: npm exec --workspace @ega/web -- playwright install --with-deps chromium
-      - name: Sidebar collapsed rail browser regression
-        run: npm run test:visual --workspace @ega/web -- --grep "sidebar collapsed rail contract"
+      - name: Workspace shell browser contracts
+        run: npm run test:visual --workspace @ega/web -- --grep "workspace shell contract"
 
   mobile:
     needs: [changes]

@@ -1,4 +1,4 @@
-import { act, createElement } from "react";
+import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +13,7 @@ vi.mock("lucide-react", () => ({
   Inbox: () => <svg aria-hidden="true" />,
   PanelLeftClose: () => <svg aria-hidden="true" />,
   PanelLeftOpen: () => <svg aria-hidden="true" />,
+  Search: () => <svg aria-hidden="true" />,
 }));
 
 vi.mock("@/components/inbox/inbox-capture-trigger", () => ({
@@ -27,6 +28,10 @@ vi.mock("./sidebar-navigation", () => ({
   SidebarNavigation: ({ compact }: { compact?: boolean }) => (
     <nav data-testid="sidebar-navigation" data-compact={String(Boolean(compact))} />
   ),
+}));
+
+vi.mock("./workspace-search-trigger", () => ({
+  WorkspaceSearchTrigger: () => <button type="button">Search</button>,
 }));
 
 import { Sidebar } from "./sidebar";
@@ -46,6 +51,12 @@ const metrics = buildWorkspaceShellMetrics({
   dueTodayTaskCount: 0,
   hasCurrentWeekReview: true,
 });
+
+/** Mirrors the real shell boundary: the frame owns the collapse state. */
+function ControlledSidebar() {
+  const [collapsed, setCollapsed] = useState(false);
+  return <Sidebar metrics={metrics} collapsed={collapsed} onCollapsedChange={setCollapsed} />;
+}
 
 beforeEach(() => {
   hadActEnvironment = Object.prototype.hasOwnProperty.call(actEnvironmentGlobal, "IS_REACT_ACT_ENVIRONMENT");
@@ -69,7 +80,7 @@ afterEach(async () => {
 describe("Sidebar collapse control", () => {
   it("toggles the data state and navigation compact mode", async () => {
     await act(async () => {
-      root.render(<Sidebar metrics={metrics} />);
+      root.render(<ControlledSidebar />);
     });
 
     const sidebar = container.querySelector<HTMLElement>(".workspace-sidebar");

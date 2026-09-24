@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { MoreHorizontal, X } from "lucide-react";
+import { MoreHorizontal, Play, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import {
   Sheet,
   SheetClose,
@@ -40,6 +41,12 @@ type TaskCardActionsProps = {
   error?: string | null;
   overflowActions?: ReactNode;
   reminders?: ReactNode;
+  /**
+   * Dense rendering for table/board rows: the same forms and wiring with
+   * icon-only controls that carry explicit aria-labels. Default rendering is
+   * unchanged for every other surface.
+   */
+  compact?: boolean;
 };
 
 /**
@@ -52,6 +59,7 @@ type TaskCardActionsProps = {
 export function TaskCardActions({
   startTimerAction,
   reminders,
+  compact = false,
   ...inlineProps
 }: TaskCardActionsProps) {
   const [manualOpen, setManualOpen] = useState(false);
@@ -77,14 +85,32 @@ export function TaskCardActions({
   }
 
   return (
-    <div className="tasks-card-actions flex flex-wrap items-center gap-2">
+    <div
+      className={
+        compact
+          ? "flex flex-wrap items-center gap-1.5 max-[761px]:gap-2"
+          : "flex flex-wrap items-center gap-2"
+      }
+    >
       {!isArchived && !isCompleted ? (
         <form action={startTimerAction}>
           <input type="hidden" name="taskId" value={inlineProps.taskId} />
           <input type="hidden" name="returnTo" value={inlineProps.returnTo} />
-          <Button type="submit" size="sm" variant="muted">
-            Start timer
-          </Button>
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="muted"
+            aria-label={compact ? `Start timer for ${inlineProps.taskTitle}` : undefined}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
+            data-testid={compact ? `task-start-timer-${inlineProps.taskId}` : undefined}
+            pendingLabel="Starting…"
+          >
+            {compact ? (
+              <Play className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              "Start timer"
+            )}
+          </PendingSubmitButton>
         </form>
       ) : null}
 
@@ -92,6 +118,7 @@ export function TaskCardActions({
         <TaskMarkDoneForm
           action={inlineProps.action}
           taskId={inlineProps.taskId}
+          taskTitle={inlineProps.taskTitle}
           returnTo={inlineProps.returnTo}
           defaultPriority={inlineProps.defaultPriority}
           defaultDueDate={inlineProps.defaultDueDate}
@@ -100,6 +127,7 @@ export function TaskCardActions({
           defaultCalendarSyncEnabled={inlineProps.defaultCalendarSyncEnabled}
           defaultCalendarReminderMinutes={inlineProps.defaultCalendarReminderMinutes}
           defaultEstimateMinutes={inlineProps.defaultEstimateMinutes}
+          compact={compact}
         />
       ) : null}
 
@@ -111,19 +139,21 @@ export function TaskCardActions({
             variant="muted"
             aria-label={`More options for ${inlineProps.taskTitle}`}
             data-testid={`task-more-options-${inlineProps.taskId}`}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-            More options
+            {compact ? null : "More options"}
           </Button>
         </SheetTrigger>
 
         <SheetContent
+          closeLabel="Close task options"
           aria-label={`Advanced task settings for ${inlineProps.taskTitle}`}
-          className="flex flex-col"
+          className="flex h-fit max-h-[min(50rem,calc(100dvh-2rem))] flex-col min-[761px]:w-[calc(100%-var(--sidebar-width))]"
         >
-          <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
+          <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ega-border)] px-5 pb-4 pt-5 sm:px-6">
             <SheetHeader className="min-w-0">
-              <p className="glass-label text-signal-live">Task settings</p>
+              <p className="glass-label">Task settings</p>
               <SheetTitle>Advanced settings</SheetTitle>
               <SheetDescription>{inlineProps.taskTitle}</SheetDescription>
             </SheetHeader>
@@ -139,9 +169,14 @@ export function TaskCardActions({
             </SheetClose>
           </div>
 
-          <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
-            {reminders}
-            <InlineTaskUpdateForm {...inlineProps} />
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+            {reminders ? (
+              <section className="space-y-3">
+                <p className="glass-label text-etch">Reminder</p>
+                {reminders}
+              </section>
+            ) : null}
+            <InlineTaskUpdateForm {...inlineProps} stickyFooter />
           </div>
         </SheetContent>
       </Sheet>

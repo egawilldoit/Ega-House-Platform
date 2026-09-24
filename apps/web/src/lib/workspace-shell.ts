@@ -37,6 +37,38 @@ export type WorkspaceShellMetrics = {
   highestPrioritySignal: WorkspaceShellPrioritySignal;
 };
 
+export type ShellIdentity = {
+  name: string;
+  email: string;
+  initials: string;
+};
+
+type AuthenticatedUser = {
+  email?: string | null;
+  user_metadata?: Record<string, unknown> | null;
+} | null;
+
+function deriveShellIdentity(user: AuthenticatedUser): ShellIdentity {
+  const email = user?.email ?? "";
+  const metadata = user?.user_metadata ?? {};
+  const fullName =
+    typeof metadata.full_name === "string"
+      ? metadata.full_name
+      : typeof metadata.name === "string"
+        ? metadata.name
+        : "";
+  const name = fullName.trim() || (email ? email.split("@")[0] : "Account");
+  const initials =
+    name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "EG";
+
+  return { name, email, initials };
+}
+
 const FALLBACK_WORKSPACE_SHELL_SNAPSHOT: WorkspaceShellMetricsSnapshot = {
   hasActiveTimer: false,
   blockedTaskCount: 0,
@@ -151,12 +183,12 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
     let localToday: string;
     let reviewWeek: ReturnType<typeof getWeekBounds> = null;
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      if (authData?.user) {
+      const user = await getSessionUser();
+      if (user) {
         const repo = new SupabaseTimeContextRepository(
           supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
         );
-        const actor = createAuthenticatedActor(authData.user.id);
+        const actor = createAuthenticatedActor(user.id);
         const tzResult = await repo.getTimezone(actor);
         const effectiveTz = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
         localToday = getLocalDateInTimezone(now, effectiveTz);
@@ -264,3 +296,26 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
 // Request-level memoization only — not cross-navigation persistence.
 // See docs/ui-web-v2/SHELL-PERSISTENCE-EVALUATION.md for precise claims.
 export const getWorkspaceShellMetrics = cache(getWorkspaceShellMetricsUncached);
+
+/**
+ * The verified authenticated user for the current request.
+ *
+ * Cached so shell metrics and shell identity share one verification round trip
+ * instead of issuing a second `auth.getUser()` per render.
+ */
+export const getSessionUser = cache(
+  async (): Promise<{ id: string; email?: string | null; user_metadata?: Record<string, unknown> | null } | null> => {
+    try {
+      const supabase = await createClient();
+      const { data } = await supabase.auth.getUser();
+      return data.user ?? null;
+    } catch {
+      return null;
+    }
+  },
+);
+
+/** Server-derived display identity for the workspace shell. */
+export async function getShellIdentity(): Promise<ShellIdentity> {
+  return deriveShellIdentity(await getSessionUser());
+}

@@ -83,6 +83,65 @@ export type WorkAnalyticsDaily = {
   completedTaskCount?: number; // undefined if not computed
 };
 
+/**
+ * Rolling average of a canonical daily series.
+ *
+ * Used to add a second dimension to the daily focus chart: the bars stay the
+ * actual daily values and the line is their trailing mean. Values are derived
+ * from the same canonical series the bars come from — never invented, and the
+ * first `windowSize - 1` points carry the mean of what is available so the line
+ * cannot imply data that does not exist.
+ */
+export function calculateRollingAverageSeries(
+  series: WorkAnalyticsDaily[],
+  windowSize = 7,
+): WorkAnalyticsDaily[] {
+  const size = Math.max(1, Math.floor(windowSize));
+
+  return series.map((point, index) => {
+    const start = Math.max(0, index - size + 1);
+    const slice = series.slice(start, index + 1);
+    const total = slice.reduce((sum, entry) => sum + entry.workedMinutes, 0);
+    const workedMinutes = slice.length > 0 ? Math.round(total / slice.length) : 0;
+
+    return {
+      date: point.date,
+      workedMinutes,
+      sessionCount: 0,
+    };
+  });
+}
+
+/**
+ * Weekday distribution of a canonical daily series (Monday-first).
+ *
+ * Adds information the period charts cannot show: which weekdays actually carry
+ * focus time. Minutes are summed from the supplied series only.
+ */
+export function calculateWeekdayDistribution(
+  series: WorkAnalyticsDaily[],
+): Array<{ weekday: number; label: string; workedMinutes: number; sessionCount: number }> {
+  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const totals = labels.map((label, weekday) => ({
+    weekday,
+    label,
+    workedMinutes: 0,
+    sessionCount: 0,
+  }));
+
+  for (const point of series) {
+    const date = new Date(`${point.date}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime())) continue;
+    const mondayFirstIndex = (date.getUTCDay() + 6) % 7;
+    const bucket = totals[mondayFirstIndex];
+    if (!bucket) continue;
+    bucket.workedMinutes += point.workedMinutes;
+    bucket.sessionCount += point.sessionCount;
+  }
+
+  return totals;
+}
+
 export type WorkAnalyticsProjectBreakdown = {
   projectId: string | null;
   projectName: string;
@@ -1170,32 +1229,51 @@ export type DrilldownIndexes = {
  * so the client can look up drilldown data with O(1) instead of filtering O(n).
  *
  * @param sessions Full session rows to index
- * @param _window Time window (reserved for future filtering, currently unused)
- * @param _options Optional configuration (reserved for future use)
+ * @param window Time window the drilldowns must be scoped to
+ * @param options Optional configuration (now for mocking, includeOpenSessions)
  * @returns Drilldown indexes for date, project, goal, and task
  */
 export function buildDrilldownIndexes(
   sessions: ExecutionEvidenceSessionRow[],
-  _window?: ExecutionEvidenceWindow,
-  _options?: WorkAnalyticsOptions,
+  window?: ExecutionEvidenceWindow,
+  options: WorkAnalyticsOptions = {},
 ): DrilldownIndexes {
   const date: Record<string, DrilldownSessionDTO[]> = {};
   const project: Record<string, DrilldownSessionDTO[]> = {};
   const goal: Record<string, DrilldownSessionDTO[]> = {};
   const task: Record<string, DrilldownSessionDTO[]> = {};
 
-  const nowMs = Date.now();
+  const nowIso = options.nowIso ?? new Date().toISOString();
+  const nowMs = new Date(nowIso).getTime();
+  const includeOpenSessions = options.includeOpenSessions ?? false;
 
   for (const session of sessions) {
+    if (!session.ended_at && !includeOpenSessions) {
+      continue;
+    }
+
+    const trackedSeconds = window
+      ? getExecutionEvidenceSessionOverlapSeconds(session, window, {
+          nowIso,
+          includeOpenSessions,
+        })
+      : null;
+
+    if (window && (trackedSeconds ?? 0) <= 0) {
+      continue;
+    }
+
     const sessionStartMs = new Date(session.started_at).getTime();
     const sessionEndMs = session.ended_at
       ? new Date(session.ended_at).getTime()
       : nowMs;
-    const durationSeconds = Math.max(0, Math.floor((sessionEndMs - sessionStartMs) / 1000));
+    const durationSeconds =
+      trackedSeconds ??
+      Math.max(0, Math.floor((sessionEndMs - sessionStartMs) / 1000));
 
     const dto: DrilldownSessionDTO = {
       taskId: session.tasks?.id ?? session.task_id,
-      taskTitle: session.tasks?.title ?? 'Untitled task',
+      taskTitle: session.tasks?.title ?? "Untitled task",
       projectName: session.tasks?.projects?.name ?? null,
       projectId: session.tasks?.projects?.id ?? session.tasks?.project_id ?? null,
       goalTitle: session.tasks?.goals?.title ?? null,
@@ -1205,28 +1283,67 @@ export function buildDrilldownIndexes(
       durationSeconds,
     };
 
-    // Index by date (YYYY-MM-DD of session start)
+    // Date drilldowns stay keyed by the session start date. Grouped chart
+    // buckets combine these exact-date lists client-side.
     const dateKey = session.started_at.slice(0, 10);
     if (!date[dateKey]) date[dateKey] = [];
     date[dateKey].push(dto);
 
-    // Index by project
-    const projectKey = dto.projectId ?? '__unknown__';
+    const projectKey = dto.projectId ?? "__unknown__";
     if (!project[projectKey]) project[projectKey] = [];
     project[projectKey].push(dto);
 
-    // Index by goal
-    const goalKey = dto.goalId ?? '__no-goal__';
+    const goalKey = dto.goalId ?? "__no-goal__";
     if (!goal[goalKey]) goal[goalKey] = [];
     goal[goalKey].push(dto);
 
-    // Index by task
     const taskKey = dto.taskId;
     if (!task[taskKey]) task[taskKey] = [];
     task[taskKey].push(dto);
   }
 
   return { date, project, goal, task };
+}
+
+/**
+ * Resolves the exact-date drilldown rows represented by a grouped chart bucket.
+ *
+ * The provided index is already range-filtered by the caller, so a partial first
+ * week/month cannot leak sessions from outside the chart's window.
+ */
+export function collectDrilldownSessionsForBucket(
+  bucketDate: string,
+  groupBy: "day" | "week" | "month",
+  dateIndex: Record<string, DrilldownSessionDTO[]>,
+): DrilldownSessionDTO[] {
+  if (groupBy === "day") {
+    return dateIndex[bucketDate] ?? [];
+  }
+
+  const cursor = new Date(`${bucketDate}T00:00:00.000Z`);
+  const endExclusive = new Date(cursor);
+
+  if (groupBy === "week") {
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 7);
+  } else {
+    endExclusive.setUTCMonth(endExclusive.getUTCMonth() + 1, 1);
+  }
+
+  const result: DrilldownSessionDTO[] = [];
+  const seen = new Set<string>();
+
+  while (cursor < endExclusive) {
+    const key = cursor.toISOString().slice(0, 10);
+    for (const session of dateIndex[key] ?? []) {
+      const identity = `${session.taskId}|${session.startedAt}`;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+      result.push(session);
+    }
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return result;
 }
 
 export type WorkAnalyticsTaskBreakdown = {

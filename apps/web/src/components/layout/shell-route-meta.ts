@@ -1,127 +1,54 @@
 export type ShellRouteMeta = {
   href: `/${string}`;
-  index: string;
   label: string;
-  group: "command" | "system";
-  eyebrow: string;
+  group: "primary" | "system";
+  /** Short page-purpose line shown as top-bar context. */
+  description: string;
 };
 
 export const COMMAND_ROUTES = [
-  {
-    href: "/home",
-    index: "00",
-    label: "Home",
-    group: "command",
-    eyebrow: "Workspace entry",
-  },
-  {
-    href: "/today",
-    index: "01",
-    label: "Today",
-    group: "command",
-    eyebrow: "Daily execution",
-  },
-  {
-    href: "/tasks",
-    index: "02",
-    label: "Tasks",
-    group: "command",
-    eyebrow: "Work inventory",
-  },
-  {
-    href: "/goals",
-    index: "03",
-    label: "Goals",
-    group: "command",
-    eyebrow: "Direction",
-  },
-  {
-    href: "/timer",
-    index: "04",
-    label: "Timer",
-    group: "command",
-    eyebrow: "Focus session",
-  },
-  {
-    href: "/review",
-    index: "05",
-    label: "Review",
-    group: "command",
-    eyebrow: "Feedback loop",
-  },
+  { href: "/home", label: "Home", group: "primary", description: "Workspace overview" },
+  { href: "/today", label: "Today", group: "primary", description: "Daily execution" },
+  { href: "/tasks", label: "Tasks", group: "primary", description: "Work inventory" },
+  { href: "/goals", label: "Goals", group: "primary", description: "Direction and progress" },
+  { href: "/timer", label: "Timer", group: "primary", description: "Focus session" },
+  { href: "/review", label: "Review", group: "primary", description: "Weekly feedback loop" },
   {
     href: "/work-analytics",
-    index: "06",
     label: "Analytics",
-    group: "command",
-    eyebrow: "Operational evidence",
+    group: "primary",
+    description: "Operational evidence",
   },
 ] as const satisfies readonly ShellRouteMeta[];
 
 export const SYSTEM_ROUTES = [
-  {
-    href: "/ideas",
-    index: "S1",
-    label: "Ideas",
-    group: "system",
-    eyebrow: "Capture",
-  },
-  {
-    href: "/notifications",
-    index: "S2",
-    label: "Notifications",
-    group: "system",
-    eyebrow: "Task reminders",
-  },
-  {
-    href: "/startup",
-    index: "S3",
-    label: "Startup",
-    group: "system",
-    eyebrow: "System ritual",
-  },
-  {
-    href: "/shutdown",
-    index: "S4",
-    label: "Shutdown",
-    group: "system",
-    eyebrow: "System ritual",
-  },
-  {
-    href: "/apps",
-    index: "S5",
-    label: "Apps",
-    group: "system",
-    eyebrow: "Connected surfaces",
-  },
-  {
-    href: "/help",
-    index: "S6",
-    label: "Help",
-    group: "system",
-    eyebrow: "Support",
-  },
+  { href: "/ideas", label: "Ideas", group: "system", description: "Capture inbox" },
+  { href: "/notifications", label: "Notifications", group: "system", description: "Reminders" },
+  { href: "/startup", label: "Startup", group: "system", description: "Start the day" },
+  { href: "/shutdown", label: "Shutdown", group: "system", description: "Close the day" },
+  { href: "/apps", label: "Apps", group: "system", description: "Connected surfaces" },
+  { href: "/help", label: "Help", group: "system", description: "Support and shortcuts" },
   {
     href: "/settings/account",
-    index: "S7",
     label: "Settings",
     group: "system",
-    eyebrow: "Account controls",
+    description: "Account controls",
   },
 ] as const satisfies readonly ShellRouteMeta[];
 
 const ALL_ROUTES: readonly ShellRouteMeta[] = [...COMMAND_ROUTES, ...SYSTEM_ROUTES];
 
+const FALLBACK_ROUTE: ShellRouteMeta = {
+  href: "/today",
+  label: "Workspace",
+  group: "primary",
+  description: "Workspace",
+};
+
 export function getShellRouteMeta(pathname: string): ShellRouteMeta {
   return (
     ALL_ROUTES.filter(
       (route) => pathname === route.href || pathname.startsWith(`${route.href}/`),
-    ).sort((left, right) => right.href.length - left.href.length)[0] ?? {
-      href: "/today",
-      index: "00",
-      label: "Workspace",
-      group: "command",
-      eyebrow: "Operating system",
-    }
+    ).sort((left, right) => right.href.length - left.href.length)[0] ?? FALLBACK_ROUTE
   );
 }

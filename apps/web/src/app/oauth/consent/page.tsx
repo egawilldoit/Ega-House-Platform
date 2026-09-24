@@ -53,13 +53,13 @@ function parsePreviouslyApprovedRedirect(data: unknown): string {
 
 function ConsentError({ message }: { message: string }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f4ed9a] px-6 py-16 text-[#17383a]">
-      <section className="w-full max-w-xl rounded-3xl border border-black/10 bg-white/75 p-8 shadow-2xl shadow-black/10 backdrop-blur">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b54132]">
+    <main className="flex min-h-screen items-center justify-center bg-[var(--ega-bg)] px-6 py-16 text-[color:var(--ega-text)]">
+      <section className="w-full max-w-xl rounded-[var(--radius-xl)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-8">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-overdue)]">
           Authorization unavailable
         </p>
-        <h1 className="mt-3 text-3xl font-semibold">The request cannot be reviewed.</h1>
-        <p className="mt-4 leading-7 text-black/65">{message}</p>
+        <h1 className="mt-3 text-[length:var(--text-section)] font-semibold">The request cannot be reviewed.</h1>
+        <p className="mt-4 leading-7 text-[color:var(--ega-text-secondary)]">{message}</p>
       </section>
     </main>
   );
@@ -112,40 +112,40 @@ export default async function OAuthConsentPage({
   const writesEnabled = process.env.MCP_WRITES_ENABLED === "true";
 
   return (
-    <main className="min-h-screen bg-[#f4ed9a] px-6 py-14 text-[#17383a]">
+    <main className="min-h-screen bg-[var(--ega-bg)] px-6 py-14 text-[color:var(--ega-text)]">
       <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1fr_1.15fr]">
-        <section className="flex flex-col justify-between rounded-3xl border border-black/10 bg-[#17383a] p-8 text-[#f4ed9a] shadow-2xl shadow-black/15 lg:p-10">
+        <section className="flex flex-col justify-between rounded-[var(--radius-xl)] border border-[var(--ega-ink)] bg-[color:var(--ega-ink)] p-8 text-white lg:p-10">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#f4ed9a]/65">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[white/70">
               EGA House MCP
             </p>
-            <h1 className="mt-5 text-4xl font-semibold leading-tight lg:text-5xl">
+            <h1 className="mt-5 text-[length:var(--text-page)] font-semibold leading-tight lg:text-[length:var(--text-page)]">
               {writesEnabled ? "Choose workspace access level." : "Approve read-only workspace access."}
             </h1>
-            <p className="mt-5 max-w-md leading-7 text-[#f4ed9a]/70">
+            <p className="mt-5 max-w-md leading-7 text-[white/75">
               {writesEnabled
                 ? "Grant read-only inspection or full workspace management. Workspace management can create and update projects, goals, tasks, Today and timers — still scoped to your account and client."
                 : "The requesting client will be able to inspect your projects, goals, tasks, Today plan, and timer sessions. It cannot create, edit, archive, merge, deploy, or run commands through this authorization."}
             </p>
           </div>
 
-          <div className="mt-10 rounded-2xl border border-[#f4ed9a]/20 bg-white/5 p-5 text-sm leading-6 text-[#f4ed9a]/75">
+          <div className="mt-10 rounded-[var(--radius-lg)] border border-white/20 bg-white/5 p-5 text-sm leading-6 text-white/80">
             Access is bound to your account, this OAuth client, and the exact EGA
             House MCP resource. You can revoke the connection later.
           </div>
         </section>
 
-        <section className="rounded-3xl border border-black/10 bg-white/80 p-8 shadow-2xl shadow-black/10 backdrop-blur lg:p-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#b54132]">
+        <section className="rounded-[var(--radius-xl)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-8 lg:p-10">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--status-overdue)]">
             Authorization request
           </p>
-          <h2 className="mt-3 text-3xl font-semibold">Connect {details.clientName}</h2>
-          <p className="mt-3 leading-7 text-black/60">
-            Signed in as <span className="font-medium text-[#17383a]">{user.email ?? user.id}</span>
+          <h2 className="mt-3 text-[length:var(--text-section)] font-semibold">Connect {details.clientName}</h2>
+          <p className="mt-3 leading-7 text-[color:var(--ega-text-secondary)]">
+            Signed in as <span className="font-medium text-[color:var(--ega-text)]">{user.email ?? user.id}</span>
           </p>
 
           {decisionError ? (
-            <div className="mt-6 rounded-2xl border border-[#b54132]/25 bg-[#b54132]/5 px-4 py-3 text-sm text-[#8f3025]">
+            <div className="mt-6 feedback-block feedback-block-error mt-6">
               Authorization could not be completed. Review the request and try again.
             </div>
           ) : null}
@@ -153,24 +153,24 @@ export default async function OAuthConsentPage({
           <form action="/api/oauth/decision" method="post" className="mt-8 space-y-6">
             <input type="hidden" name="authorization_id" value={details.authorizationId} />
             <div>
-              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-black/45">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--ega-text-tertiary)]">
                 EGA House permissions
               </h3>
               {writesEnabled ? (
                 <fieldset className="mt-3 space-y-3">
                   <legend className="sr-only">Permission level</legend>
-                  <label className="flex gap-3 rounded-2xl border border-black/10 bg-white/80 p-4 has-[input:checked]:border-[#17383a] has-[input:checked]:bg-[#17383a]/[0.04]">
+                  <label className="flex gap-3 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-4 has-[input:checked]:border-[var(--ega-ink)]">
                     <input type="radio" name="permission_profile" value="read_only" defaultChecked className="mt-1" />
                     <span>
                       <span className="font-semibold">Read-only</span>
-                      <span className="mt-1 block text-sm leading-6 text-black/55">List projects, goals, tasks, Today plan and timer sessions. No writes.</span>
+                      <span className="mt-1 block text-sm leading-6 text-[color:var(--ega-text-secondary)]">List projects, goals, tasks, Today plan and timer sessions. No writes.</span>
                     </span>
                   </label>
-                  <label className="flex gap-3 rounded-2xl border border-black/10 bg-white/80 p-4 has-[input:checked]:border-[#17383a] has-[input:checked]:bg-[#17383a]/[0.04]">
+                  <label className="flex gap-3 rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)] p-4 has-[input:checked]:border-[var(--ega-ink)]">
                     <input type="radio" name="permission_profile" value="workspace_manager" className="mt-1" />
                     <span>
                       <span className="font-semibold">Workspace management</span>
-                      <span className="mt-1 block text-sm leading-6 text-black/55">Read plus create/update projects, goals, tasks, Today and timers. Still owner-scoped and client-bound.</span>
+                      <span className="mt-1 block text-sm leading-6 text-[color:var(--ega-text-secondary)]">Read plus create/update projects, goals, tasks, Today and timers. Still owner-scoped and client-bound.</span>
                     </span>
                   </label>
                 </fieldset>
@@ -183,9 +183,9 @@ export default async function OAuthConsentPage({
                     ["Today plan", "Inspect the plan for your account's current day"],
                     ["Timer sessions", "Inspect timer sessions that belong to your account"],
                   ].map(([label, description]) => (
-                    <li key={label} className="rounded-2xl border border-black/10 bg-white/60 p-4">
+                    <li key={label} className="rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-[color:var(--ega-surface-subtle)] p-4">
                       <p className="font-semibold">Read {label}</p>
-                      <p className="mt-1 text-sm leading-6 text-black/55">{description}</p>
+                      <p className="mt-1 text-sm leading-6 text-[color:var(--ega-text-secondary)]">{description}</p>
                     </li>
                   ))}
                 </ul>
@@ -194,13 +194,13 @@ export default async function OAuthConsentPage({
 
             {details.scopes.length > 0 ? (
               <div>
-                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-black/45">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[color:var(--ega-text-tertiary)]">
                   Identity information
                 </h3>
-                <ul className="mt-3 space-y-2 text-sm text-black/65">
+                <ul className="mt-3 space-y-2 text-sm text-[color:var(--ega-text-secondary)]">
                   {details.scopes.map((scope) => (
-                    <li key={scope} className="flex gap-3 rounded-xl bg-black/[0.035] px-4 py-3">
-                      <span aria-hidden className="mt-0.5 text-[#b54132]">•</span>
+                    <li key={scope} className="flex gap-3 rounded-[var(--radius-sm)] bg-black/[0.035] px-4 py-3">
+                      <span aria-hidden className="mt-0.5 text-[color:var(--status-overdue)]">•</span>
                       <span>{SCOPE_DESCRIPTIONS[scope] ?? `Requested OAuth scope: ${scope}`}</span>
                     </li>
                   ))}
@@ -209,11 +209,11 @@ export default async function OAuthConsentPage({
             ) : null}
 
             {details.redirectUri ? (
-              <div className="rounded-2xl border border-black/10 bg-black/[0.025] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-black/45">
+              <div className="rounded-[var(--radius-lg)] border border-[var(--ega-border)] bg-black/[0.025] p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--ega-text-tertiary)]">
                   Return address
                 </p>
-                <p className="mt-2 break-all font-mono text-xs leading-5 text-black/65">
+                <p className="mt-2 break-all font-mono text-xs leading-5 text-[color:var(--ega-text-secondary)]">
                   {details.redirectUri}
                 </p>
               </div>
@@ -224,7 +224,7 @@ export default async function OAuthConsentPage({
                 type="submit"
                 name="decision"
                 value="deny"
-                className="rounded-xl border border-black/15 px-5 py-3.5 font-semibold transition hover:bg-black/5"
+                className="rounded-[var(--radius-sm)] border border-black/15 px-5 py-3.5 font-semibold transition hover:bg-black/5"
               >
                 Deny
               </button>
@@ -232,7 +232,7 @@ export default async function OAuthConsentPage({
                 type="submit"
                 name="decision"
                 value="approve"
-                className="rounded-xl bg-[#17383a] px-5 py-3.5 font-semibold text-[#f4ed9a] transition hover:bg-[#102a2c]"
+                className="btn-instrument flex h-9 items-center justify-center px-4 font-semibold"
               >
                 <ConsentApprovalLabel />
               </button>

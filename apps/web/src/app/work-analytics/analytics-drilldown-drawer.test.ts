@@ -9,6 +9,7 @@ const source = readFileSync(
 );
 
 test("analytics drilldown gives its dialog the visible title as an accessible name", () => {
-  assert.match(source, /<SheetContent[^>]+aria-labelledby="analytics-drilldown-title"/);
-  assert.match(source, /<SheetTitle id="analytics-drilldown-title">\{drawerTitle\(drilldown\)\}<\/SheetTitle>/);
+  assert.match(source, /<SheetContent[^>]*aria-labelledby="analytics-drilldown-title"/);
+  assert.match(source, /<SheetTitle[^>]*id="analytics-drilldown-title"[^>]*>/);
+  assert.match(source, /\{drawerTitle\(drilldown\)\}/);
 });

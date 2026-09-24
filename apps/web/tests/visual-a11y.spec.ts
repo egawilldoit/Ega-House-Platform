@@ -172,36 +172,47 @@ test.describe("EGA-648 responsive layout geometry", () => {
 });
 
 
-test.describe("sidebar collapsed rail regression", () => {
-  test("sidebar collapsed rail contract at 761, 900, 1180, and 1200px", async ({ page }) => {
+test.describe("workspace shell contract", () => {
+  test("light sidebar rail geometry, contrast, and collapsed labels at 761, 900, 1180, and 1200px", async ({
+    page,
+  }) => {
     await page.goto("/login", { waitUntil: "domcontentloaded" });
 
-    const sidebarStyles = [
-      readFileSync(resolve(process.cwd(), "src/components/layout/editorial-shell.css"), "utf8"),
-      readFileSync(resolve(process.cwd(), "src/components/layout/editorial-shell-responsive.css"), "utf8"),
+    const shellStyles = [
+      readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8"),
+      readFileSync(resolve(process.cwd(), "src/styles/workspace.css"), "utf8"),
     ];
-    await page.addStyleTag({ content: sidebarStyles.join("\n") });
+    await page.addStyleTag({ content: shellStyles.join("\n") });
 
     await page.evaluate(() => {
       const host = document.createElement("div");
       host.id = "sidebar-contract-host";
-      host.className = "ega-app-shell";
-      host.dataset.workspaceTheme = "editorial";
+      host.className = "ega-app-shell app-shell";
+      host.dataset.workspaceTheme = "workspace";
+      host.dataset.collapsed = "false";
+      // No inline grid-template: the shell stylesheet owns the rail geometry and
+      // must be able to switch to the collapsed track from the data state.
       host.style.cssText =
-        "position:fixed;inset:0;z-index:99999;display:grid;grid-template-columns:var(--workspace-sidebar-width) minmax(0,1fr);height:100vh;width:100vw;overflow:hidden";
+        "position:fixed;inset:0;z-index:99999;height:100vh;width:100vw;overflow:hidden";
       host.innerHTML = `
-        <aside id="sidebar-contract" class="workspace-sidebar" data-collapsed="false">
-          <div class="workspace-sidebar-brand">
-            <span class="workspace-brand-copy">EGA</span>
-            <span class="workspace-brand-index">01</span>
+        <aside id="sidebar-contract" class="ega-sidebar app-sidebar workspace-sidebar" data-collapsed="false">
+          <div class="sidebar-brand workspace-sidebar-brand">
+            <span class="sidebar-brand-logo"></span>
+            <span class="workspace-brand-copy">EGA House</span>
+            <button type="button" class="workspace-sidebar-collapse" aria-label="Collapse sidebar"></button>
+          </div>
+          <div class="workspace-search" role="button" tabindex="0" aria-label="Search">
+            <span class="workspace-search-label">Search</span>
+            <kbd>⌘K</kbd>
           </div>
           <nav class="sidebar-nav workspace-sidebar-nav" aria-label="Workspace navigation">
-            <section class="sidebar-section workspace-nav-section">
-              <div class="sidebar-section-label">Command</div>
+            <section class="sidebar-section workspace-nav-section" aria-label="Primary">
               <div class="workspace-nav-list">
+                <a href="/today" class="sidebar-link workspace-nav-link" aria-label="Today" title="Today">
+                  <span class="sidebar-link-icon" aria-hidden="true"><svg></svg></span>
+                  <span class="workspace-nav-label">Today</span>
+                </a>
                 <a href="/tasks" class="sidebar-link workspace-nav-link active" aria-label="Tasks" title="Tasks">
-                  <span class="sidebar-active-indicator" aria-hidden="true"></span>
-                  <span class="workspace-nav-index" aria-hidden="true">02</span>
                   <span class="sidebar-link-icon" aria-hidden="true"><svg></svg></span>
                   <span class="workspace-nav-label">Tasks</span>
                   <span class="sidebar-badge">21</span>
@@ -210,78 +221,23 @@ test.describe("sidebar collapsed rail regression", () => {
             </section>
             <section class="sidebar-section sidebar-project-section workspace-nav-section">
               <div class="sidebar-section-heading">
-                <div class="sidebar-section-label">Projects</div>
-                <a href="/tasks/projects/new" class="sidebar-section-action" aria-label="Create new project" title="New project">
-                  <svg></svg>
-                </a>
+                <div class="sidebar-section-label">Workspaces</div>
+                <a href="/tasks/projects/new" class="sidebar-section-action" aria-label="Create new project" title="New project"><svg></svg></a>
               </div>
               <div class="sidebar-project-list">
-                <a href="/tasks?project=life" class="sidebar-link sidebar-project-link selected" aria-label="Life" title="Life">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Life</span>
-                  <span class="sidebar-project-count">8</span>
-                </a>
-                <a href="/tasks?project=content" class="sidebar-link sidebar-project-link" aria-label="Content Engine" title="Content Engine">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Content Engine</span>
-                  <span class="sidebar-project-count">4</span>
-                </a>
-                <a href="/tasks?project=launch" class="sidebar-link sidebar-project-link" aria-label="Launch" title="Launch">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Launch</span>
-                  <span class="sidebar-project-count">3</span>
-                </a>
-                <a href="/tasks?project=analytics" class="sidebar-link sidebar-project-link" aria-label="Analytics" title="Analytics">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Analytics</span>
-                  <span class="sidebar-project-count">2</span>
-                </a>
-                <a href="/tasks?project=mobile" class="sidebar-link sidebar-project-link" aria-label="Mobile App" title="Mobile App">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Mobile App</span>
-                  <span class="sidebar-project-count">6</span>
-                </a>
-                <a href="/tasks?project=docs" class="sidebar-link sidebar-project-link" aria-label="Documentation" title="Documentation">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Documentation</span>
-                  <span class="sidebar-project-count">1</span>
-                </a>
-                <a href="/tasks?project=ops" class="sidebar-link sidebar-project-link" aria-label="Operations" title="Operations">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Operations</span>
-                  <span class="sidebar-project-count">5</span>
-                </a>
-                <a href="/tasks?project=research" class="sidebar-link sidebar-project-link" aria-label="Research" title="Research">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Research</span>
-                  <span class="sidebar-project-count">2</span>
-                </a>
-                <a href="/tasks?project=qa" class="sidebar-link sidebar-project-link" aria-label="Quality" title="Quality">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Quality</span>
-                  <span class="sidebar-project-count">3</span>
-                </a>
-                <a href="/tasks?project=growth" class="sidebar-link sidebar-project-link" aria-label="Growth" title="Growth">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Growth</span>
-                  <span class="sidebar-project-count">7</span>
-                </a>
-                <a href="/tasks?project=platform" class="sidebar-link sidebar-project-link" aria-label="Platform" title="Platform">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Platform</span>
-                  <span class="sidebar-project-count">9</span>
-                </a>
-                <a href="/tasks?project=archive" class="sidebar-link sidebar-project-link" aria-label="Archive" title="Archive">
-                  <span class="project-dot"></span>
-                  <span class="workspace-nav-label">Archive</span>
-                  <span class="sidebar-project-count">1</span>
-                </a>
+                ${Array.from({ length: 14 })
+                  .map(
+                    (_, index) =>
+                      `<a href="/tasks?project=p${index}" class="sidebar-link sidebar-project-link${
+                        index === 0 ? " selected" : ""
+                      }" aria-label="Workspace ${index}" title="Workspace ${index}"><span class="project-dot" style="background:var(--ega-data-blue)"></span><span class="workspace-nav-label">Workspace ${index}</span><span class="sidebar-project-count">${index + 1}</span></a>`,
+                  )
+                  .join("")}
               </div>
             </section>
-            <section class="sidebar-section sidebar-general-section workspace-nav-section">
-              <div class="sidebar-section-label">System</div>
+            <section class="sidebar-section sidebar-general-section workspace-nav-section" aria-label="System">
               <a href="/ideas" class="sidebar-link workspace-nav-link" aria-label="Ideas" title="Ideas">
-                <span class="sidebar-link-icon"><svg data-testid="system-icon"></svg></span>
+                <span class="sidebar-link-icon" aria-hidden="true"><svg data-testid="system-icon"></svg></span>
                 <span class="workspace-nav-label">Ideas</span>
               </a>
               <button type="button" class="sidebar-link" aria-label="Logout" title="Logout">
@@ -290,8 +246,13 @@ test.describe("sidebar collapsed rail regression", () => {
               </button>
             </section>
           </nav>
+          <div class="workspace-create-task">
+            <button type="button" class="workspace-create-task-trigger" data-testid="contract-create-task" aria-label="Create task">
+              <span class="workspace-nav-label">Create task</span>
+            </button>
+          </div>
         </aside>
-        <main class="workspace-main" data-testid="sidebar-contract-main">
+        <main class="app-main workspace-main" data-testid="sidebar-contract-main">
           <p>Underlying page content</p>
         </main>`;
       document.body.append(host);
@@ -305,22 +266,31 @@ test.describe("sidebar collapsed rail regression", () => {
     const expandedWidths = [
       [761, 240],
       [900, 240],
-      [1180, 272],
-      [1200, 288],
+      [1180, 264],
+      [1200, 264],
     ] as const;
 
     for (const [width, expectedExpandedWidth] of expandedWidths) {
       await page.setViewportSize({ width, height: 900 });
 
-      const expandedWidth = await page.locator("#sidebar-contract").evaluate(
-        (sidebar) => sidebar.getBoundingClientRect().width,
-      );
+      const expandedWidth = await page
+        .locator("#sidebar-contract")
+        .evaluate((sidebar) => sidebar.getBoundingClientRect().width);
       expect(expandedWidth).toBe(expectedExpandedWidth);
 
       const expandedLayout = await page.evaluate(() => {
-        const projectSection = document.querySelector<HTMLElement>('#sidebar-contract .sidebar-project-section')!;
-        const projectList = document.querySelector<HTMLElement>('#sidebar-contract .sidebar-project-list')!;
-        const systemSection = document.querySelector<HTMLElement>('#sidebar-contract .sidebar-general-section')!;
+        const projectSection = document.querySelector<HTMLElement>(
+          "#sidebar-contract .sidebar-project-section",
+        )!;
+        const projectList = document.querySelector<HTMLElement>(
+          "#sidebar-contract .sidebar-project-list",
+        )!;
+        const systemSection = document.querySelector<HTMLElement>(
+          "#sidebar-contract .sidebar-general-section",
+        )!;
+        const activeLink = document.querySelector<HTMLElement>(
+          "#sidebar-contract .sidebar-link.active",
+        )!;
 
         return {
           projectListOverflowY: getComputedStyle(projectList).overflowY,
@@ -329,6 +299,19 @@ test.describe("sidebar collapsed rail regression", () => {
           projectListBottom: projectList.getBoundingClientRect().bottom,
           projectSectionBottom: projectSection.getBoundingClientRect().bottom,
           systemTop: systemSection.getBoundingClientRect().top,
+          topSectionBottom: document
+            .querySelector<HTMLElement>("#sidebar-contract .workspace-nav-section")!
+            .getBoundingClientRect().bottom,
+          cardsDoNotOverlap: projectList.getBoundingClientRect().bottom <= systemSection.getBoundingClientRect().top,
+          activeFontWeight: Number(getComputedStyle(activeLink).fontWeight),
+          // The project-create control only exists in the expanded state.
+          addProjectSize: (() => {
+            const addProject = document.querySelector<HTMLElement>(
+              "#sidebar-contract .sidebar-section-action",
+            )!;
+            const rect = addProject.getBoundingClientRect();
+            return { width: rect.width, height: rect.height };
+          })(),
         };
       });
 
@@ -342,9 +325,17 @@ test.describe("sidebar collapsed rail regression", () => {
       expect(expandedLayout.systemTop).toBeGreaterThanOrEqual(
         expandedLayout.projectSectionBottom,
       );
+      expect(expandedLayout.cardsDoNotOverlap).toBe(true);
+      expect(expandedLayout.addProjectSize.width).toBeGreaterThanOrEqual(24);
+      expect(expandedLayout.addProjectSize.height).toBeGreaterThanOrEqual(24);
+      // Selected navigation is reinforced by weight, not by colour alone.
+      expect(expandedLayout.activeFontWeight).toBeGreaterThanOrEqual(500);
 
       await page.locator("#sidebar-contract").evaluate((sidebar) => {
         sidebar.setAttribute("data-collapsed", "true");
+        document
+          .querySelector<HTMLElement>("#sidebar-contract-host")!
+          .setAttribute("data-collapsed", "true");
       });
 
       const measurements = await page.evaluate(() => {
@@ -366,11 +357,13 @@ test.describe("sidebar collapsed rail regression", () => {
           };
           const foreground = luminance(getComputedStyle(element).color);
           const background = luminance(getComputedStyle(element).backgroundColor);
-          return (Math.max(foreground, background) + 0.05) /
-            (Math.min(foreground, background) + 0.05);
+          return (
+            (Math.max(foreground, background) + 0.05) /
+            (Math.min(foreground, background) + 0.05)
+          );
         };
         const systemIcon = sidebar.querySelector<SVGElement>('[data-testid="system-icon"]')!;
-        const addProject = sidebar.querySelector<HTMLElement>(".sidebar-section-action")!;
+        const createTask = sidebar.querySelector<HTMLElement>('[data-testid="contract-create-task"]')!;
         const railRect = sidebar.getBoundingClientRect();
         const contentRect = main.getBoundingClientRect();
 
@@ -379,38 +372,121 @@ test.describe("sidebar collapsed rail regression", () => {
           sidebarBackground: getComputedStyle(sidebar).backgroundColor,
           sidebarBackgroundImage: getComputedStyle(sidebar).backgroundImage,
           sidebarOpacity: getComputedStyle(sidebar).opacity,
+          borderRightWidth: getComputedStyle(sidebar).borderRightWidth,
           contentStartsAfterRail: contentRect.left >= railRect.right,
           labelsAreConsistentlyHidden: allLabelsHidden,
           hasAccessibleLogoutLabel: Boolean(
             sidebar.querySelector('button[aria-label="Logout"] > .workspace-nav-label'),
           ),
           activeContrast: contrastRatio(sidebar.querySelector<HTMLElement>(".sidebar-link.active")!),
-          projectContrast: contrastRatio(sidebar.querySelector<HTMLElement>(".sidebar-project-link.selected")!),
-          addProjectSize: {
-            width: addProject.getBoundingClientRect().width,
-            height: addProject.getBoundingClientRect().height,
+          projectContrast: contrastRatio(
+            sidebar.querySelector<HTMLElement>(".sidebar-project-link.selected")!,
+          ),
+          createTaskSize: {
+            width: createTask.getBoundingClientRect().width,
+            height: createTask.getBoundingClientRect().height,
           },
-          systemDividerWidth: getComputedStyle(sidebar.querySelector<HTMLElement>(".sidebar-general-section")!).borderTopWidth,
+          systemDividerWidth: getComputedStyle(
+            sidebar.querySelector<HTMLElement>(".sidebar-general-section")!,
+          ).borderTopWidth,
           systemIconWidth: systemIcon.getBoundingClientRect().width,
         };
       });
 
-      expect(measurements.width).toBe(80);
-      expect(measurements.sidebarBackground).toBe("rgb(17, 17, 15)");
+      // Icon rail uses the token width and stays a light surface.
+      expect(measurements.width).toBe(72);
+      expect(measurements.sidebarBackground).toBe("rgb(242, 242, 242)");
       expect(measurements.sidebarBackgroundImage).toBe("none");
       expect(measurements.sidebarOpacity).toBe("1");
+      expect(measurements.borderRightWidth).toBe("1px");
       expect(measurements.contentStartsAfterRail).toBe(true);
       expect(measurements.labelsAreConsistentlyHidden).toBe(true);
       expect(measurements.hasAccessibleLogoutLabel).toBe(true);
       expect(measurements.activeContrast).toBeGreaterThanOrEqual(4.5);
       expect(measurements.projectContrast).toBeGreaterThanOrEqual(4.5);
-      expect(measurements.addProjectSize).toEqual({ width: 44, height: 44 });
+      // The rail keeps a touch-safe primary action.
+      expect(measurements.createTaskSize.height).toBeGreaterThanOrEqual(32);
       expect(measurements.systemDividerWidth).toBe("1px");
-      expect(measurements.systemIconWidth).toBeLessThan(16);
+      // Rail icons stay full-size and consistent, never squashed to nothing.
+      expect(measurements.systemIconWidth).toBeGreaterThanOrEqual(14);
+      expect(measurements.systemIconWidth).toBeLessThanOrEqual(18);
 
       await page.locator("#sidebar-contract").evaluate((sidebar) => {
         sidebar.setAttribute("data-collapsed", "false");
+        document
+          .querySelector<HTMLElement>("#sidebar-contract-host")!
+          .setAttribute("data-collapsed", "false");
       });
+    }
+  });
+
+  test("phone widths replace the sidebar with the drawer and never scroll the document", async ({
+    page,
+  }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+
+    const shellStyles = [
+      readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8"),
+      readFileSync(resolve(process.cwd(), "src/styles/workspace.css"), "utf8"),
+    ];
+    await page.addStyleTag({ content: shellStyles.join("\n") });
+
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "phone-shell-host";
+      host.className = "ega-app-shell app-shell";
+      host.dataset.workspaceTheme = "workspace";
+      host.dataset.collapsed = "false";
+      host.style.cssText = "position:fixed;inset:0;z-index:99999;overflow:hidden";
+      host.innerHTML = `
+        <aside class="ega-sidebar app-sidebar workspace-sidebar" data-collapsed="false">
+          <a href="/today" class="sidebar-link workspace-nav-link" aria-label="Today"><span class="workspace-nav-label">Today</span></a>
+        </aside>
+        <main class="app-main workspace-main">
+          <header class="app-topbar workspace-topbar">
+            <div class="app-topbar-context"></div>
+            <div class="app-topbar-actions">
+              <a href="/notifications" class="topbar-icon-button topbar-notification" data-has-unread="false" aria-label="Notifications"><svg></svg></a>
+              <a href="/notifications" class="topbar-icon-button topbar-notification" data-has-unread="true" aria-label="Notifications (1 unread)"><svg></svg><span class="notification-dot"></span></a>
+            </div>
+          </header>
+          <div class="app-page">
+            <header class="app-page-header"><h1 class="app-page-title">Today</h1></header>
+            <div class="app-content"><div class="kpi-grid"><div class="kpi-card">1</div><div class="kpi-card">2</div></div></div>
+          </div>
+        </main>`;
+      document.body.append(host);
+    });
+
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+
+      const measured = await page.evaluate(() => {
+        const host = document.querySelector<HTMLElement>("#phone-shell-host")!;
+        const sidebar = host.querySelector<HTMLElement>(".workspace-sidebar")!;
+        const page = host.querySelector<HTMLElement>(".app-page")!;
+        const notifications = Array.from(
+          host.querySelectorAll<HTMLElement>(".topbar-notification"),
+        );
+        return {
+          sidebarDisplay: getComputedStyle(sidebar).display,
+          columns: getComputedStyle(host).gridTemplateColumns.split(" ").length,
+          kpiColumns: getComputedStyle(host.querySelector<HTMLElement>(".kpi-grid")!)
+            .gridTemplateColumns.split(" ").length,
+          read: getComputedStyle(notifications[0]!).display,
+          unread: getComputedStyle(notifications[1]!).display,
+          pageWidth: page.getBoundingClientRect().width,
+          hostWidth: host.getBoundingClientRect().width,
+        };
+      });
+
+      expect(measured.sidebarDisplay).toBe("none");
+      expect(measured.columns).toBe(1);
+      expect(measured.kpiColumns).toBe(1);
+      // The W00 bug: the bell must hide only when there is genuinely nothing unread.
+      expect(measured.read).toBe("none");
+      expect(measured.unread).not.toBe("none");
+      expect(measured.pageWidth).toBeLessThanOrEqual(measured.hostWidth);
     }
   });
 });

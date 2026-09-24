@@ -2,7 +2,7 @@ import React from "react";
 import { CalendarClock } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 
 type TaskReminderPanelProps = {
@@ -45,15 +45,15 @@ export function TaskReminderPanel({
     reminders.find((reminder) => reminder.status === "cancelled") ?? null;
 
   return (
-    <section className="ega-glass-soft rounded-[1rem] p-3">
+    <section className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="ega-glass-pill flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[var(--signal-live)]">
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] text-[color:var(--ega-text-secondary)]">
             <CalendarClock className="h-4 w-4" aria-hidden="true" />
           </span>
           <div className="min-w-0">
             <p className="glass-label text-etch">Email reminder</p>
-            <p className="truncate text-sm font-medium text-[color:var(--foreground)]">
+            <p className="truncate text-sm font-medium text-[color:var(--ega-text)]">
               {currentPendingReminder
                 ? formatReminderDateTime(currentPendingReminder.remind_at)
                 : "No pending reminder"}
@@ -64,7 +64,7 @@ export function TaskReminderPanel({
       </div>
 
       {latestCancelledReminder ? (
-        <p className="mt-2 text-xs leading-5 text-[color:var(--muted-foreground)]">
+        <p className="mt-2 text-xs leading-5 text-[color:var(--ega-text-secondary)]">
           Last cancelled {formatReminderDateTime(latestCancelledReminder.updated_at)}
         </p>
       ) : null}
@@ -81,12 +81,12 @@ export function TaskReminderPanel({
               name="remindAt"
               type="datetime-local"
               required
-              className="ega-glass-input min-h-10 w-full rounded-xl border px-3 py-0 text-sm text-[color:var(--foreground)] ring-offset-background focus:outline-none focus:ring-2 focus:ring-[rgba(23,123,82,0.22)]"
+              className="input-instrument h-8 w-full px-2.5 text-[length:var(--text-meta-lg)]"
             />
           </label>
-          <Button type="submit" size="sm" variant="muted">
+          <PendingSubmitButton type="submit" size="sm" variant="muted" pendingLabel="Creating…">
             Create
-          </Button>
+          </PendingSubmitButton>
         </form>
 
         {currentPendingReminder ? (
@@ -95,9 +95,15 @@ export function TaskReminderPanel({
             <input type="hidden" name="reminderId" value={currentPendingReminder.id} />
             <input type="hidden" name="returnTo" value={returnTo} />
             <input type="hidden" name="status" value="cancelled" />
-            <Button type="submit" size="sm" variant="danger" className="w-full justify-center">
+            <PendingSubmitButton
+              type="submit"
+              size="sm"
+              variant="danger"
+              className="w-full justify-center"
+              pendingLabel="Cancelling…"
+            >
               Cancel
-            </Button>
+            </PendingSubmitButton>
           </form>
         ) : null}
       </div>
