@@ -1,6 +1,7 @@
 import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWeekBounds } from "@/lib/review-week";
 import { getLocalDateInTimezone } from "@ega/domain";
 import { SupabaseTimeContextRepository } from "@ega/data-access";
@@ -306,9 +307,9 @@ export const getWorkspaceShellMetrics = cache(getWorkspaceShellMetricsUncached);
 export const getSessionUser = cache(
   async (): Promise<{ id: string; email?: string | null; user_metadata?: Record<string, unknown> | null } | null> => {
     try {
-      const supabase = await createClient();
-      const { data } = await supabase.auth.getUser();
-      return data.user ?? null;
+      // Delegates to the shared request-scoped verification so shell identity,
+      // shell metrics and page services share one `auth.getUser()` round trip.
+      return await getCurrentUser();
     } catch {
       return null;
     }
