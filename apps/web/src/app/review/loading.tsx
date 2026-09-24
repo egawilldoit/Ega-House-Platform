@@ -1,4 +1,4 @@
-import { AppShell } from "@/components/layout/app-shell";
+import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -20,7 +20,7 @@ function RailCardSkeleton() {
 
 export default function ReviewLoadingPage() {
   return (
-    <AppShell
+    <WorkspaceSkeletonShell
       title="Review"
       description="What happened this week, and what to change next."
     >
@@ -110,6 +110,6 @@ export default function ReviewLoadingPage() {
           </CardContent>
         </Card>
       </div>
-    </AppShell>
+    </WorkspaceSkeletonShell>
   );
 }
