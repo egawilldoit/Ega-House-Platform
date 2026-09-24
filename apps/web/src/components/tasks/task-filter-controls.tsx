@@ -204,7 +204,7 @@ export function TaskFilterControls({
       </div>
 
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort tasks">
-        <span className="glass-label text-etch">Sort</span>
+        <span className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]">Sort</span>
         <div className="flex flex-wrap gap-1.5">
           {sortOptions.map((option) => {
             const isActive = option.value === activeSort;
