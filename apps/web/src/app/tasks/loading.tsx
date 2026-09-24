@@ -1,5 +1,5 @@
 import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-shell";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function TaskRowSkeleton() {
@@ -23,49 +23,32 @@ export default function TasksLoadingPage() {
       description="Find, organize, and move your work forward."
       actions={<Skeleton className="h-8 w-24" />}
     >
-      <div className="workspace-main-rail-grid xl:grid-cols-[minmax(0,1fr)_clamp(13rem,14vw,15rem)]">
-        <Card clip>
-          <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Skeleton className="h-8 w-20" />
-              <Skeleton className="h-8 w-24" />
-              <Skeleton className="h-8 w-16" />
-              <Skeleton className="h-8 w-16" />
-              <Skeleton className="ml-auto h-8 w-24" />
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Skeleton className="h-8 w-24" />
-              <Skeleton className="h-8 w-28" />
-              <Skeleton className="h-8 w-24" />
-            </div>
+      {/* Mirrors the rail-free composition: one full-width inventory card with a
+          two-row toolbar. */}
+      <Card clip>
+        <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-20" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="h-8 w-16" />
+            <Skeleton className="ml-auto h-8 w-24" />
           </div>
-          <div>
-            <TaskRowSkeleton />
-            <TaskRowSkeleton />
-            <TaskRowSkeleton />
-            <TaskRowSkeleton />
-            <TaskRowSkeleton />
+          <div className="flex flex-wrap items-center gap-2">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-8 w-28" />
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="ml-auto h-4 w-40" />
           </div>
-        </Card>
-
-        <div className="workspace-secondary-rail">
-          <Card label="Focus" title="Pinned tasks">
-            <CardContent className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-48 max-w-full" />
-              <Skeleton className="h-4 w-40 max-w-full" />
-              <Skeleton className="h-4 w-44 max-w-full" />
-            </CardContent>
-          </Card>
-
-          <Card title="Saved views">
-            <CardContent className="flex flex-col gap-3">
-              <Skeleton className="h-8 w-full" />
-              <Skeleton className="h-4 w-40 max-w-full" />
-              <Skeleton className="h-4 w-36 max-w-full" />
-            </CardContent>
-          </Card>
         </div>
-      </div>
+        <div>
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+          <TaskRowSkeleton />
+        </div>
+      </Card>
     </WorkspaceSkeletonShell>
   );
 }
