@@ -108,8 +108,6 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     taskTotalDurations: Object.fromEntries(tasks.map((task) => [task.id, 60])),
     summary: { total: 3, active: 2, archived: 1 },
     savedViews: [],
-    resolvedSavedViewFeedback: { error: null, success: null },
-    calendarFormDefaults: { calendarSyncEnabled: false, calendarReminderMinutes: 10 },
     activeProjectId: "project-1",
     activeGoalId: "goal-1",
     returnPath: "/tasks?status=in_progress&project=project-1&goal=goal-1&due=overdue&sort=due_date_asc",
@@ -125,7 +123,6 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       due: "overdue",
       sort: "due_date_asc",
     },
-    focusQueue: tasks,
     kanbanBoard: buildTaskKanbanBoard(tasks, "in_progress"),
     inProgressCount: 1,
     blockedCount: 1,
@@ -258,7 +255,6 @@ describe("TasksPageView workspace composition", () => {
     await render(
       buildModel({
         tasks: [],
-        focusQueue: [],
         kanbanBoard: buildTaskKanbanBoard([], "in_progress"),
       }),
     );
@@ -268,7 +264,6 @@ describe("TasksPageView workspace composition", () => {
     await render(
       buildModel({
         tasks: [],
-        focusQueue: [],
         summary: { total: 0, active: 0, archived: 0 },
         kanbanBoard: buildTaskKanbanBoard([], "in_progress"),
       }),
@@ -281,7 +276,6 @@ describe("TasksPageView workspace composition", () => {
     await render(
       buildModel({
         tasks: [],
-        focusQueue: [],
         kanbanBoard: buildTaskKanbanBoard([], null),
         parsed: { ...buildModel().parsed, activeLayout: "kanban", activeStatus: null },
       }),
