@@ -297,7 +297,10 @@ function TaskListRow({
       aria-haspopup="dialog"
       aria-label={`Edit ${task.title}`}
       data-testid={`task-title-edit-${task.id}`}
-      onClick={() => handleOpenChange(true)}
+      onClick={(event) => {
+        event.currentTarget.focus();
+        handleOpenChange(true);
+      }}
     >
       {task.title}
     </button>
