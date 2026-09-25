@@ -389,9 +389,6 @@ export async function archiveCompletedTasksSafely(
     return { archivedTaskIds: [], ineligibleCount: 0, failures: [] };
   }
 
-  // The submitted ids may come from a stale render (or a forged form), so the
-  // eligible set is re-read under the caller's RLS scope instead of trusting
-  // the id list; only completed, not-yet-archived tasks get archived.
   const eligibleResult = await supabase
     .from("tasks")
     .select("id")
@@ -410,20 +407,78 @@ export async function archiveCompletedTasksSafely(
     };
   }
 
-  const eligibleIds = new Set((eligibleResult.data ?? []).map((row) => String(row.id)));
-  const ineligibleCount = uniqueIds.length - eligibleIds.size;
-  const failures: Array<{ taskId: string; errorMessage: string }> = [];
-  const archivedTaskIds: string[] = [];
+  const eligibleIds = (eligibleResult.data ?? []).map((row) => String(row.id));
+  const eligibleSet = new Set(eligibleIds);
+  let ineligibleCount = uniqueIds.length - eligibleSet.size;
 
-  for (const taskId of eligibleIds) {
-    const result = await archiveTaskSafely(taskId, options);
-
-    if (result.errorMessage) {
-      failures.push({ taskId, errorMessage: result.errorMessage });
-    } else {
-      archivedTaskIds.push(taskId);
-    }
+  if (eligibleIds.length === 0) {
+    return { archivedTaskIds: [], ineligibleCount, failures: [] };
   }
+
+  // Validate active timers in one query rather than one round trip per task.
+  const activeSessionsResult = await supabase
+    .from("task_sessions")
+    .select("task_id")
+    .in("task_id", eligibleIds)
+    .is("ended_at", null);
+
+  if (activeSessionsResult.error) {
+    return {
+      archivedTaskIds: [],
+      ineligibleCount,
+      failures: eligibleIds.map((taskId) => ({
+        taskId,
+        errorMessage: "Unable to validate timer sessions for this task right now.",
+      })),
+    };
+  }
+
+  const blockedByTimer = new Set(
+    (activeSessionsResult.data ?? []).map((session) => String(session.task_id)),
+  );
+  const failures = [...blockedByTimer].map((taskId) => ({
+    taskId,
+    errorMessage: "Stop the active timer before archiving this task.",
+  }));
+  const archiveIds = eligibleIds.filter((taskId) => !blockedByTimer.has(taskId));
+
+  if (archiveIds.length === 0) {
+    return { archivedTaskIds: [], ineligibleCount, failures };
+  }
+
+  const nowIso = getNowIso(options);
+  const userResult = await supabase.auth.getUser();
+  const archivedBy = userResult.error ? null : userResult.data.user?.id ?? null;
+  const archiveResult = await supabase
+    .from("tasks")
+    .update({
+      archived_at: nowIso,
+      archived_by: archivedBy,
+      focus_rank: null,
+      updated_at: nowIso,
+    })
+    .in("id", archiveIds)
+    .eq("status", "done")
+    .is("archived_at", null)
+    .select("id");
+
+  if (archiveResult.error) {
+    return {
+      archivedTaskIds: [],
+      ineligibleCount,
+      failures: [
+        ...failures,
+        ...archiveIds.map((taskId) => ({
+          taskId,
+          errorMessage: "Unable to update task right now.",
+        })),
+      ],
+    };
+  }
+
+  const archivedTaskIds = (archiveResult.data ?? []).map((row) => String(row.id));
+  const archivedSet = new Set(archivedTaskIds);
+  ineligibleCount += archiveIds.filter((taskId) => !archivedSet.has(taskId)).length;
 
   return { archivedTaskIds, ineligibleCount, failures };
 }
