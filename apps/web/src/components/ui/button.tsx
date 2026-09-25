@@ -24,15 +24,19 @@ const sizeClasses = {
   lg: "h-9 px-3.5 text-sm",
 };
 
-export function Button({
-  className,
-  variant = "primary",
-  size = "md",
-  type = "button",
-  ...props
-}: ButtonProps) {
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  {
+    className,
+    variant = "primary",
+    size = "md",
+    type = "button",
+    ...props
+  },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type={type}
       className={cn(
         variantClasses[variant],
@@ -43,7 +47,7 @@ export function Button({
       {...props}
     />
   );
-}
+});
 
 /* Export buttonVariants for compatibility with existing code referencing it */
 export function buttonVariants({ variant = "primary", size = "md" }: { variant?: ButtonProps["variant"]; size?: ButtonProps["size"] } = {}) {
