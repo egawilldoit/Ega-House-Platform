@@ -103,15 +103,6 @@ function EditorCard({
   );
 }
 
-function ContextLine({ label, value }: { label: string; value: string | null | undefined }) {
-  return (
-    <div className="min-w-0 space-y-1">
-      <p className="text-xs font-medium text-[color:var(--ega-text-secondary)]">{label}</p>
-      <p className="min-w-0 break-words text-sm text-[color:var(--ega-text)]">{value || "—"}</p>
-    </div>
-  );
-}
-
 function toLocalDateTimeInputValue(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -298,7 +289,6 @@ function TaskEditorPanel({
   taskTitle,
   taskDescription,
   projectName,
-  goalTitle,
   defaultProjectId,
   defaultGoalId,
   projectOptions,
