@@ -215,6 +215,7 @@ export function TaskCardActions({
             variant="muted"
             aria-label={`More options for ${inlineProps.taskTitle}`}
             data-testid={`task-more-options-${inlineProps.taskId}`}
+            onClick={(event) => event.currentTarget.focus()}
             className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
