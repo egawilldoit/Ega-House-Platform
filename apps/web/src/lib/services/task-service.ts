@@ -222,7 +222,6 @@ export type ValidatedTaskInlineUpdateInput = {
   dueDate: string | null;
   estimateMinutes: number | null;
   blockedReason: string | null;
-  description?: string | null;
   recurrenceRule?: TaskRecurrenceRule | null;
   recurrenceAnchorDate?: string | null;
   recurrenceTimezone?: string | null;
