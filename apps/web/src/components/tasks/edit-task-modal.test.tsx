@@ -371,6 +371,7 @@ describe("EditTaskModal centered editor", () => {
     const formData = updateReminderAction.mock.calls[0][0] as FormData;
     expect(formData.get("reminderId")).toBe("reminder-1");
     expect(formData.get("taskId")).toBe("task-1");
+    expect(String(formData.get("reminderTimezoneOffsetMinutes"))).toMatch(/^-?\d+$/);
   });
 
   it("adding a reminder from the no-reminder state submits once through the create action", async () => {
