@@ -1205,6 +1205,85 @@ export async function createTaskEmailReminder(
   };
 }
 
+export async function updateTaskEmailReminder(
+  input: {
+    taskId: string;
+    reminderId: string;
+    remindAt: unknown;
+    channel?: unknown;
+    status?: unknown;
+  },
+  options?: { supabase?: SupabaseServerClient; now?: Date; updatedAtIso?: string },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const reminderId = input.reminderId.trim();
+  const validationResult = normalizeTaskReminderCreateInput({
+    taskId: input.taskId,
+    remindAt: input.remindAt,
+    channel: input.channel,
+    status: input.status,
+    now: options?.now,
+  });
+
+  if (!reminderId) {
+    return {
+      errorMessage: "Reminder update request is invalid.",
+      data: null,
+    };
+  }
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage: validationResult.errorMessage ?? "Reminder update request is invalid.",
+      data: null,
+    };
+  }
+
+  const taskResult = await getVisibleTaskById(supabase, validationResult.data.taskId);
+  if (taskResult.errorMessage) {
+    return {
+      errorMessage: taskResult.errorMessage,
+      data: null,
+    };
+  }
+
+  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+  const { data, error } = await supabase
+    .from("task_reminders")
+    .update({
+      remind_at: validationResult.data.remindAtIso,
+      channel: validationResult.data.channel,
+      status: "pending",
+      updated_at: updatedAtIso,
+    })
+    .eq("id", reminderId)
+    .eq("task_id", validationResult.data.taskId)
+    .eq("status", "pending")
+    .select(
+      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+    )
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to update reminder right now.",
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Pending reminder was not found or is no longer editable.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: normalizeTaskReminderRow(data),
+  };
+}
+
 export async function cancelTaskReminder(
   input: {
     taskId: string;
