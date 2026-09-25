@@ -26,6 +26,7 @@ export function TaskEditModalTrigger(props: TaskEditModalTriggerProps) {
           title={props.taskTitle}
           aria-label={`Edit ${props.taskTitle}`}
           data-testid={`task-kanban-edit-${props.taskId}`}
+          onClick={(event) => event.currentTarget.focus()}
         >
           <span className="line-clamp-2">{props.taskTitle}</span>
         </button>
