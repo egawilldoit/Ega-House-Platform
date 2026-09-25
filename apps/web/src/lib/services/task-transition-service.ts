@@ -374,6 +374,60 @@ export async function archiveTaskSafely(
   );
 }
 
+export async function archiveCompletedTasksSafely(
+  taskIds: string[],
+  options?: TaskTransitionOptions,
+): Promise<{
+  archivedTaskIds: string[];
+  ineligibleCount: number;
+  failures: Array<{ taskId: string; errorMessage: string }>;
+}> {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const uniqueIds = [...new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
+
+  if (uniqueIds.length === 0) {
+    return { archivedTaskIds: [], ineligibleCount: 0, failures: [] };
+  }
+
+  // The submitted ids may come from a stale render (or a forged form), so the
+  // eligible set is re-read under the caller's RLS scope instead of trusting
+  // the id list; only completed, not-yet-archived tasks get archived.
+  const eligibleResult = await supabase
+    .from("tasks")
+    .select("id")
+    .in("id", uniqueIds)
+    .eq("status", "done")
+    .is("archived_at", null);
+
+  if (eligibleResult.error) {
+    return {
+      archivedTaskIds: [],
+      ineligibleCount: uniqueIds.length,
+      failures: uniqueIds.map((taskId) => ({
+        taskId,
+        errorMessage: "Unable to validate completed-task eligibility right now.",
+      })),
+    };
+  }
+
+  const eligibleIds = new Set((eligibleResult.data ?? []).map((row) => String(row.id)));
+  const ineligibleCount = uniqueIds.length - eligibleIds.size;
+  const failures: Array<{ taskId: string; errorMessage: string }> = [];
+  const archivedTaskIds: string[] = [];
+
+  for (const taskId of eligibleIds) {
+    const result = await archiveTaskSafely(taskId, options);
+
+    if (result.errorMessage) {
+      failures.push({ taskId, errorMessage: result.errorMessage });
+    } else {
+      archivedTaskIds.push(taskId);
+    }
+  }
+
+  return { archivedTaskIds, ineligibleCount, failures };
+}
+
 export async function planTaskForToday(
   taskId: string,
   options?: TaskTransitionOptions,

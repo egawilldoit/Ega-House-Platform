@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  archiveManyCompletedTasksAction,
   archiveTaskAction,
   cancelTaskReminderAction,
   createTaskReminderAction,
@@ -18,6 +19,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
@@ -28,6 +30,17 @@ function getTaskSignalTone(status: string, priority: string) {
   if (priority === "high") return "bg-[var(--status-risk)]";
   if (status === "in_progress") return "bg-[var(--status-info)]";
   return "bg-[var(--ega-text-tertiary)]";
+}
+
+/**
+ * Bulk cleanup targets only completed tasks that are not yet archived, inside
+ * the already-rendered Current scope. Eligibility is re-verified server-side by
+ * `archiveManyCompletedTasksAction`; the submitted ids just seed the intent.
+ */
+export function getArchivableCompletedTaskIds(
+  tasks: Array<Pick<TasksPageModel["tasks"][number], "id" | "status" | "archived_at">>,
+) {
+  return tasks.filter((task) => isTaskCompletedStatus(task.status) && task.archived_at === null).map((task) => task.id);
 }
 
 /**
@@ -59,6 +72,10 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     dueSoonCount,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
+  const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);
+  // Restore clears archived state only; it must never resurrect a completed
+  // task as unfinished work.
+  const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
   const taskUpdateError = parsed.taskUpdateError;
   const taskUpdateSuccess = parsed.taskUpdateSuccess;
   const taskUpdateTaskId = parsed.taskUpdateTaskId;
@@ -86,6 +103,37 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     createReminderAction: createTaskReminderAction,
     cancelReminderAction: cancelTaskReminderAction,
   };
+
+  const bulkArchiveControl = showBulkArchive ? (
+    <form
+      action={archiveManyCompletedTasksAction}
+      onSubmit={(event) => {
+        // Same confirmation convention as task delete: plain window.confirm with
+        // language that frames archiving as restorable, never as deletion.
+        const confirmed = window.confirm(
+          `Archive ${completedTaskIdsInScope.length} completed task${
+            completedTaskIdsInScope.length === 1 ? "" : "s"
+          }? These tasks will move to Archived and can be restored later.`,
+        );
+        if (!confirmed) {
+          event.preventDefault();
+        }
+      }}
+    >
+      <input type="hidden" name="returnTo" value={returnPath} />
+      <input type="hidden" name="confirmArchiveCompleted" value="true" />
+      {completedTaskIdsInScope.map((taskId) => (
+        <input key={taskId} type="hidden" name="taskIds" value={taskId} />
+      ))}
+      <button
+        type="submit"
+        className="btn-instrument btn-instrument-muted h-8 gap-1.5 px-3 text-sm"
+        data-testid="tasks-archive-completed"
+      >
+        Archive completed ({completedTaskIdsInScope.length})
+      </button>
+    </form>
+  ) : null;
 
   const emptyState = (
     <EmptyState
@@ -151,7 +199,8 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 />
               </div>
 
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                {bulkArchiveControl}
                 <TasksNewTaskButton testId="tasks-new-task" />
               </div>
             </div>

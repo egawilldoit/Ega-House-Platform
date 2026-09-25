@@ -299,4 +299,84 @@ describe("TasksListTable dense inventory", () => {
     );
     expect(dialogs[0].textContent).toContain("Could not save task");
   });
+
+  it("gives a Done task a direct archive control and hides the mark-done shortcut", async () => {
+    const actions = buildActions();
+    await act(async () => {
+      root.render(
+        <TasksListTable
+          tasks={[buildTask({ status: "done", completed_at: "2026-09-24T09:00:00.000Z" })]}
+          taskTotalDurations={{}}
+          returnTo="/tasks"
+          taskUpdateTaskId={null}
+          taskUpdateError={null}
+          actions={actions}
+        />,
+      );
+    });
+
+    const archiveButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-archive-task-1"]',
+    );
+    expect(archiveButton).not.toBeNull();
+    expect(archiveButton?.getAttribute("aria-label")).toBe("Archive task");
+    expect(container.querySelector('button[aria-label="Mark Draft weekly execution review done"]')).toBeNull();
+    expect(container.querySelector('button[aria-label="Start timer for Draft weekly execution review"]')).toBeNull();
+
+    // Compact direct archive button is icon-only.
+    expect(archiveButton?.getAttribute("aria-label")).toBe("Archive task");
+
+    await act(async () => {
+      archiveButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // Submitting archive must invoke only the archive action — it never falls
+    // through to the row editor or delete path.
+    expect(actions.archiveAction).toHaveBeenCalledTimes(1);
+    expect(actions.updateAction).not.toHaveBeenCalled();
+    expect(actions.deleteAction).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the direct archive shortcut for incomplete tasks in Current", async () => {
+    await renderTable([buildTask({ status: "in_progress" })]);
+
+    expect(
+      container.querySelector('[data-testid="task-archive-task-1"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-testid="task-restore-task-1"]'),
+    ).toBeNull();
+  });
+
+  it("keeps Done state visible for an archived row and offers Restore", async () => {
+    await renderTable([
+      buildTask({
+        status: "done",
+        completed_at: "2026-09-24T09:00:00.000Z",
+        archived_at: "2026-09-25T08:00:00.000Z",
+      }),
+    ]);
+
+    const row = container.querySelector("#task-task-1");
+    expect(row).not.toBeNull();
+    expect(row?.textContent).toContain("Done");
+    expect(row?.textContent).toContain("Archived");
+
+    const restoreButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-restore-task-1"]',
+    );
+    expect(restoreButton).not.toBeNull();
+    expect(restoreButton?.getAttribute("aria-label")).toBe("Restore task");
+    expect(
+      container.querySelector('[data-testid="task-archive-task-1"]'),
+    ).toBeNull();
+
+    await act(async () => {
+      restoreButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(
+      (container.querySelector('[data-testid="task-restore-task-1"]') as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
 });

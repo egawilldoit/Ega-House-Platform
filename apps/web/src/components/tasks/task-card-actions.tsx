@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { MoreHorizontal, Play, X } from "lucide-react";
+import { Archive as ArchiveIcon, ArchiveRestore as UnarchiveIcon, MoreHorizontal, Play, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
@@ -129,6 +129,50 @@ export function TaskCardActions({
           defaultEstimateMinutes={inlineProps.defaultEstimateMinutes}
           compact={compact}
         />
+      ) : null}
+
+      {!isArchived && isCompleted && inlineProps.archiveAction ? (
+        <form action={inlineProps.archiveAction}>
+          <input type="hidden" name="taskId" value={inlineProps.taskId} />
+          <input type="hidden" name="returnTo" value={inlineProps.returnTo} />
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="muted"
+            aria-label="Archive task"
+            data-testid={`task-archive-${inlineProps.taskId}`}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
+            pendingLabel="Archiving…"
+          >
+            {compact ? (
+              <ArchiveIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              "Archive"
+            )}
+          </PendingSubmitButton>
+        </form>
+      ) : null}
+
+      {isArchived && inlineProps.unarchiveAction ? (
+        <form action={inlineProps.unarchiveAction}>
+          <input type="hidden" name="taskId" value={inlineProps.taskId} />
+          <input type="hidden" name="returnTo" value={inlineProps.returnTo} />
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="muted"
+            aria-label="Restore task"
+            data-testid={`task-restore-${inlineProps.taskId}`}
+            className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
+            pendingLabel="Restoring…"
+          >
+            {compact ? (
+              <UnarchiveIcon className="h-3.5 w-3.5" aria-hidden="true" />
+            ) : (
+              "Restore"
+            )}
+          </PendingSubmitButton>
+        </form>
       ) : null}
 
       <Sheet open={open} onOpenChange={handleOpenChange}>
