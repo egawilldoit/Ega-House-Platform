@@ -10,6 +10,7 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
   updateTaskEditorAction,
+  updateTaskReminderAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
@@ -101,6 +102,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     pinAction: pinTaskAction,
     unpinAction: unpinTaskAction,
     createReminderAction: createTaskReminderAction,
+    updateReminderAction: updateTaskReminderAction,
     cancelReminderAction: cancelTaskReminderAction,
   };
 
@@ -290,6 +292,12 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
               returnTo={returnPath}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
+              projectOptions={projects}
+              goalOptions={goals.map((goal) => ({
+                id: goal.id,
+                title: goal.title,
+                projectId: goal.project_id,
+              }))}
               density={parsed.activeDensity}
               actions={taskListActions}
             />
