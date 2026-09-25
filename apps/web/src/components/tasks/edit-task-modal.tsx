@@ -332,10 +332,10 @@ function TaskEditorPanel({
   const [selectedGoalId, setSelectedGoalId] = useState(defaultGoalId ?? "");
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
   const [scheduledStartValue, setScheduledStartValue] = useState(
-    defaultScheduledStartAt ? defaultScheduledStartAt.slice(0, 16) : "",
+    defaultScheduledStartAt ? toLocalDateTimeInputValue(defaultScheduledStartAt) : "",
   );
   const [scheduledEndValue, setScheduledEndValue] = useState(
-    defaultScheduledEndAt ? defaultScheduledEndAt.slice(0, 16) : "",
+    defaultScheduledEndAt ? toLocalDateTimeInputValue(defaultScheduledEndAt) : "",
   );
   const [estimateValue, setEstimateValue] = useState(
     defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : "",
