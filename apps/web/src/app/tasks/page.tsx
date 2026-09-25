@@ -27,6 +27,7 @@ type TasksPageProps = {
     tasks?: string;
     archive?: string;
     layout?: string;
+    density?: string;
     view?: string;
     taskUpdateError?: string;
     taskUpdateSuccess?: string;
