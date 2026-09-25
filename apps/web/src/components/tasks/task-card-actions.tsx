@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useRef } from "react";
+import { type ReactNode, type RefObject, useRef } from "react";
 import { Archive as ArchiveIcon, ArchiveRestore as UnarchiveIcon, MoreHorizontal, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,10 @@ type TaskCardActionsProps = {
   /** Controlled open state; supplied by row surfaces whose title opens the editor. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Exact originating control to restore focus to when a shared row editor closes. */
+  restoreFocusRef?: RefObject<HTMLElement | null>;
+  /** Records which shared row control opened the editor. */
+  onEditorTriggerActivate?: (element: HTMLElement) => void;
   /**
    * Dense rendering for table/board rows: the same forms and wiring with
    * icon-only controls that carry explicit aria-labels. Default rendering is
@@ -76,6 +80,7 @@ export function TaskCardActions({
   const isArchived = Boolean(inlineProps.archivedAt);
   const isCompleted = isTaskCompletedStatus(inlineProps.defaultStatus);
   const editTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = inlineProps.restoreFocusRef ?? editTriggerRef;
 
   const { open, handleOpenChange } = useTaskEditorOpenState({
     taskId: inlineProps.taskId,
@@ -209,7 +214,7 @@ export function TaskCardActions({
         error={inlineProps.error ?? null}
         open={open}
         onOpenChange={handleOpenChange}
-        restoreFocusRef={editTriggerRef}
+        restoreFocusRef={restoreFocusRef}
         trigger={
           <Button
             ref={editTriggerRef}
@@ -218,7 +223,10 @@ export function TaskCardActions({
             variant="muted"
             aria-label={`More options for ${inlineProps.taskTitle}`}
             data-testid={`task-more-options-${inlineProps.taskId}`}
-            onClick={(event) => event.currentTarget.focus()}
+            onClick={(event) => {
+              event.currentTarget.focus();
+              inlineProps.onEditorTriggerActivate?.(event.currentTarget);
+            }}
             className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
           >
             <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
