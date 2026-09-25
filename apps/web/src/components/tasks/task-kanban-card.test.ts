@@ -46,6 +46,33 @@ function renderCard(task: TaskRecord, trackedSeconds?: number) {
   );
 }
 
+function renderEditableCard(task: TaskRecord) {
+  return renderToStaticMarkup(
+    React.createElement(TaskKanbanCard, {
+      task,
+      signalTone: "bg-test",
+      updateAction: () => undefined,
+      updateEditorAction: async (_previous, formData) => ({
+        errorMessage: null,
+        successMessage: "Task updated.",
+        taskId: String(formData.get("taskId") ?? ""),
+      }),
+      startTimerAction: () => undefined,
+      pinAction: () => undefined,
+      unpinAction: () => undefined,
+      archiveAction: () => undefined,
+      unarchiveAction: () => undefined,
+      deleteAction: () => undefined,
+      createReminderAction: () => undefined,
+      updateReminderAction: () => undefined,
+      cancelReminderAction: () => undefined,
+      projectOptions: [{ id: "project-1", name: "EGA House" }],
+      goalOptions: [{ id: "goal-1", title: "Goal one", projectId: "project-1" }],
+      returnTo: "/tasks?layout=kanban",
+    }),
+  );
+}
+
 function renderActionableCard(task: TaskRecord) {
   return renderToStaticMarkup(
     React.createElement(TaskKanbanCard, {
@@ -63,6 +90,20 @@ function renderActionableCard(task: TaskRecord) {
     }),
   );
 }
+
+test("kanban production action contract exposes the canonical task editor trigger", () => {
+  const markup = renderEditableCard(
+    buildTask({
+      projects: { name: "EGA House" },
+      goal_id: "goal-1",
+      goals: { title: "Goal one" },
+    }),
+  );
+
+  assert.match(markup, /data-testid="task-kanban-edit-task-1"/);
+  assert.match(markup, /aria-label="Edit Draft weekly execution review"/);
+  assert.doesNotMatch(markup, /Email reminder/);
+});
 
 test("kanban card renders compact task title and priority", () => {
   const markup = renderCard(buildTask());
