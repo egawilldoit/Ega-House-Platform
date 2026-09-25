@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { Archive as ArchiveIcon, ArchiveRestore as UnarchiveIcon, MoreHorizontal, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,7 @@ export function TaskCardActions({
 }: TaskCardActionsProps) {
   const isArchived = Boolean(inlineProps.archivedAt);
   const isCompleted = isTaskCompletedStatus(inlineProps.defaultStatus);
+  const editTriggerRef = useRef<HTMLButtonElement>(null);
 
   const { open, handleOpenChange } = useTaskEditorOpenState({
     taskId: inlineProps.taskId,
@@ -208,8 +209,10 @@ export function TaskCardActions({
         error={inlineProps.error ?? null}
         open={open}
         onOpenChange={handleOpenChange}
+        restoreFocusRef={editTriggerRef}
         trigger={
           <Button
+            ref={editTriggerRef}
             type="button"
             size="sm"
             variant="muted"
