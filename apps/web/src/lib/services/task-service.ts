@@ -434,26 +434,92 @@ export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServer
   };
 }
 
+function parseTaskReminderDateTime(
+  rawValue: string,
+  timezoneOffsetMinutes: unknown,
+) {
+  const localMatch = rawValue.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
+  );
+
+  if (!localMatch) {
+    const parsed = new Date(rawValue);
+    return Number.isNaN(parsed.getTime())
+      ? { errorMessage: "Reminder time is required.", value: null }
+      : { errorMessage: null, value: parsed };
+  }
+
+  const normalizedOffset = String(timezoneOffsetMinutes ?? "").trim();
+  if (!/^-?\d+$/.test(normalizedOffset)) {
+    return { errorMessage: "Reminder timezone offset is invalid.", value: null };
+  }
+
+  const offsetMinutes = Number(normalizedOffset);
+  if (!Number.isSafeInteger(offsetMinutes)) {
+    return { errorMessage: "Reminder timezone offset is invalid.", value: null };
+  }
+
+  const [, yearValue, monthValue, dayValue, hourValue, minuteValue, secondValue = "00"] =
+    localMatch;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  const second = Number(secondValue);
+
+  const localCandidateMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  const localCandidate = new Date(localCandidateMs);
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    localCandidate.getUTCFullYear() !== year ||
+    localCandidate.getUTCMonth() !== month - 1 ||
+    localCandidate.getUTCDate() !== day ||
+    localCandidate.getUTCHours() !== hour ||
+    localCandidate.getUTCMinutes() !== minute ||
+    localCandidate.getUTCSeconds() !== second
+  ) {
+    return { errorMessage: "Reminder time is required.", value: null };
+  }
+
+  return {
+    errorMessage: null,
+    value: new Date(localCandidateMs + offsetMinutes * 60_000),
+  };
+}
+
 function normalizeTaskReminderCreateInput(input: {
   taskId: string;
   remindAt: unknown;
   channel?: unknown;
   status?: unknown;
+  timezoneOffsetMinutes?: unknown;
   now?: Date;
 }) {
   const taskId = input.taskId.trim();
   const channel = String(input.channel ?? "email").trim() || "email";
   const status = String(input.status ?? "pending").trim() || "pending";
   const rawRemindAt = String(input.remindAt ?? "").trim();
-  const remindAtDate = new Date(rawRemindAt);
+  const reminderTimeResult = parseTaskReminderDateTime(
+    rawRemindAt,
+    input.timezoneOffsetMinutes,
+  );
+  const remindAtDate = reminderTimeResult.value;
   const now = input.now ?? new Date();
 
   if (!taskId) {
     return { errorMessage: "Task is required." };
   }
 
-  if (!rawRemindAt || Number.isNaN(remindAtDate.getTime())) {
-    return { errorMessage: "Reminder time is required." };
+  if (!rawRemindAt || reminderTimeResult.errorMessage || !remindAtDate) {
+    return {
+      errorMessage: reminderTimeResult.errorMessage ?? "Reminder time is required.",
+    };
   }
 
   if (!isTaskReminderChannel(channel)) {
@@ -1155,6 +1221,7 @@ export async function createTaskEmailReminder(
     remindAt: unknown;
     channel?: unknown;
     status?: unknown;
+    timezoneOffsetMinutes?: unknown;
   },
   options?: { supabase?: SupabaseServerClient; now?: Date },
 ) {
@@ -1219,6 +1286,7 @@ export async function updateTaskEmailReminder(
     remindAt: unknown;
     channel?: unknown;
     status?: unknown;
+    timezoneOffsetMinutes?: unknown;
   },
   options?: { supabase?: SupabaseServerClient; now?: Date; updatedAtIso?: string },
 ) {
@@ -1229,6 +1297,7 @@ export async function updateTaskEmailReminder(
     remindAt: input.remindAt,
     channel: input.channel,
     status: input.status,
+    timezoneOffsetMinutes: input.timezoneOffsetMinutes,
     now: options?.now,
   });
 
