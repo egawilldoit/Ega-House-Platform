@@ -361,7 +361,7 @@ describe("TasksListTable dense inventory", () => {
     expect(dialogs[0].textContent).toContain("Could not save task");
   });
 
-  it("stays clickable after a title open is dismissed: closing returns to the list", async () => {
+  it("restores focus to the title when a title-opened editor is dismissed", async () => {
     await renderTable();
 
     const titleButton = container.querySelector<HTMLButtonElement>(
@@ -376,6 +376,8 @@ describe("TasksListTable dense inventory", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await act(async () => {});
+    expect(document.activeElement).toBe(titleButton);
   });
 
   it("flags done rows quiet and offers the direct archive control only for done tasks", async () => {
