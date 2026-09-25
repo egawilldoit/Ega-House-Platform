@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Archive as ArchiveIcon, ArchiveRestore as UnarchiveIcon, MoreHorizontal, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { EditTaskModal, type UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
+import { useTaskEditorOpenState } from "@/components/tasks/use-task-editor-open-state";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 
@@ -40,6 +41,9 @@ type TaskCardActionsProps = {
   archivedAt?: string | null;
   error?: string | null;
   overflowActions?: ReactNode;
+  /** Controlled open state; supplied by row surfaces whose title opens the editor. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
   /**
    * Dense rendering for table/board rows: the same forms and wiring with
    * icon-only controls that carry explicit aria-labels. Default rendering is
@@ -63,30 +67,16 @@ export function TaskCardActions({
   compact = false,
   ...inlineProps
 }: TaskCardActionsProps) {
-  const [manualOpen, setManualOpen] = useState(false);
-  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const isArchived = Boolean(inlineProps.archivedAt);
   const isCompleted = isTaskCompletedStatus(inlineProps.defaultStatus);
 
-  const errorMessage = inlineProps.error ?? null;
-  // A failed save redirects back with an error for this exact task. The error
-  // lives inside the task editor modal, so that task's editor opens
-  // automatically (initial render and later error transitions) until the user
-  // dismisses it.
-  const open =
-    manualOpen || (Boolean(errorMessage) && errorMessage !== dismissedError);
+  const { open, handleOpenChange } = useTaskEditorOpenState({
+    taskId: inlineProps.taskId,
+    error: inlineProps.error ?? null,
+    open: inlineProps.open,
+    onOpenChange: inlineProps.onOpenChange,
+  });
 
-  useEffect(() => {
-    if (!open || !errorMessage) return;
-    document
-      .getElementById(`task-update-error-${inlineProps.taskId}`)
-      ?.focus();
-  }, [open, errorMessage, inlineProps.taskId]);
-
-  function handleOpenChange(nextOpen: boolean) {
-    setManualOpen(nextOpen);
-    if (!nextOpen) setDismissedError(errorMessage);
-  }
   return (
     <div
       className={
@@ -204,7 +194,7 @@ export function TaskCardActions({
         archiveAction={inlineProps.archiveAction}
         unarchiveAction={inlineProps.unarchiveAction}
         overflowActions={inlineProps.overflowActions}
-        error={errorMessage}
+        error={inlineProps.error ?? null}
         open={open}
         onOpenChange={handleOpenChange}
         trigger={

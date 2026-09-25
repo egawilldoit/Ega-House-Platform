@@ -5,7 +5,9 @@ import {
   buildTaskListUrl,
   isTaskDueFilter,
   isTaskSortValue,
+  normalizeTaskDensity,
   normalizeTaskLayout,
+  type TaskDensity,
   type TaskDueFilter,
   type TaskLayoutMode,
   type TaskSortValue,
@@ -29,6 +31,7 @@ export type TasksSearchParams = {
   tasks?: string;
   archive?: string;
   layout?: string;
+  density?: string;
   view?: string;
   taskUpdateError?: string;
   taskUpdateSuccess?: string;
@@ -43,6 +46,7 @@ export type ParsedTasksFilters = {
   activeDueFilter: TaskDueFilter;
   activeSort: TaskSortValue;
   activeLayout: TaskLayoutMode;
+  activeDensity: TaskDensity;
   activeView: TaskViewFilter;
   projectParam: string | null;
   goalParam: string | null;
@@ -70,6 +74,7 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     dueWithinDays: searchParams.dueWithin,
   });
   const activeLayout: TaskLayoutMode = normalizeTaskLayout(searchParams.layout);
+  const activeDensity: TaskDensity = normalizeTaskDensity(searchParams.density);
   const activeView: TaskViewFilter = normalizeTaskViewFilter(searchParams.archive ?? searchParams.view);
   const taskUpdateError =
     searchParams.taskUpdateError?.slice(0, 180) ?? searchParams.statusUpdateError?.slice(0, 180) ?? null;
@@ -84,6 +89,7 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
     activeDueFilter,
     activeSort,
     activeLayout,
+    activeDensity,
     activeView,
     projectParam,
     goalParam,
@@ -125,6 +131,7 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     sort: parsed.activeSort,
     view: parsed.activeView,
     layout: parsed.activeLayout,
+    density: parsed.activeDensity,
   });
 
   const taskUrlFilters = {
@@ -138,6 +145,7 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     goal: activeGoalId,
     due: parsed.activeDueFilter,
     sort: parsed.activeSort,
+    density: parsed.activeDensity === "compact" ? "compact" : null,
   };
   const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;

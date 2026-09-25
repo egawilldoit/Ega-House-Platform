@@ -73,16 +73,13 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     dueSoonCount,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
-  const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);
-  // Restore clears archived state only; it must never resurrect a completed
+  const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
   // task as unfinished work.
   const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
   const taskUpdateError = parsed.taskUpdateError;
   const taskUpdateSuccess = parsed.taskUpdateSuccess;
   const taskUpdateTaskId = parsed.taskUpdateTaskId;
 
-  const listHref = buildTaskListUrl("/tasks", { ...taskUrlFilters, view: activeView, layout: "list" });
-  const kanbanHref = buildTaskListUrl("/tasks", { ...taskUrlFilters, view: activeView, layout: "kanban" });
   const hasAnyTasks = summary.total > 0;
   const summaryParts = [
     `${formatDisplayCount(tasks.length)} shown`,
@@ -164,6 +161,8 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
       <div className="flex min-w-0 flex-col gap-4">
         <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
+            {/* Row 1 — scope selection: which tasks you are looking at, in which
+                shape. Distinct from the data controls below. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Task views">
                 {TASK_VIEWS.map((view) => {
@@ -175,6 +174,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                         ...taskUrlFilters,
                         view: view.value,
                         layout: activeLayout,
+                        density: parsed.activeDensity,
                       })}
                       label={view.label}
                       active={isActive}
@@ -188,25 +188,38 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
 
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Task layout">
                 <FilterPill
-                  href={listHref}
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: activeView,
+                    layout: "list",
+                    density: parsed.activeDensity,
+                  })}
                   label="List"
                   active={activeLayout === "list"}
                   ariaCurrent={activeLayout === "list" ? "page" : undefined}
                 />
                 <FilterPill
-                  href={kanbanHref}
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: activeView,
+                    layout: "kanban",
+                    density: parsed.activeDensity,
+                  })}
                   label="Board"
                   active={activeLayout === "kanban"}
                   ariaCurrent={activeLayout === "kanban" ? "page" : undefined}
                 />
               </div>
 
-              <div className="ml-auto flex items-center gap-2">
-                {bulkArchiveControl}
-                <TasksNewTaskButton testId="tasks-new-task" />
-              </div>
+              <p
+                className="ml-auto min-w-0 truncate text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]"
+                data-testid="tasks-summary"
+              >
+                {summaryParts.join(" · ")}
+              </p>
             </div>
 
+            {/* Row 2 — data controls on the left, mutation actions on the right. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <TaskFilterControls
                 basePath="/tasks"
@@ -218,6 +231,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 activeSort={parsed.activeSort}
                 activeView={activeView}
                 activeLayout={activeLayout}
+                activeDensity={parsed.activeDensity}
                 activeEstimateMin={savedViewDefinitionFilters.estimateMinMinutes}
                 activeEstimateMax={savedViewDefinitionFilters.estimateMaxMinutes}
                 activeDueWithin={savedViewDefinitionFilters.dueWithinDays}
@@ -225,12 +239,11 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 projectOptions={projects}
                 goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
               />
-              <p
-                className="ml-auto min-w-0 text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]"
-                data-testid="tasks-summary"
-              >
-                {summaryParts.join(" · ")}
-              </p>
+
+              <div className="ml-auto flex items-center gap-2">
+                {bulkArchiveControl}
+                <TasksNewTaskButton testId="tasks-new-task" />
+              </div>
             </div>
           </div>
 
@@ -299,6 +312,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
               returnTo={returnPath}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
+              density={parsed.activeDensity}
               actions={taskListActions}
             />
           )}
