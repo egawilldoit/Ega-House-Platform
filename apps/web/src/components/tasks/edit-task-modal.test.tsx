@@ -34,6 +34,16 @@ const baseProps = {
   taskDescription: null,
   projectName: "SAAS project",
   goalTitle: "Ship the weekly review",
+  defaultProjectId: "project-1",
+  defaultGoalId: "goal-1",
+  projectOptions: [
+    { id: "project-1", name: "SAAS project" },
+    { id: "project-2", name: "EGA House" },
+  ],
+  goalOptions: [
+    { id: "goal-1", title: "Ship the weekly review", projectId: "project-1" },
+    { id: "goal-2", title: "Polish tasks", projectId: "project-2" },
+  ],
   returnTo: "/tasks",
   defaultStatus: "todo",
   defaultPriority: "high",
@@ -48,6 +58,7 @@ const baseProps = {
   archivedAt: null,
   taskReminders: [] as TaskReminderRecord[],
   createReminderAction: vi.fn(),
+  updateReminderAction: vi.fn(),
   cancelReminderAction: vi.fn(),
   deleteAction: vi.fn(),
   archiveAction: vi.fn(),
@@ -178,6 +189,13 @@ describe("EditTaskModal centered editor", () => {
     expect(opened.textContent).toContain("Edit task");
     expect(opened.textContent).toContain("saas meeting cdc");
     expect(opened.textContent).toContain("SAAS project");
+    expect(input("title").value).toBe("saas meeting cdc");
+    expect(document.body.querySelector<HTMLSelectElement>('select[name="projectId"]')?.value).toBe(
+      "project-1",
+    );
+    expect(document.body.querySelector<HTMLSelectElement>('select[name="goalId"]')?.value).toBe(
+      "goal-1",
+    );
     expect(input("dueDate").value).toBe("2026-09-30");
     expect(input("estimateMinutes").value).toBe("60");
     expect(input("calendarReminderMinutes").value).toBe("30");
@@ -189,6 +207,41 @@ describe("EditTaskModal centered editor", () => {
     expect(prioritySelect?.value).toBe("high");
 
     expect(saveAction).not.toHaveBeenCalled();
+  });
+
+  it("persists title, project, goal and description through the canonical edit action", async () => {
+    await renderModal({ taskDescription: "Original context" });
+    await click(container.querySelector('button[aria-label="Edit task"]')!);
+
+    await setInputValue(input("title"), "Updated task title");
+    const description = document.body.querySelector<HTMLTextAreaElement>(
+      'textarea[name="description"]',
+    )!;
+    await act(async () => {
+      description.value = "Updated context";
+      description.dispatchEvent(new Event("input", { bubbles: true }));
+      description.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    const project = document.body.querySelector<HTMLSelectElement>('select[name="projectId"]')!;
+    await act(async () => {
+      project.value = "project-2";
+      project.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const goal = document.body.querySelector<HTMLSelectElement>('select[name="goalId"]')!;
+    await act(async () => {
+      goal.value = "goal-2";
+      goal.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    await click(saveButton());
+    const formData = (saveAction.mock.calls.at(-1) as unknown[]).find(
+      (arg) => arg instanceof FormData,
+    ) as FormData;
+    expect(formData.get("title")).toBe("Updated task title");
+    expect(formData.get("description")).toBe("Updated context");
+    expect(formData.get("projectId")).toBe("project-2");
+    expect(formData.get("goalId")).toBe("goal-2");
   });
 
   it("save failure keeps the modal open with the error and the edits preserved", async () => {
@@ -272,8 +325,14 @@ describe("EditTaskModal centered editor", () => {
     expect(formData.get("calendarReminderMinutes")).toBe("30");
   });
 
-  it("an existing reminder renders its date and supports edit and remove", async () => {
-    await renderModal({ taskReminders: [reminder] });
+  it("an existing reminder renders its local date and edits the existing reminder instead of creating another", async () => {
+    const createReminderAction = vi.fn();
+    const updateReminderAction = vi.fn();
+    await renderModal({
+      taskReminders: [reminder],
+      createReminderAction,
+      updateReminderAction,
+    });
     await click(container.querySelector('button[aria-label="Edit task"]')!);
 
     const opened = dialog()!;
@@ -291,20 +350,27 @@ describe("EditTaskModal centered editor", () => {
     const remindInput = document.body.querySelector<HTMLInputElement>(
       'input[name="remindAt"]',
     ) as HTMLInputElement;
-    expect(remindInput.value).toBe("2026-09-26T09:00");
+    const reminderDate = new Date(reminder.remind_at);
+    const pad = (part: number) => String(part).padStart(2, "0");
+    const expectedLocalValue = `${reminderDate.getFullYear()}-${pad(
+      reminderDate.getMonth() + 1,
+    )}-${pad(reminderDate.getDate())}T${pad(reminderDate.getHours())}:${pad(
+      reminderDate.getMinutes(),
+    )}`;
+    expect(remindInput.value).toBe(expectedLocalValue);
     expect(saveAction).not.toHaveBeenCalled();
 
     const reminderForm = remindInput.closest("form") as HTMLFormElement;
-    const reminderCancel = Array.from(reminderForm.querySelectorAll("button")).find(
-      (candidate) => candidate.textContent === "Cancel",
+    const update = Array.from(reminderForm.querySelectorAll("button")).find(
+      (candidate) => candidate.textContent === "Update reminder",
     );
-    await click(reminderCancel!);
+    await click(update!);
 
-    const remove = document.body.querySelector<HTMLButtonElement>(
-      '[data-testid="task-reminder-remove-task-1"]',
-    );
-    await click(remove!);
-    expect(saveAction).not.toHaveBeenCalled();
+    expect(updateReminderAction).toHaveBeenCalledTimes(1);
+    expect(createReminderAction).not.toHaveBeenCalled();
+    const formData = updateReminderAction.mock.calls[0][0] as FormData;
+    expect(formData.get("reminderId")).toBe("reminder-1");
+    expect(formData.get("taskId")).toBe("task-1");
   });
 
   it("adding a reminder from the no-reminder state submits once through the create action", async () => {
@@ -370,10 +436,6 @@ describe("EditTaskModal centered editor", () => {
     expect(dialog()).toBeNull();
     await act(async () => {});
     const activeElement = document.activeElement;
-    expect(
-      activeElement === container.querySelector('button[aria-label="Edit task"]') ||
-        activeElement === document.body,
-      "focus must return to the trigger after close (Radix restoration)",
-    ).toBe(true);
+    expect(activeElement).toBe(container.querySelector('button[aria-label="Edit task"]'));
   });
 });
