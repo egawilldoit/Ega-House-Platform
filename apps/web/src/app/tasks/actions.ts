@@ -26,6 +26,7 @@ import {
   getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
   unarchiveTask,
+  updateTaskEmailReminder,
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "@/lib/services/task-service";
@@ -652,6 +653,31 @@ export async function createTaskReminderAction(formData: FormData) {
   redirectWithWorkspaceFeedback(returnPath, {
     anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
     taskSuccessMessage: "Reminder scheduled.",
+    taskId,
+  });
+}
+
+export async function updateTaskReminderAction(formData: FormData) {
+  const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const reminderId = String(formData.get("reminderId") ?? "").trim();
+
+  const { errorMessage } = await updateTaskEmailReminder({
+    taskId,
+    reminderId,
+    remindAt: formData.get("remindAt"),
+    channel: formData.get("channel") ?? "email",
+    status: formData.get("status") ?? "pending",
+  });
+
+  if (errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: "Reminder updated.",
     taskId,
   });
 }
