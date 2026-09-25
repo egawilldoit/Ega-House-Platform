@@ -647,6 +647,7 @@ export async function createTaskReminderAction(formData: FormData) {
     remindAt: formData.get("remindAt"),
     channel: formData.get("channel") ?? "email",
     status: formData.get("status") ?? "pending",
+    timezoneOffsetMinutes: formData.get("reminderTimezoneOffsetMinutes"),
   });
 
   if (errorMessage) {
@@ -672,6 +673,7 @@ export async function updateTaskReminderAction(formData: FormData) {
     remindAt: formData.get("remindAt"),
     channel: formData.get("channel") ?? "email",
     status: formData.get("status") ?? "pending",
+    timezoneOffsetMinutes: formData.get("reminderTimezoneOffsetMinutes"),
   });
 
   if (errorMessage) {
