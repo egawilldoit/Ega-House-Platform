@@ -722,10 +722,15 @@ function TaskEditorPanel({
                         </div>
                       </div>
 
-                      {overflowActions ? <div>{overflowActions}</div> : null}
                     </div>
                   </EditorCard>
                 </form>
+
+                {overflowActions ? (
+                  <EditorCard label="Quick actions">
+                    <div>{overflowActions}</div>
+                  </EditorCard>
+                ) : null}
 
                 <EditorCard label="Reminder">
                   <TaskReminderCard
