@@ -2,6 +2,8 @@ import React from "react";
 import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
+import { TaskEditModalTrigger } from "@/components/tasks/task-edit-modal-trigger";
+import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,7 @@ type TaskKanbanCardProps = {
   task: TaskRecord;
   signalTone: string;
   updateAction?: (formData: FormData) => void | Promise<void>;
+  updateEditorAction?: UpdateTaskEditorAction;
   startTimerAction?: (formData: FormData) => void | Promise<void>;
   pinAction?: (formData: FormData) => void | Promise<void>;
   unpinAction?: (formData: FormData) => void | Promise<void>;
@@ -31,9 +34,12 @@ type TaskKanbanCardProps = {
   unarchiveAction?: (formData: FormData) => void | Promise<void>;
   deleteAction?: (formData: FormData) => void | Promise<void>;
   createReminderAction?: (formData: FormData) => void | Promise<void>;
+  updateReminderAction?: (formData: FormData) => void | Promise<void>;
   cancelReminderAction?: (formData: FormData) => void | Promise<void>;
   returnTo?: string;
   trackedSeconds?: number;
+  projectOptions?: Array<{ id: string; name: string }>;
+  goalOptions?: Array<{ id: string; title: string; projectId: string }>;
   error?: string | null;
 };
 
@@ -72,6 +78,7 @@ export function TaskKanbanCard({
   task,
   signalTone,
   updateAction,
+  updateEditorAction,
   startTimerAction,
   pinAction,
   unpinAction,
@@ -79,9 +86,12 @@ export function TaskKanbanCard({
   unarchiveAction,
   deleteAction,
   createReminderAction,
+  updateReminderAction,
   cancelReminderAction,
   returnTo = "/tasks?layout=kanban",
   trackedSeconds,
+  projectOptions = [],
+  goalOptions = [],
   error,
 }: TaskKanbanCardProps) {
   const projectName = task.projects?.name?.trim();
@@ -128,9 +138,48 @@ export function TaskKanbanCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 space-y-1">
-              <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--ega-text)]">
-                {task.title}
-              </h3>
+              {updateEditorAction &&
+              createReminderAction &&
+              updateReminderAction &&
+              cancelReminderAction &&
+              deleteAction ? (
+                <TaskEditModalTrigger
+                  taskId={task.id}
+                  taskTitle={task.title}
+                  taskDescription={task.description}
+                  projectName={task.projects?.name ?? null}
+                  goalTitle={task.goals?.title ?? null}
+                  defaultProjectId={task.project_id}
+                  defaultGoalId={task.goal_id}
+                  projectOptions={projectOptions}
+                  goalOptions={goalOptions}
+                  returnTo={returnTo}
+                  defaultStatus={task.status}
+                  defaultPriority={task.priority}
+                  defaultDueDate={task.due_date}
+                  defaultEstimateMinutes={task.estimate_minutes}
+                  defaultScheduledStartAt={task.scheduled_start_at}
+                  defaultScheduledEndAt={task.scheduled_end_at}
+                  defaultCalendarSyncEnabled={task.calendar_sync_enabled}
+                  defaultCalendarReminderMinutes={task.calendar_reminder_minutes}
+                  defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
+                  defaultBlockedReason={task.blocked_reason}
+                  archivedAt={task.archived_at}
+                  taskReminders={task.task_reminders}
+                  updateAction={updateEditorAction}
+                  createReminderAction={createReminderAction}
+                  updateReminderAction={updateReminderAction}
+                  cancelReminderAction={cancelReminderAction}
+                  deleteAction={deleteAction}
+                  archiveAction={archiveAction}
+                  unarchiveAction={unarchiveAction}
+                  error={error}
+                />
+              ) : (
+                <h3 className="line-clamp-2 text-sm font-semibold leading-5 text-[color:var(--ega-text)]">
+                  {task.title}
+                </h3>
+              )}
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-5 text-[color:var(--ega-text-secondary)]">
                 {projectName ? (
                   <span className="inline-flex min-w-0 items-center gap-1.5">
