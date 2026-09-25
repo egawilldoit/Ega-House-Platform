@@ -261,6 +261,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                                   task={task}
                                   signalTone={getTaskSignalTone(task.status, task.priority)}
                                   updateAction={updateTaskInlineAction}
+                                  updateEditorAction={updateTaskEditorAction}
                                   startTimerAction={startTimerAction}
                                   pinAction={pinTaskAction}
                                   unpinAction={unpinTaskAction}
@@ -268,7 +269,14 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                                   unarchiveAction={unarchiveTaskAction}
                                   deleteAction={deleteTaskAction}
                                   createReminderAction={createTaskReminderAction}
+                                  updateReminderAction={updateTaskReminderAction}
                                   cancelReminderAction={cancelTaskReminderAction}
+                                  projectOptions={projects}
+                                  goalOptions={goals.map((goal) => ({
+                                    id: goal.id,
+                                    title: goal.title,
+                                    projectId: goal.project_id,
+                                  }))}
                                   returnTo={returnPath}
                                   trackedSeconds={taskTotalDurations[task.id]}
                                   error={inlineError}
