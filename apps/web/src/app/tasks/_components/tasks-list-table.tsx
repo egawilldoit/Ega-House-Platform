@@ -39,8 +39,8 @@ type TasksListTableProps = {
   returnTo: string;
   taskUpdateTaskId: string | null;
   taskUpdateError: string | null;
-  projectOptions: Array<{ id: string; name: string }>;
-  goalOptions: Array<{ id: string; title: string; projectId: string }>;
+  projectOptions?: Array<{ id: string; name: string }>;
+  goalOptions?: Array<{ id: string; title: string; projectId: string }>;
   density?: "comfortable" | "compact";
   actions: TaskListActions;
 };
@@ -65,8 +65,8 @@ export function TasksListTable({
   returnTo,
   taskUpdateTaskId,
   taskUpdateError,
-  projectOptions,
-  goalOptions,
+  projectOptions = [],
+  goalOptions = [],
   density = "comfortable",
   actions,
 }: TasksListTableProps) {
