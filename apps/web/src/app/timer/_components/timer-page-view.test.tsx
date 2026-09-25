@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
-import React, { type ReactNode } from "react";
+import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { vi } from "vitest";
 
@@ -14,7 +14,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
     <a href={typeof href === "string" ? href : "#"} {...rest}>
       {children}
     </a>
@@ -108,17 +108,30 @@ test("TimerPageView renders the dense recent-session evidence table", () => {
   assert.match(markup, /Review recent sessions or correct their timing\./);
 });
 
-test("TimerPageView keeps timing correction behind a compact per-row disclosure", () => {
+test("TimerPageView keeps timing correction behind a compact per-row trigger", () => {
   const markup = renderToStaticMarkup(<TimerPageView model={buildModel()} />);
 
-  assert.match(markup, /class="action-overflow"/);
   assert.match(markup, /aria-label="Correct session timing"/);
   assert.ok(!markup.includes("Correct timing"), "the full per-row button returned");
-  assert.match(markup, /name="date"/);
-  assert.match(markup, /name="startTime"/);
-  assert.match(markup, /name="endTime"/);
-  assert.match(markup, /name="sessionId"/);
-  assert.match(markup, /name="returnTo"/);
+  // The centered editor dialog is not mounted while closed.
+  assert.ok(!markup.includes('name="date"'), "editor fields must not render outside the dialog");
+  assert.ok(!markup.includes('name="startTime"'), "editor fields must not render outside the dialog");
+  assert.ok(!markup.includes('name="endTime"'), "editor fields must not render outside the dialog");
+});
+
+test("TimerPageView wires the session editor to the update action and passes row context", () => {
+  const source = readFileSync(
+    resolve(process.cwd(), "src/app/timer/_components/TimerPageView.tsx"),
+    "utf8",
+  );
+
+  assert.match(source, /action=\{updateSessionTimingAction\}/);
+  assert.match(source, /taskTitle=\{entry\.taskTitle\}/);
+  assert.match(source, /projectName=\{entry\.projectName\}/);
+  assert.match(source, /sessionId=\{entry\.id\}/);
+  assert.match(source, /startedAt=\{entry\.startedAt\}/);
+  assert.match(source, /endedAt=\{entry\.endedAt\}/);
+  assert.doesNotMatch(source, /<details/);
 });
 
 test("TimerPageView keeps the idle start-session region as the hero", () => {

@@ -180,12 +180,20 @@ export async function resolveSessionConflictAction(formData: FormData) {
   redirectToTimer(returnPath);
 }
 
-export async function updateSessionTimingAction(formData: FormData) {
+export type UpdateSessionTimingFormState = {
+  errorMessage: string | null;
+  successMessage: string | null;
+  sessionId: string | null;
+};
+
+export async function updateSessionTimingAction(
+  _previous: UpdateSessionTimingFormState,
+  formData: FormData,
+): Promise<UpdateSessionTimingFormState> {
   const returnPath = getTimerActionReturnPath(formData.get("returnTo"));
   const sessionId = String(formData.get("sessionId") ?? "").trim();
   const startedAt = String(formData.get("startedAt") ?? "").trim();
   const endedAt = String(formData.get("endedAt") ?? "").trim();
-  const timerAnchor = returnPath.startsWith("/timer") && sessionId ? `#session-${sessionId}` : "";
 
   const result = await updateTimerSessionTimestamps({
     sessionId,
@@ -194,15 +202,17 @@ export async function updateSessionTimingAction(formData: FormData) {
   });
 
   if (result.errorMessage) {
-    redirectToTimer(returnPath, {
+    return {
       errorMessage: result.errorMessage,
-      anchor: timerAnchor,
-    });
+      successMessage: null,
+      sessionId: sessionId || null,
+    };
   }
 
   revalidateWorkspaceFor("timer", { returnTo: returnPath });
-  redirectToTimer(returnPath, {
+  return {
+    errorMessage: null,
     successMessage: "Session timing updated.",
-    anchor: timerAnchor,
-  });
+    sessionId: sessionId || null,
+  };
 }
