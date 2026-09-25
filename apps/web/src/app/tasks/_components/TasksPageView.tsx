@@ -9,6 +9,7 @@ import {
   unarchiveTaskAction,
   unpinTaskAction,
   updateTaskInlineAction,
+  updateTaskEditorAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
 import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
@@ -94,6 +95,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
 
   const taskListActions: TaskListActions = {
     updateAction: updateTaskInlineAction,
+    updateEditorAction: updateTaskEditorAction,
     deleteAction: deleteTaskAction,
     archiveAction: archiveTaskAction,
     unarchiveAction: unarchiveTaskAction,
