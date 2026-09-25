@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+
 import { TaskCardActions } from "@/components/tasks/task-card-actions";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
@@ -229,6 +231,7 @@ function TaskListRow({
     ? formatDisplayEstimate(task.estimate_minutes)
     : null;
   const trackedLabel = typeof trackedSeconds === "number" ? trackedSeconds : null;
+  const editorOpenerRef = useRef<HTMLElement | null>(null);
 
   // The row owns the (error-aware) editor state so a title click drives the
   // same `EditTaskModal` the ••• control mounts — no duplicate editor.
@@ -242,6 +245,10 @@ function TaskListRow({
       compact
       open={open}
       onOpenChange={handleOpenChange}
+      restoreFocusRef={editorOpenerRef}
+      onEditorTriggerActivate={(element) => {
+        editorOpenerRef.current = element;
+      }}
       action={actions.updateAction}
       updateEditorAction={actions.updateEditorAction}
       deleteAction={actions.deleteAction}
@@ -299,6 +306,7 @@ function TaskListRow({
       data-testid={`task-title-edit-${task.id}`}
       onClick={(event) => {
         event.currentTarget.focus();
+        editorOpenerRef.current = event.currentTarget;
         handleOpenChange(true);
       }}
     >
