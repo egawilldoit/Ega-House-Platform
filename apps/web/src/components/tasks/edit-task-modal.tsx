@@ -278,14 +278,32 @@ export function EditTaskModal({
   trigger,
   ...panelProps
 }: EditTaskModalProps) {
+  const triggerElementRef = useRef<HTMLElement | null>(null);
+
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      {trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
+      {trigger ? (
+        <DialogPrimitive.Trigger
+          asChild
+          onClick={(event) => {
+            const element = event.currentTarget as HTMLElement;
+            triggerElementRef.current = element;
+            element.focus();
+          }}
+        >
+          {trigger}
+        </DialogPrimitive.Trigger>
+      ) : null}
 
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-[rgba(17,17,15,0.58)] transition-opacity" />
         <DialogPrimitive.Content
           aria-label={`Edit task ${panelProps.taskTitle}`}
+          onCloseAutoFocus={(event) => {
+            if (!triggerElementRef.current) return;
+            event.preventDefault();
+            triggerElementRef.current.focus();
+          }}
           className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[53rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
         >
           {open ? (
