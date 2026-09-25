@@ -295,6 +295,7 @@ describe("TasksListTable dense inventory", () => {
     const dialogs = document.querySelectorAll('[role="dialog"]');
     expect(dialogs.length).toBe(1);
     expect(dialogs[0].getAttribute("aria-label")).toBe("Edit task Draft weekly execution review");
+    expect(document.body.querySelector("form form")).toBeNull();
     for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
   });
 
