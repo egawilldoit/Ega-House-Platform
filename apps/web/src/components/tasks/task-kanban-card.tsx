@@ -111,7 +111,9 @@ export function TaskKanbanCard({
   const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
   const showOverflowActions = showStatusControls || showActiveActions || showArchivedActions;
-  const showReminderPanel = Boolean(createReminderAction && cancelReminderAction);
+  const showReminderPanel = Boolean(
+    createReminderAction && cancelReminderAction && !updateEditorAction,
+  );
   const showDetails = Boolean(
     goalName ||
       estimateLabel ||
