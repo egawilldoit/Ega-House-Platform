@@ -279,6 +279,14 @@ export function EditTaskModal({
   ...panelProps
 }: EditTaskModalProps) {
   const triggerElementRef = useRef<HTMLElement | null>(null);
+  const wasOpenRef = useRef(false);
+
+  useEffect(() => {
+    if (wasOpenRef.current && !open) {
+      triggerElementRef.current?.focus();
+    }
+    wasOpenRef.current = open;
+  }, [open]);
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
