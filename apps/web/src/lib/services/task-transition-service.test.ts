@@ -143,6 +143,49 @@ function createTaskTransitionSupabaseMock(options?: {
                 state.taskId = value;
                 return this;
               },
+              in(column: string, values: string[]) {
+                assert.equal(column, "id");
+                const candidateIds = [...values];
+                let requiredStatus: string | null = null;
+                let requireUnarchived = false;
+
+                const batchQuery = {
+                  eq(filterColumn: string, filterValue: string) {
+                    assert.equal(filterColumn, "status");
+                    requiredStatus = filterValue;
+                    return batchQuery;
+                  },
+                  is(filterColumn: string, filterValue: null) {
+                    assert.equal(filterColumn, "archived_at");
+                    assert.equal(filterValue, null);
+                    requireUnarchived = true;
+                    return batchQuery;
+                  },
+                  async select(columns: string) {
+                    assert.equal(columns, "id");
+                    const updatedIds: string[] = [];
+
+                    for (const taskId of candidateIds) {
+                      const taskIndex = tasks.findIndex((task) => task.id === taskId);
+                      if (taskIndex < 0) continue;
+                      const task = tasks[taskIndex]!;
+                      if (requiredStatus && task.status !== requiredStatus) continue;
+                      if (requireUnarchived && task.archived_at != null) continue;
+
+                      taskUpdateCalls.push({ payload, taskId });
+                      tasks[taskIndex] = { ...task, ...payload };
+                      updatedIds.push(taskId);
+                    }
+
+                    return {
+                      data: updatedIds.map((id) => ({ id })),
+                      error: null,
+                    };
+                  },
+                };
+
+                return batchQuery;
+              },
               select(columns: string) {
                 assert.equal(columns, "id");
                 return {
@@ -185,10 +228,11 @@ function createTaskTransitionSupabaseMock(options?: {
       if (table === "task_sessions") {
         return {
           select(columns: string) {
-            assert.ok(["id", "id, started_at"].includes(columns));
+            assert.ok(["id", "id, started_at", "task_id"].includes(columns));
 
             const state = {
               taskId: "",
+              taskIds: [] as string[],
               openOnly: false,
             };
 
@@ -198,10 +242,26 @@ function createTaskTransitionSupabaseMock(options?: {
                 state.taskId = value;
                 return this;
               },
+              in(column: string, values: string[]) {
+                assert.equal(column, "task_id");
+                state.taskIds = [...values];
+                return this;
+              },
               is(column: string, value: null) {
                 assert.equal(column, "ended_at");
                 assert.equal(value, null);
                 state.openOnly = true;
+
+                if (columns === "task_id" && state.taskIds.length > 0) {
+                  return Promise.resolve({
+                    data: sessions
+                      .filter((session) => state.taskIds.includes(session.task_id))
+                      .filter((session) => session.ended_at === null)
+                      .map((session) => ({ task_id: session.task_id })),
+                    error: null,
+                  });
+                }
+
                 return this;
               },
               order(column: string) {
