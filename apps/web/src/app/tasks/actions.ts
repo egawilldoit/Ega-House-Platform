@@ -532,6 +532,10 @@ export async function createTasksBulkAction(
 function parseTaskInlineUpdateFormData(formData: FormData) {
   return validateTaskInlineUpdateInput({
     taskId: String(formData.get("taskId") ?? ""),
+    title: formData.has("title") ? formData.get("title") : undefined,
+    projectId: formData.has("projectId") ? formData.get("projectId") : undefined,
+    goalId: formData.has("goalId") ? formData.get("goalId") : undefined,
+    description: formData.has("description") ? formData.get("description") : undefined,
     status: String(formData.get("status") ?? ""),
     priority: String(formData.get("priority") ?? ""),
     dueDate: formData.get("dueDate"),
