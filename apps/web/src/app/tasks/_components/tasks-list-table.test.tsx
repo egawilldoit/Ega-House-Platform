@@ -66,6 +66,7 @@ function buildActions(): TaskListActions {
     pinAction: vi.fn(),
     unpinAction: vi.fn(),
     createReminderAction: vi.fn(),
+    updateReminderAction: vi.fn(),
     cancelReminderAction: vi.fn(),
   };
 }
@@ -83,6 +84,8 @@ function renderTable(
         returnTo="/tasks?status=todo&layout=kanban"
         taskUpdateTaskId={null}
         taskUpdateError={null}
+        projectOptions={[{ id: "project-1", name: "EGA House" }]}
+        goalOptions={[{ id: "goal-1", title: "Tighten weekly review", projectId: "project-1" }]}
         actions={actions}
         {...props}
       />,
@@ -396,7 +399,7 @@ describe("TasksListTable dense inventory", () => {
       '[data-testid="task-archive-task-1"]',
     );
     expect(archiveButton).not.toBeNull();
-    expect(archiveButton?.getAttribute("aria-label")).toBe("Archive task");
+    expect(archiveButton?.getAttribute("aria-label")).toBe("Archive Draft weekly execution review");
     expect(container.querySelector('button[aria-label="Mark Draft weekly execution review done"]')).toBeNull();
     expect(container.querySelector('button[aria-label="Start timer for Draft weekly execution review"]')).toBeNull();
 
@@ -441,7 +444,7 @@ describe("TasksListTable dense inventory", () => {
       '[data-testid="task-restore-task-1"]',
     );
     expect(restoreButton).not.toBeNull();
-    expect(restoreButton?.getAttribute("aria-label")).toBe("Restore task");
+    expect(restoreButton?.getAttribute("aria-label")).toBe("Restore Draft weekly execution review");
     expect(
       container.querySelector('[data-testid="task-archive-task-1"]'),
     ).toBeNull();
