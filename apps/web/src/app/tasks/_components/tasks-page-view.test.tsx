@@ -11,6 +11,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("@/app/tasks/actions", () => ({
+  archiveManyCompletedTasksAction: vi.fn(),
   archiveTaskAction: vi.fn(),
   cancelTaskReminderAction: vi.fn(),
   createTaskReminderAction: vi.fn(),
@@ -18,6 +19,8 @@ vi.mock("@/app/tasks/actions", () => ({
   pinTaskAction: vi.fn(),
   unarchiveTaskAction: vi.fn(),
   unpinTaskAction: vi.fn(),
+  updateTaskEditorAction: vi.fn(),
+  updateTaskReminderAction: vi.fn(),
   updateTaskInlineAction: vi.fn(),
 }));
 
@@ -38,6 +41,9 @@ vi.mock("@/app/tasks/create-task-form", () => ({
 import { buildTaskKanbanBoard } from "@/lib/task-list";
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import type { TaskRecord } from "@/lib/services/task-service";
+// Imports the mocked factory above, so assertions observe what the server
+// component actually submits.
+import { archiveManyCompletedTasksAction } from "@/app/tasks/actions";
 
 import { TasksPageView } from "./TasksPageView";
 
@@ -82,6 +88,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       activeDueFilter: "overdue",
       activeSort: "due_date_asc",
       activeLayout: "list",
+      activeDensity: "comfortable",
       activeView: "active",
       projectParam: "project-1",
       goalParam: "goal-1",
@@ -122,6 +129,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
       goal: "goal-1",
       due: "overdue",
       sort: "due_date_asc",
+      density: null,
     },
     kanbanBoard: buildTaskKanbanBoard(tasks, "in_progress"),
     inProgressCount: 1,
@@ -282,5 +290,122 @@ describe("TasksPageView workspace composition", () => {
     );
     expect(container.textContent).toContain("No tasks match current filters");
     expect(container.querySelector(".tasks-kanban-board")).toBeNull();
+  });
+});
+
+describe("TasksPageView completed-task cleanup", () => {
+  let confirmSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    confirmSpy = vi
+      .spyOn(window, "confirm")
+      .mockImplementation(() => false);
+  });
+
+  afterEach(() => {
+    confirmSpy.mockRestore();
+  });
+
+  it("offers a single bulk archive action counting only completed non-archived tasks in scope", async () => {
+    await render(
+      buildModel({
+        tasks: [
+          buildTask({ id: "task-done-1", status: "done", focus_rank: null, archived_at: null }),
+          buildTask({ id: "task-done-2", status: "done", focus_rank: null, archived_at: null }),
+          buildTask({ id: "task-active", status: "in_progress", focus_rank: null, archived_at: null }),
+        ],
+        summary: { total: 3, active: 3, archived: 0 },
+      }),
+    );
+
+    const bulk = container.querySelector<HTMLButtonElement>('[data-testid="tasks-archive-completed"]');
+    expect(bulk).not.toBeNull();
+    expect(bulk?.textContent).toContain("Archive completed (2)");
+
+    await act(async () => {
+      bulk!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    // The confirmation follow the existing window.confirm convention and never
+    // implies deletion.
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(confirmSpy.mock.calls[0][0]).toContain(
+      "Archive 2 completed tasks? These tasks will move to Archived and can be restored later.",
+    );
+    expect(confirmSpy.mock.calls[0][0].toLowerCase()).not.toContain("delet");
+    expect(archiveManyCompletedTasksAction).not.toHaveBeenCalled();
+  });
+
+  it("confirms and submits only the eligible completed task ids", async () => {
+    confirmSpy.mockImplementation(() => true);
+
+    await render(
+      buildModel({
+        tasks: [
+          buildTask({ id: "task-done-1", status: "done", focus_rank: null, archived_at: null }),
+          buildTask({ id: "task-done-2", status: "done", focus_rank: null, archived_at: null }),
+        ],
+        summary: { total: 2, active: 2, archived: 0 },
+      }),
+    );
+
+    const bulk = container.querySelector<HTMLButtonElement>('[data-testid="tasks-archive-completed"]');
+    expect(bulk).not.toBeNull();
+
+    // jsdom does not auto-submit React forms from synthetic clicks; dispatch a
+    // bubbling click on the submit button the way a real user activation does.
+    await act(async () => {
+      bulk!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(archiveManyCompletedTasksAction).toHaveBeenCalledTimes(1);
+    const formData = (archiveManyCompletedTasksAction as ReturnType<typeof vi.fn>).mock.calls[0][0] as FormData;
+    const ids = formData.getAll("taskIds").map(String).sort();
+    expect(ids).toEqual(["task-done-1", "task-done-2"]);
+    expect(formData.get("returnTo")).toBe(buildModel().returnPath);
+    expect(formData.get("confirmArchiveCompleted")).toBe("true");
+  });
+
+  it("does not submit the bulk action when the confirmation is dismissed", async () => {
+    await render(
+      buildModel({
+        tasks: [buildTask({ id: "task-done-1", status: "done", focus_rank: null, archived_at: null })],
+        summary: { total: 1, active: 1, archived: 0 },
+      }),
+    );
+
+    const bulk = container.querySelector<HTMLButtonElement>('[data-testid="tasks-archive-completed"]');
+    await act(async () => {
+      bulk!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(archiveManyCompletedTasksAction).not.toHaveBeenCalled();
+  });
+
+  it("hides the bulk action with no completed tasks to clean up", async () => {
+    await render(
+      buildModel({
+        tasks: [buildTask({ id: "task-active", status: "in_progress", focus_rank: null })],
+        summary: { total: 1, active: 1, archived: 0 },
+      }),
+    );
+
+    expect(container.querySelector('[data-testid="tasks-archive-completed"]')).toBeNull();
+  });
+
+  it("keeps the bulk action scoped out of Archived and All views", async () => {
+    for (const view of ["archived", "all"] as const) {
+      container.remove();
+      await render(
+        buildModel({
+          parsed: { ...buildModel().parsed, activeView: view },
+          tasks: [buildTask({ id: "task-done-1", status: "done", focus_rank: null, archived_at: null })],
+          summary: { total: 1, active: 1, archived: 0 },
+        }),
+      );
+      expect(container.querySelector('[data-testid="tasks-archive-completed"]')).toBeNull();
+    }
   });
 });

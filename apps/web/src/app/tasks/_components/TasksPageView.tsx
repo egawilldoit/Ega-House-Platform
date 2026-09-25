@@ -1,5 +1,6 @@
 import Link from "next/link";
 import {
+  archiveManyCompletedTasksAction,
   archiveTaskAction,
   cancelTaskReminderAction,
   createTaskReminderAction,
@@ -8,8 +9,11 @@ import {
   unarchiveTaskAction,
   unpinTaskAction,
   updateTaskInlineAction,
+  updateTaskEditorAction,
+  updateTaskReminderAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
+import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
 import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
 import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
@@ -18,6 +22,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { buildTaskListUrl } from "@/lib/task-list";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
@@ -28,6 +33,17 @@ function getTaskSignalTone(status: string, priority: string) {
   if (priority === "high") return "bg-[var(--status-risk)]";
   if (status === "in_progress") return "bg-[var(--status-info)]";
   return "bg-[var(--ega-text-tertiary)]";
+}
+
+/**
+ * Bulk cleanup targets only completed tasks that are not yet archived, inside
+ * the already-rendered Current scope. Eligibility is re-verified server-side by
+ * `archiveManyCompletedTasksAction`; the submitted ids just seed the intent.
+ */
+export function getArchivableCompletedTaskIds(
+  tasks: Array<Pick<TasksPageModel["tasks"][number], "id" | "status" | "archived_at">>,
+) {
+  return tasks.filter((task) => isTaskCompletedStatus(task.status) && task.archived_at === null).map((task) => task.id);
 }
 
 /**
@@ -59,12 +75,13 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     dueSoonCount,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
+  const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
+  // task as unfinished work.
+  const showBulkArchive = activeView === "active" && completedTaskIdsInScope.length > 0;
   const taskUpdateError = parsed.taskUpdateError;
   const taskUpdateSuccess = parsed.taskUpdateSuccess;
   const taskUpdateTaskId = parsed.taskUpdateTaskId;
 
-  const listHref = buildTaskListUrl("/tasks", { ...taskUrlFilters, view: activeView, layout: "list" });
-  const kanbanHref = buildTaskListUrl("/tasks", { ...taskUrlFilters, view: activeView, layout: "kanban" });
   const hasAnyTasks = summary.total > 0;
   const summaryParts = [
     `${formatDisplayCount(tasks.length)} shown`,
@@ -77,6 +94,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
 
   const taskListActions: TaskListActions = {
     updateAction: updateTaskInlineAction,
+    updateEditorAction: updateTaskEditorAction,
     deleteAction: deleteTaskAction,
     archiveAction: archiveTaskAction,
     unarchiveAction: unarchiveTaskAction,
@@ -84,8 +102,17 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     pinAction: pinTaskAction,
     unpinAction: unpinTaskAction,
     createReminderAction: createTaskReminderAction,
+    updateReminderAction: updateTaskReminderAction,
     cancelReminderAction: cancelTaskReminderAction,
   };
+
+  const bulkArchiveControl = showBulkArchive ? (
+    <BulkArchiveCompletedTasksForm
+      action={archiveManyCompletedTasksAction}
+      taskIds={completedTaskIdsInScope}
+      returnTo={returnPath}
+    />
+  ) : null;
 
   const emptyState = (
     <EmptyState
@@ -114,6 +141,8 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
       <div className="flex min-w-0 flex-col gap-4">
         <Card clip>
           <div className="flex flex-col gap-3 border-b border-[var(--ega-divider)] px-[18px] py-3">
+            {/* Row 1 — scope selection: which tasks you are looking at, in which
+                shape. Distinct from the data controls below. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Task views">
                 {TASK_VIEWS.map((view) => {
@@ -125,6 +154,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                         ...taskUrlFilters,
                         view: view.value,
                         layout: activeLayout,
+                        density: parsed.activeDensity,
                       })}
                       label={view.label}
                       active={isActive}
@@ -138,24 +168,38 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
 
               <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Task layout">
                 <FilterPill
-                  href={listHref}
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: activeView,
+                    layout: "list",
+                    density: parsed.activeDensity,
+                  })}
                   label="List"
                   active={activeLayout === "list"}
                   ariaCurrent={activeLayout === "list" ? "page" : undefined}
                 />
                 <FilterPill
-                  href={kanbanHref}
+                  href={buildTaskListUrl("/tasks", {
+                    ...taskUrlFilters,
+                    view: activeView,
+                    layout: "kanban",
+                    density: parsed.activeDensity,
+                  })}
                   label="Board"
                   active={activeLayout === "kanban"}
                   ariaCurrent={activeLayout === "kanban" ? "page" : undefined}
                 />
               </div>
 
-              <div className="ml-auto">
-                <TasksNewTaskButton testId="tasks-new-task" />
-              </div>
+              <p
+                className="ml-auto min-w-0 truncate text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]"
+                data-testid="tasks-summary"
+              >
+                {summaryParts.join(" · ")}
+              </p>
             </div>
 
+            {/* Row 2 — data controls on the left, mutation actions on the right. */}
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
               <TaskFilterControls
                 basePath="/tasks"
@@ -167,6 +211,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 activeSort={parsed.activeSort}
                 activeView={activeView}
                 activeLayout={activeLayout}
+                activeDensity={parsed.activeDensity}
                 activeEstimateMin={savedViewDefinitionFilters.estimateMinMinutes}
                 activeEstimateMax={savedViewDefinitionFilters.estimateMaxMinutes}
                 activeDueWithin={savedViewDefinitionFilters.dueWithinDays}
@@ -174,12 +219,11 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                 projectOptions={projects}
                 goalOptions={goals.map((g) => ({ id: g.id, title: g.title }))}
               />
-              <p
-                className="ml-auto min-w-0 text-[length:var(--text-meta)] tabular-nums text-[color:var(--ega-text-tertiary)]"
-                data-testid="tasks-summary"
-              >
-                {summaryParts.join(" · ")}
-              </p>
+
+              <div className="ml-auto flex items-center gap-2">
+                {bulkArchiveControl}
+                <TasksNewTaskButton testId="tasks-new-task" />
+              </div>
             </div>
           </div>
 
@@ -217,6 +261,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                                   task={task}
                                   signalTone={getTaskSignalTone(task.status, task.priority)}
                                   updateAction={updateTaskInlineAction}
+                                  updateEditorAction={updateTaskEditorAction}
                                   startTimerAction={startTimerAction}
                                   pinAction={pinTaskAction}
                                   unpinAction={unpinTaskAction}
@@ -224,7 +269,14 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
                                   unarchiveAction={unarchiveTaskAction}
                                   deleteAction={deleteTaskAction}
                                   createReminderAction={createTaskReminderAction}
+                                  updateReminderAction={updateTaskReminderAction}
                                   cancelReminderAction={cancelTaskReminderAction}
+                                  projectOptions={projects}
+                                  goalOptions={goals.map((goal) => ({
+                                    id: goal.id,
+                                    title: goal.title,
+                                    projectId: goal.project_id,
+                                  }))}
                                   returnTo={returnPath}
                                   trackedSeconds={taskTotalDurations[task.id]}
                                   error={inlineError}
@@ -248,6 +300,13 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
               returnTo={returnPath}
               taskUpdateTaskId={taskUpdateTaskId}
               taskUpdateError={taskUpdateError}
+              projectOptions={projects}
+              goalOptions={goals.map((goal) => ({
+                id: goal.id,
+                title: goal.title,
+                projectId: goal.project_id,
+              }))}
+              density={parsed.activeDensity}
               actions={taskListActions}
             />
           )}

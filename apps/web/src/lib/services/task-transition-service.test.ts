@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  archiveCompletedTasksSafely,
   archiveTaskSafely,
   blockTask,
   markTaskDone,
@@ -70,6 +71,29 @@ function createTaskTransitionSupabaseMock(options?: {
                 state.taskId = value;
                 return this;
               },
+              in(column: string, values: string[]) {
+                assert.equal(column, "id");
+                const submittedIds = [...values];
+                return {
+                  eq(column: string, value: string) {
+                    assert.equal(column, "status");
+                    assert.equal(value, "done");
+                    return {
+                      is(column: string, value: null) {
+                        assert.equal(column, "archived_at");
+                        assert.equal(value, null);
+                        return Promise.resolve({
+                          data: tasks
+                            .filter((task) => submittedIds.includes(task.id))
+                            .filter((task) => task.status === "done" && task.archived_at === null)
+                            .map((task) => ({ id: task.id })),
+                          error: null,
+                        });
+                      },
+                    };
+                  },
+                };
+              },
               maybeSingle: async () => ({
                 data: (() => {
                   const task = tasks.find((entry) => entry.id === state.taskId);
@@ -119,6 +143,49 @@ function createTaskTransitionSupabaseMock(options?: {
                 state.taskId = value;
                 return this;
               },
+              in(column: string, values: string[]) {
+                assert.equal(column, "id");
+                const candidateIds = [...values];
+                let requiredStatus: string | null = null;
+                let requireUnarchived = false;
+
+                const batchQuery = {
+                  eq(filterColumn: string, filterValue: string) {
+                    assert.equal(filterColumn, "status");
+                    requiredStatus = filterValue;
+                    return batchQuery;
+                  },
+                  is(filterColumn: string, filterValue: null) {
+                    assert.equal(filterColumn, "archived_at");
+                    assert.equal(filterValue, null);
+                    requireUnarchived = true;
+                    return batchQuery;
+                  },
+                  async select(columns: string) {
+                    assert.equal(columns, "id");
+                    const updatedIds: string[] = [];
+
+                    for (const taskId of candidateIds) {
+                      const taskIndex = tasks.findIndex((task) => task.id === taskId);
+                      if (taskIndex < 0) continue;
+                      const task = tasks[taskIndex]!;
+                      if (requiredStatus && task.status !== requiredStatus) continue;
+                      if (requireUnarchived && task.archived_at != null) continue;
+
+                      taskUpdateCalls.push({ payload, taskId });
+                      tasks[taskIndex] = { ...task, ...payload };
+                      updatedIds.push(taskId);
+                    }
+
+                    return {
+                      data: updatedIds.map((id) => ({ id })),
+                      error: null,
+                    };
+                  },
+                };
+
+                return batchQuery;
+              },
               select(columns: string) {
                 assert.equal(columns, "id");
                 return {
@@ -161,10 +228,11 @@ function createTaskTransitionSupabaseMock(options?: {
       if (table === "task_sessions") {
         return {
           select(columns: string) {
-            assert.ok(["id", "id, started_at"].includes(columns));
+            assert.ok(["id", "id, started_at", "task_id"].includes(columns));
 
             const state = {
               taskId: "",
+              taskIds: [] as string[],
               openOnly: false,
             };
 
@@ -174,10 +242,26 @@ function createTaskTransitionSupabaseMock(options?: {
                 state.taskId = value;
                 return this;
               },
+              in(column: string, values: string[]) {
+                assert.equal(column, "task_id");
+                state.taskIds = [...values];
+                return this;
+              },
               is(column: string, value: null) {
                 assert.equal(column, "ended_at");
                 assert.equal(value, null);
                 state.openOnly = true;
+
+                if (columns === "task_id" && state.taskIds.length > 0) {
+                  return Promise.resolve({
+                    data: sessions
+                      .filter((session) => state.taskIds.includes(session.task_id))
+                      .filter((session) => session.ended_at === null)
+                      .map((session) => ({ task_id: session.task_id })),
+                    error: null,
+                  });
+                }
+
                 return this;
               },
               order(column: string) {
@@ -526,6 +610,88 @@ test("archiveTaskSafely archives safely and clears focus_rank", async () => {
     focus_rank: null,
     updated_at: "2026-04-21T10:25:00.000Z",
   });
+});
+
+test("archiveCompletedTasksSafely archives only eligible completed, unarchived tasks", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "done",
+        completed_at: "2026-04-21T09:00:00.000Z",
+        archived_at: null,
+        archived_by: null,
+        focus_rank: 2,
+      },
+      {
+        id: "task-2",
+        status: "in_progress",
+        completed_at: null,
+        archived_at: null,
+      },
+      {
+        id: "task-3",
+        status: "done",
+        completed_at: "2026-04-20T09:00:00.000Z",
+        archived_at: "2026-04-20T18:00:00.000Z",
+      },
+    ],
+  });
+
+  const result = await archiveCompletedTasksSafely(["task-1", "task-2", "task-3"], {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:25:00.000Z",
+  });
+
+  assert.deepEqual(result.archivedTaskIds, ["task-1"]);
+  assert.equal(result.ineligibleCount, 2);
+  assert.deepEqual(result.failures, []);
+
+  // task-1 keeps its completed status; only the archive fields change and the
+  // focus rank it was holding while still listed gets cleared.
+  assert.equal(mock.tasks[0]?.status, "done");
+  assert.equal(mock.tasks[0]?.completed_at, "2026-04-21T09:00:00.000Z");
+  assert.equal(mock.tasks[0]?.archived_at, "2026-04-21T10:25:00.000Z");
+  assert.equal(mock.tasks[0]?.focus_rank, null);
+
+  // Completed cleanup never touches the ineligible tasks.
+  assert.equal(mock.tasks[1]?.archived_at ?? null, null);
+  assert.equal(mock.tasks[2]?.archived_at, "2026-04-20T18:00:00.000Z");
+  assert.equal(mock.taskUpdateCalls.length, 1);
+  assert.equal(mock.taskUpdateCalls[0]?.taskId, "task-1");
+});
+
+test("archiveCompletedTasksSafely reports the per-task archive failure without counting it as archived", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "done",
+        completed_at: "2026-04-21T09:00:00.000Z",
+        archived_at: null,
+      },
+    ],
+    sessions: [
+      {
+        id: "session-open",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:45:00.000Z",
+        ended_at: null,
+      },
+    ],
+  });
+
+  const result = await archiveCompletedTasksSafely(["task-1"], {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:25:00.000Z",
+  });
+
+  assert.deepEqual(result.archivedTaskIds, []);
+  assert.equal(result.ineligibleCount, 0);
+  assert.deepEqual(result.failures, [
+    { taskId: "task-1", errorMessage: "Stop the active timer before archiving this task." },
+  ]);
+  assert.equal(mock.tasks[0]?.archived_at ?? null, null);
 });
 
 test("planTaskForToday sets planned_for_date to local today", async () => {

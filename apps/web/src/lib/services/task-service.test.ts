@@ -9,6 +9,7 @@ import {
   getTaskRecurrencesForTasks,
   getTasksWorkspaceData,
   normalizeTaskBlockedReasonInput,
+  updateTaskEmailReminder,
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "./task-service";
@@ -59,6 +60,41 @@ test("clears blocked reason when status is not blocked", () => {
 
   assert.equal(result.errorMessage, null);
   assert.equal(result.data?.blockedReason, null);
+});
+
+test("inline task edit validates and normalizes editable identity fields", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    title: "  Updated title  ",
+    projectId: " project-2 ",
+    goalId: " goal-2 ",
+    description: "  Updated context  ",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.title, "Updated title");
+  assert.equal(result.data?.projectId, "project-2");
+  assert.equal(result.data?.goalId, "goal-2");
+  assert.equal(result.data?.description, "Updated context");
+});
+
+test("inline task edit rejects an empty submitted title", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    title: "   ",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+  });
+
+  assert.equal(result.errorMessage, "Task title is required.");
 });
 
 test("schedule validation accepts both blank", () => {
@@ -352,7 +388,8 @@ function createTaskInlineSupabaseMock(options?: {
         return {
           select(columns: string) {
             assert.ok(
-              columns === "id, status, completed_at, archived_at" ||
+              columns === "id, owner_user_id, project_id, goal_id, status, completed_at, archived_at" ||
+                columns === "id, owner_user_id, project_id, goal_id, status, archived_at" ||
                 columns === "id" ||
                 columns ===
                   "id, owner_user_id, project_id, goal_id, title, description, priority, estimate_minutes, scheduled_start_at, scheduled_end_at",
@@ -2327,6 +2364,12 @@ function createTaskReminderSupabaseMock(options?: {
 
                   reminders[index] = {
                     ...reminders[index],
+                    ...(payload.remind_at === undefined
+                      ? {}
+                      : { remind_at: String(payload.remind_at) }),
+                    ...(payload.channel === undefined
+                      ? {}
+                      : { channel: String(payload.channel) }),
                     status: String(payload.status),
                     updated_at: String(payload.updated_at),
                   };
@@ -2409,6 +2452,27 @@ test("createTaskEmailReminder rejects unsupported channel and status inputs", as
   assert.equal(mock.reminderInsertCalls.length, 0);
 });
 
+test("createTaskEmailReminder converts datetime-local using the browser timezone offset", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T12:00",
+      channel: "email",
+      timezoneOffsetMinutes: "-60",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.remind_at, "2026-05-01T11:00:00.000Z");
+  assert.equal(mock.reminderInsertCalls[0]?.remind_at, "2026-05-01T11:00:00.000Z");
+});
+
 test("createTaskEmailReminder creates a pending email reminder for a visible task", async () => {
   const mock = createTaskReminderSupabaseMock();
 
@@ -2435,6 +2499,69 @@ test("createTaskEmailReminder creates a pending email reminder for a visible tas
     },
   ]);
 });
+
+test("updateTaskEmailReminder reschedules the existing pending reminder instead of inserting another", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await updateTaskEmailReminder(
+    {
+      taskId: "task-1",
+      reminderId: "reminder-1",
+      remindAt: "2026-05-02T16:30:00.000Z",
+      channel: "email",
+      status: "pending",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+      updatedAtIso: "2026-05-01T10:05:00.000Z",
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.id, "reminder-1");
+  assert.equal(result.data?.remind_at, "2026-05-02T16:30:00.000Z");
+  assert.equal(mock.reminderInsertCalls.length, 0);
+  assert.equal(mock.reminderUpdateCalls.length, 1);
+  assert.equal(mock.reminders.filter((reminder) => reminder.status === "pending").length, 1);
+});
+
+test("updateTaskEmailReminder refuses to mutate a reminder that is no longer pending", async () => {
+  const mock = createTaskReminderSupabaseMock({
+    reminders: [
+      {
+        id: "reminder-1",
+        task_id: "task-1",
+        remind_at: "2026-05-02T14:00:00.000Z",
+        channel: "email",
+        status: "sent",
+        sent_at: "2026-05-02T14:00:00.000Z",
+        failure_reason: null,
+        created_at: "2026-05-01T10:00:00.000Z",
+        updated_at: "2026-05-02T14:00:00.000Z",
+      },
+    ],
+  });
+
+  const result = await updateTaskEmailReminder(
+    {
+      taskId: "task-1",
+      reminderId: "reminder-1",
+      remindAt: "2026-05-03T09:00:00.000Z",
+      channel: "email",
+      status: "pending",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, "Pending reminder was not found or is no longer editable.");
+  assert.equal(mock.reminderInsertCalls.length, 0);
+});
+
+
 
 test("createTaskEmailReminder rejects unavailable task access before insert", async () => {
   const mock = createTaskReminderSupabaseMock({ tasks: [] });
