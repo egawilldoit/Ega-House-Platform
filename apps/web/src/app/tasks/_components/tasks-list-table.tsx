@@ -29,6 +29,7 @@ export type TaskListActions = {
   pinAction: (formData: FormData) => void | Promise<void>;
   unpinAction: (formData: FormData) => void | Promise<void>;
   createReminderAction: (formData: FormData) => void | Promise<void>;
+  updateReminderAction: (formData: FormData) => void | Promise<void>;
   cancelReminderAction: (formData: FormData) => void | Promise<void>;
 };
 
@@ -38,6 +39,8 @@ type TasksListTableProps = {
   returnTo: string;
   taskUpdateTaskId: string | null;
   taskUpdateError: string | null;
+  projectOptions: Array<{ id: string; name: string }>;
+  goalOptions: Array<{ id: string; title: string; projectId: string }>;
   density?: "comfortable" | "compact";
   actions: TaskListActions;
 };
@@ -62,6 +65,8 @@ export function TasksListTable({
   returnTo,
   taskUpdateTaskId,
   taskUpdateError,
+  projectOptions,
+  goalOptions,
   density = "comfortable",
   actions,
 }: TasksListTableProps) {
@@ -93,6 +98,8 @@ export function TasksListTable({
               trackedSeconds={taskTotalDurations[task.id]}
               returnTo={returnTo}
               inlineError={taskUpdateTaskId === task.id ? taskUpdateError : null}
+              projectOptions={projectOptions}
+              goalOptions={goalOptions}
               actions={actions}
             />
           ))}
@@ -201,12 +208,16 @@ function TaskListRow({
   trackedSeconds,
   returnTo,
   inlineError,
+  projectOptions,
+  goalOptions,
   actions,
 }: {
   task: TaskRecord;
   trackedSeconds?: number;
   returnTo: string;
   inlineError: string | null;
+  projectOptions: Array<{ id: string; name: string }>;
+  goalOptions: Array<{ id: string; title: string; projectId: string }>;
   actions: TaskListActions;
 }) {
   const archived = isTaskArchived(task.archived_at);
@@ -238,6 +249,7 @@ function TaskListRow({
       unarchiveAction={actions.unarchiveAction}
       startTimerAction={actions.startTimerAction}
       createReminderAction={actions.createReminderAction}
+      updateReminderAction={actions.updateReminderAction}
       cancelReminderAction={actions.cancelReminderAction}
       taskReminders={task.task_reminders}
       taskId={task.id}
@@ -245,6 +257,10 @@ function TaskListRow({
       taskDescription={task.description}
       projectName={task.projects?.name ?? null}
       goalTitle={task.goals?.title ?? null}
+      defaultProjectId={task.project_id}
+      defaultGoalId={task.goal_id}
+      projectOptions={projectOptions}
+      goalOptions={goalOptions}
       returnTo={returnTo}
       defaultStatus={task.status}
       defaultPriority={task.priority}
