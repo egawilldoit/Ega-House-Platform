@@ -2,6 +2,7 @@
 
 import {
   type ReactNode,
+  type RefObject,
   useActionState,
   useEffect,
   useMemo,
@@ -80,6 +81,8 @@ export type EditTaskModalProps = {
   onOpenChange: (open: boolean) => void;
   /** Radix trigger content; defaults to the ••• "More options" control. */
   trigger?: ReactNode;
+  /** Explicit opener used when the modal is controlled by a surrounding row surface. */
+  restoreFocusRef?: RefObject<HTMLElement | null>;
 };
 function EditorCard({
   label,
@@ -276,6 +279,7 @@ export function EditTaskModal({
   open,
   onOpenChange,
   trigger,
+  restoreFocusRef,
   ...panelProps
 }: EditTaskModalProps) {
   const triggerElementRef = useRef<HTMLElement | null>(null);
@@ -308,9 +312,10 @@ export function EditTaskModal({
         <DialogPrimitive.Content
           aria-label={`Edit task ${panelProps.taskTitle}`}
           onCloseAutoFocus={(event) => {
-            if (!triggerElementRef.current) return;
+            const focusTarget = restoreFocusRef?.current ?? triggerElementRef.current;
+            if (!focusTarget) return;
             event.preventDefault();
-            triggerElementRef.current.focus();
+            focusTarget.focus();
           }}
           className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[53rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
         >
