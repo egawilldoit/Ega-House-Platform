@@ -192,6 +192,10 @@ export type TaskRecord = TasksWorkspaceData["tasks"][number];
 
 export type ValidateTaskInlineUpdateInput = {
   taskId: string;
+  title?: unknown;
+  projectId?: unknown;
+  goalId?: unknown;
+  description?: unknown;
   status: string;
   priority: string;
   dueDate: unknown;
@@ -209,6 +213,10 @@ export type ValidateTaskInlineUpdateInput = {
 
 export type ValidatedTaskInlineUpdateInput = {
   taskId: string;
+  title?: string;
+  projectId?: string;
+  goalId?: string | null;
+  description?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
@@ -1347,6 +1355,15 @@ export async function cancelTaskReminder(
 
 export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInput) {
   const taskId = input.taskId.trim();
+  const title = input.title === undefined ? undefined : String(input.title ?? "").trim();
+  const projectId =
+    input.projectId === undefined ? undefined : String(input.projectId ?? "").trim();
+  const goalId =
+    input.goalId === undefined ? undefined : String(input.goalId ?? "").trim() || null;
+  const description =
+    input.description === undefined
+      ? undefined
+      : String(input.description ?? "").trim() || null;
   const status = input.status.trim();
   const priority = input.priority.trim();
   const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
@@ -1379,6 +1396,18 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
   if (!taskId) {
     return {
       errorMessage: "Task update request is invalid.",
+    };
+  }
+
+  if (title !== undefined && !title) {
+    return {
+      errorMessage: "Task title is required.",
+    };
+  }
+
+  if (projectId !== undefined && !projectId) {
+    return {
+      errorMessage: "Project is required.",
     };
   }
 
@@ -1431,6 +1460,10 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     errorMessage: null,
     data: {
       taskId,
+      ...(title === undefined ? {} : { title }),
+      ...(projectId === undefined ? {} : { projectId }),
+      ...(goalId === undefined ? {} : { goalId }),
+      ...(description === undefined ? {} : { description }),
       status,
       priority,
       dueDate: dueDateResult.value,
@@ -1680,7 +1713,7 @@ export async function updateTaskInline(
 
   let { data: currentTask, error: currentTaskError } = await supabase
     .from("tasks")
-    .select("id, owner_user_id, status, completed_at, archived_at")
+    .select("id, owner_user_id, project_id, goal_id, status, completed_at, archived_at")
     .eq("id", input.taskId)
     .maybeSingle();
   let completedAtUnavailable = false;
@@ -1688,7 +1721,7 @@ export async function updateTaskInline(
   if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
     const fallbackResult = await supabase
       .from("tasks")
-      .select("id, owner_user_id, status, archived_at")
+      .select("id, owner_user_id, project_id, goal_id, status, archived_at")
       .eq("id", input.taskId)
       .maybeSingle();
 
@@ -1705,6 +1738,31 @@ export async function updateTaskInline(
 
   if (!currentTask) {
     return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  if (input.projectId !== undefined || input.goalId !== undefined) {
+    const scopeResult = await getVisibleTaskScope(supabase);
+    if (scopeResult.errorMessage !== null) {
+      return { errorMessage: scopeResult.errorMessage };
+    }
+
+    const effectiveProjectId = input.projectId ?? currentTask.project_id;
+    const effectiveGoalId =
+      input.goalId !== undefined ? input.goalId : currentTask.goal_id;
+
+    if (!scopeResult.scope.projectIds.has(effectiveProjectId)) {
+      return { errorMessage: "Selected project is unavailable." };
+    }
+
+    if (effectiveGoalId) {
+      const goal = scopeResult.scope.goalsById.get(effectiveGoalId);
+      if (!goal) {
+        return { errorMessage: "Selected goal is unavailable." };
+      }
+      if (goal.project_id !== effectiveProjectId) {
+        return { errorMessage: "Selected goal does not belong to the chosen project." };
+      }
+    }
   }
 
   if (input.status === "done" && !isTaskCompletedStatus(currentTask.status)) {
@@ -1727,6 +1785,22 @@ export async function updateTaskInline(
     updated_at: updatedAtIso,
   };
 
+  if (input.title !== undefined) {
+    updatePayload.title = input.title;
+  }
+
+  if (input.projectId !== undefined) {
+    updatePayload.project_id = input.projectId;
+  }
+
+  if (input.goalId !== undefined) {
+    updatePayload.goal_id = input.goalId;
+  }
+
+  if (input.description !== undefined) {
+    updatePayload.description = input.description;
+  }
+
   if (input.scheduledStartAt !== undefined) {
     updatePayload.scheduled_start_at = input.scheduledStartAt;
     updatePayload.scheduled_end_at = input.scheduledEndAt ?? null;
@@ -1736,10 +1810,6 @@ export async function updateTaskInline(
     updatePayload.calendar_sync_enabled = input.calendarSyncEnabled;
     updatePayload.calendar_reminder_minutes =
       input.calendarReminderMinutes ?? DEFAULT_CALENDAR_REMINDER_MINUTES;
-  }
-
-  if (input.description !== undefined) {
-    updatePayload.description = input.description;
   }
 
   if (!completedAtUnavailable) {
@@ -1829,6 +1899,7 @@ export async function updateTaskInline(
   const shouldEnqueueCalendarSync =
     input.scheduledStartAt !== undefined ||
     input.calendarSyncEnabled !== undefined ||
+    input.title !== undefined ||
     input.description !== undefined;
 
   if (shouldEnqueueCalendarSync) {
