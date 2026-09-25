@@ -20,6 +20,7 @@ vi.mock("@/app/tasks/actions", () => ({
   unarchiveTaskAction: vi.fn(),
   unpinTaskAction: vi.fn(),
   updateTaskEditorAction: vi.fn(),
+  updateTaskReminderAction: vi.fn(),
   updateTaskInlineAction: vi.fn(),
 }));
 
