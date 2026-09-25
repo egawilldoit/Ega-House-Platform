@@ -48,6 +48,10 @@ export type EditTaskModalProps = {
   taskDescription?: string | null;
   projectName?: string | null;
   goalTitle?: string | null;
+  defaultProjectId: string;
+  defaultGoalId: string | null;
+  projectOptions: Array<{ id: string; name: string }>;
+  goalOptions: Array<{ id: string; title: string; projectId: string }>;
   returnTo: string;
   defaultStatus: string;
   defaultPriority: string;
@@ -63,6 +67,7 @@ export type EditTaskModalProps = {
   taskReminders?: TaskReminderRecord[];
   updateAction: UpdateTaskEditorAction;
   createReminderAction: SimpleTaskAction;
+  updateReminderAction: SimpleTaskAction;
   cancelReminderAction: SimpleTaskAction;
   deleteAction: SimpleTaskAction;
   archiveAction?: SimpleTaskAction;
@@ -107,17 +112,29 @@ function ContextLine({ label, value }: { label: string; value: string | null | u
   );
 }
 
+function toLocalDateTimeInputValue(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}
+
 function TaskReminderCard({
   taskId,
   reminders,
   returnTo,
   createAction,
+  updateAction,
   cancelAction,
 }: {
   taskId: string;
   reminders: TaskReminderRecord[];
   returnTo: string;
   createAction: SimpleTaskAction;
+  updateAction: SimpleTaskAction;
   cancelAction: SimpleTaskAction;
 }) {
   const [formOpen, setFormOpen] = useState(false);
@@ -128,8 +145,11 @@ function TaskReminderCard({
 
   if (formOpen) {
     return (
-      <form action={createAction} className="space-y-3">
+      <form action={currentPendingReminder ? updateAction : createAction} className="space-y-3">
         <input type="hidden" name="taskId" value={taskId} />
+        {currentPendingReminder ? (
+          <input type="hidden" name="reminderId" value={currentPendingReminder.id} />
+        ) : null}
         <input type="hidden" name="returnTo" value={returnTo} />
         <input type="hidden" name="channel" value="email" />
         <input type="hidden" name="status" value="pending" />
@@ -152,15 +172,20 @@ function TaskReminderCard({
               required
               step="60"
               defaultValue={
-                currentPendingReminder ? currentPendingReminder.remind_at.slice(0, 16) : ""
+                currentPendingReminder ? toLocalDateTimeInputValue(currentPendingReminder.remind_at) : ""
               }
               className="min-h-11 w-full"
             />
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PendingSubmitButton type="submit" size="sm" variant="muted" pendingLabel="Creating…">
-            Save reminder
+          <PendingSubmitButton
+            type="submit"
+            size="sm"
+            variant="muted"
+            pendingLabel={currentPendingReminder ? "Updating…" : "Creating…"}
+          >
+            {currentPendingReminder ? "Update reminder" : "Save reminder"}
           </PendingSubmitButton>
           <Button type="button" size="sm" variant="ghost" onClick={() => setFormOpen(false)}>
             Cancel
@@ -274,6 +299,10 @@ function TaskEditorPanel({
   taskDescription,
   projectName,
   goalTitle,
+  defaultProjectId,
+  defaultGoalId,
+  projectOptions,
+  goalOptions,
   returnTo,
   defaultStatus,
   defaultPriority,
@@ -289,6 +318,7 @@ function TaskEditorPanel({
   taskReminders = [],
   updateAction,
   createReminderAction,
+  updateReminderAction,
   cancelReminderAction,
   deleteAction,
   archiveAction,
@@ -308,6 +338,8 @@ function TaskEditorPanel({
     },
   );
 
+  const [selectedProjectId, setSelectedProjectId] = useState(defaultProjectId);
+  const [selectedGoalId, setSelectedGoalId] = useState(defaultGoalId ?? "");
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
   const [scheduledStartValue, setScheduledStartValue] = useState(
     defaultScheduledStartAt ? defaultScheduledStartAt.slice(0, 16) : "",
@@ -347,6 +379,11 @@ function TaskEditorPanel({
   );
 
   const estimatePreview = useMemo(() => normalizeTaskEstimateInput(estimateValue), [estimateValue]);
+
+  const availableGoalOptions = useMemo(
+    () => goalOptions.filter((goal) => goal.projectId === selectedProjectId),
+    [goalOptions, selectedProjectId],
+  );
 
   const isArchived = Boolean(archivedAt);
   const isCompleted = isTaskCompletedStatus(defaultStatus);
@@ -426,7 +463,83 @@ function TaskEditorPanel({
 
                   <EditorCard label="Task overview">
                     <div className="space-y-3">
-                      <ContextLine label="Title" value={taskTitle} />
+                      <label className="min-w-0 space-y-2">
+                        <span className="block text-xs font-medium text-[color:var(--ega-text-secondary)]">
+                          Title
+                        </span>
+                        <Input
+                          name="title"
+                          required
+                          defaultValue={taskTitle}
+                          className="min-h-11 w-full"
+                        />
+                      </label>
+
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="min-w-0 space-y-2">
+                          <span className="block text-xs font-medium text-[color:var(--ega-text-secondary)]">
+                            Project
+                          </span>
+                          <select
+                            name="projectId"
+                            required
+                            value={selectedProjectId}
+                            onChange={(event) => {
+                              const nextProjectId = event.target.value;
+                              setSelectedProjectId(nextProjectId);
+                              if (
+                                selectedGoalId &&
+                                !goalOptions.some(
+                                  (goal) =>
+                                    goal.id === selectedGoalId &&
+                                    goal.projectId === nextProjectId,
+                                )
+                              ) {
+                                setSelectedGoalId("");
+                              }
+                            }}
+                            className="input-instrument min-h-11 w-full px-3 text-sm"
+                          >
+                            {projectOptions.map((project) => (
+                              <option key={project.id} value={project.id}>
+                                {project.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+
+                        <label className="min-w-0 space-y-2">
+                          <span className="block text-xs font-medium text-[color:var(--ega-text-secondary)]">
+                            Goal
+                          </span>
+                          <select
+                            name="goalId"
+                            value={selectedGoalId}
+                            onChange={(event) => setSelectedGoalId(event.target.value)}
+                            className="input-instrument min-h-11 w-full px-3 text-sm"
+                          >
+                            <option value="">No goal</option>
+                            {availableGoalOptions.map((goal) => (
+                              <option key={goal.id} value={goal.id}>
+                                {goal.title}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <label className="min-w-0 space-y-2">
+                        <span className="block text-xs font-medium text-[color:var(--ega-text-secondary)]">
+                          Description
+                        </span>
+                        <Textarea
+                          name="description"
+                          defaultValue={taskDescription ?? ""}
+                          placeholder="Add useful context for this task"
+                          className="min-h-24 w-full"
+                        />
+                      </label>
+
                       <div className="grid gap-3 sm:grid-cols-2">
                         <ContextLine label="Project" value={projectName} />
                         <ContextLine label="Goal" value={goalTitle} />
@@ -637,6 +750,7 @@ function TaskEditorPanel({
                     reminders={taskReminders}
                     returnTo={returnTo}
                     createAction={createReminderAction}
+                    updateAction={updateReminderAction}
                     cancelAction={cancelReminderAction}
                   />
                 </EditorCard>
