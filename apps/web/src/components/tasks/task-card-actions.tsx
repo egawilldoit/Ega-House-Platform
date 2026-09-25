@@ -20,6 +20,7 @@ type TaskCardActionsProps = {
   unarchiveAction?: (formData: FormData) => void | Promise<void>;
   startTimerAction: (formData: FormData) => void | Promise<void>;
   createReminderAction: (formData: FormData) => void | Promise<void>;
+  updateReminderAction: (formData: FormData) => void | Promise<void>;
   cancelReminderAction: (formData: FormData) => void | Promise<void>;
   taskReminders: TaskReminderRecord[];
   taskId: string;
@@ -27,6 +28,10 @@ type TaskCardActionsProps = {
   taskDescription?: string | null;
   projectName?: string | null;
   goalTitle?: string | null;
+  defaultProjectId: string;
+  defaultGoalId: string | null;
+  projectOptions: Array<{ id: string; name: string }>;
+  goalOptions: Array<{ id: string; title: string; projectId: string }>;
   returnTo: string;
   defaultStatus: string;
   defaultPriority: string;
@@ -62,6 +67,7 @@ type TaskCardActionsProps = {
 export function TaskCardActions({
   startTimerAction,
   createReminderAction,
+  updateReminderAction,
   cancelReminderAction,
   taskReminders,
   compact = false,
@@ -132,7 +138,7 @@ export function TaskCardActions({
             type="submit"
             size="sm"
             variant="muted"
-            aria-label="Archive task"
+            aria-label={`Archive ${inlineProps.taskTitle}`}
             data-testid={`task-archive-${inlineProps.taskId}`}
             className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
             pendingLabel="Archiving…"
@@ -154,7 +160,7 @@ export function TaskCardActions({
             type="submit"
             size="sm"
             variant="muted"
-            aria-label="Restore task"
+            aria-label={`Restore ${inlineProps.taskTitle}`}
             data-testid={`task-restore-${inlineProps.taskId}`}
             className={compact ? "h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10" : undefined}
             pendingLabel="Restoring…"
@@ -174,6 +180,10 @@ export function TaskCardActions({
         taskDescription={inlineProps.taskDescription ?? null}
         projectName={inlineProps.projectName ?? null}
         goalTitle={inlineProps.goalTitle ?? null}
+        defaultProjectId={inlineProps.defaultProjectId}
+        defaultGoalId={inlineProps.defaultGoalId}
+        projectOptions={inlineProps.projectOptions}
+        goalOptions={inlineProps.goalOptions}
         returnTo={inlineProps.returnTo}
         defaultStatus={inlineProps.defaultStatus}
         defaultPriority={inlineProps.defaultPriority}
@@ -189,6 +199,7 @@ export function TaskCardActions({
         taskReminders={taskReminders}
         updateAction={inlineProps.updateEditorAction}
         createReminderAction={createReminderAction}
+        updateReminderAction={updateReminderAction}
         cancelReminderAction={cancelReminderAction}
         deleteAction={inlineProps.deleteAction}
         archiveAction={inlineProps.archiveAction}
