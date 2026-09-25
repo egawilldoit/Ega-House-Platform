@@ -2452,6 +2452,27 @@ test("createTaskEmailReminder rejects unsupported channel and status inputs", as
   assert.equal(mock.reminderInsertCalls.length, 0);
 });
 
+test("createTaskEmailReminder converts datetime-local using the browser timezone offset", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T12:00",
+      channel: "email",
+      timezoneOffsetMinutes: "-60",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.remind_at, "2026-05-01T11:00:00.000Z");
+  assert.equal(mock.reminderInsertCalls[0]?.remind_at, "2026-05-01T11:00:00.000Z");
+});
+
 test("createTaskEmailReminder creates a pending email reminder for a visible task", async () => {
   const mock = createTaskReminderSupabaseMock();
 
