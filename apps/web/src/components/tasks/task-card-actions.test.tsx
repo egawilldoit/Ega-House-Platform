@@ -32,6 +32,7 @@ const actions = {
   unarchiveAction: vi.fn(),
   startTimerAction: vi.fn(),
   createReminderAction: vi.fn(),
+  updateReminderAction: vi.fn(),
   cancelReminderAction: vi.fn(),
 };
 
@@ -65,6 +66,10 @@ function renderCard(overrides: Partial<Parameters<typeof TaskCardActions>[0]> = 
         {...actions}
         taskId="task-1"
         taskTitle="Ship the polish stack"
+        defaultProjectId="project-1"
+        defaultGoalId={null}
+        projectOptions={[{ id: "project-1", name: "Project one" }]}
+        goalOptions={[]}
         returnTo="/tasks"
         defaultStatus="todo"
         defaultPriority="high"
@@ -197,6 +202,9 @@ describe("TaskCardActions edit task modal redesign", () => {
     });
 
     expect(dialog()).toBeNull();
+    expect(document.activeElement).toBe(
+      container.querySelector('[data-testid="task-more-options-task-1"]'),
+    );
     for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
   });
 
@@ -280,6 +288,10 @@ describe("TaskCardActions edit task modal redesign", () => {
   it("does not submit on open or cancel, and only the task carrying the error auto-opens", async () => {
     const base = {
       ...actions,
+      defaultProjectId: "project-1",
+      defaultGoalId: null,
+      projectOptions: [{ id: "project-1", name: "Project one" }],
+      goalOptions: [],
       returnTo: "/tasks",
       defaultStatus: "todo",
       defaultPriority: "high",
