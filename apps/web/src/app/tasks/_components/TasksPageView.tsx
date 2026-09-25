@@ -12,6 +12,7 @@ import {
   updateTaskEditorAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
+import { BulkArchiveCompletedTasksForm } from "@/components/tasks/bulk-archive-completed-tasks-form";
 import { TaskFilterControls } from "@/components/tasks/task-filter-controls";
 import { TaskKanbanCard } from "@/components/tasks/task-kanban-card";
 import { TasksNewTaskButton } from "@/components/tasks/tasks-new-task-button";
@@ -104,34 +105,11 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
   };
 
   const bulkArchiveControl = showBulkArchive ? (
-    <form
+    <BulkArchiveCompletedTasksForm
       action={archiveManyCompletedTasksAction}
-      onSubmit={(event) => {
-        // Same confirmation convention as task delete: plain window.confirm with
-        // language that frames archiving as restorable, never as deletion.
-        const confirmed = window.confirm(
-          `Archive ${completedTaskIdsInScope.length} completed task${
-            completedTaskIdsInScope.length === 1 ? "" : "s"
-          }? These tasks will move to Archived and can be restored later.`,
-        );
-        if (!confirmed) {
-          event.preventDefault();
-        }
-      }}
-    >
-      <input type="hidden" name="returnTo" value={returnPath} />
-      <input type="hidden" name="confirmArchiveCompleted" value="true" />
-      {completedTaskIdsInScope.map((taskId) => (
-        <input key={taskId} type="hidden" name="taskIds" value={taskId} />
-      ))}
-      <button
-        type="submit"
-        className="btn-instrument btn-instrument-muted h-8 gap-1.5 px-3 text-sm"
-        data-testid="tasks-archive-completed"
-      >
-        Archive completed ({completedTaskIdsInScope.length})
-      </button>
-    </form>
+      taskIds={completedTaskIdsInScope}
+      returnTo={returnPath}
+    />
   ) : null;
 
   const emptyState = (
