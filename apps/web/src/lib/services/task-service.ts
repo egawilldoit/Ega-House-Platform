@@ -192,6 +192,10 @@ export type TaskRecord = TasksWorkspaceData["tasks"][number];
 
 export type ValidateTaskInlineUpdateInput = {
   taskId: string;
+  title?: unknown;
+  projectId?: unknown;
+  goalId?: unknown;
+  description?: unknown;
   status: string;
   priority: string;
   dueDate: unknown;
@@ -209,12 +213,15 @@ export type ValidateTaskInlineUpdateInput = {
 
 export type ValidatedTaskInlineUpdateInput = {
   taskId: string;
+  title?: string;
+  projectId?: string;
+  goalId?: string | null;
+  description?: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
   blockedReason: string | null;
-  description?: string | null;
   recurrenceRule?: TaskRecurrenceRule | null;
   recurrenceAnchorDate?: string | null;
   recurrenceTimezone?: string | null;
@@ -427,26 +434,92 @@ export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServer
   };
 }
 
+function parseTaskReminderDateTime(
+  rawValue: string,
+  timezoneOffsetMinutes: unknown,
+) {
+  const localMatch = rawValue.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
+  );
+
+  if (!localMatch) {
+    const parsed = new Date(rawValue);
+    return Number.isNaN(parsed.getTime())
+      ? { errorMessage: "Reminder time is required.", value: null }
+      : { errorMessage: null, value: parsed };
+  }
+
+  const normalizedOffset = String(timezoneOffsetMinutes ?? "").trim();
+  if (!/^-?\d+$/.test(normalizedOffset)) {
+    return { errorMessage: "Reminder timezone offset is invalid.", value: null };
+  }
+
+  const offsetMinutes = Number(normalizedOffset);
+  if (!Number.isSafeInteger(offsetMinutes)) {
+    return { errorMessage: "Reminder timezone offset is invalid.", value: null };
+  }
+
+  const [, yearValue, monthValue, dayValue, hourValue, minuteValue, secondValue = "00"] =
+    localMatch;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  const second = Number(secondValue);
+
+  const localCandidateMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  const localCandidate = new Date(localCandidateMs);
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    localCandidate.getUTCFullYear() !== year ||
+    localCandidate.getUTCMonth() !== month - 1 ||
+    localCandidate.getUTCDate() !== day ||
+    localCandidate.getUTCHours() !== hour ||
+    localCandidate.getUTCMinutes() !== minute ||
+    localCandidate.getUTCSeconds() !== second
+  ) {
+    return { errorMessage: "Reminder time is required.", value: null };
+  }
+
+  return {
+    errorMessage: null,
+    value: new Date(localCandidateMs + offsetMinutes * 60_000),
+  };
+}
+
 function normalizeTaskReminderCreateInput(input: {
   taskId: string;
   remindAt: unknown;
   channel?: unknown;
   status?: unknown;
+  timezoneOffsetMinutes?: unknown;
   now?: Date;
 }) {
   const taskId = input.taskId.trim();
   const channel = String(input.channel ?? "email").trim() || "email";
   const status = String(input.status ?? "pending").trim() || "pending";
   const rawRemindAt = String(input.remindAt ?? "").trim();
-  const remindAtDate = new Date(rawRemindAt);
+  const reminderTimeResult = parseTaskReminderDateTime(
+    rawRemindAt,
+    input.timezoneOffsetMinutes,
+  );
+  const remindAtDate = reminderTimeResult.value;
   const now = input.now ?? new Date();
 
   if (!taskId) {
     return { errorMessage: "Task is required." };
   }
 
-  if (!rawRemindAt || Number.isNaN(remindAtDate.getTime())) {
-    return { errorMessage: "Reminder time is required." };
+  if (!rawRemindAt || reminderTimeResult.errorMessage || !remindAtDate) {
+    return {
+      errorMessage: reminderTimeResult.errorMessage ?? "Reminder time is required.",
+    };
   }
 
   if (!isTaskReminderChannel(channel)) {
@@ -1148,6 +1221,7 @@ export async function createTaskEmailReminder(
     remindAt: unknown;
     channel?: unknown;
     status?: unknown;
+    timezoneOffsetMinutes?: unknown;
   },
   options?: { supabase?: SupabaseServerClient; now?: Date },
 ) {
@@ -1195,6 +1269,87 @@ export async function createTaskEmailReminder(
   if (!data) {
     return {
       errorMessage: "Reminder could not be created.",
+      data: null,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    data: normalizeTaskReminderRow(data),
+  };
+}
+
+export async function updateTaskEmailReminder(
+  input: {
+    taskId: string;
+    reminderId: string;
+    remindAt: unknown;
+    channel?: unknown;
+    status?: unknown;
+    timezoneOffsetMinutes?: unknown;
+  },
+  options?: { supabase?: SupabaseServerClient; now?: Date; updatedAtIso?: string },
+) {
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const reminderId = input.reminderId.trim();
+  const validationResult = normalizeTaskReminderCreateInput({
+    taskId: input.taskId,
+    remindAt: input.remindAt,
+    channel: input.channel,
+    status: input.status,
+    timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+    now: options?.now,
+  });
+
+  if (!reminderId) {
+    return {
+      errorMessage: "Reminder update request is invalid.",
+      data: null,
+    };
+  }
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage: validationResult.errorMessage ?? "Reminder update request is invalid.",
+      data: null,
+    };
+  }
+
+  const taskResult = await getVisibleTaskById(supabase, validationResult.data.taskId);
+  if (taskResult.errorMessage) {
+    return {
+      errorMessage: taskResult.errorMessage,
+      data: null,
+    };
+  }
+
+  const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
+  const { data, error } = await supabase
+    .from("task_reminders")
+    .update({
+      remind_at: validationResult.data.remindAtIso,
+      channel: validationResult.data.channel,
+      status: "pending",
+      updated_at: updatedAtIso,
+    })
+    .eq("id", reminderId)
+    .eq("task_id", validationResult.data.taskId)
+    .eq("status", "pending")
+    .select(
+      "id, task_id, remind_at, channel, status, sent_at, failure_reason, created_at, updated_at",
+    )
+    .maybeSingle();
+
+  if (error) {
+    return {
+      errorMessage: "Unable to update reminder right now.",
+      data: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      errorMessage: "Pending reminder was not found or is no longer editable.",
       data: null,
     };
   }
@@ -1268,6 +1423,15 @@ export async function cancelTaskReminder(
 
 export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInput) {
   const taskId = input.taskId.trim();
+  const title = input.title === undefined ? undefined : String(input.title ?? "").trim();
+  const projectId =
+    input.projectId === undefined ? undefined : String(input.projectId ?? "").trim();
+  const goalId =
+    input.goalId === undefined ? undefined : String(input.goalId ?? "").trim() || null;
+  const description =
+    input.description === undefined
+      ? undefined
+      : String(input.description ?? "").trim() || null;
   const status = input.status.trim();
   const priority = input.priority.trim();
   const dueDateResult = normalizeTaskDueDateInput(input.dueDate);
@@ -1300,6 +1464,18 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
   if (!taskId) {
     return {
       errorMessage: "Task update request is invalid.",
+    };
+  }
+
+  if (title !== undefined && !title) {
+    return {
+      errorMessage: "Task title is required.",
+    };
+  }
+
+  if (projectId !== undefined && !projectId) {
+    return {
+      errorMessage: "Project is required.",
     };
   }
 
@@ -1352,6 +1528,10 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     errorMessage: null,
     data: {
       taskId,
+      ...(title === undefined ? {} : { title }),
+      ...(projectId === undefined ? {} : { projectId }),
+      ...(goalId === undefined ? {} : { goalId }),
+      ...(description === undefined ? {} : { description }),
       status,
       priority,
       dueDate: dueDateResult.value,
@@ -1601,7 +1781,7 @@ export async function updateTaskInline(
 
   let { data: currentTask, error: currentTaskError } = await supabase
     .from("tasks")
-    .select("id, owner_user_id, status, completed_at, archived_at")
+    .select("id, owner_user_id, project_id, goal_id, status, completed_at, archived_at")
     .eq("id", input.taskId)
     .maybeSingle();
   let completedAtUnavailable = false;
@@ -1609,7 +1789,7 @@ export async function updateTaskInline(
   if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
     const fallbackResult = await supabase
       .from("tasks")
-      .select("id, owner_user_id, status, archived_at")
+      .select("id, owner_user_id, project_id, goal_id, status, archived_at")
       .eq("id", input.taskId)
       .maybeSingle();
 
@@ -1626,6 +1806,31 @@ export async function updateTaskInline(
 
   if (!currentTask) {
     return { errorMessage: "Task was not found or is no longer available." };
+  }
+
+  if (input.projectId !== undefined || input.goalId !== undefined) {
+    const scopeResult = await getVisibleTaskScope(supabase);
+    if (scopeResult.errorMessage !== null) {
+      return { errorMessage: scopeResult.errorMessage };
+    }
+
+    const effectiveProjectId = input.projectId ?? currentTask.project_id;
+    const effectiveGoalId =
+      input.goalId !== undefined ? input.goalId : currentTask.goal_id;
+
+    if (!scopeResult.scope.projectIds.has(effectiveProjectId)) {
+      return { errorMessage: "Selected project is unavailable." };
+    }
+
+    if (effectiveGoalId) {
+      const goal = scopeResult.scope.goalsById.get(effectiveGoalId);
+      if (!goal) {
+        return { errorMessage: "Selected goal is unavailable." };
+      }
+      if (goal.project_id !== effectiveProjectId) {
+        return { errorMessage: "Selected goal does not belong to the chosen project." };
+      }
+    }
   }
 
   if (input.status === "done" && !isTaskCompletedStatus(currentTask.status)) {
@@ -1648,6 +1853,22 @@ export async function updateTaskInline(
     updated_at: updatedAtIso,
   };
 
+  if (input.title !== undefined) {
+    updatePayload.title = input.title;
+  }
+
+  if (input.projectId !== undefined) {
+    updatePayload.project_id = input.projectId;
+  }
+
+  if (input.goalId !== undefined) {
+    updatePayload.goal_id = input.goalId;
+  }
+
+  if (input.description !== undefined) {
+    updatePayload.description = input.description;
+  }
+
   if (input.scheduledStartAt !== undefined) {
     updatePayload.scheduled_start_at = input.scheduledStartAt;
     updatePayload.scheduled_end_at = input.scheduledEndAt ?? null;
@@ -1657,10 +1878,6 @@ export async function updateTaskInline(
     updatePayload.calendar_sync_enabled = input.calendarSyncEnabled;
     updatePayload.calendar_reminder_minutes =
       input.calendarReminderMinutes ?? DEFAULT_CALENDAR_REMINDER_MINUTES;
-  }
-
-  if (input.description !== undefined) {
-    updatePayload.description = input.description;
   }
 
   if (!completedAtUnavailable) {
@@ -1750,6 +1967,7 @@ export async function updateTaskInline(
   const shouldEnqueueCalendarSync =
     input.scheduledStartAt !== undefined ||
     input.calendarSyncEnabled !== undefined ||
+    input.title !== undefined ||
     input.description !== undefined;
 
   if (shouldEnqueueCalendarSync) {

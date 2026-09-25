@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clock3, Ellipsis } from "lucide-react";
+import { Clock3 } from "lucide-react";
 
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import { ActiveTimerDisplay } from "@/components/timer/active-timer-display";
@@ -407,29 +407,17 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                             </td>
                             <td className="max-[761px]:contents">
                               <div className="flex items-center justify-end gap-1.5">
-                                <details className="action-overflow">
-                                  <summary
-                                    className="filter-pill h-7 w-7 justify-center px-0"
-                                    aria-label="Correct session timing"
-                                    title="Correct session timing"
-                                  >
-                                    <Ellipsis className="h-4 w-4" aria-hidden="true" />
-                                  </summary>
-                                  <div className="action-overflow-menu w-full max-w-md">
-                                    <p className="row-meta mb-2">
-                                      Adjust the actual time worked for this session.
-                                    </p>
-                                    {entry.endedAt ? (
-                                      <SessionTimingEditor
-                                        sessionId={entry.id}
-                                        startedAt={entry.startedAt}
-                                        endedAt={entry.endedAt}
-                                        returnTo="/timer"
-                                        action={updateSessionTimingAction}
-                                      />
-                                    ) : null}
-                                  </div>
-                                </details>
+                                {entry.endedAt ? (
+                                  <SessionTimingEditor
+                                    sessionId={entry.id}
+                                    taskTitle={entry.taskTitle}
+                                    projectName={entry.projectName}
+                                    startedAt={entry.startedAt}
+                                    endedAt={entry.endedAt}
+                                    returnTo="/timer"
+                                    action={updateSessionTimingAction}
+                                  />
+                                ) : null}
                               </div>
                             </td>
                           </tr>

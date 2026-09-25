@@ -26,10 +26,11 @@ import {
   getTaskScopeSnapshot,
   normalizeTaskBlockedReasonInput,
   unarchiveTask,
+  updateTaskEmailReminder,
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "@/lib/services/task-service";
-import { archiveTaskSafely } from "@/lib/services/task-transition-service";
+import { archiveCompletedTasksSafely, archiveTaskSafely } from "@/lib/services/task-transition-service";
 import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
@@ -528,10 +529,13 @@ export async function createTasksBulkAction(
   };
 }
 
-export async function updateTaskInlineAction(formData: FormData) {
-  const returnPath = getTasksReturnPath(formData.get("returnTo"));
-  const validationResult = validateTaskInlineUpdateInput({
+function parseTaskInlineUpdateFormData(formData: FormData) {
+  return validateTaskInlineUpdateInput({
     taskId: String(formData.get("taskId") ?? ""),
+    title: formData.has("title") ? formData.get("title") : undefined,
+    projectId: formData.has("projectId") ? formData.get("projectId") : undefined,
+    goalId: formData.has("goalId") ? formData.get("goalId") : undefined,
+    description: formData.has("description") ? formData.get("description") : undefined,
     status: String(formData.get("status") ?? ""),
     priority: String(formData.get("priority") ?? ""),
     dueDate: formData.get("dueDate"),
@@ -559,6 +563,11 @@ export async function updateTaskInlineAction(formData: FormData) {
       ? formData.get("calendarReminderMinutes")
       : undefined,
   });
+}
+
+export async function updateTaskInlineAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const validationResult = parseTaskInlineUpdateFormData(formData);
 
   if (validationResult.errorMessage || !validationResult.data) {
     redirectWithTasksError(
@@ -581,6 +590,54 @@ export async function updateTaskInlineAction(formData: FormData) {
   });
 }
 
+export type UpdateTaskEditorFormState = {
+  errorMessage: string | null;
+  successMessage: string | null;
+  taskId: string | null;
+};
+
+/**
+ * Edit-modal persistence for the canonical inline task update.
+ * Reuses `parseTaskInlineUpdateFormData` and `updateTaskInline` (the same
+ * validation and mutation as `updateTaskInlineAction`) but returns form state
+ * instead of redirecting, so the modal can keep the user's edits on failure
+ * and close on success.
+ */
+export async function updateTaskEditorAction(
+  _previous: UpdateTaskEditorFormState,
+  formData: FormData,
+): Promise<UpdateTaskEditorFormState> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const validationResult = parseTaskInlineUpdateFormData(formData);
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage: validationResult.errorMessage ?? "Task update request is invalid.",
+      successMessage: null,
+      taskId: String(formData.get("taskId") ?? "").trim() || null,
+    };
+  }
+
+  const validatedInput = validationResult.data;
+  const { errorMessage } = await updateTaskInline(validatedInput);
+
+  if (errorMessage) {
+    return {
+      errorMessage,
+      successMessage: null,
+      taskId: validatedInput.taskId,
+    };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+
+  return {
+    errorMessage: null,
+    successMessage: "Task updated.",
+    taskId: validatedInput.taskId,
+  };
+}
+
 export async function createTaskReminderAction(formData: FormData) {
   const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
@@ -590,6 +647,7 @@ export async function createTaskReminderAction(formData: FormData) {
     remindAt: formData.get("remindAt"),
     channel: formData.get("channel") ?? "email",
     status: formData.get("status") ?? "pending",
+    timezoneOffsetMinutes: formData.get("reminderTimezoneOffsetMinutes"),
   });
 
   if (errorMessage) {
@@ -600,6 +658,32 @@ export async function createTaskReminderAction(formData: FormData) {
   redirectWithWorkspaceFeedback(returnPath, {
     anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
     taskSuccessMessage: "Reminder scheduled.",
+    taskId,
+  });
+}
+
+export async function updateTaskReminderAction(formData: FormData) {
+  const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const reminderId = String(formData.get("reminderId") ?? "").trim();
+
+  const { errorMessage } = await updateTaskEmailReminder({
+    taskId,
+    reminderId,
+    remindAt: formData.get("remindAt"),
+    channel: formData.get("channel") ?? "email",
+    status: formData.get("status") ?? "pending",
+    timezoneOffsetMinutes: formData.get("reminderTimezoneOffsetMinutes"),
+  });
+
+  if (errorMessage) {
+    redirectWithTaskSurfaceError(returnPath, errorMessage, taskId || undefined);
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    anchor: returnPath.startsWith("/tasks") && taskId ? `task-${taskId}` : undefined,
+    taskSuccessMessage: "Reminder updated.",
     taskId,
   });
 }
@@ -691,6 +775,56 @@ export async function archiveTaskAction(formData: FormData) {
 
 export async function unarchiveTaskAction(formData: FormData) {
   await updateTaskArchiveAction(formData, false);
+}
+
+export async function archiveManyCompletedTasksAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+
+  if (String(formData.get("confirmArchiveCompleted") ?? "").trim() !== "true") {
+    redirectWithTasksError(returnPath, "Bulk archive confirmation is required.");
+  }
+
+  const requestIds = formData
+    .getAll("taskIds")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const uniqueIds = [...new Set(requestIds)];
+
+  if (uniqueIds.length === 0) {
+    redirectWithTasksError(returnPath, "Select at least one completed task to archive.");
+  }
+
+  // Eligibility is re-verified server-side by the transition service under the
+  // caller's RLS scope; the submitted ids only seed the intent.
+  const bulkResult = await archiveCompletedTasksSafely(uniqueIds);
+
+  const archivedCount = bulkResult.archivedTaskIds.length;
+  const failureCount = bulkResult.failures.length;
+  const ineligibleCount = bulkResult.ineligibleCount;
+
+  if (archivedCount === 0) {
+    redirectWithTasksError(
+      returnPath,
+      failureCount > 0
+        ? bulkResult.failures[0]?.errorMessage ?? "Unable to archive tasks right now."
+        : "No completed tasks are eligible to archive right now.",
+    );
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+
+  const parts = [`Archived ${archivedCount} completed task${archivedCount === 1 ? "" : "s"}`];
+  if (failureCount > 0) {
+    parts.push(`${failureCount} could not be archived`);
+  }
+  if (ineligibleCount > 0) {
+    parts.push(`${ineligibleCount} were no longer eligible`);
+  }
+  const successMessage = `${parts.join("; ")}.`;
+
+  redirectWithWorkspaceFeedback(returnPath, {
+    taskSuccessMessage: successMessage,
+  });
 }
 
 export async function deleteTaskAction(formData: FormData) {

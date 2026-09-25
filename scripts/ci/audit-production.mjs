@@ -2,18 +2,10 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-const ALLOWED_LEAF_SOURCES = new Map([
-  // Only the Metro/Expo build-toolchain image-size advisories remain
-  // unavoidable through the resolved Expo 54 graph (no safe in-range fix; the
-  // only npm-proposed fix is a major downgrade of expo, which is refused).
-  // Reviewed 2026-09-14; see docs/architecture/dependency-audit-exceptions.md.
-  [1138808, 'image-size via Metro/Expo toolchain'],
-  [1138809, 'image-size via Metro/Expo toolchain'],
-]);
-// Owner-approved renewal on 2026-09-14 (previous deadline 2026-09-09). The
-// direct critical `next` advisory was remediated (next 16.2.12 -> 16.3.5) and
-// the fast-uri/js-yaml/nanoid/sharp exceptions were removed by remediation.
-const REVIEW_BY = '2026-09-28';
+// No active high/critical production-audit exceptions.
+// Metro 0.83.8 removes the vulnerable image-size dependency that previously
+// required a narrow, time-bounded exception.
+const ALLOWED_LEAF_SOURCES = new Map();
 export const AUDIT_TIMEOUT_MS = 120_000;
 export const AUDIT_ATTEMPTS = 2;
 
@@ -49,10 +41,6 @@ export function runAuditCommand({ spawn = spawnSync, npm = process.platform === 
 }
 
 export function main() {
-  if (new Date().toISOString().slice(0, 10) > REVIEW_BY) {
-    throw new Error(`dependency-audit: exception review deadline ${REVIEW_BY} has passed`);
-  }
-
   let result;
   try {
     result = runAuditCommand();
@@ -101,7 +89,7 @@ export function main() {
 
   const ws = JSON.parse(fs.readFileSync('node_modules/ws/package.json', 'utf8')).version;
   if (ws !== '8.21.3') blocking.push({ name: 'ws', reason: `expected remediated ws@8.21.3, got ${ws}` });
-  console.log(JSON.stringify({ counts: report.metadata?.vulnerabilities, reviewBy: REVIEW_BY, allowedHighCritical: allowed, blockingHighCritical: blocking }, null, 2));
+  console.log(JSON.stringify({ counts: report.metadata?.vulnerabilities, allowedHighCritical: allowed, blockingHighCritical: blocking }, null, 2));
   if (blocking.length > 0) process.exitCode = 1;
 }
 

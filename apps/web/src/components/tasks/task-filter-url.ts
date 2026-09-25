@@ -2,6 +2,7 @@ import {
   DEFAULT_TASK_DUE_FILTER,
   DEFAULT_TASK_SORT,
   buildTaskListUrl,
+  type TaskDensity,
   type TaskLayoutMode,
   type TaskDueFilter,
   type TaskSortValue,
@@ -21,6 +22,7 @@ export type TaskFilterState = {
   sort?: TaskSortValue;
   view?: string | null;
   layout?: TaskLayoutMode;
+  density?: TaskDensity | null;
 };
 
 export const DEFAULT_TASK_FILTER_STATE = {

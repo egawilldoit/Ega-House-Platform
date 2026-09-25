@@ -9,6 +9,8 @@ import {
   DEFAULT_TASK_SORT,
   TASK_DUE_FILTER_VALUES,
   TASK_SORT_VALUES,
+  DEFAULT_TASK_DENSITY,
+  type TaskDensity,
   type TaskLayoutMode,
   type TaskDueFilter,
   type TaskSortValue,
@@ -35,6 +37,7 @@ type TaskFilterControlsProps = {
   activeSort?: TaskSortValue;
   activeView?: string | null;
   activeLayout?: TaskLayoutMode;
+  activeDensity?: TaskDensity;
   activeEstimateMin?: number | string | null;
   activeEstimateMax?: number | string | null;
   activeDueWithin?: number | string | null;
@@ -92,6 +95,7 @@ export function TaskFilterControls({
   activeSort = DEFAULT_TASK_SORT,
   activeView = null,
   activeLayout = "list",
+  activeDensity,
   activeEstimateMin = null,
   activeEstimateMax = null,
   activeDueWithin = null,
@@ -116,6 +120,7 @@ export function TaskFilterControls({
     sort: activeSort,
     view: activeView,
     layout: activeLayout,
+    density: activeDensity ?? DEFAULT_TASK_DENSITY,
   };
 
   const hrefFor = (overrides: TaskFilterState) => mergeTaskFilterUrl(basePath, filterState, overrides);
@@ -204,21 +209,57 @@ export function TaskFilterControls({
       </div>
 
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Sort tasks">
-        <span className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]">Sort</span>
-        <div className="flex flex-wrap gap-1.5">
-          {sortOptions.map((option) => {
-            const isActive = option.value === activeSort;
-            return (
-              <FilterPill
-                key={`sort-${option.label}`}
-                href={hrefFor({ sort: (option.value as TaskSortValue | null) ?? DEFAULT_TASK_SORT })}
-                label={option.label}
-                active={isActive}
-                ariaCurrent={isActive ? "page" : undefined}
-              />
-            );
-          })}
-        </div>
+        <details className="filter-disclosure" data-testid="tasks-sort-disclosure">
+          <summary className="filter-pill" aria-haspopup="menu">
+            <span>
+              Sort: {sortOptions.find((option) => option.value === activeSort)?.label ?? "Recent"}
+            </span>
+          </summary>
+          <div className="action-overflow-menu" role="menu" aria-label="Sort order">
+            {sortOptions.map((option) => {
+              const isActive = option.value === activeSort;
+              return (
+                <Link
+                  key={`sort-${option.label}`}
+                  role="menuitemradio"
+                  aria-checked={isActive}
+                  href={hrefFor({ sort: (option.value as TaskSortValue | null) ?? DEFAULT_TASK_SORT })}
+                  className={`filter-menu-item${isActive ? " filter-menu-item-active" : ""}`}
+                  aria-current={isActive ? "page" : undefined}
+                  data-testid={`tasks-sort-option-${option.value}`}
+                >
+                  {option.label}
+                </Link>
+              );
+            })}
+          </div>
+        </details>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Task display options">
+        <details className="filter-disclosure" data-testid="tasks-display-disclosure">
+          <summary className="filter-pill" aria-haspopup="menu">
+            <span>Display</span>
+          </summary>
+          <div className="action-overflow-menu" role="menu" aria-label="Row density">
+            {(["comfortable", "compact"] as const).map((densityValue) => {
+              const isActive = (activeDensity ?? DEFAULT_TASK_DENSITY) === densityValue;
+              return (
+                <Link
+                  key={`density-${densityValue}`}
+                  role="menuitemradio"
+                  aria-checked={isActive}
+                  href={hrefFor({ density: densityValue === "compact" ? "compact" : null })}
+                  className={`filter-menu-item${isActive ? " filter-menu-item-active" : ""}`}
+                  aria-current={isActive ? "page" : undefined}
+                  data-testid={`tasks-density-option-${densityValue}`}
+                >
+                  {densityValue === "compact" ? "Compact" : "Comfortable"}
+                </Link>
+              );
+            })}
+          </div>
+        </details>
       </div>
 
       {open ? (
