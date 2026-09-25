@@ -1,7 +1,7 @@
 import { TaskCardActions } from "@/components/tasks/task-card-actions";
+import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
-import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getTaskDueDateState } from "@/lib/task-due-date";
@@ -17,6 +17,7 @@ import type { TaskRecord } from "@/lib/services/task-service";
 
 export type TaskListActions = {
   updateAction: (formData: FormData) => void | Promise<void>;
+  updateEditorAction: UpdateTaskEditorAction;
   deleteAction: (formData: FormData) => void | Promise<void>;
   archiveAction: (formData: FormData) => void | Promise<void>;
   unarchiveAction: (formData: FormData) => void | Promise<void>;
@@ -180,12 +181,19 @@ function TaskListRow({
     <TaskCardActions
       compact
       action={actions.updateAction}
+      updateEditorAction={actions.updateEditorAction}
       deleteAction={actions.deleteAction}
       archiveAction={actions.archiveAction}
       unarchiveAction={actions.unarchiveAction}
       startTimerAction={actions.startTimerAction}
+      createReminderAction={actions.createReminderAction}
+      cancelReminderAction={actions.cancelReminderAction}
+      taskReminders={task.task_reminders}
       taskId={task.id}
       taskTitle={task.title}
+      taskDescription={task.description}
+      projectName={task.projects?.name ?? null}
+      goalTitle={task.goals?.title ?? null}
       returnTo={returnTo}
       defaultStatus={task.status}
       defaultPriority={task.priority}
@@ -199,15 +207,6 @@ function TaskListRow({
       defaultRecurrenceRule={task.task_recurrences[0]?.rule ?? null}
       archivedAt={task.archived_at}
       error={inlineError}
-      reminders={
-        <TaskReminderPanel
-          taskId={task.id}
-          reminders={task.task_reminders}
-          returnTo={returnTo}
-          createAction={actions.createReminderAction}
-          cancelAction={actions.cancelReminderAction}
-        />
-      }
       overflowActions={
         !archived ? (
           <FocusPinToggleForm

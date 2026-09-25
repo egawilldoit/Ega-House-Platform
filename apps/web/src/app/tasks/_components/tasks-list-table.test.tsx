@@ -2,7 +2,14 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const refresh = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => refresh() }),
+}));
+
 import type { TaskRecord } from "@/lib/services/task-service";
+import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
 
 import { TasksListTable, type TaskListActions } from "./tasks-list-table";
 
@@ -42,6 +49,16 @@ function buildTask(overrides: Partial<TaskRecord> = {}): TaskRecord {
 function buildActions(): TaskListActions {
   return {
     updateAction: vi.fn(),
+    updateEditorAction: vi.fn(
+      async (
+        _previous: UpdateTaskEditorFormState,
+        _formData: FormData,
+      ): Promise<UpdateTaskEditorFormState> => ({
+        errorMessage: null,
+        successMessage: null,
+        taskId: null,
+      }),
+    ),
     deleteAction: vi.fn(),
     archiveAction: vi.fn(),
     unarchiveAction: vi.fn(),
@@ -295,7 +312,7 @@ describe("TasksListTable dense inventory", () => {
     const dialogs = document.querySelectorAll('[role="dialog"]');
     expect(dialogs.length).toBe(1);
     expect(dialogs[0].getAttribute("aria-label")).toBe(
-      "Advanced task settings for Second task",
+      "Edit task Second task",
     );
     expect(dialogs[0].textContent).toContain("Could not save task");
   });

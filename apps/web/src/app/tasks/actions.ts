@@ -528,9 +528,8 @@ export async function createTasksBulkAction(
   };
 }
 
-export async function updateTaskInlineAction(formData: FormData) {
-  const returnPath = getTasksReturnPath(formData.get("returnTo"));
-  const validationResult = validateTaskInlineUpdateInput({
+function parseTaskInlineUpdateFormData(formData: FormData) {
+  return validateTaskInlineUpdateInput({
     taskId: String(formData.get("taskId") ?? ""),
     status: String(formData.get("status") ?? ""),
     priority: String(formData.get("priority") ?? ""),
@@ -559,6 +558,11 @@ export async function updateTaskInlineAction(formData: FormData) {
       ? formData.get("calendarReminderMinutes")
       : undefined,
   });
+}
+
+export async function updateTaskInlineAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const validationResult = parseTaskInlineUpdateFormData(formData);
 
   if (validationResult.errorMessage || !validationResult.data) {
     redirectWithTasksError(
@@ -579,6 +583,54 @@ export async function updateTaskInlineAction(formData: FormData) {
   redirectWithWorkspaceFeedback(returnPath, {
     anchor: `task-${validatedInput.taskId}`,
   });
+}
+
+export type UpdateTaskEditorFormState = {
+  errorMessage: string | null;
+  successMessage: string | null;
+  taskId: string | null;
+};
+
+/**
+ * Edit-modal persistence for the canonical inline task update.
+ * Reuses `parseTaskInlineUpdateFormData` and `updateTaskInline` (the same
+ * validation and mutation as `updateTaskInlineAction`) but returns form state
+ * instead of redirecting, so the modal can keep the user's edits on failure
+ * and close on success.
+ */
+export async function updateTaskEditorAction(
+  _previous: UpdateTaskEditorFormState,
+  formData: FormData,
+): Promise<UpdateTaskEditorFormState> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const validationResult = parseTaskInlineUpdateFormData(formData);
+
+  if (validationResult.errorMessage || !validationResult.data) {
+    return {
+      errorMessage: validationResult.errorMessage ?? "Task update request is invalid.",
+      successMessage: null,
+      taskId: String(formData.get("taskId") ?? "").trim() || null,
+    };
+  }
+
+  const validatedInput = validationResult.data;
+  const { errorMessage } = await updateTaskInline(validatedInput);
+
+  if (errorMessage) {
+    return {
+      errorMessage,
+      successMessage: null,
+      taskId: validatedInput.taskId,
+    };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+
+  return {
+    errorMessage: null,
+    successMessage: "Task updated.",
+    taskId: validatedInput.taskId,
+  };
 }
 
 export async function createTaskReminderAction(formData: FormData) {
