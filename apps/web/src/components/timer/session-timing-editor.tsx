@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useActionState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useActionState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Clock3, X } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
@@ -276,6 +276,7 @@ export function SessionTimingEditor({
   action,
 }: SessionTimingEditorProps) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   return (
     <DialogPrimitive.Root
@@ -286,10 +287,12 @@ export function SessionTimingEditor({
     >
       <DialogPrimitive.Trigger asChild>
         <Button
+          ref={triggerRef}
           type="button"
           variant="muted"
           size="sm"
           aria-label="Correct session timing"
+          onClick={(event) => event.currentTarget.focus()}
           title="Correct session timing"
           className="h-7 w-7 !px-0 max-[761px]:h-10 max-[761px]:w-10"
         >
@@ -301,6 +304,11 @@ export function SessionTimingEditor({
         <DialogPrimitive.Overlay className="fixed inset-0 z-[90] bg-[rgba(17,17,15,0.58)] transition-opacity" />
         <DialogPrimitive.Content
           aria-label="Edit session"
+          onCloseAutoFocus={(event) => {
+            if (!triggerRef.current) return;
+            event.preventDefault();
+            triggerRef.current.focus();
+          }}
           className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[45rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
         >
           {open ? (
