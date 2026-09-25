@@ -25,6 +25,14 @@ export type { TaskDueFilter, TaskSortValue };
 export const TASK_LAYOUT_VALUES = ["list", "kanban"] as const;
 export const DEFAULT_TASK_LAYOUT = "list" as const;
 
+export const TASK_DENSITY_VALUES = ["comfortable", "compact"] as const;
+export type TaskDensity = (typeof TASK_DENSITY_VALUES)[number];
+export const DEFAULT_TASK_DENSITY: TaskDensity = "comfortable";
+
+export function normalizeTaskDensity(value: string | null | undefined): TaskDensity {
+  return value === "compact" ? "compact" : DEFAULT_TASK_DENSITY;
+}
+
 export const TASK_KANBAN_COLUMNS = [
   { status: "todo", label: "Todo" },
   { status: "in_progress", label: "In Progress" },
@@ -85,6 +93,7 @@ export function buildTaskListUrl(
     sort?: TaskSortValue;
     view?: string | null;
     layout?: TaskLayoutMode;
+    density?: TaskDensity | string | null;
   },
 ) {
   const searchParams = new URLSearchParams();
@@ -101,6 +110,7 @@ export function buildTaskListUrl(
   if (filters.sort && filters.sort !== DEFAULT_TASK_SORT) searchParams.set("sort", filters.sort);
   if (filters.view && filters.view !== "active") searchParams.set("archive", filters.view);
   if (filters.layout === "kanban") searchParams.set("layout", "kanban");
+  if (filters.density === "compact") searchParams.set("density", "compact");
 
   const query = searchParams.toString();
   return query ? `${basePath}?${query}` : basePath;

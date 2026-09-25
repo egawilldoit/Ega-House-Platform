@@ -1,11 +1,15 @@
+"use client";
+
 import { TaskCardActions } from "@/components/tasks/task-card-actions";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useTaskEditorOpenState } from "@/components/tasks/use-task-editor-open-state";
 import { getTaskDueDateState } from "@/lib/task-due-date";
 import { isTaskArchived } from "@/lib/task-archive";
+import { isTaskCompletedStatus } from "@/lib/task-domain";
 import {
   formatDisplayDate,
   formatDisplayDuration,
@@ -34,38 +38,23 @@ type TasksListTableProps = {
   returnTo: string;
   taskUpdateTaskId: string | null;
   taskUpdateError: string | null;
+  density?: "comfortable" | "compact";
   actions: TaskListActions;
 };
 
 /**
- * Dense task inventory.
+ * Dense task inventory with the task as the scanning anchor.
  *
- * One `<table className="data-table">` serves both layouts. At phone widths
- * (<=760px) the table, head, and body become blocks and the row reproduces the
- * shared `.task-row` grammar (flex column, 10px gap, 12px/14px padding, divider
- * border) with structural utilities; the Task/Actions cells drop their boxes
- * (`display: contents`) so their children become the row's flex items. Above
- * 760px the row returns to native table layout, with `.row-main`/`.row-title`
- * carrying the task cell typography.
+ * Desktop IA is TASK | PRIORITY | DUE | STATUS | ACTIONS. The Task cell carries
+ * the primary title (clicking it opens the shared `EditTaskModal` through the
+ * row's controlled editor state) and a muted `Project · Goal` context line, so
+ * the dedicated Project/Goal columns are gone. Every row still keeps the
+ * `#task-<id>` anchor and mounts exactly one progressive editor.
  *
- * Reproducing the grammar here instead of applying `.task-row` directly keeps
- * the desktop row free of the shared class's padding/border, which Chromium
- * applies to `display: table-row` elements and which would need `!important`
- * overrides to undo.
- *
- * Keeping a single render preserves the `#task-<id>` anchor and mounts exactly
- * one progressive-disclosure editor per task at every width.
- *
- * Width policy: the table fills its column (`w-full`) and the secondary columns
- * use percentage tracks, so the Task column takes every pixel left over. The
- * tracks follow the column priority — Task, then Project, then Goal, then the
- * compact state columns — instead of giving every column an equal share, and
- * Project/Goal get enough room that ordinary names do not truncate. Truncation
- * keeps a `title` tooltip and only engages for genuinely long values. The 44rem
- * floor only engages below tablet width, where the wrapper scrolls.
- *
- * The estimate lives in the Task cell instead of its own column; it stays
- * visible on desktop and the phone meta block carries it below 761px.
+ * Density is a per-render class: `--density-compact` trims cell padding to
+ * ~44–50px rows via the shared `.data-table` grammar; comfortable stays at the
+ * ~58–64px default. Phone widths (<=760px) collapse to stacked `task-row` boxes
+ * as before, with project/goal carried in the phone metadata block.
  */
 export function TasksListTable({
   tasks,
@@ -73,27 +62,22 @@ export function TasksListTable({
   returnTo,
   taskUpdateTaskId,
   taskUpdateError,
+  density = "comfortable",
   actions,
 }: TasksListTableProps) {
   return (
-    <div className="overflow-x-auto">
-      <table className="data-table table-fixed max-[761px]:block min-[761px]:w-full min-[761px]:min-w-[44rem] min-[761px]:leading-none [&_td]:px-2 [&_th]:px-2">
+    <div className={`overflow-x-auto${density === "compact" ? " data-table--density-compact" : ""}`}>
+      <table className="data-table table-fixed max-[761px]:block min-[761px]:w-full min-[761px]:min-w-[40rem] [&_td]:px-2 [&_th]:px-2">
         <thead className="max-[761px]:hidden">
           <tr>
             <th scope="col">Task</th>
-            <th scope="col" className="w-[16%]">
-              Project
-            </th>
-            <th scope="col" className="w-[14%]">
-              Goal
-            </th>
-            <th scope="col" className="w-[9%]">
+            <th scope="col" className="w-[10%]">
               Priority
             </th>
-            <th scope="col" className="w-[11%]">
+            <th scope="col" className="w-[12%]">
               Due
             </th>
-            <th scope="col" className="w-[11%]">
+            <th scope="col" className="w-[13%]">
               Status
             </th>
             <th scope="col" className="w-[8%] text-right">
@@ -119,8 +103,8 @@ export function TasksListTable({
 }
 
 const DUE_STATE_CLASS: Record<ReturnType<typeof getTaskDueDateState>, string> = {
-  overdue: "text-[color:var(--status-overdue)]",
-  today: "text-[color:var(--status-info)]",
+  overdue: "text-[color:var(--status-overdue)] font-medium",
+  today: "text-[color:var(--status-info)] font-medium",
   soon: "text-[color:var(--ega-text)]",
   scheduled: "text-[color:var(--ega-text-secondary)]",
   none: "text-[color:var(--ega-text-secondary)]",
@@ -133,6 +117,23 @@ const DUE_STATE_LABEL: Record<ReturnType<typeof getTaskDueDateState>, string | n
   scheduled: null,
   none: null,
 };
+
+const PRIORITY_TEXT_CLASS: Record<string, string> = {
+  urgent: "text-[color:var(--priority-high)] font-medium",
+  high: "text-[color:var(--priority-high)]",
+  medium: "text-[color:var(--priority-medium)]",
+  low: "text-[color:var(--ega-text-tertiary)]",
+};
+
+function TaskPriorityCell({ priority }: { priority: string }) {
+  return (
+    <span
+      className={`text-[length:var(--text-meta-lg)] ${PRIORITY_TEXT_CLASS[priority] ?? "text-[color:var(--ega-text-tertiary)]"}`}
+    >
+      {formatDisplayToken(priority)}
+    </span>
+  );
+}
 
 function TaskDueCell({ dueDate, status }: { dueDate: string | null; status: string }) {
   if (!dueDate) {
@@ -155,6 +156,46 @@ function TaskDueCell({ dueDate, status }: { dueDate: string | null; status: stri
   );
 }
 
+function TaskContextLine({
+  projectName,
+  goalTitle,
+}: {
+  projectName: string | null;
+  goalTitle: string | null;
+}) {
+  if (!projectName && !goalTitle) {
+    return null;
+  }
+
+  const projectPart = projectName ? (
+    <span className="min-w-0 max-w-[20ch] truncate" title={projectName}>
+      {projectName}
+    </span>
+  ) : null;
+  const separator =
+    projectName && goalTitle ? (
+      <span className="shrink-0 text-[color:var(--ega-text-tertiary)]" aria-hidden="true">
+        ·
+      </span>
+    ) : null;
+  const goalPart = goalTitle ? (
+    <span className="min-w-0 truncate" title={goalTitle}>
+      {goalTitle}
+    </span>
+  ) : null;
+
+  return (
+    <div
+      className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
+      data-testid="task-context-line"
+    >
+      {projectPart}
+      {separator}
+      {goalPart}
+    </div>
+  );
+}
+
 function TaskListRow({
   task,
   trackedSeconds,
@@ -169,6 +210,7 @@ function TaskListRow({
   actions: TaskListActions;
 }) {
   const archived = isTaskArchived(task.archived_at);
+  const done = isTaskCompletedStatus(task.status);
   const isPinned = task.focus_rank !== null;
   const projectName = task.projects?.name ?? null;
   const goalTitle = task.goals?.title ?? null;
@@ -177,9 +219,18 @@ function TaskListRow({
     : null;
   const trackedLabel = typeof trackedSeconds === "number" ? trackedSeconds : null;
 
+  // The row owns the (error-aware) editor state so a title click drives the
+  // same `EditTaskModal` the ••• control mounts — no duplicate editor.
+  const { open, handleOpenChange } = useTaskEditorOpenState({
+    taskId: task.id,
+    error: inlineError,
+  });
+
   const rowActions = (
     <TaskCardActions
       compact
+      open={open}
+      onOpenChange={handleOpenChange}
       action={actions.updateAction}
       updateEditorAction={actions.updateEditorAction}
       deleteAction={actions.deleteAction}
@@ -222,30 +273,47 @@ function TaskListRow({
     />
   );
 
+  const titleButton = (
+    <button
+      type="button"
+      className="task-row-title-btn"
+      title={task.title}
+      aria-haspopup="dialog"
+      aria-label={`Edit ${task.title}`}
+      data-testid={`task-title-edit-${task.id}`}
+      onClick={() => handleOpenChange(true)}
+    >
+      {task.title}
+    </button>
+  );
+
   return (
     <tr
       id={`task-${task.id}`}
+      data-row-done={done || undefined}
+      data-row-archived={archived || undefined}
       className="scroll-mt-24 max-[761px]:flex max-[761px]:flex-col max-[761px]:gap-2.5 max-[761px]:border-b max-[761px]:border-[var(--ega-divider)] max-[761px]:px-3.5 max-[761px]:py-3 max-[761px]:last:border-b-0"
     >
       <td className="max-[761px]:contents">
         <div className="row-main">
           <div className="flex min-w-0 items-center gap-2">
-            <span className="row-title" title={task.title}>
-              {task.title}
-            </span>
+            {titleButton}
             {task.description ? (
               <span className="max-[761px]:hidden min-w-0 flex-1 truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
                 {task.description}
               </span>
             ) : null}
             {estimateLabel ? (
-              <Badge tone="muted" className="max-[761px]:hidden">
+              <Badge tone="muted" className="max-[761px]:hidden shrink-0">
                 Est. {estimateLabel}
               </Badge>
             ) : null}
             {isPinned ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
             {archived ? <Badge tone="muted">Archived</Badge> : null}
           </div>
+
+          <TaskContextLine projectName={projectName} goalTitle={goalTitle} />
+
           {task.description ? (
             <span className="line-clamp-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] min-[761px]:hidden">
               {task.description}
@@ -276,27 +344,7 @@ function TaskListRow({
       </td>
 
       <td className="max-[761px]:hidden">
-        <span
-          className="block truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
-          title={projectName ?? undefined}
-        >
-          {projectName ?? "—"}
-        </span>
-      </td>
-
-      <td className="max-[761px]:hidden">
-        <span
-          className="block truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]"
-          title={goalTitle ?? undefined}
-        >
-          {goalTitle ?? "—"}
-        </span>
-      </td>
-
-      <td className="max-[761px]:hidden">
-        <Badge tone={task.priority === "urgent" || task.priority === "high" ? "warn" : "muted"}>
-          {formatDisplayToken(task.priority)}
-        </Badge>
+        <TaskPriorityCell priority={task.priority} />
       </td>
 
       <td className="max-[761px]:hidden">

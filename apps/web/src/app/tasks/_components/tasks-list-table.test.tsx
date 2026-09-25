@@ -73,6 +73,7 @@ function buildActions(): TaskListActions {
 function renderTable(
   tasks: TaskRecord[] = [buildTask()],
   actions: TaskListActions = buildActions(),
+  props: Partial<Parameters<typeof TasksListTable>[0]> = {},
 ) {
   return act(async () => {
     root.render(
@@ -83,6 +84,7 @@ function renderTable(
         taskUpdateTaskId={null}
         taskUpdateError={null}
         actions={actions}
+        {...props}
       />,
     );
   });
@@ -101,7 +103,7 @@ afterEach(async () => {
 });
 
 describe("TasksListTable dense inventory", () => {
-  it("renders a real data table with the inventory columns", async () => {
+  it("renders a real data table with the consolidated inventory columns", async () => {
     await renderTable();
 
     const table = container.querySelector("table.data-table");
@@ -110,26 +112,14 @@ describe("TasksListTable dense inventory", () => {
     const headers = Array.from(container.querySelectorAll("thead th")).map(
       (header) => header.textContent?.trim(),
     );
-    expect(headers).toEqual([
-      "Task",
-      "Project",
-      "Goal",
-      "Priority",
-      "Due",
-      "Status",
-      "Actions",
-    ]);
+    expect(headers).toEqual(["Task", "Priority", "Due", "Status", "Actions"]);
   });
 
-  it("lets the table fill its column with content-responsive tracks", async () => {
+  it("lets the table fill its column without the removed Project/Goal tracks", async () => {
     await renderTable();
 
     const table = container.querySelector("table.data-table");
     expect(table?.classList.contains("min-[761px]:w-full")).toBe(true);
-    // The old 51rem floor forced an inner scroll on a 1280 desktop; the new
-    // floor only engages below tablet width, where the wrapper scrolls.
-    expect(table?.classList.contains("min-[761px]:min-w-[44rem]")).toBe(true);
-    expect(table?.className).not.toContain("min-w-[51rem]");
 
     const headerWidths = Array.from(container.querySelectorAll("thead th")).map(
       (header) => header.getAttribute("class") ?? "",
@@ -139,47 +129,55 @@ describe("TasksListTable dense inventory", () => {
       return match ? Number(match[1]) : null;
     };
 
-    // The Task column stays auto so it takes the remaining width.
+    // The Task column stays auto so it takes every leftover pixel and acts as
+    // the remaining space owner.
     expect(headerWidths[0]).not.toMatch(/w-\[/);
-    // Every other column is a percentage track...
-    for (const index of [1, 2, 3, 4, 5, 6]) {
+    // The compact state columns are percentage tracks.
+    for (const index of [1, 2, 3, 4]) {
       expect(trackOf(index)).not.toBeNull();
     }
-    // ...and the tracks follow the column priority instead of an equal share:
-    // Project and Goal get real room, the compact state columns get less.
-    expect(trackOf(1)!).toBeGreaterThanOrEqual(trackOf(2)!);
-    expect(trackOf(2)!).toBeGreaterThan(trackOf(3)!);
-    expect(trackOf(1)!).toBeGreaterThan(trackOf(4)!);
   });
 
-  it("keeps a title tooltip on project and goal values and shows the estimate in the task cell", async () => {
+  it("carries project and goal as a muted context line under the title", async () => {
     await renderTable();
 
-    const projectSpan = Array.from(container.querySelectorAll("span")).find(
-      (span) => span.textContent === "EGA House",
-    );
-    expect(projectSpan?.getAttribute("title")).toBe("EGA House");
-    expect(projectSpan?.classList.contains("truncate")).toBe(true);
+    const rows = container.querySelectorAll("#task-task-1");
+    expect(rows.length).toBe(1);
+    const contextLine = container.querySelector('[data-testid="task-context-line"]');
+    expect(contextLine).not.toBeNull();
+    expect(contextLine?.textContent).toContain("EGA House");
+    expect(contextLine?.textContent).toContain("·");
+    expect(contextLine?.textContent).toContain("Tighten weekly review");
+  });
 
-    const goalSpan = Array.from(container.querySelectorAll("span")).find(
-      (span) => span.textContent === "Tighten weekly review",
-    );
-    expect(goalSpan?.getAttribute("title")).toBe("Tighten weekly review");
+  it("keeps project alone when no goal and never renders a dangling separator", async () => {
+    await renderTable([
+      buildTask({
+        id: "task-2",
+        title: "Project-only task",
+        goals: null,
+        description: null,
+        task_recurrences: [],
+      }),
+      buildTask({
+        id: "task-3",
+        title: "Unassigned task",
+        projects: null,
+        goals: null,
+        description: null,
+        task_recurrences: [],
+      }),
+    ]);
 
-    // The estimate column was folded into the Task cell (hidden on phones,
-    // where the phone meta badge carries it instead).
-    const estimateBadge = Array.from(container.querySelectorAll("span")).find(
-      (span) =>
-        span.textContent === "Est. 1h 15m" && span.classList.contains("max-[761px]:hidden"),
-    );
-    expect(estimateBadge).not.toBeUndefined();
+    const projectOnlyContext = container
+      .querySelector("#task-task-2 [data-testid='task-context-line']")
+      ?.textContent;
+    expect(projectOnlyContext).toContain("EGA House");
+    expect(projectOnlyContext).not.toContain("·");
 
-    // Desktop due cell is compact; the phone label keeps the full date.
-    const dueCell = Array.from(container.querySelectorAll("span")).find((span) =>
-      span.getAttribute("title") === "May 1, 2026",
-    );
-    expect(dueCell?.textContent).toContain("May 1");
-    expect(dueCell?.textContent).not.toContain("2026");
+    const unassignedRow = container.querySelector("#task-task-3");
+    expect(unassignedRow?.querySelector("[data-testid='task-context-line']")).toBeNull();
+    expect(unassignedRow?.textContent).toContain("Unassigned task");
   });
 
   it("keeps the #task-<id> anchor and one progressive-disclosure editor per row", async () => {
@@ -258,6 +256,55 @@ describe("TasksListTable dense inventory", () => {
     expect(minimalRow?.textContent).not.toContain("No project");
   });
 
+  it("truncates long titles to a single line while keeping the full text discoverable", async () => {
+    await renderTable([
+      buildTask({
+        title: "A genuinely long operational task title that would otherwise explode into many wrapped lines and hurt scanability across the 187-task inventory",
+      }),
+    ]);
+
+    const titleButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-title-edit-task-1"]',
+    );
+    expect(titleButton).not.toBeNull();
+    expect(titleButton?.className).toContain("task-row-title-btn");
+    expect(titleButton?.getAttribute("title")).toBe(
+      "A genuinely long operational task title that would otherwise explode into many wrapped lines and hurt scanability across the 187-task inventory",
+    );
+    expect(titleButton?.getAttribute("aria-label")).toBe(
+      "Edit A genuinely long operational task title that would otherwise explode into many wrapped lines and hurt scanability across the 187-task inventory",
+    );
+  });
+
+  it("opens the shared EditTaskModal from the title and never submits anything", async () => {
+    const actions = buildActions();
+    await renderTable([buildTask()], actions);
+
+    const titleButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-title-edit-task-1"]',
+    );
+    expect(titleButton).not.toBeNull();
+
+    await act(async () => {
+      titleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    expect(dialogs.length).toBe(1);
+    expect(dialogs[0].getAttribute("aria-label")).toBe("Edit task Draft weekly execution review");
+    for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the ••• trigger and the title wired to one editor per row", async () => {
+    await renderTable();
+
+    const moreOptions = container.querySelector('[data-testid="task-more-options-task-1"]');
+    await act(async () => {
+      moreOptions?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(document.querySelectorAll('[role="dialog"]').length).toBe(1);
+  });
+
   it("exposes the primary action and compact progressive disclosure with the same wiring", async () => {
     const actions = buildActions();
     await renderTable([buildTask()], actions);
@@ -286,13 +333,6 @@ describe("TasksListTable dense inventory", () => {
     ).map((input) => input.value);
     expect(returnToValues).toContain("/tasks?status=todo&layout=kanban");
     expect(container.querySelector('input[name="status"][value="done"]')).not.toBeNull();
-
-    // Opening the editor mutates nothing.
-    await act(async () => {
-      moreOptions?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
-    for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
   });
 
   it("auto-opens the editor for the row that carries the save error", async () => {
@@ -317,7 +357,24 @@ describe("TasksListTable dense inventory", () => {
     expect(dialogs[0].textContent).toContain("Could not save task");
   });
 
-  it("gives a Done task a direct archive control and hides the mark-done shortcut", async () => {
+  it("stays clickable after a title open is dismissed: closing returns to the list", async () => {
+    await renderTable();
+
+    const titleButton = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-title-edit-task-1"]',
+    );
+    await act(async () => {
+      titleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(document.querySelectorAll('[role="dialog"]').length).toBe(1);
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("flags done rows quiet and offers the direct archive control only for done tasks", async () => {
     const actions = buildActions();
     await act(async () => {
       root.render(
@@ -332,6 +389,9 @@ describe("TasksListTable dense inventory", () => {
       );
     });
 
+    const row = container.querySelector("#task-task-1");
+    expect(row?.getAttribute("data-row-done")).toBe("true");
+
     const archiveButton = container.querySelector<HTMLButtonElement>(
       '[data-testid="task-archive-task-1"]',
     );
@@ -339,9 +399,6 @@ describe("TasksListTable dense inventory", () => {
     expect(archiveButton?.getAttribute("aria-label")).toBe("Archive task");
     expect(container.querySelector('button[aria-label="Mark Draft weekly execution review done"]')).toBeNull();
     expect(container.querySelector('button[aria-label="Start timer for Draft weekly execution review"]')).toBeNull();
-
-    // Compact direct archive button is icon-only.
-    expect(archiveButton?.getAttribute("aria-label")).toBe("Archive task");
 
     await act(async () => {
       archiveButton!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -376,6 +433,7 @@ describe("TasksListTable dense inventory", () => {
 
     const row = container.querySelector("#task-task-1");
     expect(row).not.toBeNull();
+    expect(row?.getAttribute("data-row-archived")).toBe("true");
     expect(row?.textContent).toContain("Done");
     expect(row?.textContent).toContain("Archived");
 
@@ -395,5 +453,11 @@ describe("TasksListTable dense inventory", () => {
     expect(
       (container.querySelector('[data-testid="task-restore-task-1"]') as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it("renders the compact density with the trim marker", async () => {
+    await renderTable([buildTask()], buildActions(), { density: "compact" });
+
+    expect(container.querySelector(".data-table--density-compact")).not.toBeNull();
   });
 });

@@ -1147,6 +1147,96 @@ select.ega-glass-input {
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Tasks list refinements ──────────────────────────────
+   The row title is the list's primary scanning anchor and its edit
+   affordance: one line, ellipsis-truncated, full value discoverable via
+   the native tooltip and the edit modal. Focus stays keyboard-visible;
+   completed rows go quiet but stay readable. */
+
+.task-row-title-btn {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--ega-text);
+  font-size: var(--text-body-lg);
+  font-weight: 500;
+  letter-spacing: inherit;
+  line-height: var(--leading-snug);
+  text-align: left;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.task-row-title-btn:focus-visible {
+  outline: var(--ega-focus-outline);
+  outline-offset: 2px;
+}
+
+.data-table tbody tr[data-row-done="true"] .task-row-title-btn {
+  color: var(--ega-text-secondary);
+}
+
+.data-table tbody tr[data-row-archived="true"] .task-row-title-btn {
+  color: var(--ega-text-tertiary);
+}
+
+/* Compact density: ~44–50px rows so hundreds of tasks stay scannable. */
+.data-table--density-compact .data-table tbody td {
+  padding-block: 5px;
+}
+
+/* Disclosure menus inside the toolbar (Sort, Display) use the shared
+   action-overflow menu styles anchored to the summary pill. */
+.filter-disclosure {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.filter-disclosure > summary {
+  list-style: none;
+}
+
+.filter-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.filter-menu-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  padding: 6px 8px;
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta-lg);
+  font-weight: 500;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+}
+
+.filter-menu-item:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.filter-menu-item-active {
+  background: var(--ega-surface-muted);
+  color: var(--ega-text);
+}
+
+.filter-menu-item:focus-visible {
+  outline: var(--ega-focus-outline);
+  outline-offset: 1px;
+}
+
 /* ══════════════════════════════════════════════════════════════
    7. Progress and feedback
    ══════════════════════════════════════════════════════════════ */
