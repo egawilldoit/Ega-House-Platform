@@ -129,6 +129,7 @@ function TaskReminderCard({
   cancelAction: SimpleTaskAction;
 }) {
   const [formOpen, setFormOpen] = useState(false);
+  const reminderTimezoneOffsetRef = useRef<HTMLInputElement>(null);
   const pendingReminders = reminders
     .filter((reminder) => reminder.status === "pending")
     .sort((first, second) => first.remind_at.localeCompare(second.remind_at));
@@ -136,12 +137,26 @@ function TaskReminderCard({
 
   if (formOpen) {
     return (
-      <form action={currentPendingReminder ? updateAction : createAction} className="space-y-3">
+      <form
+        action={currentPendingReminder ? updateAction : createAction}
+        className="space-y-3"
+        onSubmit={() => {
+          if (reminderTimezoneOffsetRef.current) {
+            reminderTimezoneOffsetRef.current.value = String(new Date().getTimezoneOffset());
+          }
+        }}
+      >
         <input type="hidden" name="taskId" value={taskId} />
         {currentPendingReminder ? (
           <input type="hidden" name="reminderId" value={currentPendingReminder.id} />
         ) : null}
         <input type="hidden" name="returnTo" value={returnTo} />
+        <input
+          ref={reminderTimezoneOffsetRef}
+          type="hidden"
+          name="reminderTimezoneOffsetMinutes"
+          defaultValue="0"
+        />
         <input type="hidden" name="channel" value="email" />
         <input type="hidden" name="status" value="pending" />
         <div className="grid gap-3 sm:grid-cols-2">
