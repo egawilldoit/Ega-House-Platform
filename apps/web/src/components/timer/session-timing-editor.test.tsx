@@ -375,10 +375,6 @@ describe("SessionTimingEditor centered modal", () => {
     });
     expect(dialog()).toBeNull();
     await act(async () => {});
-    const activeElement = document.activeElement;
-    expect(
-      activeElement === triggerButton() || activeElement === document.body,
-      "focus must return to the trigger after close (Radix restoration)",
-    ).toBe(true);
+    expect(document.activeElement).toBe(triggerButton());
   });
 });
