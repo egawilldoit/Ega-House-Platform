@@ -756,4 +756,3 @@ function TaskEditorPanel({
     </div>
   );
 }
-
