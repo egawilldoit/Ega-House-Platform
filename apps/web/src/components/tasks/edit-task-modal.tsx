@@ -541,13 +541,6 @@ function TaskEditorPanel({
                       </label>
 
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <ContextLine label="Project" value={projectName} />
-                        <ContextLine label="Goal" value={goalTitle} />
-                      </div>
-                      {taskDescription ? (
-                        <ContextLine label="Description" value={taskDescription} />
-                      ) : null}
-                      <div className="grid gap-3 sm:grid-cols-2">
                         <label className="min-w-0 space-y-2">
                           <span className="block text-xs font-medium text-[color:var(--ega-text-secondary)]">
                             Status
