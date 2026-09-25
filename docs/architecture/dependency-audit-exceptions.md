@@ -22,7 +22,6 @@ the advisory.
 | Leaf package | Advisory | Remediation | Evidence |
 | --- | --- | --- | --- |
 | `image-size@1.2.1` | GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq | align the full Metro 0.83 family (`metro`, its 13 sibling packages, and `ob1`) to `0.83.8`; Metro 0.83.8 removed `image-size` and vendors a reduced parser that excludes the affected ICNS/JXL/HEIF handlers | lockfile contains no `image-size`; production audit has no image-size high leaf; no Expo/RN downgrade |
-|
 | `next` (direct, critical) | GHSA-p293-qw3h-jr36, GHSA-2xp9-vwfh-vxw4 (`>=16.0.0 <16.3.3`) | `next 16.2.12 -> 16.3.5` (non-major), owner-approved Next pin move; `eslint-config-next` and `@next/swc-linux-x64-gnu` moved with it | production audit `critical 1 -> 0`; `workspace-proofs` Next pin updated to 16.3.5 |
 | `sharp` | GHSA-rgj7-g3m4-5g8c (`<0.35.4`, reached via `next`) | override `sharp 0.35.3 -> 0.35.4` (satisfies the `next`/`@next/*` range) | `npm audit` no longer lists `sharp` |
 | `js-yaml` | GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh (sources 1123911/1138115/1193726/1193727) | scoped overrides `js-yaml@^4 -> 4.3.2`, `js-yaml@^3 -> 3.15.2` (both within the parents' existing major ranges) | `npm audit` no longer lists `js-yaml` |
