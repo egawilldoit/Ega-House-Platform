@@ -121,6 +121,63 @@ describe("TaskCardActions progressive disclosure (EGA-651)", () => {
     expect(container.textContent).toContain("More options");
   });
 
+  it("exposes a direct Archive control outside the overflow for an active completed task", async () => {
+    await renderCard({ defaultStatus: "done" });
+
+    const archive = container.querySelector(
+      'button[aria-label="Archive task"]',
+    ) as HTMLButtonElement | null;
+    expect(archive).not.toBeNull();
+    expect(archive?.type).toBe("submit");
+    expect(archive?.closest('[role="dialog"]')).toBeNull();
+
+    // The direct control submits the canonical archive action, not the row
+    // editor or any other action.
+    await click(archive!);
+    expect(actions.archiveAction).toHaveBeenCalledTimes(1);
+    const formData = actions.archiveAction.mock.calls[0][0] as FormData;
+    expect(formData.get("taskId")).toBe("task-1");
+    expect(formData.get("returnTo")).toBe("/tasks");
+    expect(actions.action).not.toHaveBeenCalled();
+    expect(actions.deleteAction).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the completed-only Archive shortcut for an incomplete task", async () => {
+    await renderCard({ defaultStatus: "in_progress" });
+
+    expect(container.querySelector('button[aria-label="Archive task"]')).toBeNull();
+    expect(container.textContent).not.toContain("Archive");
+  });
+
+  it("does not use the direct Archive shortcut for an archived task", async () => {
+    await renderCard({
+      defaultStatus: "done",
+      archivedAt: "2026-09-01T00:00:00.000Z",
+    });
+
+    expect(container.querySelector('button[aria-label="Archive task"]')).toBeNull();
+  });
+
+  it("exposes a direct Restore control outside the overflow for an archived task", async () => {
+    await renderCard({
+      defaultStatus: "done",
+      archivedAt: "2026-09-01T00:00:00.000Z",
+    });
+
+    const restore = container.querySelector(
+      'button[aria-label="Restore task"]',
+    ) as HTMLButtonElement | null;
+    expect(restore).not.toBeNull();
+    expect(restore?.closest('[role="dialog"]')).toBeNull();
+
+    await click(restore!);
+    expect(actions.unarchiveAction).toHaveBeenCalledTimes(1);
+    const formData = actions.unarchiveAction.mock.calls[0][0] as FormData;
+    expect(formData.get("taskId")).toBe("task-1");
+    expect(formData.get("returnTo")).toBe("/tasks");
+    expect(actions.deleteAction).not.toHaveBeenCalled();
+  });
+
   it("EGA-651: opens the advanced editor with a visible, announced alert when this task has a save error", async () => {
     await renderCard({ error: "Could not save task" });
 

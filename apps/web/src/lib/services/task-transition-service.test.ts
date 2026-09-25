@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  archiveCompletedTasksSafely,
   archiveTaskSafely,
   blockTask,
   markTaskDone,
@@ -69,6 +70,29 @@ function createTaskTransitionSupabaseMock(options?: {
                 assert.equal(column, "id");
                 state.taskId = value;
                 return this;
+              },
+              in(column: string, values: string[]) {
+                assert.equal(column, "id");
+                const submittedIds = [...values];
+                return {
+                  eq(column: string, value: string) {
+                    assert.equal(column, "status");
+                    assert.equal(value, "done");
+                    return {
+                      is(column: string, value: null) {
+                        assert.equal(column, "archived_at");
+                        assert.equal(value, null);
+                        return Promise.resolve({
+                          data: tasks
+                            .filter((task) => submittedIds.includes(task.id))
+                            .filter((task) => task.status === "done" && task.archived_at === null)
+                            .map((task) => ({ id: task.id })),
+                          error: null,
+                        });
+                      },
+                    };
+                  },
+                };
               },
               maybeSingle: async () => ({
                 data: (() => {
@@ -526,6 +550,88 @@ test("archiveTaskSafely archives safely and clears focus_rank", async () => {
     focus_rank: null,
     updated_at: "2026-04-21T10:25:00.000Z",
   });
+});
+
+test("archiveCompletedTasksSafely archives only eligible completed, unarchived tasks", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "done",
+        completed_at: "2026-04-21T09:00:00.000Z",
+        archived_at: null,
+        archived_by: null,
+        focus_rank: 2,
+      },
+      {
+        id: "task-2",
+        status: "in_progress",
+        completed_at: null,
+        archived_at: null,
+      },
+      {
+        id: "task-3",
+        status: "done",
+        completed_at: "2026-04-20T09:00:00.000Z",
+        archived_at: "2026-04-20T18:00:00.000Z",
+      },
+    ],
+  });
+
+  const result = await archiveCompletedTasksSafely(["task-1", "task-2", "task-3"], {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:25:00.000Z",
+  });
+
+  assert.deepEqual(result.archivedTaskIds, ["task-1"]);
+  assert.equal(result.ineligibleCount, 2);
+  assert.deepEqual(result.failures, []);
+
+  // task-1 keeps its completed status; only the archive fields change and the
+  // focus rank it was holding while still listed gets cleared.
+  assert.equal(mock.tasks[0]?.status, "done");
+  assert.equal(mock.tasks[0]?.completed_at, "2026-04-21T09:00:00.000Z");
+  assert.equal(mock.tasks[0]?.archived_at, "2026-04-21T10:25:00.000Z");
+  assert.equal(mock.tasks[0]?.focus_rank, null);
+
+  // Completed cleanup never touches the ineligible tasks.
+  assert.equal(mock.tasks[1]?.archived_at ?? null, null);
+  assert.equal(mock.tasks[2]?.archived_at, "2026-04-20T18:00:00.000Z");
+  assert.equal(mock.taskUpdateCalls.length, 1);
+  assert.equal(mock.taskUpdateCalls[0]?.taskId, "task-1");
+});
+
+test("archiveCompletedTasksSafely reports the per-task archive failure without counting it as archived", async () => {
+  const mock = createTaskTransitionSupabaseMock({
+    tasks: [
+      {
+        id: "task-1",
+        status: "done",
+        completed_at: "2026-04-21T09:00:00.000Z",
+        archived_at: null,
+      },
+    ],
+    sessions: [
+      {
+        id: "session-open",
+        task_id: "task-1",
+        started_at: "2026-04-21T09:45:00.000Z",
+        ended_at: null,
+      },
+    ],
+  });
+
+  const result = await archiveCompletedTasksSafely(["task-1"], {
+    supabase: mock.supabase,
+    nowIso: "2026-04-21T10:25:00.000Z",
+  });
+
+  assert.deepEqual(result.archivedTaskIds, []);
+  assert.equal(result.ineligibleCount, 0);
+  assert.deepEqual(result.failures, [
+    { taskId: "task-1", errorMessage: "Stop the active timer before archiving this task." },
+  ]);
+  assert.equal(mock.tasks[0]?.archived_at ?? null, null);
 });
 
 test("planTaskForToday sets planned_for_date to local today", async () => {

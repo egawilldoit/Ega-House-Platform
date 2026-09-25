@@ -29,7 +29,7 @@ import {
   updateTaskInline,
   validateTaskInlineUpdateInput,
 } from "@/lib/services/task-service";
-import { archiveTaskSafely } from "@/lib/services/task-transition-service";
+import { archiveCompletedTasksSafely, archiveTaskSafely } from "@/lib/services/task-transition-service";
 import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
@@ -691,6 +691,56 @@ export async function archiveTaskAction(formData: FormData) {
 
 export async function unarchiveTaskAction(formData: FormData) {
   await updateTaskArchiveAction(formData, false);
+}
+
+export async function archiveManyCompletedTasksAction(formData: FormData) {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+
+  if (String(formData.get("confirmArchiveCompleted") ?? "").trim() !== "true") {
+    redirectWithTasksError(returnPath, "Bulk archive confirmation is required.");
+  }
+
+  const requestIds = formData
+    .getAll("taskIds")
+    .map((value) => String(value ?? "").trim())
+    .filter(Boolean);
+  const uniqueIds = [...new Set(requestIds)];
+
+  if (uniqueIds.length === 0) {
+    redirectWithTasksError(returnPath, "Select at least one completed task to archive.");
+  }
+
+  // Eligibility is re-verified server-side by the transition service under the
+  // caller's RLS scope; the submitted ids only seed the intent.
+  const bulkResult = await archiveCompletedTasksSafely(uniqueIds);
+
+  const archivedCount = bulkResult.archivedTaskIds.length;
+  const failureCount = bulkResult.failures.length;
+  const ineligibleCount = bulkResult.ineligibleCount;
+
+  if (archivedCount === 0) {
+    redirectWithTasksError(
+      returnPath,
+      failureCount > 0
+        ? bulkResult.failures[0]?.errorMessage ?? "Unable to archive tasks right now."
+        : "No completed tasks are eligible to archive right now.",
+    );
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+
+  const parts = [`Archived ${archivedCount} completed task${archivedCount === 1 ? "" : "s"}`];
+  if (failureCount > 0) {
+    parts.push(`${failureCount} could not be archived`);
+  }
+  if (ineligibleCount > 0) {
+    parts.push(`${ineligibleCount} were no longer eligible`);
+  }
+  const successMessage = `${parts.join("; ")}.`;
+
+  redirectWithWorkspaceFeedback(returnPath, {
+    taskSuccessMessage: successMessage,
+  });
 }
 
 export async function deleteTaskAction(formData: FormData) {
