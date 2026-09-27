@@ -14,10 +14,24 @@ function isValidWindowIso(value: unknown): boolean {
   return Number.isFinite(Date.parse(value));
 }
 
+/** Full nested session shape consumed by the Work Analytics page. */
+const DEFAULT_SESSION_SELECT =
+  "task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name), goals(id, title))";
+
+/**
+ * Compact session shape for consumers that render timing evidence only (Home
+ * Activity pulse). The canonical daily-series/insights owners never read the
+ * nested task relations, and the shared execution-evidence module falls back
+ * to `task_id` when `tasks` is absent.
+ */
+export const ACTIVITY_PULSE_SESSION_SELECT =
+  "task_id, started_at, ended_at, duration_seconds";
+
 export async function getWorkAnalyticsSessionsForWindow(args: {
   ownerUserId: string;
   window: ExecutionEvidenceWindow;
   supabase?: SupabaseServerClient;
+  select?: string;
 }) {
   if (!isValidWindowIso(args.window.startIso) || !isValidWindowIso(args.window.endIso)) {
     return { data: null, errorMessage: "Invalid window for work analytics." };
@@ -25,7 +39,7 @@ export async function getWorkAnalyticsSessionsForWindow(args: {
   const supabase = await resolveSupabaseClient(args.supabase);
   const { data, error } = await supabase
     .from("task_sessions")
-    .select("task_id, started_at, ended_at, duration_seconds, tasks(id, title, project_id, estimate_minutes, projects(id, name), goals(id, title))")
+    .select(args.select ?? DEFAULT_SESSION_SELECT)
     .eq("owner_user_id", args.ownerUserId)
     .lt("started_at", args.window.endIso)
     .or(`ended_at.is.null,ended_at.gte.${args.window.startIso}`)
@@ -35,7 +49,11 @@ export async function getWorkAnalyticsSessionsForWindow(args: {
     return { data: null, errorMessage: `Failed to load work analytics sessions: ${error.message}` };
   }
 
-  return { data: (data ?? []) as ExecutionEvidenceSessionRow[], errorMessage: null };
+  // The select parser only infers row types from string literals; a variable
+  // select (e.g. the compact Activity-pulse shape) yields the generic row, so
+  // the cast goes through unknown. `tasks` is optional on the row type and the
+  // shared execution-evidence module falls back to `task_id` when it is absent.
+  return { data: (data ?? []) as unknown as ExecutionEvidenceSessionRow[], errorMessage: null };
 }
 
 export type WorkAnalyticsTaskCounts = {

@@ -1,9 +1,6 @@
-import { SupabaseTimeContextRepository } from "@ega/data-access";
-import { createAuthenticatedActor } from "@ega/application/auth/actor";
-
-import { createClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import {
+  ACTIVITY_PULSE_SESSION_SELECT,
   getWorkAnalyticsSessionsForWindow,
   getWorkAnalyticsTaskCounts,
 } from "@/lib/services/work-analytics-data-adapter";
@@ -12,7 +9,6 @@ import {
   calculateWorkAnalyticsInsights,
   type WorkAnalyticsDaily,
 } from "@/lib/services/work-analytics-service";
-import { getSessionHeatmapIntensityLevel } from "@/components/review/session-heatmap";
 import { shiftIsoDateByDays } from "@/lib/review-week";
 
 /**
@@ -26,13 +22,17 @@ import { shiftIsoDateByDays } from "@/lib/review-week";
  * - daily bucketing + per-day session/completion counts:
  *   `calculateWorkAnalyticsDailySeries` (canonical execution-evidence owner)
  * - current streak + active-day count: `calculateWorkAnalyticsInsights`
- * - intensity per day: `getSessionHeatmapIntensityLevel` (canonical scale)
+ * - intensity per day: `resolveHomeActivityIntensityLevel` below — a local
+ *   mirror of the canonical EGA-662 absolute-threshold scale
  * - completion totals: `getWorkAnalyticsTaskCounts` (canonical counts read)
  *
  * EGA-662 integration point: replace the body of `loadActivityPulse()` with a
  * call to the canonical `buildWorkActivityCalendar(...)` summary (daily cells,
- * active-day count, totals, current streak). `toHomeActivityPulse()` is
- * already shaped to map that summary into `HomeActivityPulse`; the Home UI
+ * active-day count, totals, current streak) and swap the local
+ * `resolveHomeActivityIntensityLevel` mirror for an import of the canonical
+ * `resolveWorkActivityIntensityLevel` from `work-activity-service`. The
+ * constants and mapping below must stay semantically identical to EGA-662's
+ * `WORK_ACTIVITY_INTENSITY_THRESHOLDS` until that import lands. The Home UI
  * and model must not change at integration time.
  */
 
@@ -42,7 +42,6 @@ export type HomeActivityPulseDay = {
 };
 
 export type HomeActivityPulse = {
-  timezone: string;
   startDate: string;
   endDate: string;
   currentStreak: number;
@@ -62,13 +61,57 @@ export type HomeActivityPulseResult = {
 const ACTIVITY_WINDOW_DAYS = 365;
 
 /**
+ * Absolute intensity thresholds (seconds) — the canonical EGA-662 Work
+ * Activity scale (`WORK_ACTIVITY_INTENSITY_THRESHOLDS`), mirrored here until
+ * EGA-662 lands at base. Unlike the Review heatmap's ratio-of-max scale,
+ * these never change color when a new maximum day appears:
+ *
+ * - Level 0: no tracked time and no completed Tasks
+ * - Level 1: Task-only activity, or tracked time below 30 minutes
+ * - Level 2: 30 minutes up to (but not including) 2 hours
+ * - Level 3: 2 hours up to (but not including) 4 hours
+ * - Level 4: 4 hours or more
+ *
+ * Completed Tasks make a zero-timer day active at Level 1 but never boost an
+ * already time-based level.
+ */
+export const HOME_ACTIVITY_INTENSITY_THRESHOLDS = {
+  level1Seconds: 30 * 60,
+  level2Seconds: 2 * 60 * 60,
+  level3Seconds: 4 * 60 * 60,
+} as const;
+
+/**
+ * Canonical EGA-662 intensity semantics, replicated at the Home seam.
+ * EGA-662 integration: replace this mirror with an import of
+ * `resolveWorkActivityIntensityLevel` from `work-activity-service`.
+ */
+function resolveHomeActivityIntensityLevel(day: {
+  trackedSeconds: number;
+  completedTaskCount: number;
+}): 0 | 1 | 2 | 3 | 4 {
+  if (day.trackedSeconds <= 0 && day.completedTaskCount <= 0) {
+    return 0;
+  }
+  if (day.trackedSeconds < HOME_ACTIVITY_INTENSITY_THRESHOLDS.level1Seconds) {
+    return 1;
+  }
+  if (day.trackedSeconds < HOME_ACTIVITY_INTENSITY_THRESHOLDS.level2Seconds) {
+    return 2;
+  }
+  if (day.trackedSeconds < HOME_ACTIVITY_INTENSITY_THRESHOLDS.level3Seconds) {
+    return 3;
+  }
+  return 4;
+}
+
+/**
  * Map the canonical Work Activity outputs into the compact Home DTO.
  * Kept separate from the data load so the EGA-662 rebind only touches the
  * loader. Only display sums are computed here; every semantic comes from the
  * canonical inputs.
  */
 export function toHomeActivityPulse(input: {
-  timezone: string;
   startDate: string;
   endDate: string;
   daily: WorkAnalyticsDaily[];
@@ -76,21 +119,18 @@ export function toHomeActivityPulse(input: {
   activeDays: number;
   completedTasks: number;
 }): HomeActivityPulse {
-  const maxTrackedSeconds = input.daily.reduce(
-    (max, day) => Math.max(max, day.workedMinutes * 60),
-    0,
-  );
-
   const days: HomeActivityPulseDay[] = input.daily.map((day) => ({
     date: day.date,
-    intensity: getSessionHeatmapIntensityLevel(day.workedMinutes * 60, maxTrackedSeconds),
+    intensity: resolveHomeActivityIntensityLevel({
+      trackedSeconds: day.workedMinutes * 60,
+      completedTaskCount: day.completedTaskCount ?? 0,
+    }),
   }));
 
   const trackedSeconds = input.daily.reduce((sum, day) => sum + day.workedMinutes * 60, 0);
   const sessionCount = input.daily.reduce((sum, day) => sum + day.sessionCount, 0);
 
   return {
-    timezone: input.timezone,
     startDate: input.startDate,
     endDate: input.endDate,
     currentStreak: input.currentStreak,
@@ -109,14 +149,6 @@ export function toHomeActivityPulse(input: {
  */
 async function loadActivityPulse(): Promise<HomeActivityPulse | null> {
   const user = await requireAuthenticatedUser();
-  const supabase = await createClient();
-
-  // Canonical account timezone via the same repository the Operator snapshot uses.
-  const timeContextRepo = new SupabaseTimeContextRepository(
-    supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
-  );
-  const tzResult = await timeContextRepo.getTimezone(createAuthenticatedActor(user.id));
-  const timezone = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
 
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
@@ -125,11 +157,17 @@ async function loadActivityPulse(): Promise<HomeActivityPulse | null> {
   const endIso = now.toISOString();
   const window = { startIso, endIso };
 
-  // One bounded owner-scoped session read for the whole pulse. The canonical
-  // daily-series owner buckets it into days; Home never buckets itself.
+  // One bounded owner-scoped session read for the whole pulse, compacted to
+  // the timing columns the pulse grid and summary render — the canonical
+  // daily-series/insights owners never read the nested task relations. The
+  // canonical daily-series owner buckets it into days; Home never buckets
+  // itself. Interim full-year window: at EGA-662 integration this read (and
+  // the completion-count read below) rebinds to the compact
+  // `buildWorkActivityCalendar` summary (see PR body).
   const sessionsResult = await getWorkAnalyticsSessionsForWindow({
     ownerUserId: user.id,
     window,
+    select: ACTIVITY_PULSE_SESSION_SELECT,
   });
   if (sessionsResult.errorMessage || !sessionsResult.data) return null;
 
@@ -148,7 +186,6 @@ async function loadActivityPulse(): Promise<HomeActivityPulse | null> {
   if (taskCountsResult.errorMessage || !taskCountsResult.data) return null;
 
   return toHomeActivityPulse({
-    timezone,
     startDate,
     endDate: today,
     daily: dailySeries,

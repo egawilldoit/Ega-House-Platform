@@ -63,8 +63,18 @@ function deriveConsistencyNote(days: HomeActivityPulseDay[], activeDays: number)
   const today = days[days.length - 1]?.date ?? "";
   const monthPrefix = today.slice(0, 7);
   const previousPrefix = previousMonthPrefix(monthPrefix);
+  // Compare like-for-like ranges: only the days of the previous month that
+  // have already elapsed this month. Comparing the elapsed current month
+  // against the full previous month would almost always read "lighter" early
+  // in the month.
+  const elapsedDayOfMonth = Number(today.slice(8, 10));
   const countActive = (prefix: string) =>
-    days.filter((day) => day.date.startsWith(prefix) && isActiveDay(day)).length;
+    days.filter(
+      (day) =>
+        day.date.startsWith(prefix) &&
+        Number(day.date.slice(8, 10)) <= elapsedDayOfMonth &&
+        isActiveDay(day),
+    ).length;
   const current = countActive(monthPrefix);
   const previous = countActive(previousPrefix);
   if (current > previous) return "Keep it up! You're more active than last month.";
