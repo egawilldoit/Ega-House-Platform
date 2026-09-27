@@ -65,7 +65,7 @@ export function isValidTaskRecurrenceAnchorDate(value: string) {
   return parseDateOnly(value) !== null;
 }
 
-export function normalizeTaskRecurrenceAnchorDateInput(value: unknown, fallbackDate: string) {
+export function normalizeTaskRecurrenceAnchorDateInput(value: unknown, fallbackDate: string | null) {
   const anchorDate = String(value ?? "").trim() || fallbackDate;
 
   if (!anchorDate || !isValidTaskRecurrenceAnchorDate(anchorDate)) {
@@ -167,7 +167,7 @@ export function normalizeTaskRecurrenceScheduleInput(input: {
   anchorDate?: unknown;
   timezone?: unknown;
   defaultTimezone?: unknown;
-  fallbackAnchorDate: string;
+  fallbackAnchorDate: string | null;
 }) {
   const ruleResult = normalizeTaskRecurrenceRuleInput(input.rule);
   if (ruleResult.errorMessage) return { errorMessage: ruleResult.errorMessage, schedule: null };

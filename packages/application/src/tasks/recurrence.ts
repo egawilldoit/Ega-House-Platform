@@ -14,7 +14,7 @@ export async function setTaskRecurrence(
     recurrenceAnchorDate?: unknown;
     recurrenceTimezone?: unknown;
     defaultTimezone?: unknown;
-    fallbackAnchorDate: string;
+    fallbackAnchorDate: string | null;
   },
 ): Promise<ApplicationResult<TaskRecord>> {
   const taskId = String(input.taskId ?? "").trim();
