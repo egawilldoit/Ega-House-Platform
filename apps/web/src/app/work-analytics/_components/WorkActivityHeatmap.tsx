@@ -70,7 +70,6 @@ function formatDayDuration(seconds: number): string {
  * "Sunday, September 27, 2026 — 2h 14m tracked, 3 sessions, 2 Tasks completed."
  */
 function formatDayAriaLabel(day: WorkActivityDay): string {
-  const weekday = WEEKDAY_LABELS[new Date(`${day.date}T00:00:00.000Z`).getUTCDay()] ?? "";
   const date = new Date(`${day.date}T00:00:00.000Z`).toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -85,7 +84,7 @@ function formatDayAriaLabel(day: WorkActivityDay): string {
   if (day.completedTaskCount > 0) {
     parts.push(`${day.completedTaskCount} Task${day.completedTaskCount !== 1 ? "s" : ""} completed`);
   }
-  return `${weekday}, ${date} — ${parts.join(", ")}.`;
+  return `${date} — ${parts.join(", ")}.`;
 }
 
 function WorkActivitySummary({ calendar }: { calendar: WorkActivityCalendar }) {
@@ -161,7 +160,7 @@ function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
         </div>
 
         {/* Weekday labels + day cells */}
-        <div className="grid" style={{ gridTemplateColumns: `28px repeat(${grid.weekCount}, ${cellSize}px)`, gap: `${gap}px`, gridTemplateRows: `repeat(7, ${cellSize}px)`, gridAutoFlow: "column" }}>
+        <div className="grid" style={{ gridTemplateColumns: `28px repeat(${grid.weekCount}, ${cellSize}px)`, gap: `${gap}px`, gridTemplateRows: `repeat(7, ${cellSize}px)` }}>
           {/* Weekday label cells: one per row, placed at the start of each row */}
           {Array.from({ length: 7 }, (_, weekday) => (
             <span
@@ -173,18 +172,6 @@ function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
               {weekday % 2 === 1 ? WEEKDAY_LABELS[weekday] : ""}
             </span>
           ))}
-
-          {/* Empty leading cells to align the first day to its weekday */}
-          {grid.cells.length > 0 && (
-            <span
-              aria-hidden="true"
-              style={{
-                gridColumn: 1,
-                gridRow: 1,
-                gridColumnEnd: `span ${(new Date(`${grid.startDate}T00:00:00.000Z`).getUTCDay()) + 1}`,
-              }}
-            />
-          )}
 
           {grid.cells.map((cell) => (
             <button
