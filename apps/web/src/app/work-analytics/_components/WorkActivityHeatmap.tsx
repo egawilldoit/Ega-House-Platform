@@ -180,7 +180,7 @@ function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
               onClick={() => onSelectDay(cell.date)}
               aria-label={formatDayAriaLabel(cell.day)}
               title={formatDayAriaLabel(cell.day)}
-              className={`h-[12px] w-[12px] rounded-[2px] border outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-ega-data-blue focus-visible:ring-offset-1 ${cell.isCurrentDay ? "ring-1 ring-ega-text" : ""}`}
+              className={`h-[12px] w-[12px] rounded-[2px] border outline-none focus-visible:ring-2 focus-visible:ring-ega-data-blue focus-visible:ring-offset-1 ${cell.isCurrentDay ? "ring-1 ring-ega-text" : ""}`}
               style={{
                 ...INTENSITY_STYLES[cell.day.intensityLevel],
                 gridColumn: cell.weekIndex + 2,
