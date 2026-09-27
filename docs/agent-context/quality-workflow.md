@@ -64,6 +64,11 @@ compatibility assessment, and simpler-alternative consideration. Preserve public
 exports, wire formats, persisted semantics, and operational compatibility, or
 explicitly account for their consumers and rollout. Validate boundary inputs;
 do not suppress unexplained type mismatches or swallow errors into apparent success.
+In review, ask whether a new branch, state value, parameter, or layer serves a
+current requirement; whether its name and data flow make the behavior easy to
+follow; and whether two copies represent one authoritative rule or merely look
+similar. Prefer deletion or direct code when it reduces reader effort without
+weakening a required boundary.
 
 Select applicable scenarios; this table is not a mandate to test every row for
 every edit. Follow scoped instructions for concrete commands and local patterns.
