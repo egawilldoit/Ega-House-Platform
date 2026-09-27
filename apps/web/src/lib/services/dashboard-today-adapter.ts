@@ -347,10 +347,16 @@ async function getSupplementalDashboardTasks(options: {
   supabase: SupabaseServerClient;
   planner: TodayPlannerData;
   now: Date;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Supplied by the Dashboard so supplemental due-today signals follow the
+   * account day, never the runtime-local day.
+   */
+  localDate?: string;
   trackedTodaySecondsByTask: Map<string, number>;
 }) {
   const activeTaskId = options.planner.activeTimer?.taskId ?? null;
-  const today = getTodayLocalIsoDate(options.now);
+  const today = options.localDate ?? getTodayLocalIsoDate(options.now);
   const latestResult = await getActiveTasksForOwner({
     supabase: options.supabase,
     orderByUpdatedAt: false,
@@ -395,10 +401,12 @@ export async function getDashboardTodayPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
   timezone?: string;
+  /** Canonical account local date from Time Context (see getSupplementalDashboardTasks). */
+  localDate?: string;
 }) {
   const supabase = options?.supabase ?? (await createClient());
   const now = options?.now ?? new Date();
-  const result = await getTodayPlannerData({ supabase, now });
+  const result = await getTodayPlannerData({ supabase, now, localDate: options?.localDate });
 
   if (result.errorMessage || !result.data) {
     return {
@@ -419,6 +427,7 @@ export async function getDashboardTodayPlannerData(options?: {
     supabase,
     planner: result.data,
     now,
+    localDate: options?.localDate,
     trackedTodaySecondsByTask: evidenceResult.data,
   });
 

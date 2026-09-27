@@ -1,6 +1,7 @@
 "use server";
 
 import { planStartupTasksForToday } from "@/lib/services/startup-planner-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   redirectWithWorkspaceFeedback,
   revalidateWorkspaceFor,
@@ -24,7 +25,10 @@ function parseTaskIds(rawTaskIds: unknown) {
 export async function addStartupTaskToTodayAction(formData: FormData) {
   const returnPath = getStartupReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
-  const result = await planStartupTasksForToday([taskId]);
+  const localDate = (await getWebTimeContext().catch(() => null))?.localDate ?? null;
+  const result = await planStartupTasksForToday([taskId], {
+    localDate: localDate ?? undefined,
+  });
 
   if (result.errorMessage) {
     redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
@@ -37,7 +41,10 @@ export async function addStartupTaskToTodayAction(formData: FormData) {
 export async function addStartupShortlistToTodayAction(formData: FormData) {
   const returnPath = getStartupReturnPath(formData.get("returnTo"));
   const taskIds = parseTaskIds(formData.get("taskIds"));
-  const result = await planStartupTasksForToday(taskIds);
+  const localDate = (await getWebTimeContext().catch(() => null))?.localDate ?? null;
+  const result = await planStartupTasksForToday(taskIds, {
+    localDate: localDate ?? undefined,
+  });
 
   if (result.errorMessage) {
     redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });

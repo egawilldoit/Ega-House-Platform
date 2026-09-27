@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { zonedWallTimeToUtcIso } from '@ega/domain/time-context';
+
 import { mobileTheme } from '@/components/mobile/theme';
 import { useAccountTimezone } from '@/lib/hooks/use-account-timezone';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
@@ -236,7 +238,22 @@ export function TaskDetailScreen() {
       return;
     }
 
-    if (reminderDate.getTime() <= Date.now()) {
+    let remindAt: string;
+    try {
+      remindAt = zonedWallTimeToUtcIso({
+        timezone: accountTimezone,
+        date: `${reminderDate.getFullYear()}-${String(reminderDate.getMonth() + 1).padStart(2, '0')}-${String(reminderDate.getDate()).padStart(2, '0')}`,
+        time: `${String(reminderDate.getHours()).padStart(2, '0')}:${String(reminderDate.getMinutes()).padStart(2, '0')}:00`,
+      });
+    } catch (error) {
+      setReminderError(
+        error instanceof Error ? error.message : 'Reminder time is invalid for the account timezone.',
+      );
+      setReminderSuccess(null);
+      return;
+    }
+
+    if (Date.parse(remindAt) <= Date.now()) {
       setReminderError('Reminder time must be in the future.');
       setReminderSuccess(null);
       return;
@@ -254,7 +271,7 @@ export function TaskDetailScreen() {
     try {
       await createReminderMutation.mutateAsync({
         taskId,
-        remindAt: reminderDate.toISOString(),
+        remindAt,
         deliveryMode: reminderDeliveryMode,
       });
       setReminderDate(createDefaultReminderDate());
@@ -264,7 +281,7 @@ export function TaskDetailScreen() {
       const message = error instanceof Error ? error.message : 'Unable to schedule reminder right now.';
       setReminderError(message);
     }
-  }, [createReminderMutation, reminderDate, reminderDeliveryMode, permissionStatus, taskId]);
+  }, [accountTimezone, createReminderMutation, reminderDate, reminderDeliveryMode, permissionStatus, taskId]);
 
   const onCancelReminder = useCallback(
     async (reminderId: string) => {

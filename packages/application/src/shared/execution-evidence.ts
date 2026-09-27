@@ -318,19 +318,6 @@ function evaluateQuality(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Day splitting — delegates to the ONE canonical timezone-aware local-day
-// primitive in @ega/domain/time-context. UTC callers pass "UTC" explicitly.
-// ---------------------------------------------------------------------------
-
-function splitIntervalByUtcDay(
-  intervalStartMs: number,
-  intervalEndMs: number,
-  timezone: string | null | undefined,
-): Array<{ dayKey: string; seconds: number }> {
-  return splitIntervalByLocalDay(timezone, intervalStartMs, intervalEndMs);
-}
-
-// ---------------------------------------------------------------------------
 // Main aggregation — owner-scoped and bounded.
 // ---------------------------------------------------------------------------
 
@@ -441,11 +428,12 @@ export function calculateExecutionEvidenceForWindow(
       addBucket(goalBuckets, goalBucketId, task.goals.title, trackedSeconds);
     }
 
-    // Day buckets: split this session's overlap across UTC calendar days.
-    const dayParts = splitIntervalByUtcDay(
+    // Day buckets: split this session's overlap across local calendar days in
+    // the report timezone (UTC callers pass "UTC" explicitly).
+    const dayParts = splitIntervalByLocalDay(
+      options.timezone,
       overlapStartMs,
       overlapEndMs,
-      options.timezone,
     );
     for (const part of dayParts) {
       trackedSecondsByDay.set(

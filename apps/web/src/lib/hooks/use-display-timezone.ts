@@ -21,31 +21,44 @@ type TimeContextResponse = {
  * date-only values never shift.
  *
  * Hydration-safe: the first render (server and client) uses the UTC default;
- * the override is applied after mount and triggers a re-render.
+ * the override is applied after mount and triggers a re-render. The override
+ * is also re-fetched when the window regains focus so a timezone change made
+ * in another tab (or while the tab was backgrounded) is picked up without a
+ * remount.
  */
 export function useDisplayTimezone(): string {
   const [timezone, setTimezone] = useState<string>(() => getDisplayTimezone());
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/time-context")
-      .then((response) => (response.ok ? response.json() : null))
-      .then((payload: TimeContextResponse | null) => {
-        if (cancelled) return;
-        const next =
-          payload?.ok && payload.timeContext?.timezone
-            ? payload.timeContext.timezone
-            : "UTC";
-        setDisplayTimezone(next);
-        setTimezone(next);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setDisplayTimezone("UTC");
-        setTimezone("UTC");
-      });
+
+    const applyTimezone = (payload: TimeContextResponse | null) => {
+      const next =
+        payload?.ok && payload.timeContext?.timezone
+          ? payload.timeContext.timezone
+          : "UTC";
+      setDisplayTimezone(next);
+      setTimezone(next);
+    };
+
+    const loadTimezone = () => {
+      fetch("/api/time-context")
+        .then((response) => (response.ok ? response.json() : null))
+        .then((payload: TimeContextResponse | null) => {
+          if (cancelled) return;
+          applyTimezone(payload);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          applyTimezone(null);
+        });
+    };
+
+    loadTimezone();
+    window.addEventListener("focus", loadTimezone);
     return () => {
       cancelled = true;
+      window.removeEventListener("focus", loadTimezone);
     };
   }, []);
 

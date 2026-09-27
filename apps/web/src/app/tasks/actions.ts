@@ -42,19 +42,25 @@ import {
 } from "@/lib/workspace/workspace-navigation";
 
 /**
- * Resolve the owner's effective IANA timezone for wall-time interpretation.
+ * Resolve the owner's effective IANA timezone and canonical local date for
+ * wall-time interpretation and recurrence anchor fallbacks.
  * Never fabricates a timezone: data-access failure returns an explicit error
  * so the caller can surface the degraded state instead of guessing.
  */
 async function resolveAccountTimezone(): Promise<{
   timezone: string | null;
+  localDate: string | null;
   error: string | null;
 }> {
   try {
     const context = await getWebTimeContext();
-    return { timezone: context.timezone, error: null };
+    return { timezone: context.timezone, localDate: context.localDate, error: null };
   } catch {
-    return { timezone: null, error: "Unable to load the account timezone right now." };
+    return {
+      timezone: null,
+      localDate: null,
+      error: "Unable to load the account timezone right now.",
+    };
   }
 }
 
@@ -355,7 +361,10 @@ export async function createTaskAction(
     workedTime: workedTimeResult.payload,
     recurrenceRule: recurrenceResult.rule,
     recurrenceTimezone,
-  }, { recurrenceDefaultTimezone: accountTimezoneResult.timezone });
+  }, {
+    recurrenceDefaultTimezone: accountTimezoneResult.timezone,
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (createResult.errorMessage) {
     if (createResult.createdTaskId) {
@@ -553,10 +562,11 @@ export async function createTasksBulkAction(
 
 function parseTaskInlineUpdateFormData(
   formData: FormData,
-  options?: { accountTimezone?: string },
+  options?: { accountTimezone?: string; fallbackAnchorDate?: string },
 ) {
   return validateTaskInlineUpdateInput({
     accountTimezone: options?.accountTimezone,
+    fallbackAnchorDate: options?.fallbackAnchorDate,
     taskId: String(formData.get("taskId") ?? ""),
     title: formData.has("title") ? formData.get("title") : undefined,
     projectId: formData.has("projectId") ? formData.get("projectId") : undefined,
@@ -600,6 +610,7 @@ export async function updateTaskInlineAction(formData: FormData) {
   }
   const validationResult = parseTaskInlineUpdateFormData(formData, {
     accountTimezone: accountTimezoneResult.timezone,
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
   });
 
   if (validationResult.errorMessage || !validationResult.data) {
@@ -611,7 +622,9 @@ export async function updateTaskInlineAction(formData: FormData) {
   }
 
   const validatedInput = validationResult.data;
-  const { errorMessage } = await updateTaskInline(validatedInput);
+  const { errorMessage } = await updateTaskInline(validatedInput, {
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (errorMessage) {
     redirectWithTasksError(returnPath, errorMessage, validatedInput.taskId);
@@ -652,6 +665,7 @@ export async function updateTaskEditorAction(
   }
   const validationResult = parseTaskInlineUpdateFormData(formData, {
     accountTimezone: accountTimezoneResult.timezone,
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
   });
 
   if (validationResult.errorMessage || !validationResult.data) {
@@ -663,7 +677,9 @@ export async function updateTaskEditorAction(
   }
 
   const validatedInput = validationResult.data;
-  const { errorMessage } = await updateTaskInline(validatedInput);
+  const { errorMessage } = await updateTaskInline(validatedInput, {
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (errorMessage) {
     return {

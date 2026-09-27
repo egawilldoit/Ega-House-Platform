@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { isValidIANATimeZone } from '@ega/domain/time-context';
 
 import { fetchMobileTimeContext, setMobileTimezone } from '@/lib/api/time-context';
+import { invalidateAccountTimezoneCache } from '@/lib/hooks/use-account-timezone';
 import { mobileTheme } from '@/components/mobile/theme';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
@@ -66,6 +67,7 @@ export default function TimezoneSettingsScreen() {
       setError(null);
       try {
         await setMobileTimezone(timezone);
+        invalidateAccountTimezoneCache();
         await load();
       } catch {
         setError('Could not save that timezone. Check the name and try again.');

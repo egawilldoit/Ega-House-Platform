@@ -3412,3 +3412,82 @@ test("Due This Week default view includes today through today plus seven days", 
     ],
   );
 });
+
+test("ega-661: createTaskWithOptionalWorkedTime uses the account local date as the recurrence anchor fallback", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Recurring",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "daily",
+      recurrenceTimezone: "UTC",
+    },
+    { supabase: mock.supabase, fallbackAnchorDate: "2026-04-20" },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceInsertCalls, [
+    {
+      task_id: "task-1",
+      rule: "daily",
+      anchor_date: "2026-04-20",
+      timezone: "UTC",
+      next_occurrence_date: "2026-04-21",
+      last_generated_at: null,
+    },
+  ]);
+});
+
+test("ega-661: validateTaskInlineUpdateInput uses the account local date as the recurrence anchor fallback", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+    recurrenceRule: "daily",
+    recurrenceTimezone: "UTC",
+    fallbackAnchorDate: "2026-04-20",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.recurrenceAnchorDate, "2026-04-20");
+});
+
+test("ega-661: updateTaskInline uses the account local date as the recurrence anchor fallback", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+      recurrenceRule: "daily",
+      recurrenceTimezone: "UTC",
+    },
+    { supabase: mock.supabase, updatedAtIso: "2026-04-20T12:00:00.000Z", fallbackAnchorDate: "2026-04-20" },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceUpdateCalls, [
+    {
+      rule: "daily",
+      anchor_date: "2026-04-20",
+      timezone: "UTC",
+      next_occurrence_date: "2026-04-21",
+      last_generated_at: null,
+      updated_at: "2026-04-20T12:00:00.000Z",
+    },
+  ]);
+});
