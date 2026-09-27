@@ -7,7 +7,7 @@ import { BacklogConvertForm } from "@/app/backlog/backlog-convert-form";
 import { BacklogItemForm } from "@/app/backlog/backlog-item-form";
 import { AppShell } from "@/components/layout/app-shell";
 import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,6 @@ import {
   getIdeaNoteProjectOptions,
   normalizeIdeaNoteListFilters,
   type IdeaNote,
-  type IdeaNoteListView,
   type IdeaNoteProjectOption,
 } from "@/lib/services/idea-note-service";
 import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
@@ -65,16 +64,16 @@ type BacklogPageProps = {
   }>;
 };
 
-const BACKLOG_VIEWS = ["active", "archived"] as const satisfies readonly IdeaNoteListView[];
+const BACKLOG_VIEWS = ["active", "archived"] as const;
 
-function normalizeBacklogView(value: string | undefined): IdeaNoteListView {
-  return BACKLOG_VIEWS.includes(value as IdeaNoteListView)
-    ? (value as IdeaNoteListView)
+function normalizeBacklogView(value: string | undefined): (typeof BACKLOG_VIEWS)[number] {
+  return BACKLOG_VIEWS.includes(value as (typeof BACKLOG_VIEWS)[number])
+    ? (value as (typeof BACKLOG_VIEWS)[number])
     : "active";
 }
 
 function getBacklogViewHref(
-  view: IdeaNoteListView,
+  view: (typeof BACKLOG_VIEWS)[number],
   params: Awaited<BacklogPageProps["searchParams"]>,
 ) {
   const nextParams = new URLSearchParams();
@@ -92,7 +91,7 @@ function getBacklogViewHref(
   return query ? `/backlog?${query}` : "/backlog";
 }
 
-function getBacklogViewCopy(view: IdeaNoteListView) {
+function getBacklogViewCopy(view: (typeof BACKLOG_VIEWS)[number]) {
   if (view === "archived") {
     return {
       title: "Archived",
