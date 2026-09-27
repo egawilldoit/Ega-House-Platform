@@ -40,7 +40,6 @@ export function useAccountTimezone(): { timezone: string; isLoading: boolean } {
 
   useEffect(() => {
     let cancelled = false;
-    setIsLoading(cachedTimezone === null);
     loadAccountTimezone().then((next) => {
       if (cancelled) return;
       setTimezone(next);

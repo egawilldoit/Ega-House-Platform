@@ -23,10 +23,6 @@ type Props = {
 };
 
 export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, onClearMessages }: Props) {
-  const deviceTimezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    [],
-  );
   const { timezone: accountTimezone } = useAccountTimezone();
   const displayTimezone = taskRecurrenceTimezone ?? accountTimezone;
   const [isDuePickerVisible, setIsDuePickerVisible] = useState(false);
