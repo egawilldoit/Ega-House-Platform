@@ -82,6 +82,20 @@ describe("mobile inbox fast capture (EGA-506)", () => {
     expect(query).toMatch(/useConvertInboxMutation/);
   });
 
+  it("EGA-659: convert sheet requires explicit project selection for no-project items", () => {
+    const convertSheetPath = path.join(__dirname, "../components/InboxConvertSheet.tsx");
+    const convertSheet = fs.readFileSync(convertSheetPath, "utf8");
+    // Existing project is preselected when present.
+    expect(convertSheet).toMatch(
+      /item\?\.projectId && projects\.some\(\(project\) => project\.id === item\.projectId\)/,
+    );
+    // Missing project must NOT auto-select the first available project.
+    expect(convertSheet).not.toMatch(/projects\[0\]\/\.id/);
+    // A null default keeps the submit button disabled until the user picks one.
+    expect(convertSheet).toMatch(/\? item\.projectId\s*:\s*null/);
+    expect(convertSheet).toMatch(/disabled=\{!projectId\}/);
+  });
+
   it("EGA-659: mobile tab and screen use Backlog terminology", () => {
     const layoutPath = path.join(__dirname, "../../../app/(app)/(tabs)/_layout.tsx");
     const layout = fs.readFileSync(layoutPath, "utf8");

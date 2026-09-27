@@ -26,7 +26,7 @@ export function InboxConvertSheet({ visible, item, projects, onClose, onSubmit }
     if (!visible) return;
     const preferred = item?.projectId && projects.some((project) => project.id === item.projectId)
       ? item.projectId
-      : projects[0]?.id ?? null;
+      : null;
     // Sync the default project when the sheet opens; selection remains local to this transient flow.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProjectId(preferred);

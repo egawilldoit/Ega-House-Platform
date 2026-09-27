@@ -38,7 +38,7 @@ export function BacklogConvertForm({ note, projectOptions }: BacklogConvertFormP
           Choose a project to create a task from this backlog item. The item will remain linked as converted.
         </p>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`backlog-${note.id}-conversion-project`} className="glass-label">
+          <label htmlFor={`backlog-${note.id}-conversion-project`} className="form-label">
             Project
           </label>
           <select

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { Textarea } from "@/components/ui/textarea";
+import { isManualIdeaNoteStatus } from "@/lib/idea-note-domain";
 import type { IdeaNote, IdeaNoteProjectOption } from "@/lib/services/idea-note-service";
 
 import { updateBacklogItemAction, type UpdateBacklogItemFormState } from "./actions";
@@ -40,7 +41,7 @@ export function BacklogItemForm({ note, projectOptions }: BacklogItemFormProps) 
         <input
           type="hidden"
           name="status"
-          value={note.status === "archived" ? "archived" : "inbox"}
+          value={isManualIdeaNoteStatus(note.status) ? note.status : "inbox"}
         />
 
         <div className="flex flex-col gap-1.5">
