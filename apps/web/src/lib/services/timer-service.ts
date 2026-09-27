@@ -105,6 +105,8 @@ export type TimerWorkspaceData = {
     endedAt: string | null;
     durationSeconds: number;
   }>;
+  /** Canonical local-day window used for tracked-today (DST-safe). */
+  todayWindow: { startIso: string; endIso: string };
   todayTaskBreakdown: Array<{
     taskId: string;
     taskTitle: string;
@@ -734,6 +736,7 @@ export async function getTimerWorkspaceData(options?: {
   return {
     tasks: tasksResult.data.filter((task) => !isTaskCompletedStatus(task.status)),
     openSessions: openSessionsResult.data,
+    todayWindow,
     todayTaskBreakdown,
     todayTotalDurationSeconds,
     sessionHistory,
