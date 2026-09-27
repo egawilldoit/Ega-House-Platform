@@ -33,7 +33,7 @@ test("EGA-653: shell navigation and metadata know about /home", () => {
 test("EGA-653: an authenticated /home route exists and composes canonical owners", () => {
   const homeRoute = read("app", "home", "page.tsx");
   assert.match(homeRoute, /getOperatorSnapshotData/);
-  assert.match(homeRoute, /getWorkspaceShellMetrics/);
+  assert.match(homeRoute, /getWorkspaceShellMetricsResult/);
   assert.match(homeRoute, /buildHomeModel/);
   // Must not import the marketing home component tree.
   assert.doesNotMatch(homeRoute, /from "\.\/home-page"/);
