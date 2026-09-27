@@ -59,7 +59,6 @@ function task(overrides: Partial<OperatorTask> & { id: string }): OperatorTask {
 }
 
 const ACTIVITY_PULSE: HomeActivityPulse = {
-  timezone: "Africa/Casablanca",
   startDate: "2026-09-01",
   endDate: "2026-09-27",
   currentStreak: 6,
