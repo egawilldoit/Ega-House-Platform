@@ -321,3 +321,159 @@ export function getRollingLocalWindow(
   const startWindow = getLocalDayWindow(effective, startDate);
   return { startIso: startWindow.startUtcIso, endIso: now.toISOString() };
 }
+
+// ---------------------------------------------------------------------------
+// Zoned wall time -> UTC instant (canonical conversion helper)
+// ---------------------------------------------------------------------------
+
+const ZONED_WALL_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/;
+
+/**
+ * A wall time (date + time as a human would read a clock) in an IANA timezone.
+ */
+export type ZonedWallTime = Readonly<{
+  /** IANA timezone name, e.g. "Africa/Casablanca". */
+  timezone: string;
+  /** Calendar date, YYYY-MM-DD. */
+  date: string;
+  /** Wall time, HH:MM or HH:MM:SS. */
+  time: string;
+}>;
+
+function formatZonedWallTimeParts(
+  date: Date,
+  timeZone: string,
+): { date: string; time: string } | null {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(date);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value;
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  let hour = Number(get("hour"));
+  const minute = get("minute");
+  const second = get("second");
+  if (!year || !month || !day || !minute || !second) return null;
+  if (hour === 24) hour = 0;
+  if (!Number.isFinite(hour)) return null;
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${pad2(hour)}:${minute}:${second}`,
+  };
+}
+
+/**
+ * Convert a local wall time in an IANA timezone to a UTC instant (ISO string).
+ *
+ * This is the ONE canonical conversion helper for user-entered wall times
+ * (task schedules, manual worked-time entries, reminders). It:
+ * - validates the timezone is a real IANA zone,
+ * - validates the date/time structure (real calendar date, valid clock parts),
+ * - resolves the UTC instant with DST offset iteration,
+ * - round-trips the result back to a wall time and rejects the input when the
+ *   wall time does not exist in the zone (DST spring-forward gap) instead of
+ *   silently shifting it.
+ *
+ * Throws `Error` with an actionable message on any invalid input.
+ */
+export function zonedWallTimeToUtcIso(input: ZonedWallTime): string {
+  const timezone = typeof input.timezone === "string" ? input.timezone.trim() : "";
+  if (!isValidIANATimeZone(timezone)) {
+    throw new Error(`Invalid IANA timezone: "${String(input.timezone)}"`);
+  }
+
+  const dateStr = String(input.date ?? "").trim();
+  const timeStr = String(input.time ?? "").trim() || "00:00";
+  const parsedDate = parseIsoDate(dateStr);
+  if (!parsedDate) {
+    throw new Error(`Invalid date: expected YYYY-MM-DD, got "${dateStr}"`);
+  }
+
+  const timeMatch = timeStr.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!timeMatch) {
+    throw new Error(`Invalid time: expected HH:MM, got "${timeStr}"`);
+  }
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  const second = timeMatch[3] !== undefined ? Number(timeMatch[3]) : 0;
+  if (hour > 23 || minute > 59 || second > 59) {
+    throw new Error(`Invalid time: expected HH:MM, got "${timeStr}"`);
+  }
+
+  const utcDate = wallTimeToUtc(
+    timezone,
+    parsedDate.year,
+    parsedDate.month,
+    parsedDate.day,
+    hour,
+    minute,
+    second,
+  );
+
+  const roundTrip = formatZonedWallTimeParts(utcDate, timezone);
+  const expectedTime = `${pad2(hour)}:${pad2(minute)}:${pad2(second)}`;
+  if (!roundTrip || roundTrip.date !== dateStr || roundTrip.time !== expectedTime) {
+    throw new Error(
+      `Wall time ${dateStr} ${timeStr} does not exist in timezone ${timezone} (DST transition).`,
+    );
+  }
+
+  return utcDate.toISOString();
+}
+
+// ---------------------------------------------------------------------------
+// Timezone-aware local-day interval splitting (canonical primitive)
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a UTC interval `[intervalStartMs, intervalEndMs)` into per-local-day
+ * segments at local midnight boundaries in `timezone`.
+ *
+ * This is the ONE canonical day-splitting primitive. UTC-only callers pass
+ * "UTC"; timezone-aware callers pass the account/report timezone. Segments
+ * never double-count and never skip time: consecutive segments share a
+ * boundary exactly.
+ *
+ * Throws `Error` on invalid input.
+ */
+export function splitIntervalByLocalDay(
+  timezone: string | null | undefined,
+  intervalStartMs: number,
+  intervalEndMs: number,
+): Array<{ dayKey: string; seconds: number }> {
+  if (!Number.isFinite(intervalStartMs) || !Number.isFinite(intervalEndMs)) {
+    throw new Error("Invalid interval: start and end must be finite timestamps.");
+  }
+  if (intervalEndMs <= intervalStartMs) return [];
+
+  const resolved = resolveEffectiveTimezone(timezone);
+  const effective = resolved.effective;
+  const parts: Array<{ dayKey: string; seconds: number }> = [];
+  let cursor = intervalStartMs;
+
+  while (cursor < intervalEndMs) {
+    const localDate = getLocalDateInTimezone(new Date(cursor), effective);
+    const dayWindow = getLocalDayWindow(effective, localDate);
+    const nextLocalMidnightMs = Date.parse(dayWindow.endUtcIso);
+    if (!Number.isFinite(nextLocalMidnightMs) || nextLocalMidnightMs <= cursor) {
+      throw new Error("Unable to advance local-day split.");
+    }
+    const segmentEnd = Math.min(intervalEndMs, nextLocalMidnightMs);
+    const seconds = Math.floor((segmentEnd - cursor) / 1000);
+    if (seconds > 0) {
+      parts.push({ dayKey: localDate, seconds });
+    }
+    cursor = segmentEnd;
+  }
+
+  return parts;
+}

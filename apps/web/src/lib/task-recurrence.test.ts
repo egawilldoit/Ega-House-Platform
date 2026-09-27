@@ -136,3 +136,38 @@ test("rejects invalid recurrence schedule metadata", () => {
     "Recurring timezone is invalid.",
   );
 });
+
+test("recurrence timezone: explicit wins, else account default, else UTC", () => {
+  // Explicit timezone wins over the account default.
+  assert.equal(
+    normalizeTaskRecurrenceScheduleInput({
+      rule: "daily",
+      anchorDate: "2026-05-04",
+      timezone: "Asia/Tokyo",
+      defaultTimezone: "Africa/Casablanca",
+      fallbackAnchorDate: "2026-05-01",
+    }).schedule?.timezone,
+    "Asia/Tokyo",
+  );
+
+  // No explicit timezone: persisted account timezone is the default.
+  assert.equal(
+    normalizeTaskRecurrenceScheduleInput({
+      rule: "daily",
+      anchorDate: "2026-05-04",
+      defaultTimezone: "Africa/Casablanca",
+      fallbackAnchorDate: "2026-05-01",
+    }).schedule?.timezone,
+    "Africa/Casablanca",
+  );
+
+  // No explicit timezone and no account timezone: deterministic UTC fallback.
+  assert.equal(
+    normalizeTaskRecurrenceScheduleInput({
+      rule: "daily",
+      anchorDate: "2026-05-04",
+      fallbackAnchorDate: "2026-05-01",
+    }).schedule?.timezone,
+    "UTC",
+  );
+});
