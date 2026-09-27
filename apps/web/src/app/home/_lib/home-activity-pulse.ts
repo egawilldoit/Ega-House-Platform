@@ -1,14 +1,18 @@
-import { getLocalDateInTimezone } from "@ega/domain";
 import { SupabaseTimeContextRepository } from "@ega/data-access";
 import { createAuthenticatedActor } from "@ega/application/auth/actor";
 
 import { createClient } from "@/lib/supabase/server";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
-import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
 import {
-  aggregateDailyTrackedSeconds,
-  getDailyTrackedWindow,
-} from "@/lib/review-session-heatmap";
+  getWorkAnalyticsSessionsForWindow,
+  getWorkAnalyticsTaskCounts,
+} from "@/lib/services/work-analytics-data-adapter";
+import {
+  calculateWorkAnalyticsDailySeries,
+  calculateWorkAnalyticsInsights,
+  type WorkAnalyticsDaily,
+} from "@/lib/services/work-analytics-service";
+import { getSessionHeatmapIntensityLevel } from "@/components/review/session-heatmap";
 import { shiftIsoDateByDays } from "@/lib/review-week";
 
 /**
@@ -16,22 +20,20 @@ import { shiftIsoDateByDays } from "@/lib/review-week";
  *
  * Home renders a compact activity pulse (streak, active days, tracked time,
  * and a small intensity grid) sourced ONLY from the canonical Work Activity
- * read model. Home never queries sessions, tasks, or streaks itself: the whole
- * data path lives in `loadActivityPulse()` below, which is the single place
- * to rebind when EGA-662 lands.
+ * owners. Home never recomputes streak, active-day, intensity, Timer
+ * bucketing, or Task completion history:
+ *
+ * - daily bucketing + per-day session/completion counts:
+ *   `calculateWorkAnalyticsDailySeries` (canonical execution-evidence owner)
+ * - current streak + active-day count: `calculateWorkAnalyticsInsights`
+ * - intensity per day: `getSessionHeatmapIntensityLevel` (canonical scale)
+ * - completion totals: `getWorkAnalyticsTaskCounts` (canonical counts read)
  *
  * EGA-662 integration point: replace the body of `loadActivityPulse()` with a
  * call to the canonical `buildWorkActivityCalendar(...)` summary (daily cells,
- * active-day count, totals, current/longest streak). `toHomeActivityPulse()`
- * is already shaped to map that summary into `HomeActivityPulse`; the Home UI
+ * active-day count, totals, current streak). `toHomeActivityPulse()` is
+ * already shaped to map that summary into `HomeActivityPulse`; the Home UI
  * and model must not change at integration time.
- *
- * Until EGA-662 exists, `loadActivityPulse()` uses the canonical base sources
- * the EGA-662 contract designates: the bounded owner-scoped session window
- * (`getWorkAnalyticsSessionsForWindow`), the canonical timezone-aware daily
- * aggregation (`aggregateDailyTrackedSeconds`), and the EGA-662 WorkActivityDay
- * semantics (isActive rule + stable intensity thresholds) documented in the
- * EGA-662 issue. No second analytics engine is introduced here.
  */
 
 export type HomeActivityPulseDay = {
@@ -44,7 +46,6 @@ export type HomeActivityPulse = {
   startDate: string;
   endDate: string;
   currentStreak: number;
-  longestStreak: number;
   activeDays: number;
   trackedSeconds: number;
   completedTasks: number;
@@ -61,93 +62,42 @@ export type HomeActivityPulseResult = {
 const ACTIVITY_WINDOW_DAYS = 365;
 
 /**
- * EGA-662 stable intensity thresholds (from the EGA-662 issue):
- * - 0: no tracked time and no completed Tasks
- * - 1: Task-only activity or tracked time < 30 min
- * - 2: 30 min to < 2 h
- * - 3: 2 h to < 4 h
- * - 4: 4 h or more
- * Completed Tasks never boost an already time-based level.
- */
-export function resolveActivityIntensityLevel(
-  trackedSeconds: number,
-  completedTaskCount: number,
-): 0 | 1 | 2 | 3 | 4 {
-  if (trackedSeconds <= 0) {
-    return completedTaskCount > 0 ? 1 : 0;
-  }
-  if (trackedSeconds < 30 * 60) return 1;
-  if (trackedSeconds < 2 * 60 * 60) return 2;
-  if (trackedSeconds < 4 * 60 * 60) return 3;
-  return 4;
-}
-
-function resolveStreaks(days: Array<{ isActive: boolean }>): {
-  currentStreak: number;
-  longestStreak: number;
-} {
-  let longestStreak = 0;
-  let run = 0;
-  for (const day of days) {
-    if (day.isActive) {
-      run += 1;
-      longestStreak = Math.max(longestStreak, run);
-    } else {
-      run = 0;
-    }
-  }
-
-  // Current streak: count back from today when today is active, otherwise from
-  // yesterday so an early-morning visit before any work does not read as a
-  // broken streak (EGA-662 streak semantics).
-  let currentStreak = 0;
-  const startIndex = days.length > 0 && days[days.length - 1]?.isActive ? days.length - 1 : days.length - 2;
-  for (let i = startIndex; i >= 0; i -= 1) {
-    if (days[i]?.isActive) currentStreak += 1;
-    else break;
-  }
-
-  return { currentStreak, longestStreak };
-}
-
-/**
- * Map the canonical Work Activity daily series into the compact Home DTO.
+ * Map the canonical Work Activity outputs into the compact Home DTO.
  * Kept separate from the data load so the EGA-662 rebind only touches the
- * loader.
+ * loader. Only display sums are computed here; every semantic comes from the
+ * canonical inputs.
  */
 export function toHomeActivityPulse(input: {
   timezone: string;
   startDate: string;
   endDate: string;
-  daily: Array<{ date: string; trackedSeconds: number; completedTaskCount: number }>;
-  sessionCount: number;
+  daily: WorkAnalyticsDaily[];
+  currentStreak: number;
+  activeDays: number;
+  completedTasks: number;
 }): HomeActivityPulse {
-  const days: HomeActivityPulseDay[] = input.daily.map(({ date, trackedSeconds, completedTaskCount }) => ({
-    date,
-    intensity: resolveActivityIntensityLevel(trackedSeconds, completedTaskCount),
+  const maxTrackedSeconds = input.daily.reduce(
+    (max, day) => Math.max(max, day.workedMinutes * 60),
+    0,
+  );
+
+  const days: HomeActivityPulseDay[] = input.daily.map((day) => ({
+    date: day.date,
+    intensity: getSessionHeatmapIntensityLevel(day.workedMinutes * 60, maxTrackedSeconds),
   }));
 
-  const activeDays = input.daily.filter(
-    ({ trackedSeconds, completedTaskCount }) => trackedSeconds > 0 || completedTaskCount > 0,
-  ).length;
-  const trackedSeconds = input.daily.reduce((sum, day) => sum + day.trackedSeconds, 0);
-  const completedTasks = input.daily.reduce((sum, day) => sum + day.completedTaskCount, 0);
-  const { currentStreak, longestStreak } = resolveStreaks(
-    input.daily.map(({ trackedSeconds, completedTaskCount }) => ({
-      isActive: trackedSeconds > 0 || completedTaskCount > 0,
-    })),
-  );
+  const trackedSeconds = input.daily.reduce((sum, day) => sum + day.workedMinutes * 60, 0);
+  const sessionCount = input.daily.reduce((sum, day) => sum + day.sessionCount, 0);
 
   return {
     timezone: input.timezone,
     startDate: input.startDate,
     endDate: input.endDate,
-    currentStreak,
-    longestStreak,
-    activeDays,
+    currentStreak: input.currentStreak,
+    activeDays: input.activeDays,
     trackedSeconds,
-    completedTasks,
-    sessionCount: input.sessionCount,
+    completedTasks: input.completedTasks,
+    sessionCount,
     days,
   };
 }
@@ -169,53 +119,42 @@ async function loadActivityPulse(): Promise<HomeActivityPulse | null> {
   const timezone = tzResult.ok && tzResult.value ? tzResult.value : "UTC";
 
   const now = new Date();
-  const today = getLocalDateInTimezone(now, timezone);
+  const today = now.toISOString().slice(0, 10);
   const startDate = shiftIsoDateByDays(today, -(ACTIVITY_WINDOW_DAYS - 1));
-  const window = getDailyTrackedWindow(ACTIVITY_WINDOW_DAYS, today, timezone);
+  const startIso = `${startDate}T00:00:00.000Z`;
+  const endIso = now.toISOString();
+  const window = { startIso, endIso };
 
+  // One bounded owner-scoped session read for the whole pulse. The canonical
+  // daily-series owner buckets it into days; Home never buckets itself.
   const sessionsResult = await getWorkAnalyticsSessionsForWindow({
     ownerUserId: user.id,
-    window: { startIso: window.startIso, endIso: window.endExclusiveIso },
+    window,
   });
   if (sessionsResult.errorMessage || !sessionsResult.data) return null;
 
-  const dailyTracked = aggregateDailyTrackedSeconds(
-    sessionsResult.data.map((session) => ({
-      started_at: session.started_at,
-      ended_at: session.ended_at,
-    })),
-    window,
-    now.toISOString(),
+  const options = { nowIso: endIso, includeOpenSessions: true };
+  const dailySeries = calculateWorkAnalyticsDailySeries(
+    sessionsResult.data,
+    startDate,
+    today,
+    options,
   );
+  const insights = calculateWorkAnalyticsInsights(sessionsResult.data, window, options);
 
-  // Bounded completion evidence for the same window. EGA-662 replaces this with
-  // durable completion events; until then this is the canonical Tasks read.
-  const { data: completedRows, error: completedError } = await supabase
-    .from("tasks")
-    .select("completed_at")
-    .eq("owner_user_id", user.id)
-    .not("completed_at", "is", null)
-    .gte("completed_at", window.startIso)
-    .lt("completed_at", window.endExclusiveIso);
-  if (completedError || !completedRows) return null;
-
-  const completedByDay = new Map<string, number>();
-  for (const row of completedRows) {
-    if (!row.completed_at) continue;
-    const localDate = getLocalDateInTimezone(new Date(row.completed_at), timezone);
-    completedByDay.set(localDate, (completedByDay.get(localDate) ?? 0) + 1);
-  }
+  // Canonical completion counts for the same window (the same bounded read
+  // the Work Analytics page issues); Home never queries completion history.
+  const taskCountsResult = await getWorkAnalyticsTaskCounts({ ownerUserId: user.id, window });
+  if (taskCountsResult.errorMessage || !taskCountsResult.data) return null;
 
   return toHomeActivityPulse({
     timezone,
     startDate,
     endDate: today,
-    daily: dailyTracked.map(({ date, trackedSeconds }) => ({
-      date,
-      trackedSeconds,
-      completedTaskCount: completedByDay.get(date) ?? 0,
-    })),
-    sessionCount: sessionsResult.data.length,
+    daily: dailySeries,
+    currentStreak: insights.currentStreak,
+    activeDays: insights.daysWorkedCount,
+    completedTasks: taskCountsResult.data.completedCount,
   });
 }
 
