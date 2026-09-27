@@ -24,6 +24,7 @@ type ActiveTimerDisplayProps = {
   taskContextHref?: string | null;
   hasSessionConflict?: boolean;
   taskTrackedTotalSeconds?: number;
+  timezone?: string;
 };
 
 /**
@@ -37,6 +38,7 @@ export function ActiveTimerDisplay({
   taskContextHref,
   hasSessionConflict = false,
   taskTrackedTotalSeconds,
+  timezone,
 }: ActiveTimerDisplayProps) {
   return (
     <div className="active-timer-card flex flex-col gap-5" data-testid="active-timer-display">
@@ -72,7 +74,7 @@ export function ActiveTimerDisplay({
                 Started
               </dt>
               <dd className="tabular-nums text-[length:var(--text-body)] font-medium">
-                {formatDisplayDateTime(session.started_at)}
+                {formatDisplayDateTime(session.started_at, { timezone })}
               </dd>
             </div>
             {typeof taskTrackedTotalSeconds === "number" ? (

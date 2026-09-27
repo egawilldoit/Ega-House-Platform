@@ -27,6 +27,7 @@ export async function getTimerPageModel(searchParams: TimerSearchParams) {
     actionSuccess,
     stoppedTaskId,
     ownerUserId: user?.id ?? null,
+    timezone: timeContext?.timezone ?? null,
     tasks,
     openSessions,
     todayTaskBreakdown,
