@@ -72,7 +72,7 @@ const ROUTE_ICONS: Record<string, LucideIcon> = {
   "/timer": Timer,
   "/review": FileText,
   "/work-analytics": BarChart3,
-  "/ideas": Lightbulb,
+  "/backlog": Lightbulb,
   "/notifications": Bell,
   "/startup": Rocket,
   "/shutdown": Power,

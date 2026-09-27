@@ -29,7 +29,7 @@ export function HomeQuickActions() {
         onClick={() => window.dispatchEvent(new CustomEvent(INBOX_CAPTURE_EVENT))}
       >
         <Inbox className="h-4 w-4" aria-hidden="true" />
-        Capture
+        Add to Backlog
       </button>
 
       <Link

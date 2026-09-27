@@ -236,9 +236,9 @@ test.describe("workspace shell contract", () => {
               </div>
             </section>
             <section class="sidebar-section sidebar-general-section workspace-nav-section" aria-label="System">
-              <a href="/ideas" class="sidebar-link workspace-nav-link" aria-label="Ideas" title="Ideas">
+              <a href="/backlog" class="sidebar-link workspace-nav-link" aria-label="Backlog" title="Backlog">
                 <span class="sidebar-link-icon" aria-hidden="true"><svg data-testid="system-icon"></svg></span>
-                <span class="workspace-nav-label">Ideas</span>
+                <span class="workspace-nav-label">Backlog</span>
               </a>
               <button type="button" class="sidebar-link" aria-label="Logout" title="Logout">
                 <span class="sidebar-link-icon"><svg></svg></span>
