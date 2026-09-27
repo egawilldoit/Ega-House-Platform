@@ -63,6 +63,12 @@ Web server-side code must not self-fetch Hono just to reuse in-process policy.
   operational compatibility until affected callers and removal safety are proven.
   Use existing patterns; justify new abstractions/dependencies by concrete need.
   Keep unrelated cleanup out; include necessary supporting changes explicitly.
+- Apply YAGNI to speculative features and KISS to the current design: build the
+  behavior required now through the shortest clear path. Do not add a framework,
+  wrapper, option, cache, or generic API for hypothetical reuse. Do not use
+  simplicity as a reason to omit required failure handling, owner isolation,
+  client compatibility, or recovery. Share one authoritative business rule or
+  contract; do not merge merely similar UI code into a harder abstraction.
 - Validate untrusted input at boundaries. Do not mask unexplained type errors
   with casts or suppressions, or return success-shaped data after failed writes
   or authorization. Keep errors actionable and sensitive data out of diagnostics.
