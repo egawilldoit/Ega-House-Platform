@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,7 +112,7 @@ describe("WorkActivityHeatmap", () => {
   });
 
   it("opens the bounded day drawer when a day is clicked", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (url: string) => ({
       ok: true,
       json: async () => ({
         date: "2026-09-23",
@@ -139,7 +141,7 @@ describe("WorkActivityHeatmap", () => {
     });
     await flush();
 
-    expect(fetchMock).toHaveBeenCalledWith("/work-activity/day-details?date=2026-09-23");
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/work-activity/day-details?date=2026-09-23");
     // The Sheet portals to document.body, so the drawer content lives outside container.
     expect(document.body.textContent).toContain("Deep work");
     expect(document.body.textContent).toContain("Sessions");
@@ -151,5 +153,94 @@ describe("WorkActivityHeatmap", () => {
     });
     expect(container.textContent).toContain("Work activity is unavailable");
     expect(container.querySelector('[role="status"]')).not.toBeNull();
+  });
+
+  it("sizes day cells via CSS variables so coarse pointers get at least 24px targets", () => {
+    act(() => {
+      root.render(<WorkActivityHeatmap workActivity={makeWorkActivity()} error={null} />);
+    });
+    const cell = container.querySelector("button");
+    expect(cell, "day cells must render as buttons").not.toBeNull();
+    // Rendered evidence: cell geometry is governed by the --wa-cell-size
+    // variable, which only the stylesheet can resize per pointer type.
+    expect(cell?.className).toContain("h-[var(--wa-cell-size)]");
+    expect(cell?.className).toContain("w-[var(--wa-cell-size)]");
+
+    // The coarse-pointer media query must raise the variable to >= 24px
+    // (WCAG 2.5.8 Target Size Minimum, AA).
+    const css = readFileSync(join(process.cwd(), "src/app/globals.css"), "utf8");
+    const coarseBlock = css.match(/@media \(pointer: coarse\)\s*\{[^{}]*\{[\s\S]*?\}/);
+    expect(coarseBlock, "globals.css must contain a @media (pointer: coarse) rule").not.toBeNull();
+    const sizeMatch = coarseBlock?.[0]?.match(/--wa-cell-size:\s*(\d+)px/);
+    expect(sizeMatch, "coarse-pointer rule must set --wa-cell-size").not.toBeNull();
+    expect(Number(sizeMatch?.[1])).toBeGreaterThanOrEqual(24);
+  });
+
+  it("ignores a stale day-detail response when a newer day is selected", async () => {
+    let resolveStale: (value: unknown) => void = () => undefined;
+    const fetchMock = vi.fn((url: unknown) => {
+      if (String(url).includes("date=2026-09-23")) {
+        return new Promise((resolve) => {
+          resolveStale = resolve;
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          date: "2026-09-24",
+          timezone: "UTC",
+          sessions: [
+            {
+              task_id: "t2",
+              started_at: "2026-09-24T01:00:00Z",
+              ended_at: "2026-09-24T02:00:00Z",
+              duration_seconds: 3600,
+              tasks: { id: "t2", title: "Day B task", project_id: null, goal_id: null, projects: null, goals: null },
+            },
+          ],
+          completedTasks: [],
+        }),
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    act(() => {
+      root.render(<WorkActivityHeatmap workActivity={makeWorkActivity()} error={null} />);
+    });
+
+    const buttons = container.querySelectorAll("button");
+    await act(async () => {
+      buttons[2]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await act(async () => {
+      buttons[3]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await flush();
+
+    expect(document.body.textContent).toContain("Day B task");
+
+    await act(async () => {
+      resolveStale({
+        ok: true,
+        json: async () => ({
+          date: "2026-09-23",
+          timezone: "UTC",
+          sessions: [
+            {
+              task_id: "t1",
+              started_at: "2026-09-23T01:00:00Z",
+              ended_at: "2026-09-23T02:00:00Z",
+              duration_seconds: 3600,
+              tasks: { id: "t1", title: "Day A task", project_id: null, goal_id: null, projects: null, goals: null },
+            },
+          ],
+          completedTasks: [],
+        }),
+      });
+    });
+    await flush();
+
+    expect(document.body.textContent).toContain("Day B task");
+    expect(document.body.textContent).not.toContain("Day A task");
   });
 });
