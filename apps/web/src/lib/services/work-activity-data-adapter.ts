@@ -101,10 +101,36 @@ export type WorkActivityDaySessionRow = {
     title?: string | null;
     project_id?: string | null;
     goal_id?: string | null;
+    estimate_minutes?: number | null;
     projects?: { id?: string | null; name?: string | null } | null;
     goals?: { id?: string | null; title?: string | null } | null;
   } | null;
 };
+
+function clipSessionDurationSeconds(
+  session: { started_at: string; ended_at: string | null; duration_seconds: number | null },
+  dayWindow: ExecutionEvidenceWindow,
+  nowIso: string,
+): number | null {
+  const windowStartMs = Date.parse(dayWindow.startIso);
+  const windowEndMs = Date.parse(dayWindow.endIso);
+  const startMs = Date.parse(session.started_at);
+  const endMs = Date.parse(session.ended_at ?? nowIso);
+
+  if (!Number.isFinite(windowStartMs) || !Number.isFinite(windowEndMs)) {
+    return session.duration_seconds;
+  }
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+    return session.duration_seconds;
+  }
+
+  const clippedStartMs = Math.max(startMs, windowStartMs);
+  const clippedEndMs = Math.min(endMs, windowEndMs);
+  if (clippedEndMs <= clippedStartMs) {
+    return 0;
+  }
+  return Math.floor((clippedEndMs - clippedStartMs) / 1000);
+}
 
 export type WorkActivityCompletedTaskRow = {
   taskId: string;
@@ -132,12 +158,14 @@ export type WorkActivityDayDetails = {
 export async function getWorkActivityDayDetails(args: {
   ownerUserId: string;
   dayWindow: ExecutionEvidenceWindow;
+  now?: Date;
   supabase?: SupabaseServerClient;
 }): Promise<{ data: WorkActivityDayDetails | null; errorMessage: string | null }> {
   if (!isValidWindowIso(args.dayWindow.startIso) || !isValidWindowIso(args.dayWindow.endIso)) {
     return { data: null, errorMessage: "Invalid day for work activity." };
   }
   const supabase = await resolveSupabaseClient(args.supabase);
+  const nowIso = (args.now ?? new Date()).toISOString();
 
   const { data: sessions, error: sessionsError } = await supabase
     .from("task_sessions")
@@ -216,7 +244,10 @@ export async function getWorkActivityDayDetails(args: {
 
   return {
     data: {
-      sessions: (sessions ?? []) as WorkActivityDaySessionRow[],
+      sessions: ((sessions ?? []) as WorkActivityDaySessionRow[]).map((session) => ({
+        ...session,
+        duration_seconds: clipSessionDurationSeconds(session, args.dayWindow, nowIso),
+      })),
       completedTasks,
     },
     errorMessage: null,
