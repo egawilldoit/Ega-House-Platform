@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { 
+import {
   calculateWorkAnalytics,
   calculateWorkAnalyticsCoreSummary,
   calculateWorkAnalyticsDailySeries,
@@ -16,6 +16,8 @@ import {
   extractSessionDurationsInWindow,
   buildDrilldownIndexes,
   collectDrilldownSessionsForBucket,
+  getTodayWindow,
+  getCurrentWeekWindow,
 } from "./work-analytics-service";
 
 const window = {
@@ -1788,4 +1790,116 @@ test("collectDrilldownSessionsForBucket resolves week and partial-month buckets 
     ),
     ["tuesday"],
   );
+});
+
+test("calculateWorkAnalyticsDailySeries splits sessions at local midnight in Asia/Tokyo", () => {
+  // Session 2026-04-27T15:00:00Z -> 2026-04-27T16:00:00Z crosses Tokyo midnight
+  // (2026-04-27T15:00:00Z == 2026-04-28 00:00 JST).
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-27T14:00:00.000Z",
+      ended_at: "2026-04-27T16:00:00.000Z",
+      duration_seconds: 7200,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+
+  const tokyo = calculateWorkAnalyticsDailySeries(
+    sessions,
+    "2026-04-27",
+    "2026-04-28",
+    { timezone: "Asia/Tokyo" },
+  );
+  // 2026-04-27 local: 14:00Z-15:00Z = 1h; 2026-04-28 local: 15:00Z-16:00Z = 1h.
+  assert.equal(tokyo.length, 2);
+  assert.equal(tokyo[0]?.date, "2026-04-27");
+  assert.equal(tokyo[0]?.workedMinutes, 60);
+  assert.equal(tokyo[1]?.date, "2026-04-28");
+  assert.equal(tokyo[1]?.workedMinutes, 60);
+
+  // The same instant split by UTC days stays on one day.
+  const utc = calculateWorkAnalyticsDailySeries(
+    sessions,
+    "2026-04-27",
+    "2026-04-27",
+  );
+  assert.equal(utc.length, 1);
+  assert.equal(utc[0]?.workedMinutes, 120);
+});
+
+test("calculateWorkAnalyticsDailySeries handles a 23-hour DST spring-forward day", () => {
+  // 2026-03-08 is the spring-forward day in America/New_York (23 hours).
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-03-08T05:00:00.000Z",
+      ended_at: "2026-03-08T06:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+  const result = calculateWorkAnalyticsDailySeries(
+    sessions,
+    "2026-03-08",
+    "2026-03-08",
+    { timezone: "America/New_York" },
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.date, "2026-03-08");
+  assert.equal(result[0]?.workedMinutes, 60);
+});
+
+test("calculateWorkAnalyticsDailySeries is TZ-invariant for the same instant", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-04-27T08:00:00.000Z",
+      ended_at: "2026-04-27T09:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+  const result = calculateWorkAnalyticsDailySeries(
+    sessions,
+    "2026-04-27",
+    "2026-04-27",
+    { timezone: "Africa/Casablanca" },
+  );
+  assert.equal(result[0]?.workedMinutes, 60);
+});
+
+test("getTodayWindow uses local midnight when timezone is supplied", () => {
+  const now = new Date("2026-04-27T15:30:00.000Z");
+  const tokyo = getTodayWindow(now, "Asia/Tokyo");
+  assert.equal(tokyo.startIso, "2026-04-27T15:00:00.000Z");
+  const utc = getTodayWindow(now);
+  assert.equal(utc.startIso, "2026-04-27T00:00:00.000Z");
+});
+
+test("getCurrentWeekWindow uses local week start when timezone is supplied", () => {
+  // 2026-04-27T15:30:00Z is 2026-04-28 00:30 JST (Tuesday). The local week's
+  // Monday is 2026-04-27 JST, whose local midnight is 2026-04-26T15:00:00Z.
+  const now = new Date("2026-04-27T15:30:00.000Z");
+  const tokyo = getCurrentWeekWindow(now, "Asia/Tokyo");
+  assert.equal(tokyo.startIso, "2026-04-26T15:00:00.000Z");
+});
+
+test("calculateWorkAnalyticsMonthComparison uses local calendar months", () => {
+  const sessions = [
+    {
+      task_id: "task-1",
+      started_at: "2026-03-31T16:00:00.000Z",
+      ended_at: "2026-03-31T17:00:00.000Z",
+      duration_seconds: 3600,
+      tasks: { id: "task-1", title: "Task 1" },
+    },
+  ];
+  // 2026-03-31T16:00Z is 2026-04-01 01:00 in Tokyo -> belongs to April locally.
+  const result = calculateWorkAnalyticsMonthComparison(sessions, {
+    nowIso: "2026-04-01T00:00:00.000Z",
+    timezone: "Asia/Tokyo",
+  });
+  assert.equal(result.currentMonthMinutes, 60);
+  assert.equal(result.previousMonthMinutes, 0);
 });

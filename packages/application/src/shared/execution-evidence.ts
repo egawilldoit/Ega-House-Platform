@@ -77,6 +77,11 @@ export type ExecutionEvidenceSessionRow = Readonly<{
 export type ExecutionEvidenceOptions = Readonly<{
   nowIso?: string;
   includeOpenSessions?: boolean;
+  /**
+   * IANA timezone used for local-day bucketing. Defaults to "UTC" when
+   * omitted; pass the persisted EGA House timezone for owner-local analytics.
+   */
+  timezone?: string;
 }>;
 
 export type EvidenceQuality = "sufficient" | "insufficient" | "provisional" | "suspect";
@@ -313,30 +318,16 @@ function evaluateQuality(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Day splitting — UTC calendar days, avoids double-count across midnight.
+// Day splitting — delegates to the ONE canonical timezone-aware local-day
+// primitive in @ega/domain/time-context. UTC callers pass "UTC" explicitly.
 // ---------------------------------------------------------------------------
-
-function toUtcDayKey(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10);
-}
 
 function splitIntervalByUtcDay(
   intervalStartMs: number,
   intervalEndMs: number,
+  timezone: string | null | undefined,
 ): Array<{ dayKey: string; seconds: number }> {
-  const parts: Array<{ dayKey: string; seconds: number }> = [];
-  let cursor = intervalStartMs;
-  while (cursor < intervalEndMs) {
-    const dayStart = new Date(toUtcDayKey(cursor) + "T00:00:00.000Z").getTime();
-    const nextDayStart = dayStart + 86_400_000;
-    const segmentEnd = Math.min(intervalEndMs, nextDayStart);
-    const seconds = Math.floor((segmentEnd - cursor) / 1000);
-    if (seconds > 0) {
-      parts.push({ dayKey: toUtcDayKey(cursor), seconds });
-    }
-    cursor = segmentEnd;
-  }
-  return parts;
+  return splitIntervalByLocalDay(timezone, intervalStartMs, intervalEndMs);
 }
 
 // ---------------------------------------------------------------------------
@@ -451,7 +442,11 @@ export function calculateExecutionEvidenceForWindow(
     }
 
     // Day buckets: split this session's overlap across UTC calendar days.
-    const dayParts = splitIntervalByUtcDay(overlapStartMs, overlapEndMs);
+    const dayParts = splitIntervalByUtcDay(
+      overlapStartMs,
+      overlapEndMs,
+      options.timezone,
+    );
     for (const part of dayParts) {
       trackedSecondsByDay.set(
         part.dayKey,
@@ -539,6 +534,7 @@ export function getOrderedSessionTransitions(
 
 import type { AuthenticatedActor } from "../auth/actor";
 import type { RepositoryResult } from "./result";
+import { splitIntervalByLocalDay } from "@ega/domain/time-context";
 
 export interface ExecutionEvidenceRepository {
   listSessionsForWindow(

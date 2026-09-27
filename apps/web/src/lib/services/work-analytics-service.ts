@@ -5,11 +5,33 @@ import {
   getExecutionEvidenceSessionOverlapSeconds,
 } from './execution-evidence-service';
 import { getCurrentDayWindow } from '@/lib/task-session';
+import {
+  getCurrentLocalDayWindow,
+  getCurrentWeekWindow as getDomainCurrentWeekWindow,
+  getLocalDateInTimezone,
+  getLocalDayWindow,
+  getLocalMonthWindow,
+  getLocalQuarterWindow,
+  getRollingLocalWindow,
+  getWeekWindow,
+  splitIntervalByLocalDay,
+} from '@ega/domain/time-context';
 
 /**
- * Get the window for today (start of day to now)
+ * Get the window for today (start of day to now).
+ * Uses the canonical Time Context local-day window when `timezone` is supplied.
  */
-export function getTodayWindow(now = new Date()): ExecutionEvidenceWindow {
+export function getTodayWindow(
+  now = new Date(),
+  timezone?: string,
+): ExecutionEvidenceWindow {
+  if (timezone) {
+    const dayWindow = getCurrentLocalDayWindow(timezone, now);
+    return {
+      startIso: dayWindow.startUtcIso,
+      endIso: now.toISOString(),
+    };
+  }
   const dayWindow = getCurrentDayWindow(now);
   return {
     startIso: dayWindow.startIso,
@@ -18,10 +40,20 @@ export function getTodayWindow(now = new Date()): ExecutionEvidenceWindow {
 }
 
 /**
- * Get the window for the current week (Monday start of week to now)
- * Uses local date handling consistent with existing app date utilities
+ * Get the window for the current week (Monday start of week to now).
+ * Uses the canonical Time Context week window when `timezone` is supplied.
  */
-export function getCurrentWeekWindow(now = new Date()): ExecutionEvidenceWindow {
+export function getCurrentWeekWindow(
+  now = new Date(),
+  timezone?: string,
+): ExecutionEvidenceWindow {
+  if (timezone) {
+    const weekWindow = getDomainCurrentWeekWindow(timezone, now);
+    return {
+      startIso: weekWindow.weekStartUtcIso,
+      endIso: now.toISOString(),
+    };
+  }
   const monday = new Date(now);
   // Set to Monday of this week (0 = Sunday, 1 = Monday, etc.)
   const day = monday.getDay();
@@ -44,6 +76,11 @@ export type WorkAnalyticsPeriod = {
 export type WorkAnalyticsOptions = {
   nowIso?: string;
   includeOpenSessions?: boolean; // default false for completed sessions only
+  /**
+   * IANA timezone (e.g. "Africa/Casablanca") for local-day analytics.
+   * Defaults to UTC day boundaries when omitted.
+   */
+  timezone?: string;
 };
 
 /**
@@ -191,28 +228,40 @@ export function calculateWorkAnalyticsDailySeries(
 ): WorkAnalyticsDaily[] {
   const nowIso = options.nowIso ?? new Date().toISOString();
   const includeOpenSessions = options.includeOpenSessions ?? false;
-  
+  const timezone = options.timezone;
+
   // Parse the start and end dates
   const startDate = new Date(startDateInclusive);
   const endDate = new Date(endDateInclusive);
-  
+
   // Validate dates
   if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
     throw new Error('Invalid date format. Use YYYY-MM-DD');
   }
-  
+
   if (startDate > endDate) {
     throw new Error('Start date must be before or equal to end date');
   }
-  
-  // Generate all dates in the range (inclusive)
+
+  // Generate all dates in the range (inclusive). With a timezone these are the
+  // owner's local calendar dates; without one they stay UTC dates.
   const dates: string[] = [];
-  let currentDate = new Date(startDate);
-  while (currentDate <= endDate) {
-    dates.push(currentDate.toISOString().split('T')[0]); // YYYY-MM-DD format
-    currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000); // Add one day
+  if (timezone) {
+    let cursor = startDateInclusive;
+    while (cursor <= endDateInclusive) {
+      dates.push(cursor);
+      const [year, month, day] = cursor.split('-').map(Number);
+      const next = new Date(Date.UTC(year, month - 1, day) + 24 * 60 * 60 * 1000);
+      cursor = next.toISOString().split('T')[0];
+    }
+  } else {
+    let currentDate = new Date(startDate);
+    while (currentDate <= endDate) {
+      dates.push(currentDate.toISOString().split('T')[0]); // YYYY-MM-DD format
+      currentDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000); // Add one day
+    }
   }
-  
+
   // Initialize result with zero values for each day
   const result: WorkAnalyticsDaily[] = dates.map(date => ({
     date,
@@ -220,59 +269,57 @@ export function calculateWorkAnalyticsDailySeries(
     sessionCount: 0,
     completedTaskCount: undefined,
   }));
-  
+
   if (sessions.length === 0) {
     return result;
   }
-  
+
+  // Range bounds in ms: local-day boundaries when a timezone is supplied.
+  const rangeStartMs = timezone
+    ? new Date(getLocalDayWindow(timezone, startDateInclusive).startUtcIso).getTime()
+    : startDate.getTime();
+  const rangeEndMs = timezone
+    ? new Date(getLocalDayWindow(timezone, endDateInclusive).endUtcIso).getTime()
+    : endDate.getTime() + 24 * 60 * 60 * 1000;
+
   // Process each session and distribute its work across the days it spans
+  // using the ONE canonical timezone-aware local-day splitting primitive.
   for (const session of sessions) {
     // Skip sessions with no useful timing data
     const sessionStartMs = new Date(session.started_at).getTime();
-    const sessionEndMs = session.ended_at 
-      ? new Date(session.ended_at).getTime() 
+    const sessionEndMs = session.ended_at
+      ? new Date(session.ended_at).getTime()
       : new Date(nowIso).getTime(); // Open session uses now as end
-    
+
     // Skip invalid sessions
     if (isNaN(sessionStartMs) || isNaN(sessionEndMs) || sessionEndMs < sessionStartMs) {
       continue;
     }
-    
+
     // Skip open sessions if includeOpenSessions is false
     if (!session.ended_at && !includeOpenSessions) {
       continue;
     }
-    
-    // Calculate the overlap of this session with each day in our range
-    for (let i = 0; i < dates.length; i++) {
-      const dayStart = new Date(dates[i]);
-      // dayStart is already at 00:00:00.000Z
-      const dayEnd = new Date(dayStart);
-      dayEnd.setDate(dayEnd.getDate() + 1); // next day at 00:00:00.000Z (exclusive)
-      
-      const dayStartMs = dayStart.getTime();
-      const dayEndMs = dayEnd.getTime();
-      
-      // Calculate overlap between session and this day
-      const overlapStartMs = Math.max(sessionStartMs, dayStartMs);
-      const overlapEndMs = Math.min(sessionEndMs, dayEndMs);
-      
-      if (overlapEndMs > overlapStartMs) {
-        // There is overlap, calculate the duration in seconds
-        const overlapSeconds = Math.floor((overlapEndMs - overlapStartMs) / 1000);
-        
-        // Add to the day's totals (we'll convert to minutes at the end)
-        result[i].workedMinutes += overlapSeconds;
-        result[i].sessionCount += 1;
+
+    const overlapStartMs = Math.max(sessionStartMs, rangeStartMs);
+    const overlapEndMs = Math.min(sessionEndMs, rangeEndMs);
+    if (overlapEndMs <= overlapStartMs) continue;
+
+    const dayParts = splitIntervalByLocalDay(timezone, overlapStartMs, overlapEndMs);
+    for (const part of dayParts) {
+      const bucket = result.find((day) => day.date === part.dayKey);
+      if (bucket) {
+        bucket.workedMinutes += part.seconds;
+        bucket.sessionCount += 1;
       }
     }
   }
-  
+
   // Convert accumulated seconds to minutes for each day
   for (const day of result) {
     day.workedMinutes = Math.floor(day.workedMinutes / 60);
   }
-  
+
   return result;
 }
 
@@ -313,23 +360,37 @@ export function calculateWorkAnalyticsGroupedSeries(
   // Build a map of bucket key -> consolidated data
   const bucketMap = new Map<string, { workedMinutes: number; sessionCount: number }>();
 
+  const timezone = options.timezone;
+
   for (const day of dailySeries) {
-    const dayDate = new Date(day.date + 'T00:00:00.000Z');
     let bucketKey: string;
 
     if (groupBy === 'week') {
-      // ISO week start: Monday
-      const dayOfWeek = dayDate.getUTCDay();
-      // getUTCDay(): 0=Sun, 1=Mon, ..., 6=Sat
-      // diff to Monday: if Sunday (0), go back 6; otherwise go back (dayOfWeek - 1)
-      const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-      const monday = new Date(dayDate);
-      monday.setUTCDate(dayDate.getUTCDate() + diffToMonday);
-      bucketKey = monday.toISOString().split('T')[0]; // YYYY-MM-DD (Monday)
+      if (timezone) {
+        // Monday of the day's local calendar week in the owner's timezone
+        bucketKey = getWeekWindow(timezone, day.date).weekStart;
+      } else {
+        const dayDate = new Date(day.date + 'T00:00:00.000Z');
+        // ISO week start: Monday
+        const dayOfWeek = dayDate.getUTCDay();
+        // getUTCDay(): 0=Sun, 1=Mon, ..., 6=Sat
+        // diff to Monday: if Sunday (0), go back 6; otherwise go back (dayOfWeek - 1)
+        const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const monday = new Date(dayDate);
+        monday.setUTCDate(dayDate.getUTCDate() + diffToMonday);
+        bucketKey = monday.toISOString().split('T')[0]; // YYYY-MM-DD (Monday)
+      }
     } else {
-      // 'month': first of the month
-      const monthStart = new Date(Date.UTC(dayDate.getUTCFullYear(), dayDate.getUTCMonth(), 1));
-      bucketKey = monthStart.toISOString().split('T')[0]; // YYYY-MM-01
+      if (timezone) {
+        // 1st of the day's local calendar month (day.date is already local)
+        const [year, month] = day.date.split('-');
+        bucketKey = `${year}-${month}-01`;
+      } else {
+        const dayDate = new Date(day.date + 'T00:00:00.000Z');
+        // 'month': first of the month
+        const monthStart = new Date(Date.UTC(dayDate.getUTCFullYear(), dayDate.getUTCMonth(), 1));
+        bucketKey = monthStart.toISOString().split('T')[0]; // YYYY-MM-01
+      }
     }
 
     const existing = bucketMap.get(bucketKey);
@@ -504,36 +565,54 @@ export function calculateWorkAnalyticsCoreSummary(
 ): WorkAnalyticsCoreSummary {
   const nowIso = options.nowIso ?? new Date().toISOString();
   const now = new Date(nowIso);
-  const todayStr = nowIso.slice(0, 10);
+  const timezone = options.timezone;
+  const todayStr = timezone
+    ? getLocalDateInTimezone(now, timezone)
+    : nowIso.slice(0, 10);
 
-  // Today window
-  const todayWindow: ExecutionEvidenceWindow = {
-    startIso: `${todayStr}T00:00:00.000Z`,
-    endIso: nowIso,
-  };
+  // Today window (local midnight when timezone-aware)
+  const todayWindow: ExecutionEvidenceWindow = timezone
+    ? {
+        startIso: getLocalDayWindow(timezone, todayStr).startUtcIso,
+        endIso: nowIso,
+      }
+    : {
+        startIso: `${todayStr}T00:00:00.000Z`,
+        endIso: nowIso,
+      };
 
-  // 7 days ago window
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
-  const weekWindow: ExecutionEvidenceWindow = {
-    startIso: sevenDaysAgo.toISOString(),
-    endIso: nowIso,
-  };
+  // 7 days ago window (local calendar rolling)
+  const weekWindow: ExecutionEvidenceWindow = timezone
+    ? getRollingLocalWindow(timezone, now, 7)
+    : (() => {
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
+        return {
+          startIso: sevenDaysAgo.toISOString(),
+          endIso: nowIso,
+        };
+      })();
 
-  // 30 days ago window
-  const thirtyDaysAgo = new Date(now);
-  thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
-  const monthWindow: ExecutionEvidenceWindow = {
-    startIso: thirtyDaysAgo.toISOString(),
-    endIso: nowIso,
-  };
+  // 30 days ago window (local calendar rolling)
+  const monthWindow: ExecutionEvidenceWindow = timezone
+    ? getRollingLocalWindow(timezone, now, 30)
+    : (() => {
+        const thirtyDaysAgo = new Date(now);
+        thirtyDaysAgo.setUTCDate(thirtyDaysAgo.getUTCDate() - 30);
+        return {
+          startIso: thirtyDaysAgo.toISOString(),
+          endIso: nowIso,
+        };
+      })();
 
   const todayData = calculateWorkAnalytics(sessions, todayWindow, options);
   const weekData = calculateWorkAnalytics(sessions, weekWindow, options);
   const monthData = calculateWorkAnalytics(sessions, monthWindow, options);
 
   // Calculate active days from the month's daily series
-  const startDateStr = thirtyDaysAgo.toISOString().split("T")[0];
+  const startDateStr = timezone
+    ? getLocalDateInTimezone(new Date(monthWindow.startIso), timezone)
+    : monthWindow.startIso.slice(0, 10);
   const endDateStr = todayStr;
   const dailySeries = calculateWorkAnalyticsDailySeries(sessions, startDateStr, endDateStr, options);
   const activeDays = dailySeries.filter((d) => d.workedMinutes > 0).length;
@@ -584,28 +663,48 @@ export function calculateWorkAnalyticsMonthComparison(
 ): WorkAnalyticsMonthComparison {
   const nowIso = options.nowIso ?? new Date().toISOString();
   const now = new Date(nowIso);
+  const timezone = options.timezone;
 
-  // Current month: from 1st of this month to now
-  const currentMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const currentWindow: ExecutionEvidenceWindow = {
-    startIso: currentMonthStart.toISOString(),
-    endIso: nowIso,
-  };
+  // Current month: from 1st of this local month to now
+  const currentWindow: ExecutionEvidenceWindow = timezone
+    ? {
+        startIso: getLocalMonthWindow(timezone, getLocalDateInTimezone(now, timezone)).startUtcIso,
+        endIso: nowIso,
+      }
+    : {
+        startIso: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString(),
+        endIso: nowIso,
+      };
 
   // Previous month: full previous calendar month
-  const previousMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  const previousMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const previousWindow: ExecutionEvidenceWindow = {
-    startIso: previousMonthStart.toISOString(),
-    endIso: previousMonthEnd.toISOString(),
-  };
+  const previousWindow: ExecutionEvidenceWindow = timezone
+    ? (() => {
+        const currentMonthStart = new Date(currentWindow.startIso);
+        const prevMonthDate = getLocalDateInTimezone(
+          new Date(currentMonthStart.getTime() - 24 * 60 * 60 * 1000),
+          timezone,
+        );
+        const prevMonthWindow = getLocalMonthWindow(timezone, prevMonthDate);
+        return {
+          startIso: prevMonthWindow.startUtcIso,
+          endIso: prevMonthWindow.endUtcIso,
+        };
+      })()
+    : {
+        startIso: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString(),
+        endIso: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString(),
+      };
 
   const currentPeriod = calculateWorkAnalytics(sessions, currentWindow, options);
   const previousPeriod = calculateWorkAnalytics(sessions, previousWindow, options);
 
   // Active days for current month
-  const currentStartStr = currentMonthStart.toISOString().split("T")[0];
-  const currentEndStr = nowIso.slice(0, 10);
+  const currentStartStr = timezone
+    ? getLocalDateInTimezone(new Date(currentWindow.startIso), timezone)
+    : currentWindow.startIso.slice(0, 10);
+  const currentEndStr = timezone
+    ? getLocalDateInTimezone(now, timezone)
+    : nowIso.slice(0, 10);
   const currentDaily = calculateWorkAnalyticsDailySeries(sessions, currentStartStr, currentEndStr, options);
   const currentMonthActiveDays = currentDaily.filter((d) => d.workedMinutes > 0).length;
   const currentMonthAvgPerActiveDayMinutes = currentMonthActiveDays > 0
@@ -780,11 +879,16 @@ export function calculateWorkAnalyticsInsights(
   // We need to get the date range that covers our window
   const startDate = new Date(window.startIso);
   const endDate = new Date(window.endIso);
-  
-  // Convert to date strings (YYYY-MM-DD) for the daily series function
-  const startDateStr = startDate.toISOString().split('T')[0];
-  const endDateStr = endDate.toISOString().split('T')[0];
-  
+
+  // Convert to date strings (YYYY-MM-DD) for the daily series function.
+  // With a timezone these are the owner's local calendar dates.
+  const startDateStr = options.timezone
+    ? getLocalDateInTimezone(startDate, options.timezone)
+    : startDate.toISOString().split('T')[0];
+  const endDateStr = options.timezone
+    ? getLocalDateInTimezone(endDate, options.timezone)
+    : endDate.toISOString().split('T')[0];
+
   const dailySeries = calculateWorkAnalyticsDailySeries(sessions, startDateStr, endDateStr, options);
   
   // Calculate period comparison
@@ -816,24 +920,27 @@ export function calculateWorkAnalyticsInsights(
   }
   
   // Calculate current streak (consecutive days with work up to today)
-  // We'll check from today backwards
-  const today = new Date(nowIso);
-  today.setHours(0, 0, 0, 0);
+  // We'll check from today backwards. With a timezone, "today" and day
+  // steps follow the owner's local calendar, not the process clock.
+  const todayStr = options.timezone
+    ? getLocalDateInTimezone(new Date(nowIso), options.timezone)
+    : new Date(nowIso).toISOString().split('T')[0];
   let currentStreak = 0;
-  
+
   // Check each day going backwards from today
-  let checkDate = new Date(today);
+  let checkDate = todayStr;
   while (true) {
-    const dateStr = checkDate.toISOString().split('T')[0];
-    const dayData = dailySeries.find(day => day.date === dateStr);
-    
+    const dayData = dailySeries.find(day => day.date === checkDate);
+
     if (dayData && dayData.workedMinutes > 0) {
       currentStreak++;
-      checkDate = new Date(checkDate.getTime() - 24 * 60 * 60 * 1000); // Subtract one day
+      const [year, month, day] = checkDate.split('-').map(Number);
+      const prev = new Date(Date.UTC(year, month - 1, day) - 24 * 60 * 60 * 1000);
+      checkDate = prev.toISOString().split('T')[0];
     } else {
       break;
     }
-    
+
     // Prevent infinite loop
     if (currentStreak > 365) break;
   }
@@ -1284,8 +1391,11 @@ export function buildDrilldownIndexes(
     };
 
     // Date drilldowns stay keyed by the session start date. Grouped chart
-    // buckets combine these exact-date lists client-side.
-    const dateKey = session.started_at.slice(0, 10);
+    // buckets combine these exact-date lists client-side. With a timezone the
+    // key is the owner's local calendar date of the session start.
+    const dateKey = options.timezone
+      ? getLocalDateInTimezone(new Date(session.started_at), options.timezone)
+      : session.started_at.slice(0, 10);
     if (!date[dateKey]) date[dateKey] = [];
     date[dateKey].push(dto);
 
@@ -1315,32 +1425,52 @@ export function collectDrilldownSessionsForBucket(
   bucketDate: string,
   groupBy: "day" | "week" | "month",
   dateIndex: Record<string, DrilldownSessionDTO[]>,
+  timezone?: string,
 ): DrilldownSessionDTO[] {
   if (groupBy === "day") {
     return dateIndex[bucketDate] ?? [];
   }
 
-  const cursor = new Date(`${bucketDate}T00:00:00.000Z`);
-  const endExclusive = new Date(cursor);
-
-  if (groupBy === "week") {
-    endExclusive.setUTCDate(endExclusive.getUTCDate() + 7);
+  // Iterate the owner's local calendar dates covered by the bucket.
+  const dates: string[] = [];
+  if (timezone) {
+    let cursor = bucketDate;
+    const bucketEnd =
+      groupBy === "week"
+        ? getWeekWindow(timezone, bucketDate).weekEnd
+        : getLocalMonthWindow(timezone, bucketDate).endUtcIso.slice(0, 10);
+    while (cursor <= bucketEnd) {
+      dates.push(cursor);
+      const [year, month, day] = cursor.split('-').map(Number);
+      const next = new Date(Date.UTC(year, month - 1, day) + 24 * 60 * 60 * 1000);
+      cursor = next.toISOString().split('T')[0];
+    }
   } else {
-    endExclusive.setUTCMonth(endExclusive.getUTCMonth() + 1, 1);
+    const cursor = new Date(`${bucketDate}T00:00:00.000Z`);
+    const endExclusive = new Date(cursor);
+
+    if (groupBy === "week") {
+      endExclusive.setUTCDate(endExclusive.getUTCDate() + 7);
+    } else {
+      endExclusive.setUTCMonth(endExclusive.getUTCMonth() + 1, 1);
+    }
+
+    while (cursor < endExclusive) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
   }
 
   const result: DrilldownSessionDTO[] = [];
   const seen = new Set<string>();
 
-  while (cursor < endExclusive) {
-    const key = cursor.toISOString().slice(0, 10);
+  for (const key of dates) {
     for (const session of dateIndex[key] ?? []) {
       const identity = `${session.taskId}|${session.startedAt}`;
       if (seen.has(identity)) continue;
       seen.add(identity);
       result.push(session);
     }
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   return result;

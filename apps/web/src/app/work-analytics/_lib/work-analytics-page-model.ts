@@ -7,6 +7,7 @@ import {
   parseAnalyticsFilters,
 } from "@/lib/services/work-analytics-filters";
 import { buildWorkAnalyticsReport, type WorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-report-builder";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 
 const NO_TASK_COUNTS: WorkAnalyticsTaskCounts = {
   completedCount: 0,
@@ -22,12 +23,22 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
   );
   const now = new Date();
 
+  // Analytics default to the owner's persisted EGA House timezone. A
+  // data-access failure degrades to UTC windows rather than blocking the
+  // report, and the UI surfaces the fallback via the Time Context.
+  let analyticsTimezone: string | undefined;
+  try {
+    analyticsTimezone = (await getWebTimeContext()).timezone;
+  } catch {
+    analyticsTimezone = undefined;
+  }
+
   // Fetch one bounded evidence window covering the selected range, the fixed
   // 30-day context, and the previous calendar month. Selected-range metrics are
   // filtered to their exact canonical window inside the report builder.
-  const selectedWindow = computeWindowForRange(filters.range, now);
-  const evidenceWindow = computeEvidenceWindowForRange(filters.range, now);
-  const last30Window = computeLast30DaysWindow(now);
+  const selectedWindow = computeWindowForRange(filters.range, now, analyticsTimezone);
+  const evidenceWindow = computeEvidenceWindowForRange(filters.range, now, analyticsTimezone);
+  const last30Window = computeLast30DaysWindow(now, analyticsTimezone);
 
   const [sessionsResult, selectedTaskCountsResult, last30TaskCountsResult] = await Promise.all([
     getWorkAnalyticsSessionsForWindow({ ownerUserId: user.id, window: evidenceWindow }),
@@ -47,6 +58,7 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
     },
     filters,
     now,
+    analyticsTimezone,
   );
   return { user, error: null as string | null, report, filters };
 }
