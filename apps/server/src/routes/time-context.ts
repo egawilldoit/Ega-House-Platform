@@ -1,14 +1,19 @@
 import { Hono } from "hono";
 
-import { resolveTimeContext } from "@ega/application";
-import type { GetTimeContextResponse } from "@ega/contracts/time-context";
+import { resolveTimeContext, setTimeContextTimezone } from "@ega/application";
+import type {
+  GetTimeContextResponse,
+  SetTimeContextRequest,
+  SetTimeContextResponse,
+} from "@ega/contracts/time-context";
 import { SupabaseTimeContextRepository } from "@ega/data-access";
 import { getLocalDayWindow, getWeekWindow } from "@ega/domain";
 
 import type { ServerDependencies, ServerVariables } from "../app";
+import { readJsonBody } from "../app";
 
 /**
- * Canonical Time Context transport — GET only.
+ * Canonical Time Context transport.
  *
  * Authenticated GET /api/time-context resolves the caller's effective
  * Time Context via application use case `resolveTimeContext`. The actor is
@@ -27,11 +32,12 @@ import type { ServerDependencies, ServerVariables } from "../app";
  *     `now`. Invalid dates answer 400 VALIDATION. Absent `date` resolves
  *     windows for `now` (injected via dependencies.now for determinism).
  *
- * PUT / PATCH for timezone mutation is intentionally NOT exposed here.
- * Device-timezone auto-persistence remains a human-in-the-loop policy
- * decision (HITL). The persistence helper `setTimeContextTimezone` is covered
- * by application/data-access tests but transport mutation stays gated until
- * policy is approved. This route is read-only.
+ * Authenticated PUT /api/time-context persists the caller's IANA timezone via
+ * application use case `setTimeContextTimezone`. The write is owner-scoped by
+ * the authenticated actor and RLS (user_id = auth.uid()); the route never
+ * trusts a client-supplied owner id. IANA validation lives in the application
+ * layer; invalid zones answer 400 VALIDATION. The upsert targets the single
+ * `user_time_context` row for the actor (onConflict user_id).
  */
 export function createTimeContextRoutes(
   dependencies: ServerDependencies,
@@ -155,6 +161,46 @@ export function createTimeContextRoutes(
       },
     };
 
+    return c.json(response);
+  });
+
+  routes.put("/", async (c) => {
+    const { actor, client } = c.var;
+
+    const body = await readJsonBody(c);
+    if (!body) {
+      return c.json(
+        { error: { code: "VALIDATION", message: "Request body must be valid JSON." } },
+        400,
+      );
+    }
+
+    const rawTimezone = body.timezone;
+    if (typeof rawTimezone !== "string" || rawTimezone.trim().length === 0) {
+      return c.json(
+        { error: { code: "VALIDATION", message: "Timezone is required." } },
+        400,
+      );
+    }
+
+    const request: SetTimeContextRequest = { timezone: rawTimezone.trim() };
+
+    const repository = new SupabaseTimeContextRepository(client as never);
+    const result = await setTimeContextTimezone(actor, repository, request);
+    if (!result.ok) {
+      if (result.code === "validation") {
+        return c.json(
+          { error: { code: "VALIDATION", message: "Timezone is invalid." } },
+          400,
+        );
+      }
+      return c.json(
+        { error: { code: "INTERNAL", message: result.errorMessage } },
+        500,
+      );
+    }
+
+    const response: SetTimeContextResponse = { ok: true, timezone: result.data };
     return c.json(response);
   });
 

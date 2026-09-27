@@ -50,6 +50,7 @@ class FakeBuilder {
   select(...args: unknown[]) { return this.step("select", args); }
   insert(...args: unknown[]) { return this.step("insert", args); }
   update(...args: unknown[]) { return this.step("update", args); }
+  upsert(...args: unknown[]) { return this.step("upsert", args); }
   eq(...args: unknown[]) { return this.step("eq", args); }
   neq(...args: unknown[]) { return this.step("neq", args); }
   in(...args: unknown[]) { return this.step("in", args); }
@@ -394,6 +395,128 @@ test("GET /api/time-context rejects malformed historical dates before persistenc
     error: { code: "VALIDATION", message: "Date is invalid. Expected YYYY-MM-DD." },
   });
   assert.equal(fake.calls.length, 0);
+});
+
+test("PUT /api/time-context persists the owner-scoped IANA timezone", async () => {
+  const fake = new FakeSupabase();
+  fake.push("user_time_context", {
+    data: { iana_timezone: "Africa/Casablanca" },
+    error: null,
+    count: 1,
+  });
+
+  const response = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ timezone: "Africa/Casablanca" }),
+  });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    timezone: "Africa/Casablanca",
+  });
+
+  const call = fake.calls.find((c) => c.table === "user_time_context");
+  assert.ok(call, "expected a user_time_context write");
+  const upsert = call?.steps.find((step) => step.method === "upsert");
+  assert.ok(upsert, "expected an upsert step");
+  const payload = upsert?.args[0] as { user_id?: string; iana_timezone?: string };
+  assert.equal(payload.user_id, "user-wave-02");
+  assert.equal(payload.iana_timezone, "Africa/Casablanca");
+});
+
+test("PUT /api/time-context rejects invalid IANA zones without persisting", async () => {
+  const fake = new FakeSupabase();
+
+  const response = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ timezone: "Not/AZone" }),
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Timezone is invalid." },
+  });
+  assert.equal(fake.calls.length, 0);
+});
+
+test("PUT /api/time-context rejects missing or empty timezone", async () => {
+  const fake = new FakeSupabase();
+
+  const missing = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({}),
+  });
+  assert.equal(missing.status, 400);
+  assert.deepEqual(await missing.json(), {
+    error: { code: "VALIDATION", message: "Timezone is required." },
+  });
+
+  const empty = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ timezone: "   " }),
+  });
+  assert.equal(empty.status, 400);
+  assert.deepEqual(await empty.json(), {
+    error: { code: "VALIDATION", message: "Timezone is required." },
+  });
+
+  assert.equal(fake.calls.length, 0);
+});
+
+test("PUT /api/time-context rejects malformed JSON bodies", async () => {
+  const fake = new FakeSupabase();
+
+  const response = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: "not-json",
+  });
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: { code: "VALIDATION", message: "Request body must be valid JSON." },
+  });
+  assert.equal(fake.calls.length, 0);
+});
+
+test("PUT /api/time-context requires verified auth", async () => {
+  const fake = new FakeSupabase();
+
+  const response = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ timezone: "Africa/Casablanca" }),
+  });
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), {
+    error: { code: "UNAUTHENTICATED", message: "Authentication required." },
+  });
+  assert.equal(fake.calls.length, 0);
+});
+
+test("PUT /api/time-context maps persistence failures to 500", async () => {
+  const fake = new FakeSupabase();
+  fake.push("user_time_context", {
+    data: null,
+    error: { code: "23505", message: "duplicate key value violates unique constraint" },
+    count: 0,
+  });
+
+  const response = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ timezone: "Africa/Casablanca" }),
+  });
+
+  assert.equal(response.status, 500);
+  const body = await response.json();
+  assert.equal(body.error.code, "INTERNAL");
 });
 
 test("GET /api/review returns the empty review contract with owner-scoped reads", async () => {
