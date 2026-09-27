@@ -222,3 +222,20 @@ test("repository validation: the living agent-context set is required", async ()
     assert.match(errors, /missing required agent-context file: docs\/reports\/README\.md/);
   });
 });
+
+
+test("repository validation: checks skill entry points and nested Markdown references", async () => {
+  await withTempRepo(async (root) => {
+    const dir = join(root, ".agents", "skills", "example");
+    await mkdir(join(dir, "references"), { recursive: true });
+    await writeFile(join(dir, "SKILL.md"), skill("name: example\ndescription: Use for a meaningful validation fixture.") + "[Guide](references/guide.md)\n");
+    await writeFile(join(dir, "references", "guide.md"), "```md\n[Example](example-only.md)\n```\n~~~md\n[Example](another-example.md)\n~~~\n[Contract](contract.md)\n");
+    const broken = await validateRepository(root, { env: {}, userHome: root });
+    assert.deepEqual(broken.errors.filter((error) => error.includes("broken local link")), [
+      ".agents/skills/example/references/guide.md: broken local link 'contract.md'",
+    ]);
+    await writeFile(join(dir, "references", "contract.md"), "# Contract\n");
+    const repaired = await validateRepository(root, { env: {}, userHome: root });
+    assert.deepEqual(repaired.errors.filter((error) => error.includes("broken local link")), []);
+  });
+});

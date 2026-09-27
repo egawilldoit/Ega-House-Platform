@@ -21,8 +21,7 @@ rules without weakening repository safety. Last instruction review: 2026-09-27
   [`Runner`](scripts/ega-runner/AGENTS.md). These are scope entry points, not a
   requirement to load unrelated subsystems. Select skills by the actual task.
 - For a proposed diff or PR use the repository
-  [`code-review` skill](.agents/skills/code-review/SKILL.md). For a bug with a
-  cheap local reproduction use [`tdd`](.agents/skills/tdd/SKILL.md). Use
+  [`code-review` skill](.agents/skills/code-review/SKILL.md). Use
   [`final-verification`](.agents/skills/final-verification/SKILL.md) only after
   implementation and review evidence exists; it does not replace code review.
 - Before behavioral changes, establish expected behavior and acceptance criteria,

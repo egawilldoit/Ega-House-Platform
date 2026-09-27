@@ -98,6 +98,12 @@ the code under test are weak proof on their own. For a failed mutation, assert
 the error and unchanged or recovered state. Keep fixtures isolated so the test
 does not pass only because of shared data or execution order.
 
+For asynchronous behavior, use a bounded assertion on the expected observable
+condition; an arbitrary delay or an empty scheduling flush does not establish
+completion. Preserve the original failed run and relevant environment alongside
+any successful retry. A retry passing does not prove a timing cause or a fix;
+record an unexplained intermittent failure as an unresolved follow-up.
+
 For performance changes, reproduce the relevant workload and measure a baseline
 on the same runtime and data shape. Record the metric, sample method, and query,
 render, memory, or network cost being changed. Measure again after the patch and
