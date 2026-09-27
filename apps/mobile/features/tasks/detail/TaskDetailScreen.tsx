@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { mobileTheme } from '@/components/mobile/theme';
+import { useAccountTimezone } from '@/lib/hooks/use-account-timezone';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
@@ -46,6 +47,7 @@ import { TaskScheduleSection } from './TaskScheduleSection';
 import { TaskStateSection } from './TaskStateSection';
 
 export function TaskDetailScreen() {
+  const { timezone: accountTimezone } = useAccountTimezone();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -162,7 +164,7 @@ export function TaskDetailScreen() {
           dueDate: draft.dueDate,
           estimateMinutes: estimateResult.value,
           recurrenceRule: draft.recurrenceRule,
-          recurrenceTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          recurrenceTimezone: accountTimezone,
           description: draft.description.trim() || null,
           blockedReason: draft.blockedReason.trim() || null,
         },
