@@ -2,7 +2,7 @@
 
 Repository-wide contract; follow higher-priority system/developer instructions
 and explicit user scope. Applicable nested `AGENTS.md` files specialize local
-rules without weakening repository safety. Last instruction review: 2026-09-04
+rules without weakening repository safety. Last instruction review: 2026-09-27
 (repository guidance only; not deployment or harness-discovery proof).
 
 ## Orient and analyze
@@ -90,7 +90,7 @@ Web server-side code must not self-fetch Hono just to reuse in-process policy.
   Test behavior at the boundary that matters with an observable result and a
   discriminating expectation; mocks cannot prove what they replace. For a user
   flow, drive the real path and observe both its response and durable effect when
-  feasible. Follow the quality workflow's symptom and blast-radius procedures.
+  feasible. Follow the quality workflow's defect diagnosis and review procedures.
 - For performance work record the baseline, workload, environment, and target
   metric; measure the same path after the change. Check resource and query costs
   as well as latency, and reject an optimization that changes required behavior.
