@@ -32,7 +32,7 @@ This skill is _informed_ by the project's domain model. The domain language give
 
 ### 1. Explore
 
-Before exploring, follow [../grill-with-docs/DOMAIN-AWARENESS.md](../grill-with-docs/DOMAIN-AWARENESS.md) — read `CONTEXT.md` and relevant ADRs first.
+Before exploring, read [product context](../../../CONTEXT.md) and the [decision log](../../../docs/agent-context/decision-log.md) and relevant ADRs first.
 
 Then use the Agent tool with `subagent_type=Explore` to walk the codebase. Don't follow rigid heuristics — explore organically and note where you experience friction:
 

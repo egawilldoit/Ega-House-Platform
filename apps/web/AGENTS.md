@@ -17,6 +17,13 @@ owns web composition, adapters, utilities, and retained compatibility surfaces.
   callers and removal safety are proven.
 - Reuse the nearest feature pattern. Do not add a duplicate DTO, data owner,
   state system, design system, or icon framework.
+- Keep state minimal: derive display values from current props/data when possible;
+  use effects for synchronization with external systems, not to mirror derived
+  state. Keep browser-only code behind the smallest necessary client boundary.
+- For performance changes, inspect the actual slow route or interaction first.
+  Check repeated fetches, query shape, client JavaScript, render work, and cleanup
+  before adding memoization or caching. Measure comparable before/after behavior;
+  do not treat `memo`, `useMemo`, or a build pass as performance proof.
 
 ## Proof
 
@@ -39,3 +46,8 @@ For changed mutations, verify persisted outcome, failure feedback, and invalidat
 of affected projections. Check user-switch cache isolation and shared task/timer/
 Today semantics when touched; select date/timezone and duplicate-submit cases by
 risk. Rendered tests do not establish an authenticated end-to-end flow.
+`tests/visual-a11y.spec.ts` accepts a login redirect for protected routes, so a
+green run does not prove those screens rendered. For a changed protected screen,
+drive it with an authenticated browser at relevant viewport sizes and inspect the
+action, resulting UI, and persisted state when applicable; report unavailable
+credentials as a coverage gap.
