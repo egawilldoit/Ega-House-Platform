@@ -5,6 +5,7 @@ import {
   getTaskSessionDurationSeconds,
   getTaskTotalDurationMap,
 } from "@/lib/task-session";
+import { getCurrentLocalDayWindow } from "@ega/domain/time-context";
 import { isTaskCanceledStatus, isTaskCompletedStatus } from "@/lib/task-domain";
 import {
   calculateExecutionEvidenceForWindow,
@@ -316,11 +317,12 @@ export function calculateTimerAggregates(
   options?: {
     nowIso?: string;
     todayWindow?: { startIso: string; endIso: string };
+    timezone?: string;
   },
 ) {
   const nowIso = options?.nowIso ?? new Date().toISOString();
   const todayWindow =
-    options?.todayWindow ?? getCurrentDayWindow(new Date(nowIso));
+    options?.todayWindow ?? getCurrentDayWindow(new Date(nowIso), options?.timezone);
   const todayEvidence = calculateExecutionEvidenceForWindow(sessions, todayWindow, {
     nowIso,
   });
@@ -642,14 +644,16 @@ export async function resolveOpenTimerSessionConflict(options?: {
 export async function getTimerWorkspaceData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  timezone?: string;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
   const nowIso = now.toISOString();
-  const todayWindow = getCurrentDayWindow(now);
-  const nextDayStartIso = new Date(
-    new Date(todayWindow.startIso).getTime() + 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const todayWindow = getCurrentDayWindow(now, options?.timezone);
+  // DST-safe upper bound: the local day's end (next local midnight), not start+24h.
+  const nextDayStartIso = options?.timezone
+    ? getCurrentLocalDayWindow(options.timezone, now).endUtcIso
+    : new Date(new Date(todayWindow.startIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
 
   const [tasksResult, openSessionsResult, completedSessionsResult, todaySessionsResult] =
     await Promise.all([
@@ -708,6 +712,7 @@ export async function getTimerWorkspaceData(options?: {
   const aggregateSummary = calculateTimerAggregates(todaySessionsResult.data, {
     nowIso,
     todayWindow,
+    timezone: options?.timezone,
   });
   const todayTaskBreakdown = aggregateSummary.todayTaskBreakdown;
   const todayTotalDurationSeconds = aggregateSummary.todayTotalDurationSeconds;
@@ -777,11 +782,12 @@ export async function getTimerSummary(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
   limit?: number;
+  timezone?: string;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
   const nowIso = now.toISOString();
-  const todayWindow = getCurrentDayWindow(now);
+  const todayWindow = getCurrentDayWindow(now, options?.timezone);
   const { data, error } = await supabase
     .from("task_sessions")
     .select("task_id, started_at, ended_at, duration_seconds, tasks(title)")
@@ -799,6 +805,7 @@ export async function getTimerSummary(options?: {
   const aggregateSummary = calculateTimerAggregates(sessions, {
     nowIso,
     todayWindow,
+    timezone: options?.timezone,
   });
 
   const summary: TimerSummary = {

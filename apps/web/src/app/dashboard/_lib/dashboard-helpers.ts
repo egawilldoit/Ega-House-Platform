@@ -1,5 +1,22 @@
-export function getGreeting(): string {
-  const hour = new Date().getHours();
+import { getCurrentLocalDayWindow } from "@ega/domain/time-context";
+
+/**
+ * Greeting follows the owner's EGA House timezone, not the server/runtime
+ * timezone. Without a timezone it falls back to the runtime local hour.
+ */
+export function getGreeting(timezone?: string): string {
+  let hour: number;
+  if (timezone) {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hour12: false,
+    });
+    const value = Number(formatter.format(new Date()));
+    hour = value === 24 ? 0 : value;
+  } else {
+    hour = new Date().getHours();
+  }
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
@@ -36,7 +53,18 @@ export function getTaskContextHref(taskId: string, projectSlug: string | null | 
   return `/tasks/projects/${projectSlug}#task-${taskId}`;
 }
 
-export function getTodayWindow(): { startIso: string; endIso: string } {
+/**
+ * Today's evidence window in the owner's EGA House timezone (local midnight
+ * to next local midnight). DST-safe: the window length follows the local day.
+ */
+export function getTodayWindow(timezone?: string): { startIso: string; endIso: string } {
+  if (timezone) {
+    const dayWindow = getCurrentLocalDayWindow(timezone);
+    return {
+      startIso: dayWindow.startUtcIso,
+      endIso: dayWindow.endUtcIso,
+    };
+  }
   const now = new Date();
   const start = new Date(now);
   start.setHours(0, 0, 0, 0);
