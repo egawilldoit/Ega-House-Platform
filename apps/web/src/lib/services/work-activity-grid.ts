@@ -79,12 +79,15 @@ export function buildWorkActivityGrid(calendar: WorkActivityCalendar): WorkActiv
 
   const monthLabels: WorkActivityMonthLabel[] = [];
   let previousMonthKey: string | null = null;
+  const firstYear = yearOfLocalDate(days[0]?.date ?? startDate);
   for (const cell of cells) {
     const month = monthOfLocalDate(cell.date);
     const year = yearOfLocalDate(cell.date);
     const monthKey = `${year}-${month}`;
     if (monthKey !== previousMonthKey) {
-      monthLabels.push({ weekIndex: cell.weekIndex, label: MONTH_NAMES[month - 1] ?? "" });
+      const name = MONTH_NAMES[month - 1] ?? "";
+      const label = year !== firstYear ? `${name} ${year}` : name;
+      monthLabels.push({ weekIndex: cell.weekIndex, label });
       previousMonthKey = monthKey;
     }
   }
