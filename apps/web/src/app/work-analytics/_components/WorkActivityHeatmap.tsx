@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { Clock3, X } from "lucide-react";
 import {
@@ -121,10 +121,6 @@ type WorkActivityGridProps = {
 };
 
 function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
-  const cellSize = 12;
-  const gap = 3;
-  const weekColumnWidth = cellSize + gap;
-
   const monthLabelByWeek = useMemo(() => {
     const map = new Map<number, string>();
     for (const label of grid.monthLabels) {
@@ -136,14 +132,18 @@ function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
   }, [grid.monthLabels]);
 
   return (
-    <div className="overflow-x-auto pb-1" role="region" aria-label="Yearly work activity calendar">
-      <div style={{ minWidth: grid.weekCount * weekColumnWidth + 28 }}>
+    <div
+      className="work-activity-grid overflow-x-auto pb-1"
+      role="region"
+      aria-label="Yearly work activity calendar"
+    >
+      <div style={{ minWidth: `calc(28px + ${grid.weekCount} * (var(--wa-cell-size) + var(--wa-cell-gap)))` }}>
         {/* Month labels row */}
         <div
           className="grid mb-1"
           style={{
-            gridTemplateColumns: `28px repeat(${grid.weekCount}, ${cellSize}px)`,
-            gap: `${gap}px`,
+            gridTemplateColumns: `28px repeat(${grid.weekCount}, var(--wa-cell-size))`,
+            gap: "var(--wa-cell-gap)",
             gridAutoFlow: "column",
           }}
           aria-hidden="true"
@@ -160,7 +160,7 @@ function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
         </div>
 
         {/* Weekday labels + day cells */}
-        <div className="grid" style={{ gridTemplateColumns: `28px repeat(${grid.weekCount}, ${cellSize}px)`, gap: `${gap}px`, gridTemplateRows: `repeat(7, ${cellSize}px)` }}>
+        <div className="grid" style={{ gridTemplateColumns: `28px repeat(${grid.weekCount}, var(--wa-cell-size))`, gap: "var(--wa-cell-gap)", gridTemplateRows: `repeat(7, var(--wa-cell-size))` }}>
           {/* Weekday label cells: one per row, placed at the start of each row */}
           {Array.from({ length: 7 }, (_, weekday) => (
             <span
@@ -180,7 +180,7 @@ function WorkActivityGrid({ grid, onSelectDay }: WorkActivityGridProps) {
               onClick={() => onSelectDay(cell.date)}
               aria-label={formatDayAriaLabel(cell.day)}
               title={formatDayAriaLabel(cell.day)}
-              className={`h-[12px] w-[12px] rounded-[2px] border outline-none focus-visible:ring-2 focus-visible:ring-ega-data-blue focus-visible:ring-offset-1 ${cell.isCurrentDay ? "ring-1 ring-ega-text" : ""}`}
+              className={`h-[var(--wa-cell-size)] w-[var(--wa-cell-size)] rounded-[2px] border outline-none focus-visible:ring-2 focus-visible:ring-ega-data-blue focus-visible:ring-offset-1 ${cell.isCurrentDay ? "ring-1 ring-ega-text" : ""}`}
               style={{
                 ...INTENSITY_STYLES[cell.day.intensityLevel],
                 gridColumn: cell.weekIndex + 2,
@@ -344,27 +344,44 @@ export function WorkActivityHeatmap({ workActivity, error }: WorkActivityHeatmap
   const [dayError, setDayError] = useState<string | null>(null);
   const calendar = workActivity?.calendar ?? null;
   const grid = useMemo(() => (calendar ? buildWorkActivityGrid(calendar) : null), [calendar]);
+  const dayRequestSeq = useRef(0);
+  const dayAbortRef = useRef<AbortController | null>(null);
 
   const handleSelectDay = useCallback(async (date: string) => {
+    const seq = ++dayRequestSeq.current;
+    dayAbortRef.current?.abort();
+    const controller = new AbortController();
+    dayAbortRef.current = controller;
+
     setSelectedDate(date);
     setDayLoading(true);
     setDayError(null);
     setDayDetails(null);
     try {
-      const response = await fetch(`/work-activity/day-details?date=${encodeURIComponent(date)}`);
+      const response = await fetch(`/work-activity/day-details?date=${encodeURIComponent(date)}`, {
+        signal: controller.signal,
+      });
+      if (seq !== dayRequestSeq.current) return;
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? "Failed to load day details.");
       }
       const payload = (await response.json()) as WorkActivityDayDetails;
+      if (seq !== dayRequestSeq.current) return;
       setDayDetails({
         sessions: payload.sessions,
         completedTasks: payload.completedTasks,
       });
     } catch (err) {
+      if (seq !== dayRequestSeq.current) return;
       setDayError(err instanceof Error ? err.message : "Failed to load day details.");
     } finally {
-      setDayLoading(false);
+      if (seq === dayRequestSeq.current) {
+        setDayLoading(false);
+        if (dayAbortRef.current === controller) {
+          dayAbortRef.current = null;
+        }
+      }
     }
   }, []);
 
@@ -375,9 +392,7 @@ export function WorkActivityHeatmap({ workActivity, error }: WorkActivityHeatmap
         description="Your working days across the last year."
       >
         <div className="surface-empty px-4 py-5 text-[length:var(--text-meta-lg)] leading-[var(--leading-relaxed)] text-ega-text-secondary" role="status">
-          {error
-            ? "Work activity is unavailable right now. Your tasks and sessions are unaffected."
-            : "No work activity yet. Start a timer or complete a Task to build your year."}
+          Work activity is unavailable right now. Your tasks and sessions are unaffected.
         </div>
       </DashboardSection>
     );
