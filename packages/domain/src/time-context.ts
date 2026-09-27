@@ -326,8 +326,6 @@ export function getRollingLocalWindow(
 // Zoned wall time -> UTC instant (canonical conversion helper)
 // ---------------------------------------------------------------------------
 
-const ZONED_WALL_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/;
-
 /**
  * A wall time (date + time as a human would read a clock) in an IANA timezone.
  */
