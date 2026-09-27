@@ -75,7 +75,7 @@ function deriveConsistencyNote(days: HomeActivityPulseDay[], activeDays: number)
 function ActivityGrid({ pulse }: { pulse: HomeActivityPulse }) {
   const columns = buildWeekColumns(pulse.days);
   const activeDays = pulse.days.filter(isActiveDay).length;
-  const summary = `Activity pulse for the last 12 weeks: ${activeDays} active days, longest streak ${pulse.longestStreak} days.`;
+  const summary = `Activity pulse for the last 12 weeks: ${activeDays} active days, current streak ${pulse.currentStreak} days.`;
 
   return (
     <div>

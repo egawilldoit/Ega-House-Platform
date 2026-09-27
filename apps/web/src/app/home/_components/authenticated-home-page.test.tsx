@@ -63,7 +63,6 @@ const ACTIVITY_PULSE: HomeActivityPulse = {
   startDate: "2026-09-01",
   endDate: "2026-09-27",
   currentStreak: 6,
-  longestStreak: 12,
   activeDays: 18,
   trackedSeconds: 42 * 3600,
   completedTasks: 23,
