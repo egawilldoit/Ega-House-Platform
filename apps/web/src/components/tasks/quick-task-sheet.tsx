@@ -208,8 +208,6 @@ function QuickTaskSheetPanel({
   const [singlePriority, setSinglePriority] = useState("medium");
   const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");
   const [singleBlockedReason, setSingleBlockedReason] = useState("");
-  const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
-  const [recurrenceTimezone, setRecurrenceTimezone] = useState("UTC");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
   ]);
@@ -362,11 +360,6 @@ function QuickTaskSheetPanel({
     parsedSingleCommand.blockedReason,
     parsedSingleCommand.blockedError,
   ]);
-
-  useEffect(() => {
-    setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
-    setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-  }, []);
 
   useEffect(() => {
     if (bulkState.success) {
@@ -553,17 +546,6 @@ function QuickTaskSheetPanel({
               >
                 <input type="hidden" name="returnTo" value={DEFAULT_RETURN_TO} />
                 <input type="hidden" name="title" value={parsedSingleCommand.title} />
-                <input
-                  type="hidden"
-                  name="workedTimeTimezoneOffsetMinutes"
-                  value={timeZoneOffsetMinutes}
-                />
-                <input
-                  type="hidden"
-                  name="scheduleTimezoneOffsetMinutes"
-                  value={timeZoneOffsetMinutes}
-                />
-                <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
                   <div className="space-y-5">
                     <div className="space-y-2">

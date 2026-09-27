@@ -320,7 +320,9 @@ describe("EditTaskModal centered editor", () => {
     ) as FormData;
     expect(formData.get("scheduledStartAt")).toBe("2026-09-21T10:00");
     expect(formData.get("scheduledEndAt")).toBe("2026-09-21T12:00");
-    expect(String(formData.get("scheduleTimezoneOffsetMinutes"))).not.toBe("");
+    // Schedule wall time is interpreted in the account timezone by the server
+    // action; the form must not inject a device timezone offset.
+    expect(formData.get("scheduleTimezoneOffsetMinutes")).toBeNull();
     // Editing scheduling never drops the calendar reminder configuration.
     expect(formData.get("calendarReminderMinutes")).toBe("30");
   });
@@ -371,7 +373,9 @@ describe("EditTaskModal centered editor", () => {
     const formData = updateReminderAction.mock.calls[0][0] as FormData;
     expect(formData.get("reminderId")).toBe("reminder-1");
     expect(formData.get("taskId")).toBe("task-1");
-    expect(String(formData.get("reminderTimezoneOffsetMinutes"))).toMatch(/^-?\d+$/);
+    // Reminder wall time is interpreted in the account timezone by the server
+    // action; the form must not inject a device timezone offset.
+    expect(formData.get("reminderTimezoneOffsetMinutes")).toBeNull();
   });
 
   it("adding a reminder from the no-reminder state submits once through the create action", async () => {

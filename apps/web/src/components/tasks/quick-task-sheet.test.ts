@@ -66,7 +66,7 @@ test("quick task single mode renders schedule and calendar sync controls", () =>
   assert.match(singleModeSection, /htmlFor="quick-task-scheduled-to"/);
   assert.match(singleModeSection, /name="scheduledStartAt"/);
   assert.match(singleModeSection, /name="scheduledEndAt"/);
-  assert.match(singleModeSection, /name="scheduleTimezoneOffsetMinutes"/);
+  assert.doesNotMatch(singleModeSection, /name="scheduleTimezoneOffsetMinutes"/);
   assert.match(singleModeSection, /name="calendarSyncEnabled"/);
   assert.match(singleModeSection, /name="calendarReminderMinutes"/);
   assert.match(singleModeSection, /Sync to Calendar/);
