@@ -2,7 +2,7 @@
 
 Repository-wide contract; follow higher-priority system/developer instructions
 and explicit user scope. Applicable nested `AGENTS.md` files specialize local
-rules without weakening repository safety. Last instruction review: 2026-09-04
+rules without weakening repository safety. Last instruction review: 2026-09-27
 (repository guidance only; not deployment or harness-discovery proof).
 
 ## Orient and analyze
@@ -20,6 +20,10 @@ rules without weakening repository safety. Last instruction review: 2026-09-04
   [`mobile`](apps/mobile/AGENTS.md), [`packages`](packages/AGENTS.md),
   [`Runner`](scripts/ega-runner/AGENTS.md). These are scope entry points, not a
   requirement to load unrelated subsystems. Select skills by the actual task.
+- For a proposed diff or PR use the repository
+  [`code-review` skill](.agents/skills/code-review/SKILL.md). Use
+  [`final-verification`](.agents/skills/final-verification/SKILL.md) only after
+  implementation and review evidence exists; it does not replace code review.
 - Before behavioral changes, establish expected behavior and acceptance criteria,
   observed behavior, canonical owner, affected callers/contracts/persistence,
   and planned proof. Search existing patterns/tests first; separate facts,
@@ -58,11 +62,19 @@ Web server-side code must not self-fetch Hono just to reuse in-process policy.
   operational compatibility until affected callers and removal safety are proven.
   Use existing patterns; justify new abstractions/dependencies by concrete need.
   Keep unrelated cleanup out; include necessary supporting changes explicitly.
+- Apply YAGNI to speculative features and KISS to the current design: build the
+  behavior required now through the shortest clear path. Do not add a framework,
+  wrapper, option, cache, or generic API for hypothetical reuse. Do not use
+  simplicity as a reason to omit required failure handling, owner isolation,
+  client compatibility, or recovery. Share one authoritative business rule or
+  contract; do not merge merely similar UI code into a harder abstraction.
 - Validate untrusted input at boundaries. Do not mask unexplained type errors
   with casts or suppressions, or return success-shaped data after failed writes
   or authorization. Keep errors actionable and sensitive data out of diagnostics.
 - Consider applicable failure/recovery cases and consumer effects using the
-  [`quality workflow`](docs/agent-context/quality-workflow.md). Avoid speculative
+  [`quality workflow`](docs/agent-context/quality-workflow.md). Prefer a direct
+  data flow over wrappers and duplicate mutable state; remove obsolete code when
+  its callers and compatibility requirements are accounted for. Avoid speculative
   frameworks, arbitrary test quotas, and unmeasured optimization.
 
 ## Solve problems and verify
@@ -80,7 +92,13 @@ Web server-side code must not self-fetch Hono just to reuse in-process policy.
   satisfy the required architecture/security/integration gates.
 - Do not weaken assertions, skip relevant checks, or retry blindly until green.
   Prove baseline failures on the relevant base; report missing evidence honestly.
-  Test behavior at the boundary that matters; mocks cannot prove what they replace.
+  Test behavior at the boundary that matters with an observable result and a
+  discriminating expectation; mocks cannot prove what they replace. For a user
+  flow, drive the real path and observe both its response and durable effect when
+  feasible. Follow the quality workflow's defect diagnosis and review procedures.
+- For performance work record the baseline, workload, environment, and target
+  metric; measure the same path after the change. Check resource and query costs
+  as well as latency, and reject an optimization that changes required behavior.
 - Before each focused commit inspect staged diff, `git status --short`, and
   `git diff --check`; justify generated files, lockfiles, migrations, and artifacts.
   Docs-only changes need relevant validation, not invented behavioral tests.
@@ -88,6 +106,9 @@ Web server-side code must not self-fetch Hono just to reuse in-process policy.
 ## Review, merge, and completion
 
 - Apply the quality workflow's general review before specialized Runner checks.
+  Trace changed behavior beyond the diff through callers, contracts, data, and
+  affected views. Challenge the one or two assumptions on which safety depends
+  with an executable check where feasible; report unproven assumptions.
   For substantive behavioral, governance, or release-sensitive changes obtain
   independent review; never label self-review independent. Fix blockers and
   re-review affected conclusions after changes. Report unavailable review as a gap.

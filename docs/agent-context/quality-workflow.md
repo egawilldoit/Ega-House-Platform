@@ -20,6 +20,24 @@ working examples and versions actually installed. Separate observed facts from
 hypotheses; choose an experiment that could disprove the hypothesis before editing.
 Source similarity and plausible explanations alone do not prove root cause.
 
+## Notice and diagnose a defect
+
+Treat a failed check, unexpected UI state, user report, error trace, stale
+projection, or mismatched persisted value as a signal to investigate. Record the
+revision, environment, actor, action, expected result, observed result, and when
+the symptom first appeared. A successful health check or screenshot of one state
+does not clear a broken user flow.
+
+Reproduce through the smallest realistic path. Follow the value from input to
+stored state and back through the affected view; inspect errors, network responses,
+query results, and cache behavior at the boundary where they can diverge. Compare
+with a working actor, state, or revision. Form a falsifiable cause, then run one
+probe that would distinguish it from an environment, fixture, or observation
+problem. When the symptom appears after restart, inspect persisted state and
+recovery before adding a guard. Search for the same defect pattern in sibling
+paths after finding the cause. Do not turn a plausible code smell into a claimed
+bug without a reachable failure scenario.
+
 ## Continue through engineering problems
 
 | Obstacle | Next action |
@@ -46,6 +64,11 @@ compatibility assessment, and simpler-alternative consideration. Preserve public
 exports, wire formats, persisted semantics, and operational compatibility, or
 explicitly account for their consumers and rollout. Validate boundary inputs;
 do not suppress unexplained type mismatches or swallow errors into apparent success.
+In review, ask whether a new branch, state value, parameter, or layer serves a
+current requirement; whether its name and data flow make the behavior easy to
+follow; and whether two copies represent one authoritative rule or merely look
+similar. Prefer deletion or direct code when it reduces reader effort without
+weakening a required boundary.
 
 Select applicable scenarios; this table is not a mandate to test every row for
 every edit. Follow scoped instructions for concrete commands and local patterns.
@@ -68,6 +91,26 @@ protect structural invariants but cannot replace database/HTTP/device behavior.
 Avoid mocks that bypass the failing boundary. Do not add tests that merely repeat
 the implementation or manufacture tests for trivial documentation edits.
 
+For each new test, name an input and the user-visible output or durable effect
+that would be wrong if the implementation regressed. Make the assertion sensitive
+to that wrong result; call counts, existence checks, and expectations derived from
+the code under test are weak proof on their own. For a failed mutation, assert
+the error and unchanged or recovered state. Keep fixtures isolated so the test
+does not pass only because of shared data or execution order.
+
+For asynchronous behavior, use a bounded assertion on the expected observable
+condition; an arbitrary delay or an empty scheduling flush does not establish
+completion. Preserve the original failed run and relevant environment alongside
+any successful retry. A retry passing does not prove a timing cause or a fix;
+record an unexplained intermittent failure as an unresolved follow-up.
+
+For performance changes, reproduce the relevant workload and measure a baseline
+on the same runtime and data shape. Record the metric, sample method, and query,
+render, memory, or network cost being changed. Measure again after the patch and
+check correctness under the same workload. Do not claim improvement from fewer
+lines, a memoization wrapper, a synthetic microbenchmark alone, or a different
+environment.
+
 ## Review procedure
 
 Review the actual base-to-head diff and necessary surrounding code, callers, and
@@ -80,6 +123,22 @@ lead to verify. Apply this general core before subsystem-specific skill checks:
 4. Relevant concurrency, retries, date boundaries, resources, and integrations.
 5. Test sensitivity to the original defect and the boundaries actually exercised.
 6. Maintainability, unnecessary abstraction, dependencies, and rollout risks.
+
+For each changed behavior, identify the invariant that makes it safe. Trace
+consumers that a text search may miss: serialized contracts, database readers,
+background jobs, cache keys, mobile clients, and installed library semantics.
+Try a concrete counterexample at the affected boundary. Check success and denial,
+empty and invalid input, duplicate or concurrent action, partial failure, and
+refresh or restart only where the changed path makes each case possible. Prove a
+decisive safety assumption with a focused test or live probe when practical;
+otherwise mark it unproven and state its consequence. Review test assertions for
+the exact bug they can catch, not just whether the suite is green.
+
+Before a review verdict, inspect the final changed files, generated output,
+lockfile/migration effects, and CI jobs on the current head. Classify each skipped
+job by its path routing and affected consumers. For a suspected defect, cite the
+reachable path and the state or input that triggers it; verify the proposed fix
+against that case. Avoid hypothetical findings with no plausible trigger.
 
 An independent reviewer is a separate person or agent that did not author the
 implementation, given the requirements and precise review range. For substantive
