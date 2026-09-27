@@ -184,6 +184,23 @@ async function validateSkills(root, errors, output) {
   else output.push(`STRUCTURAL PASS skill metadata parsed for ${files.length} file(s)`);
 }
 
+// Fenced examples are literal Markdown, not repository navigation links.
+function withoutFencedCode(text) {
+  let fence = null;
+  return text.split(/\r?\n/).map((line) => {
+    const marker = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (fence) {
+      if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length && !marker[2].trim()) fence = null;
+      return "";
+    }
+    if (marker && !(marker[1][0] === "`" && marker[2].includes("`"))) {
+      fence = marker[1];
+      return "";
+    }
+    return line;
+  }).join("\n");
+}
+
 async function validateLinks(root, errors, output) {
   const discoveredInstructions = await walk(root, (file) => ["AGENTS.md", "AGENTS.override.md"].includes(file.split(sep).at(-1)));
   const docs = [...new Set([
@@ -194,6 +211,7 @@ async function validateLinks(root, errors, output) {
     "HERMES_MASTER_PROMPT.md",
     "scripts/ega-runner/README.md",
     ...discoveredInstructions.map((file) => relative(root, file)),
+    ...(await walk(join(root, ".agents", "skills"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "agent-context"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "architecture"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
     ...(await walk(join(root, "docs", "reports"), (file) => file.endsWith(".md"))).map((file) => relative(root, file)),
@@ -202,7 +220,7 @@ async function validateLinks(root, errors, output) {
   for (const file of docs) {
     if (!(await exists(join(root, file)))) continue;
     const text = await readFile(join(root, file), "utf8");
-    for (const match of text.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
+    for (const match of withoutFencedCode(text).matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
       const target = resolveMarkdownTarget(root, file, match[1]);
       if (!target) continue;
       checked += 1;
