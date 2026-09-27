@@ -60,7 +60,13 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
     now,
     analyticsTimezone,
   );
-  return { user, error: null as string | null, report, filters };
+  return {
+    user,
+    error: null as string | null,
+    report,
+    filters,
+    timezone: analyticsTimezone ?? null,
+  };
 }
 
 export type WorkAnalyticsPageModel = Awaited<ReturnType<typeof getWorkAnalyticsPageModel>>;

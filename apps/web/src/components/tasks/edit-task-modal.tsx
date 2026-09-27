@@ -33,6 +33,7 @@ import {
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import { formatDisplayDateTime } from "@/lib/presentation-format";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 import { cn } from "@/lib/utils";
 
@@ -132,6 +133,7 @@ function TaskReminderCard({
   cancelAction: SimpleTaskAction;
 }) {
   const [formOpen, setFormOpen] = useState(false);
+  const displayTimezone = useDisplayTimezone();
   const pendingReminders = reminders
     .filter((reminder) => reminder.status === "pending")
     .sort((first, second) => first.remind_at.localeCompare(second.remind_at));
@@ -218,7 +220,7 @@ function TaskReminderCard({
           className="text-sm tabular-nums text-[color:var(--ega-text-secondary)]"
           data-testid={`task-reminder-display-${taskId}`}
         >
-          {formatDisplayDateTime(currentPendingReminder.remind_at)}
+          {formatDisplayDateTime(currentPendingReminder.remind_at, { timezone: displayTimezone })}
         </span>
         <Badge tone="info">Pending</Badge>
       </div>
