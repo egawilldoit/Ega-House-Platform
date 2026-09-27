@@ -176,7 +176,7 @@ export function TaskDetailScreen() {
       const message = error instanceof Error ? error.message : 'Unable to update task right now.';
       setSubmitError(message);
     }
-  }, [draft, taskId, updateTaskMutation]);
+  }, [accountTimezone, draft, taskId, updateTaskMutation]);
 
   const openReminderPicker = useCallback((mode: ReminderPickerMode) => {
     setReminderPickerMode(mode);

@@ -32,24 +32,25 @@ function detectDeviceTimezone(): string | null {
 
 export default function TimezoneSettingsScreen() {
   const [timeContext, setTimeContext] = useState<Awaited<ReturnType<typeof fetchMobileTimeContext>> | null>(null);
-  const [deviceTimezone, setDeviceTimezone] = useState<string | null>(null);
+  // Detected once per mount: the device zone is stable for the session.
+  const [deviceTimezone] = useState<string | null>(() => detectDeviceTimezone());
   const [manualTimezone, setManualTimezone] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    try {
-      const result = await fetchMobileTimeContext();
-      setTimeContext(result);
-      setError(null);
-    } catch {
-      setError('Could not load your timezone right now.');
-    }
+  const load = useCallback(() => {
+    fetchMobileTimeContext()
+      .then((result) => {
+        setTimeContext(result);
+        setError(null);
+      })
+      .catch(() => {
+        setError('Could not load your timezone right now.');
+      });
   }, []);
 
   useEffect(() => {
     void load();
-    setDeviceTimezone(detectDeviceTimezone());
   }, [load]);
 
   const effectiveTimezone = timeContext?.timeContext?.timezone ?? 'UTC';
