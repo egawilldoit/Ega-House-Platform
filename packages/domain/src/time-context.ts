@@ -267,6 +267,55 @@ export function getLocalDateInTimezone(date: Date, timeZone: string): string {
   return `${year}-${month}-${day}`;
 }
 
+/**
+ * UTC instants [startUtcIso, endUtcIso) covering the local calendar month that
+ * contains `dateStr` in `timezone`. Month boundaries follow the owner's local
+ * calendar, so a month can start/end at a non-UTC midnight across DST.
+ */
+export function getLocalMonthWindow(
+  requestedTimezone: string | null | undefined,
+  dateStr: string,
+): { startUtcIso: string; endUtcIso: string } {
+  const parsed = parseIsoDate(dateStr);
+  if (!parsed) {
+    throw new Error(`Invalid date: expected YYYY-MM-DD, got "${String(dateStr)}"`);
+  }
+  const monthStart = toIsoDate(parsed.year, parsed.month, 1);
+  const nextMonth =
+    parsed.month === 12
+      ? { year: parsed.year + 1, month: 1 }
+      : { year: parsed.year, month: parsed.month + 1 };
+  const nextMonthStart = toIsoDate(nextMonth.year, nextMonth.month, 1);
+  const start = getLocalDayWindow(requestedTimezone, monthStart);
+  const end = getLocalDayWindow(requestedTimezone, nextMonthStart);
+  return { startUtcIso: start.startUtcIso, endUtcIso: end.startUtcIso };
+}
+
+/**
+ * UTC instants [startUtcIso, endUtcIso) covering the local calendar quarter
+ * that contains `dateStr` in `timezone`.
+ */
+export function getLocalQuarterWindow(
+  requestedTimezone: string | null | undefined,
+  dateStr: string,
+): { startUtcIso: string; endUtcIso: string } {
+  const parsed = parseIsoDate(dateStr);
+  if (!parsed) {
+    throw new Error(`Invalid date: expected YYYY-MM-DD, got "${String(dateStr)}"`);
+  }
+  const quarterStartMonth = (Math.floor((parsed.month - 1) / 3) * 3) + 1;
+  const quarterStart = toIsoDate(parsed.year, quarterStartMonth, 1);
+  const nextQuarterStartMonth = quarterStartMonth + 3;
+  const nextQuarter =
+    nextQuarterStartMonth > 12
+      ? { year: parsed.year + 1, month: nextQuarterStartMonth - 12 }
+      : { year: parsed.year, month: nextQuarterStartMonth };
+  const nextQuarterStart = toIsoDate(nextQuarter.year, nextQuarter.month, 1);
+  const start = getLocalDayWindow(requestedTimezone, quarterStart);
+  const end = getLocalDayWindow(requestedTimezone, nextQuarterStart);
+  return { startUtcIso: start.startUtcIso, endUtcIso: end.startUtcIso };
+}
+
 export function getCurrentLocalDayWindow(
   requestedTimezone: string | null | undefined,
   now: Date = new Date(),

@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { isValidIANATimeZone } from "@ega/domain/time-context";
 
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -60,15 +59,12 @@ export function TimezoneCard({
   persistedTimezone,
   fallback,
 }: TimezoneCardProps) {
-  const [detectedTimezone, setDetectedTimezone] = useState<string | null>(null);
+  // Detected once per mount: the browser/device zone is stable for the session.
+  const [detectedTimezone] = useState<string | null>(() => detectDeviceTimezone());
   const [manualTimezone, setManualTimezone] = useState("");
   const initializedRef = useRef(false);
   const initFormRef = useRef<HTMLFormElement>(null);
-  const timezoneOptions = useMemo(commonTimezones, []);
-
-  useEffect(() => {
-    setDetectedTimezone(detectDeviceTimezone());
-  }, []);
+  const timezoneOptions = useMemo(() => commonTimezones(), []);
 
   const hasPersistedTimezone = persistedTimezone !== null;
   const detectionFailed = detectedTimezone === null;
