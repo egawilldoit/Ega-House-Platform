@@ -15,9 +15,9 @@ describe("EGA-516 Operator acceptance", () => {
     expect(routeMeta).toContain('href: "/today"');
   });
 
-  it("/dashboard no longer computes competing command-center model and redirects to Operator", () => {
+  it("/dashboard no longer computes competing command-center model and redirects to Home", () => {
     const dashboardPage = read("src/app/dashboard/page.tsx");
-    expect(dashboardPage).toContain('redirect("/today")');
+    expect(dashboardPage).toContain('redirect("/home")');
     // Should not import or compute competing dashboard-data panels
     expect(dashboardPage).not.toContain("getDashboardData");
     expect(dashboardPage).not.toContain("CommandCenterAsync");

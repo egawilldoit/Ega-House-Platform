@@ -38,3 +38,9 @@ test("EGA-653: an authenticated /home route exists and composes canonical owners
   // Must not import the marketing home component tree.
   assert.doesNotMatch(homeRoute, /from "\.\/home-page"/);
 });
+
+test("EGA-663: legacy /dashboard compatibility route redirects to /home", () => {
+  const dashboardPage = read("app", "dashboard", "page.tsx");
+  assert.match(dashboardPage, /redirect\("\/home"\)/);
+  assert.doesNotMatch(dashboardPage, /redirect\("\/today"\)/);
+});
