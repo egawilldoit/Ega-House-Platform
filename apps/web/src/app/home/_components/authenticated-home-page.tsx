@@ -236,7 +236,7 @@ function TodayPanel({ model }: { model: HomeModel }) {
 
   return (
     <Card
-      label="Today"
+      title="Today"
       className="order-2 md:order-1"
       data-testid="home-today"
       action={
@@ -325,7 +325,7 @@ function NextPanel({ model }: { model: HomeModel }) {
 
   return (
     <Card
-      label="Next"
+      title="Next"
       className="order-3 md:order-2"
       data-testid="home-next"
       action={
@@ -413,7 +413,6 @@ function AttentionPanel({ model }: { model: HomeModel }) {
 
   return (
     <Card
-      label="Signals"
       title="Needs attention"
       className="order-1 md:order-3"
       data-testid="home-attention"
