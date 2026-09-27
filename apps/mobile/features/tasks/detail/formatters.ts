@@ -114,6 +114,35 @@ export function isoDateAtOffset(daysFromToday: number) {
   return date.toISOString().slice(0, 10);
 }
 
+/**
+ * Canonical date-only value `daysFromToday` days from the owner's EGA House
+ * local today. Unlike `isoDateAtOffset` (device-local midnight converted to
+ * UTC), this derives the calendar date from the account timezone so Today /
+ * Tomorrow / +7-day shortcuts agree with web and the Hono transport.
+ */
+export function isoDateAtOffsetInTimezone(timezone: string, daysFromToday: number): string {
+  const now = new Date();
+  const localToday = isoDateInTimezone(now, timezone);
+  const [year, month, day] = localToday.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day) + daysFromToday * 86_400_000);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function isoDateInTimezone(date: Date, timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  if (!year || !month || !day) return date.toISOString().slice(0, 10);
+  return `${year}-${month}-${day}`;
+}
+
 export function createEditableDraft(task: MobileTaskListItem): EditableTaskFields {
   return {
     status: task.status,
