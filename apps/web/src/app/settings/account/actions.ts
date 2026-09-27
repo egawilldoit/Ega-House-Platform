@@ -7,6 +7,7 @@ import {
   disconnectGoogleCalendar,
   updateCalendarIntegrationDefaults,
 } from "@/lib/services/calendar-settings-service";
+import { setWebTimezone } from "@/lib/services/time-context-service";
 
 function redirectWithSettingsFeedback(type: "success" | "error", message: string): never {
   const params = new URLSearchParams({ [type]: message });
@@ -40,4 +41,23 @@ export async function updateCalendarDefaultsAction(formData: FormData) {
   }
 
   redirectWithSettingsFeedback("success", "Calendar defaults updated.");
+}
+
+export async function updateAccountTimezoneAction(formData: FormData) {
+  const timezone = String(formData.get("timezone") ?? "").trim();
+  const feedback = String(formData.get("feedback") ?? "").trim();
+
+  const result = await setWebTimezone(timezone);
+
+  revalidatePath("/settings/account");
+  revalidatePath("/tasks");
+
+  if (result.errorMessage) {
+    redirectWithSettingsFeedback("error", result.errorMessage);
+  }
+
+  redirectWithSettingsFeedback(
+    "success",
+    feedback || `Timezone updated to ${timezone}.`,
+  );
 }
