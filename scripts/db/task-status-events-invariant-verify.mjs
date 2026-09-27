@@ -194,11 +194,10 @@ async function expect(condition, section, message) {
 
 async function runBackfillProof(sql) {
   const eventsA = await sql`
-    SELECT to_status, occurred_at, source FROM task_status_events
+    SELECT to_status, occurred_at FROM task_status_events
     WHERE task_id = ${TASK_A}::uuid ORDER BY occurred_at
   `;
   await expect(eventsA.length === 1, "BACKFILL", `Task A should have exactly one backfill event, got ${eventsA.length}`);
-  await expect(eventsA[0]?.source === "backfill", "BACKFILL", `Task A event source should be 'backfill', got ${eventsA[0]?.source}`);
   const occurredIso = new Date(eventsA[0]?.occurred_at).toISOString();
   await expect(
     occurredIso === "2026-01-15T10:00:00.000Z",
@@ -209,7 +208,7 @@ async function runBackfillProof(sql) {
   await expect(taskA[0]?.completed_at === null, "BACKFILL", "Task A current-state completed_at should be normalized to NULL (not done)");
 
   const eventsB = await sql`
-    SELECT to_status, occurred_at, source FROM task_status_events
+    SELECT to_status, occurred_at FROM task_status_events
     WHERE task_id = ${TASK_B}::uuid ORDER BY occurred_at
   `;
   await expect(eventsB.length === 1, "BACKFILL", `Task B should have exactly one backfill event, got ${eventsB.length}`);

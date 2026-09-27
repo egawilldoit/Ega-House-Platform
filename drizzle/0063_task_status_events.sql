@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS "public"."task_status_events" (
 	"from_status" varchar(64),
 	"to_status" varchar(64) NOT NULL,
 	"occurred_at" timestamp with time zone NOT NULL,
-	"source" varchar(64),
 	"operation_metadata" jsonb,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
@@ -64,15 +63,13 @@ SET search_path = ''
 AS $$
 DECLARE
   v_occurred_at timestamp with time zone;
-  v_source text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF public.task_status_is_done(NEW.status) THEN
       v_occurred_at := COALESCE(NEW.completed_at, now());
       NEW.completed_at := v_occurred_at;
-      v_source := NULLIF(current_setting('app.task_status_source', true), '');
-      INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at, source)
-      VALUES (NEW.owner_user_id, NEW.id, NULL, 'done', v_occurred_at, v_source);
+      INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
+      VALUES (NEW.owner_user_id, NEW.id, NULL, 'done', v_occurred_at);
     END IF;
     RETURN NEW;
   END IF;
@@ -89,9 +86,8 @@ BEGIN
   -- Status actually changed: record the durable transition first, then
   -- normalize current-state completed_at to follow the new status.
   v_occurred_at := now();
-  v_source := NULLIF(current_setting('app.task_status_source', true), '');
-  INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at, source)
-  VALUES (NEW.owner_user_id, NEW.id, OLD.status, NEW.status, v_occurred_at, v_source);
+  INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
+  VALUES (NEW.owner_user_id, NEW.id, OLD.status, NEW.status, v_occurred_at);
 
   IF public.task_status_is_done(NEW.status) THEN
     NEW.completed_at := COALESCE(NEW.completed_at, v_occurred_at);
@@ -116,8 +112,8 @@ REVOKE ALL ON FUNCTION public.record_task_status_event() FROM anon;
 -- Backfill: one completion event per Task with a trustworthy completed_at.
 -- Idempotent via the NOT EXISTS guard. Never derives timestamps from
 -- updated_at; Tasks without a trustworthy completed_at get no event.
-INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at, source)
-SELECT task_record.owner_user_id, task_record.id, NULL, 'done', task_record.completed_at, 'backfill'
+INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
+SELECT task_record.owner_user_id, task_record.id, NULL, 'done', task_record.completed_at
 FROM public.tasks AS task_record
 WHERE task_record.completed_at IS NOT NULL
   AND NOT EXISTS (

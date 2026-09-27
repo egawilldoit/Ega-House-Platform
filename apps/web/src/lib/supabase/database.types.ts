@@ -378,7 +378,6 @@ export type Database = {
           from_status: string | null
           to_status: string
           occurred_at: string
-          source: string | null
           operation_metadata: Json | null
           created_at: string
         }
@@ -389,7 +388,6 @@ export type Database = {
           from_status?: string | null
           to_status: string
           occurred_at: string
-          source?: string | null
           operation_metadata?: Json | null
           created_at?: string
         }
@@ -400,7 +398,6 @@ export type Database = {
           from_status?: string | null
           to_status?: string
           occurred_at?: string
-          source?: string | null
           operation_metadata?: Json | null
           created_at?: string
         }
