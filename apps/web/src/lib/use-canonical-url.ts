@@ -24,10 +24,10 @@ const ROOT_HOSTNAMES = new Set([
  * These must never be rewritten with a workspace prefix.
  */
 export const GLOBAL_APP_ROUTES = new Set([
+  "/backlog",
   "/dashboard",
   "/home",
   "/today",
-  "/ideas",
   "/help",
   "/settings",
   "/startup",
