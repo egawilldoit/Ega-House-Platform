@@ -100,9 +100,10 @@ test("grid: month labels appear where the month changes", () => {
   ]);
 });
 
-test("grid: month label at year boundary shows the new month", () => {
+test("grid: month label at year boundary includes the year", () => {
   // 2025-12-28 (Sun) through 2026-01-03 (Sat): Jan 1 falls in week 0, so the
-  // Jan label appears at week 0 (the column where the month starts).
+  // Jan label appears at week 0 (the column where the month starts) and must
+  // carry the year so two same-named labels in one rolling year stay unambiguous.
   const dates: string[] = [];
   const start = Date.UTC(2025, 11, 28);
   for (let i = 0; i < 7; i += 1) {
@@ -110,11 +111,23 @@ test("grid: month label at year boundary shows the new month", () => {
     dates.push(d.toISOString().slice(0, 10));
   }
   const grid = buildWorkActivityGrid(makeCalendar(dates));
-  const labels = grid.monthLabels.map((l) => ({ week: l.weekIndex, label: l.label }));
-  assert.deepEqual(labels, [
-    { week: 0, label: "Dec" },
-    { week: 0, label: "Jan" },
-  ]);
+  const labels = grid.monthLabels.map((l) => l.label);
+  assert.deepEqual(labels, ["Dec", "Jan 2026"]);
+});
+
+test("grid: repeated month name across a year boundary is year-qualified", () => {
+  // A 365-day window starting 2025-09-28 (Sun) covers 13 month-starts, so
+  // "Sep" appears twice; the second occurrence must be disambiguated.
+  const dates: string[] = [];
+  const start = Date.UTC(2025, 8, 28);
+  for (let i = 0; i < 365; i += 1) {
+    const d = new Date(start + i * 86400000);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  const grid = buildWorkActivityGrid(makeCalendar(dates));
+  const labels = grid.monthLabels.map((l) => l.label);
+  assert.equal(labels[0], "Sep");
+  assert.equal(labels[labels.length - 1], "Sep 2026");
 });
 
 test("grid: single day window produces one cell", () => {

@@ -237,6 +237,50 @@ test("getWorkActivityDayDetails returns empty completed tasks when no completion
   assert.equal(queries.length, 2, "must not query tasks when there are no completion events");
 });
 
+test("getWorkActivityDayDetails clips midnight-spanning and open sessions to the day window", async () => {
+  const dayWindow = {
+    startIso: "2026-09-27T00:00:00.000Z",
+    endIso: "2026-09-28T00:00:00.000Z",
+  };
+  const { client } = createSupabaseMock([
+    {
+      data: [
+        {
+          task_id: "t1",
+          started_at: "2026-09-26T23:00:00.000Z",
+          ended_at: "2026-09-27T01:30:00.000Z",
+          duration_seconds: 9000,
+          tasks: { id: "t1", title: "Spanning", project_id: null, goal_id: null, estimate_minutes: 120, projects: null, goals: null },
+        },
+        {
+          task_id: "t2",
+          started_at: "2026-09-27T10:00:00.000Z",
+          ended_at: null,
+          duration_seconds: null,
+          tasks: { id: "t2", title: "Open", project_id: null, goal_id: null, estimate_minutes: null, projects: null, goals: null },
+        },
+      ],
+      error: null,
+    },
+    { data: [], error: null },
+  ]);
+
+  const result = await getWorkActivityDayDetails({
+    ownerUserId: "user-1",
+    dayWindow,
+    now: new Date("2026-09-27T12:00:00.000Z"),
+    supabase: client,
+  });
+
+  assert.equal(result.errorMessage, null);
+  const spanning = result.data?.sessions.find((s) => s.task_id === "t1");
+  // 23:00→24:00 belongs to the previous local day; only 00:00→01:30 counts here.
+  assert.equal(spanning?.duration_seconds, 5400);
+  const open = result.data?.sessions.find((s) => s.task_id === "t2");
+  // An open session is bounded by the injected now: 10:00→12:00.
+  assert.equal(open?.duration_seconds, 7200);
+});
+
 test("getWorkActivityDayDetails surfaces session query errors", async () => {
   const { client } = createSupabaseMock([{ data: null, error: { message: "boom" } }]);
   const result = await getWorkActivityDayDetails({
