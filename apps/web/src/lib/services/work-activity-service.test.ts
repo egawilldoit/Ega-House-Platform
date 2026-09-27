@@ -258,6 +258,51 @@ test("timezone: server process timezone does not change daily buckets", () => {
   assert.equal(tokyo.days.find((entry) => entry.date === "2026-09-27")?.trackedSeconds, 1800);
 });
 
+test("timezone: Africa/Casablanca Ramadan offset (UTC+0) buckets to the correct local date", () => {
+  // During Ramadan 2026 (~Feb 18 - Mar 19), Africa/Casablanca is UTC+0 instead
+  // of its usual UTC+1. A session at 2026-03-01T00:30Z is 00:30 local on 03-01.
+  const ramadan = buildCalendar({
+    sessions: [{ started_at: "2026-03-01T00:30:00.000Z", ended_at: "2026-03-01T01:00:00.000Z" }],
+    timezone: "Africa/Casablanca",
+    startDate: "2026-03-01",
+    endDate: "2026-03-01",
+  });
+  const ramadanDay = ramadan.days.find((entry) => entry.date === "2026-03-01");
+  assert.equal(ramadanDay?.trackedSeconds, 1800);
+  assert.equal(ramadanDay?.isActive, true);
+
+  // Outside Ramadan (UTC+1), the same UTC instant on 2026-01-15T00:30Z is 01:30
+  // local on 01-15 — still 01-15, but the day window bounds differ.
+  const outside = buildCalendar({
+    sessions: [{ started_at: "2026-01-15T00:30:00.000Z", ended_at: "2026-01-15T01:00:00.000Z" }],
+    timezone: "Africa/Casablanca",
+    startDate: "2026-01-15",
+    endDate: "2026-01-15",
+  });
+  const outsideDay = outside.days.find((entry) => entry.date === "2026-01-15");
+  assert.equal(outsideDay?.trackedSeconds, 1800);
+});
+
+test("timezone: changing the account timezone reinterprets buckets without rewriting raw timestamps", () => {
+  const sessions = [{ started_at: "2026-09-26T15:30:00.000Z", ended_at: "2026-09-26T16:00:00.000Z" }];
+  const completionEvents = [{ occurredAt: "2026-09-27T02:00:00.000Z" }];
+  const sessionsSnapshot = JSON.parse(JSON.stringify(sessions));
+  const completionsSnapshot = JSON.parse(JSON.stringify(completionEvents));
+
+  const tokyo = buildCalendar({ sessions, completionEvents, timezone: "Asia/Tokyo" });
+  const utc = buildCalendar({ sessions, completionEvents, timezone: "UTC" });
+
+  // Same raw session buckets to 2026-09-27 in Tokyo (UTC+9) but 2026-09-26 in UTC.
+  assert.equal(tokyo.days.find((d) => d.date === "2026-09-27")?.trackedSeconds, 1800);
+  assert.equal(utc.days.find((d) => d.date === "2026-09-26")?.trackedSeconds, 1800);
+  // Same completion event buckets to 2026-09-27 in Tokyo but 2026-09-26 in New York.
+  assert.equal(tokyo.days.find((d) => d.date === "2026-09-27")?.completedTaskCount, 1);
+
+  // Raw timestamps are never rewritten by a timezone change.
+  assert.deepEqual(sessions, sessionsSnapshot);
+  assert.deepEqual(completionEvents, completionsSnapshot);
+});
+
 // ── Year window ────────────────────────────────────────────────────────────
 
 test("year window: rolling year contains 365 local dates ending today", () => {
