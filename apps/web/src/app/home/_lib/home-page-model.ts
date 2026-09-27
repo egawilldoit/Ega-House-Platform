@@ -1,6 +1,5 @@
 import type { OperatorSnapshot, OperatorTask } from "@ega/application";
 
-import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
 
 export type HomeAttention = {
@@ -17,18 +16,40 @@ export type HomeActiveTimer = {
   startedAt: string | null;
 };
 
+/**
+ * Compact Today progress scoped to the Today projection. `completedCount`
+ * belongs to the Today plan — it is never labeled as a universal
+ * "tasks completed today" metric.
+ */
+export type HomeTodayProgress = {
+  completedCount: number;
+  /** planned + inProgress + completed in the Today projection. */
+  totalCount: number;
+  plannedCount: number;
+  inProgressCount: number;
+  totalEstimateMinutes: number;
+  /** Completed share of the Today projection; null when nothing is planned. */
+  ratio: number | null;
+};
+
+export type HomeAvailability = {
+  operator: "available" | "unavailable";
+  attention: "available" | "unavailable";
+};
+
 export type HomeModel = {
+  /** Canonical local date (YYYY-MM-DD) from the Operator snapshot. */
+  date: string;
+  /** Canonical IANA timezone from the Operator snapshot. */
+  timezone: string;
   activeTimer: HomeActiveTimer | null;
   startHere: OperatorTask | null;
+  /** At most one next actionable focus task; null when absent. */
   nextUp: OperatorTask | null;
-  attention: HomeAttention;
-  snapshotUnavailable: boolean;
-  /** Canonical today counts from the Operator snapshot; null when unavailable. */
-  summary: OperatorSnapshot["summary"] | null;
-  /** Canonical today sections, used for progress context (never re-ranked). */
-  sections: OperatorSnapshot["sections"] | null;
-  /** Canonical focus queue preview in its canonical order. */
-  focusQueue: OperatorTask[];
+  todayProgress: HomeTodayProgress | null;
+  /** Null when shell attention metrics are unavailable (degraded). */
+  attention: HomeAttention | null;
+  availability: HomeAvailability;
 };
 
 function findTask(snapshot: OperatorSnapshot, taskId: string): OperatorTask | null {
@@ -51,21 +72,38 @@ function findTask(snapshot: OperatorSnapshot, taskId: string): OperatorTask | nu
   return null;
 }
 
+function buildTodayProgress(summary: OperatorSnapshot["summary"]): HomeTodayProgress {
+  const totalCount = summary.plannedCount + summary.inProgressCount + summary.completedCount;
+  return {
+    completedCount: summary.completedCount,
+    totalCount,
+    plannedCount: summary.plannedCount,
+    inProgressCount: summary.inProgressCount,
+    totalEstimateMinutes: summary.totalEstimateMinutes,
+    ratio: totalCount > 0 ? Math.round((summary.completedCount / totalCount) * 100) : null,
+  };
+}
+
 /**
  * Composes the minimal authenticated Home from canonical sources only.
  *
  * - Primary focus is the active timer when one exists, otherwise the canonical
  *   Operator `focus.startHere` (no Home-only ranker).
- * - `nextUp` is at most one distinct actionable focus item after Start Here.
- * - Attention counts reuse `WorkspaceShellMetrics` (the same shell semantics as
- *   the top bar and EGA-647), so Home cannot disagree with other screens.
+ * - `nextUp` is at most one distinct actionable focus item after Start Here,
+ *   never duplicating Start Here or the active Timer task.
+ * - Attention counts reuse the canonical shell metrics. A null `attention`
+ *   marks an unavailable/degraded shell read so the UI never fabricates a
+ *   verified clear state.
+ * - The full focus queue and snapshot sections are NOT part of the Home
+ *   contract: the queue belongs to Today/Tasks, and Home renders at most one
+ *   next task.
  */
 export function buildHomeModel(input: {
   snapshot: OperatorSnapshot | null;
-  metrics: WorkspaceShellMetrics;
+  attention: HomeAttention | null;
   activeTimerStartedAt?: string | null;
 }): HomeModel {
-  const { snapshot, metrics } = input;
+  const { snapshot, attention } = input;
   const activeTimer = snapshot?.activeTimer ?? null;
   const startHere = snapshot?.focus.startHere ?? null;
   const queue = snapshot?.focus.queue ?? [];
@@ -82,6 +120,8 @@ export function buildHomeModel(input: {
     ) ?? null;
 
   return {
+    date: snapshot?.date ?? "",
+    timezone: snapshot?.timezone ?? "",
     activeTimer: activeTimer
       ? {
           sessionId: activeTimer.sessionId,
@@ -92,14 +132,11 @@ export function buildHomeModel(input: {
       : null,
     startHere,
     nextUp,
-    attention: {
-      overdue: metrics.overdueTaskCount,
-      dueToday: metrics.dueTodayTaskCount,
-      reviewMissing: metrics.reviewMissing,
+    todayProgress: snapshot ? buildTodayProgress(snapshot.summary) : null,
+    attention,
+    availability: {
+      operator: snapshot !== null ? "available" : "unavailable",
+      attention: attention !== null ? "available" : "unavailable",
     },
-    snapshotUnavailable: snapshot === null,
-    summary: snapshot?.summary ?? null,
-    sections: snapshot?.sections ?? null,
-    focusQueue: queue,
   };
 }

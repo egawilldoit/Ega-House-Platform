@@ -12,14 +12,14 @@ import {
 type OwnerScopedRealtimeRefreshProps = {
   ownerUserId: string | null;
   channelPrefix: string;
-  tables: readonly ("task_sessions" | "tasks")[];
+  tables: readonly ("task_sessions" | "tasks" | "week_reviews")[];
   refreshDebounceMs?: number;
   /**
    * Optional table/event filter: only refresh for specific event types
    * or specific tables. If omitted, all matching events trigger refresh.
    */
   eventFilter?: {
-    tables?: readonly ("task_sessions" | "tasks")[];
+    tables?: readonly ("task_sessions" | "tasks" | "week_reviews")[];
     events?: readonly ("INSERT" | "UPDATE" | "DELETE")[];
   };
 };
@@ -76,7 +76,7 @@ export function OwnerScopedRealtimeRefresh({
           if (
             eventFilter.tables &&
             eventFilter.tables.length > 0 &&
-            !eventFilter.tables.includes(payload.table as "task_sessions" | "tasks")
+            !eventFilter.tables.includes(payload.table as "task_sessions" | "tasks" | "week_reviews")
           ) {
             return;
           }

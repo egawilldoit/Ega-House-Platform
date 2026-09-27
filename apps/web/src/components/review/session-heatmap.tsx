@@ -7,8 +7,11 @@ import type { DailyTrackedTime } from "@/lib/review-session-heatmap";
 /**
  * Intensity scale built from the data-blue token (never a status colour).
  * `color-mix` keeps the scale tied to the token instead of a hard-coded hex.
+ *
+ * Exported so compact activity surfaces (Home Activity pulse) reuse the same
+ * canonical EGA intensity scale instead of defining a competing one.
  */
-const HEATMAP_INTENSITY_STYLES: React.CSSProperties[] = [
+export const SESSION_HEATMAP_INTENSITY_STYLES: React.CSSProperties[] = [
   {
     background: "var(--ega-surface-subtle)",
     borderColor: "var(--ega-border)",
@@ -124,7 +127,7 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
                     title={label}
                     aria-label={label}
                     className="h-8 rounded-[var(--radius-xs)] border"
-                    style={HEATMAP_INTENSITY_STYLES[level]}
+                    style={SESSION_HEATMAP_INTENSITY_STYLES[level]}
                   />
                 );
               })}
@@ -145,7 +148,7 @@ export function SessionHeatmap({ data }: { data: DailyTrackedTime[] }) {
                   <span key={label} className="inline-flex items-center gap-1">
                     <span
                       className="h-3 w-3 rounded-[2px] border"
-                      style={HEATMAP_INTENSITY_STYLES[index]}
+                      style={SESSION_HEATMAP_INTENSITY_STYLES[index]}
                     />
                     {label}
                   </span>
