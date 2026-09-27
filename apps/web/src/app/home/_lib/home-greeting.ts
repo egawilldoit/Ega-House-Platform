@@ -88,7 +88,7 @@ export function buildHomeGreeting(input: {
   name: string;
   now?: Date;
 }): HomeGreeting {
-  const { date, timezone, name } = input;
+  const { date, timezone } = input;
   const now = input.now ?? new Date();
   const hour = getLocalHour(timezone, now);
   const trimmedName = input.name.trim();

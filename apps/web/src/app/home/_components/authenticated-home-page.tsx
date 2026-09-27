@@ -9,7 +9,6 @@ import {
   Folder,
   ListChecks,
   Play,
-  Timer,
 } from "lucide-react";
 import { Suspense } from "react";
 
