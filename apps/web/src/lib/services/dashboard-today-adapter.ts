@@ -13,6 +13,7 @@ import { isTaskPinned } from "@/lib/focus-queue";
 import { getTaskDueDateState, getTodayLocalIsoDate } from "@/lib/task-due-date";
 import { getCurrentDayWindow } from "@/lib/task-session";
 import { isTaskCompletedStatus, isTaskStatus } from "@/lib/task-domain";
+import { getCurrentLocalDayWindow } from "@ega/domain/time-context";
 
 export type DashboardTodayTask = {
   id: string;
@@ -313,11 +314,13 @@ export function mapTodayPlannerDataToDashboardPlanner(
 async function getDashboardTodaySessionEvidence(
   supabase: SupabaseServerClient,
   now: Date,
+  timezone?: string,
 ) {
-  const todayWindow = getCurrentDayWindow(now);
-  const nextDayStartIso = new Date(
-    new Date(todayWindow.startIso).getTime() + 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const todayWindow = getCurrentDayWindow(now, timezone);
+  // DST-safe upper bound: the local day's end (next local midnight).
+  const nextDayStartIso = timezone
+    ? getCurrentLocalDayWindow(timezone, now).endUtcIso
+    : new Date(new Date(todayWindow.startIso).getTime() + 24 * 60 * 60 * 1000).toISOString();
   const { data, error } = await supabase
     .from("task_sessions")
     .select("task_id, started_at, ended_at, duration_seconds")
@@ -391,6 +394,7 @@ async function getSupplementalDashboardTasks(options: {
 export async function getDashboardTodayPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  timezone?: string;
 }) {
   const supabase = options?.supabase ?? (await createClient());
   const now = options?.now ?? new Date();
@@ -403,7 +407,7 @@ export async function getDashboardTodayPlannerData(options?: {
     };
   }
 
-  const evidenceResult = await getDashboardTodaySessionEvidence(supabase, now);
+  const evidenceResult = await getDashboardTodaySessionEvidence(supabase, now, options?.timezone);
   if (evidenceResult.errorMessage || !evidenceResult.data) {
     return {
       data: null,
