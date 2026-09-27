@@ -168,9 +168,11 @@ async function resolveSupabaseClient(supabase?: SupabaseServerClient) {
 export async function getStartupPlanningEvidence(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  /** Canonical account local date from Time Context (see getTodayPlannerData). */
+  localDate?: string;
 }): Promise<{ errorMessage: string | null; data: StartupPlanningEvidence | null }> {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const today = getTodayLocalIsoDate(options?.now ?? new Date());
+  const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
   const weekBounds = getWeekBounds(today);
 
   if (!weekBounds) {
@@ -352,6 +354,7 @@ export function buildStartupPlan(evidence: StartupPlanningEvidence): StartupPlan
 export async function getStartupPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  localDate?: string;
 }) {
   const evidenceResult = await getStartupPlanningEvidence(options);
 
@@ -370,7 +373,7 @@ export async function getStartupPlannerData(options?: {
 
 export async function planStartupTasksForToday(
   taskIds: string[],
-  options?: { supabase?: SupabaseServerClient; now?: Date },
+  options?: { supabase?: SupabaseServerClient; now?: Date; localDate?: string },
 ) {
   const uniqueTaskIds = [...new Set(taskIds.map((taskId) => taskId.trim()).filter(Boolean))];
   if (uniqueTaskIds.length === 0) {
@@ -387,6 +390,7 @@ export async function planStartupTasksForToday(
     const result = await addTaskToToday(taskId, {
       supabase,
       now: options?.now,
+      localDate: options?.localDate,
     });
 
     if (result.errorMessage) {

@@ -16,6 +16,7 @@ import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
 
 export type TasksSearchParams = {
@@ -103,19 +104,25 @@ export function parseTasksSearchParams(searchParams: TasksSearchParams): ParsedT
 
 export async function getTasksPageModel(searchParams: TasksSearchParams) {
   const parsed = parseTasksSearchParams(searchParams);
-  const workspaceData = await getTasksWorkspaceData({
-    activeStatus: parsed.activeStatus,
-    requestedProjectId: parsed.projectParam,
-    requestedGoalId: parsed.goalParam,
-    activeDueFilter: parsed.activeDueFilter,
-    activeSort: parsed.activeSort,
-    activeView: parsed.activeView,
-    activeTasksOnly: parsed.savedViewDefinitionFilters.activeTasks,
-    activePriorityValues: parsed.savedViewDefinitionFilters.priorityValues,
-    activeEstimateMinMinutes: parsed.savedViewDefinitionFilters.estimateMinMinutes,
-    activeEstimateMaxMinutes: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
-    activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
-  });
+  // Due-within-N-days windows use the owner's canonical local date from Time
+  // Context so the Tasks workspace agrees with Today/Timer on the calendar day.
+  const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;
+  const workspaceData = await getTasksWorkspaceData(
+    {
+      activeStatus: parsed.activeStatus,
+      requestedProjectId: parsed.projectParam,
+      requestedGoalId: parsed.goalParam,
+      activeDueFilter: parsed.activeDueFilter,
+      activeSort: parsed.activeSort,
+      activeView: parsed.activeView,
+      activeTasksOnly: parsed.savedViewDefinitionFilters.activeTasks,
+      activePriorityValues: parsed.savedViewDefinitionFilters.priorityValues,
+      activeEstimateMinMinutes: parsed.savedViewDefinitionFilters.estimateMinMinutes,
+      activeEstimateMaxMinutes: parsed.savedViewDefinitionFilters.estimateMaxMinutes,
+      activeDueWithinDays: parsed.savedViewDefinitionFilters.dueWithinDays,
+    },
+    { todayIsoDate: accountLocalDate ?? undefined },
+  );
   const { projects, goals, tasks, taskTotalDurations, summary, savedViews, activeProjectId, activeGoalId } =
     workspaceData;
   const returnPath = buildTaskListUrl("/tasks", {

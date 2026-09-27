@@ -107,18 +107,11 @@ export function sortReminders(reminders: MobileTaskReminder[]) {
   });
 }
 
-export function isoDateAtOffset(daysFromToday: number) {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() + daysFromToday);
-  return date.toISOString().slice(0, 10);
-}
-
 /**
  * Canonical date-only value `daysFromToday` days from the owner's EGA House
- * local today. Unlike `isoDateAtOffset` (device-local midnight converted to
- * UTC), this derives the calendar date from the account timezone so Today /
- * Tomorrow / +7-day shortcuts agree with web and the Hono transport.
+ * local today. Unlike a device-local midnight converted to UTC, this derives
+ * the calendar date from the account timezone so Today / Tomorrow / +7-day
+ * shortcuts agree with web and the Hono transport.
  */
 export function isoDateAtOffsetInTimezone(timezone: string, daysFromToday: number): string {
   const now = new Date();

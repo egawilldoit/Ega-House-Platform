@@ -73,6 +73,12 @@ type CreateTasksOptions = {
    * when the caller does not supply an explicit one.
    */
   recurrenceDefaultTimezone?: string;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Used as the recurrence anchor fallback instead of the runtime-local date
+   * so web writes agree with the Hono transport near account midnight.
+   */
+  fallbackAnchorDate?: string;
 };
 
 type TaskSavedViewSelectRow = {
@@ -218,6 +224,12 @@ export type ValidateTaskInlineUpdateInput = {
    * never a numeric browser offset.
    */
   accountTimezone?: string;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Used as the recurrence anchor fallback instead of the runtime-local date
+   * so web writes agree with the Hono transport near account midnight.
+   */
+  fallbackAnchorDate?: string;
   calendarSyncEnabled?: unknown;
   calendarReminderMinutes?: unknown;
 };
@@ -1102,7 +1114,7 @@ export async function createTaskWithOptionalWorkedTime(
   options?: CreateTasksOptions,
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const fallbackAnchorDate = input.task.due_date ?? getTodayLocalIsoDate();
+  const fallbackAnchorDate = input.task.due_date ?? options?.fallbackAnchorDate ?? getTodayLocalIsoDate();
   const recurrenceResult =
     input.recurrenceRule === undefined
       ? { errorMessage: null, schedule: undefined }
@@ -1428,7 +1440,7 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
           anchorDate: input.recurrenceAnchorDate,
           timezone: input.recurrenceTimezone,
           defaultTimezone: input.accountTimezone,
-          fallbackAnchorDate: dueDateResult.value ?? getTodayLocalIsoDate(),
+          fallbackAnchorDate: dueDateResult.value ?? input.fallbackAnchorDate ?? getTodayLocalIsoDate(),
         });
   const hasScheduleFields =
     input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined;
@@ -1755,7 +1767,16 @@ export async function generateNextTaskForCompletedRecurrence(
 
 export async function updateTaskInline(
   input: ValidatedTaskInlineUpdateInput,
-  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+  options?: {
+    supabase?: SupabaseServerClient;
+    updatedAtIso?: string;
+    /**
+     * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+     * Used as the recurrence anchor fallback instead of the runtime-local date
+     * so web writes agree with the Hono transport near account midnight.
+     */
+    fallbackAnchorDate?: string;
+  },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
@@ -1922,7 +1943,7 @@ export async function updateTaskInline(
       {
         supabase,
         updatedAtIso,
-        fallbackAnchorDate: input.dueDate ?? getTodayLocalIsoDate(),
+        fallbackAnchorDate: input.dueDate ?? options?.fallbackAnchorDate ?? getTodayLocalIsoDate(),
       },
     );
 

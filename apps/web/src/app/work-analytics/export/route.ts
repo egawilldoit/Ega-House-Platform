@@ -7,6 +7,7 @@ import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   getLocalDateInTimezone,
   getLocalMonthWindow,
+  getTimezoneOffsetMinutes,
 } from "@ega/domain/time-context";
 import {
   calculateWorkAnalytics,
@@ -56,31 +57,11 @@ export const dynamic = "force-dynamic";
 /**
  * Offset in minutes from UTC for an IANA timezone at a given instant.
  * Positive values are west of UTC (matches Date#getTimezoneOffset semantics).
+ * Delegates to the canonical domain helper; the sign is flipped because the
+ * domain reports local-minus-UTC.
  */
 export function getIANAZoneOffsetMinutes(timezone: string, at: Date): number {
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(at);
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  const hour = get("hour") === 24 ? 0 : get("hour");
-  const asUtc =
-    Date.UTC(
-      get("year"),
-      get("month") - 1,
-      get("day"),
-      hour,
-      get("minute"),
-      get("second"),
-    ) / 60000;
-  return Math.round((asUtc - at.getTime() / 60000) * -1);
+  return -getTimezoneOffsetMinutes(at, timezone);
 }
 
 /**

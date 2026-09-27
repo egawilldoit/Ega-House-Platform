@@ -14,6 +14,10 @@ import { fetchMobileTimeContext } from '@/lib/api/time-context';
  *
  * While loading (and on failure) the effective timezone falls back to UTC,
  * matching the server's deterministic fallback.
+ *
+ * The cache must be invalidated after the owner changes the timezone (e.g. in
+ * settings) — call `invalidateAccountTimezoneCache` after a successful write
+ * so mounted consumers observe the new zone without an app restart.
  */
 let cachedTimezone: string | null = null;
 let inflight: Promise<string> | null = null;
@@ -32,6 +36,16 @@ function loadAccountTimezone(): Promise<string> {
       inflight = null;
     });
   return inflight;
+}
+
+/**
+ * Drop the cached account timezone (and any in-flight read) so the next
+ * consumer re-fetches the persisted value. Call after a successful
+ * `setMobileTimezone` write.
+ */
+export function invalidateAccountTimezoneCache(): void {
+  cachedTimezone = null;
+  inflight = null;
 }
 
 export function useAccountTimezone(): { timezone: string; isLoading: boolean } {

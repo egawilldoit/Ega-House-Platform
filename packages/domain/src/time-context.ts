@@ -87,7 +87,12 @@ function resolveEffectiveTimezone(requested: string | null | undefined): {
   return { effective: "UTC", fallback: FALLBACK_INVALID, requested: raw };
 }
 
-function getTimezoneOffsetMinutes(date: Date, timeZone: string): number {
+/**
+ * Offset in minutes from UTC for an IANA timezone at a given instant
+ * (local = UTC + offset). Canonical implementation reused by wall-time
+ * conversion and offset reporting.
+ */
+export function getTimezoneOffsetMinutes(date: Date, timeZone: string): number {
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     year: "numeric",

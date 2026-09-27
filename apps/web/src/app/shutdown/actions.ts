@@ -4,6 +4,7 @@ import {
   queueTaskForTomorrow,
   saveShutdownReflectionNote,
 } from "@/lib/services/shutdown-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   redirectWithWorkspaceFeedback,
   revalidateWorkspaceFor,
@@ -22,8 +23,9 @@ export async function getShutdownReturnPath(rawReturnTo: unknown) {
 export async function carryForwardTaskToTomorrowAction(formData: FormData) {
   const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
+  const localDate = (await getWebTimeContext().catch(() => null))?.localDate ?? null;
 
-  const result = await queueTaskForTomorrow(taskId);
+  const result = await queueTaskForTomorrow(taskId, { localDate: localDate ?? undefined });
 
   if (result.errorMessage) {
     redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
@@ -38,7 +40,8 @@ export async function carryForwardTaskToTomorrowAction(formData: FormData) {
 export async function saveShutdownReflectionNoteAction(formData: FormData) {
   const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
   const note = String(formData.get("reflectionNote") ?? "");
-  const result = await saveShutdownReflectionNote(note);
+  const localDate = (await getWebTimeContext().catch(() => null))?.localDate ?? null;
+  const result = await saveShutdownReflectionNote(note, { localDate: localDate ?? undefined });
 
   if (result.errorMessage) {
     redirectWithWorkspaceFeedback(returnPath, { errorMessage: result.errorMessage });
