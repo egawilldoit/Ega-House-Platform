@@ -426,6 +426,28 @@ test("PUT /api/time-context persists the owner-scoped IANA timezone", async () =
   assert.equal(payload.iana_timezone, "Africa/Casablanca");
 });
 
+test("PUT /api/time-context never rewrites stored timestamps or other tables", async () => {
+  const fake = new FakeSupabase();
+  fake.push("user_time_context", {
+    data: { iana_timezone: "Asia/Tokyo" },
+    error: null,
+    count: 1,
+  });
+
+  const response = await makeApp(fake).request("/api/time-context", {
+    method: "PUT",
+    headers: { ...AUTH, "content-type": "application/json" },
+    body: JSON.stringify({ timezone: "Asia/Tokyo" }),
+  });
+
+  assert.equal(response.status, 200);
+  // The mutation must target ONLY user_time_context: changing the account
+  // timezone must never rewrite historical absolute timestamps or touch
+  // task/session/reminder tables.
+  const tables = new Set(fake.calls.map((c) => c.table));
+  assert.deepEqual([...tables], ["user_time_context"]);
+});
+
 test("PUT /api/time-context rejects invalid IANA zones without persisting", async () => {
   const fake = new FakeSupabase();
 
