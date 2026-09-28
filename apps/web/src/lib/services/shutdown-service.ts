@@ -184,11 +184,13 @@ async function getCurrentWeekReview(
 export async function getShutdownData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  /** Canonical account local date from Time Context (see getTodayPlannerData). */
+  localDate?: string;
   todayPlannerResult?: { errorMessage: string | null; data: TodayPlannerData | null };
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
-  const today = getTodayLocalIsoDate(now);
+  const today = options?.localDate ?? getTodayLocalIsoDate(now);
   const tomorrowDate = shiftIsoDateByDays(today, 1);
   const dueSoonEndDate = shiftIsoDateByDays(today, 2);
 
@@ -197,6 +199,7 @@ export async function getShutdownData(options?: {
     (await getTodayPlannerData({
       supabase,
       now,
+      localDate: options?.localDate,
     }));
 
   if (todayResult.errorMessage || !todayResult.data) {
@@ -293,7 +296,7 @@ async function getOwnedTaskById(taskId: string, supabase: SupabaseServerClient) 
 
 export async function queueTaskForTomorrow(
   taskId: string,
-  options?: { supabase?: SupabaseServerClient; now?: Date },
+  options?: { supabase?: SupabaseServerClient; now?: Date; localDate?: string },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const scope = await getOwnedTaskById(taskId, supabase);
@@ -302,7 +305,7 @@ export async function queueTaskForTomorrow(
     return { errorMessage: scope.errorMessage ?? "Task is unavailable." };
   }
 
-  const today = getTodayLocalIsoDate(options?.now ?? new Date());
+  const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
   const tomorrowDate = shiftIsoDateByDays(today, 1);
   const { error } = await supabase
     .from("tasks")
@@ -321,7 +324,7 @@ export async function queueTaskForTomorrow(
 
 export async function saveShutdownReflectionNote(
   note: string,
-  options?: { supabase?: SupabaseServerClient; now?: Date },
+  options?: { supabase?: SupabaseServerClient; now?: Date; localDate?: string },
 ) {
   const normalizedNote = note.trim();
   if (!normalizedNote) {
@@ -333,7 +336,7 @@ export async function saveShutdownReflectionNote(
   }
 
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const today = getTodayLocalIsoDate(options?.now ?? new Date());
+  const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
   const weekBounds = getWeekBounds(today);
 
   if (!weekBounds) {

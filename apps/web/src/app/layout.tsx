@@ -3,6 +3,7 @@ import { Instrument_Sans, Sora, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import "../styles/workspace.css";
 import { MotionProvider } from "@/components/motion-provider";
+import { DisplayTimezoneBootstrap } from "@/lib/hooks/display-timezone-bootstrap";
 
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
@@ -60,7 +61,10 @@ export default function RootLayout({
       className={`h-full antialiased ${instrumentSans.variable} ${sora.variable} ${jetbrainsMono.variable}`}
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
-        <MotionProvider>{children}</MotionProvider>
+        <MotionProvider>
+          <DisplayTimezoneBootstrap />
+          {children}
+        </MotionProvider>
       </body>
     </html>
   );

@@ -1,4 +1,9 @@
-import { resolveHistoricalTimeContext } from "@ega/application";
+import {
+  createAuthenticatedActor,
+  getTimeContextTimezone,
+  resolveHistoricalTimeContext,
+} from "@ega/application";
+import { SupabaseTimeContextRepository } from "@ega/data-access";
 import { getWeekWindow as getDomainWeekWindow } from "@ega/domain";
 import {
   calculateExecutionEvidenceForWindow,
@@ -132,16 +137,13 @@ async function getDraftTimezone(
   ownerUserId: string,
 ): Promise<string | null> {
   try {
-    const result = await (supabase as unknown as {
-      from(t: string): {
-        select(c: string): { eq(a: string, b: string): { maybeSingle(): Promise<{ data: unknown; error: unknown }> } };
-      };
-    })
-      .from("user_time_context")
-      .select("iana_timezone")
-      .eq("user_id", ownerUserId)
-      .maybeSingle();
-    const tz = (result.data as { iana_timezone?: string | null } | null)?.iana_timezone;
+    // Canonical Time Context application seam — no direct table knowledge.
+    const actor = createAuthenticatedActor(ownerUserId);
+    const repository = new SupabaseTimeContextRepository(
+      supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
+    );
+    const result = await getTimeContextTimezone(actor, repository);
+    const tz = result.ok ? result.data : null;
     return typeof tz === "string" && tz.trim() ? tz.trim() : null;
   } catch {
     return null;

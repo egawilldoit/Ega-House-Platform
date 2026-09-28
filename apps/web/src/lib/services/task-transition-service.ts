@@ -25,6 +25,12 @@ type TaskTransitionOptions = {
   supabase?: SupabaseServerClient;
   now?: Date;
   nowIso?: string;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * When supplied, plan-for-today writes this date instead of deriving the
+   * calendar day from the process runtime timezone.
+   */
+  localDate?: string;
 };
 
 type TaskTransitionResult = {
@@ -487,7 +493,7 @@ export async function planTaskForToday(
   taskId: string,
   options?: TaskTransitionOptions,
 ): Promise<TaskTransitionResult> {
-  const today = getTodayLocalIsoDate(options?.now ?? new Date());
+  const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
   const nowIso = getNowIso(options);
 
   return updateTaskWorkflowFields(

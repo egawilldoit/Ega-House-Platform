@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { sendWeeklyReviewPreviewEmail } from "@/lib/email/weekly-review-preview";
 import { getResendClient, getResendEmailEnvConfig } from "@/lib/email/resend";
 import { getWeekBoundsForTimezone } from "@/lib/review-week";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { createClient } from "@/lib/supabase/server";
 
 import {
@@ -71,14 +72,8 @@ export async function saveReviewAction(
   const ownerUserId = authData.user.id;
   let bounds: { weekStart: string; weekEnd: string } | null = null;
   try {
-    const { data: tzRow } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
-      "user_time_context",
-    )
-      .select("iana_timezone")
-      .eq("user_id", ownerUserId)
-      .maybeSingle();
-    const tz = (tzRow as { iana_timezone?: string | null } | null)?.iana_timezone ?? null;
-    bounds = getWeekBoundsForTimezone(weekOf, tz);
+    const timeContext = await getWebTimeContext();
+    bounds = getWeekBoundsForTimezone(weekOf, timeContext.persistedTimezone);
   } catch {
     bounds = getWeekBoundsForTimezone(weekOf, null);
   }

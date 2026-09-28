@@ -181,6 +181,12 @@ function getRecommendationSignals(task: FocusPanelTask, nowIso: string, todayIso
 export function getFocusPanelCandidateState(
   tasks: FocusPanelTask[],
   nowIso = new Date().toISOString(),
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Supplied by the Dashboard so due-today/overdue recommendation signals
+   * follow the account day, never the runtime-local day.
+   */
+  todayIsoDate = getTodayLocalIsoDate(new Date(nowIso)),
 ): FocusPanelCandidateState {
   const openTasks = tasks.filter((task) => !isCompletedStatus(task.status));
 
@@ -202,8 +208,6 @@ export function getFocusPanelCandidateState(
       pinnedTaskCount,
     };
   }
-
-  const todayIsoDate = getTodayLocalIsoDate(new Date(nowIso));
   const sortedCandidates = sortCandidateTasks(actionableTasks, nowIso, todayIsoDate);
   const recommendedTask = sortedCandidates[0];
 

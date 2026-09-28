@@ -2,6 +2,7 @@ import { Suspense } from "react";
 
 import { getHeroPanelData, getCommandCenterPanelData, getPlannerPanelData, getFocusPanelData, getGoalsPanelData, getProjectsPanelData, getReviewPulsePanelData, getTimerSummaryPanelData } from "../_lib/dashboard-data";
 import { displayNameForUser } from "../_lib/dashboard-helpers";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getWorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { createClient } from "@/lib/supabase/server";
@@ -21,10 +22,14 @@ import { HeroSkeleton } from "./skeletons";
 
 async function HeroPanelAsync() {
   const user = await getCurrentUser();
-  const data = await getHeroPanelData(user?.id ?? null, displayNameForUser(user));
+  const [data, timeContext] = await Promise.all([
+    getHeroPanelData(user?.id ?? null, displayNameForUser(user)),
+    getWebTimeContext().catch(() => null),
+  ]);
   return (
     <DashboardHeroSection
       displayName={data.displayName}
+      timezone={timeContext?.timezone}
       completionRate={data.completionRate}
       todayCount={data.tasks.length}
       completedCount={data.completedCount}

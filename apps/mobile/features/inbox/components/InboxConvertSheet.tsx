@@ -26,7 +26,7 @@ export function InboxConvertSheet({ visible, item, projects, onClose, onSubmit }
     if (!visible) return;
     const preferred = item?.projectId && projects.some((project) => project.id === item.projectId)
       ? item.projectId
-      : projects[0]?.id ?? null;
+      : null;
     // Sync the default project when the sheet opens; selection remains local to this transient flow.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProjectId(preferred);
@@ -75,15 +75,15 @@ export function InboxConvertSheet({ visible, item, projects, onClose, onSubmit }
             <Text style={styles.closeText}>Cancel</Text>
           </Pressable>
           <Text style={styles.headerTitle} accessibilityRole="header">
-            Create task
+            Turn into Task
           </Text>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} testID="inbox-convert-sheet">
-          <Text style={styles.eyebrow}>Inbox Processing</Text>
+          <Text style={styles.eyebrow}>Backlog</Text>
           <Text style={styles.title}>{item?.title ?? "Choose a project"}</Text>
-          <Text style={styles.description}>Choose where this idea belongs. The original Inbox item will be marked converted and the new task will open in Tasks, where you can review or schedule it for Today.</Text>
+          <Text style={styles.description}>Choose where this backlog item belongs. The original item will be marked converted and the new task will open in Tasks, where you can review or schedule it for Today.</Text>
 
           <Text style={styles.sectionLabel}>Project</Text>
           {projects.length > 0 ? (
@@ -105,11 +105,11 @@ export function InboxConvertSheet({ visible, item, projects, onClose, onSubmit }
           {error ? <FeedbackBanner tone="danger" message={error} testID="inbox-convert-error" /> : null}
 
           <Button
-            accessibilityLabel="Create task from Inbox idea"
+            accessibilityLabel="Turn into Task"
             disabled={!projectId}
             loading={pending}
             onPress={handleSubmit}
-            title={pending ? "Creating task..." : "Create task"}
+            title={pending ? "Creating task..." : "Turn into Task"}
             testID="inbox-convert-submit"
           />
         </ScrollView>

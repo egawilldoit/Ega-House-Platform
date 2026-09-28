@@ -17,10 +17,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getCalendarIntegrationSettings } from "@/lib/services/calendar-settings-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   type GoogleCalendarOAuthFailureCode,
   getGoogleCalendarOAuthFailureMessage,
 } from "@/app/api/integrations/google-calendar/oauth";
+import { TimezoneCard } from "@/app/settings/account/timezone-card";
 
 export const metadata: Metadata = {
   title: "Account Settings",
@@ -38,10 +40,12 @@ type AccountSettingsPageProps = {
 export default async function AccountSettingsPage({
   searchParams,
 }: AccountSettingsPageProps) {
-  const [{ success, error, errorCode }, settingsResult] = await Promise.all([
-    searchParams,
-    getCalendarIntegrationSettings(),
-  ]);
+  const [{ success, error, errorCode }, settingsResult, timeContext] =
+    await Promise.all([
+      searchParams,
+      getCalendarIntegrationSettings(),
+      getWebTimeContext(),
+    ]);
   const settings = settingsResult.data;
   const feedbackError =
     getGoogleCalendarOAuthFailureMessage(errorCode, error) ??
@@ -53,6 +57,12 @@ export default async function AccountSettingsPage({
       description="Account controls and integrations."
     >
       <div className="flex max-w-3xl flex-col gap-6">
+        <TimezoneCard
+          timezone={timeContext.timezone}
+          persistedTimezone={timeContext.persistedTimezone}
+          fallback={timeContext.fallback}
+        />
+
         <Card>
           <CardHeader>
             <CardTitle>Google Calendar</CardTitle>

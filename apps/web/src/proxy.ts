@@ -22,10 +22,10 @@ const LOGIN_HOST = CANONICAL_HOST;
  */
 const GLOBAL_APP_ROUTES: Array<`/${string}`> = [
   "/apps",
+  "/backlog",
   "/dashboard",
   "/help",
   "/home",
-  "/ideas",
   "/settings",
   "/shutdown",
   "/startup",
@@ -33,10 +33,10 @@ const GLOBAL_APP_ROUTES: Array<`/${string}`> = [
 ];
 
 const PROTECTED_ROOT_PATH_PREFIXES: Array<`/${string}`> = [
+  "/backlog",
   "/dashboard",
   "/goals",
   "/home",
-  "/ideas",
   "/shutdown",
   "/startup",
   "/tasks",

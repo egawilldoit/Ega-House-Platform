@@ -1,4 +1,4 @@
-import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain";
+import { getLocalDateInTimezone, getLocalDayWindow, splitIntervalByLocalDay } from "@ega/domain";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -87,108 +87,48 @@ export function aggregateSessionEvidenceByLocalDay(
   nowIso = new Date().toISOString(),
 ): SessionDayEvidence[] {
   const dateSeries = buildLocalDateSeries(window.startDate, window.endDate);
-
-  if (dateSeries.length === 0) {
-    return [];
-  }
+  if (dateSeries.length === 0) return [];
 
   const rangeStartMs = parseIso(window.startIso);
   const rangeEndExclusiveMs = parseIso(window.endExclusiveIso);
   const nowMs = parseIso(nowIso);
-
   if (rangeStartMs === null || rangeEndExclusiveMs === null || nowMs === null) {
     return dateSeries.map((date) => ({ date, trackedSeconds: 0, sessionCount: 0 }));
   }
 
-  const tz = window.timezone ?? "UTC";
-  const useLocal = tz !== "UTC";
-
-  // Build local day boundaries for each date in the series when timezone is non-UTC.
-  let localDayBounds: Map<string, { startMs: number; endMs: number }> | null = null;
-  if (useLocal) {
-    localDayBounds = new Map();
-    for (const date of dateSeries) {
-      try {
-        const w = getLocalDayWindow(tz, date);
-        const s = parseIso(w.startUtcIso);
-        const e = parseIso(w.endUtcIso);
-        if (s !== null && e !== null) localDayBounds.set(date, { startMs: s, endMs: e });
-      } catch {
-        const s = toUtcDateStartMs(date);
-        if (s !== null) localDayBounds.set(date, { startMs: s, endMs: s + DAY_IN_MS });
-      }
-    }
-  }
-
-  // Open sessions contribute to the current local day only, bounded by now.
+  const timezone = window.timezone || "UTC";
   let todayStartMs: number;
-  if (useLocal) {
-    try {
-      const todayDate = getLocalDateInTimezone(new Date(nowMs), tz);
-      const todayWindow = getLocalDayWindow(tz, todayDate);
-      const parsed = parseIso(todayWindow.startUtcIso);
-      todayStartMs = parsed ?? startOfUtcDayMs(nowMs);
-    } catch {
-      todayStartMs = startOfUtcDayMs(nowMs);
-    }
-  } else {
+  try {
+    const todayDate = getLocalDateInTimezone(new Date(nowMs), timezone);
+    todayStartMs = Date.parse(getLocalDayWindow(timezone, todayDate).startUtcIso);
+  } catch {
     todayStartMs = startOfUtcDayMs(nowMs);
   }
 
+  const allowedDates = new Set(dateSeries);
   const totals = new Map<string, { trackedSeconds: number; sessionCount: number }>();
 
-  for (const session of sessions) {
-    const rawStartMs = parseIso(session.started_at);
-    const isOpen = session.ended_at === null || session.ended_at === undefined;
-    const rawEndMs = parseIso(session.ended_at ?? nowIso);
-
-    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) {
-      continue;
-    }
+  for (const item of sessions) {
+    const rawStartMs = parseIso(item.started_at);
+    const isOpen = item.ended_at == null;
+    const rawEndMs = parseIso(item.ended_at ?? nowIso);
+    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) continue;
 
     let overlapStartMs = Math.max(rawStartMs, rangeStartMs);
     const overlapEndMs = Math.min(rawEndMs, rangeEndExclusiveMs);
+    // An open session contributes only to the current local day. This prevents
+    // a stale open session from painting historical days.
+    if (isOpen) overlapStartMs = Math.max(overlapStartMs, todayStartMs);
+    if (overlapEndMs <= overlapStartMs) continue;
 
-    if (isOpen) {
-      overlapStartMs = Math.max(overlapStartMs, todayStartMs);
-    }
-
-    if (overlapEndMs <= overlapStartMs) {
-      continue;
-    }
-
-    if (useLocal && localDayBounds) {
-      for (const date of dateSeries) {
-        const bounds = localDayBounds.get(date);
-        if (!bounds) continue;
-        const dayOverlapStart = Math.max(overlapStartMs, bounds.startMs);
-        const dayOverlapEnd = Math.min(overlapEndMs, bounds.endMs);
-        if (dayOverlapEnd > dayOverlapStart) {
-          const segmentSeconds = Math.floor((dayOverlapEnd - dayOverlapStart) / 1000);
-          if (segmentSeconds > 0) {
-            const entry = totals.get(date) ?? { trackedSeconds: 0, sessionCount: 0 };
-            entry.trackedSeconds += segmentSeconds;
-            entry.sessionCount += 1;
-            totals.set(date, entry);
-          }
-        }
-      }
-    } else {
-      let cursorMs = overlapStartMs;
-      while (cursorMs < overlapEndMs) {
-        const dayStartMs = startOfUtcDayMs(cursorMs);
-        const dayEndMs = dayStartMs + DAY_IN_MS;
-        const segmentEndMs = Math.min(overlapEndMs, dayEndMs);
-        const segmentSeconds = Math.floor((segmentEndMs - cursorMs) / 1000);
-        if (segmentSeconds > 0) {
-          const dayKey = toIsoDate(new Date(dayStartMs));
-          const entry = totals.get(dayKey) ?? { trackedSeconds: 0, sessionCount: 0 };
-          entry.trackedSeconds += segmentSeconds;
-          entry.sessionCount += 1;
-          totals.set(dayKey, entry);
-        }
-        cursorMs = segmentEndMs;
-      }
+    // EGA-661 owns timezone/day-boundary semantics. This module owns only
+    // session evidence policy (window clipping, stale-open handling, counting).
+    for (const part of splitIntervalByLocalDay(timezone, overlapStartMs, overlapEndMs)) {
+      if (!allowedDates.has(part.dayKey)) continue;
+      const entry = totals.get(part.dayKey) ?? { trackedSeconds: 0, sessionCount: 0 };
+      entry.trackedSeconds += part.seconds;
+      entry.sessionCount += 1;
+      totals.set(part.dayKey, entry);
     }
   }
 

@@ -33,7 +33,7 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
   { label: "Timer", href: SHORTCUT_ROUTE_MAP.timer },
   { label: "Review", href: SHORTCUT_ROUTE_MAP.review },
   { label: "Analytics", href: "/work-analytics" },
-  { label: "Ideas", href: "/ideas" },
+  { label: "Backlog", href: "/backlog" },
   { label: "Notifications", href: "/notifications" },
   { label: "Startup", href: "/startup" },
   { label: "Shutdown", href: "/shutdown" },
@@ -43,7 +43,7 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
 ];
 
 const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint" | "action">> = [
-  { label: "Capture to Inbox", href: "/ideas", hint: "Capture", action: "capture" },
+  { label: "Add to Backlog", href: "/backlog", hint: "Capture", action: "capture" },
   { label: "Open Tasks", href: "/tasks", hint: "Tasks" },
   { label: "New Project", href: "/tasks/projects/new", hint: "Project" },
   { label: "Open Goals", href: "/goals", hint: "Goals" },

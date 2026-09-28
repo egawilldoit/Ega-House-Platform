@@ -25,7 +25,12 @@ const DRAFT_STORAGE_KEY = "ega:inbox-quick-capture-draft";
 type Draft = {
   title: string;
   body: string;
+  projectId: string;
   idempotencyKey: string;
+};
+
+export type InboxCaptureSheetProps = {
+  projects?: { id: string; name: string }[];
 };
 
 function createIdempotencyKey(): string {
@@ -45,6 +50,7 @@ function loadDraft(): Draft | null {
     return {
       title: parsed.title ?? "",
       body: typeof parsed.body === "string" ? parsed.body : "",
+      projectId: typeof parsed.projectId === "string" ? parsed.projectId : "",
       idempotencyKey: typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey.trim()
         ? parsed.idempotencyKey.trim()
         : createIdempotencyKey(),
@@ -69,17 +75,18 @@ function clearDraftStorage() {
 }
 
 /**
- * The single Inbox Capture controller.
+ * The single Backlog Capture controller.
  *
  * Mount once per workspace shell (see GlobalQuickActionControllers). It owns the
  * capture sheet, draft persistence, and the INBOX_CAPTURE_EVENT listener.
  * Navigation surfaces only render triggers that dispatch the event.
  */
-export function InboxCaptureSheet() {
+export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -91,6 +98,7 @@ export function InboxCaptureSheet() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(draft.title);
       setBody(draft.body);
+      setProjectId(draft.projectId);
       idempotencyKeyRef.current = draft.idempotencyKey || createIdempotencyKey();
     }
   }, []);
@@ -104,14 +112,14 @@ export function InboxCaptureSheet() {
   }, [open]);
 
   useEffect(() => {
-    if (!title && !body) {
+    if (!title && !body && !projectId) {
       if (error) {
-        saveDraft({ title, body, idempotencyKey: idempotencyKeyRef.current });
+        saveDraft({ title, body, projectId, idempotencyKey: idempotencyKeyRef.current });
       }
       return;
     }
-    saveDraft({ title, body, idempotencyKey: idempotencyKeyRef.current });
-  }, [title, body, error]);
+    saveDraft({ title, body, projectId, idempotencyKey: idempotencyKeyRef.current });
+  }, [title, body, projectId, error]);
 
   useEffect(() => {
     const handler = () => {
@@ -144,21 +152,23 @@ export function InboxCaptureSheet() {
         idempotencyKeyRef.current = createIdempotencyKey();
       }
       const keyToUse = idempotencyKeyRef.current;
-      saveDraft({ title, body, idempotencyKey: keyToUse });
+      saveDraft({ title, body, projectId, idempotencyKey: keyToUse });
 
       try {
         const result = await captureInboxIdea({
           title: trimmedTitle,
           body: body.trim() ? body.trim() : null,
+          projectId: projectId.trim() || null,
           idempotencyKey: keyToUse,
         });
         if (!result.ok) {
           setError(result.error);
           return;
         }
-        setSuccess("Idea captured.");
+        setSuccess("Added to Backlog.");
         setTitle("");
         setBody("");
+        setProjectId("");
         clearDraftStorage();
         idempotencyKeyRef.current = createIdempotencyKey();
         router.refresh();
@@ -173,7 +183,7 @@ export function InboxCaptureSheet() {
         setPending(false);
       }
     },
-    [title, body, router],
+    [title, body, projectId, router],
   );
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -191,15 +201,15 @@ export function InboxCaptureSheet() {
       <SheetContent
         closeLabel="Close capture panel"
         className="flex flex-col"
-        aria-label="Inbox quick capture sheet"
+        aria-label="Backlog quick capture sheet"
         data-testid="inbox-quick-capture-sheet"
       >
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
           <SheetHeader className="min-w-0">
-            <p className="glass-label">Inbox Capture</p>
-            <SheetTitle>Capture</SheetTitle>
+            <p className="glass-label">Backlog Capture</p>
+            <SheetTitle>Add to Backlog</SheetTitle>
             <SheetDescription>
-              Write first. Smart Inbox keeps the raw capture intact while you decide what it becomes.
+              Capture an idea now. Keep it here until it is ready to become real work.
             </SheetDescription>
           </SheetHeader>
 
@@ -207,7 +217,7 @@ export function InboxCaptureSheet() {
             variant="ghost"
             size="sm"
             className="mt-1 h-9 w-9 shrink-0 rounded-full p-0"
-            aria-label="Close inbox capture panel"
+            aria-label="Close backlog capture panel"
             onClick={closeSheet}
             data-testid="inbox-capture-close"
           >
@@ -216,10 +226,10 @@ export function InboxCaptureSheet() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          <form onSubmit={handleSubmit} className="space-y-4" aria-label="Inbox quick capture form">
+          <form onSubmit={handleSubmit} className="space-y-4" aria-label="Backlog quick capture form">
             <div className="space-y-2">
               <label htmlFor="inbox-capture-title" className="form-label">
-                Thought
+                Idea
               </label>
               <Input
                 id="inbox-capture-title"
@@ -230,17 +240,36 @@ export function InboxCaptureSheet() {
                 onChange={(event) => setTitle(event.target.value)}
                 className="h-10"
                 data-testid="inbox-capture-title-input"
-                aria-label="Inbox capture title"
+                aria-label="Backlog capture title"
                 autoComplete="off"
               />
-              <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
-                Short raw thought — Project, priority, and tags are optional later.
-              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label htmlFor="inbox-capture-project" className="form-label">
+                Project (optional)
+              </label>
+              <select
+                id="inbox-capture-project"
+                name="projectId"
+                value={projectId}
+                onChange={(event) => setProjectId(event.target.value)}
+                className="input-instrument h-10 w-full px-2.5 text-[length:var(--text-meta-lg)]"
+                data-testid="inbox-capture-project-input"
+                aria-label="Backlog capture project"
+              >
+                <option value="">No project</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">
               <label htmlFor="inbox-capture-body" className="form-label">
-                Context (optional)
+                Notes (optional)
               </label>
               <Textarea
                 id="inbox-capture-body"
@@ -250,7 +279,7 @@ export function InboxCaptureSheet() {
                 onChange={(event) => setBody(event.target.value)}
                 className="min-h-24 resize-none"
                 data-testid="inbox-capture-body-input"
-                aria-label="Inbox capture body"
+                aria-label="Backlog capture notes"
               />
             </div>
 
@@ -293,15 +322,15 @@ export function InboxCaptureSheet() {
                 type="submit"
                 disabled={pending}
                 data-testid="inbox-capture-submit"
-                aria-label="Capture idea to inbox"
+                aria-label="Add to Backlog"
               >
                 {pending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    Capturing...
+                    Adding...
                   </>
                 ) : (
-                  "Capture"
+                  "Add to Backlog"
                 )}
               </Button>
             </div>

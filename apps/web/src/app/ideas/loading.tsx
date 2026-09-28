@@ -5,8 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 export default function IdeasLoadingPage() {
   return (
     <WorkspaceSkeletonShell
-      title="Ideas"
-      description="Capture thoughts now, sort them into work later."
+      title="Backlog"
+      description="Keep ideas here until they are ready to become real work."
     >
       <div className="flex flex-col gap-6">
         <Card>

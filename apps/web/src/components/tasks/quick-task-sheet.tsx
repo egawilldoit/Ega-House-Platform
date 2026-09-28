@@ -29,6 +29,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { workspaceShortcutEvents } from "@/components/layout/workspace-keyboard-shortcuts";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import { parseQuickTaskCommand } from "@/lib/quick-task-command-parser";
 import {
   formatDisplayDate,
@@ -208,8 +210,6 @@ function QuickTaskSheetPanel({
   const [singlePriority, setSinglePriority] = useState("medium");
   const [singleEstimateMinutes, setSingleEstimateMinutes] = useState("");
   const [singleBlockedReason, setSingleBlockedReason] = useState("");
-  const [timeZoneOffsetMinutes, setTimeZoneOffsetMinutes] = useState("");
-  const [recurrenceTimezone, setRecurrenceTimezone] = useState("UTC");
   const [drafts, setDrafts] = useState<MultiTaskDraft[]>([
     createEmptyDraft(defaultProjectId),
   ]);
@@ -266,12 +266,14 @@ function QuickTaskSheetPanel({
     initialBulkState,
   );
 
+  const displayTimezone = useDisplayTimezone();
   const singleGoals = getGoalsForProject(goals, singleProjectId);
   const parsedSingleCommand = useMemo(
     () => parseQuickTaskCommand(singleCommand, projects, goals, {
       selectedProjectId: singleProjectId,
+      todayIsoDate: getLocalDateInTimezone(new Date(), displayTimezone),
     }),
-    [singleCommand, projects, goals, singleProjectId],
+    [singleCommand, projects, goals, singleProjectId, displayTimezone],
   );
   const hasCommandError =
     Boolean(parsedSingleCommand.projectError)
@@ -362,11 +364,6 @@ function QuickTaskSheetPanel({
     parsedSingleCommand.blockedReason,
     parsedSingleCommand.blockedError,
   ]);
-
-  useEffect(() => {
-    setTimeZoneOffsetMinutes(String(new Date().getTimezoneOffset()));
-    setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-  }, []);
 
   useEffect(() => {
     if (bulkState.success) {
@@ -553,17 +550,6 @@ function QuickTaskSheetPanel({
               >
                 <input type="hidden" name="returnTo" value={DEFAULT_RETURN_TO} />
                 <input type="hidden" name="title" value={parsedSingleCommand.title} />
-                <input
-                  type="hidden"
-                  name="workedTimeTimezoneOffsetMinutes"
-                  value={timeZoneOffsetMinutes}
-                />
-                <input
-                  type="hidden"
-                  name="scheduleTimezoneOffsetMinutes"
-                  value={timeZoneOffsetMinutes}
-                />
-                <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
 
                   <div className="space-y-5">
                     <div className="space-y-2">
