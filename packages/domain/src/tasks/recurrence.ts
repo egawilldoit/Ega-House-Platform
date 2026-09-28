@@ -65,7 +65,7 @@ export function isValidTaskRecurrenceAnchorDate(value: string) {
   return parseDateOnly(value) !== null;
 }
 
-export function normalizeTaskRecurrenceAnchorDateInput(value: unknown, fallbackDate: string) {
+export function normalizeTaskRecurrenceAnchorDateInput(value: unknown, fallbackDate: string | null) {
   const anchorDate = String(value ?? "").trim() || fallbackDate;
 
   if (!anchorDate || !isValidTaskRecurrenceAnchorDate(anchorDate)) {
@@ -86,8 +86,20 @@ export function isValidTaskRecurrenceTimezone(value: string) {
   }
 }
 
-export function normalizeTaskRecurrenceTimezoneInput(value: unknown) {
-  const timezone = String(value ?? "").trim() || DEFAULT_TASK_RECURRENCE_TIMEZONE;
+/**
+ * Normalize a recurrence timezone. An explicitly supplied value wins; when the
+ * caller supplies none, `defaultTimezone` (the persisted EGA House timezone)
+ * is used, falling back to UTC only when no default is available.
+ */
+export function normalizeTaskRecurrenceTimezoneInput(
+  value: unknown,
+  defaultTimezone: unknown = DEFAULT_TASK_RECURRENCE_TIMEZONE,
+) {
+  const fallback =
+    typeof defaultTimezone === "string" && defaultTimezone.trim()
+      ? defaultTimezone.trim()
+      : DEFAULT_TASK_RECURRENCE_TIMEZONE;
+  const timezone = String(value ?? "").trim() || fallback;
 
   if (!isValidTaskRecurrenceTimezone(timezone)) {
     return { errorMessage: "Recurring timezone is invalid.", timezone: null };
@@ -154,7 +166,8 @@ export function normalizeTaskRecurrenceScheduleInput(input: {
   rule: unknown;
   anchorDate?: unknown;
   timezone?: unknown;
-  fallbackAnchorDate: string;
+  defaultTimezone?: unknown;
+  fallbackAnchorDate: string | null;
 }) {
   const ruleResult = normalizeTaskRecurrenceRuleInput(input.rule);
   if (ruleResult.errorMessage) return { errorMessage: ruleResult.errorMessage, schedule: null };
@@ -168,7 +181,10 @@ export function normalizeTaskRecurrenceScheduleInput(input: {
     return { errorMessage: anchorDateResult.errorMessage, schedule: null };
   }
 
-  const timezoneResult = normalizeTaskRecurrenceTimezoneInput(input.timezone);
+  const timezoneResult = normalizeTaskRecurrenceTimezoneInput(
+    input.timezone,
+    input.defaultTimezone,
+  );
   if (timezoneResult.errorMessage || !timezoneResult.timezone) {
     return { errorMessage: timezoneResult.errorMessage, schedule: null };
   }

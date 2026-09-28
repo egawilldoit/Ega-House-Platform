@@ -106,3 +106,27 @@ test("surfaces in-progress urgency and workload counts for recommendations", () 
     assert.ok(state.recommendation.signals.includes("Urgent"));
   }
 });
+
+test("ega-661: getFocusPanelCandidateState uses the account local date for due-today signals", () => {
+  const nowIso = "2026-04-20T05:00:00.000Z";
+  const state = getFocusPanelCandidateState(
+    [
+      buildTask({
+        id: "task-due-account-today",
+        title: "Due on the account day",
+        dueDate: "2026-04-21",
+        priority: "medium",
+        updatedAt: "2026-04-18T09:00:00.000Z",
+      }),
+    ],
+    nowIso,
+    "2026-04-21",
+  );
+
+  assert.equal(state.state, "recommended");
+
+  if (state.state === "recommended") {
+    assert.equal(state.recommendation.task.id, "task-due-account-today");
+    assert.ok(state.recommendation.signals.includes("Due today"));
+  }
+});

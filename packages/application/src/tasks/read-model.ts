@@ -93,12 +93,16 @@ export function parseMobileTaskListQuery(
  * Canonical enriched task list. Counters describe the full filtered scope
  * before pagination; project/goal option lists ride along so task forms can
  * reuse one bounded payload.
+ *
+ * `options.localDate` is the owner's canonical local date resolved from Time
+ * Context by the caller (route → resolveTimeContext() → localDate). Due
+ * filters and counters are evaluated against it, never the process timezone.
  */
 export async function getTasksReadModel(
   actor: AuthenticatedActor,
   repository: TasksRepository,
   query?: TaskQuery,
-  options?: Readonly<{ now?: Date }>,
+  options?: Readonly<{ now?: Date; localDate?: string }>,
 ): Promise<ApplicationResult<MobileTaskListResponse>> {
   const requested = query ?? {};
   const [projectsResult, goalsResult] = await Promise.all([
@@ -131,12 +135,17 @@ export async function getTasksReadModel(
   });
   if (!result.ok) return applicationFailure("Unable to load tasks right now.");
 
+  const localDate = options?.localDate?.trim() || "";
+  if (!localDate) {
+    return applicationFailure("Unable to resolve the local day right now.");
+  }
+
   const view = buildMobileTaskListView({
     records: result.value,
     projects: projectsResult.value,
     goals: goalsResult.value,
     query: { ...requested, projectId: activeProjectId, goalId: activeGoalId },
-    now: options?.now,
+    today: localDate,
   });
 
   return applicationSuccess({

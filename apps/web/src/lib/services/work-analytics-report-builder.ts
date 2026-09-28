@@ -52,6 +52,11 @@ import {
   type AnalyticsBreakdownBy,
   type AnalyticsRange,
 } from "./work-analytics-filters";
+import {
+  getLocalDateInTimezone,
+  getLocalDayWindow,
+  getRollingLocalWindow,
+} from "@ega/domain/time-context";
 
 export type WorkAnalyticsTaskCounts = {
   completedCount: number;
@@ -115,13 +120,22 @@ export type WorkAnalyticsReport = {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function daysAgoIsoDate(days: number, now: Date): string {
+function daysAgoIsoDate(days: number, now: Date, timezone?: string): string {
+  if (timezone) {
+    const localDate = getLocalDateInTimezone(now, timezone);
+    const [year, month, day] = localDate.split('-').map(Number);
+    const prev = new Date(Date.UTC(year, month - 1, day) - days * 24 * 60 * 60 * 1000);
+    return prev.toISOString().slice(0, 10);
+  }
   const d = new Date(now);
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }
 
-function windowFromDays(days: number, now: Date): ExecutionEvidenceWindow {
+function windowFromDays(days: number, now: Date, timezone?: string): ExecutionEvidenceWindow {
+  if (timezone) {
+    return getRollingLocalWindow(timezone, now, days);
+  }
   const end = new Date(now);
   const start = new Date(now);
   start.setUTCDate(start.getUTCDate() - days);
@@ -144,17 +158,19 @@ export function buildWorkAnalyticsReport(
   taskCounts: { selected: WorkAnalyticsTaskCounts; last30d: WorkAnalyticsTaskCounts },
   filters: AnalyticsFilterValues,
   now: Date,
+  timezone?: string,
 ): WorkAnalyticsReport {
   const nowIso = now.toISOString();
   const options: WorkAnalyticsOptions = {
     nowIso,
     includeOpenSessions: filters.includeOpen,
+    timezone,
   };
 
   // 1. Selected-range window is the canonical authority (calendar-correct for
   //    mtm/qtd/prev-month, not an approximate day count).
-  const selectedWindow = computeWindowForRange(filters.range, now);
-  const selectedDates = computeDateRangeForWindow(selectedWindow);
+  const selectedWindow = computeWindowForRange(filters.range, now, timezone);
+  const selectedDates = computeDateRangeForWindow(selectedWindow, timezone);
 
   // 2. Selected-range summary: time, active days and task counts share this window.
   const selectedCore = calculateWorkAnalytics(sessions, selectedWindow, options);
@@ -198,11 +214,11 @@ export function buildWorkAnalyticsReport(
   const selectedSeriesRollingAverage = calculateRollingAverageSeries(selectedSeries, 7);
 
   // 3. Fixed 30-day context (uses its own exact calendar windows and the 30-day task counts).
-  const monthWindow = computeLast30DaysWindow(now);
+  const monthWindow = computeLast30DaysWindow(now, timezone);
   const summary = calculateWorkAnalyticsCoreSummary(sessions, monthWindow, taskCounts.last30d, options);
 
   // 4. Yesterday
-  const yesterdayStart = daysAgoIsoDate(1, now);
+  const yesterdayStart = daysAgoIsoDate(1, now, timezone);
   const yesterdaySeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     yesterdayStart,
@@ -213,16 +229,21 @@ export function buildWorkAnalyticsReport(
   const yesterday = yesterdaySeries[0] ?? { workedMinutes: 0, sessionCount: 0 };
 
   // 5. Week window for insights
-  const weekWindow = windowFromDays(7, now);
+  const weekWindow = windowFromDays(7, now, timezone);
   const thisWeekInsights = calculateWorkAnalyticsInsights(sessions, weekWindow, options);
 
   // 6. 7-day and 30-day series for trend charts. The recent chart is a fixed
   // daily rhythm, so it always groups by day regardless of the selected grouping.
-  const recentStartDate = daysAgoIsoDate(6, now);
-  const recentWindow: ExecutionEvidenceWindow = {
-    startIso: `${recentStartDate}T00:00:00.000Z`,
-    endIso: nowIso,
-  };
+  const recentStartDate = daysAgoIsoDate(6, now, timezone);
+  const recentWindow: ExecutionEvidenceWindow = timezone
+    ? {
+        startIso: getLocalDayWindow(timezone, recentStartDate).startUtcIso,
+        endIso: nowIso,
+      }
+    : {
+        startIso: `${recentStartDate}T00:00:00.000Z`,
+        endIso: nowIso,
+      };
   const last7DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     recentStartDate,
@@ -230,7 +251,7 @@ export function buildWorkAnalyticsReport(
     "day",
     options,
   );
-  const trendStartDate = daysAgoIsoDate(29, now);
+  const trendStartDate = daysAgoIsoDate(29, now, timezone);
   const last30DaysSeries = calculateWorkAnalyticsGroupedSeries(
     sessions,
     trendStartDate,

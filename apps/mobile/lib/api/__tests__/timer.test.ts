@@ -68,6 +68,7 @@ function makeFakeClient(overrides: Partial<EgaApiClient['timer']> = {}): EgaApiC
     friction: { radar: jest.fn() },
     timeContext: {
       get: jest.fn(),
+      set: jest.fn(),
     },
     timer: {
       workspace: jest.fn(

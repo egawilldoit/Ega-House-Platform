@@ -48,6 +48,7 @@ export default function InboxScreen() {
   const [convertItem, setConvertItem] = useState<InboxItem | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftBody, setDraftBody] = useState("");
+  const [draftProjectId, setDraftProjectId] = useState("");
   const { contentBottomPadding } = useBottomChromeMetrics();
 
   const items = inboxQuery.data?.items ?? [];
@@ -60,21 +61,29 @@ export default function InboxScreen() {
     updateMutation.isPending ||
     convertMutation.isPending;
 
-  async function handleCaptureSubmit(input: { title: string; body: string | null; idempotencyKey: string }) {
+  async function handleCaptureSubmit(input: {
+    title: string;
+    body: string | null;
+    projectId: string | null;
+    idempotencyKey: string;
+  }) {
     // Preserve draft until success; do not clear on failure (retry-safe)
     setDraftTitle(input.title);
     setDraftBody(input.body ?? "");
+    setDraftProjectId(input.projectId ?? "");
     setError(null);
     setSuccess(null);
     try {
       await createMutation.mutateAsync({
         title: input.title,
         body: input.body,
+        projectId: input.projectId,
         idempotencyKey: input.idempotencyKey,
       });
       // Success: clear draft, close sheet, invalidate handled by mutation
       setDraftTitle("");
       setDraftBody("");
+      setDraftProjectId("");
       setCaptureVisible(false);
     } catch (e) {
       // Preserve draft for retry; surface error without false success
@@ -90,7 +99,7 @@ export default function InboxScreen() {
     setSuccess(null);
     try {
       await archiveMutation.mutateAsync(id);
-      setSuccess("Idea archived.");
+      setSuccess("Backlog item archived.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to archive idea.");
     }
@@ -101,7 +110,7 @@ export default function InboxScreen() {
     setSuccess(null);
     try {
       await restoreMutation.mutateAsync(id);
-      setSuccess("Idea restored to Inbox.");
+      setSuccess("Backlog item restored.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to restore idea.");
     }
@@ -114,7 +123,7 @@ export default function InboxScreen() {
     try {
       await updateMutation.mutateAsync({ id: editItem.id, input });
       setEditItem(null);
-      setSuccess("Idea updated.");
+      setSuccess("Backlog item updated.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save this idea.");
       throw e;
@@ -128,7 +137,7 @@ export default function InboxScreen() {
     try {
       const result = await convertMutation.mutateAsync({ id: convertItem.id, input: { projectId } });
       setConvertItem(null);
-      setSuccess("Task created from Inbox idea.");
+      setSuccess("Task created from Backlog item.");
       router.push({ pathname: "/(app)/tasks/[id]", params: { id: result.task.id } });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to convert this idea.");
@@ -141,11 +150,9 @@ export default function InboxScreen() {
       <Card style={styles.itemCard}>
         <Text style={styles.itemTitle}>{item.title}</Text>
         <Text style={styles.itemMeta}>
-          {item.type} · {item.status}
-          {item.projectName ? ` · ${item.projectName}` : " · No project"}
+          {item.projectName ?? "No project"}
         </Text>
         {item.body ? <Text style={styles.itemBody}>{item.body}</Text> : null}
-        {item.tags?.length ? <Text style={styles.itemTags}>{item.tags.join(", ")}</Text> : null}
         <View style={styles.itemActions}>
           {item.status === "archived" ? (
             <Button
@@ -170,7 +177,7 @@ export default function InboxScreen() {
                 testID={`inbox-edit-${item.id}`}
               />
               <Button
-                title="Convert"
+                title="Turn into Task"
                 variant="secondary"
                 size="sm"
                 disabled={isMutating}
@@ -196,17 +203,17 @@ export default function InboxScreen() {
   if (isLoading) {
     return (
       <AppScreen testID="inbox-loading">
-        <ScreenHeader eyebrow="Capture" title="Inbox" description="Loading ideas..." />
+        <ScreenHeader eyebrow="Backlog" title="Backlog" description="Loading backlog..." />
         <ActivityIndicator color={mobileTheme.colors.accent} />
       </AppScreen>
     );
   }
 
   if (isError) {
-    const msg = inboxQuery.error instanceof Error ? inboxQuery.error.message : "Unable to load inbox.";
+    const msg = inboxQuery.error instanceof Error ? inboxQuery.error.message : "Unable to load backlog.";
     return (
       <AppScreen testID="inbox-error">
-        <ScreenHeader eyebrow="Capture" title="Inbox" description="Server unavailable" />
+        <ScreenHeader eyebrow="Backlog" title="Backlog" description="Server unavailable" />
         <FeedbackBanner tone="danger" message={msg} />
         <Button title="Retry" variant="secondary" onPress={() => inboxQuery.refetch()} />
       </AppScreen>
@@ -225,7 +232,7 @@ export default function InboxScreen() {
           ItemSeparatorComponent={() => <View style={styles.itemSeparator} />}
           ListHeaderComponent={(
             <View style={styles.headerContent}>
-              <ScreenHeader eyebrow="Capture" title="Inbox" description="Loose ideas before they become tasks." />
+              <ScreenHeader eyebrow="Backlog" title="Backlog" description="Keep ideas here until they are ready to become real work." />
 
               <SegmentedControl
                 disabled={isMutating}
@@ -244,18 +251,18 @@ export default function InboxScreen() {
 
               <Card style={styles.hintCard} testID="inbox-hint-card">
                 <Text style={styles.hintTitle}>Quick capture</Text>
-                <Text style={styles.hintText}>Tap Capture to save a raw thought without choosing a Project. Retry is safe — same tap won&apos;t duplicate.</Text>
+                <Text style={styles.hintText}>Tap Add to Backlog to save an idea with an optional Project. Retry is safe — same tap won&apos;t duplicate.</Text>
               </Card>
             </View>
           )}
           ListEmptyComponent={(
             <Card style={styles.emptyCard}>
               <Text style={styles.emptyTitle}>
-                {view === "archived" ? "No archived ideas" : view === "all" ? "Inbox is empty" : "No active ideas"}
+                {view === "archived" ? "No archived items" : view === "all" ? "Backlog is empty" : "No active backlog items"}
               </Text>
               <Text style={styles.emptyText}>
                 {view === "archived"
-                  ? "Archived ideas will appear here so you can restore them when they become useful again."
+                  ? "Archived backlog items will appear here so you can restore them when they become useful again."
                   : "Capture a thought to keep it separate from tasks until you are ready to process it."}
               </Text>
             </Card>
@@ -263,11 +270,11 @@ export default function InboxScreen() {
         />
 
         <FloatingActionButton
-          label="Capture idea"
+          label="Add to Backlog"
           icon="add"
           onPress={() => setCaptureVisible(true)}
           testID="inbox-fab-capture"
-          accessibilityLabel="Capture idea to Inbox"
+          accessibilityLabel="Add to Backlog"
         />
 
         <InboxCaptureSheet
@@ -276,10 +283,13 @@ export default function InboxScreen() {
           onSubmit={handleCaptureSubmit}
           initialTitle={draftTitle}
           initialBody={draftBody}
+          initialProjectId={draftProjectId}
+          projects={projects}
         />
         <InboxEditSheet
           visible={Boolean(editItem)}
           item={editItem}
+          projects={projects}
           onClose={() => setEditItem(null)}
           onSubmit={handleEdit}
         />
@@ -334,9 +344,9 @@ const styles = StyleSheet.create({
   },
   itemActions: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    flexWrap: 'wrap',
     gap: mobileTheme.spacing.xs,
-    justifyContent: "flex-end",
+    justifyContent: 'flex-end',
     marginTop: mobileTheme.spacing.sm,
   },
   itemBody: {

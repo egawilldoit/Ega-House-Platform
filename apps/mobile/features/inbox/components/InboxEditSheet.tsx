@@ -11,17 +11,19 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { InboxItem, UpdateInboxInput } from "@ega/contracts/inbox";
+import type { InboxItem, InboxProjectOption, UpdateInboxInput } from "@ega/contracts/inbox";
 import { mobileTheme } from "@/components/mobile/theme";
 import { Button } from "@/components/mobile/ui/Button";
 import { FeedbackBanner } from "@/components/mobile/ui/FeedbackBanner";
 import { FormField } from "@/components/mobile/ui/FormField";
+import { SelectionRow } from "@/components/mobile/ui/SelectionRow";
 
 type InboxEditableInput = Omit<UpdateInboxInput, "id">;
 
 export type InboxEditSheetProps = {
   visible: boolean;
   item: InboxItem | null;
+  projects: InboxProjectOption[];
   onClose: () => void;
   onSubmit: (input: InboxEditableInput) => Promise<void>;
 };
@@ -32,10 +34,11 @@ function editableStatus(item: InboxItem): UpdateInboxInput["status"] {
     : "inbox";
 }
 
-export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSheetProps) {
+export function InboxEditSheet({ visible, item, projects, onClose, onSubmit }: InboxEditSheetProps) {
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -45,6 +48,7 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setTitle(item.title);
     setBody(item.body ?? "");
+    setProjectId(item.projectId);
     setError(null);
   }, [item, visible]);
 
@@ -63,7 +67,7 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
         title: normalizedTitle,
         body: body.trim() || null,
         type: item.type,
-        projectId: item.projectId,
+        projectId,
         priority: item.priority,
         tags: item.tags,
         status: editableStatus(item),
@@ -95,7 +99,7 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close Inbox edit"
+            accessibilityLabel="Close Backlog edit"
             disabled={pending}
             onPress={handleClose}
             style={styles.closeButton}
@@ -104,7 +108,7 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
             <Text style={styles.closeText}>Cancel</Text>
           </Pressable>
           <Text style={styles.headerTitle} accessibilityRole="header">
-            Edit idea
+            Edit backlog item
           </Text>
           <View style={styles.headerSpacer} />
         </View>
@@ -114,22 +118,44 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
           keyboardShouldPersistTaps="handled"
           testID="inbox-edit-sheet"
         >
-          <Text style={styles.eyebrow}>Inbox Processing</Text>
-          <Text style={styles.description}>Refine the thought before you archive it or turn it into a task.</Text>
+          <Text style={styles.eyebrow}>Backlog</Text>
+          <Text style={styles.description}>Refine the idea before you archive it or turn it into a task.</Text>
 
           <FormField
             autoFocus
             editable={!pending}
-            label="Title"
+            label="Idea"
             onChangeText={setTitle}
             placeholder="What is the idea?"
             required
             testID="inbox-edit-title-input"
             value={title}
           />
+
+          <Text style={styles.label} nativeID="inbox-edit-project-label">
+            Project
+          </Text>
+          <View style={styles.projectList}>
+            <SelectionRow
+              label="No project"
+              onPress={() => setProjectId(null)}
+              selected={projectId === null}
+              testID="inbox-edit-project-none"
+            />
+            {projects.map((project) => (
+              <SelectionRow
+                key={project.id}
+                label={project.name}
+                onPress={() => setProjectId(project.id)}
+                selected={project.id === projectId}
+                testID={`inbox-edit-project-${project.id}`}
+              />
+            ))}
+          </View>
+
           <FormField
             editable={!pending}
-            label="Context"
+            label="Notes"
             multiline
             onChangeText={setBody}
             placeholder="Add context, links, or next thoughts."
@@ -140,7 +166,7 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
           {error ? <FeedbackBanner tone="danger" message={error} testID="inbox-edit-error" /> : null}
 
           <Button
-            accessibilityLabel="Save Inbox idea"
+            accessibilityLabel="Save Backlog item"
             loading={pending}
             onPress={handleSubmit}
             title={pending ? "Saving..." : "Save changes"}
@@ -154,8 +180,8 @@ export function InboxEditSheet({ visible, item, onClose, onSubmit }: InboxEditSh
 
 const styles = StyleSheet.create({
   closeButton: {
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     minHeight: mobileTheme.layout.minTouchTarget,
     minWidth: mobileTheme.layout.minTouchTarget,
     paddingHorizontal: 8,
@@ -186,14 +212,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: mobileTheme.font.black,
     letterSpacing: 1.1,
-    textTransform: "uppercase",
+    textTransform: 'uppercase',
   },
   header: {
-    alignItems: "center",
+    alignItems: 'center',
     borderBottomColor: mobileTheme.colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 8,
   },
@@ -204,5 +230,14 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.text,
     fontSize: 16,
     fontWeight: mobileTheme.font.extrabold,
+  },
+  label: {
+    color: mobileTheme.colors.textMuted,
+    fontSize: 12,
+    fontWeight: mobileTheme.font.semibold,
+    marginTop: 4,
+  },
+  projectList: {
+    gap: mobileTheme.spacing.xs,
   },
 });

@@ -738,3 +738,23 @@ test("removeTaskFromToday clears planned_for_date", async () => {
     updated_at: "2026-04-21T23:35:00.000Z",
   });
 });
+
+test("ega-661: planTaskForToday writes the account local date regardless of process timezone", async () => {
+  const mock = createTaskTransitionSupabaseMock();
+  const now = new Date("2026-04-20T05:00:00.000Z");
+  const nowIso = now.toISOString();
+
+  const result = await planTaskForToday("task-1", {
+    supabase: mock.supabase,
+    now,
+    nowIso,
+    localDate: "2026-04-21",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.tasks[0]?.planned_for_date, "2026-04-21");
+  assert.deepEqual(mock.taskUpdateCalls[0]?.payload, {
+    planned_for_date: "2026-04-21",
+    updated_at: nowIso,
+  });
+});

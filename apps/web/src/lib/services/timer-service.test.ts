@@ -801,3 +801,34 @@ test("active timer session preserves selected scheduled task context", async () 
     goalTitle: "Execution quality",
   });
 });
+
+test("web Timer tracked-today window equals the canonical Hono Timer local-day window", async () => {
+  // The web Timer path (getTimerWorkspaceData -> getCurrentDayWindow) and the
+  // Hono Timer transport (getTimerWorkspace -> resolveTimeContext dayWindow)
+  // must derive the same local-day boundary for the same actor/clock. Both
+  // reduce to the canonical getCurrentLocalDayWindow primitive.
+  const { getCurrentDayWindow } = await import("@/lib/task-session");
+  const { getCurrentLocalDayWindow } = await import("@ega/domain/time-context");
+
+  const now = new Date("2026-04-27T15:30:00.000Z");
+  for (const timezone of [
+    "Africa/Casablanca",
+    "Asia/Tokyo",
+    "America/New_York",
+    "America/Los_Angeles",
+  ]) {
+    const webWindow = getCurrentDayWindow(now, timezone);
+    const canonical = getCurrentLocalDayWindow(timezone, now);
+    assert.equal(webWindow.startIso, canonical.startUtcIso);
+    assert.equal(webWindow.endIso, now.toISOString());
+  }
+});
+
+test("web Timer today window is DST-safe across the fall-back day", async () => {
+  const { getCurrentDayWindow } = await import("@/lib/task-session");
+  // 2026-11-01 is the 25-hour fall-back day in America/New_York.
+  const now = new Date("2026-11-01T12:00:00.000Z");
+  const window = getCurrentDayWindow(now, "America/New_York");
+  assert.equal(window.startIso, "2026-11-01T04:00:00.000Z");
+  assert.equal(window.endIso, now.toISOString());
+});

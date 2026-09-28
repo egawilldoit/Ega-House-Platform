@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/lib/supabase/database.types";
+import { getCurrentLocalDayWindow } from "@ega/domain/time-context";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -40,7 +41,14 @@ export function getTaskSessionDurationSeconds(
   return 0;
 }
 
-export function getCurrentDayWindow(now = new Date()): SessionWindow {
+export function getCurrentDayWindow(now = new Date(), timezone?: string): SessionWindow {
+  if (timezone) {
+    const dayWindow = getCurrentLocalDayWindow(timezone, now);
+    return {
+      startIso: dayWindow.startUtcIso,
+      endIso: now.toISOString(),
+    };
+  }
   const dayStart = new Date(now);
   dayStart.setHours(0, 0, 0, 0);
 

@@ -18,13 +18,23 @@ const appShellSource = read("components", "layout", "app-shell.tsx");
 const captureActionSource = read("components", "inbox", "capture-action.ts");
 const ideaServiceSource = read("lib", "services", "idea-note-service.ts");
 
-test("inbox capture accepts raw thought without project/goal/priority (unstructured global)", () => {
+test("EGA-659: Add to Backlog capture supports optional Project (no goal/priority required)", () => {
   assert.match(captureSource, /htmlFor="inbox-capture-title"/);
   assert.match(captureSource, /htmlFor="inbox-capture-body"/);
-  assert.doesNotMatch(captureSource, /projectId/);
+  assert.match(captureSource, /htmlFor="inbox-capture-project"/);
+  assert.match(captureSource, /name="projectId"/);
+  assert.match(captureSource, /<option value="">No project<\/option>/);
   assert.doesNotMatch(captureSource, /QuickTaskSheetProject/);
   assert.match(captureActionSource, /createIdeaNote/);
   assert.match(captureSource, /placeholder="Follow up on onboarding insight"/);
+});
+
+test("EGA-659: Add to Backlog capture passes projectId through draft and submit", () => {
+  assert.match(captureSource, /projectId/);
+  assert.match(captureSource, /saveDraft\(\{ title, body, projectId, idempotencyKey/);
+  assert.match(captureSource, /setProjectId/);
+  assert.match(captureActionSource, /projectId/);
+  assert.match(captureActionSource, /createIdeaNote\([\s\S]*projectId/);
 });
 
 test("inbox capture raw text is trimmed and required", () => {
@@ -46,18 +56,24 @@ test("inbox capture uses client-generated idempotency key and preserves it for r
   assert.match(captureSource, /idempotencyKeyRef\.current = createIdempotencyKey/);
 });
 
+test("EGA-659: capture draft preserves projectId alongside title/notes/idempotency key", () => {
+  assert.match(captureSource, /type Draft = \{[\s\S]*title: string;[\s\S]*body: string;[\s\S]*projectId: string;[\s\S]*idempotencyKey: string;/);
+  assert.match(captureSource, /loadDraft[\s\S]*projectId/);
+  assert.match(captureSource, /setTitle\(draft\.title\)[\s\S]*setBody\(draft\.body\)[\s\S]*setProjectId/);
+});
+
 test("inbox capture preserves draft on transient failure and never reports false success", () => {
   assert.match(captureSource, /try \{[\s\S]+captureInboxIdea/);
   assert.match(captureSource, /catch \(err\)[\s\S]+setError\(/);
-  assert.match(captureSource, /saveDraft\(\{ title, body, idempotencyKey: keyToUse \}\)/);
+  assert.match(captureSource, /saveDraft\(\{ title, body, projectId, idempotencyKey: keyToUse \}\)/);
   assert.match(captureSource, /if \(!result\.ok\)[\s\S]+setError/);
-  assert.match(captureSource, /setSuccess\("Idea captured\."\)/);
+  assert.match(captureSource, /setSuccess\("Added to Backlog\."\)/);
 });
 
 test("inbox capture keyboard accessibility: focus, Esc, shortcut", () => {
   assert.match(captureSource, /document\.getElementById\("inbox-capture-title"\)\?\.focus\(\)/);
-  assert.match(captureSource, /aria-label="Inbox capture title"/);
-  assert.match(captureSource, /aria-label="Close inbox capture panel"/);
+  assert.match(captureSource, /aria-label="Backlog capture title"/);
+  assert.match(captureSource, /aria-label="Close backlog capture panel"/);
   assert.match(captureSource, /role="alert"/);
   assert.match(captureSource, /onOpenChange/);
   assert.match(shortcutSource, /INBOX_CAPTURE_EVENT/);

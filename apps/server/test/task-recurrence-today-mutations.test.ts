@@ -49,6 +49,59 @@ test("DELETE /api/tasks/:id/recurrence clears recurrence with owner scope", asyn
   assert.ok(fake.calls[0]?.steps.some(s=>s.method==="eq" && s.args[0]==="owner_user_id" && s.args[1]==="user-123"));
 });
 
+test("PUT /api/tasks/:id/recurrence defaults anchor and timezone to the account Time Context", async () => {
+  // now = 2026-08-10T18:00:00Z: UTC date is 2026-08-10, but in Asia/Tokyo
+  // (UTC+9) the local date is already 2026-08-11. The anchor fallback must
+  // use the account local date, and the timezone default must be the
+  // persisted account timezone (not UTC).
+  const fake = new FakeSupabase();
+  fake.push("user_time_context", { data: { iana_timezone: "Asia/Tokyo" }, error: null });
+  fake.push("task_recurrences", { data: null, error: null });
+  hydrate(fake);
+  const tokyoApp = createApp({
+    verifyToken: async t => t === "good" ? "user-123" : null,
+    createRequestClient: () => fake as unknown as SupabaseClient,
+    now: () => new Date("2026-08-10T18:00:00Z"),
+  });
+
+  const response = await tokyoApp.request("/api/tasks/task-1/recurrence", {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ recurrenceRule: "daily" }),
+  });
+
+  assert.equal(response.status, 200);
+  const call = fake.calls.find(c => c.table === "task_recurrences" && c.steps.some(s => s.method === "upsert"));
+  const upsert = call?.steps.find(s => s.method === "upsert");
+  const payload = upsert?.args[0] as Record<string, unknown>;
+  assert.equal(payload.timezone, "Asia/Tokyo");
+  assert.equal(payload.anchor_date, "2026-08-11");
+  assert.equal(payload.owner_user_id, "user-123");
+});
+
+test("PUT /api/tasks/:id/recurrence keeps explicit timezone and anchor over account defaults", async () => {
+  const fake = new FakeSupabase();
+  fake.push("user_time_context", { data: { iana_timezone: "Asia/Tokyo" }, error: null });
+  fake.push("task_recurrences", { data: null, error: null });
+  hydrate(fake);
+
+  const response = await app(fake).request("/api/tasks/task-1/recurrence", {
+    method: "PUT",
+    headers: JSON_HEADERS,
+    body: JSON.stringify({
+      recurrenceRule: "weekly:monday",
+      recurrenceAnchorDate: "2026-08-10",
+      recurrenceTimezone: "America/New_York",
+    }),
+  });
+
+  assert.equal(response.status, 200);
+  const call = fake.calls.find(c => c.table === "task_recurrences" && c.steps.some(s => s.method === "upsert"));
+  const payload = call?.steps.find(s => s.method === "upsert")?.args[0] as Record<string, unknown>;
+  assert.equal(payload.timezone, "America/New_York");
+  assert.equal(payload.anchor_date, "2026-08-10");
+});
+
 test("Today mutation endpoints plan, remove, update status, and clear completed", async () => {
   const fake = new FakeSupabase();
   // Each plan/remove/status mutation performs an ownership probe (select +
