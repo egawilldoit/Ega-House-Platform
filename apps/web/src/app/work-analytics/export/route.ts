@@ -3,6 +3,12 @@ import { captureServerException } from "@/lib/monitoring/capture-server-exceptio
 import {
   getWorkAnalyticsSessionsForWindow,
 } from "@/lib/services/work-analytics-data-adapter";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
+import {
+  getLocalDateInTimezone,
+  getLocalMonthWindow,
+  getTimezoneOffsetMinutes,
+} from "@ega/domain/time-context";
 import {
   calculateWorkAnalytics,
   calculateWorkAnalyticsDailySeries,
@@ -49,10 +55,25 @@ type EstimateAccuracySummary = {
 export const dynamic = "force-dynamic";
 
 /**
- * Build a calendar-month window (UTC) from a YYYY-MM string.
+ * Offset in minutes from UTC for an IANA timezone at a given instant.
+ * Positive values are west of UTC (matches Date#getTimezoneOffset semantics).
+ * Delegates to the canonical domain helper; the sign is flipped because the
+ * domain reports local-minus-UTC.
+ */
+export function getIANAZoneOffsetMinutes(timezone: string, at: Date): number {
+  return -getTimezoneOffsetMinutes(at, timezone);
+}
+
+/**
+ * Build a calendar-month window from a YYYY-MM string.
+ * With a timezone, month boundaries follow the owner's local calendar;
+ * otherwise the legacy UTC calendar is used.
  * Returns null if the input is invalid.
  */
-export function buildMonthWindow(monthParam: string): {
+export function buildMonthWindow(
+  monthParam: string,
+  timezone?: string,
+): {
   window: ExecutionEvidenceWindow;
   monthLabel: string;
 } | null {
@@ -60,12 +81,24 @@ export function buildMonthWindow(monthParam: string): {
   if (!match) return null;
 
   const year = Number.parseInt(match[1], 10);
-  const month = Number.parseInt(match[2], 10) - 1; // 0-indexed
+  const month = Number.parseInt(match[2], 10);
 
-  if (month < 0 || month > 11) return null;
+  if (month < 1 || month > 12) return null;
 
-  const start = new Date(Date.UTC(year, month, 1));
-  const end = new Date(Date.UTC(year, month + 1, 1));
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+
+  if (timezone) {
+    const monthWindow = getLocalMonthWindow(timezone, monthStart);
+    const label = new Date(monthWindow.startUtcIso).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      timeZone: timezone,
+    });
+    return { window: { startIso: monthWindow.startUtcIso, endIso: monthWindow.endUtcIso }, monthLabel: label };
+  }
+
+  const start = new Date(Date.UTC(year, month - 1, 1));
+  const end = new Date(Date.UTC(year, month, 1));
 
   return {
     window: { startIso: start.toISOString(), endIso: end.toISOString() },
@@ -78,13 +111,26 @@ export function buildMonthWindow(monthParam: string): {
 }
 
 /**
- * Get the current calendar-month window (UTC).
+ * Get the current calendar-month window. With a timezone this is the owner's
+ * local calendar month; otherwise the legacy UTC month.
  */
-export function getCurrentMonthWindow(): {
+export function getCurrentMonthWindow(timezone?: string): {
   window: ExecutionEvidenceWindow;
   monthLabel: string;
 } {
   const now = new Date();
+
+  if (timezone) {
+    const localDate = getLocalDateInTimezone(now, timezone);
+    const monthWindow = getLocalMonthWindow(timezone, localDate.slice(0, 8) + "01");
+    const label = new Date(monthWindow.startUtcIso).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      timeZone: timezone,
+    });
+    return { window: { startIso: monthWindow.startUtcIso, endIso: monthWindow.endUtcIso }, monthLabel: label };
+  }
+
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
@@ -435,27 +481,6 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const monthParam = url.searchParams.get("month");
 
-    // Resolve month window
-    let windowData: { window: ExecutionEvidenceWindow; monthLabel: string };
-
-    if (monthParam) {
-      const parsed = buildMonthWindow(monthParam);
-      if (!parsed) {
-        return Response.json(
-          {
-            error:
-              'Invalid month format. Use YYYY-MM (e.g., ?month=2026-06).',
-          },
-          { status: 400 },
-        );
-      }
-      windowData = parsed;
-    } else {
-      windowData = getCurrentMonthWindow();
-    }
-
-    const { window: monthWindow, monthLabel } = windowData;
-
     // Authenticate and get user
     const supabase = await createClient();
     const {
@@ -468,6 +493,37 @@ export async function GET(request: Request) {
     }
 
     const ownerUserId = user.id;
+
+    // Resolve the owner's persisted EGA House timezone for local-calendar
+    // windows and exact timezone metadata. Failure degrades to UTC rather
+    // than failing the export.
+    let accountTimezone: string | undefined;
+    try {
+      accountTimezone = (await getWebTimeContext()).timezone;
+    } catch {
+      accountTimezone = undefined;
+    }
+
+    // Resolve month window in the owner's local calendar
+    let windowData: { window: ExecutionEvidenceWindow; monthLabel: string };
+
+    if (monthParam) {
+      const parsed = buildMonthWindow(monthParam, accountTimezone);
+      if (!parsed) {
+        return Response.json(
+          {
+            error:
+              'Invalid month format. Use YYYY-MM (e.g., ?month=2026-06).',
+          },
+          { status: 400 },
+        );
+      }
+      windowData = parsed;
+    } else {
+      windowData = getCurrentMonthWindow(accountTimezone);
+    }
+
+    const { window: monthWindow, monthLabel } = windowData;
 
     // Load sessions for the month window
     const sessionsResult = await getWorkAnalyticsSessionsForWindow({
@@ -488,9 +544,10 @@ export async function GET(request: Request) {
     // If no sessions, return an empty report gracefully
     if (sessions.length === 0) {
       const timezoneInfo = {
-        ianaName:
-          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-        offsetMinutes: -new Date().getTimezoneOffset(),
+        ianaName: accountTimezone ?? "UTC",
+        offsetMinutes: accountTimezone
+          ? getIANAZoneOffsetMinutes(accountTimezone, new Date(monthWindow.startIso))
+          : -new Date().getTimezoneOffset(),
       };
 
       const emptyReport = buildMonthlyMarkdown({
@@ -550,16 +607,22 @@ export async function GET(request: Request) {
       });
     }
 
-    // Compute all analytics
-    const period = calculateWorkAnalytics(sessions, monthWindow);
+    // Compute all analytics in the owner's timezone
+    const analyticsOptions = { timezone: accountTimezone };
+    const period = calculateWorkAnalytics(sessions, monthWindow, analyticsOptions);
 
-    // Daily series for the month
-    const startDateStr = monthWindow.startIso.slice(0, 10);
-    const endDateStr = monthWindow.endIso.slice(0, 10);
+    // Daily series for the month (local calendar dates when timezone-aware)
+    const startDateStr = accountTimezone
+      ? getLocalDateInTimezone(new Date(monthWindow.startIso), accountTimezone)
+      : monthWindow.startIso.slice(0, 10);
+    const endDateStr = accountTimezone
+      ? getLocalDateInTimezone(new Date(monthWindow.endIso), accountTimezone)
+      : monthWindow.endIso.slice(0, 10);
     const dailySeries = calculateWorkAnalyticsDailySeries(
       sessions,
       startDateStr,
       endDateStr,
+      analyticsOptions,
     );
     const activeDays = dailySeries.filter((d) => d.workedMinutes > 0).length;
 
@@ -589,10 +652,12 @@ export async function GET(request: Request) {
     // Estimate accuracy from task breakdown
     const estimateAccuracy = buildEstimateAccuracySummary(taskBreakdown);
 
-    // Timezone metadata
+    // Timezone metadata: the exact timezone and window used for the buckets
     const timezoneInfo = {
-      ianaName: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      offsetMinutes: -new Date().getTimezoneOffset(),
+      ianaName: accountTimezone ?? "UTC",
+      offsetMinutes: accountTimezone
+        ? getIANAZoneOffsetMinutes(accountTimezone, new Date(monthWindow.startIso))
+        : -new Date().getTimezoneOffset(),
     };
 
     // Build markdown

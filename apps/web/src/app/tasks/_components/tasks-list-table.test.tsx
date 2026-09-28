@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setDisplayTimezone } from "@/lib/presentation-format";
+
 const refresh = vi.fn();
 
 vi.mock("next/navigation", () => ({
@@ -465,5 +467,40 @@ describe("TasksListTable dense inventory", () => {
     await renderTable([buildTask()], buildActions(), { density: "compact" });
 
     expect(container.querySelector(".data-table--density-compact")).not.toBeNull();
+  });
+
+  it("ega-661: due-state labels in the DUE column use the account local date, not the runtime-local date", async () => {
+    // Fixed instant 2026-04-20T16:00:00Z: the account day in Asia/Tokyo is
+    // 2026-04-21 while the runtime-local day in UTC/America/New_York is 2026-04-20.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-20T16:00:00.000Z"));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({ ok: true, timeContext: { timezone: "Asia/Tokyo" } }),
+      })),
+    );
+    setDisplayTimezone("Asia/Tokyo");
+    try {
+      await renderTable([
+        buildTask({ id: "account-due-today", due_date: "2026-04-21" }),
+        buildTask({ id: "account-overdue", due_date: "2026-04-20" }),
+      ]);
+
+      const dueCell = (taskId: string) => {
+        const row = container.querySelector(`#task-${taskId}`);
+        expect(row).not.toBeNull();
+        const cells = row!.querySelectorAll("td");
+        return cells[2]?.textContent ?? "";
+      };
+
+      expect(dueCell("account-due-today")).toContain("Due today");
+      expect(dueCell("account-overdue")).toContain("Overdue");
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+      setDisplayTimezone("UTC");
+    }
   });
 });

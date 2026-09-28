@@ -45,7 +45,6 @@ export default defineConfig({
       "src/components/layout/top-bar.test.tsx",
       "src/components/review/trend-bar-chart.test.tsx",
       "src/components/review/session-heatmap.test.tsx",
-      "src/components/tasks/task-due-date-label.test.tsx",
       "src/components/tasks/task-kanban-card.test.ts",
       "src/components/tasks/task-reminder-panel.test.tsx",
       "src/components/tasks/task-saved-views-panel.test.ts",

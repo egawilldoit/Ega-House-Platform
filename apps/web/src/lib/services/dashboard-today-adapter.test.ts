@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { mapTodayPlannerDataToDashboardPlanner } from "./dashboard-today-adapter";
+import { getDashboardTodayPlannerData, mapTodayPlannerDataToDashboardPlanner } from "./dashboard-today-adapter";
 import type { TodayPlannerData, TodayPlannerTask } from "./today-planner-service";
 
 function createPlannerTask(overrides: Partial<TodayPlannerTask> = {}): TodayPlannerTask {
@@ -275,4 +275,134 @@ test("dedupes dashboard all with stable precedence", () => {
 
   assert.deepEqual(dashboardPlanner.all.map((task) => task.id), ["same"]);
   assert.equal(dashboardPlanner.all[0]?.updatedAt, sameTaskActive.updatedAt);
+});
+
+test("ega-661: getDashboardTodayPlannerData uses the account local date for supplemental due-today tasks", async () => {
+  const supplementalRow = {
+    id: "supplemental-due",
+    title: "Supplemental due task",
+    description: null,
+    blocked_reason: null,
+    status: "todo",
+    priority: "medium",
+    due_date: "2026-04-21",
+    estimate_minutes: null,
+    scheduled_start_at: null,
+    scheduled_end_at: null,
+    calendar_sync_enabled: false,
+    calendar_reminder_minutes: 10,
+    updated_at: "2026-04-20T10:00:00.000Z",
+    completed_at: null,
+    project_id: "project-1",
+    goal_id: null,
+    focus_rank: null,
+    planned_for_date: null,
+    archived_at: null,
+    archived_by: null,
+    projects: { name: "Project", slug: "project" },
+    goals: null,
+  };
+
+  const taskResults = [
+    { data: [], error: null },
+    { data: [], error: null },
+    { data: [], error: null },
+    { data: [supplementalRow], error: null },
+  ];
+  let taskQueryIndex = 0;
+  const sessionResults = [
+    { data: [], error: null },
+    { data: [], error: null },
+    { data: [], error: null },
+  ];
+  let sessionQueryIndex = 0;
+
+  const supabase = {
+    from(table: string) {
+      if (table === "tasks") {
+        return {
+          select() {
+            const chain = {
+              or() {
+                return chain;
+              },
+              not() {
+                return chain;
+              },
+              neq() {
+                return chain;
+              },
+              eq() {
+                return chain;
+              },
+              is() {
+                return chain;
+              },
+              order() {
+                return chain;
+              },
+              limit() {
+                const result = taskResults[taskQueryIndex];
+                taskQueryIndex += 1;
+                assert.ok(result, "Unexpected task query invocation.");
+                return Promise.resolve(result);
+              },
+              maybeSingle() {
+                return Promise.resolve({ data: null, error: null });
+              },
+            };
+            return chain;
+          },
+        };
+      }
+
+      if (table === "task_sessions") {
+        return {
+          select() {
+            const chain = {
+              or() {
+                const result = sessionResults[sessionQueryIndex];
+                sessionQueryIndex += 1;
+                assert.ok(result, "Unexpected task_sessions query invocation.");
+                return Promise.resolve(result);
+              },
+              is() {
+                return chain;
+              },
+              lt() {
+                return chain;
+              },
+              order() {
+                return chain;
+              },
+              limit() {
+                const result = sessionResults[sessionQueryIndex];
+                sessionQueryIndex += 1;
+                assert.ok(result, "Unexpected task_sessions query invocation.");
+                return Promise.resolve(result);
+              },
+            };
+            return chain;
+          },
+        };
+      }
+
+      throw new Error(`Unexpected table: ${table}`);
+    },
+  };
+
+  const result = await getDashboardTodayPlannerData({
+    supabase: supabase as never,
+    now: new Date("2026-04-20T05:00:00.000Z"),
+    localDate: "2026-04-21",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.date, "2026-04-21");
+  assert.deepEqual(
+    result.data?.all.map((task) => task.id),
+    ["supplemental-due"],
+  );
+  assert.equal(taskQueryIndex, 4);
+  assert.equal(sessionQueryIndex, 3);
 });

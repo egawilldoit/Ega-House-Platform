@@ -18,6 +18,17 @@ describe("getGreeting", () => {
     const greeting = getGreeting();
     expect(["Good morning", "Good afternoon", "Good evening"]).toContain(greeting);
   });
+
+  it("follows the EGA timezone, not the server timezone", () => {
+    // 2026-04-27T20:00:00Z is 05:00 in Tokyo (morning) but 20:00 in UTC (evening).
+    const now = new Date("2026-04-27T20:00:00.000Z");
+    expect(getGreeting("Asia/Tokyo", now)).toBe("Good morning");
+    expect(getGreeting("UTC", now)).toBe("Good evening");
+    // 2026-04-27T15:30:00Z is 00:30 in Tokyo (next day, morning) and 15:30 in UTC (afternoon).
+    const nextInstant = new Date("2026-04-27T15:30:00.000Z");
+    expect(getGreeting("Asia/Tokyo", nextInstant)).toBe("Good morning");
+    expect(getGreeting("UTC", nextInstant)).toBe("Good afternoon");
+  });
 });
 
 describe("getHeroSummary", () => {

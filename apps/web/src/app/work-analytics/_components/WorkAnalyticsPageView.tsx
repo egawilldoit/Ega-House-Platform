@@ -71,6 +71,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     );
   }
   const report = model.report;
+  const displayTimezone = model.timezone ?? undefined;
   const tasksWithEstimates =
     report.estimateAccuracy.overCount +
     report.estimateAccuracy.underCount +
@@ -159,6 +160,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
 
       <InteractiveAnalytics
         drilldownIndexes={report.drilldownIndexes}
+        timezone={displayTimezone}
         recentDateDrilldownIndex={report.recentDateDrilldownIndex}
         primarySeries={report.selectedSeries}
         selectedSeriesRollingAverage={report.selectedSeriesRollingAverage}

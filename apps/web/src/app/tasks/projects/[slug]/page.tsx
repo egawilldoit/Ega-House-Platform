@@ -47,6 +47,7 @@ import {
   normalizeProjectViewFilter,
 } from "@/lib/project-archive";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { createClient } from "@/lib/supabase/server";
 import { sortFocusQueueTasks } from "@/lib/focus-queue";
 import {
@@ -209,9 +210,10 @@ export default async function ProjectDetailPage({
   searchParams,
 }: ProjectDetailPageProps) {
   const [{ slug }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const [projectDetail, calendarSettingsResult] = await Promise.all([
+  const [projectDetail, calendarSettingsResult, timeContext] = await Promise.all([
     getProjectDetail(slug),
     getCalendarIntegrationSettings(),
+    getWebTimeContext().catch(() => null),
   ]);
 
   if (!projectDetail) {
@@ -282,6 +284,7 @@ export default async function ProjectDetailPage({
     {
       dueFilter: activeDueFilter,
       sortValue: activeSort,
+      today: timeContext?.localDate,
     },
   );
 
