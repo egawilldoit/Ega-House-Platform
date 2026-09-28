@@ -81,13 +81,17 @@ function stripBoundaryPunctuation(value: string) {
   return value.replace(/^[,.;]+|[,.;]+$/g, "");
 }
 
-function parseDueToken(token: string, now: Date) {
+function parseDueToken(token: string, now: Date, todayIsoDate?: string) {
+  // The account local date from Time Context is the canonical anchor; the
+  // device-local `now` is only the fallback for callers without Time Context.
+  const anchorDate = todayIsoDate ?? getTodayLocalIsoDate(now);
+
   if (token === "today") {
-    return getTodayLocalIsoDate(now);
+    return anchorDate;
   }
 
   if (token === "tomorrow") {
-    return shiftDateOnlyValue(getTodayLocalIsoDate(now), 1);
+    return shiftDateOnlyValue(anchorDate, 1);
   }
 
   const weekday = WEEKDAY_INDEX[token];
@@ -95,9 +99,10 @@ function parseDueToken(token: string, now: Date) {
     return null;
   }
 
-  const currentDay = now.getDay();
+  const anchor = new Date(`${anchorDate}T00:00:00.000Z`);
+  const currentDay = anchor.getUTCDay();
   const daysUntil = (weekday - currentDay + 7) % 7 || 7;
-  return shiftDateOnlyValue(getTodayLocalIsoDate(now), daysUntil);
+  return shiftDateOnlyValue(anchorDate, daysUntil);
 }
 
 function parseEstimateToken(token: string) {
@@ -129,7 +134,7 @@ function stripWrappingQuotes(value: string) {
   return value.replace(/^"|"$/g, "");
 }
 
-function isGoalBoundaryToken(token: string, now: Date) {
+function isGoalBoundaryToken(token: string, now: Date, todayIsoDate?: string) {
   const normalizedToken = stripBoundaryPunctuation(token).toLowerCase();
 
   return (
@@ -137,7 +142,7 @@ function isGoalBoundaryToken(token: string, now: Date) {
     || normalizedToken.startsWith("/")
     || normalizedToken.startsWith("@blocked:")
     || normalizedToken.startsWith("goal:")
-    || Boolean(parseDueToken(normalizedToken, now))
+    || Boolean(parseDueToken(normalizedToken, now, todayIsoDate))
     || Boolean(PRIORITY_ALIASES[normalizedToken])
     || parseEstimateToken(normalizedToken) !== null
   );
@@ -146,12 +151,21 @@ function isGoalBoundaryToken(token: string, now: Date) {
 export function parseQuickTaskCommand(
   command: string,
   projects: QuickTaskCommandProject[],
-  goalsOrOptions?: QuickTaskCommandGoal[] | { now?: Date; selectedProjectId?: string | null },
-  options?: { now?: Date; selectedProjectId?: string | null },
+  goalsOrOptions?: QuickTaskCommandGoal[] | {
+    now?: Date;
+    todayIsoDate?: string;
+    selectedProjectId?: string | null;
+  },
+  options?: {
+    now?: Date;
+    todayIsoDate?: string;
+    selectedProjectId?: string | null;
+  },
 ): QuickTaskCommandParseResult {
   const goals = Array.isArray(goalsOrOptions) ? goalsOrOptions : [];
   const parserOptions = Array.isArray(goalsOrOptions) ? options : goalsOrOptions;
   const now = parserOptions?.now ?? new Date();
+  const todayIsoDate = parserOptions?.todayIsoDate;
   const projectLookup = new Map(
     projects.flatMap((project) => [
       [normalizeProjectLookup(project.name), project],
@@ -204,7 +218,7 @@ export function parseQuickTaskCommand(
       const goalParts = [stripWrappingQuotes(token.slice("goal:".length))]
         .filter(Boolean);
 
-      while (index + 1 < tokens.length && !isGoalBoundaryToken(tokens[index + 1] ?? "", now)) {
+      while (index + 1 < tokens.length && !isGoalBoundaryToken(tokens[index + 1] ?? "", now, todayIsoDate)) {
         index += 1;
         goalParts.push(stripWrappingQuotes(stripBoundaryPunctuation(tokens[index] ?? "")));
       }
@@ -223,7 +237,7 @@ export function parseQuickTaskCommand(
       continue;
     }
 
-    const parsedDueDate = parseDueToken(normalizedToken, now);
+    const parsedDueDate = parseDueToken(normalizedToken, now, todayIsoDate);
     if (parsedDueDate) {
       dueDate = parsedDueDate;
       continue;

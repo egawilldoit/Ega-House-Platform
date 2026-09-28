@@ -3413,6 +3413,55 @@ test("Due This Week default view includes today through today plus seven days", 
   );
 });
 
+test("ega-661: due filter pills use the account local date, not the server-local date", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const overdueResult = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "overdue",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+  assert.deepEqual(overdueResult.tasks.map((task) => task.id), []);
+
+  const dueTodayResult = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "due_today",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+  assert.deepEqual(dueTodayResult.tasks.map((task) => task.id), ["due-today-task"]);
+
+  const dueSoonResult = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "due_soon",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+  assert.deepEqual(dueSoonResult.tasks.map((task) => task.id), [
+    "due-end-task",
+    "due-today-task",
+  ]);
+});
+
 test("ega-661: createTaskWithOptionalWorkedTime uses the account local date as the recurrence anchor fallback", async () => {
   const mock = createTaskCreateSupabaseMock();
 

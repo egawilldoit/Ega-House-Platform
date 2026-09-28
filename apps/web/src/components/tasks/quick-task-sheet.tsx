@@ -29,6 +29,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { workspaceShortcutEvents } from "@/components/layout/workspace-keyboard-shortcuts";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import { parseQuickTaskCommand } from "@/lib/quick-task-command-parser";
 import {
   formatDisplayDate,
@@ -264,12 +266,14 @@ function QuickTaskSheetPanel({
     initialBulkState,
   );
 
+  const displayTimezone = useDisplayTimezone();
   const singleGoals = getGoalsForProject(goals, singleProjectId);
   const parsedSingleCommand = useMemo(
     () => parseQuickTaskCommand(singleCommand, projects, goals, {
       selectedProjectId: singleProjectId,
+      todayIsoDate: getLocalDateInTimezone(new Date(), displayTimezone),
     }),
-    [singleCommand, projects, goals, singleProjectId],
+    [singleCommand, projects, goals, singleProjectId, displayTimezone],
   );
   const hasCommandError =
     Boolean(parsedSingleCommand.projectError)
