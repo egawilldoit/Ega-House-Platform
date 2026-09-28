@@ -1,4 +1,6 @@
 import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain";
+import { createAuthenticatedActor, getTimeContextTimezone } from "@ega/application";
+import { SupabaseTimeContextRepository } from "@ega/data-access";
 import type { Tables } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { getTodayIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
@@ -243,16 +245,13 @@ async function resolveHeatmapTimezone(
 ): Promise<string> {
   if (!ownerUserId) return "UTC";
   try {
-    const result = await (supabase as unknown as {
-      from(t: string): {
-        select(c: string): { eq(a: string, b: string): { maybeSingle(): Promise<{ data: unknown; error: unknown }> } };
-      };
-    })
-      .from("user_time_context")
-      .select("iana_timezone")
-      .eq("user_id", ownerUserId)
-      .maybeSingle();
-    const tz = (result.data as { iana_timezone?: string | null } | null)?.iana_timezone;
+    // Canonical Time Context application seam — no direct table knowledge.
+    const actor = createAuthenticatedActor(ownerUserId);
+    const repository = new SupabaseTimeContextRepository(
+      supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
+    );
+    const result = await getTimeContextTimezone(actor, repository);
+    const tz = result.ok ? result.data : null;
     if (typeof tz === "string" && tz.trim()) return tz.trim();
   } catch {
     // ignore and fallback to UTC

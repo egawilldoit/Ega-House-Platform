@@ -655,3 +655,76 @@ test("client surface exposes typed projects and goals namespaces", () => {
   assert.equal(typeof surface.goals.archive, "function");
   assert.equal(typeof surface.goals.unarchive, "function");
 });
+
+test("timeContext.set PUTs the timezone to the canonical endpoint", async () => {
+  const { client, calls } = makeHarness({
+    body: { ok: true, timezone: "Africa/Casablanca" },
+  });
+
+  const result = await client.timeContext.set({ timezone: "Africa/Casablanca" });
+
+  assert.deepEqual(result, { ok: true, data: { ok: true, timezone: "Africa/Casablanca" } });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "PUT");
+  assert.equal(calls[0].url, "https://api.ega.example/api/time-context");
+  assert.deepEqual(calls[0].body, { timezone: "Africa/Casablanca" });
+  assert.equal(calls[0].headers.Authorization, "Bearer token-abc");
+});
+
+test("timeContext.set maps a 400 VALIDATION envelope without throwing", async () => {
+  const { client, calls } = makeHarness({
+    status: 400,
+    body: { error: { code: "VALIDATION", message: "Timezone is invalid." } },
+  });
+
+  const result = await client.timeContext.set({ timezone: "Not/AZone" });
+
+  assert.deepEqual(result, {
+    ok: false,
+    error: { code: "VALIDATION", message: "Timezone is invalid.", status: 400 },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].method, "PUT");
+});
+
+test("timeContext.get still uses GET with forwarded query params", async () => {
+  const { client, calls } = makeHarness({
+    body: {
+      ok: true,
+      timeContext: {
+        timezone: "Africa/Casablanca",
+        requestedTimezone: null,
+        fallback: "none",
+        localDate: "2026-01-15",
+        dayWindow: {
+          date: "2026-01-15",
+          timezone: "Africa/Casablanca",
+          requestedTimezone: null,
+          fallback: "none",
+          startUtc: "2026-01-14T23:00:00.000Z",
+          endUtc: "2026-01-15T23:00:00.000Z",
+          durationHours: 24,
+        },
+        weekWindow: {
+          date: "2026-01-15",
+          timezone: "Africa/Casablanca",
+          requestedTimezone: null,
+          fallback: "none",
+          weekStart: "2026-01-12",
+          weekEnd: "2026-01-18",
+          weekStartUtc: "2026-01-11T23:00:00.000Z",
+          weekEndExclusiveUtc: "2026-01-18T23:00:00.000Z",
+        },
+      },
+    },
+  });
+
+  const result = await client.timeContext.get({ timezone: "Africa/Casablanca" });
+
+  assert.equal(result.ok, true);
+  assert.equal(calls[0].method, "GET");
+  assert.equal(
+    calls[0].url,
+    "https://api.ega.example/api/time-context?timezone=Africa%2FCasablanca",
+  );
+});

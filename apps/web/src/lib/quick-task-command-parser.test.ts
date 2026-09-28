@@ -173,6 +173,34 @@ test("parses weekday names as next matching day", () => {
   assert.equal(result.dueDate, "2026-05-01");
 });
 
+test("ega-661: today/tomorrow/weekday shortcuts anchor on the account local date, not the device-local date", () => {
+  // Fixed instant 2026-04-20T16:00:00Z: the account day in Asia/Tokyo is
+  // 2026-04-21 (Tuesday) while the device-local day in UTC and
+  // America/New_York is still 2026-04-20 (Monday).
+  const now = new Date("2026-04-20T16:00:00.000Z");
+  const accountTodayIsoDate = "2026-04-21";
+
+  const todayResult = parseQuickTaskCommand("Review launch today", projects, {
+    now,
+    todayIsoDate: accountTodayIsoDate,
+  });
+  assert.equal(todayResult.dueDate, "2026-04-21");
+
+  const tomorrowResult = parseQuickTaskCommand("Review launch tomorrow", projects, {
+    now,
+    todayIsoDate: accountTodayIsoDate,
+  });
+  assert.equal(tomorrowResult.dueDate, "2026-04-22");
+
+  // 2026-04-21 is a Tuesday, so the next Tuesday in the account calendar is
+  // 2026-04-28; a device-local anchor on Monday 2026-04-20 would yield 2026-04-21.
+  const weekdayResult = parseQuickTaskCommand("Review launch tuesday", projects, {
+    now,
+    todayIsoDate: accountTodayIsoDate,
+  });
+  assert.equal(weekdayResult.dueDate, "2026-04-28");
+});
+
 test("keeps unknown words in title", () => {
   const result = parseQuickTaskCommand("Map frobnicate runway someday maybe", projects, {
     now: monday,

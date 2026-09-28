@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWeeklyReviewPageData } from "@/lib/services/weekly-review-page-service";
 import { getTodayIsoDate, getTodayIsoDateForTimezone, isIsoDate } from "@/lib/review-week";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 
 export type ReviewSearchParams = { draft?: string; weekOf?: string };
 
@@ -11,23 +12,11 @@ export async function getReviewPageModel(searchParams: ReviewSearchParams) {
   let todayIsoForSelection: string;
   try {
     if (ownerUserId) {
-      const { data: tzRow } = await (
-        supabase as unknown as {
-          from: (t: string) => {
-            select: (c: string) => {
-              eq: (a: string, b: string) => {
-                maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }>;
-              };
-            };
-          };
-        }
-      )
-        .from("user_time_context")
-        .select("iana_timezone")
-        .eq("user_id", ownerUserId)
-        .maybeSingle();
-      const tz = (tzRow as { iana_timezone?: string | null } | null)?.iana_timezone;
-      todayIsoForSelection = getTodayIsoDateForTimezone(typeof tz === "string" ? tz : null, new Date());
+      const timeContext = await getWebTimeContext();
+      todayIsoForSelection = getTodayIsoDateForTimezone(
+        timeContext.persistedTimezone,
+        new Date(),
+      );
     } else {
       todayIsoForSelection = getTodayIsoDate();
     }

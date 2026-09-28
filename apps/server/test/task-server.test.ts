@@ -115,9 +115,12 @@ test("GET /api/tasks requires auth and returns actor-scoped tasks", async () => 
   assert.equal(response.status, 200);
   const body = await response.json();
   assert.equal(body.tasks.length, 1);
-  assert.ok(fake.calls[0]?.steps.some(
+  const tasksCall = fake.calls.find((call) => call.table === "tasks");
+  assert.ok(tasksCall?.steps.some(
     (step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123",
   ));
+  // The list read model resolves the owner's Time Context first.
+  assert.ok(fake.calls.some((call) => call.table === "user_time_context"));
 });
 
 test("POST /api/tasks derives owner from the verified bearer identity", async () => {

@@ -6,7 +6,7 @@ const getTasksWorkspaceData = vi.hoisted(() =>
   vi.fn(async () => ({
     projects: [],
     goals: [],
-    tasks: [],
+    tasks: mockTasks,
     taskTotalDurations: {},
     summary: { total: 0, active: 0, archived: 0 },
     savedViews: [],
@@ -16,7 +16,36 @@ const getTasksWorkspaceData = vi.hoisted(() =>
   })),
 );
 
+const mockTasks = vi.hoisted(() => [
+  {
+    id: "overdue-task",
+    due_date: "2026-05-01",
+    status: "todo",
+  },
+  {
+    id: "due-soon-task",
+    due_date: "2026-05-08",
+    status: "todo",
+  },
+  {
+    id: "done-task",
+    due_date: "2026-05-01",
+    status: "done",
+  },
+]);
+
 vi.mock("@/lib/services/task-service", () => ({ getTasksWorkspaceData }));
+
+const getWebTimeContext = vi.hoisted(() =>
+  vi.fn(async () => ({
+    timezone: "Asia/Tokyo",
+    persistedTimezone: "Asia/Tokyo",
+    fallback: "none",
+    localDate: "2026-05-03",
+  })),
+);
+
+vi.mock("@/lib/services/time-context-service", () => ({ getWebTimeContext }));
 
 import { getTasksPageModel } from "./tasks-page-model";
 
@@ -73,6 +102,13 @@ describe("getTasksPageModel dead /tasks work removal", () => {
 
     expect(model.savedViews).toEqual([]);
     expect(model).not.toHaveProperty("resolvedSavedViewFeedback");
+  });
+
+  it("ega-661: overdue and due-soon counts use the account local date, not the runtime-local date", async () => {
+    const model = await getTasksPageModel({});
+
+    expect(model.overdueCount).toBe(1);
+    expect(model.dueSoonCount).toBe(1);
   });
 
   it("never requests calendar integration settings or sorts a focus queue in the model", () => {
