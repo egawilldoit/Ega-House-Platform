@@ -959,6 +959,7 @@ export async function getTasksWorkspaceData(
   const tasks = applyTaskListQuery(rawTasks, {
     dueFilter: filters.activeDueFilter,
     sortValue: filters.activeSort,
+    today: todayIsoDate,
   });
 
   const taskIds = tasks.map((task) => task.id);

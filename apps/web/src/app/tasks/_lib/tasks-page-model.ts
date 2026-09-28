@@ -157,8 +157,12 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
   const kanbanBoard = buildTaskKanbanBoard(tasks, parsed.activeStatus);
   const inProgressCount = tasks.filter((t) => t.status === "in_progress").length;
   const blockedCount = tasks.filter((t) => t.status === "blocked").length;
-  const overdueCount = tasks.filter((t) => isTaskOverdue(t.due_date, t.status)).length;
-  const dueSoonCount = tasks.filter((t) => isTaskDueSoon(t.due_date, t.status)).length;
+  const overdueCount = tasks.filter((t) =>
+    isTaskOverdue(t.due_date, t.status, accountLocalDate ?? undefined),
+  ).length;
+  const dueSoonCount = tasks.filter((t) =>
+    isTaskDueSoon(t.due_date, t.status, accountLocalDate ?? undefined),
+  ).length;
 
   return {
     parsed,

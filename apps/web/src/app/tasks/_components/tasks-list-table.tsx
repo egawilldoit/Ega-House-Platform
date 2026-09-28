@@ -9,6 +9,8 @@ import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useTaskEditorOpenState } from "@/components/tasks/use-task-editor-open-state";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import { getTaskDueDateState } from "@/lib/task-due-date";
 import { isTaskArchived } from "@/lib/task-archive";
 import { isTaskCompletedStatus } from "@/lib/task-domain";
@@ -145,13 +147,15 @@ function TaskPriorityCell({ priority }: { priority: string }) {
 }
 
 function TaskDueCell({ dueDate, status }: { dueDate: string | null; status: string }) {
+  const todayIsoDate = getLocalDateInTimezone(new Date(), useDisplayTimezone());
+
   if (!dueDate) {
     return (
       <span className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-tertiary)]">—</span>
     );
   }
 
-  const dueState = getTaskDueDateState(dueDate, status);
+  const dueState = getTaskDueDateState(dueDate, status, todayIsoDate);
   const stateLabel = DUE_STATE_LABEL[dueState];
 
   return (
