@@ -11,7 +11,6 @@ import {
   getLocalDateInTimezone,
   getLocalDayWindow,
   getLocalMonthWindow,
-  getLocalQuarterWindow,
   getRollingLocalWindow,
   getWeekWindow,
   splitIntervalByLocalDay,
