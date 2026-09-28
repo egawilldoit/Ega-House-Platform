@@ -2,7 +2,7 @@ import { WorkspaceSkeletonShell } from "@/components/layout/workspace-skeleton-s
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export default function IdeasLoadingPage() {
+export default function BacklogLoadingPage() {
   return (
     <WorkspaceSkeletonShell
       title="Backlog"
@@ -23,8 +23,6 @@ export default function IdeasLoadingPage() {
           <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ega-divider)] px-[18px] py-3">
             <Skeleton className="h-8 w-16" />
             <Skeleton className="h-8 w-20" />
-            <Skeleton className="h-8 w-20" />
-            <Skeleton className="ml-auto h-8 w-24" />
           </div>
           {Array.from({ length: 6 }).map((_, index) => (
             <div

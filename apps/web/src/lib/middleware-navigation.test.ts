@@ -15,9 +15,9 @@ import assert from "node:assert/strict";
 // since middleware.ts uses next/server types, we duplicate.
 const GLOBAL_APP_ROUTES = new Set([
   "/apps",
+  "/backlog",
   "/dashboard",
   "/help",
-  "/ideas",
   "/settings",
   "/shutdown",
   "/startup",

@@ -17,8 +17,8 @@ describe("mobile inbox fast capture (EGA-506)", () => {
   const repository = fs.readFileSync(repositoryPath, "utf8");
 
   it("accepts raw thought without project/goal/priority", () => {
-    expect(inboxScreen).toMatch(/Capture idea/);
-    expect(captureSheet).toMatch(/Thought/);
+    expect(inboxScreen).toMatch(/Add to Backlog/);
+    expect(captureSheet).toMatch(/Idea/);
     expect(captureSheet).not.toMatch(/projectId.*required/i);
     expect(captureSheet).toMatch(/idempotencyKey/);
     expect(query).toMatch(/idempotencyKey/);
@@ -56,7 +56,51 @@ describe("mobile inbox fast capture (EGA-506)", () => {
     expect(captureSheet).toMatch(/accessibilityRole="button"/);
     expect(captureSheet).toMatch(/testID="inbox-capture-title-input"/);
     expect(captureSheet).toMatch(/testID="inbox-capture-submit"/);
-    expect(inboxScreen).toMatch(/accessibilityLabel="Capture idea to Inbox"/);
+    expect(inboxScreen).toMatch(/accessibilityLabel="Add to Backlog"/);
+  });
+
+  it("EGA-659: capture sheet supports optional Project with No project option", () => {
+    expect(captureSheet).toMatch(/Project \(optional\)/);
+    expect(captureSheet).toMatch(/No project/);
+    expect(captureSheet).toMatch(/inbox-capture-project-none/);
+    expect(captureSheet).toMatch(/projectId/);
+    expect(captureSheet).not.toMatch(/projectId.*required/i);
+  });
+
+  it("EGA-659: edit sheet supports Project field", () => {
+    const editSheetPath = path.join(__dirname, "../components/InboxEditSheet.tsx");
+    const editSheet = fs.readFileSync(editSheetPath, "utf8");
+    expect(editSheet).toMatch(/Project/);
+    expect(editSheet).toMatch(/No project/);
+    expect(editSheet).toMatch(/inbox-edit-project-none/);
+  });
+
+  it("EGA-659: convert sheet uses Turn into Task copy", () => {
+    const convertSheetPath = path.join(__dirname, "../components/InboxConvertSheet.tsx");
+    const convertSheet = fs.readFileSync(convertSheetPath, "utf8");
+    expect(convertSheet).toMatch(/Turn into Task/);
+    expect(query).toMatch(/useConvertInboxMutation/);
+  });
+
+  it("EGA-659: convert sheet requires explicit project selection for no-project items", () => {
+    const convertSheetPath = path.join(__dirname, "../components/InboxConvertSheet.tsx");
+    const convertSheet = fs.readFileSync(convertSheetPath, "utf8");
+    // Existing project is preselected when present.
+    expect(convertSheet).toMatch(
+      /item\?\.projectId && projects\.some\(\(project\) => project\.id === item\.projectId\)/,
+    );
+    // Missing project must NOT auto-select the first available project.
+    expect(convertSheet).not.toMatch(/projects\[0\]\/\.id/);
+    // A null default keeps the submit button disabled until the user picks one.
+    expect(convertSheet).toMatch(/\? item\.projectId\s*:\s*null/);
+    expect(convertSheet).toMatch(/disabled=\{!projectId\}/);
+  });
+
+  it("EGA-659: mobile tab and screen use Backlog terminology", () => {
+    const layoutPath = path.join(__dirname, "../../../app/(app)/(tabs)/_layout.tsx");
+    const layout = fs.readFileSync(layoutPath, "utf8");
+    expect(layout).toMatch(/title: 'Backlog'/);
+    expect(inboxScreen).toMatch(/title="Backlog"/);
   });
 
   it("capture sheet is retry-safe and does not clear key on failure", () => {
