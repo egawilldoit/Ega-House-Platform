@@ -8,7 +8,6 @@ import { SupabaseInboxRepository, SupabaseTasksRepository } from "@ega/data-acce
 
 import {
   archiveIdeaNote,
-  createIdeaNote,
   restoreIdeaNote,
   updateIdeaNote,
 } from "@/lib/services/idea-note-service";
@@ -16,88 +15,30 @@ import { DEFAULT_IDEA_NOTE_TYPE } from "@/lib/idea-note-domain";
 import { requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { createClient } from "@/lib/supabase/server";
 
-export type CreateIdeaNoteFormState = {
-  error: string | null;
-  success: string | null;
-  values: {
-    title: string;
-    body: string;
-    type: string;
-    projectId: string;
-    priority: string;
-    tagsInput: string;
-  };
-};
-
-export type UpdateIdeaNoteFormState = {
+export type UpdateBacklogItemFormState = {
   error: string | null;
   success: string | null;
 };
 
-export type IdeaNoteArchiveFormState = UpdateIdeaNoteFormState;
+export type BacklogArchiveFormState = UpdateBacklogItemFormState;
 
-export type ConvertIdeaNoteFormState = {
+export type ConvertBacklogItemFormState = {
   error: string | null;
 };
 
-function createErrorState(
-  error: string,
-  values: CreateIdeaNoteFormState["values"],
-): CreateIdeaNoteFormState {
-  return { error, success: null, values };
-}
-
-function createUpdateErrorState(error: string): UpdateIdeaNoteFormState {
+function createUpdateErrorState(error: string): UpdateBacklogItemFormState {
   return { error, success: null };
 }
 
-export async function createIdeaNoteAction(
-  _previous: CreateIdeaNoteFormState,
+export async function updateBacklogItemAction(
+  _previous: UpdateBacklogItemFormState,
   formData: FormData,
-): Promise<CreateIdeaNoteFormState> {
-  const title = String(formData.get("title") ?? "").trim();
-  const body = String(formData.get("body") ?? "").trim();
-  const type = String(formData.get("type") ?? DEFAULT_IDEA_NOTE_TYPE).trim();
-  const projectId = String(formData.get("projectId") ?? "").trim();
-  const priority = String(formData.get("priority") ?? "").trim();
-  const tagsInput = String(formData.get("tagsInput") ?? "").trim();
-  const values = { title, body, type, projectId, priority, tagsInput };
-
-  if (!title) {
-    return createErrorState("Title is required.", values);
-  }
-
-  const result = await createIdeaNote({ title, body, type, projectId, priority, tagsInput });
-
-  if (result.errorMessage) {
-    return createErrorState(result.errorMessage, values);
-  }
-
-  revalidatePath("/ideas");
-
-  return {
-    error: null,
-    success: "Idea captured.",
-    values: {
-      title: "",
-      body: "",
-      type: DEFAULT_IDEA_NOTE_TYPE,
-      projectId: "",
-      priority: "",
-      tagsInput: "",
-    },
-  };
-}
-
-export async function updateIdeaNoteAction(
-  _previous: UpdateIdeaNoteFormState,
-  formData: FormData,
-): Promise<UpdateIdeaNoteFormState> {
+): Promise<UpdateBacklogItemFormState> {
   const id = String(formData.get("id") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim();
-  const type = String(formData.get("type") ?? DEFAULT_IDEA_NOTE_TYPE).trim();
   const projectId = String(formData.get("projectId") ?? "").trim();
+  const type = String(formData.get("type") ?? DEFAULT_IDEA_NOTE_TYPE).trim();
   const priority = String(formData.get("priority") ?? "").trim();
   const tagsInput = String(formData.get("tagsInput") ?? "").trim();
   const status = String(formData.get("status") ?? "").trim();
@@ -121,18 +62,18 @@ export async function updateIdeaNoteAction(
     return createUpdateErrorState(result.errorMessage);
   }
 
-  revalidatePath("/ideas");
+  revalidatePath("/backlog");
 
   return {
     error: null,
-    success: "Idea updated.",
+    success: "Backlog item updated.",
   };
 }
 
-export async function archiveIdeaNoteAction(
-  _previous: IdeaNoteArchiveFormState,
+export async function archiveBacklogItemAction(
+  _previous: BacklogArchiveFormState,
   formData: FormData,
-): Promise<IdeaNoteArchiveFormState> {
+): Promise<BacklogArchiveFormState> {
   const id = String(formData.get("id") ?? "").trim();
   const result = await archiveIdeaNote(id);
 
@@ -140,18 +81,18 @@ export async function archiveIdeaNoteAction(
     return createUpdateErrorState(result.errorMessage);
   }
 
-  revalidatePath("/ideas");
+  revalidatePath("/backlog");
 
   return {
     error: null,
-    success: "Idea archived.",
+    success: "Backlog item archived.",
   };
 }
 
-export async function restoreIdeaNoteAction(
-  _previous: IdeaNoteArchiveFormState,
+export async function restoreBacklogItemAction(
+  _previous: BacklogArchiveFormState,
   formData: FormData,
-): Promise<IdeaNoteArchiveFormState> {
+): Promise<BacklogArchiveFormState> {
   const id = String(formData.get("id") ?? "").trim();
   const result = await restoreIdeaNote(id);
 
@@ -159,27 +100,27 @@ export async function restoreIdeaNoteAction(
     return createUpdateErrorState(result.errorMessage);
   }
 
-  revalidatePath("/ideas");
+  revalidatePath("/backlog");
 
   return {
     error: null,
-    success: "Idea restored.",
+    success: "Backlog item restored.",
   };
 }
 
-export async function convertIdeaNoteAction(
-  _previous: ConvertIdeaNoteFormState,
+export async function convertBacklogItemAction(
+  _previous: ConvertBacklogItemFormState,
   formData: FormData,
-): Promise<ConvertIdeaNoteFormState> {
+): Promise<ConvertBacklogItemFormState> {
   const inboxItemId = String(formData.get("id") ?? "").trim();
   const projectId = String(formData.get("projectId") ?? "").trim();
 
   if (!inboxItemId) {
-    return { error: "Idea is required." };
+    return { error: "Backlog item is required." };
   }
 
   if (!projectId) {
-    return { error: "Choose a project before creating the task." };
+    return { error: "Choose a project before turning this into a task." };
   }
 
   const supabase = await createClient();
@@ -196,7 +137,7 @@ export async function convertIdeaNoteAction(
     return { error: result.errorMessage };
   }
 
-  revalidatePath("/ideas");
+  revalidatePath("/backlog");
   revalidatePath("/tasks");
   revalidatePath("/today");
   redirect(`/tasks#task-${result.data.task.id}`);

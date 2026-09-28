@@ -24,8 +24,8 @@ export function InboxCaptureTrigger() {
     <button
       type="button"
       className="sidebar-link workspace-capture-trigger"
-      aria-label="Capture to Inbox"
-      title="Capture to Inbox"
+      aria-label="Add to Backlog"
+      title="Add to Backlog"
       aria-haspopup="dialog"
       data-testid="inbox-quick-capture-trigger"
       onClick={openCapture}
@@ -33,7 +33,7 @@ export function InboxCaptureTrigger() {
       <span className="sidebar-link-icon" aria-hidden="true">
         <Inbox />
       </span>
-      <span className="workspace-nav-label">Capture</span>
+      <span className="workspace-nav-label">Add to Backlog</span>
     </button>
   );
 }
