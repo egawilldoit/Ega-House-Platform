@@ -15,6 +15,7 @@ import {
   getTimerSummary as getTimerSummaryData,
 } from "@/lib/services/timer-service";
 import { getWorkAnalyticsSessionsForWindow } from "@/lib/services/work-analytics-data-adapter";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import type { ExecutionEvidenceSessionRow } from "@/lib/services/execution-evidence-service";
 import {
   calculateWorkAnalytics,
@@ -194,10 +195,10 @@ export async function getDashboardHealthData(): Promise<DashboardHealthData> {
   }
 }
 
-async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
+async function getTodaysTasks(timezone?: string): Promise<PanelResult<DashboardTodayTask[]>> {
   try {
     const supabase = await createClient();
-    const { startIso, endIso } = getTodayWindow();
+    const { startIso, endIso } = getTodayWindow(timezone);
 
     const { data, error } = await supabase
       .from("tasks")
@@ -256,9 +257,16 @@ async function getTodaysTasks(): Promise<PanelResult<DashboardTodayTask[]>> {
 }
 
 
-async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
+async function getTodayPlanner(
+  analyticsTimezone?: string,
+  localDate?: string,
+): Promise<PanelResult<DashboardTodayPlanner>> {
   try {
-    const plannerResult = await getDashboardTodayPlannerData();
+    const plannerResult = await getDashboardTodayPlannerData(
+      analyticsTimezone || localDate
+        ? { timezone: analyticsTimezone, localDate }
+        : undefined,
+    );
     if (plannerResult.errorMessage || !plannerResult.data) {
       return {
         data: null,
@@ -278,7 +286,7 @@ async function getTodayPlanner(): Promise<PanelResult<DashboardTodayPlanner>> {
   }
 }
 
-async function getFocusPanel(): Promise<PanelResult<FocusPanelCandidateState>> {
+async function getFocusPanel(localDate?: string): Promise<PanelResult<FocusPanelCandidateState>> {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -311,6 +319,8 @@ async function getFocusPanel(): Promise<PanelResult<FocusPanelCandidateState>> {
           projectSlug: task.projects?.slug ?? null,
           goalTitle: task.goals?.title ?? null,
         })),
+        undefined,
+        localDate,
       ),
       error: null,
     };
@@ -474,9 +484,11 @@ async function getGoals(): Promise<PanelResult<DashboardGoalStatus[]>> {
   }
 }
 
-async function getTimerSummary(): Promise<PanelResult<DashboardTimerSummary>> {
+async function getTimerSummary(analyticsTimezone?: string): Promise<PanelResult<DashboardTimerSummary>> {
   try {
-    const summaryResult = await getTimerSummaryData({ limit: 150 });
+    const summaryResult = await getTimerSummaryData(
+      analyticsTimezone ? { limit: 150, timezone: analyticsTimezone } : { limit: 150 },
+    );
     if (summaryResult.errorMessage || !summaryResult.data) {
       return {
         data: null,
@@ -590,14 +602,19 @@ export const getLinearProjectCached = unstable_cache(
   { revalidate: 120, tags: ["dashboard-linear"] },
 );
 
-export const getTimerSummaryCached = unstable_cache(
-  getTimerSummary,
-  ["dashboard-timer-summary"],
-  { revalidate: 60, tags: ["dashboard-timer"] },
-);
+function getTimerSummaryCached(timezone?: string) {
+  // Cache key includes the timezone so per-user local-day results never leak
+  // across owners with different EGA House timezones.
+  const cached = unstable_cache(getTimerSummary, ["dashboard-timer-summary", timezone ?? "UTC"], {
+    revalidate: 60,
+    tags: ["dashboard-timer"],
+  });
+  return cached(timezone);
+}
 
 async function getWorkStatsForOwner(
   ownerUserId: string | null,
+  analyticsTimezone?: string,
 ): Promise<PanelResult<DashboardWorkStats>> {
   if (!ownerUserId) {
     return {
@@ -608,8 +625,8 @@ async function getWorkStatsForOwner(
 
   try {
     const now = new Date();
-    const todayWindow = getTodayWindow();
-    const weekWindow = getCurrentWeekWindow(now);
+    const todayWindow = getTodayWindow(analyticsTimezone);
+    const weekWindow = getCurrentWeekWindow(now, analyticsTimezone);
     const sessionsResult = await getWorkAnalyticsSessionsForWindow({
       ownerUserId,
       window: weekWindow,
@@ -647,6 +664,11 @@ async function getWorkStatsForOwner(
 export async function getDashboardData({
   ownerUserId = null,
 }: { ownerUserId?: string | null } = {}): Promise<DashboardData> {
+  // Dashboard Today/work-stats/timer use the owner's persisted EGA House
+  // timezone so they agree with Today/Timer. Failure degrades to UTC.
+  const timeContext = await getWebTimeContext().catch(() => null);
+  const analyticsTimezone = timeContext?.timezone;
+  const accountLocalDate = timeContext?.localDate;
   const [
     health,
     todaysTasks,
@@ -663,17 +685,17 @@ export async function getDashboardData({
   ] =
     await Promise.all([
       getDashboardHealthData(),
-      getTodaysTasks(),
-      getTodayPlanner(),
+      getTodaysTasks(analyticsTimezone),
+      getTodayPlanner(analyticsTimezone, accountLocalDate),
       getFocusQueue(),
-      getFocusPanel(),
+      getFocusPanel(accountLocalDate),
       getActiveTimer(),
       getProjectStatuses(),
       getGoals(),
-      getTimerSummaryCached(),
+      getTimerSummaryCached(analyticsTimezone),
       getLatestReviewCached(),
       getLinearProjectCached(),
-      getWorkStatsForOwner(ownerUserId),
+      getWorkStatsForOwner(ownerUserId, analyticsTimezone),
     ]);
 
   return {
@@ -710,12 +732,15 @@ export async function getHeroPanelData(
   ownerUserId: string | null,
   displayName: string,
 ): Promise<HeroPanelData> {
+  const timeContext = await getWebTimeContext().catch(() => null);
+  const analyticsTimezone = timeContext?.timezone;
+  const accountLocalDate = timeContext?.localDate;
   const [health, todayPlanner, projectStatuses, timerSummary, workStats] = await Promise.all([
     getDashboardHealthData(),
-    getTodayPlanner(),
+    getTodayPlanner(analyticsTimezone, accountLocalDate),
     getProjectStatuses(),
-    getTimerSummaryCached(),
-    getWorkStatsForOwner(ownerUserId),
+    getTimerSummaryCached(analyticsTimezone),
+    getWorkStatsForOwner(ownerUserId, analyticsTimezone),
   ]);
 
   const tasks = todayPlanner.data?.all ?? [];
@@ -753,12 +778,14 @@ export async function getCommandCenterPanelData() {
 }
 
 export async function getPlannerPanelData() {
-  const todayPlanner = await getTodayPlanner();
+  const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;
+  const todayPlanner = await getTodayPlanner(undefined, accountLocalDate);
   return { todayPlanner };
 }
 
 export async function getFocusPanelData() {
-  const [focusPanel, activeTimer] = await Promise.all([getFocusPanel(), getActiveTimer()]);
+  const accountLocalDate = (await getWebTimeContext().catch(() => null))?.localDate;
+  const [focusPanel, activeTimer] = await Promise.all([getFocusPanel(accountLocalDate), getActiveTimer()]);
   return { focusPanel, activeTimer };
 }
 

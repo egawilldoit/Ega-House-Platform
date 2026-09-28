@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { getWeekBoundsForTimezone } from "@/lib/review-week";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   buildReviewExportCsv,
   getReviewExportWeekOf,
@@ -20,22 +21,11 @@ export async function GET(request: Request) {
     .order("week_start", { ascending: false });
 
   if (selectedWeekOf) {
-    // Timezone-aware bounds via canonical Time Context
+    // Timezone-aware bounds via canonical Time Context seam
     let bounds: { weekStart: string; weekEnd: string } | null = null;
     try {
-      const { data: authData } = await supabase.auth.getUser();
-      const uid = authData.user?.id;
-      let tz: string | null = null;
-      if (uid) {
-        const { data: tzRow } = await (supabase as unknown as { from: (t: string) => { select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: { iana_timezone?: string | null } | null }> } } } }).from(
-          "user_time_context",
-        )
-          .select("iana_timezone")
-          .eq("user_id", uid)
-          .maybeSingle();
-        tz = (tzRow as { iana_timezone?: string | null } | null)?.iana_timezone ?? null;
-      }
-      bounds = getWeekBoundsForTimezone(selectedWeekOf, tz);
+      const timeContext = await getWebTimeContext();
+      bounds = getWeekBoundsForTimezone(selectedWeekOf, timeContext.persistedTimezone);
     } catch {
       bounds = getWeekBoundsForTimezone(selectedWeekOf, null);
     }

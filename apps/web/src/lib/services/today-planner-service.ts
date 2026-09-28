@@ -44,12 +44,19 @@ async function queryTodayTaskRowsWithBlockedReasonFallback(
 export async function getTodayPlannerData(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Supplied by server callers so Today boundaries follow the account day,
+   * never the runtime-local day. Falls back to the runtime-local date only
+   * when the caller cannot resolve Time Context (degraded mode).
+   */
+  localDate?: string;
   activeTimerResult?: Awaited<ReturnType<typeof getActiveTimerSession>>;
   timerSummaryResult?: Awaited<ReturnType<typeof getTimerSummary>>;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const now = options?.now ?? new Date();
-  const today = getTodayLocalIsoDate(now);
+  const today = options?.localDate ?? getTodayLocalIsoDate(now);
 
   const [selectedResult, pinnedResult, inProgressResult, activeTimerResult, timerSummaryResult] =
     await Promise.all([
@@ -131,6 +138,8 @@ async function getOwnedTaskById(taskId: string, supabase: SupabaseServerClient) 
 export async function addTaskToToday(taskId: string, options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  /** Canonical account local date from Time Context (see getTodayPlannerData). */
+  localDate?: string;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const scope = await getOwnedTaskById(taskId, supabase);
@@ -142,6 +151,7 @@ export async function addTaskToToday(taskId: string, options?: {
   return planTaskForToday(scope.taskId, {
     supabase,
     now: options?.now,
+    localDate: options?.localDate,
   });
 }
 
@@ -179,9 +189,11 @@ export async function updateTodayTaskStatus(
 export async function clearCompletedFromToday(options?: {
   supabase?: SupabaseServerClient;
   now?: Date;
+  /** Canonical account local date from Time Context (see getTodayPlannerData). */
+  localDate?: string;
 }) {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const today = getTodayLocalIsoDate(options?.now ?? new Date());
+  const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
 
   const { error } = await supabase
     .from("tasks")

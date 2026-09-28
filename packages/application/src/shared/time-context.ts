@@ -124,7 +124,7 @@ export async function setTimeContextTimezone(
 ): Promise<ApplicationResult<string>> {
   const timezone = typeof input.timezone === "string" ? input.timezone.trim() : String(input.timezone ?? "").trim();
   if (!isValidIANATimeZone(timezone)) {
-    return applicationFailure("Timezone is invalid.");
+    return applicationFailure("Timezone is invalid.", "validation");
   }
   const result = await repository.setTimezone(actor, timezone);
   if (!result.ok) {

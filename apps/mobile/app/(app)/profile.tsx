@@ -93,6 +93,27 @@ export default function ProfileStackScreen() {
           </Card>
         </Pressable>
 
+        <Pressable
+          onPress={() => router.push('/(app)/settings/timezone')}
+          style={({ pressed }: { pressed: boolean }) => [styles.notificationCard, pressed ? styles.pressed : null]}
+          accessibilityHint="Choose the timezone used for Today, Tasks, Timer, reminders, analytics and reviews"
+          accessibilityLabel="Open timezone settings"
+          accessibilityRole="button"
+        >
+          <Card style={styles.notificationInner}>
+            <View style={styles.notificationRow}>
+              <View style={styles.notificationIcon}>
+                <Ionicons name="time-outline" size={18} color={mobileTheme.colors.accent} />
+              </View>
+              <View style={styles.notificationCopy}>
+                <Text style={styles.notificationTitle}>Timezone</Text>
+                <Text style={styles.notificationDesc}>Local day for Today, Tasks, Timer and reviews</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={mobileTheme.colors.textSubtle} />
+            </View>
+          </Card>
+        </Pressable>
+
         <Card style={styles.actionCard} testID="profile-actions-card">
           <View style={styles.actionRow}>
             <View style={styles.actionCopy}>

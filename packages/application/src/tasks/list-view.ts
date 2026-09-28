@@ -12,7 +12,6 @@ import type {
   MobileTaskProject,
 } from "@ega/contracts/mobile";
 import {
-  getLocalTodayIsoDate,
   isTaskDueSoon,
   isTaskDueToday,
   isTaskOverdue,
@@ -134,7 +133,7 @@ function sortByValue<T extends DueSortable>(tasks: T[], sortValue: TaskSortValue
 
 export function computeMobileTaskCounters(
   items: MobileTaskListItem[],
-  today = getLocalTodayIsoDate(),
+  today: string,
 ): MobileTaskCounters {
   const counters: MobileTaskCounters = {
     total: 0,
@@ -187,7 +186,12 @@ export type MobileTaskListViewInput = Readonly<{
   projects: TaskProjectOptionRecord[];
   goals: TaskGoalOptionRecord[];
   query: TaskQuery;
-  now?: Date;
+  /**
+   * Canonical local date (YYYY-MM-DD) for the authenticated owner, resolved
+   * from Time Context by the caller. The read model must never derive the
+   * owner's calendar day from the process timezone.
+   */
+  today: string;
 }>;
 
 export type MobileTaskListView = Readonly<{
@@ -203,9 +207,13 @@ export type MobileTaskListView = Readonly<{
  *
  * Counters describe the full filtered scope BEFORE the limit slice so clients
  * can render totals and truncation state without extra requests.
+ *
+ * `input.today` is the owner's canonical local date resolved from Time
+ * Context by the caller; due-today/overdue semantics are evaluated against
+ * it, never against the process timezone.
  */
 export function buildMobileTaskListView(input: MobileTaskListViewInput): MobileTaskListView {
-  const today = getLocalTodayIsoDate(input.now ?? new Date());
+  const today = input.today;
   const query = input.query;
   const { activeProjectId, activeGoalId, visibleGoals } = resolveScopeFilters(
     query,

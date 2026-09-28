@@ -1,5 +1,7 @@
 import React from "react";
 import { Badge } from "@/components/ui/badge";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import { formatDisplayDate } from "@/lib/presentation-format";
 import { getTaskDueDateState } from "@/lib/task-due-date";
 import { cn } from "@/lib/utils";
@@ -46,11 +48,15 @@ export function TaskDueDateLabel({
   className,
   textClassName,
 }: TaskDueDateLabelProps) {
+  // Overdue / due-today / due-soon boundaries follow the owner's EGA House
+  // timezone via the display-timezone session bootstrap, never the device day.
+  const todayIsoDate = getLocalDateInTimezone(new Date(), useDisplayTimezone());
+
   if (!dueDate) {
     return null;
   }
 
-  const dueDateState = getTaskDueDateState(dueDate, status);
+  const dueDateState = getTaskDueDateState(dueDate, status, todayIsoDate);
   const badgeConfig = getDueDateBadgeConfig(dueDateState);
 
   return (
