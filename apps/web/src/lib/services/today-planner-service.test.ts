@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  addTaskToToday,
   clearCompletedFromToday,
   getTodayPlannerData,
   updateTodayTaskStatus,
@@ -835,4 +836,65 @@ test("Today status update to done uses shared auto-stop task workflow", async ()
   );
   assert.equal(mock.taskUpdateCalls.length, 1);
   assert.equal(mock.taskUpdateCalls[0]?.payload.status, "done");
+});
+
+test("ega-661: getTodayPlannerData uses the account local date regardless of process timezone", async () => {
+  const orClauses: string[] = [];
+  const supabase = createSupabaseMock(
+    [
+      { data: [], error: null },
+      { data: [], error: null },
+      { data: [], error: null },
+    ],
+    (value) => {
+      orClauses.push(value);
+    },
+  );
+
+  const result = await getTodayPlannerData({
+    supabase: supabase as never,
+    now: new Date("2026-04-20T05:00:00.000Z"),
+    localDate: "2026-04-21",
+    ...createTimerOverrides(),
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.date, "2026-04-21");
+  assert.equal(orClauses.length, 1);
+  assert.match(orClauses[0], /planned_for_date\.eq\.2026-04-21/);
+  assert.match(orClauses[0], /due_date\.eq\.2026-04-21/);
+});
+
+test("ega-661: clearCompletedFromToday clears the account local date regardless of process timezone", async () => {
+  let capturedFilters: Record<string, unknown> | null = null;
+
+  const supabase = createSupabaseUpdateMock((_payload, filters) => {
+    capturedFilters = { ...filters };
+  });
+
+  const result = await clearCompletedFromToday({
+    supabase: supabase as never,
+    now: new Date("2026-04-20T05:00:00.000Z"),
+    localDate: "2026-04-21",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(capturedFilters, {
+    status: ["done", "complete", "completed"],
+    planned_for_date: "2026-04-21",
+  });
+});
+
+test("ega-661: addTaskToToday plans the account local date regardless of process timezone", async () => {
+  const mock = createTodayStatusSupabaseMock();
+
+  const result = await addTaskToToday("task-1", {
+    supabase: mock.supabase,
+    now: new Date("2026-04-20T05:00:00.000Z"),
+    localDate: "2026-04-21",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(mock.taskUpdateCalls.length, 1);
+  assert.equal(mock.taskUpdateCalls[0]?.payload.planned_for_date, "2026-04-21");
 });

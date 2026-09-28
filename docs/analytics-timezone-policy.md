@@ -2,34 +2,56 @@
 
 ## Current Behavior
 
-All Work Analytics day/week/month bucket calculations operate in **UTC**.
+User-facing Work Analytics day/week/month bucket calculations operate in the
+owner's persisted **EGA House timezone** (`user_time_context.iana_timezone`),
+falling back to **UTC** when no timezone is stored or the stored value is
+invalid.
 
-- Raw timestamps (`started_at`, `ended_at`) are stored as ISO 8601 strings in UTC in the `task_sessions` table.
-- Bucket boundaries (e.g., "today", "last 7 days", "current month") are computed using `Date.UTC()` or equivalent UTC-based operations.
-- The `calculateWorkAnalyticsDailySeries()` function distributes session seconds across UTC calendar days. A session running from 22:00 UTC to 02:00 UTC the next day is counted as partial hours in both UTC days.
-- The `calculateWorkAnalyticsMonthComparison()` function computes month boundaries using UTC: `new Date(Date.UTC(year, month, 1))`.
+- Raw timestamps (`started_at`, `ended_at`) remain ISO 8601 UTC instants in the
+  `task_sessions` table; changing the account timezone never rewrites them.
+- Bucket boundaries (today, rolling 7d/30d, month-to-date, previous calendar
+  month, quarter-to-date) are local calendar boundaries in the account timezone,
+  converted to UTC query windows via the canonical Time Context helpers
+  (`getLocalDayWindow`, `getLocalMonthWindow`, `getLocalQuarterWindow`,
+  `getRollingLocalWindow`).
+- `calculateWorkAnalyticsDailySeries()` distributes session seconds across
+  **local** calendar days using the ONE canonical `splitIntervalByLocalDay`
+  primitive (`options.timezone`). A session running from 22:00 to 02:00 local
+  time is counted as partial hours in both local days.
+- Week/month series bucketing, streaks, active-day counts, drilldown indexes,
+  and the month comparison all follow the same account-timezone local calendar.
+- The analytics **export** uses the persisted account timezone for its windows
+  and reports the exact timezone + window metadata (IANA name and UTC offset at
+  the window start) in the markdown.
 
 ## Rationale
 
-Using UTC for all server-side computations avoids timezone ambiguity in scheduled exports, cron-based reports, and multi-timezone collaboration contexts. It ensures deterministic, reproducible results regardless of where the server runs.
+One persisted IANA timezone is the canonical clock context for the
+authenticated owner, so analytics agree with Today, Tasks, Timer, reminders,
+and reviews across web, mobile, and MCP — including across DST transitions
+and server-timezone changes.
 
-## Known Limitation
+## Historical Bucketing Policy
 
-Mixed UTC/local behavior can make day-level and month-level totals feel wrong to users in extreme timezones (e.g., UTC+14 or UTC-12). A session that starts at 23:00 local time on Monday appears as Monday's data in UTC but may "feel" like it belongs to Monday locally. This is consistent behavior but can be surprising near midnight.
-
-## Desired Future Behavior
-
-User-facing day/week/month buckets should eventually use the **user's local timezone** or an **explicit report timezone** selected in settings or passed as a query parameter. This is tracked as a future enhancement and is not yet implemented.
+For V1, historical reports/heatmaps are interpreted using the
+selected/current EGA report timezone. Changing the account timezone may change
+which local calendar date a historical timestamp appears under. EGA House does
+not store the timezone-at-event for existing session/task timestamps; immutable
+event-local-day history is a separate data-model feature.
 
 ## Export Behavior
 
 All exports include:
 
-- **Report timezone** — the IANA timezone identifier used for bucket computation (currently `"UTC"`).
-- **Bucket start/end ISO values** — each row or section boundary includes the UTC timestamps for the bucket start and end.
-- **Raw session timestamps** — individual session timestamps are always ISO strings in UTC.
+- **Report timezone** — the IANA timezone identifier used for bucket computation
+  (the owner's persisted EGA House timezone, or `"UTC"` when unset/invalid).
+- **Bucket start/end ISO values** — each row or section boundary includes the
+  UTC timestamps for the bucket start and end.
+- **Raw session timestamps** — individual session timestamps are always ISO
+  strings in UTC.
 
-This ensures that exported data can be re-aggregated into any timezone by consuming applications.
+This ensures that exported data can be re-aggregated into any timezone by
+consuming applications.
 
 ## Open-Session Handling
 
@@ -54,9 +76,11 @@ When writing new tests:
 ## Implementation Details
 
 ### `calculateWorkAnalyticsDailySeries()`
-- Accepts date strings in `YYYY-MM-DD` format (UTC).
+- Accepts date strings in `YYYY-MM-DD` format (local calendar dates when
+  `options.timezone` is supplied, UTC dates otherwise).
 - Fills missing days with zero values (not sparse).
-- Distributes multi-day sessions proportionally across UTC day boundaries.
+- Distributes multi-day sessions proportionally across local day boundaries
+  via `splitIntervalByLocalDay` (the single canonical day-splitting primitive).
 
 ### `calculateWorkAnalyticsMonthComparison()`
 - Computes "current month" as `Date.UTC(year, month, 1)` to now.

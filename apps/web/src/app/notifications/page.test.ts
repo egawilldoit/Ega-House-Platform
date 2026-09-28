@@ -25,6 +25,18 @@ test("notifications page exposes history, empty state, and actionable feedback",
   assert.match(page, /Mark all read/);
 });
 
+test("notification grouping derives dates from the account timezone", () => {
+  // Group keys and Today/Yesterday headings must use the owner's EGA
+  // timezone via the canonical Time Context seam. The timezone-aware path
+  // passes getLocalDateInTimezone into the grouping builders; UTC date
+  // slicing remains only as the degraded fallback when the Time Context
+  // cannot be loaded.
+  assert.match(page, /getWebTimeContext/);
+  assert.match(page, /getLocalDateInTimezone/);
+  assert.match(page, /const groups = buildNotificationGroups\(notifications, timeContext\?\.timezone\);/);
+  assert.match(page, /formatNotificationDayHeading\(notification\.createdAt, timezone\)/);
+});
+
 test("notifications inbox keeps read state, target links, and a real read control", () => {
   assert.match(inbox, /markNotificationReadAction/);
   assert.match(inbox, /openNotificationAction/);

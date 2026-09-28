@@ -18,6 +18,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { getWebNotifications } from "@/lib/services/notification-service";
 import { getNotificationTargetHref } from "@/lib/notification-target";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
+import { getLocalDateInTimezone } from "@ega/domain/time-context";
 
 export const metadata: Metadata = {
   title: "Notifications",
@@ -41,15 +43,25 @@ function formatNotificationDate(value: string) {
   }).format(new Date(value));
 }
 
-function formatNotificationDayHeading(value: string) {
+function formatNotificationDayHeading(value: string, timezone?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "Unknown date";
   }
 
+  // Today/Yesterday derive from the owner's EGA House timezone, not the
+  // process timezone or the UTC date of the createdAt instant.
   const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const notificationDate = timezone
+    ? getLocalDateInTimezone(date, timezone)
+    : date.toISOString().slice(0, 10);
+  const todayDate = timezone
+    ? getLocalDateInTimezone(now, timezone)
+    : now.toISOString().slice(0, 10);
+  const [notifYear, notifMonth, notifDay] = notificationDate.split("-").map(Number);
+  const [todayYear, todayMonth, todayDay] = todayDate.split("-").map(Number);
+  const startOfToday = Date.UTC(todayYear, todayMonth - 1, todayDay);
+  const startOfDay = Date.UTC(notifYear, notifMonth - 1, notifDay);
   const dayDiff = Math.round((startOfToday - startOfDay) / 86_400_000);
 
   if (dayDiff === 0) {
@@ -63,17 +75,23 @@ function formatNotificationDayHeading(value: string) {
     weekday: "long",
     month: "short",
     day: "numeric",
+    ...(timezone ? { timeZone: timezone } : {}),
   }).format(date);
 }
 
-function buildNotificationGroups(notifications: Notification[]): NotificationInboxGroup[] {
+function buildNotificationGroups(
+  notifications: Notification[],
+  timezone?: string,
+): NotificationInboxGroup[] {
   const groups: NotificationInboxGroup[] = [];
 
   for (const notification of notifications) {
     const createdAt = new Date(notification.createdAt);
     const key = Number.isNaN(createdAt.getTime())
       ? "unknown"
-      : createdAt.toISOString().slice(0, 10);
+      : timezone
+        ? getLocalDateInTimezone(createdAt, timezone)
+        : createdAt.toISOString().slice(0, 10);
 
     const row: NotificationInboxRow = {
       id: notification.id,
@@ -93,7 +111,7 @@ function buildNotificationGroups(notifications: Notification[]): NotificationInb
     } else {
       groups.push({
         key,
-        label: formatNotificationDayHeading(notification.createdAt),
+        label: formatNotificationDayHeading(notification.createdAt, timezone),
         rows: [row],
       });
     }
@@ -142,7 +160,8 @@ export default async function NotificationsPage({ searchParams }: NotificationsP
   }
 
   const { notifications, unreadCount, nextCursor } = result.data;
-  const groups = buildNotificationGroups(notifications);
+  const timeContext = await getWebTimeContext().catch(() => null);
+  const groups = buildNotificationGroups(notifications, timeContext?.timezone);
 
   return (
     <AppShell

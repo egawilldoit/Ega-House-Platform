@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -77,8 +77,6 @@ export function TaskMarkDoneForm({
   taskTitle,
   compact = false,
 }: TaskMarkDoneFormProps) {
-  const timezoneOffsetRef = useRef<HTMLInputElement>(null);
-
   const scheduledStartAtDefaultValue = defaultScheduledStartAt
     ? defaultScheduledStartAt.slice(0, 16)
     : "";
@@ -87,14 +85,7 @@ export function TaskMarkDoneForm({
     : "";
 
   return (
-    <form
-      action={action}
-      onSubmit={() => {
-        if (timezoneOffsetRef.current) {
-          timezoneOffsetRef.current.value = String(new Date().getTimezoneOffset());
-        }
-      }}
-    >
+    <form action={action}>
       <input type="hidden" name="taskId" value={taskId} />
       <input type="hidden" name="returnTo" value={returnTo} />
       <input type="hidden" name="status" value="done" />
@@ -109,12 +100,6 @@ export function TaskMarkDoneForm({
         type="hidden"
         name="calendarReminderMinutes"
         value={defaultCalendarReminderMinutes}
-      />
-      <input
-        ref={timezoneOffsetRef}
-        type="hidden"
-        name="scheduleTimezoneOffsetMinutes"
-        defaultValue="0"
       />
       <input
         type="hidden"
@@ -160,8 +145,6 @@ export function InlineTaskUpdateForm({
   stickyFooter = false,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
-  const [timezoneOffsetMinutes, setTimezoneOffsetMinutes] = useState("0");
-  const [recurrenceTimezone, setRecurrenceTimezone] = useState("UTC");
   const updateFormId = `task-update-${taskId}`;
   const isArchived = Boolean(archivedAt);
   const isCompleted = isTaskCompletedStatus(defaultStatus);
@@ -169,11 +152,6 @@ export function InlineTaskUpdateForm({
   useEffect(() => {
     setSelectedStatus(defaultStatus);
   }, [defaultStatus]);
-
-  useEffect(() => {
-    setRecurrenceTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
-    setTimezoneOffsetMinutes(String(new Date().getTimezoneOffset()));
-  }, []);
 
   const scheduledStartAtDefaultValue = defaultScheduledStartAt
     ? defaultScheduledStartAt.slice(0, 16)
@@ -187,12 +165,6 @@ export function InlineTaskUpdateForm({
       <form id={updateFormId} action={action} className="space-y-5">
         <input type="hidden" name="taskId" value={taskId} />
         <input type="hidden" name="returnTo" value={returnTo} />
-        <input type="hidden" name="recurrenceTimezone" value={recurrenceTimezone} />
-        <input
-          type="hidden"
-          name="scheduleTimezoneOffsetMinutes"
-          value={timezoneOffsetMinutes}
-        />
 
         <section className="space-y-3">
           <p className="glass-label text-etch">Task</p>

@@ -8,6 +8,8 @@ import {
   getLocalDayWindow,
   getWeekWindow,
   isValidIANATimeZone,
+  splitIntervalByLocalDay,
+  zonedWallTimeToUtcIso,
 } from "../src/time-context";
 
 test("isValidIANATimeZone accepts valid and rejects invalid", () => {
@@ -304,4 +306,172 @@ test("web and mobile parity: same timezone/date yields same window", () => {
   const webWeek = getWeekWindow(timezone, dateStr);
   const mobileWeek = getWeekWindow(timezone, dateStr);
   assert.deepEqual(webWeek, mobileWeek);
+});
+
+test("zonedWallTimeToUtcIso converts wall time in explicit zones", () => {
+  // Africa/Casablanca: UTC+1 in January 2026.
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "Africa/Casablanca", date: "2026-01-15", time: "12:00" }),
+    "2026-01-15T11:00:00.000Z",
+  );
+  // Asia/Tokyo: UTC+9, no DST.
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "Asia/Tokyo", date: "2026-01-15", time: "09:30" }),
+    "2026-01-15T00:30:00.000Z",
+  );
+  // America/New_York: UTC-5 in January (EST).
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "America/New_York", date: "2026-01-15", time: "08:00" }),
+    "2026-01-15T13:00:00.000Z",
+  );
+  // America/Los_Angeles: UTC-8 in January (PST).
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "America/Los_Angeles", date: "2026-01-15", time: "08:00" }),
+    "2026-01-15T16:00:00.000Z",
+  );
+  // Seconds are honored.
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "UTC", date: "2026-01-15", time: "01:02:03" }),
+    "2026-01-15T01:02:03.000Z",
+  );
+});
+
+test("zonedWallTimeToUtcIso converts future wall time across DST rules", () => {
+  // America/New_York 2026-07-15 is EDT (UTC-4).
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "America/New_York", date: "2026-07-15", time: "10:00" }),
+    "2026-07-15T14:00:00.000Z",
+  );
+  // America/New_York 2026-01-15 is EST (UTC-5).
+  assert.equal(
+    zonedWallTimeToUtcIso({ timezone: "America/New_York", date: "2026-01-15", time: "10:00" }),
+    "2026-01-15T15:00:00.000Z",
+  );
+  // America/Los_Angeles 2026-07-15 is PDT (UTC-7).
+  assert.equal(
+    zonedWallTimeToUtcTime_checkLosAngeles(),
+    "2026-07-15T17:00:00.000Z",
+  );
+});
+
+function zonedWallTimeToUtcTime_checkLosAngeles() {
+  return zonedWallTimeToUtcIso({
+    timezone: "America/Los_Angeles",
+    date: "2026-07-15",
+    time: "10:00",
+  });
+}
+
+test("zonedWallTimeToUtcIso rejects impossible wall times in DST gap", () => {
+  // 2026-03-08 02:30 does not exist in America/New_York (spring forward 02:00 -> 03:00).
+  assert.throws(
+    () =>
+      zonedWallTimeToUtcIso({
+        timezone: "America/New_York",
+        date: "2026-03-08",
+        time: "02:30",
+      }),
+    /does not exist/,
+  );
+  // 2026-11-01 01:30 is ambiguous in America/New_York (fall back) but exists,
+  // so it must convert (round-trip succeeds for one of the two instants).
+  const ambiguous = zonedWallTimeToUtcIso({
+    timezone: "America/New_York",
+    date: "2026-11-01",
+    time: "01:30",
+  });
+  assert.ok(
+    ambiguous === "2026-11-01T05:30:00.000Z" || ambiguous === "2026-11-01T06:30:00.000Z",
+    `unexpected ambiguous result ${ambiguous}`,
+  );
+});
+
+test("zonedWallTimeToUtcIso rejects invalid timezone, date, and time", () => {
+  assert.throws(
+    () => zonedWallTimeToUtcIso({ timezone: "Nope/Zone", date: "2026-01-15", time: "10:00" }),
+    /Invalid IANA timezone/,
+  );
+  assert.throws(
+    () => zonedWallTimeToUtcIso({ timezone: "UTC", date: "2026-02-30", time: "10:00" }),
+    /Invalid date/,
+  );
+  assert.throws(
+    () => zonedWallTimeToUtcIso({ timezone: "UTC", date: "2026-01-15", time: "25:00" }),
+    /Invalid time/,
+  );
+  assert.throws(
+    () => zonedWallTimeToUtcIso({ timezone: "UTC", date: "2026-01-15", time: "noon" }),
+    /Invalid time/,
+  );
+});
+
+test("zonedWallTimeToUtcIso is server-process timezone independent", () => {
+  const input = { timezone: "Asia/Tokyo", date: "2026-03-08", time: "02:30" };
+  const result = zonedWallTimeToUtcIso(input);
+  assert.equal(result, "2026-03-07T17:30:00.000Z");
+});
+
+test("splitIntervalByLocalDay splits at local midnight", () => {
+  // Session 2026-01-14T22:00:00Z -> 2026-01-15T02:00:00Z in America/New_York
+  // (UTC-5): local 17:00 Jan 14 -> 21:00 Jan 14. Single local day.
+  const nyParts = splitIntervalByLocalDay(
+    "America/New_York",
+    Date.parse("2026-01-14T22:00:00.000Z"),
+    Date.parse("2026-01-15T02:00:00.000Z"),
+  );
+  assert.deepEqual(nyParts, [{ dayKey: "2026-01-14", seconds: 4 * 3600 }]);
+
+  // Same instant range in UTC splits across two UTC days.
+  const utcParts = splitIntervalByLocalDay(
+    "UTC",
+    Date.parse("2026-01-14T22:00:00.000Z"),
+    Date.parse("2026-01-15T02:00:00.000Z"),
+  );
+  assert.deepEqual(utcParts, [
+    { dayKey: "2026-01-14", seconds: 2 * 3600 },
+    { dayKey: "2026-01-15", seconds: 2 * 3600 },
+  ]);
+
+  // Asia/Tokyo (UTC+9): 2026-01-14T22:00Z is 2026-01-15 07:00 local;
+  // 2026-01-15T02:00Z is 2026-01-15 11:00 local. Single local day Jan 15.
+  const tokyoParts = splitIntervalByLocalDay(
+    "Asia/Tokyo",
+    Date.parse("2026-01-14T22:00:00.000Z"),
+    Date.parse("2026-01-15T02:00:00.000Z"),
+  );
+  assert.deepEqual(tokyoParts, [{ dayKey: "2026-01-15", seconds: 4 * 3600 }]);
+});
+
+test("splitIntervalByLocalDay handles DST 23-hour and 25-hour days", () => {
+  // America/New_York 2026-03-08 (spring forward, 23h local day).
+  const springParts = splitIntervalByLocalDay(
+    "America/New_York",
+    Date.parse("2026-03-08T05:00:00.000Z"),
+    Date.parse("2026-03-09T04:00:00.000Z"),
+  );
+  assert.deepEqual(springParts, [{ dayKey: "2026-03-08", seconds: 23 * 3600 }]);
+
+  // America/New_York 2026-11-01 (fall back, 25h local day).
+  const fallParts = splitIntervalByLocalDay(
+    "America/New_York",
+    Date.parse("2026-11-01T04:00:00.000Z"),
+    Date.parse("2026-11-02T05:00:00.000Z"),
+  );
+  assert.deepEqual(fallParts, [{ dayKey: "2026-11-01", seconds: 25 * 3600 }]);
+
+  // A session crossing the fall-back midnight stays within one local day
+  // when it does not cross the next local midnight.
+  const crossParts = splitIntervalByLocalDay(
+    "America/New_York",
+    Date.parse("2026-11-01T04:30:00.000Z"),
+    Date.parse("2026-11-01T06:30:00.000Z"),
+  );
+  assert.deepEqual(crossParts, [{ dayKey: "2026-11-01", seconds: 2 * 3600 }]);
+});
+
+test("splitIntervalByLocalDay validates input", () => {
+  assert.throws(() => splitIntervalByLocalDay("UTC", Number.NaN, 0), /Invalid interval/);
+  assert.throws(() => splitIntervalByLocalDay("UTC", 0, Number.POSITIVE_INFINITY), /Invalid interval/);
+  assert.deepEqual(splitIntervalByLocalDay("UTC", 10, 5), []);
+  assert.deepEqual(splitIntervalByLocalDay("UTC", 5, 5), []);
 });

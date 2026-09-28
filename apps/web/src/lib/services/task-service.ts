@@ -1,3 +1,4 @@
+import { zonedWallTimeToUtcIso } from "@ega/domain/time-context";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
 import {
@@ -67,6 +68,17 @@ type CreateTasksOptions = {
   supabase?: SupabaseServerClient;
   /** @deprecated Calendar sync is queued through calendar_sync_jobs. */
   calendarClient?: Pick<GoogleCalendarClient, "createEvent">;
+  /**
+   * Canonical account IANA timezone used as the default recurrence timezone
+   * when the caller does not supply an explicit one.
+   */
+  recurrenceDefaultTimezone?: string;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Used as the recurrence anchor fallback instead of the runtime-local date
+   * so web writes agree with the Hono transport near account midnight.
+   */
+  fallbackAnchorDate?: string;
 };
 
 type TaskSavedViewSelectRow = {
@@ -206,7 +218,18 @@ export type ValidateTaskInlineUpdateInput = {
   recurrenceTimezone?: unknown;
   scheduledStartAt?: unknown;
   scheduledEndAt?: unknown;
-  scheduleTimezoneOffsetMinutes?: unknown;
+  /**
+   * Canonical account IANA timezone used to interpret scheduled wall times.
+   * Supplied by the server action from the owner's persisted Time Context —
+   * never a numeric browser offset.
+   */
+  accountTimezone?: string;
+  /**
+   * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+   * Used as the recurrence anchor fallback instead of the runtime-local date
+   * so web writes agree with the Hono transport near account midnight.
+   */
+  fallbackAnchorDate?: string;
   calendarSyncEnabled?: unknown;
   calendarReminderMinutes?: unknown;
 };
@@ -434,10 +457,7 @@ export async function getTaskScopeSnapshot(options?: { supabase?: SupabaseServer
   };
 }
 
-function parseTaskReminderDateTime(
-  rawValue: string,
-  timezoneOffsetMinutes: unknown,
-) {
+function parseTaskReminderDateTime(rawValue: string, timezone: unknown) {
   const localMatch = rawValue.match(
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/,
   );
@@ -449,48 +469,23 @@ function parseTaskReminderDateTime(
       : { errorMessage: null, value: parsed };
   }
 
-  const normalizedOffset = String(timezoneOffsetMinutes ?? "").trim();
-  if (!/^-?\d+$/.test(normalizedOffset)) {
-    return { errorMessage: "Reminder timezone offset is invalid.", value: null };
+  const normalizedTimezone = String(timezone ?? "").trim();
+  if (!normalizedTimezone) {
+    return { errorMessage: "Reminder timezone is required.", value: null };
   }
 
-  const offsetMinutes = Number(normalizedOffset);
-  if (!Number.isSafeInteger(offsetMinutes)) {
-    return { errorMessage: "Reminder timezone offset is invalid.", value: null };
+  try {
+    const [, yearValue, monthValue, dayValue, hourValue, minuteValue, secondValue = "00"] =
+      localMatch;
+    const isoValue = zonedWallTimeToUtcIso({
+      timezone: normalizedTimezone,
+      date: `${yearValue}-${monthValue}-${dayValue}`,
+      time: `${hourValue}:${minuteValue}:${secondValue}`,
+    });
+    return { errorMessage: null, value: new Date(isoValue) };
+  } catch {
+    return { errorMessage: "Reminder time is invalid for the account timezone.", value: null };
   }
-
-  const [, yearValue, monthValue, dayValue, hourValue, minuteValue, secondValue = "00"] =
-    localMatch;
-  const year = Number(yearValue);
-  const month = Number(monthValue);
-  const day = Number(dayValue);
-  const hour = Number(hourValue);
-  const minute = Number(minuteValue);
-  const second = Number(secondValue);
-
-  const localCandidateMs = Date.UTC(year, month - 1, day, hour, minute, second);
-  const localCandidate = new Date(localCandidateMs);
-  if (
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    hour > 23 ||
-    minute > 59 ||
-    second > 59 ||
-    localCandidate.getUTCFullYear() !== year ||
-    localCandidate.getUTCMonth() !== month - 1 ||
-    localCandidate.getUTCDate() !== day ||
-    localCandidate.getUTCHours() !== hour ||
-    localCandidate.getUTCMinutes() !== minute ||
-    localCandidate.getUTCSeconds() !== second
-  ) {
-    return { errorMessage: "Reminder time is required.", value: null };
-  }
-
-  return {
-    errorMessage: null,
-    value: new Date(localCandidateMs + offsetMinutes * 60_000),
-  };
 }
 
 function normalizeTaskReminderCreateInput(input: {
@@ -498,17 +493,14 @@ function normalizeTaskReminderCreateInput(input: {
   remindAt: unknown;
   channel?: unknown;
   status?: unknown;
-  timezoneOffsetMinutes?: unknown;
+  timezone?: unknown;
   now?: Date;
 }) {
   const taskId = input.taskId.trim();
   const channel = String(input.channel ?? "email").trim() || "email";
   const status = String(input.status ?? "pending").trim() || "pending";
   const rawRemindAt = String(input.remindAt ?? "").trim();
-  const reminderTimeResult = parseTaskReminderDateTime(
-    rawRemindAt,
-    input.timezoneOffsetMinutes,
-  );
+  const reminderTimeResult = parseTaskReminderDateTime(rawRemindAt, input.timezone);
   const remindAtDate = reminderTimeResult.value;
   const now = input.now ?? new Date();
 
@@ -704,7 +696,8 @@ export async function setTaskRecurrence(
     supabase?: SupabaseServerClient;
     updatedAtIso?: string;
     fallbackAnchorDate?: string;
-  },
+    defaultTimezone?: string;
+  }
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const taskId = input.taskId.trim();
@@ -713,6 +706,7 @@ export async function setTaskRecurrence(
     rule: input.recurrenceRule,
     anchorDate: input.recurrenceAnchorDate,
     timezone: input.recurrenceTimezone,
+    defaultTimezone: options?.defaultTimezone,
     fallbackAnchorDate: options?.fallbackAnchorDate ?? getTodayLocalIsoDate(),
   });
 
@@ -965,6 +959,7 @@ export async function getTasksWorkspaceData(
   const tasks = applyTaskListQuery(rawTasks, {
     dueFilter: filters.activeDueFilter,
     sortValue: filters.activeSort,
+    today: todayIsoDate,
   });
 
   const taskIds = tasks.map((task) => task.id);
@@ -1120,7 +1115,7 @@ export async function createTaskWithOptionalWorkedTime(
   options?: CreateTasksOptions,
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
-  const fallbackAnchorDate = input.task.due_date ?? getTodayLocalIsoDate();
+  const fallbackAnchorDate = input.task.due_date ?? options?.fallbackAnchorDate ?? getTodayLocalIsoDate();
   const recurrenceResult =
     input.recurrenceRule === undefined
       ? { errorMessage: null, schedule: undefined }
@@ -1128,6 +1123,7 @@ export async function createTaskWithOptionalWorkedTime(
           rule: input.recurrenceRule,
           anchorDate: input.recurrenceAnchorDate,
           timezone: input.recurrenceTimezone,
+          defaultTimezone: options?.recurrenceDefaultTimezone,
           fallbackAnchorDate,
         });
 
@@ -1221,7 +1217,7 @@ export async function createTaskEmailReminder(
     remindAt: unknown;
     channel?: unknown;
     status?: unknown;
-    timezoneOffsetMinutes?: unknown;
+    timezone?: string;
   },
   options?: { supabase?: SupabaseServerClient; now?: Date },
 ) {
@@ -1286,7 +1282,7 @@ export async function updateTaskEmailReminder(
     remindAt: unknown;
     channel?: unknown;
     status?: unknown;
-    timezoneOffsetMinutes?: unknown;
+    timezone?: string;
   },
   options?: { supabase?: SupabaseServerClient; now?: Date; updatedAtIso?: string },
 ) {
@@ -1297,7 +1293,7 @@ export async function updateTaskEmailReminder(
     remindAt: input.remindAt,
     channel: input.channel,
     status: input.status,
-    timezoneOffsetMinutes: input.timezoneOffsetMinutes,
+    timezone: input.timezone,
     now: options?.now,
   });
 
@@ -1444,7 +1440,8 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
           rule: input.recurrenceRule,
           anchorDate: input.recurrenceAnchorDate,
           timezone: input.recurrenceTimezone,
-          fallbackAnchorDate: dueDateResult.value ?? getTodayLocalIsoDate(),
+          defaultTimezone: input.accountTimezone,
+          fallbackAnchorDate: dueDateResult.value ?? input.fallbackAnchorDate ?? getTodayLocalIsoDate(),
         });
   const hasScheduleFields =
     input.scheduledStartAt !== undefined || input.scheduledEndAt !== undefined;
@@ -1454,10 +1451,7 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     ? normalizeTaskScheduleInput({
         scheduledStartAt: input.scheduledStartAt ?? "",
         scheduledEndAt: input.scheduledEndAt ?? "",
-        timezoneOffsetMinutes:
-          input.scheduleTimezoneOffsetMinutes === undefined
-            ? "0"
-            : input.scheduleTimezoneOffsetMinutes,
+        timezone: input.accountTimezone ?? "UTC",
       })
     : null;
 
@@ -1774,7 +1768,16 @@ export async function generateNextTaskForCompletedRecurrence(
 
 export async function updateTaskInline(
   input: ValidatedTaskInlineUpdateInput,
-  options?: { supabase?: SupabaseServerClient; updatedAtIso?: string },
+  options?: {
+    supabase?: SupabaseServerClient;
+    updatedAtIso?: string;
+    /**
+     * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
+     * Used as the recurrence anchor fallback instead of the runtime-local date
+     * so web writes agree with the Hono transport near account midnight.
+     */
+    fallbackAnchorDate?: string;
+  },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
@@ -1941,7 +1944,7 @@ export async function updateTaskInline(
       {
         supabase,
         updatedAtIso,
-        fallbackAnchorDate: input.dueDate ?? getTodayLocalIsoDate(),
+        fallbackAnchorDate: input.dueDate ?? options?.fallbackAnchorDate ?? getTodayLocalIsoDate(),
       },
     );
 

@@ -8,6 +8,7 @@ import type { DashboardData } from "../_lib/dashboard-data";
 
 interface DashboardHeroSectionProps {
   displayName: string;
+  timezone?: string;
   completionRate: number | null;
   todayCount: number;
   completedCount: number;
@@ -21,6 +22,7 @@ interface DashboardHeroSectionProps {
 
 export function DashboardHeroSection({
   displayName,
+  timezone,
   completionRate,
   todayCount,
   completedCount,
@@ -31,7 +33,7 @@ export function DashboardHeroSection({
   workStats,
   workStatsError,
 }: DashboardHeroSectionProps) {
-  const greeting = getGreeting();
+  const greeting = getGreeting(timezone);
   const ringPercent = completionRate ?? 0;
 
   return (

@@ -97,6 +97,13 @@ export default function ProtectedLayout() {
         }}
       />
       <Stack.Screen
+        name="settings/timezone"
+        options={{
+          headerShown: true,
+          title: 'Timezone Settings',
+        }}
+      />
+      <Stack.Screen
         name="updates"
         options={{
           headerShown: true,

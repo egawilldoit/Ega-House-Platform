@@ -12,11 +12,35 @@
 const DISPLAY_LOCALE = "en-US";
 
 /**
- * Timestamps are rendered in UTC, matching what the deployed app has always
- * shown (server rendering in UTC). Pinning it explicitly removes the previous
- * server-local/client-local divergence instead of leaving it to chance.
+ * Fallback timezone for absolute timestamps when no explicit timezone is
+ * supplied. UTC matches what the deployed app has always shown and keeps
+ * server render and client hydration identical without extra plumbing.
  */
 const DISPLAY_TIME_ZONE = "UTC";
+
+/**
+ * Optional override of the display timezone for absolute timestamps. Set once
+ * per client session from the persisted EGA House timezone (see
+ * `useDisplayTimezone`); server code passes the timezone explicitly instead of
+ * relying on module-level state, which is shared across requests.
+ */
+let displayTimezoneOverride: string | null = null;
+
+/**
+ * Set the default display timezone for absolute timestamps. Intended for the
+ * client session bootstrap only; explicit per-call timezones always win.
+ */
+export function setDisplayTimezone(timezone: string | null): void {
+  displayTimezoneOverride = timezone;
+}
+
+/**
+ * The effective default display timezone: the client-session override when set,
+ * otherwise UTC. Never browser-local implicit behavior.
+ */
+export function getDisplayTimezone(): string {
+  return displayTimezoneOverride ?? DISPLAY_TIME_ZONE;
+}
 
 export const DISPLAY_EMPTY = "—";
 
@@ -178,10 +202,13 @@ const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
  *
  * Date-only values (`YYYY-MM-DD`, e.g. task due dates) are interpreted as UTC
  * midnight and rendered from their UTC parts, so they can never shift a day.
+ * Full timestamps render their date part in the supplied (or default) display
+ * timezone; pass the owner's EGA timezone for account-consistent labels.
  */
 export function formatDisplayDate(
   value: string | null | undefined,
   style: DateDisplayStyle = "compact",
+  timezone?: string,
 ): string {
   if (!value) return DISPLAY_EMPTY;
 
@@ -189,15 +216,26 @@ export function formatDisplayDate(
   const date = new Date(iso);
   if (!Number.isFinite(date.getTime())) return DISPLAY_EMPTY;
 
+  // Date-only values must never shift: always render their UTC parts.
+  const timeZone = DATE_ONLY_PATTERN.test(value)
+    ? DISPLAY_TIME_ZONE
+    : (timezone ?? getDisplayTimezone());
+
   return new Intl.DateTimeFormat(DISPLAY_LOCALE, {
     ...DATE_STYLES[style],
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone,
   }).format(date);
 }
 
 export type DisplayTimeOptions = {
   /** "short" -> "3:52 PM"; "24h" -> "15:52". */
   clock?: "short" | "24h";
+  /**
+   * IANA timezone for absolute timestamps (e.g. the owner's persisted EGA
+   * House timezone). Defaults to the module display timezone (UTC unless a
+   * client-session override is set). Date-only values are never shifted.
+   */
+  timezone?: string;
 };
 
 export function formatDisplayTime(
@@ -212,7 +250,7 @@ export function formatDisplayTime(
     hour: options.clock === "24h" ? "2-digit" : "numeric",
     minute: "2-digit",
     hour12: options.clock !== "24h",
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone: options.timezone ?? getDisplayTimezone(),
   }).format(date);
 }
 
@@ -233,7 +271,7 @@ export function formatDisplayDateTime(
     hour: options.clock === "24h" ? "2-digit" : "numeric",
     minute: "2-digit",
     hour12: options.clock !== "24h",
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone: options.timezone ?? getDisplayTimezone(),
   }).format(date);
 }
 

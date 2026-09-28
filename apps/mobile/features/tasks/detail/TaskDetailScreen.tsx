@@ -13,7 +13,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { zonedWallTimeToUtcIso } from '@ega/domain/time-context';
+
 import { mobileTheme } from '@/components/mobile/theme';
+import { useAccountTimezone } from '@/lib/hooks/use-account-timezone';
 import { AppScreen } from '@/components/mobile/ui/AppScreen';
 import { Button } from '@/components/mobile/ui/Button';
 import { FeedbackBanner } from '@/components/mobile/ui/FeedbackBanner';
@@ -46,6 +49,7 @@ import { TaskScheduleSection } from './TaskScheduleSection';
 import { TaskStateSection } from './TaskStateSection';
 
 export function TaskDetailScreen() {
+  const { timezone: accountTimezone } = useAccountTimezone();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -162,7 +166,7 @@ export function TaskDetailScreen() {
           dueDate: draft.dueDate,
           estimateMinutes: estimateResult.value,
           recurrenceRule: draft.recurrenceRule,
-          recurrenceTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          recurrenceTimezone: accountTimezone,
           description: draft.description.trim() || null,
           blockedReason: draft.blockedReason.trim() || null,
         },
@@ -174,7 +178,7 @@ export function TaskDetailScreen() {
       const message = error instanceof Error ? error.message : 'Unable to update task right now.';
       setSubmitError(message);
     }
-  }, [draft, taskId, updateTaskMutation]);
+  }, [accountTimezone, draft, taskId, updateTaskMutation]);
 
   const openReminderPicker = useCallback((mode: ReminderPickerMode) => {
     setReminderPickerMode(mode);
@@ -234,7 +238,22 @@ export function TaskDetailScreen() {
       return;
     }
 
-    if (reminderDate.getTime() <= Date.now()) {
+    let remindAt: string;
+    try {
+      remindAt = zonedWallTimeToUtcIso({
+        timezone: accountTimezone,
+        date: `${reminderDate.getFullYear()}-${String(reminderDate.getMonth() + 1).padStart(2, '0')}-${String(reminderDate.getDate()).padStart(2, '0')}`,
+        time: `${String(reminderDate.getHours()).padStart(2, '0')}:${String(reminderDate.getMinutes()).padStart(2, '0')}:00`,
+      });
+    } catch (error) {
+      setReminderError(
+        error instanceof Error ? error.message : 'Reminder time is invalid for the account timezone.',
+      );
+      setReminderSuccess(null);
+      return;
+    }
+
+    if (Date.parse(remindAt) <= Date.now()) {
       setReminderError('Reminder time must be in the future.');
       setReminderSuccess(null);
       return;
@@ -252,7 +271,7 @@ export function TaskDetailScreen() {
     try {
       await createReminderMutation.mutateAsync({
         taskId,
-        remindAt: reminderDate.toISOString(),
+        remindAt,
         deliveryMode: reminderDeliveryMode,
       });
       setReminderDate(createDefaultReminderDate());
@@ -262,7 +281,7 @@ export function TaskDetailScreen() {
       const message = error instanceof Error ? error.message : 'Unable to schedule reminder right now.';
       setReminderError(message);
     }
-  }, [createReminderMutation, reminderDate, reminderDeliveryMode, permissionStatus, taskId]);
+  }, [accountTimezone, createReminderMutation, reminderDate, reminderDeliveryMode, permissionStatus, taskId]);
 
   const onCancelReminder = useCallback(
     async (reminderId: string) => {

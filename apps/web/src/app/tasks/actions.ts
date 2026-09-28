@@ -35,10 +35,34 @@ import {
   pinTaskInFocusQueue,
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   redirectWithWorkspaceFeedback,
   revalidateWorkspaceFor,
 } from "@/lib/workspace/workspace-navigation";
+
+/**
+ * Resolve the owner's effective IANA timezone and canonical local date for
+ * wall-time interpretation and recurrence anchor fallbacks.
+ * Never fabricates a timezone: data-access failure returns an explicit error
+ * so the caller can surface the degraded state instead of guessing.
+ */
+async function resolveAccountTimezone(): Promise<{
+  timezone: string | null;
+  localDate: string | null;
+  error: string | null;
+}> {
+  try {
+    const context = await getWebTimeContext();
+    return { timezone: context.timezone, localDate: context.localDate, error: null };
+  } catch {
+    return {
+      timezone: null,
+      localDate: null,
+      error: "Unable to load the account timezone right now.",
+    };
+  }
+}
 
 export type CreateTaskFormState = {
   error: string | null;
@@ -226,23 +250,20 @@ export async function createTaskAction(
   const rawCalendarReminderMinutes = String(
     formData.get("calendarReminderMinutes") ?? "10",
   ).trim();
-  const scheduleTimezoneOffsetMinutes = formData.get("scheduleTimezoneOffsetMinutes");
-  const workedTimeTimezoneOffsetMinutes = formData.get(
-    "workedTimeTimezoneOffsetMinutes",
-  );
   const returnTo = getTasksReturnPath(formData.get("returnTo"));
+  const accountTimezoneResult = await resolveAccountTimezone();
   const dueDateResult = normalizeTaskDueDateInput(rawDueDate);
   const estimateResult = normalizeTaskEstimateInput(rawEstimateMinutes);
   const recurrenceResult = normalizeTaskRecurrenceRuleInput(rawRecurrenceRule);
   const scheduleResult = normalizeTaskScheduleInput({
     scheduledStartAt,
     scheduledEndAt,
-    timezoneOffsetMinutes: scheduleTimezoneOffsetMinutes,
+    timezone: accountTimezoneResult.timezone ?? undefined,
   });
   const workedTimeResult = normalizeManualWorkedTimeInput({
     startedAt: workedTimeStartedAt,
     endedAt: workedTimeEndedAt,
-    timeZoneOffsetMinutes: workedTimeTimezoneOffsetMinutes,
+    timezone: accountTimezoneResult.timezone ?? undefined,
   });
 
   const values = {
@@ -265,6 +286,13 @@ export async function createTaskAction(
     workedTimeEndedAt,
     returnTo,
   };
+
+  if (accountTimezoneResult.error || !accountTimezoneResult.timezone) {
+    return createErrorState(
+      accountTimezoneResult.error ?? "Unable to load the account timezone right now.",
+      values,
+    );
+  }
 
   if (!title) {
     return createErrorState("Task title is required.", values);
@@ -333,6 +361,9 @@ export async function createTaskAction(
     workedTime: workedTimeResult.payload,
     recurrenceRule: recurrenceResult.rule,
     recurrenceTimezone,
+  }, {
+    recurrenceDefaultTimezone: accountTimezoneResult.timezone,
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
   });
 
   if (createResult.errorMessage) {
@@ -529,8 +560,13 @@ export async function createTasksBulkAction(
   };
 }
 
-function parseTaskInlineUpdateFormData(formData: FormData) {
+function parseTaskInlineUpdateFormData(
+  formData: FormData,
+  options?: { accountTimezone?: string; fallbackAnchorDate?: string },
+) {
   return validateTaskInlineUpdateInput({
+    accountTimezone: options?.accountTimezone,
+    fallbackAnchorDate: options?.fallbackAnchorDate,
     taskId: String(formData.get("taskId") ?? ""),
     title: formData.has("title") ? formData.get("title") : undefined,
     projectId: formData.has("projectId") ? formData.get("projectId") : undefined,
@@ -553,9 +589,6 @@ function parseTaskInlineUpdateFormData(formData: FormData) {
     scheduledEndAt: formData.has("scheduledEndAt")
       ? formData.get("scheduledEndAt")
       : undefined,
-    scheduleTimezoneOffsetMinutes: formData.has("scheduleTimezoneOffsetMinutes")
-      ? formData.get("scheduleTimezoneOffsetMinutes")
-      : undefined,
     calendarSyncEnabled: formData.has("calendarSyncEnabled")
       ? formData.get("calendarSyncEnabled")
       : undefined,
@@ -567,7 +600,18 @@ function parseTaskInlineUpdateFormData(formData: FormData) {
 
 export async function updateTaskInlineAction(formData: FormData) {
   const returnPath = getTasksReturnPath(formData.get("returnTo"));
-  const validationResult = parseTaskInlineUpdateFormData(formData);
+  const accountTimezoneResult = await resolveAccountTimezone();
+  if (accountTimezoneResult.error || !accountTimezoneResult.timezone) {
+    redirectWithTasksError(
+      returnPath,
+      accountTimezoneResult.error ?? "Unable to load the account timezone right now.",
+      String(formData.get("taskId") ?? "").trim() || undefined,
+    );
+  }
+  const validationResult = parseTaskInlineUpdateFormData(formData, {
+    accountTimezone: accountTimezoneResult.timezone,
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (validationResult.errorMessage || !validationResult.data) {
     redirectWithTasksError(
@@ -578,7 +622,9 @@ export async function updateTaskInlineAction(formData: FormData) {
   }
 
   const validatedInput = validationResult.data;
-  const { errorMessage } = await updateTaskInline(validatedInput);
+  const { errorMessage } = await updateTaskInline(validatedInput, {
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (errorMessage) {
     redirectWithTasksError(returnPath, errorMessage, validatedInput.taskId);
@@ -608,7 +654,19 @@ export async function updateTaskEditorAction(
   formData: FormData,
 ): Promise<UpdateTaskEditorFormState> {
   const returnPath = getTasksReturnPath(formData.get("returnTo"));
-  const validationResult = parseTaskInlineUpdateFormData(formData);
+  const accountTimezoneResult = await resolveAccountTimezone();
+  if (accountTimezoneResult.error || !accountTimezoneResult.timezone) {
+    return {
+      errorMessage:
+        accountTimezoneResult.error ?? "Unable to load the account timezone right now.",
+      successMessage: null,
+      taskId: String(formData.get("taskId") ?? "").trim() || null,
+    };
+  }
+  const validationResult = parseTaskInlineUpdateFormData(formData, {
+    accountTimezone: accountTimezoneResult.timezone,
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (validationResult.errorMessage || !validationResult.data) {
     return {
@@ -619,7 +677,9 @@ export async function updateTaskEditorAction(
   }
 
   const validatedInput = validationResult.data;
-  const { errorMessage } = await updateTaskInline(validatedInput);
+  const { errorMessage } = await updateTaskInline(validatedInput, {
+    fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+  });
 
   if (errorMessage) {
     return {
@@ -642,12 +702,21 @@ export async function createTaskReminderAction(formData: FormData) {
   const returnPath = getTaskSurfaceReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
 
+  const accountTimezoneResult = await resolveAccountTimezone();
+  if (accountTimezoneResult.error || !accountTimezoneResult.timezone) {
+    redirectWithTaskSurfaceError(
+      returnPath,
+      accountTimezoneResult.error ?? "Unable to load the account timezone right now.",
+      taskId || undefined,
+    );
+  }
+
   const { errorMessage } = await createTaskEmailReminder({
     taskId,
     remindAt: formData.get("remindAt"),
     channel: formData.get("channel") ?? "email",
     status: formData.get("status") ?? "pending",
-    timezoneOffsetMinutes: formData.get("reminderTimezoneOffsetMinutes"),
+    timezone: accountTimezoneResult.timezone,
   });
 
   if (errorMessage) {
@@ -667,13 +736,22 @@ export async function updateTaskReminderAction(formData: FormData) {
   const taskId = String(formData.get("taskId") ?? "").trim();
   const reminderId = String(formData.get("reminderId") ?? "").trim();
 
+  const accountTimezoneResult = await resolveAccountTimezone();
+  if (accountTimezoneResult.error || !accountTimezoneResult.timezone) {
+    redirectWithTaskSurfaceError(
+      returnPath,
+      accountTimezoneResult.error ?? "Unable to load the account timezone right now.",
+      taskId || undefined,
+    );
+  }
+
   const { errorMessage } = await updateTaskEmailReminder({
     taskId,
     reminderId,
     remindAt: formData.get("remindAt"),
     channel: formData.get("channel") ?? "email",
     status: formData.get("status") ?? "pending",
-    timezoneOffsetMinutes: formData.get("reminderTimezoneOffsetMinutes"),
+    timezone: accountTimezoneResult.timezone,
   });
 
   if (errorMessage) {
