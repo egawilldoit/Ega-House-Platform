@@ -186,8 +186,8 @@ describe("EGA-649 single global quick-action ownership", () => {
     await renderShell();
 
     const capture = container.querySelector('[data-testid="inbox-quick-capture-trigger"]');
-    expect(capture?.getAttribute("aria-label")).toBe("Capture to Inbox");
-    expect(capture?.getAttribute("title")).toBe("Capture to Inbox");
+    expect(capture?.getAttribute("aria-label")).toBe("Add to Backlog");
+    expect(capture?.getAttribute("title")).toBe("Add to Backlog");
 
     const createTask = container.querySelector('[data-testid="sidebar-create-task"]');
     expect(createTask?.getAttribute("aria-label")).toBe("Create task");

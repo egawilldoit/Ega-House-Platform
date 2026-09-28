@@ -100,7 +100,7 @@ test("every authenticated data route has a loading boundary", () => {
     "timer",
     "review",
     "work-analytics",
-    "ideas",
+    "backlog",
     "notifications",
     "startup",
     "shutdown",
