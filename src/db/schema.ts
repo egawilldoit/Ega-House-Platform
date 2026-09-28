@@ -533,6 +533,30 @@ export const taskRecurrences = pgTable(
     ),
   ],
 );
+export const taskStatusEvents = pgTable(
+  "task_status_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+    fromStatus: varchar("from_status", { length: 64 }),
+    toStatus: varchar("to_status", { length: 64 }).notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    operationMetadata: jsonb("operation_metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("task_status_events_owner_user_id_occurred_at_idx").on(table.ownerUserId, table.occurredAt),
+    index("task_status_events_owner_user_id_task_id_occurred_at_idx").on(
+      table.ownerUserId,
+      table.taskId,
+      table.occurredAt,
+    ),
+  ],
+);
+
 export const taskSavedViews = pgTable(
   "task_saved_views",
   {

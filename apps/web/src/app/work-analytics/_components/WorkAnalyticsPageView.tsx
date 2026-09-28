@@ -13,6 +13,7 @@ import {
   formatDisplayPercent,
 } from "@/lib/presentation-format";
 import { InteractiveAnalytics } from "../interactive-analytics";
+import { WorkActivityHeatmap } from "./WorkActivityHeatmap";
 import type { WorkAnalyticsPageModel } from "../_lib/work-analytics-page-model";
 
 function signedPercent(value: number | null) {
@@ -369,6 +370,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
           </div>
         </DashboardSection>
       </InteractiveAnalytics>
+
+      <WorkActivityHeatmap
+        workActivity={model.workActivity}
+        error={model.workActivityError}
+      />
     </div>
   );
 }

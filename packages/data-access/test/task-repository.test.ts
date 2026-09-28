@@ -155,3 +155,34 @@ test("reminder create and cancel are owner scoped", async () => {
   assert.ok(reminderCalls[0]?.steps.some((step) => step.method === "insert" && (step.args[0] as Record<string, unknown>).owner_user_id === "user-123"));
   assert.ok(reminderCalls.some((call) => call.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123")));
 });
+
+// EGA-662 completed_at parity: the shared repository seam (Hono/mobile/MCP)
+// must never write completed_at itself. Migration 0063 owns the invariant
+// with a database trigger, so every transport — web direct writes, shared
+// application/data-access writes, Hono/mobile writes, MCP writes — converges
+// on the same canonical completed_at behavior. If this assertion ever fails,
+// a transport has started diverging from the trigger-owned invariant.
+test("status mutations never write completed_at directly (trigger-owned invariant)", async () => {
+  const fake = new FakeSupabase();
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+
+  const repo = repository(fake);
+  assert.equal((await repo.setStatus(ACTOR, { taskId: "task-1", status: "done", blockedReason: null })).ok, true);
+  assert.equal((await repo.updateTask(ACTOR, { taskId: "task-1", title: "Renamed" })).ok, true);
+
+  const updateCalls = fake.calls.filter((call) => call.table === "tasks" && call.steps.some((step) => step.method === "update"));
+  assert.equal(updateCalls.length, 2);
+  for (const call of updateCalls) {
+    const updateStep = call.steps.find((step) => step.method === "update");
+    const payload = updateStep?.args[0] as Record<string, unknown>;
+    assert.ok(
+      !("completed_at" in payload),
+      `repository must not write completed_at (trigger owns it); got payload ${JSON.stringify(payload)}`,
+    );
+  }
+});
