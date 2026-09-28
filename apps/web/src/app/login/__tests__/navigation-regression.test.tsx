@@ -177,6 +177,7 @@ test("canonical navigation: shell nav from workspace subdomain avoids double-pre
     ["timer.egawilldoit.online", "/timer", "/timer"],
     ["goals.egawilldoit.online", "/", "/goals"],
     ["goals.egawilldoit.online", "/ideas", "/goals/ideas"],
+    ["tasks.egawilldoit.online", "/backlog", "/tasks/backlog"],
     ["review.egawilldoit.online", "/", "/review"],
     ["review.egawilldoit.online", "/review", "/review"],
     ["review.egawilldoit.online", "/archives", "/review/archives"],

@@ -7,27 +7,27 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import type { IdeaNote, IdeaNoteProjectOption } from "@/lib/services/idea-note-service";
 
 import {
-  convertIdeaNoteAction,
-  type ConvertIdeaNoteFormState,
+  convertBacklogItemAction,
+  type ConvertBacklogItemFormState,
 } from "./actions";
 
-type ConvertIdeaNoteFormProps = {
+type BacklogConvertFormProps = {
   note: IdeaNote;
   projectOptions: IdeaNoteProjectOption[];
 };
 
-const initialState: ConvertIdeaNoteFormState = {
+const initialState: ConvertBacklogItemFormState = {
   error: null,
 };
 
-export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFormProps) {
-  const [state, formAction] = useActionState(convertIdeaNoteAction, initialState);
+export function BacklogConvertForm({ note, projectOptions }: BacklogConvertFormProps) {
+  const [state, formAction] = useActionState(convertBacklogItemAction, initialState);
 
   return (
     <details className="rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[color:var(--ega-surface)]">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[color:var(--ega-text)]">
         <ArrowRight className="h-4 w-4 text-[color:var(--ega-text-secondary)]" aria-hidden="true" />
-        Convert to task
+        Turn into Task
       </summary>
       <form
         action={formAction}
@@ -35,14 +35,14 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
       >
         <input type="hidden" name="id" value={note.id} />
         <p className="text-[length:var(--text-meta-lg)] leading-[var(--leading-snug)] text-[color:var(--ega-text-secondary)]">
-          Choose a project to create a task from this idea. The Inbox item will remain linked as converted.
+          Choose a project to create a task from this backlog item. The item will remain linked as converted.
         </p>
         <div className="flex flex-col gap-1.5">
-          <label htmlFor={`idea-${note.id}-conversion-project`} className="glass-label">
+          <label htmlFor={`backlog-${note.id}-conversion-project`} className="form-label">
             Project
           </label>
           <select
-            id={`idea-${note.id}-conversion-project`}
+            id={`backlog-${note.id}-conversion-project`}
             name="projectId"
             required
             defaultValue={note.project_id ?? ""}
@@ -59,7 +59,7 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
 
         {projectOptions.length === 0 ? (
           <p className="feedback-block feedback-block-warn" role="status">
-            Create a project before converting an idea into a task.
+            Create a project before turning a backlog item into a task.
           </p>
         ) : null}
 
@@ -77,7 +77,7 @@ export function ConvertIdeaNoteForm({ note, projectOptions }: ConvertIdeaNoteFor
           pendingLabel="Converting..."
         >
           <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          Create task
+          Turn into Task
         </PendingSubmitButton>
       </form>
     </details>

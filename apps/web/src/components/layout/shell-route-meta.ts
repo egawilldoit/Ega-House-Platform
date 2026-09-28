@@ -22,7 +22,12 @@ export const COMMAND_ROUTES = [
 ] as const satisfies readonly ShellRouteMeta[];
 
 export const SYSTEM_ROUTES = [
-  { href: "/ideas", label: "Ideas", group: "system", description: "Capture inbox" },
+  {
+    href: "/backlog",
+    label: "Backlog",
+    group: "system",
+    description: "Capture ideas and future work",
+  },
   { href: "/notifications", label: "Notifications", group: "system", description: "Reminders" },
   { href: "/startup", label: "Startup", group: "system", description: "Start the day" },
   { href: "/shutdown", label: "Shutdown", group: "system", description: "Close the day" },
