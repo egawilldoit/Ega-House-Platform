@@ -6,23 +6,23 @@ import { Archive, RotateCcw } from "lucide-react";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 
 import {
-  archiveIdeaNoteAction,
-  restoreIdeaNoteAction,
-  type IdeaNoteArchiveFormState,
+  archiveBacklogItemAction,
+  restoreBacklogItemAction,
+  type BacklogArchiveFormState,
 } from "./actions";
 
-type IdeaNoteArchiveControlsProps = {
+type BacklogArchiveControlsProps = {
   noteId: string;
   mode: "archive" | "restore";
 };
 
-const initialState: IdeaNoteArchiveFormState = {
+const initialState: BacklogArchiveFormState = {
   error: null,
   success: null,
 };
 
-export function IdeaNoteArchiveControls({ noteId, mode }: IdeaNoteArchiveControlsProps) {
-  const action = mode === "archive" ? archiveIdeaNoteAction : restoreIdeaNoteAction;
+export function BacklogArchiveControls({ noteId, mode }: BacklogArchiveControlsProps) {
+  const action = mode === "archive" ? archiveBacklogItemAction : restoreBacklogItemAction;
   const [state, formAction] = useActionState(action, initialState);
   const Icon = mode === "archive" ? Archive : RotateCcw;
 

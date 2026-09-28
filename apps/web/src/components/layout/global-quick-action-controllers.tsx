@@ -22,7 +22,7 @@ export function GlobalQuickActionControllers({
 }: GlobalQuickActionControllersProps) {
   return (
     <>
-      <InboxCaptureSheet />
+      <InboxCaptureSheet projects={projects} />
       <QuickTaskSheet projects={projects} goals={goals} showTrigger={false} />
     </>
   );
