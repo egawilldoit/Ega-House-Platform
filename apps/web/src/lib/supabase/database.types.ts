@@ -370,6 +370,47 @@ export type Database = {
           },
         ]
       }
+      task_status_events: {
+        Row: {
+          id: string
+          owner_user_id: string
+          task_id: string | null
+          from_status: string | null
+          to_status: string
+          occurred_at: string
+          operation_metadata: Json | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string | null
+          from_status?: string | null
+          to_status: string
+          occurred_at: string
+          operation_metadata?: Json | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          task_id?: string | null
+          from_status?: string | null
+          to_status?: string
+          occurred_at?: string
+          operation_metadata?: Json | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_status_events_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_saved_views: {
         Row: {
           created_at: string

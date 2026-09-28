@@ -8,6 +8,7 @@ import {
 } from "@/lib/services/work-analytics-filters";
 import { buildWorkAnalyticsReport, type WorkAnalyticsTaskCounts } from "@/lib/services/work-analytics-report-builder";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
+import { buildWorkActivityReadModel, type WorkActivityReadModel } from "@/lib/services/work-activity-read-model";
 
 const NO_TASK_COUNTS: WorkAnalyticsTaskCounts = {
   completedCount: 0,
@@ -17,7 +18,7 @@ const NO_TASK_COUNTS: WorkAnalyticsTaskCounts = {
 
 export async function getWorkAnalyticsPageModel(searchParams: Record<string, string | undefined>) {
   const user = await getCurrentUser();
-  if (!user) return { user: null, error: "Please log in to view work analytics.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport> };
+  if (!user) return { user: null, error: "Please log in to view work analytics.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport>, workActivity: null as WorkActivityReadModel | null, workActivityError: null as string | null };
   const filters = parseAnalyticsFilters(
     new URLSearchParams(Object.entries(searchParams).filter(([, v]) => v !== undefined) as [string, string][]),
   );
@@ -40,14 +41,15 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
   const evidenceWindow = computeEvidenceWindowForRange(filters.range, now, analyticsTimezone);
   const last30Window = computeLast30DaysWindow(now, analyticsTimezone);
 
-  const [sessionsResult, selectedTaskCountsResult, last30TaskCountsResult] = await Promise.all([
+  const [sessionsResult, selectedTaskCountsResult, last30TaskCountsResult, workActivityResult] = await Promise.all([
     getWorkAnalyticsSessionsForWindow({ ownerUserId: user.id, window: evidenceWindow }),
     getWorkAnalyticsTaskCounts({ ownerUserId: user.id, window: selectedWindow }),
     getWorkAnalyticsTaskCounts({ ownerUserId: user.id, window: last30Window }),
+    buildWorkActivityReadModel({ ownerUserId: user.id, now }),
   ]);
 
   if (sessionsResult.errorMessage || !sessionsResult.data)
-    return { user, error: "Failed to load work analytics data.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport> };
+    return { user, error: "Failed to load work analytics data.", report: null as unknown as ReturnType<typeof buildWorkAnalyticsReport>, workActivity: null as WorkActivityReadModel | null, workActivityError: null as string | null };
 
   const sessions = sessionsResult.data;
   const report = buildWorkAnalyticsReport(
@@ -60,12 +62,19 @@ export async function getWorkAnalyticsPageModel(searchParams: Record<string, str
     now,
     analyticsTimezone,
   );
+
+  // The Work Activity calendar is a distinct section: a calendar read failure
+  // must not take down the dominant analytics chart. Surface it as an
+  // unavailable state instead of a fake healthy/empty one.
+  const workActivityError = workActivityResult.errorMessage;
   return {
     user,
     error: null as string | null,
     report,
     filters,
     timezone: analyticsTimezone ?? null,
+    workActivity: workActivityResult.data,
+    workActivityError,
   };
 }
 
