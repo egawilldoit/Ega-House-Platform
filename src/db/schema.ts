@@ -542,7 +542,6 @@ export const taskStatusEvents = pgTable(
     fromStatus: varchar("from_status", { length: 64 }),
     toStatus: varchar("to_status", { length: 64 }).notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-    source: varchar("source", { length: 64 }),
     operationMetadata: jsonb("operation_metadata"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
