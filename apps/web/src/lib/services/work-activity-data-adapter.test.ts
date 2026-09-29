@@ -281,6 +281,48 @@ test("getWorkActivityDayDetails clips midnight-spanning and open sessions to the
   assert.equal(open?.duration_seconds, 7200);
 });
 
+test("getWorkActivityDayDetails excludes a stale multi-day open session from historical days", async () => {
+  const dayWindow = {
+    startIso: "2026-09-20T00:00:00.000Z",
+    endIso: "2026-09-21T00:00:00.000Z",
+  };
+  const { client } = createSupabaseMock([
+    {
+      data: [
+        {
+          task_id: "stale",
+          started_at: "2026-09-18T10:00:00.000Z",
+          ended_at: null,
+          duration_seconds: null,
+          tasks: { id: "stale", title: "Stale open", project_id: null, goal_id: null, estimate_minutes: null, projects: null, goals: null },
+        },
+        {
+          task_id: "closed",
+          started_at: "2026-09-20T08:00:00.000Z",
+          ended_at: "2026-09-20T09:00:00.000Z",
+          duration_seconds: 3600,
+          tasks: { id: "closed", title: "Closed", project_id: null, goal_id: null, estimate_minutes: null, projects: null, goals: null },
+        },
+      ],
+      error: null,
+    },
+    { data: [], error: null },
+  ]);
+
+  const result = await getWorkActivityDayDetails({
+    ownerUserId: "user-1",
+    dayWindow,
+    now: new Date("2026-09-27T12:00:00.000Z"),
+    supabase: client,
+  });
+
+  assert.equal(result.errorMessage, null);
+  // The historical day must not be painted by an open session that started
+  // days earlier; a closed session on that day is still reported.
+  assert.deepEqual(result.data?.sessions.map((s) => s.task_id), ["closed"]);
+  assert.equal(result.data?.sessions[0]?.duration_seconds, 3600);
+});
+
 test("getWorkActivityDayDetails surfaces session query errors", async () => {
   const { client } = createSupabaseMock([{ data: null, error: { message: "boom" } }]);
   const result = await getWorkActivityDayDetails({

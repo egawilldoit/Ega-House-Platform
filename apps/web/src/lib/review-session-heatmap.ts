@@ -100,6 +100,7 @@ export function aggregateDailyTrackedSecondsForWindow(
   timezone: string,
   nowIso = new Date().toISOString(),
 ): Map<string, number> {
+  if (dates.length === 0) return new Map();
   const startWindow = getLocalDayWindow(timezone, dates[0] ?? "");
   const endWindow = getLocalDayWindow(timezone, dates[dates.length - 1] ?? "");
   const evidence = aggregateSessionEvidenceByLocalDay(

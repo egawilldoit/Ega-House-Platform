@@ -242,12 +242,26 @@ export async function getWorkActivityDayDetails(args: {
       .filter((entry): entry is WorkActivityCompletedTaskRow => entry !== null);
   }
 
+  const windowStartMs = Date.parse(args.dayWindow.startIso);
+  const windowEndMs = Date.parse(args.dayWindow.endIso);
+  const nowMs = Date.parse(nowIso);
+  const isCurrentLocalDay =
+    Number.isFinite(windowStartMs) && Number.isFinite(windowEndMs) && Number.isFinite(nowMs)
+      ? nowMs >= windowStartMs && nowMs < windowEndMs
+      : true;
+
   return {
     data: {
-      sessions: ((sessions ?? []) as WorkActivityDaySessionRow[]).map((session) => ({
-        ...session,
-        duration_seconds: clipSessionDurationSeconds(session, args.dayWindow, nowIso),
-      })),
+      // An open session is provisional evidence for the CURRENT local day only.
+      // A stale multi-day open session must not paint historical days in the
+      // drilldown, mirroring aggregateSessionEvidenceByLocalDay so the drawer
+      // can never disagree with the calendar cell it drills into.
+      sessions: ((sessions ?? []) as WorkActivityDaySessionRow[])
+        .filter((session) => session.ended_at != null || isCurrentLocalDay)
+        .map((session) => ({
+          ...session,
+          duration_seconds: clipSessionDurationSeconds(session, args.dayWindow, nowIso),
+        })),
       completedTasks,
     },
     errorMessage: null,

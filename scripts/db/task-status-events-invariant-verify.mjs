@@ -222,7 +222,20 @@ async function runBackfillProof(sql) {
 
   const eventsC = await sql`SELECT count(*)::int AS count FROM task_status_events WHERE task_id = ${TASK_C}::uuid`;
   await expect(eventsC[0]?.count === 0, "BACKFILL", `Task C (done without completed_at) must get no event, got ${eventsC[0]?.count}`);
-  log("BACKFILL", "Trustworthy completed_at reused; untrustworthy rows get no event; current state normalized.");
+
+  // An unrelated edit of a done Task whose completion evidence was already
+  // lost must not fabricate completed_at (and must record no event). This is
+  // the pre-migration MCP/mobile state: status=done, completed_at NULL.
+  await sql`UPDATE tasks SET title = 'Renamed without timestamp', updated_at = now() WHERE id = ${TASK_C}::uuid`;
+  const taskCAfterEdit = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_C}::uuid`;
+  await expect(
+    taskCAfterEdit[0]?.completed_at === null,
+    "BACKFILL",
+    "unrelated edit must not invent completed_at for a done Task with no trustworthy timestamp",
+  );
+  const eventsCAfterEdit = await sql`SELECT count(*)::int AS count FROM task_status_events WHERE task_id = ${TASK_C}::uuid`;
+  await expect(eventsCAfterEdit[0]?.count === 0, "BACKFILL", `unrelated edit must not create an event for Task C, got ${eventsCAfterEdit[0]?.count}`);
+  log("BACKFILL", "Trustworthy completed_at reused; untrustworthy rows get no event; current state normalized; unrelated edits never fabricate completion evidence.");
 }
 
 async function runTransitionProof(sql) {

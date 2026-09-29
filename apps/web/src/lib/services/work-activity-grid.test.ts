@@ -84,8 +84,9 @@ test("grid: partial first week aligns to the correct weekday", () => {
 });
 
 test("grid: month labels appear where the month changes", () => {
-  // 2026-09-27 (Sun) through 2026-10-04 (Sun): Oct 1 falls in week 0, so the
-  // Oct label appears at week 0 (the column where the month starts).
+  // 2026-09-27 (Sun) through 2026-10-04 (Sun): Oct 1 falls in the same week
+  // column as the leading Sep days, so the Oct label shifts to the next free
+  // column instead of colliding and being dropped by the renderer.
   const dates: string[] = [];
   const start = Date.UTC(2026, 8, 27);
   for (let i = 0; i < 8; i += 1) {
@@ -96,8 +97,29 @@ test("grid: month labels appear where the month changes", () => {
   const labels = grid.monthLabels.map((l) => ({ week: l.weekIndex, label: l.label }));
   assert.deepEqual(labels, [
     { week: 0, label: "Sep" },
-    { week: 0, label: "Oct" },
+    { week: 1, label: "Oct" },
   ]);
+});
+
+test("grid: month labels never share a week column in the canonical rolling year", () => {
+  // Regression: the default rolling year (2025-09-28 → 2026-09-27) opens
+  // mid-week, so the leading partial month and the next month start in the
+  // same column. Every month must still get its own labelled column; the
+  // renderer keeps one label per column.
+  const dates: string[] = [];
+  const start = Date.UTC(2025, 8, 28);
+  for (let i = 0; i < 365; i += 1) {
+    const d = new Date(start + i * 86400000);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  const grid = buildWorkActivityGrid(makeCalendar(dates));
+  const weekIndexes = grid.monthLabels.map((l) => l.weekIndex);
+  assert.equal(new Set(weekIndexes).size, weekIndexes.length, "month labels must occupy distinct columns");
+  // 13 month-starts: Sep, Oct, Nov, Dec, Jan 2026 … Sep 2026.
+  assert.equal(grid.monthLabels.length, 13);
+  assert.equal(grid.monthLabels[0]?.label, "Sep");
+  assert.equal(grid.monthLabels[1]?.label, "Oct");
+  assert.equal(grid.monthLabels[grid.monthLabels.length - 1]?.label, "Sep 2026");
 });
 
 test("grid: month label at year boundary includes the year", () => {

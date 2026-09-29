@@ -157,12 +157,12 @@ test("reminder create and cancel are owner scoped", async () => {
 });
 
 // EGA-662 completed_at parity: the shared repository seam (Hono/mobile/MCP)
-// must never write completed_at itself. Migration 0063 owns the invariant
-// with a database trigger, so every transport — web direct writes, shared
-// application/data-access writes, Hono/mobile writes, MCP writes — converges
-// on the same canonical completed_at behavior. If this assertion ever fails,
-// a transport has started diverging from the trigger-owned invariant.
-test("status mutations never write completed_at directly (trigger-owned invariant)", async () => {
+// must never write completed_at itself — migration 0063 owns the canonical
+// invariant with a database trigger. This test proves only the repository half
+// (no completed_at in the write payload); the full trigger invariant is proven
+// against a disposable database by
+// scripts/db/task-status-events-invariant-verify.mjs (wired into CI).
+test("repository status mutations never set completed_at in the update payload", async () => {
   const fake = new FakeSupabase();
   fake.push("tasks", { data: taskRow(), error: null });
   fake.push("task_reminders", { data: [], error: null });
