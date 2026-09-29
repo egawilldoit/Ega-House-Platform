@@ -9,6 +9,10 @@
  *   BACKFILL   - pre-existing Tasks with a trustworthy completed_at get exactly
  *                one 'done' backfill event; Tasks without one get none; no
  *                timestamp is invented from updated_at.
+ *   INSERT     - inserting a Task whose status is already done succeeds (the
+ *                ledger is written after the row exists) and records exactly
+ *                one event; non-done statuses never carry completed_at; a
+ *                done-spelling rename is not a new completion.
  *   TRANSITION - todo -> done stamps completed_at and records one event.
  *   REPEAT     - writing done again creates no event and does not move
  *                completed_at.
@@ -163,6 +167,9 @@ const TASK_A = "aaaaaaaa-0000-4000-8000-00000000000a";
 const TASK_B = "bbbbbbbb-0000-4000-8000-00000000000b";
 const TASK_C = "cccccccc-0000-4000-8000-00000000000c";
 const TASK_D = "dddddddd-0000-4000-8000-00000000000d";
+const TASK_E = "eeeeeeee-0000-4000-8000-00000000000e";
+const TASK_F = "ffffffff-0000-4000-8000-00000000000f";
+const TASK_G = "99999999-0000-4000-8000-000000000009";
 
 async function seedProject(sql) {
   await sql`
@@ -307,6 +314,60 @@ async function runTransitionProof(sql) {
   log("RE-COMPLETE", "Re-completion after reopen records a second event; historical day keeps its evidence.");
 }
 
+async function runInsertProof(sql) {
+  // INSERT directly into a done status must succeed. A BEFORE trigger cannot
+  // reference the not-yet-inserted tasks row (the ledger's FK parent), so the
+  // event is written after the row exists.
+  await sql`
+    INSERT INTO tasks (id, project_id, owner_user_id, title, status, created_at, updated_at)
+    VALUES (${TASK_E}::uuid, ${PROJECT_ID}::uuid, ${OWNER_A}::uuid, 'Inserted done', 'done', now(), now())
+  `;
+  const inserted = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_E}::uuid`;
+  await expect(inserted[0]?.completed_at !== null, "INSERT", "inserting a done Task must stamp completed_at");
+  const insertedAt = new Date(inserted[0]?.completed_at).toISOString();
+  const insertEvents = await sql`SELECT to_status, occurred_at FROM task_status_events WHERE task_id = ${TASK_E}::uuid`;
+  await expect(
+    insertEvents.length === 1 && insertEvents[0]?.to_status === "done",
+    "INSERT",
+    `inserted done Task must record exactly one done event, got ${JSON.stringify(insertEvents)}`,
+  );
+  await expect(
+    new Date(insertEvents[0]?.occurred_at).toISOString() === insertedAt,
+    "INSERT",
+    "insert event must be stamped at the completion instant",
+  );
+
+  // Any non-done status owns no completion time, even if the writer supplies one.
+  await sql`
+    INSERT INTO tasks (id, project_id, owner_user_id, title, status, created_at, updated_at)
+    VALUES (${TASK_F}::uuid, ${PROJECT_ID}::uuid, ${OWNER_A}::uuid, 'Inserted todo', 'todo', now(), now())
+  `;
+  await sql`UPDATE tasks SET status = 'in_progress', completed_at = now(), updated_at = now() WHERE id = ${TASK_F}::uuid`;
+  const inProgress = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_F}::uuid`;
+  await expect(inProgress[0]?.completed_at === null, "INSERT", "a non-done status must never carry completed_at");
+
+  // A done-spelling rename is not a new completion.
+  await sql`
+    INSERT INTO tasks (id, project_id, owner_user_id, title, status, created_at, updated_at)
+    VALUES (${TASK_G}::uuid, ${PROJECT_ID}::uuid, ${OWNER_A}::uuid, 'Spelling rename', 'todo', now(), now())
+  `;
+  await sql`UPDATE tasks SET status = 'done', updated_at = now() WHERE id = ${TASK_G}::uuid`;
+  const doneOnce = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_G}::uuid`;
+  const doneInstant = new Date(doneOnce[0]?.completed_at).toISOString();
+  await sql`UPDATE tasks SET status = 'completed', updated_at = now() WHERE id = ${TASK_G}::uuid`;
+  const renameEvents = await sql`
+    SELECT count(*)::int AS count FROM task_status_events WHERE task_id = ${TASK_G}::uuid AND to_status = 'done'
+  `;
+  await expect(renameEvents[0]?.count === 1, "INSERT", `a done-spelling rename must not create a second completion event, got ${renameEvents[0]?.count}`);
+  const afterRename = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_G}::uuid`;
+  await expect(
+    new Date(afterRename[0]?.completed_at).toISOString() === doneInstant,
+    "INSERT",
+    "a done-spelling rename must preserve completed_at",
+  );
+  log("INSERT", "INSERT done records one event; non-done carries no completed_at; done-spelling rename is not a new completion.");
+}
+
 async function runRlsProof(sql) {
   const flags = await sql`
     SELECT relrowsecurity, relforcerowsecurity FROM pg_class
@@ -417,6 +478,7 @@ async function main() {
 
     await runBackfillProof(sql);
     await runTransitionProof(sql);
+    await runInsertProof(sql);
     await runRlsProof(sql);
     await runHardDeleteProof(sql);
 

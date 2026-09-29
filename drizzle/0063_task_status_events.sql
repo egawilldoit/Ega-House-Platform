@@ -2,16 +2,20 @@
 --
 -- Owner: every Task status mutation, regardless of surface (legacy web direct
 -- writes, shared application/data-access writes, Hono/mobile writes, MCP
--- writes). A database trigger is the single canonical boundary that cannot be
--- bypassed accidentally; it keeps tasks.completed_at (current state) and
--- task_status_events (append-only history) consistent for every writer.
+-- writes). Two database triggers are the single canonical boundary that cannot
+-- be bypassed accidentally: a BEFORE trigger keeps tasks.completed_at (current
+-- state) consistent with the status, and an AFTER trigger writes the
+-- task_status_events ledger once the tasks row exists.
 --
 -- Invariant enforced here:
---   * transition INTO 'done'    -> completed_at = mutation instant
---     (an explicit caller-supplied completed_at wins; otherwise now())
---   * repeated write of 'done'  -> no new event, completed_at unchanged
---     while already done
---   * transition OUT of 'done'  -> completed_at = NULL
+--   * INSERT with a done status  -> completed_at = caller instant or now(),
+--     and one completion event
+--   * transition INTO 'done'     -> completed_at = caller instant or now(),
+--     and one completion event
+--   * repeated write of 'done'   -> no new event, completed_at unchanged
+--     while already done (including done-spelling renames)
+--   * transition OUT of 'done'   -> completed_at = NULL, event recorded
+--   * any non-done status        -> completed_at = NULL
 --   * unrelated edits while done -> completed_at preserved
 --
 -- task_status_events is append-only from the product perspective: no
@@ -55,75 +59,90 @@ AS $$
   SELECT lower(btrim(status)) IN ('done', 'complete', 'completed')
 $$;
 --> statement-breakpoint
+-- Normalizes tasks.completed_at to follow the row's status. Runs BEFORE the
+-- write because completed_at is a property of the tasks row. Invariant:
+-- completed_at is non-null if and only if the status is a done spelling.
+CREATE OR REPLACE FUNCTION public.normalize_task_completed_at()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+  IF public.task_status_is_done(NEW.status) THEN
+    IF TG_OP = 'UPDATE' AND public.task_status_is_done(OLD.status) THEN
+      -- Still done (including a done-spelling rename): the trigger owns the
+      -- instant, so an unrelated edit must neither move nor invent it.
+      NEW.completed_at := OLD.completed_at;
+    ELSE
+      -- Entering done: stamp the caller-supplied instant, else the mutation
+      -- instant.
+      NEW.completed_at := COALESCE(NEW.completed_at, now());
+    END IF;
+  ELSE
+    -- Any non-done status owns no completion time.
+    NEW.completed_at := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+-- Records the durable, append-only status-transition ledger. Runs AFTER the
+-- write: a BEFORE trigger cannot reference NEW.id here yet because the tasks
+-- row (the event's foreign-key parent) has not been inserted. The ledger stores
+-- the normalized 'done' spelling so it matches the heatmap's completion filter.
 CREATE OR REPLACE FUNCTION public.record_task_status_event()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = ''
 AS $$
-DECLARE
-  v_occurred_at timestamp with time zone;
 BEGIN
   IF TG_OP = 'INSERT' THEN
     IF public.task_status_is_done(NEW.status) THEN
-      v_occurred_at := COALESCE(NEW.completed_at, now());
-      NEW.completed_at := v_occurred_at;
       INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
-      VALUES (NEW.owner_user_id, NEW.id, NULL, 'done', v_occurred_at);
+      VALUES (NEW.owner_user_id, NEW.id, NULL, 'done', COALESCE(NEW.completed_at, now()));
     END IF;
-    RETURN NEW;
+    RETURN NULL;
   END IF;
 
-  -- UPDATE with unchanged status: completed_at stays trigger-owned so an
-  -- unrelated edit can never move (or invent) the completion time of a done
-  -- Task. A done Task whose historical completion evidence was already lost
-  -- keeps completed_at NULL — the trigger must not fabricate an instant the
-  -- durable ledger cannot corroborate.
+  -- Unchanged raw status: no transition to record.
   IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
-    IF public.task_status_is_done(NEW.status) THEN
-      -- The trigger owns the value while status is unchanged: an unrelated
-      -- edit (or a client "repair") must neither move nor invent it.
-      NEW.completed_at := OLD.completed_at;
-    END IF;
-    RETURN NEW;
+    RETURN NULL;
   END IF;
 
-  -- Status actually changed: record the durable transition first, then
-  -- normalize current-state completed_at to follow the new status. A
-  -- caller-supplied completed_at (e.g. a backdated completion) is the canonical
-  -- instant for both the event and the current state; non-completion
-  -- transitions are stamped at the mutation instant. The ledger stores the
-  -- normalized 'done' spelling so it matches the heatmap's completion filter.
-  v_occurred_at := CASE
-    WHEN public.task_status_is_done(NEW.status) THEN COALESCE(NEW.completed_at, now())
-    ELSE now()
-  END;
+  -- A change between two done spellings is not a new completion; recording it
+  -- would double-count the day in the heatmap.
+  IF public.task_status_is_done(NEW.status) AND public.task_status_is_done(OLD.status) THEN
+    RETURN NULL;
+  END IF;
+
   INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
   VALUES (
     NEW.owner_user_id,
     NEW.id,
     OLD.status,
     CASE WHEN public.task_status_is_done(NEW.status) THEN 'done' ELSE NEW.status END,
-    v_occurred_at
+    CASE WHEN public.task_status_is_done(NEW.status) THEN COALESCE(NEW.completed_at, now()) ELSE now() END
   );
-
-  IF public.task_status_is_done(NEW.status) THEN
-    NEW.completed_at := COALESCE(NEW.completed_at, v_occurred_at);
-  ELSIF public.task_status_is_done(OLD.status) THEN
-    NEW.completed_at := NULL;
-  END IF;
-
-  RETURN NEW;
+  RETURN NULL;
 END;
 $$;
 --> statement-breakpoint
+DROP TRIGGER IF EXISTS normalize_task_completed_at ON public.tasks;
+CREATE TRIGGER normalize_task_completed_at
+BEFORE INSERT OR UPDATE ON public.tasks
+FOR EACH ROW EXECUTE FUNCTION public.normalize_task_completed_at();
+--> statement-breakpoint
 DROP TRIGGER IF EXISTS record_task_status_event ON public.tasks;
 CREATE TRIGGER record_task_status_event
-BEFORE INSERT OR UPDATE ON public.tasks
+AFTER INSERT OR UPDATE ON public.tasks
 FOR EACH ROW EXECUTE FUNCTION public.record_task_status_event();
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION public.task_status_is_done(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.task_status_is_done(text) FROM anon;
+REVOKE ALL ON FUNCTION public.normalize_task_completed_at() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.normalize_task_completed_at() FROM anon;
 REVOKE ALL ON FUNCTION public.record_task_status_event() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.record_task_status_event() FROM anon;
 --> statement-breakpoint
