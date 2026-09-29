@@ -5,9 +5,10 @@ import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-r
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
-import { getShellIdentity, getWorkspaceShellMetrics } from "@/lib/workspace-shell";
+import { getShellIdentity, getWorkspaceShellMetricsResult } from "@/lib/workspace-shell";
 
 import { AuthenticatedHomePage } from "./_components/authenticated-home-page";
+import { buildHomeGreeting, type HomeGreeting } from "./_lib/home-greeting";
 import { buildHomeModel } from "./_lib/home-page-model";
 
 export const metadata: Metadata = {
@@ -20,11 +21,15 @@ export const metadata: Metadata = {
  *
  * This is the product entry surface. The public marketing home remains at `/`
  * for unauthenticated visitors and is a separate component tree.
+ *
+ * The primary composition (greeting, Now, quick actions, Today, Next,
+ * Attention) never waits on secondary Activity analytics: the Activity pulse
+ * streams in through its own Suspense section.
  */
 export default async function HomeRoute() {
-  const [snapshotResult, metrics, user, identity] = await Promise.all([
+  const [snapshotResult, attentionResult, user, identity] = await Promise.all([
     getOperatorSnapshotData(),
-    getWorkspaceShellMetrics(),
+    getWorkspaceShellMetricsResult(),
     getCurrentUser(),
     getShellIdentity(),
   ]);
@@ -38,7 +43,27 @@ export default async function HomeRoute() {
     activeTimerStartedAt = activeTimerResult.data?.startedAt ?? null;
   }
 
-  const model = buildHomeModel({ snapshot: snapshotResult.data, metrics, activeTimerStartedAt });
+  const model = buildHomeModel({
+    snapshot: snapshotResult.data,
+    attention: attentionResult.available
+      ? {
+          overdue: attentionResult.metrics.overdueTaskCount,
+          dueToday: attentionResult.metrics.dueTodayTaskCount,
+          reviewMissing: attentionResult.metrics.reviewMissing,
+        }
+      : null,
+    activeTimerStartedAt,
+  });
+
+  // Greeting/date come from the canonical Time Context already embedded in the
+  // Operator snapshot — never from the runtime or browser timezone.
+  const greeting: HomeGreeting | null = snapshotResult.data
+    ? buildHomeGreeting({
+        date: snapshotResult.data.date,
+        timezone: snapshotResult.data.timezone,
+        name: identity.name,
+      })
+    : null;
 
   return (
     <AppShell
@@ -48,9 +73,9 @@ export default async function HomeRoute() {
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}
         channelPrefix="home"
-        tables={["tasks", "task_sessions"]}
+        tables={["tasks", "task_sessions", "week_reviews"]}
       />
-      <AuthenticatedHomePage model={model} />
+      <AuthenticatedHomePage model={model} greeting={greeting} name={identity.name} />
     </AppShell>
   );
 }
