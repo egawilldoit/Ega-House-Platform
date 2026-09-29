@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -50,4 +52,15 @@ test("ega-661: due-state badges use the account local date, not the runtime-loca
     <TaskDueDateLabel dueDate="2026-04-20" status="todo" />,
   );
   assert.match(overdueMarkup, /Overdue/);
+});
+
+
+test("production regression: TaskDueDateLabel is an explicit client component", () => {
+  const source = readFileSync(
+    resolve(import.meta.dirname, "./task-due-date-label.tsx"),
+    "utf-8",
+  );
+
+  assert.match(source, /^"use client";/);
+  assert.match(source, /useDisplayTimezone\(\)/);
 });

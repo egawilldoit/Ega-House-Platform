@@ -5,13 +5,15 @@ import test from "node:test";
 
 const BACKLOG_PAGE_PATH = resolve(import.meta.dirname, "./page.tsx");
 const IDEAS_PAGE_PATH = resolve(import.meta.dirname, "../ideas/page.tsx");
+const BACKLOG_ADD_BUTTON_PATH = resolve(import.meta.dirname, "./backlog-add-button.tsx");
 
 test("EGA-659: canonical /backlog page is the simple Backlog surface, not a triage console", () => {
   const source = readFileSync(BACKLOG_PAGE_PATH, "utf-8");
 
   assert.match(source, /Backlog/, "page must use Backlog terminology");
   assert.match(source, /Keep ideas here until they are ready to become real work/);
-  assert.match(source, /Add to Backlog/);
+  assert.match(source, /BacklogAddButton/);
+  assert.match(readFileSync(BACKLOG_ADD_BUTTON_PATH, "utf-8"), /Add to Backlog/);
 
   // V1 exposes Active and Archived views only — no filter-heavy console.
   assert.match(source, /Active/);
@@ -65,4 +67,17 @@ test("EGA-659: /ideas redirect preserves relevant old query parameters", () => {
 
   assert.match(source, /view/);
   assert.match(source, /URLSearchParams/);
+});
+
+
+test("production regression: /backlog keeps click handlers behind a client boundary", () => {
+  const pageSource = readFileSync(BACKLOG_PAGE_PATH, "utf-8");
+  const buttonSource = readFileSync(BACKLOG_ADD_BUTTON_PATH, "utf-8");
+
+  assert.match(buttonSource, /^"use client";/);
+  assert.match(buttonSource, /INBOX_CAPTURE_EVENT/);
+  assert.match(buttonSource, /onClick=/);
+  assert.match(pageSource, /<BacklogAddButton\s*\/>/);
+  assert.doesNotMatch(pageSource, /onClick=/, "the Server Component must not own browser event handlers");
+  assert.doesNotMatch(pageSource, /INBOX_CAPTURE_EVENT/);
 });
