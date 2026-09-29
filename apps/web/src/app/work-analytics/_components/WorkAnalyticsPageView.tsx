@@ -265,7 +265,6 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
                     label="Longest session"
                     value={formatMinutes(weekDelta.longestSession)}
                   />
-                  <ContextStat label="Streak" value={`${weekDelta.currentStreak} days`} />
                 </dl>
               </CardContent>
             </Card>

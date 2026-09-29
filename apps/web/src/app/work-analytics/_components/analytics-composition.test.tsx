@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import test from "node:test";
 import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -199,4 +201,21 @@ test("a chart bucket click opens the drilldown for its sessions", async () => {
     root.unmount();
   });
   container.remove();
+});
+
+// Guard: the canonical EGA-662 Work Activity calendar owns the streak. The
+// legacy window-scoped `calculateWorkAnalyticsInsights().currentStreak` must not
+// be re-rendered anywhere, or the page would show two contradictory streaks.
+test("EGA-662: the analytics page and export render no competing streak", () => {
+  const read = (relative: string) =>
+    readFileSync(resolve(process.cwd(), relative), "utf8");
+
+  const view = read("src/app/work-analytics/_components/WorkAnalyticsPageView.tsx");
+  const exportRoute = read("src/app/work-analytics/export/route.ts");
+
+  assert.ok(!view.includes("currentStreak"), "page must not render the legacy streak");
+  assert.ok(
+    !/Current streak/.test(exportRoute),
+    "monthly export must not render the legacy streak",
+  );
 });

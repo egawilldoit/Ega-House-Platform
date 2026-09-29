@@ -1,5 +1,7 @@
 /// <reference types="vitest/globals" />
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 /**
  * Tests for middleware host-aware navigation logic.
@@ -13,11 +15,14 @@ import assert from "node:assert/strict";
 // Replicate the middleware constants for isolated testing.
 // In a real integration test we'd import from the module, but
 // since middleware.ts uses next/server types, we duplicate.
+// Keep in sync with GLOBAL_APP_ROUTES in src/proxy.ts (which is the
+// authoritative list). The test asserts the two stay aligned.
 const GLOBAL_APP_ROUTES = new Set([
   "/apps",
   "/backlog",
   "/dashboard",
   "/help",
+  "/home",
   "/settings",
   "/shutdown",
   "/startup",
@@ -41,6 +46,22 @@ function isGlobalAppRoute(pathname: string): boolean {
 
 describe("middleware host-aware navigation", () => {
   describe("GLOBAL_APP_ROUTES detection", () => {
+    test("the replicated list matches the authoritative proxy source", () => {
+      // This copy exists only because proxy.ts uses next/server types. Guard it
+      // against silently diverging when a route is added or removed.
+      const proxySource = readFileSync(resolve(process.cwd(), "src/proxy.ts"), "utf8");
+      const declared = proxySource.match(/const GLOBAL_APP_ROUTES[^=]*=\s*\[([\s\S]*?)\]/);
+      assert.ok(declared, "proxy.ts must declare GLOBAL_APP_ROUTES");
+      const authoritative = new Set(
+        [...(declared[1] ?? "").matchAll(/"(\/[^"]*)"/g)].map((match) => match[1] as string),
+      );
+      assert.deepEqual(
+        [...GLOBAL_APP_ROUTES].sort(),
+        [...authoritative].sort(),
+        "GLOBAL_APP_ROUTES copy is out of sync with src/proxy.ts",
+      );
+    });
+
     test("Dashboard is a global app route", () => {
       assert.equal(isGlobalAppRoute("/dashboard"), true);
     });
