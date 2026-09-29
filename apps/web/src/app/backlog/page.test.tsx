@@ -12,7 +12,8 @@ test("EGA-659: canonical /backlog page is the simple Backlog surface, not a tria
 
   assert.match(source, /Backlog/, "page must use Backlog terminology");
   assert.match(source, /Keep ideas here until they are ready to become real work/);
-  assert.match(source, /Add to Backlog/);
+  assert.match(source, /BacklogAddButton/);
+  assert.match(readFileSync(BACKLOG_ADD_BUTTON_PATH, "utf-8"), /Add to Backlog/);
 
   // V1 exposes Active and Archived views only — no filter-heavy console.
   assert.match(source, /Active/);
