@@ -294,7 +294,6 @@ export function buildMonthlyMarkdown({
     `| Median session length | ${formatDuration(Math.round(sessionQuality.medianSessionLengthMinutes))} |`,
   );
   lines.push(`| Longest session | ${formatDuration(sessionQuality.longestSessionMinutes)} |`);
-  lines.push(`| Current streak | ${insights.currentStreak} days |`);
   lines.push("");
 
   // === Comparison with previous period ===

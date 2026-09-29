@@ -7,6 +7,11 @@
  * timezone, never infers a browser/device zone, and renders deterministic
  * labels via pinned `Intl` calls with an explicit `timeZone`.
  *
+ * The timezone is used only to choose the greeting word from the local hour.
+ * The date lines render the canonical `YYYY-MM-DD` parts in UTC: that string is
+ * already the account-local date, so re-projecting it through the account zone
+ * would roll it forward in zones at UTC+12:00 or later.
+ *
  * EGA-661 binding point: `apps/web/src/lib/services/time-context-service.ts` will
  * own authenticated web Time Context reads/writes. If it later exposes greeting
  * helpers, Home should adopt them here without changing this module's output
@@ -50,14 +55,18 @@ function buildGreeting(hour: number): string {
   return GREETING_EVENING;
 }
 
-function formatDateLine(date: string, timezone: string): string {
-  // "TUE, SEP 24, 2024" — pinned parts so no locale reorders them.
+function formatDateLine(date: string): string {
+  // `date` is already the account-local calendar date (YYYY-MM-DD) from the
+  // Operator snapshot. Its parts are rendered in UTC so the label is identical
+  // in every timezone. Re-projecting it through the account zone (e.g.
+  // formatting noon-UTC in that zone) would roll the day forward for any zone
+  // at UTC+12:00 or later (Auckland, Chatham, Kiritimati).
   const weekday = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
+    timeZone: "UTC",
     weekday: "short",
   }).format(new Date(`${date}T12:00:00.000Z`));
   const month = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
+    timeZone: "UTC",
     month: "short",
   }).format(new Date(`${date}T12:00:00.000Z`));
   const day = Number(date.slice(8, 10));
@@ -65,9 +74,9 @@ function formatDateLine(date: string, timezone: string): string {
   return `${weekday.toUpperCase()}, ${month.toUpperCase()} ${day}, ${year}`;
 }
 
-function formatFullDateLine(date: string, timezone: string): string {
+function formatFullDateLine(date: string): string {
   return new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
+    timeZone: "UTC",
     weekday: "long",
     month: "long",
     day: "numeric",
@@ -95,8 +104,8 @@ export function buildHomeGreeting(input: {
 
   return {
     greeting: `${buildGreeting(hour)}, ${trimmedName}`,
-    dateLine: formatDateLine(date, timezone),
-    fullDateLine: formatFullDateLine(date, timezone),
+    dateLine: formatDateLine(date),
+    fullDateLine: formatFullDateLine(date),
     subtitle: HOME_SUBTITLE,
   };
 }
