@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SESSION_HEATMAP_INTENSITY_STYLES } from "@/components/review/session-heatmap";
 import { formatDisplayCount, formatDisplayDuration } from "@/lib/presentation-format";
 
+import { buildCompactActivityWeeks } from "../_lib/home-activity-grid";
 import type { HomeActivityPulse, HomeActivityPulseDay } from "../_lib/home-activity-pulse";
 import { getHomeActivityPulseData } from "../_lib/home-activity-pulse";
 
@@ -20,31 +21,16 @@ import { getHomeActivityPulseData } from "../_lib/home-activity-pulse";
  */
 
 const WEEKS_SHOWN = 12;
-const DAYS_PER_WEEK = 7;
 const WEEKDAY_LABELS: Record<number, string> = { 1: "Mon", 3: "Wed", 5: "Fri" };
-
-type WeekColumn = Array<HomeActivityPulseDay | null>;
 
 function isActiveDay(day: HomeActivityPulseDay): boolean {
   return day.intensity > 0;
 }
 
-function buildWeekColumns(days: HomeActivityPulseDay[]): WeekColumn[] {
-  const recent = days.slice(-WEEKS_SHOWN * DAYS_PER_WEEK);
-  const columns: WeekColumn[] = [];
-  for (let index = 0; index < recent.length; index += 1) {
-    const day = recent[index];
-    if (!day) continue;
-    const weekIndex = Math.floor(index / DAYS_PER_WEEK);
-    const weekday = new Date(`${day.date}T12:00:00.000Z`).getUTCDay();
-    if (!columns[weekIndex]) columns[weekIndex] = new Array<HomeActivityPulseDay | null>(7).fill(null);
-    columns[weekIndex][weekday] = day;
-  }
-  return columns;
-}
-
 function monthLabel(date: string): string {
-  return new Intl.DateTimeFormat("en-US", { month: "short" }).format(
+  // Pinned to UTC: the canonical cell date is a calendar date, so the label
+  // must not follow the server runtime timezone.
+  return new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" }).format(
     new Date(`${date}T12:00:00.000Z`),
   );
 }
@@ -83,7 +69,7 @@ function deriveConsistencyNote(days: HomeActivityPulseDay[], activeDays: number)
 }
 
 function ActivityGrid({ pulse }: { pulse: HomeActivityPulse }) {
-  const columns = buildWeekColumns(pulse.days);
+  const columns = buildCompactActivityWeeks(pulse.days, WEEKS_SHOWN);
   const activeDays = pulse.days.filter(isActiveDay).length;
   const summary = `Activity pulse for the last 12 weeks: ${activeDays} active days, current streak ${pulse.currentStreak} days.`;
 
