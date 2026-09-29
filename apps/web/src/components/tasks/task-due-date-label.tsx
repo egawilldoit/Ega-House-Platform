@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { Badge } from "@/components/ui/badge";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
