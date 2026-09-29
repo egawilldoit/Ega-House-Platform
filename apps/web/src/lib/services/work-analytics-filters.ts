@@ -4,6 +4,14 @@
  * Supported params: range, groupBy, breakdownBy, includeOpen
  */
 
+import {
+  getLocalDateInTimezone,
+  getLocalDayWindow,
+  getLocalMonthWindow,
+  getLocalQuarterWindow,
+  getRollingLocalWindow,
+} from "@ega/domain/time-context";
+
 export type AnalyticsRange =
   | "today"
   | "7d"
@@ -94,37 +102,72 @@ export function parseAnalyticsFilters(
 
 /**
  * Compute the window (startIso/endIso) for a given range and a reference now.
+ *
+ * Windows follow the owner's local calendar in `timezone` (IANA): today starts
+ * at local midnight, month-to-date starts on the 1st of the local month, and
+ * quarter-to-date on the 1st of the local quarter. Omitting `timezone` keeps
+ * the legacy UTC behavior.
  */
 export function computeWindowForRange(
   range: AnalyticsRange,
   now: Date,
+  timezone?: string,
 ): { startIso: string; endIso: string } {
   const end = new Date(now);
   const endIso = end.toISOString();
+  const localDate = timezone ? getLocalDateInTimezone(now, timezone) : null;
 
   switch (range) {
     case "today": {
-      const start = new Date(now);
-      start.setUTCHours(0, 0, 0, 0);
-      return { startIso: start.toISOString(), endIso };
+      const start = localDate
+        ? getLocalDayWindow(timezone, localDate).startUtcIso
+        : (() => {
+            const start = new Date(now);
+            start.setUTCHours(0, 0, 0, 0);
+            return start.toISOString();
+          })();
+      return { startIso: start, endIso };
     }
     case "7d": {
-      const start = new Date(now);
-      start.setUTCDate(start.getUTCDate() - 7);
-      return { startIso: start.toISOString(), endIso };
+      const start = localDate
+        ? getRollingLocalWindow(timezone, now, 7).startIso
+        : (() => {
+            const start = new Date(now);
+            start.setUTCDate(start.getUTCDate() - 7);
+            return start.toISOString();
+          })();
+      return { startIso: start, endIso };
     }
     case "30d": {
-      const start = new Date(now);
-      start.setUTCDate(start.getUTCDate() - 30);
-      return { startIso: start.toISOString(), endIso };
+      const start = localDate
+        ? getRollingLocalWindow(timezone, now, 30).startIso
+        : (() => {
+            const start = new Date(now);
+            start.setUTCDate(start.getUTCDate() - 30);
+            return start.toISOString();
+          })();
+      return { startIso: start, endIso };
     }
     case "mtm": {
-      // Month to date: from 1st of this month to now
+      // Month to date: from 1st of the local month to now
+      if (localDate) {
+        const monthStart = `${localDate.slice(0, 8)}01`;
+        const start = getLocalDayWindow(timezone, monthStart).startUtcIso;
+        return { startIso: start, endIso };
+      }
       const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       return { startIso: start.toISOString(), endIso };
     }
     case "prev-month": {
-      // Previous full calendar month
+      // Previous full calendar month in the owner's local calendar
+      if (localDate) {
+        const [year, month] = localDate.split("-").map(Number);
+        const prevMonth = month === 1 ? 12 : month - 1;
+        const prevYear = month === 1 ? year - 1 : year;
+        const prevMonthStart = `${prevYear}-${String(prevMonth).padStart(2, "0")}-01`;
+        const prevWindow = getLocalMonthWindow(timezone, prevMonthStart);
+        return { startIso: prevWindow.startUtcIso, endIso: prevWindow.endUtcIso };
+      }
       const endOfPrev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       const startOfPrev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
       return {
@@ -133,7 +176,11 @@ export function computeWindowForRange(
       };
     }
     case "qtd": {
-      // Quarter to date: from 1st of current quarter to now
+      // Quarter to date: from 1st of the local quarter to now
+      if (localDate) {
+        const quarterWindow = getLocalQuarterWindow(timezone, localDate);
+        return { startIso: quarterWindow.startUtcIso, endIso };
+      }
       const quarterStartMonth = Math.floor(now.getUTCMonth() / 3) * 3;
       const start = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth, 1));
       return { startIso: start.toISOString(), endIso };
@@ -141,9 +188,14 @@ export function computeWindowForRange(
     default:
       // Fallback to 30d
       {
-        const start = new Date(now);
-        start.setUTCDate(start.getUTCDate() - 30);
-        return { startIso: start.toISOString(), endIso };
+        const start = localDate
+          ? getRollingLocalWindow(timezone, now, 30).startIso
+          : (() => {
+              const start = new Date(now);
+              start.setUTCDate(start.getUTCDate() - 30);
+              return start.toISOString();
+            })();
+        return { startIso: start, endIso };
       }
   }
 }
@@ -151,7 +203,13 @@ export function computeWindowForRange(
 /**
  * Rolling last-30-days window used by the fixed context summary.
  */
-export function computeLast30DaysWindow(now: Date): { startIso: string; endIso: string } {
+export function computeLast30DaysWindow(
+  now: Date,
+  timezone?: string,
+): { startIso: string; endIso: string } {
+  if (timezone) {
+    return getRollingLocalWindow(timezone, now, 30);
+  }
   const start = new Date(now);
   start.setUTCDate(start.getUTCDate() - 30);
   return { startIso: start.toISOString(), endIso: now.toISOString() };
@@ -169,26 +227,35 @@ export function computeLast30DaysWindow(now: Date): { startIso: string; endIso: 
 export function computeEvidenceWindowForRange(
   range: AnalyticsRange,
   now: Date,
+  timezone?: string,
 ): { startIso: string; endIso: string } {
-  const selected = computeWindowForRange(range, now);
-  const last30 = computeLast30DaysWindow(now);
+  const selected = computeWindowForRange(range, now, timezone);
+  const last30 = computeLast30DaysWindow(now, timezone);
 
-  const previousMonthStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1),
-  );
+  const previousMonthStart = timezone
+    ? getLocalMonthWindow(timezone, getLocalDateInTimezone(now, timezone)).startUtcIso
+    : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString();
 
-  const startIso = [selected.startIso, last30.startIso, previousMonthStart.toISOString()].sort()[0];
+  const startIso = [selected.startIso, last30.startIso, previousMonthStart].sort()[0];
 
   return { startIso, endIso: now.toISOString() };
 }
 
 /**
  * Get the start and end date strings (YYYY-MM-DD) covering the window.
- * Used for daily/weekly/monthly series computation.
+ * Used for daily/weekly/monthly series computation. When `timezone` is
+ * supplied, dates are the owner's local calendar dates; otherwise UTC dates.
  */
 export function computeDateRangeForWindow(
   window: { startIso: string; endIso: string },
+  timezone?: string,
 ): { startDate: string; endDate: string } {
+  if (timezone) {
+    return {
+      startDate: getLocalDateInTimezone(new Date(window.startIso), timezone),
+      endDate: getLocalDateInTimezone(new Date(window.endIso), timezone),
+    };
+  }
   return {
     startDate: window.startIso.slice(0, 10),
     endDate: window.endIso.slice(0, 10),

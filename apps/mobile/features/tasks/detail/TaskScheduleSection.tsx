@@ -7,10 +7,11 @@ import { FormField } from '@/components/mobile/ui/FormField';
 import { FormSection } from '@/components/mobile/ui/FormSection';
 import { MOBILE_TASK_RECURRENCE_RULE_VALUES } from '@/types/tasks';
 
+import { useAccountTimezone } from '@/lib/hooks/use-account-timezone';
 import {
   formatDueDate,
   formatRecurrenceRule,
-  isoDateAtOffset,
+  isoDateAtOffsetInTimezone,
   type EditableTaskFields,
 } from './formatters';
 
@@ -22,11 +23,8 @@ type Props = {
 };
 
 export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, onClearMessages }: Props) {
-  const deviceTimezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-    [],
-  );
-  const displayTimezone = taskRecurrenceTimezone ?? deviceTimezone;
+  const { timezone: accountTimezone } = useAccountTimezone();
+  const displayTimezone = taskRecurrenceTimezone ?? accountTimezone;
   const [isDuePickerVisible, setIsDuePickerVisible] = useState(false);
   const [isRecurrenceExpanded, setIsRecurrenceExpanded] = useState(false);
 
@@ -59,26 +57,26 @@ export function TaskScheduleSection({ taskRecurrenceTimezone, draft, onChange, o
         <QuickPill
           label="Today"
           onPress={() => {
-            onChange({ ...draft, dueDate: isoDateAtOffset(0) });
+            onChange({ ...draft, dueDate: isoDateAtOffsetInTimezone(accountTimezone, 0) });
             onClearMessages();
           }}
-          selected={draft.dueDate === isoDateAtOffset(0)}
+          selected={draft.dueDate === isoDateAtOffsetInTimezone(accountTimezone, 0)}
         />
         <QuickPill
           label="Tomorrow"
           onPress={() => {
-            onChange({ ...draft, dueDate: isoDateAtOffset(1) });
+            onChange({ ...draft, dueDate: isoDateAtOffsetInTimezone(accountTimezone, 1) });
             onClearMessages();
           }}
-          selected={draft.dueDate === isoDateAtOffset(1)}
+          selected={draft.dueDate === isoDateAtOffsetInTimezone(accountTimezone, 1)}
         />
         <QuickPill
           label="+7 days"
           onPress={() => {
-            onChange({ ...draft, dueDate: isoDateAtOffset(7) });
+            onChange({ ...draft, dueDate: isoDateAtOffsetInTimezone(accountTimezone, 7) });
             onClearMessages();
           }}
-          selected={draft.dueDate === isoDateAtOffset(7)}
+          selected={draft.dueDate === isoDateAtOffsetInTimezone(accountTimezone, 7)}
         />
         <QuickPill
           label="Clear"

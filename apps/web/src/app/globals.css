@@ -274,3 +274,15 @@ h4 {
     scroll-behavior: auto;
   }
 }
+
+.work-activity-grid {
+  --wa-cell-size: 12px;
+  --wa-cell-gap: 3px;
+}
+
+@media (pointer: coarse) {
+  .work-activity-grid {
+    --wa-cell-size: 24px;
+    --wa-cell-gap: 4px;
+  }
+}

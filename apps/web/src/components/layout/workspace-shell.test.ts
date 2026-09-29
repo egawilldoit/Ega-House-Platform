@@ -57,7 +57,7 @@ describe("light workspace shell", () => {
       ["Timer", "/timer"],
       ["Review", "/review"],
       ["Analytics", "/work-analytics"],
-      ["Ideas", "/ideas"],
+      ["Backlog", "/backlog"],
       ["Notifications", "/notifications"],
       ["Startup", "/startup"],
       ["Shutdown", "/shutdown"],

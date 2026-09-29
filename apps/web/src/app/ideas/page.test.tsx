@@ -8,66 +8,18 @@ const IDEAS_PAGE_PATH = resolve(
   "./page.tsx",
 );
 
-test("ideas page keeps GET filter form with action=/ideas method=get", () => {
+test("EGA-659: /ideas page is now a compatibility redirect, not a triage console", () => {
   const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
 
-  // The ideas filter/search form should remain as GET form (has actual inputs)
-  assert.match(
-    source,
-    /<form[^>]*action="\/ideas"[^>]*method="get"[^>]*>/,
-    "Ideas filter form should remain as GET form with action=/ideas",
-  );
-});
-
-test("ideas page filter form contains search, type, status, project, priority inputs", () => {
-  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
-
-  assert.match(source, /name="q"/, "Should have search input");
-  assert.match(source, /name="type"/, "Should have type select");
-  assert.match(source, /name="status"/, "Should have status select");
-  assert.match(source, /name="project"/, "Should have project select");
-  assert.match(source, /name="priority"/, "Should have priority select");
-  assert.match(source, /name="tag"/, "Should have tag input");
-});
-
-test("ideas page filter submit uses the canonical pending control", () => {
-  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
-
-  assert.match(
-    source,
-    /<PendingSubmitButton[^>]*pendingLabel="Applying…"/,
-    "Apply filters should surface an in-flight pending label",
-  );
-  assert.match(
-    source,
-    /import \{ PendingSubmitButton \} from "@\/components\/ui\/pending-submit-button"/,
-    "Apply filters should use the shared pending submit primitive",
-  );
-});
-
-test("ideas page uses link-based view switches (All/Inbox/Archived)", () => {
-  const source = readFileSync(IDEAS_PAGE_PATH, "utf-8");
-
-  // View switches should be anchors (FilterPill renders a Link when given an
-  // href), never form submissions.
-  assert.match(
-    source,
-    /FilterPill[^>]*href=\{getIdeaViewHref\("all/,
-    "All view should use a link-based FilterPill",
-  );
-  assert.match(
-    source,
-    /FilterPill[^>]*href=\{getIdeaViewHref\("active/,
-    "Inbox view should use a link-based FilterPill",
-  );
-  assert.match(
-    source,
-    /FilterPill[^>]*href=\{getIdeaViewHref\("archived/,
-    "Archived view should use a link-based FilterPill",
-  );
-  assert.doesNotMatch(
-    source,
-    /<form[^>]*getIdeaViewHref/,
-    "View switches must not be form submissions",
-  );
+  assert.match(source, /redirect\(/);
+  assert.match(source, /\/backlog/);
+  assert.doesNotMatch(source, /action="\/ideas"/);
+  assert.doesNotMatch(source, /method="get"/);
+  assert.doesNotMatch(source, /name="q"/);
+  assert.doesNotMatch(source, /name="type"/);
+  assert.doesNotMatch(source, /name="status"/);
+  assert.doesNotMatch(source, /name="priority"/);
+  assert.doesNotMatch(source, /name="tag"/);
+  assert.doesNotMatch(source, /FilterPill/);
+  assert.doesNotMatch(source, /PendingSubmitButton/);
 });

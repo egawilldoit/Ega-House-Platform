@@ -8,6 +8,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { AlertTriangle, PauseCircle, Clock3, Timer, Shuffle, Flag, BarChart3 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -58,7 +59,11 @@ export default async function FrictionRadarPage() {
   }
 
   const now = new Date();
-  const result = await getFrictionRadar({ now });
+  const [result, timeContext] = await Promise.all([
+    getFrictionRadar({ now }),
+    getWebTimeContext().catch(() => null),
+  ]);
+  const displayTimezone = timeContext?.timezone;
 
   if (result.errorMessage || !result.data) {
     return <div className="p-6">Failed to load friction signals: {result.errorMessage}</div>;
@@ -70,9 +75,9 @@ export default async function FrictionRadarPage() {
   return (
     <AppShell
       title="Workflow Friction"
-      description={`Where work is stalling, based on staleness over ${thresholdDays} days, estimate drift, context switching, neglected goals, and workload balance. Updated ${formatDisplayDateTime(generatedAt)}${
+      description={`Where work is stalling, based on staleness over ${thresholdDays} days, estimate drift, context switching, neglected goals, and workload balance. Updated ${formatDisplayDateTime(generatedAt, { timezone: displayTimezone })}${
         evidenceWindow
-          ? ` · ${formatDisplayDate(evidenceWindow.startIso, "compact")} – ${formatDisplayDate(evidenceWindow.endIso, "compact")}`
+          ? ` · ${formatDisplayDate(evidenceWindow.startIso, "compact", displayTimezone)} – ${formatDisplayDate(evidenceWindow.endIso, "compact", displayTimezone)}`
           : ""
       }.`}
     >

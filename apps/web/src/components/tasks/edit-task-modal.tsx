@@ -33,6 +33,7 @@ import {
 import { normalizeTaskEstimateInput } from "@/lib/task-estimate";
 import { normalizeTaskScheduleInput } from "@/lib/task-schedule";
 import { formatDisplayDateTime } from "@/lib/presentation-format";
+import { useDisplayTimezone } from "@/lib/hooks/use-display-timezone";
 import type { TaskReminderRecord } from "@/lib/services/task-service";
 import { cn } from "@/lib/utils";
 
@@ -132,7 +133,7 @@ function TaskReminderCard({
   cancelAction: SimpleTaskAction;
 }) {
   const [formOpen, setFormOpen] = useState(false);
-  const reminderTimezoneOffsetRef = useRef<HTMLInputElement>(null);
+  const displayTimezone = useDisplayTimezone();
   const pendingReminders = reminders
     .filter((reminder) => reminder.status === "pending")
     .sort((first, second) => first.remind_at.localeCompare(second.remind_at));
@@ -143,23 +144,12 @@ function TaskReminderCard({
       <form
         action={currentPendingReminder ? updateAction : createAction}
         className="space-y-3"
-        onSubmit={() => {
-          if (reminderTimezoneOffsetRef.current) {
-            reminderTimezoneOffsetRef.current.value = String(new Date().getTimezoneOffset());
-          }
-        }}
       >
         <input type="hidden" name="taskId" value={taskId} />
         {currentPendingReminder ? (
           <input type="hidden" name="reminderId" value={currentPendingReminder.id} />
         ) : null}
         <input type="hidden" name="returnTo" value={returnTo} />
-        <input
-          ref={reminderTimezoneOffsetRef}
-          type="hidden"
-          name="reminderTimezoneOffsetMinutes"
-          defaultValue="0"
-        />
         <input type="hidden" name="channel" value="email" />
         <input type="hidden" name="status" value="pending" />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -230,7 +220,7 @@ function TaskReminderCard({
           className="text-sm tabular-nums text-[color:var(--ega-text-secondary)]"
           data-testid={`task-reminder-display-${taskId}`}
         >
-          {formatDisplayDateTime(currentPendingReminder.remind_at)}
+          {formatDisplayDateTime(currentPendingReminder.remind_at, { timezone: displayTimezone })}
         </span>
         <Badge tone="info">Pending</Badge>
       </div>
@@ -386,9 +376,6 @@ function TaskEditorPanel({
   const [estimateValue, setEstimateValue] = useState(
     defaultEstimateMinutes !== null ? String(defaultEstimateMinutes) : "",
   );
-  const timezoneOffsetRef = useRef<HTMLInputElement>(null);
-  const recurrenceTimezoneRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     if (state.successMessage) {
       router.refresh();
@@ -402,14 +389,15 @@ function TaskEditorPanel({
     }
   }, [error]);
 
-  // The preview uses UTC-pinned local values only for the start/end ordering
-  // check, which is offset-independent, so a fixed "0" offset is safe here.
+  // The preview uses a fixed UTC interpretation only for the start/end
+  // ordering check, which is offset-independent; the persisted wall time is
+  // interpreted in the account timezone by the server action.
   const schedulePreview = useMemo(
     () =>
       normalizeTaskScheduleInput({
         scheduledStartAt: scheduledStartValue,
         scheduledEndAt: scheduledEndValue,
-        timezoneOffsetMinutes: "0",
+        timezone: "UTC",
       }),
     [scheduledStartValue, scheduledEndValue],
   );
@@ -465,37 +453,9 @@ function TaskEditorPanel({
               </div>
 
               <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
-                <form
-                  id={formId}
-                  action={formAction}
-                  className="space-y-4"
-                  onSubmit={() => {
-                    // Same submit-time synchronization as TaskMarkDoneForm: the
-                    // visitor's UTC offset and IANA timezone are captured when
-                    // the form is submitted, never on render.
-                    if (timezoneOffsetRef.current) {
-                      timezoneOffsetRef.current.value = String(new Date().getTimezoneOffset());
-                    }
-                    if (recurrenceTimezoneRef.current) {
-                      recurrenceTimezoneRef.current.value =
-                        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-                    }
-                  }}
-                >
+                <form id={formId} action={formAction} className="space-y-4">
                   <input type="hidden" name="taskId" value={taskId} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <input
-                    ref={recurrenceTimezoneRef}
-                    type="hidden"
-                    name="recurrenceTimezone"
-                    defaultValue="UTC"
-                  />
-                  <input
-                    ref={timezoneOffsetRef}
-                    type="hidden"
-                    name="scheduleTimezoneOffsetMinutes"
-                    defaultValue="0"
-                  />
 
                   <EditorCard label="Task overview">
                     <div className="space-y-3">

@@ -488,7 +488,7 @@ async function main() {
     await resetDatabase(sql);
     await applySupabaseShim(sql);
     const tags = await readJournal();
-    assert(tags[tags.length - 1] === "0062_project_purge", "journal must end with the purge migration");
+    assert(tags.includes("0062_project_purge"), "journal must include the purge migration");
     let applied = 0;
     for (const tag of tags) {
       const statements = await applyFile(sql, tag);
