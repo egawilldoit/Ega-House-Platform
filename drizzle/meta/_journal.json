@@ -442,6 +442,13 @@
       "when": 1787880000012,
       "tag": "0062_project_purge",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1787880000013,
+      "tag": "0063_task_status_events",
+      "breakpoints": true
     }
   ]
 }

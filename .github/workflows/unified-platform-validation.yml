@@ -497,6 +497,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/project-purge-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove task_status_events ledger and completed_at invariant through the migration journal
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/task-status-events-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove MCP upgrade from the current-main 0049 baseline with legacy grants
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
