@@ -75,19 +75,31 @@ BEGIN
   END IF;
 
   -- UPDATE with unchanged status: completed_at stays trigger-owned so an
-  -- unrelated edit can never move the completion time of a done Task.
+  -- unrelated edit can never move (or invent) the completion time of a done
+  -- Task. A done Task whose historical completion evidence was already lost
+  -- keeps completed_at NULL — the trigger must not fabricate an instant the
+  -- durable ledger cannot corroborate.
   IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
     IF public.task_status_is_done(NEW.status) THEN
-      NEW.completed_at := COALESCE(OLD.completed_at, NEW.completed_at, now());
+      NEW.completed_at := COALESCE(OLD.completed_at, NEW.completed_at);
     END IF;
     RETURN NEW;
   END IF;
 
   -- Status actually changed: record the durable transition first, then
-  -- normalize current-state completed_at to follow the new status.
-  v_occurred_at := now();
+  -- normalize current-state completed_at to follow the new status. A
+  -- caller-supplied completed_at (e.g. a backdated completion) is the canonical
+  -- instant for both the event and the current state; the ledger stores the
+  -- normalized 'done' spelling so it matches the heatmap's completion filter.
+  v_occurred_at := COALESCE(NEW.completed_at, now());
   INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
-  VALUES (NEW.owner_user_id, NEW.id, OLD.status, NEW.status, v_occurred_at);
+  VALUES (
+    NEW.owner_user_id,
+    NEW.id,
+    OLD.status,
+    CASE WHEN public.task_status_is_done(NEW.status) THEN 'done' ELSE NEW.status END,
+    v_occurred_at
+  );
 
   IF public.task_status_is_done(NEW.status) THEN
     NEW.completed_at := COALESCE(NEW.completed_at, v_occurred_at);

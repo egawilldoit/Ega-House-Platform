@@ -79,6 +79,7 @@ export function buildWorkActivityGrid(calendar: WorkActivityCalendar): WorkActiv
 
   const monthLabels: WorkActivityMonthLabel[] = [];
   let previousMonthKey: string | null = null;
+  let lastLabelWeekIndex = -1;
   const firstYear = yearOfLocalDate(days[0]?.date ?? startDate);
   for (const cell of cells) {
     const month = monthOfLocalDate(cell.date);
@@ -87,7 +88,16 @@ export function buildWorkActivityGrid(calendar: WorkActivityCalendar): WorkActiv
     if (monthKey !== previousMonthKey) {
       const name = MONTH_NAMES[month - 1] ?? "";
       const label = year !== firstYear ? `${name} ${year}` : name;
-      monthLabels.push({ weekIndex: cell.weekIndex, label });
+      // A partial first month and the next month can start in the same week
+      // column (e.g. a rolling year opening mid-week). The renderer keeps one
+      // label per column, so shift the later label to a free column instead of
+      // silently dropping a month.
+      let weekIndex = cell.weekIndex;
+      if (weekIndex <= lastLabelWeekIndex) {
+        weekIndex = Math.min(lastLabelWeekIndex + 1, weekCount - 1);
+      }
+      monthLabels.push({ weekIndex, label });
+      lastLabelWeekIndex = weekIndex;
       previousMonthKey = monthKey;
     }
   }
