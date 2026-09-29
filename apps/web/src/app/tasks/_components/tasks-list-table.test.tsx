@@ -378,8 +378,12 @@ describe("TasksListTable dense inventory", () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    await act(async () => {});
-    expect(document.activeElement).toBe(titleButton);
+    // Radix restores focus from onCloseAutoFocus during the dialog unmount,
+    // which lands on a later tick than the dismiss itself. Wait for the
+    // documented behavior instead of assuming a single act() flush.
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(titleButton);
+    });
   });
 
   it("flags done rows quiet and offers the direct archive control only for done tasks", async () => {
