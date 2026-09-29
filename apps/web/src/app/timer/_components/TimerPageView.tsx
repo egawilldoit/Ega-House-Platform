@@ -21,12 +21,8 @@ import {
 } from "@/lib/presentation-format";
 import { resolveSessionConflictAction, startTimerAction, updateSessionTimingAction } from "../actions";
 import { getTimerStartEmptyStateCopy, getTimerStartTaskOptions } from "../task-selection";
+import { getTaskContextHref } from "@/lib/task-navigation";
 import type { TimerPageModel } from "../_lib/timer-page-model";
-
-function getTaskContextHref(taskId: string | null | undefined, projectSlug: string | null | undefined) {
-  if (!taskId || !projectSlug) return null;
-  return `/tasks/projects/${projectSlug}#task-${taskId}`;
-}
 
 const DISTRIBUTION_COLORS = [
   "var(--ega-data-blue)",

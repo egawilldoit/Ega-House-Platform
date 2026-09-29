@@ -38,6 +38,20 @@ export type WorkspaceShellMetrics = {
   highestPrioritySignal: WorkspaceShellPrioritySignal;
 };
 
+/**
+ * Request-scoped shell metrics result that distinguishes a verified zero from
+ * an unavailable/degraded read.
+ *
+ * `getWorkspaceShellMetrics()` keeps its neutral-zero fallback for shell
+ * consumers that must always render. Consumers that claim a *verified* clear
+ * state (Home attention) must use this result form so they can show
+ * "Attention status unavailable" instead of fabricating a healthy state.
+ */
+export type WorkspaceShellMetricsResult = {
+  metrics: WorkspaceShellMetrics;
+  available: boolean;
+};
+
 export type ShellIdentity = {
   name: string;
   email: string;
@@ -171,7 +185,7 @@ async function getUnreadNotificationCountOrZero(
   return error ? 0 : count ?? 0;
 }
 
-async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics> {
+async function getWorkspaceShellMetricsResultUncached(): Promise<WorkspaceShellMetricsResult> {
   try {
     const supabase = await createClient();
     const now = new Date();
@@ -276,27 +290,41 @@ async function getWorkspaceShellMetricsUncached(): Promise<WorkspaceShellMetrics
       );
     }
 
-    return buildWorkspaceShellMetrics({
-      hasActiveTimer: Boolean(activeTimerResult.data?.length),
-      blockedTaskCount,
-      overdueTaskCount,
-      dueTodayTaskCount,
-      unreadNotificationCount,
-      hasCurrentWeekReview: Boolean(currentWeekReviewResult.data?.length),
-    });
+    return {
+      metrics: buildWorkspaceShellMetrics({
+        hasActiveTimer: Boolean(activeTimerResult.data?.length),
+        blockedTaskCount,
+        overdueTaskCount,
+        dueTodayTaskCount,
+        unreadNotificationCount,
+        hasCurrentWeekReview: Boolean(currentWeekReviewResult.data?.length),
+      }),
+      available: true,
+    };
   } catch (error) {
     if (isNextDynamicServerError(error)) {
       throw error;
     }
 
     console.warn("Workspace shell metrics unavailable; using neutral fallback.", error);
-    return buildWorkspaceShellMetrics(FALLBACK_WORKSPACE_SHELL_SNAPSHOT);
+    return {
+      metrics: buildWorkspaceShellMetrics(FALLBACK_WORKSPACE_SHELL_SNAPSHOT),
+      available: false,
+    };
   }
 }
 
+/**
+ * Request-memoized shell metrics result shared by every consumer so the shell,
+ * Today, and Home issue exactly one metrics query per request.
+ */
+export const getWorkspaceShellMetricsResult = cache(getWorkspaceShellMetricsResultUncached);
+
 // Request-level memoization only — not cross-navigation persistence.
 // See docs/ui-web-v2/SHELL-PERSISTENCE-EVALUATION.md for precise claims.
-export const getWorkspaceShellMetrics = cache(getWorkspaceShellMetricsUncached);
+export async function getWorkspaceShellMetrics(): Promise<WorkspaceShellMetrics> {
+  return (await getWorkspaceShellMetricsResult()).metrics;
+}
 
 /**
  * The verified authenticated user for the current request.

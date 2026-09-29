@@ -16,11 +16,19 @@ vi.mock("@/components/timer/live-duration", () => ({
   ),
 }));
 
+vi.mock("../_lib/home-activity-pulse", () => ({
+  getHomeActivityPulseData: vi.fn(),
+}));
+
 import type { OperatorTask } from "@ega/application";
 
 import { INBOX_CAPTURE_EVENT, QUICK_TASK_EVENT } from "@/lib/workspace-events";
+import { getHomeActivityPulseData } from "../_lib/home-activity-pulse";
+import type { HomeActivityPulse } from "../_lib/home-activity-pulse";
 
 import { AuthenticatedHomePage } from "./authenticated-home-page";
+
+const mockGetHomeActivityPulseData = vi.mocked(getHomeActivityPulseData);
 
 function task(overrides: Partial<OperatorTask> & { id: string }): OperatorTask {
   const { id, ...rest } = overrides;
@@ -50,6 +58,20 @@ function task(overrides: Partial<OperatorTask> & { id: string }): OperatorTask {
   };
 }
 
+const ACTIVITY_PULSE: HomeActivityPulse = {
+  startDate: "2026-09-01",
+  endDate: "2026-09-27",
+  currentStreak: 6,
+  activeDays: 18,
+  trackedSeconds: 42 * 3600,
+  completedTasks: 23,
+  sessionCount: 31,
+  days: Array.from({ length: 84 }, (_, index) => ({
+    date: `2026-08-${String((index % 28) + 1).padStart(2, "0")}`,
+    intensity: (index % 5) as 0 | 1 | 2 | 3 | 4,
+  })),
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
@@ -58,53 +80,50 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
+  mockGetHomeActivityPulseData.mockResolvedValue({ data: ACTIVITY_PULSE, errorMessage: null });
 });
 
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  vi.clearAllMocks();
 });
 
-async function render(model: Parameters<typeof AuthenticatedHomePage>[0]["model"]) {
+async function render(
+  model: Parameters<typeof AuthenticatedHomePage>[0]["model"],
+  options: { greeting?: Parameters<typeof AuthenticatedHomePage>[0]["greeting"] } = {},
+) {
   await act(async () => {
-    root.render(<AuthenticatedHomePage model={model} />);
+    root.render(
+      <AuthenticatedHomePage model={model} greeting={options.greeting ?? null} name="ab.mortaki" />,
+    );
   });
 }
 
-type HomeSummary = NonNullable<Parameters<typeof AuthenticatedHomePage>[0]["model"]["summary"]>;
+type HomeModel = Parameters<typeof AuthenticatedHomePage>[0]["model"];
 
-function summary(overrides: Partial<HomeSummary> = {}): HomeSummary {
+function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
   return {
-    plannedCount: 0,
-    inProgressCount: 0,
-    blockedCount: 0,
-    completedCount: 0,
-    selectedCount: 0,
-    clearableCompletedCount: 0,
-    overdueCount: 0,
-    dueTodayCount: 0,
-    totalEstimateMinutes: 0,
-    trackedTodaySeconds: 0,
-    trackedTodayLabel: "0m",
-    ...overrides,
-  };
-}
-
-function emptyModel(overrides: Partial<Parameters<typeof AuthenticatedHomePage>[0]["model"]> = {}) {
-  return {
+    date: "2026-09-27",
+    timezone: "Africa/Casablanca",
     activeTimer: null,
     startHere: null,
     nextUp: null,
+    todayProgress: null,
     attention: { overdue: 0, dueToday: 0, reviewMissing: false },
-    snapshotUnavailable: false,
-    summary: null,
-    sections: null,
-    focusQueue: [],
+    availability: { operator: "available", attention: "available" },
     ...overrides,
   };
 }
 
-describe("AuthenticatedHomePage (EGA-653)", () => {
+const Greeting = {
+  greeting: "Good morning, ab.mortaki",
+  dateLine: "FRI, SEP 27, 2026",
+  fullDateLine: "Friday, September 27",
+  subtitle: "Let's make progress today.",
+};
+
+describe("AuthenticatedHomePage (EGA-663)", () => {
   it("makes the active timer the dominant state and feeds startedAt to the live duration", async () => {
     await render(
       emptyModel({
@@ -121,6 +140,7 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(container.querySelector('[data-testid="home-active-timer"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="home-start-here"]')).toBeNull();
     expect(container.textContent).toContain("Deep work");
+    expect(container.textContent).toContain("Focus running");
     expect(container.textContent).toContain("Open timer");
 
     const live = container.querySelector('[data-testid="mock-live-duration"]');
@@ -154,6 +174,19 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(container.textContent).not.toContain("Start task");
   });
 
+  it("View Task links to the exact task/project context", async () => {
+    await render(
+      emptyModel({
+        startHere: task({ id: "a", title: "Write the plan" }),
+      }),
+    );
+
+    const viewTask = [...container.querySelectorAll("a")].find((link) =>
+      link.textContent?.includes("View task"),
+    );
+    expect(viewTask?.getAttribute("href")).toBe("/tasks/projects/ega-house#task-a");
+  });
+
   it("shows a calm empty Start Here state with no fabricated work", async () => {
     await render(emptyModel());
     const empty = container.querySelector('[data-testid="home-start-here-empty"]');
@@ -161,16 +194,11 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(empty?.textContent).toContain("Nothing queued");
   });
 
-  it("renders each task id in exactly one Home surface and drops the next-up strip", async () => {
+  it("renders each task id in exactly one Home surface and drops the multi-item queue", async () => {
     await render(
       emptyModel({
         startHere: task({ id: "a", title: "Start task" }),
         nextUp: task({ id: "b", title: "Follow-up" }),
-        focusQueue: [
-          task({ id: "a", title: "Start task" }),
-          task({ id: "b", title: "Follow-up" }),
-          task({ id: "c", title: "Third task" }),
-        ],
       }),
     );
 
@@ -179,88 +207,54 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     );
     expect(renderedIds.length).toBeGreaterThan(0);
     expect(new Set(renderedIds).size).toBe(renderedIds.length);
-    expect(container.querySelector('[data-testid="home-next-up"]')).toBeNull();
-    expect(container.textContent).toContain("Follow-up");
+
+    const next = container.querySelector('[data-testid="home-next"]');
+    expect(next?.textContent).toContain("Follow-up");
+    // The full focus queue is gone from Home.
+    expect(container.querySelector('[data-testid="home-focus-queue"]')).toBeNull();
+    expect(container.textContent).not.toContain("Up next");
   });
 
-  it("formats the Focus time KPI at minute precision, never seconds", async () => {
-    await render(emptyModel({ summary: summary({ trackedTodaySeconds: 59 * 60 + 23 }) }));
-
-    const text = container.querySelector('[data-testid="home-workspace"]')?.textContent ?? "";
-    expect(text).toContain("Focus time");
-    expect(text).toContain("59m");
-    expect(text).not.toContain("23s");
-  });
-
-  it("renders positive sub-minute focus time as <1m, never 0m", async () => {
-    await render(emptyModel({ summary: summary({ trackedTodaySeconds: 30 }) }));
-
-    expect(container.querySelector('[data-testid="home-workspace"]')?.textContent).toContain(
-      "<1m",
-    );
-  });
-
-  it("scopes the Progress counts to today and formats the planned load centrally", async () => {
+  it("renders compact Today progress scoped to the Today projection", async () => {
     await render(
       emptyModel({
-        summary: summary({
-          plannedCount: 2,
-          inProgressCount: 1,
+        todayProgress: {
           completedCount: 3,
+          totalCount: 6,
+          plannedCount: 3,
+          inProgressCount: 1,
           totalEstimateMinutes: 90,
-        }),
+          ratio: 50,
+        },
       }),
     );
 
-    const progress = container.querySelector('[data-testid="home-progress"]');
-    expect(progress?.textContent).toContain("Planned today");
-    expect(progress?.textContent).toContain("In progress today");
-    expect(progress?.textContent).toContain("2");
-    expect(progress?.textContent).toContain("1");
-    expect(progress?.textContent).toContain("1h 30m");
-    expect(progress?.textContent).toContain("50%");
+    const today = container.querySelector('[data-testid="home-today"]');
+    expect(today?.textContent).toContain("3 of 6 complete");
+    expect(today?.textContent).toContain("1h 30m planned");
+    expect(today?.textContent).toContain("Planned today");
+    expect(today?.textContent).toContain("In progress today");
+    expect(today?.textContent).toContain("50%");
+    expect(today?.querySelector('a[href="/today"]')).not.toBeNull();
   });
 
-  it("keeps the Progress empty state compact with a link to Today", async () => {
-    await render(emptyModel({ summary: summary() }));
-
-    const progress = container.querySelector('[data-testid="home-progress"]');
-    expect(progress?.textContent).toContain("Nothing is planned for today yet.");
-    expect(progress?.querySelector('a[href="/today"]')).not.toBeNull();
-    expect(progress?.querySelector("dl")).toBeNull();
-  });
-
-  it("hides Start Here from Up next while preserving canonical queue order", async () => {
+  it("keeps the Today empty state compact with a link to Today", async () => {
     await render(
       emptyModel({
-        startHere: task({ id: "a", title: "Start task" }),
-        focusQueue: [
-          task({ id: "a", title: "Start task" }),
-          task({ id: "b", title: "Second task" }),
-          task({ id: "c", title: "Third task" }),
-        ],
+        todayProgress: {
+          completedCount: 0,
+          totalCount: 0,
+          plannedCount: 0,
+          inProgressCount: 0,
+          totalEstimateMinutes: 0,
+          ratio: null,
+        },
       }),
     );
 
-    const panel = container.querySelector('[data-testid="home-focus-queue"]');
-    const text = panel?.textContent ?? "";
-    expect(text).toContain("Up next");
-    expect(text).not.toContain("Start task");
-    expect(text.indexOf("Second task")).toBeGreaterThan(-1);
-    expect(text.indexOf("Second task")).toBeLessThan(text.indexOf("Third task"));
-  });
-
-  it("shows a compact Up next line when Start Here is the only queued task", async () => {
-    await render(
-      emptyModel({
-        startHere: task({ id: "a", title: "Start task" }),
-        focusQueue: [task({ id: "a", title: "Start task" })],
-      }),
-    );
-
-    const panel = container.querySelector('[data-testid="home-focus-queue"]');
-    expect(panel?.textContent).toContain("Nothing else queued right now.");
-    expect(panel?.textContent).not.toContain("Start task");
+    const today = container.querySelector('[data-testid="home-today"]');
+    expect(today?.textContent).toContain("Nothing is planned for today yet.");
+    expect(today?.querySelector('a[href="/today"]')).not.toBeNull();
   });
 
   it("reuses canonical attention counts and their canonical destinations", async () => {
@@ -279,7 +273,53 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
     expect(attention?.querySelector('a[href="/review"]')).not.toBeNull();
   });
 
-  it("quick actions dispatch the canonical existing events", async () => {
+  it("shows a verified clear state only when attention data is available", async () => {
+    await render(
+      emptyModel({
+        attention: { overdue: 0, dueToday: 0, reviewMissing: false },
+        availability: { operator: "available", attention: "available" },
+      }),
+    );
+
+    expect(container.textContent).toContain("You’re clear right now.");
+  });
+
+  it("never claims a clear state when attention metrics are unavailable", async () => {
+    await render(
+      emptyModel({
+        attention: null,
+        availability: { operator: "available", attention: "unavailable" },
+      }),
+    );
+
+    const attention = container.querySelector('[data-testid="home-attention"]');
+    expect(attention?.textContent).toContain("Attention status unavailable.");
+    expect(attention?.textContent).not.toContain("clear right now");
+  });
+
+  it("renders the degraded operator notice instead of fabricated focus work", async () => {
+    await render(emptyModel({ availability: { operator: "unavailable", attention: "unavailable" } }));
+
+    expect(container.querySelector('[data-testid="home-degraded"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="home-start-here"]')).toBeNull();
+  });
+
+  it("shows the greeting block with canonical date lines when the snapshot is available", async () => {
+    await render(emptyModel(), { greeting: Greeting });
+
+    expect(container.textContent).toContain("Good morning, ab.mortaki");
+    expect(container.textContent).toContain("FRI, SEP 27, 2026");
+    expect(container.textContent).toContain("Let's make progress today.");
+  });
+
+  it("falls back to a time-neutral welcome without date claims when the snapshot is unavailable", async () => {
+    await render(emptyModel({ date: "", timezone: "" }));
+
+    expect(container.textContent).toContain("Welcome back, ab.mortaki");
+    expect(container.textContent).not.toContain("Let's make progress today.");
+  });
+
+  it("quick actions dispatch the canonical existing events with the new labels", async () => {
     const quickTask = vi.fn();
     const capture = vi.fn();
     window.addEventListener(QUICK_TASK_EVENT, quickTask);
@@ -300,9 +340,53 @@ describe("AuthenticatedHomePage (EGA-653)", () => {
 
     expect(quickTask).toHaveBeenCalledTimes(1);
     expect(capture).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('[data-testid="home-start-timer"]')?.getAttribute("href")).toBe("/timer");
+
+    expect(container.textContent).toContain("Create Task");
+    expect(container.textContent).toContain("Add to Backlog");
+    expect(container.textContent).toContain("Timer");
+    expect(container.querySelector('[data-testid="home-start-timer"]')?.getAttribute("href")).toBe(
+      "/timer",
+    );
+
+    // Shortcut hints must match the canonical bindings (Ctrl/Cmd+Shift+N/I/T),
+    // never the misleading plain Cmd+N/B/T that the shell does not handle.
+    const hints = Array.from(container.querySelectorAll("kbd")).map((node) => node.textContent?.trim());
+    expect(hints).toEqual(["⌘⇧N", "⌘⇧I", "⌘⇧T"]);
 
     window.removeEventListener(QUICK_TASK_EVENT, quickTask);
     window.removeEventListener(INBOX_CAPTURE_EVENT, capture);
+  });
+
+  it("removes the four-card Daily execution overview KPI grid", async () => {
+    await render(emptyModel());
+
+    expect(container.textContent).not.toContain("Daily execution overview");
+    expect(container.textContent).not.toContain("Focus time");
+  });
+
+  it("renders the canonical activity pulse and links to full analytics", async () => {
+    await render(emptyModel());
+
+    const pulse = container.querySelector('[data-testid="home-activity-pulse"]');
+    expect(pulse).not.toBeNull();
+    expect(pulse?.textContent).toContain("Activity pulse");
+    expect(pulse?.textContent).toContain("54 contributions in the last year");
+    expect(pulse?.textContent).toContain("6-day streak");
+    expect(pulse?.querySelector('a[href="/work-analytics"]')).not.toBeNull();
+  });
+
+  it("degrades the activity section without blanking the primary Now experience", async () => {
+    mockGetHomeActivityPulseData.mockResolvedValue({
+      data: null,
+      errorMessage: "Activity pulse unavailable right now.",
+    });
+
+    await render(emptyModel());
+
+    expect(container.querySelector('[data-testid="home-activity-pulse-unavailable"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="home-activity-pulse"]')).toBeNull();
+    // The primary surfaces remain intact.
+    expect(container.querySelector('[data-testid="home-workspace"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="home-today"]')).not.toBeNull();
   });
 });

@@ -11,7 +11,7 @@ type OwnerScopedRow = {
   updated_at?: string | null;
 };
 
-type SupportedRealtimeTable = "task_sessions" | "tasks";
+type SupportedRealtimeTable = "task_sessions" | "tasks" | "week_reviews";
 
 type SupabaseRealtimeClient = Pick<
   SupabaseClient<Database>,

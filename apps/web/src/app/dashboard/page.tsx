@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function DashboardPage() {
-  redirect("/today");
+  redirect("/home");
 }
