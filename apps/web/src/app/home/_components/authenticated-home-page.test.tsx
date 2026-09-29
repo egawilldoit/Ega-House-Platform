@@ -348,6 +348,11 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
       "/timer",
     );
 
+    // Shortcut hints must match the canonical bindings (Ctrl/Cmd+Shift+N/I/T),
+    // never the misleading plain Cmd+N/B/T that the shell does not handle.
+    const hints = Array.from(container.querySelectorAll("kbd")).map((node) => node.textContent?.trim());
+    expect(hints).toEqual(["⌘⇧N", "⌘⇧I", "⌘⇧T"]);
+
     window.removeEventListener(QUICK_TASK_EVENT, quickTask);
     window.removeEventListener(INBOX_CAPTURE_EVENT, capture);
   });
