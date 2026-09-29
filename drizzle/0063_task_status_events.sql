@@ -81,7 +81,9 @@ BEGIN
   -- durable ledger cannot corroborate.
   IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
     IF public.task_status_is_done(NEW.status) THEN
-      NEW.completed_at := COALESCE(OLD.completed_at, NEW.completed_at);
+      -- The trigger owns the value while status is unchanged: an unrelated
+      -- edit (or a client "repair") must neither move nor invent it.
+      NEW.completed_at := OLD.completed_at;
     END IF;
     RETURN NEW;
   END IF;
@@ -89,9 +91,13 @@ BEGIN
   -- Status actually changed: record the durable transition first, then
   -- normalize current-state completed_at to follow the new status. A
   -- caller-supplied completed_at (e.g. a backdated completion) is the canonical
-  -- instant for both the event and the current state; the ledger stores the
+  -- instant for both the event and the current state; non-completion
+  -- transitions are stamped at the mutation instant. The ledger stores the
   -- normalized 'done' spelling so it matches the heatmap's completion filter.
-  v_occurred_at := COALESCE(NEW.completed_at, now());
+  v_occurred_at := CASE
+    WHEN public.task_status_is_done(NEW.status) THEN COALESCE(NEW.completed_at, now())
+    ELSE now()
+  END;
   INSERT INTO public.task_status_events (owner_user_id, task_id, from_status, to_status, occurred_at)
   VALUES (
     NEW.owner_user_id,

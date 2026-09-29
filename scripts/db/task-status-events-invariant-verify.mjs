@@ -225,8 +225,10 @@ async function runBackfillProof(sql) {
 
   // An unrelated edit of a done Task whose completion evidence was already
   // lost must not fabricate completed_at (and must record no event). This is
-  // the pre-migration MCP/mobile state: status=done, completed_at NULL.
-  await sql`UPDATE tasks SET title = 'Renamed without timestamp', updated_at = now() WHERE id = ${TASK_C}::uuid`;
+  // the pre-migration MCP/mobile state: status=done, completed_at NULL. The
+  // edit even supplies a completed_at, which the trigger must ignore while the
+  // status is unchanged.
+  await sql`UPDATE tasks SET title = 'Renamed without timestamp', completed_at = now(), updated_at = now() WHERE id = ${TASK_C}::uuid`;
   const taskCAfterEdit = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_C}::uuid`;
   await expect(
     taskCAfterEdit[0]?.completed_at === null,
@@ -280,13 +282,17 @@ async function runTransitionProof(sql) {
   await expect(events[0]?.count === 1, "UNRELATED", `unrelated edit must not create an event, got ${events[0]?.count}`);
   log("UNRELATED", "Unrelated edit while done: completed_at preserved, no event.");
 
-  // Reopen: completed_at cleared, event recorded.
+  // Reopen: completed_at cleared, event recorded at the mutation instant (not
+  // the old completion instant that a status-only UPDATE would carry over).
+  await sql`SELECT pg_sleep(0.05)`;
   await sql`UPDATE tasks SET status = 'todo', updated_at = now() WHERE id = ${TASK_D}::uuid`;
   const afterReopen = await sql`SELECT completed_at FROM tasks WHERE id = ${TASK_D}::uuid`;
   await expect(afterReopen[0]?.completed_at === null, "REOPEN", "done -> todo must clear completed_at");
-  events = await sql`SELECT to_status FROM task_status_events WHERE task_id = ${TASK_D}::uuid ORDER BY occurred_at`;
+  events = await sql`SELECT to_status, occurred_at FROM task_status_events WHERE task_id = ${TASK_D}::uuid ORDER BY occurred_at`;
   await expect(events.length === 2 && events[1]?.to_status === "todo", "REOPEN", `reopen must record a todo event, got ${JSON.stringify(events)}`);
-  log("REOPEN", "done -> todo cleared completed_at and recorded the transition.");
+  const reopenIso = new Date(events[1]?.occurred_at).toISOString();
+  await expect(reopenIso !== doneAt, "REOPEN", `reopen event must be stamped at the mutation instant, not the completion instant (${reopenIso} vs ${doneAt})`);
+  log("REOPEN", "done -> todo cleared completed_at and recorded the transition at the mutation instant.");
 
   // Re-complete: second done event at the new instant; first day keeps evidence.
   await sql`UPDATE tasks SET status = 'done', updated_at = now() WHERE id = ${TASK_D}::uuid`;
