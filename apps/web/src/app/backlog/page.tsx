@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, Inbox, Plus, Search } from "lucide-react";
+import { ChevronRight, Inbox, Search } from "lucide-react";
 
+import { BacklogAddButton } from "@/app/backlog/backlog-add-button";
 import { BacklogArchiveControls } from "@/app/backlog/backlog-archive-controls";
 import { BacklogConvertForm } from "@/app/backlog/backlog-convert-form";
 import { BacklogItemForm } from "@/app/backlog/backlog-item-form";
@@ -19,7 +20,6 @@ import {
   type IdeaNote,
   type IdeaNoteProjectOption,
 } from "@/lib/services/idea-note-service";
-import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -194,17 +194,7 @@ export default async function BacklogPage({ searchParams }: BacklogPageProps) {
     <AppShell
       title="Backlog"
       description="Keep ideas here until they are ready to become real work."
-      actions={
-        <button
-          type="button"
-          className={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-2")}
-          onClick={() => window.dispatchEvent(new CustomEvent(INBOX_CAPTURE_EVENT))}
-          data-testid="backlog-add-item"
-        >
-          <Plus className="h-4 w-4" aria-hidden="true" />
-          Add to Backlog
-        </button>
-      }
+      actions={<BacklogAddButton />}
     >
       <div className="flex flex-col gap-6">
         <section className="flex flex-col gap-4">
