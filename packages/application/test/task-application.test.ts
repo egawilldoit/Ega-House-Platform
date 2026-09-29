@@ -297,7 +297,9 @@ test("task read models preserve actor scoping and missing-task semantics", async
   repository.list = ok([mutation.value]);
   repository.task = ok(null);
 
-  const list = await getTasksReadModel(ACTOR, repository);
+  const list = await getTasksReadModel(ACTOR, repository, undefined, {
+    localDate: "2026-08-27",
+  });
   const missing = await getTaskReadModel(ACTOR, repository, "missing");
 
   assert.equal(list.ok, true);

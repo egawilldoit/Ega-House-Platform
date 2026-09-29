@@ -2,75 +2,109 @@
 
 ## Current Behavior
 
-All Work Analytics day/week/month bucket calculations operate in **UTC**.
+User-facing Work Analytics and Work Activity calendar calculations operate in
+the owner's persisted **EGA House timezone** (`user_time_context.iana_timezone`),
+falling back to **UTC** only when Time Context is unavailable or invalid.
 
-- Raw timestamps (`started_at`, `ended_at`) are stored as ISO 8601 strings in UTC in the `task_sessions` table.
-- Bucket boundaries (e.g., "today", "last 7 days", "current month") are computed using `Date.UTC()` or equivalent UTC-based operations.
-- The `calculateWorkAnalyticsDailySeries()` function distributes session seconds across UTC calendar days. A session running from 22:00 UTC to 02:00 UTC the next day is counted as partial hours in both UTC days.
-- The `calculateWorkAnalyticsMonthComparison()` function computes month boundaries using UTC: `new Date(Date.UTC(year, month, 1))`.
+- Raw timestamps (`started_at`, `ended_at`, completion-event `occurred_at`) remain UTC instants.
+- Changing the account timezone never rewrites those stored instants.
+- Today, rolling windows, calendar months, quarters, streaks, drilldowns, and
+  activity-day buckets use local calendar boundaries derived from canonical EGA Time Context.
+- Analytics exports report the exact IANA timezone and UTC evidence windows used.
+- Historical timestamps are reinterpreted into the selected/current report timezone;
+  EGA House does not claim to persist timezone-at-event for legacy timestamps.
 
-## Rationale
+## Canonical local-day splitting
 
-Using UTC for all server-side computations avoids timezone ambiguity in scheduled exports, cron-based reports, and multi-timezone collaboration contexts. It ensures deterministic, reproducible results regardless of where the server runs.
+EGA-661 owns timezone/day-boundary semantics in `@ega/domain/time-context`,
+including `splitIntervalByLocalDay()`.
 
-## Known Limitation
+EGA-662's shared `session-day-aggregation.ts` reuses that canonical splitter
+and adds only session-evidence policy:
 
-Mixed UTC/local behavior can make day-level and month-level totals feel wrong to users in extreme timezones (e.g., UTC+14 or UTC-12). A session that starts at 23:00 local time on Monday appears as Monday's data in UTC but may "feel" like it belongs to Monday locally. This is consistent behavior but can be surprising near midnight.
+- clip evidence to the requested bounded window;
+- split closed sessions across the local days they overlap;
+- treat an open session as provisional evidence for the **current local day only**;
+- prevent a stale multi-day open session from painting historical activity;
+- return every requested local date, including zero-activity dates.
 
-## Desired Future Behavior
+The Review session heatmap and yearly Work Activity calendar both consume this
+shared session aggregation; there is no second yearly timezone algorithm.
 
-User-facing day/week/month buckets should eventually use the **user's local timezone** or an **explicit report timezone** selected in settings or passed as a query parameter. This is tracked as a future enhancement and is not yet implemented.
+## Durable Task completion evidence (EGA-662)
+
+The yearly Work Activity calendar uses append-only `task_status_events` for
+historical Task-completion evidence rather than mutable `tasks.completed_at`.
+
+Migration `0063_task_status_events.sql` installs the transition invariant:
+
+- non-done → done: stamp current `completed_at` and append one completion event;
+- done → done: do not append a duplicate event and do not move completion time;
+- done → non-done: clear current-state `completed_at` but keep historical events;
+- unrelated edits while done: preserve current completion time.
+
+The ledger is owner-readable and product-append-only; ordinary clients do not
+receive update/delete policies for historical events. Task deletion uses the
+migration's declared foreign-key behavior so historical evidence follows the
+schema invariant.
+
+### Historical coverage limitation
+
+Backfill creates historical completion evidence only where a trustworthy
+pre-existing non-null `completed_at` exists. It never fabricates completion
+timestamps from `updated_at`. Previously lost history cannot be reconstructed
+honestly and is intentionally absent.
+
+## Work Activity yearly window
+
+The Work Activity calendar is a rolling local-calendar window ending on the
+owner's current local date. Every local date is represented, including zero
+activity. Calendar intensity is deterministic and stable; it does not rescale
+relative to whichever day happens to be the maximum in the current window.
+
+Day detail is fetched on demand for one bounded local-day window rather than
+shipping all nested yearly session/task rows to the browser.
 
 ## Export Behavior
 
 All exports include:
 
-- **Report timezone** — the IANA timezone identifier used for bucket computation (currently `"UTC"`).
-- **Bucket start/end ISO values** — each row or section boundary includes the UTC timestamps for the bucket start and end.
-- **Raw session timestamps** — individual session timestamps are always ISO strings in UTC.
+- report timezone (IANA identifier);
+- UTC bucket/evidence boundaries;
+- raw UTC session timestamps.
 
-This ensures that exported data can be re-aggregated into any timezone by consuming applications.
-
-## Open-Session Handling
-
-Open sessions (those with `ended_at IS NULL`) have a provisional duration calculated from `started_at` to the current time (`nowIso`) at the moment of query. This time is included in bucket calculations when `includeOpenSessions` is `true` (default: `false`). When included, the duration is **provisional** — it will change if the session is still running when queried again. Exports flag open sessions with `[open]` in session metadata.
+This preserves reproducibility while keeping local-calendar presentation correct.
 
 ## Test Expectations
 
-The following test files contain timezone-sensitive test assertions:
+Timezone-sensitive coverage includes:
 
-| File | What it tests |
+| File | What it proves |
 |---|---|
-| `src/lib/services/work-analytics-service.test.ts` | Midnight boundary session distribution, month-boundary session overlap |
-| `src/lib/services/work-analytics-filters.test.ts` | Window computation with fixed UTC `now` dates |
+| `src/lib/services/work-analytics-service.test.ts` | Local day/month analytics and session distribution |
+| `src/lib/services/work-analytics-filters.test.ts` | Timezone-aware report windows |
+| `src/lib/review-session-heatmap.test.ts` | Review heatmap behavior after shared aggregation |
+| `src/lib/session-day-aggregation.test.ts` | Shared DST/local-day/open-session policy |
+| `src/lib/services/work-activity-service.test.ts` | Activity intensity, streaks, timezone boundaries, leap-day cases |
+| `src/lib/services/work-activity-grid.test.ts` | Week geometry and month labels |
+| `src/lib/services/work-activity-data-adapter.test.ts` | Bounded owner-scoped evidence queries |
+| `src/lib/services/work-activity-read-model.test.ts` | Time Context + calendar composition/degraded states |
+| `packages/data-access/test/task-repository.test.ts` | Trigger-owned completion invariant |
 
-When writing new tests:
-
-- Always use **fixed ISO date strings** and a `nowIso` option instead of `new Date()`.
-- Always specify the `nowIso` option explicitly so tests are timezone-independent.
-- For boundary tests, use `Date.UTC()` or UTC-based constructors to avoid timezone-dependent test failures.
-- Never depend on `new Date()` without a fixed mock time.
-
-## Implementation Details
-
-### `calculateWorkAnalyticsDailySeries()`
-- Accepts date strings in `YYYY-MM-DD` format (UTC).
-- Fills missing days with zero values (not sparse).
-- Distributes multi-day sessions proportionally across UTC day boundaries.
-
-### `calculateWorkAnalyticsMonthComparison()`
-- Computes "current month" as `Date.UTC(year, month, 1)` to now.
-- Computes "previous month" as `Date.UTC(year, month-1, 1)` to `Date.UTC(year, month, 1)`.
-- Sessions crossing month boundaries are counted in **both** months proportionally.
-
-### Export Route (`/work-analytics/export`)
-- Accepts `?month=YYYY-MM` to select a specific month window.
-- The export Markdown includes: `Report timezone: UTC` and bucket start/end ISO timestamps.
+Tests must use fixed clocks/ISO instants for boundary behavior and must not rely
+on the process timezone.
 
 ## Related Files
 
-- `src/lib/services/work-analytics-service.ts` — Core bucket logic
-- `src/lib/services/work-analytics-filters.ts` — Window computation helpers
-- `src/app/work-analytics/page.tsx` — Server-side UI rendering
-- `src/app/work-analytics/export/route.ts` — Export route
-- `docs/analytics-timezone-policy.md` — This document
+- `packages/domain/src/time-context.ts` — canonical Time Context/day splitter
+- `apps/web/src/lib/services/work-analytics-service.ts` — Work Analytics calculations
+- `apps/web/src/lib/services/work-analytics-filters.ts` — report windows
+- `apps/web/src/lib/session-day-aggregation.ts` — shared session-evidence aggregation
+- `apps/web/src/lib/services/work-activity-service.ts` — yearly activity pure model
+- `apps/web/src/lib/services/work-activity-grid.ts` — calendar geometry
+- `apps/web/src/lib/services/work-activity-data-adapter.ts` — bounded evidence reads
+- `apps/web/src/lib/services/work-activity-read-model.ts` — server read-model composition
+- `apps/web/src/app/work-analytics/_components/WorkActivityHeatmap.tsx` — yearly UI
+- `apps/web/src/app/work-activity/day-details/route.ts` — bounded day-detail route
+- `drizzle/0063_task_status_events.sql` — durable completion ledger/trigger
+- `scripts/db/task-status-events-invariant-verify.mjs` — invariant proof

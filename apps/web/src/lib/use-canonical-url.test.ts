@@ -28,15 +28,15 @@ test("routeBelongsToWorkspace returns false for global app routes on workspace",
   // On tasks.egawilldoit.online, /dashboard does NOT belong.
   assert.equal(routeBelongsToWorkspace("/dashboard", "tasks.egawilldoit.online"), false);
   assert.equal(routeBelongsToWorkspace("/today", "tasks.egawilldoit.online"), false);
-  assert.equal(routeBelongsToWorkspace("/ideas", "tasks.egawilldoit.online"), false);
+  assert.equal(routeBelongsToWorkspace("/backlog", "tasks.egawilldoit.online"), false);
 });
 
 test("GLOBAL_APP_ROUTES includes all known global app routes", () => {
   const expectedRoutes = [
     "/apps",
+    "/backlog",
     "/dashboard",
     "/help",
-    "/ideas",
     "/settings",
     "/shutdown",
     "/startup",

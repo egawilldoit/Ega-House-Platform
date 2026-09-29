@@ -515,7 +515,6 @@ function TaskKanbanStatusHiddenFields({
         name="scheduledEndAt"
         value={task.scheduled_end_at ? task.scheduled_end_at.slice(0, 16) : ""}
       />
-      <input type="hidden" name="scheduleTimezoneOffsetMinutes" value="0" />
       <input
         type="hidden"
         name="estimateMinutes"

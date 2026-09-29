@@ -205,3 +205,80 @@ describe("buildFilterHref", () => {
     assert.equal(href, "?range=7d&groupBy=day");
   });
 });
+
+describe("computeWindowForRange with timezone", () => {
+  it("today starts at local midnight in Asia/Tokyo", () => {
+    // 2026-04-27T15:30:00Z is 2026-04-28 00:30 in Tokyo (UTC+9).
+    const now = new Date("2026-04-27T15:30:00.000Z");
+    const d = computeWindowForRange("today", now, "Asia/Tokyo");
+    // Local day is 2026-04-28; local midnight is 2026-04-27T15:00:00Z.
+    assert.equal(d.startIso, "2026-04-27T15:00:00.000Z");
+    assert.equal(d.endIso, "2026-04-27T15:30:00.000Z");
+  });
+
+  it("today starts at local midnight in America/New_York", () => {
+    // 2026-04-27T03:30:00Z is 2026-04-26 23:30 in New York (UTC-4).
+    const now = new Date("2026-04-27T03:30:00.000Z");
+    const d = computeWindowForRange("today", now, "America/New_York");
+    // Local date is 2026-04-26; local midnight is 2026-04-26T04:00:00Z.
+    assert.equal(d.startIso, "2026-04-26T04:00:00.000Z");
+  });
+
+  it("month-to-date starts on the 1st of the local month", () => {
+    const now = new Date("2026-04-27T15:30:00.000Z");
+    const d = computeWindowForRange("mtm", now, "Asia/Tokyo");
+    // Local month is April 2026; local midnight Apr 1 is 2026-03-31T15:00:00Z.
+    assert.equal(d.startIso, "2026-03-31T15:00:00.000Z");
+  });
+
+  it("previous month covers the full local previous calendar month", () => {
+    const now = new Date("2026-04-27T15:30:00.000Z");
+    const d = computeWindowForRange("prev-month", now, "Asia/Tokyo");
+    // Local previous month is March 2026: local midnight Mar 1 .. local midnight Apr 1.
+    assert.equal(d.startIso, "2026-02-28T15:00:00.000Z");
+    assert.equal(d.endIso, "2026-03-31T15:00:00.000Z");
+  });
+
+  it("quarter-to-date starts on the 1st of the local quarter", () => {
+    const now = new Date("2026-05-15T12:00:00.000Z");
+    const d = computeWindowForRange("qtd", now, "Asia/Tokyo");
+    // Local quarter is Q2 2026 (Apr-Jun); local midnight Apr 1 is 2026-03-31T15:00:00Z.
+    assert.equal(d.startIso, "2026-03-31T15:00:00.000Z");
+  });
+
+  it("rolling 7d window uses local calendar days", () => {
+    const now = new Date("2026-04-27T15:30:00.000Z");
+    const d = computeWindowForRange("7d", now, "Asia/Tokyo");
+    // Local date is 2026-04-28; 7 local days earlier is 2026-04-21 local midnight.
+    assert.equal(d.startIso, "2026-04-20T15:00:00.000Z");
+  });
+
+  it("omitting timezone keeps legacy UTC behavior", () => {
+    const now = new Date("2026-04-27T15:30:00.000Z");
+    const d = computeWindowForRange("today", now);
+    assert.equal(d.startIso, "2026-04-27T00:00:00.000Z");
+  });
+
+  it("today window spans a 25-hour DST fall-back day in America/New_York", () => {
+    // 2026-11-01 is the fall-back day (25 hours) in New York.
+    const now = new Date("2026-11-01T12:00:00.000Z");
+    const d = computeWindowForRange("today", now, "America/New_York");
+    // The local day starts at midnight EDT (UTC-4).
+    assert.equal(d.startIso, "2026-11-01T04:00:00.000Z");
+    // The full local day is 25 hours: midnight EDT to next midnight EST (UTC-5).
+    const nextDay = computeWindowForRange("today", new Date("2026-11-02T12:00:00.000Z"), "America/New_York");
+    const fullDayHours = (new Date(nextDay.startIso).getTime() - new Date(d.startIso).getTime()) / 3600000;
+    assert.equal(fullDayHours, 25);
+  });
+});
+
+describe("computeDateRangeForWindow with timezone", () => {
+  it("returns owner local calendar dates", () => {
+    const d = computeDateRangeForWindow(
+      { startIso: "2026-03-31T15:00:00.000Z", endIso: "2026-04-27T15:30:00.000Z" },
+      "Asia/Tokyo",
+    );
+    assert.equal(d.startDate, "2026-04-01");
+    assert.equal(d.endDate, "2026-04-28");
+  });
+});

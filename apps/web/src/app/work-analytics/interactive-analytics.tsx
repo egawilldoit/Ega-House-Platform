@@ -75,12 +75,12 @@ function allIndexedSessions(dateIndex: Record<string, DrilldownSessionDTO[]>) {
   return sessions.sort((left, right) => right.startedAt.localeCompare(left.startedAt));
 }
 
-function formatSessionDate(iso: string) {
-  return formatDisplayDate(iso, "compact");
+function formatSessionDate(iso: string, timezone?: string) {
+  return formatDisplayDate(iso, "compact", timezone);
 }
 
-function formatSessionTime(iso: string) {
-  return formatDisplayTime(iso);
+function formatSessionTime(iso: string, timezone?: string) {
+  return formatDisplayTime(iso, { timezone });
 }
 
 // ---- Panels ---------------------------------------------------------------
@@ -120,9 +120,11 @@ function AnalyticsPanel({
 function RecentSessionsTable({
   dateIndex,
   selectedRangeLabel,
+  timezone,
 }: {
   dateIndex: Record<string, DrilldownSessionDTO[]>;
   selectedRangeLabel: string;
+  timezone?: string;
 }) {
   const { openDrilldown } = useAnalyticsDrilldown();
   const sessions = allIndexedSessions(dateIndex).slice(0, RECENT_SESSION_LIMIT);
@@ -192,11 +194,11 @@ function RecentSessionsTable({
             {sessions.map((session) => (
               <tr key={`${session.taskId}-${session.startedAt}`}>
                 <td className="hidden whitespace-nowrap tabular-nums text-ega-text-secondary sm:table-cell">
-                  {formatSessionDate(session.startedAt)}
+                  {formatSessionDate(session.startedAt, timezone)}
                 </td>
                 <td className="whitespace-nowrap tabular-nums text-ega-text-secondary">
-                  {formatSessionTime(session.startedAt)}
-                  {session.endedAt ? ` – ${formatSessionTime(session.endedAt)}` : ""}
+                  {formatSessionTime(session.startedAt, timezone)}
+                  {session.endedAt ? ` – ${formatSessionTime(session.endedAt, timezone)}` : ""}
                 </td>
                 <td
                   className="hidden max-w-[12rem] truncate md:table-cell"
@@ -317,6 +319,7 @@ function BreakdownAllocation({
 
 type InteractiveAnalyticsProps = {
   drilldownIndexes: DrilldownIndexes;
+  timezone?: string;
   recentDateDrilldownIndex: Record<string, DrilldownSessionDTO[]>;
   primarySeries: WorkAnalyticsDaily[];
   primaryTitle: string;
@@ -340,6 +343,7 @@ type InteractiveAnalyticsProps = {
 
 export function InteractiveAnalytics({
   drilldownIndexes,
+  timezone,
   recentDateDrilldownIndex,
   primarySeries,
   primaryTitle,
@@ -419,6 +423,7 @@ export function InteractiveAnalytics({
           <RecentSessionsTable
             dateIndex={drilldownIndexes.date}
             selectedRangeLabel={selectedRangeLabel}
+            timezone={timezone}
           />
         </DashboardSection>
       </div>

@@ -101,7 +101,7 @@ test("schedule validation accepts both blank", () => {
   const result = normalizeTaskScheduleInput({
     scheduledStartAt: "",
     scheduledEndAt: "",
-    timezoneOffsetMinutes: "0",
+    timezone: "UTC",
   });
 
   assert.equal(result.error, null);
@@ -113,12 +113,12 @@ test("schedule validation rejects missing start or missing end", () => {
   const missingStart = normalizeTaskScheduleInput({
     scheduledStartAt: "",
     scheduledEndAt: "2026-05-09T10:00",
-    timezoneOffsetMinutes: "0",
+    timezone: "UTC",
   });
   const missingEnd = normalizeTaskScheduleInput({
     scheduledStartAt: "2026-05-09T09:00",
     scheduledEndAt: "",
-    timezoneOffsetMinutes: "0",
+    timezone: "UTC",
   });
 
   assert.equal(
@@ -135,7 +135,7 @@ test("schedule validation rejects invalid datetime", () => {
   const result = normalizeTaskScheduleInput({
     scheduledStartAt: "bad",
     scheduledEndAt: "2026-05-09T10:00",
-    timezoneOffsetMinutes: "0",
+    timezone: "UTC",
   });
 
   assert.equal(result.error, "Scheduled start must be a valid date and time.");
@@ -145,7 +145,7 @@ test("schedule validation rejects start >= end", () => {
   const result = normalizeTaskScheduleInput({
     scheduledStartAt: "2026-05-09T10:00",
     scheduledEndAt: "2026-05-09T09:59",
-    timezoneOffsetMinutes: "0",
+    timezone: "UTC",
   });
 
   assert.equal(result.error, "Scheduled end must be after scheduled start.");
@@ -2452,7 +2452,7 @@ test("createTaskEmailReminder rejects unsupported channel and status inputs", as
   assert.equal(mock.reminderInsertCalls.length, 0);
 });
 
-test("createTaskEmailReminder converts datetime-local using the browser timezone offset", async () => {
+test("createTaskEmailReminder converts datetime-local wall time in the account timezone", async () => {
   const mock = createTaskReminderSupabaseMock();
 
   const result = await createTaskEmailReminder(
@@ -2460,7 +2460,7 @@ test("createTaskEmailReminder converts datetime-local using the browser timezone
       taskId: "task-1",
       remindAt: "2026-05-01T12:00",
       channel: "email",
-      timezoneOffsetMinutes: "-60",
+      timezone: "America/New_York",
     },
     {
       supabase: mock.supabase,
@@ -2468,9 +2468,30 @@ test("createTaskEmailReminder converts datetime-local using the browser timezone
     },
   );
 
+  // 2026-05-01 is EDT (UTC-4): 12:00 wall time == 16:00 UTC.
   assert.equal(result.errorMessage, null);
-  assert.equal(result.data?.remind_at, "2026-05-01T11:00:00.000Z");
-  assert.equal(mock.reminderInsertCalls[0]?.remind_at, "2026-05-01T11:00:00.000Z");
+  assert.equal(result.data?.remind_at, "2026-05-01T16:00:00.000Z");
+  assert.equal(mock.reminderInsertCalls[0]?.remind_at, "2026-05-01T16:00:00.000Z");
+});
+
+test("createTaskEmailReminder rejects an invalid IANA timezone", async () => {
+  const mock = createTaskReminderSupabaseMock();
+
+  const result = await createTaskEmailReminder(
+    {
+      taskId: "task-1",
+      remindAt: "2026-05-01T12:00",
+      channel: "email",
+      timezone: "UTC+1",
+    },
+    {
+      supabase: mock.supabase,
+      now: new Date("2026-05-01T10:00:00.000Z"),
+    },
+  );
+
+  assert.equal(result.errorMessage, "Reminder time is invalid for the account timezone.");
+  assert.equal(mock.reminderInsertCalls.length, 0);
 });
 
 test("createTaskEmailReminder creates a pending email reminder for a visible task", async () => {
@@ -3390,4 +3411,132 @@ test("Due This Week default view includes today through today plus seven days", 
       { method: "lte", column: "due_date", value: "2026-05-08" },
     ],
   );
+});
+
+test("ega-661: due filter pills use the account local date, not the server-local date", async () => {
+  const mock = createWorkspaceSupabaseMock();
+
+  const overdueResult = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "overdue",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+  assert.deepEqual(overdueResult.tasks.map((task) => task.id), []);
+
+  const dueTodayResult = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "due_today",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+  assert.deepEqual(dueTodayResult.tasks.map((task) => task.id), ["due-today-task"]);
+
+  const dueSoonResult = await getTasksWorkspaceData(
+    {
+      activeStatus: null,
+      requestedProjectId: null,
+      requestedGoalId: null,
+      activeDueFilter: "due_soon",
+      activeSort: "updated_desc",
+      activeView: "active",
+      activeTasksOnly: true,
+    },
+    { supabase: mock.supabase, todayIsoDate: "2026-05-01" },
+  );
+  assert.deepEqual(dueSoonResult.tasks.map((task) => task.id), [
+    "due-end-task",
+    "due-today-task",
+  ]);
+});
+
+test("ega-661: createTaskWithOptionalWorkedTime uses the account local date as the recurrence anchor fallback", async () => {
+  const mock = createTaskCreateSupabaseMock();
+
+  const result = await createTaskWithOptionalWorkedTime(
+    {
+      task: {
+        title: "Recurring",
+        project_id: "project-1",
+        goal_id: null,
+        status: "todo",
+        priority: "medium",
+      },
+      workedTime: null,
+      recurrenceRule: "daily",
+      recurrenceTimezone: "UTC",
+    },
+    { supabase: mock.supabase, fallbackAnchorDate: "2026-04-20" },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceInsertCalls, [
+    {
+      task_id: "task-1",
+      rule: "daily",
+      anchor_date: "2026-04-20",
+      timezone: "UTC",
+      next_occurrence_date: "2026-04-21",
+      last_generated_at: null,
+    },
+  ]);
+});
+
+test("ega-661: validateTaskInlineUpdateInput uses the account local date as the recurrence anchor fallback", () => {
+  const result = validateTaskInlineUpdateInput({
+    taskId: "task-1",
+    status: "todo",
+    priority: "medium",
+    dueDate: "",
+    estimateMinutes: "",
+    blockedReason: "",
+    recurrenceRule: "daily",
+    recurrenceTimezone: "UTC",
+    fallbackAnchorDate: "2026-04-20",
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.equal(result.data?.recurrenceAnchorDate, "2026-04-20");
+});
+
+test("ega-661: updateTaskInline uses the account local date as the recurrence anchor fallback", async () => {
+  const mock = createTaskInlineSupabaseMock();
+
+  const result = await updateTaskInline(
+    {
+      taskId: "task-1",
+      status: "todo",
+      priority: "medium",
+      dueDate: null,
+      estimateMinutes: null,
+      blockedReason: null,
+      recurrenceRule: "daily",
+      recurrenceTimezone: "UTC",
+    },
+    { supabase: mock.supabase, updatedAtIso: "2026-04-20T12:00:00.000Z", fallbackAnchorDate: "2026-04-20" },
+  );
+
+  assert.equal(result.errorMessage, null);
+  assert.deepEqual(mock.recurrenceUpdateCalls, [
+    {
+      rule: "daily",
+      anchor_date: "2026-04-20",
+      timezone: "UTC",
+      next_occurrence_date: "2026-04-21",
+      last_generated_at: null,
+      updated_at: "2026-04-20T12:00:00.000Z",
+    },
+  ]);
 });

@@ -30,8 +30,16 @@ export function useInboxListQuery(params: Record<string, string | null | undefin
 export function useCreateInboxMutation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { title: string; body?: string | null; idempotencyKey?: string }) =>
-      createInboxItem({ title: input.title, body: input.body }, input.idempotencyKey),
+    mutationFn: (input: {
+      title: string;
+      body?: string | null;
+      projectId?: string | null;
+      idempotencyKey?: string;
+    }) =>
+      createInboxItem(
+        { title: input.title, body: input.body, projectId: input.projectId },
+        input.idempotencyKey,
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: inboxQueryKeys.all });
     },

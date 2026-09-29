@@ -66,7 +66,7 @@ test("quick task single mode renders schedule and calendar sync controls", () =>
   assert.match(singleModeSection, /htmlFor="quick-task-scheduled-to"/);
   assert.match(singleModeSection, /name="scheduledStartAt"/);
   assert.match(singleModeSection, /name="scheduledEndAt"/);
-  assert.match(singleModeSection, /name="scheduleTimezoneOffsetMinutes"/);
+  assert.doesNotMatch(singleModeSection, /name="scheduleTimezoneOffsetMinutes"/);
   assert.match(singleModeSection, /name="calendarSyncEnabled"/);
   assert.match(singleModeSection, /name="calendarReminderMinutes"/);
   assert.match(singleModeSection, /Sync to Calendar/);
@@ -129,7 +129,20 @@ test("quick task single mode uses command input with parsed preview and hidden t
 test("quick task single mode passes goals and selected project context into command parser", () => {
   assert.match(
     quickTaskSheetSource,
-    /parseQuickTaskCommand\(singleCommand,\s*projects,\s*goals,\s*\{\s*selectedProjectId: singleProjectId,\s*\}\)/,
+    /parseQuickTaskCommand\(singleCommand,\s*projects,\s*goals,\s*\{[\s\S]*selectedProjectId: singleProjectId,[\s\S]*\}\)/,
+  );
+});
+
+test("quick task command shortcuts anchor on the account local date from the display timezone", () => {
+  assert.match(quickTaskSheetSource, /useDisplayTimezone/);
+  assert.match(quickTaskSheetSource, /getLocalDateInTimezone/);
+  assert.match(
+    quickTaskSheetSource,
+    /todayIsoDate:\s*getLocalDateInTimezone\(new Date\(\),\s*displayTimezone\)/,
+  );
+  assert.match(
+    quickTaskSheetSource,
+    /parseQuickTaskCommand\(singleCommand,\s*projects,\s*goals,\s*\{[\s\S]*selectedProjectId: singleProjectId,[\s\S]*todayIsoDate:[\s\S]*\}\)/,
   );
 });
 

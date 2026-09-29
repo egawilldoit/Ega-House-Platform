@@ -1,10 +1,14 @@
-import type { GetTimeContextResponse } from "@ega/contracts/time-context";
+import type {
+  GetTimeContextResponse,
+  SetTimeContextRequest,
+  SetTimeContextResponse,
+} from "@ega/contracts/time-context";
 
 import type { ApiResult } from "./errors";
 import type { HttpClient } from "./http";
 
 /**
- * Canonical Time Context transport (GET only).
+ * Canonical Time Context transport.
  *
  * Mobile and other native clients resolve the authenticated owner's
  * Time Context through this typed HTTP layer. The call is owner-scoped
@@ -14,13 +18,13 @@ import type { HttpClient } from "./http";
  *   - `timezone` (or `requestedTimezone` alias on the server) — optional IANA
  *     zone to evaluate. Omitted => server uses persisted owner timezone.
  *     Invalid zones fall back to UTC with `fallback: "invalid_timezone"` per
- *     domain contract (not a 400).
+     *     domain contract (not a 400).
  *   - `date` — optional explicit local date (YYYY-MM-DD) for historical
  *     reproducibility. Omitted => server derives localDate from `now`.
  *
- * PUT / persisted timezone mutation remains HITL-gated and is not exposed
- * here. `setTimeContextTimezone` stays tested in application/data-access
- * without a transport write path until product approves overwrite policy.
+ * PUT persists the owner's IANA timezone. The write is owner-scoped by the
+ * bearer token and RLS; IANA validation happens server-side and answers
+ * 400 VALIDATION for invalid zones.
  */
 export type TimeContextQuery = Readonly<{
   timezone?: string | null;
@@ -38,6 +42,13 @@ export type TimeContextApi = {
    * verbatim and mapping the contract DTO unchanged.
    */
   get(query?: TimeContextQuery): Promise<ApiResult<GetTimeContextResponse>>;
+
+  /**
+   * PUT /api/time-context — authenticated, owner-scoped timezone mutation.
+   * Body: `{ "timezone": "Africa/Casablanca" }`. Invalid IANA zones answer
+   * 400 VALIDATION via the standard error envelope.
+   */
+  set(request: SetTimeContextRequest): Promise<ApiResult<SetTimeContextResponse>>;
 };
 
 export function createTimeContextApi(http: HttpClient): TimeContextApi {
@@ -51,6 +62,13 @@ export function createTimeContextApi(http: HttpClient): TimeContextApi {
           timezone,
           date,
         },
+      });
+    },
+    set(request) {
+      return http.request<SetTimeContextResponse>({
+        path: "/api/time-context",
+        method: "PUT",
+        body: { timezone: request.timezone },
       });
     },
   };

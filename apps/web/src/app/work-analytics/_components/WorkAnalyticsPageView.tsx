@@ -13,6 +13,7 @@ import {
   formatDisplayPercent,
 } from "@/lib/presentation-format";
 import { InteractiveAnalytics } from "../interactive-analytics";
+import { WorkActivityHeatmap } from "./WorkActivityHeatmap";
 import type { WorkAnalyticsPageModel } from "../_lib/work-analytics-page-model";
 
 function signedPercent(value: number | null) {
@@ -71,6 +72,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
     );
   }
   const report = model.report;
+  const displayTimezone = model.timezone ?? undefined;
   const tasksWithEstimates =
     report.estimateAccuracy.overCount +
     report.estimateAccuracy.underCount +
@@ -159,6 +161,7 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
 
       <InteractiveAnalytics
         drilldownIndexes={report.drilldownIndexes}
+        timezone={displayTimezone}
         recentDateDrilldownIndex={report.recentDateDrilldownIndex}
         primarySeries={report.selectedSeries}
         selectedSeriesRollingAverage={report.selectedSeriesRollingAverage}
@@ -367,6 +370,11 @@ export function WorkAnalyticsPageView({ model }: { model: WorkAnalyticsPageModel
           </div>
         </DashboardSection>
       </InteractiveAnalytics>
+
+      <WorkActivityHeatmap
+        workActivity={model.workActivity}
+        error={model.workActivityError}
+      />
     </div>
   );
 }

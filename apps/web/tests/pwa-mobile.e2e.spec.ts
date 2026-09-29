@@ -14,7 +14,7 @@ const MIDDLEWARE_PROTECTED_PATHS = [
   "/tasks",
   "/timer",
   "/review",
-  "/ideas",
+  "/backlog",
   "/startup",
   "/shutdown",
 ] as const;

@@ -11,6 +11,7 @@ export type InboxCaptureResult =
 export async function captureInboxIdea(input: {
   title: string;
   body?: string | null;
+  projectId?: string | null;
   idempotencyKey?: string | null;
 }): Promise<InboxCaptureResult> {
   const title = String(input.title ?? "").trim();
@@ -22,6 +23,7 @@ export async function captureInboxIdea(input: {
     {
       title,
       body: input.body ?? null,
+      projectId: input.projectId ?? undefined,
       idempotencyKey: input.idempotencyKey ?? undefined,
     },
     // createIdeaNote will handle its own supabase resolution
@@ -35,6 +37,7 @@ export async function captureInboxIdea(input: {
     return { ok: false, error: "Unable to capture idea right now." };
   }
 
+  revalidatePath("/backlog");
   revalidatePath("/ideas");
   revalidatePath("/dashboard");
 

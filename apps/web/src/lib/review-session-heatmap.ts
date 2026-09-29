@@ -1,9 +1,14 @@
 import { getLocalDateInTimezone, getLocalDayWindow } from "@ega/domain";
+import { createAuthenticatedActor, getTimeContextTimezone } from "@ega/application";
+import { SupabaseTimeContextRepository } from "@ega/data-access";
 import type { Tables } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/server";
 import { getTodayIsoDate, shiftIsoDateByDays } from "@/lib/review-week";
-
-const DAY_IN_MS = 24 * 60 * 60 * 1000;
+import {
+  aggregateSessionEvidenceByLocalDay,
+  buildLocalDateSeries,
+  type SessionDayWindow,
+} from "@/lib/session-day-aggregation";
 
 function isValidWindowIso(value: unknown): boolean {
   if (typeof value !== "string" || value.length === 0) return false;
@@ -20,34 +25,9 @@ export type DailyTrackedTime = {
   trackedSeconds: number;
 };
 
-export type DailyTrackedWindow = {
-  startDate: string;
-  endDate: string;
-  startIso: string;
-  endExclusiveIso: string;
-  timezone: string;
-};
+export type DailyTrackedWindow = SessionDayWindow;
 
 export const DEFAULT_DAILY_TRACKED_WINDOW_DAYS = 28;
-
-function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function parseIso(iso: string) {
-  const value = new Date(iso).getTime();
-  return Number.isFinite(value) ? value : null;
-}
-
-function toUtcDateStartMs(isoDate: string) {
-  return parseIso(`${isoDate}T00:00:00.000Z`);
-}
-
-function startOfUtcDayMs(ms: number) {
-  const date = new Date(ms);
-  date.setUTCHours(0, 0, 0, 0);
-  return date.getTime();
-}
 
 export function getDailyTrackedWindow(
   days = DEFAULT_DAILY_TRACKED_WINDOW_DAYS,
@@ -87,110 +67,32 @@ export function getDailyTrackedWindowForTimezone(
   return getDailyTrackedWindow(days, endDate, timezone);
 }
 
+/**
+ * Consecutive local calendar dates for a window. Retained under the legacy
+ * name for existing callers/tests; delegates to the shared series builder.
+ */
 export function buildUtcDateSeries(startDate: string, endDate: string) {
-  const startMs = toUtcDateStartMs(startDate);
-  const endMs = toUtcDateStartMs(endDate);
-
-  if (startMs === null || endMs === null || endMs < startMs) {
-    return [] as string[];
-  }
-
-  const dates: string[] = [];
-
-  for (let cursor = startMs; cursor <= endMs; cursor += DAY_IN_MS) {
-    dates.push(toIsoDate(new Date(cursor)));
-  }
-
-  return dates;
+  return buildLocalDateSeries(startDate, endDate);
 }
 
+/**
+ * Daily tracked seconds per local day. Delegates to the canonical shared
+ * session-day aggregation (EGA-662) — one implementation for every surface.
+ */
 export function aggregateDailyTrackedSeconds(
   sessions: SessionRangeRow[],
   window: DailyTrackedWindow,
   nowIso = new Date().toISOString(),
 ): DailyTrackedTime[] {
-  const dateSeries = buildUtcDateSeries(window.startDate, window.endDate);
-
-  if (dateSeries.length === 0) {
-    return [];
-  }
-
-  const rangeStartMs = parseIso(window.startIso);
-  const rangeEndExclusiveMs = parseIso(window.endExclusiveIso);
-  const nowMs = parseIso(nowIso);
-
-  if (rangeStartMs === null || rangeEndExclusiveMs === null || nowMs === null) {
-    return dateSeries.map((date) => ({ date, trackedSeconds: 0 }));
-  }
-
-  const tz = window.timezone ?? "UTC";
-  const useLocal = tz !== "UTC";
-
-  // Build local day boundaries for each date in the series when timezone is non-UTC
-  let localDayBounds: Map<string, { startMs: number; endMs: number }> | null = null;
-  if (useLocal) {
-    localDayBounds = new Map();
-    for (const date of dateSeries) {
-      try {
-        const w = getLocalDayWindow(tz, date);
-        const s = parseIso(w.startUtcIso);
-        const e = parseIso(w.endUtcIso);
-        if (s !== null && e !== null) localDayBounds.set(date, { startMs: s, endMs: e });
-      } catch {
-        // fallback to UTC boundaries for that date
-        const s = toUtcDateStartMs(date);
-        if (s !== null) localDayBounds.set(date, { startMs: s, endMs: s + DAY_IN_MS });
-      }
-    }
-  }
-
-  const totals = new Map<string, number>();
-
-  for (const session of sessions) {
-    const rawStartMs = parseIso(session.started_at);
-    const rawEndMs = parseIso(session.ended_at ?? nowIso);
-
-    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) {
-      continue;
-    }
-
-    const overlapStartMs = Math.max(rawStartMs, rangeStartMs);
-    const overlapEndMs = Math.min(rawEndMs, rangeEndExclusiveMs);
-
-    if (overlapEndMs <= overlapStartMs) {
-      continue;
-    }
-
-    if (useLocal && localDayBounds) {
-      for (const date of dateSeries) {
-        const bounds = localDayBounds.get(date);
-        if (!bounds) continue;
-        const dayOverlapStart = Math.max(overlapStartMs, bounds.startMs);
-        const dayOverlapEnd = Math.min(overlapEndMs, bounds.endMs);
-        if (dayOverlapEnd > dayOverlapStart) {
-          const segmentSeconds = Math.floor((dayOverlapEnd - dayOverlapStart) / 1000);
-          if (segmentSeconds > 0) totals.set(date, (totals.get(date) ?? 0) + segmentSeconds);
-        }
-      }
-    } else {
-      let cursorMs = overlapStartMs;
-      while (cursorMs < overlapEndMs) {
-        const dayStartMs = startOfUtcDayMs(cursorMs);
-        const dayEndMs = dayStartMs + DAY_IN_MS;
-        const segmentEndMs = Math.min(overlapEndMs, dayEndMs);
-        const segmentSeconds = Math.floor((segmentEndMs - cursorMs) / 1000);
-        if (segmentSeconds > 0) {
-          const dayKey = toIsoDate(new Date(dayStartMs));
-          totals.set(dayKey, (totals.get(dayKey) ?? 0) + segmentSeconds);
-        }
-        cursorMs = segmentEndMs;
-      }
-    }
-  }
-
-  return dateSeries.map((date) => ({ date, trackedSeconds: totals.get(date) ?? 0 }));
+  return aggregateSessionEvidenceByLocalDay(sessions, window, nowIso).map(
+    ({ date, trackedSeconds }) => ({ date, trackedSeconds }),
+  );
 }
 
+/**
+ * Map-form variant retained for existing callers. Also delegates to the
+ * shared aggregation so no second splitting algorithm exists.
+ */
 export function aggregateDailyTrackedSecondsForWindow(
   sessions: SessionRangeRow[],
   window: { startIso: string; endIso: string },
@@ -198,43 +100,21 @@ export function aggregateDailyTrackedSecondsForWindow(
   timezone: string,
   nowIso = new Date().toISOString(),
 ): Map<string, number> {
-  const totals = new Map<string, number>();
-  const windowStartMs = parseIso(window.startIso);
-  const windowEndMs = parseIso(window.endIso);
-  const nowMs = parseIso(nowIso);
-  if (windowStartMs === null || windowEndMs === null || nowMs === null) return totals;
-
-  const bounds = new Map<string, { startMs: number; endMs: number }>();
-  for (const date of dates) {
-    try {
-      const w = getLocalDayWindow(timezone, date);
-      const s = parseIso(w.startUtcIso);
-      const e = parseIso(w.endUtcIso);
-      if (s !== null && e !== null) bounds.set(date, { startMs: s, endMs: e });
-    } catch {
-      continue;
-    }
-  }
-
-  for (const session of sessions) {
-    const rawStartMs = parseIso(session.started_at);
-    const rawEndMs = parseIso(session.ended_at ?? nowIso);
-    if (rawStartMs === null || rawEndMs === null || rawEndMs <= rawStartMs) continue;
-    const overlapStartMs = Math.max(rawStartMs, windowStartMs);
-    const overlapEndMs = Math.min(rawEndMs, windowEndMs);
-    if (overlapEndMs <= overlapStartMs) continue;
-    for (const date of dates) {
-      const b = bounds.get(date);
-      if (!b) continue;
-      const s = Math.max(overlapStartMs, b.startMs);
-      const e = Math.min(overlapEndMs, b.endMs);
-      if (e > s) {
-        const secs = Math.floor((e - s) / 1000);
-        if (secs > 0) totals.set(date, (totals.get(date) ?? 0) + secs);
-      }
-    }
-  }
-  return totals;
+  if (dates.length === 0) return new Map();
+  const startWindow = getLocalDayWindow(timezone, dates[0] ?? "");
+  const endWindow = getLocalDayWindow(timezone, dates[dates.length - 1] ?? "");
+  const evidence = aggregateSessionEvidenceByLocalDay(
+    sessions,
+    {
+      startDate: dates[0] ?? "",
+      endDate: dates[dates.length - 1] ?? "",
+      startIso: window.startIso || startWindow.startUtcIso,
+      endExclusiveIso: window.endIso || endWindow.endUtcIso,
+      timezone,
+    },
+    nowIso,
+  );
+  return new Map(evidence.map(({ date, trackedSeconds }) => [date, trackedSeconds]));
 }
 
 async function resolveHeatmapTimezone(
@@ -243,19 +123,15 @@ async function resolveHeatmapTimezone(
 ): Promise<string> {
   if (!ownerUserId) return "UTC";
   try {
-    const result = await (supabase as unknown as {
-      from(t: string): {
-        select(c: string): { eq(a: string, b: string): { maybeSingle(): Promise<{ data: unknown; error: unknown }> } };
-      };
-    })
-      .from("user_time_context")
-      .select("iana_timezone")
-      .eq("user_id", ownerUserId)
-      .maybeSingle();
-    const tz = (result.data as { iana_timezone?: string | null } | null)?.iana_timezone;
+    const actor = createAuthenticatedActor(ownerUserId);
+    const repository = new SupabaseTimeContextRepository(
+      supabase as unknown as import("@supabase/supabase-js").SupabaseClient,
+    );
+    const result = await getTimeContextTimezone(actor, repository);
+    const tz = result.ok ? result.data : null;
     if (typeof tz === "string" && tz.trim()) return tz.trim();
   } catch {
-    // ignore and fallback to UTC
+    // Explicit degraded fallback when Time Context cannot be resolved.
   }
   return "UTC";
 }

@@ -44,6 +44,7 @@ function isSameLocalDay(iso: string) {
 }
 
 export function TimerPageView({ model }: { model: TimerPageModel }) {
+  const timezone = model.timezone ?? undefined;
   const {
     stoppedTaskId,
     ownerUserId,
@@ -130,6 +131,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
           <CardContent>
             <ActiveTimerDisplay
               session={activeSession}
+              timezone={timezone}
               taskContextHref={activeTaskContextHref}
               hasSessionConflict={hasSessionConflict}
               taskTrackedTotalSeconds={taskTrackedTotalSeconds}
@@ -381,7 +383,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                                 <span className="min-[761px]:hidden text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
                                   {entry.projectName} ·{" "}
                                   {formatDisplayDate(entry.startedAt, "compact")} ·{" "}
-                                  {formatDisplayTimeRange(entry.startedAt, entry.endedAt)}
+                                  {formatDisplayTimeRange(entry.startedAt, entry.endedAt, { timezone })}
                                 </span>
                               </div>
                             </td>
@@ -395,7 +397,7 @@ export function TimerPageView({ model }: { model: TimerPageModel }) {
                                 {formatDisplayDate(entry.startedAt, "compact")}
                               </span>
                               <span className="ml-2 tabular-nums text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                                {formatDisplayTimeRange(entry.startedAt, entry.endedAt)}
+                                {formatDisplayTimeRange(entry.startedAt, entry.endedAt, { timezone })}
                               </span>
                             </td>
                             <td className="numeric max-[761px]:hidden text-right text-[length:var(--text-body)] font-semibold">

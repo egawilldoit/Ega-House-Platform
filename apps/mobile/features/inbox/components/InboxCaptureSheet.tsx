@@ -4,6 +4,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,9 +12,11 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import type { InboxProjectOption } from "@ega/contracts/inbox";
 import { mobileTheme } from "@/components/mobile/theme";
 import { Button } from "@/components/mobile/ui/Button";
 import { FeedbackBanner } from "@/components/mobile/ui/FeedbackBanner";
+import { SelectionRow } from "@/components/mobile/ui/SelectionRow";
 
 function createIdempotencyKey(): string {
   // Prefer crypto.randomUUID if available (Expo/Jest polyfill)
@@ -27,9 +30,16 @@ function createIdempotencyKey(): string {
 export type InboxCaptureSheetProps = {
   visible: boolean;
   onClose: () => void;
-  onSubmit: (input: { title: string; body: string | null; idempotencyKey: string }) => Promise<void>;
+  onSubmit: (input: {
+    title: string;
+    body: string | null;
+    projectId: string | null;
+    idempotencyKey: string;
+  }) => Promise<void>;
   initialTitle?: string;
   initialBody?: string;
+  initialProjectId?: string;
+  projects?: InboxProjectOption[];
 };
 
 export function InboxCaptureSheet({
@@ -38,10 +48,13 @@ export function InboxCaptureSheet({
   onSubmit,
   initialTitle = "",
   initialBody = "",
+  initialProjectId = "",
+  projects = [],
 }: InboxCaptureSheetProps) {
   const insets = useSafeAreaInsets();
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
+  const [projectId, setProjectId] = useState(initialProjectId);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const idempotencyKeyRef = useRef<string>(createIdempotencyKey());
@@ -52,6 +65,7 @@ export function InboxCaptureSheet({
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(initialTitle);
       setBody(initialBody);
+      setProjectId(initialProjectId);
       setError(null);
       // Generate fresh key for each new sheet open unless we are retrying same draft
       // If title/body were preserved from parent (draft), keep same key for retry
@@ -59,7 +73,7 @@ export function InboxCaptureSheet({
         idempotencyKeyRef.current = createIdempotencyKey();
       }
     }
-  }, [visible, initialTitle, initialBody]);
+  }, [visible, initialTitle, initialBody, initialProjectId]);
 
   async function handleSubmit() {
     const trimmed = title.trim();
@@ -73,6 +87,7 @@ export function InboxCaptureSheet({
       await onSubmit({
         title: trimmed,
         body: body.trim() ? body.trim() : null,
+        projectId: projectId || null,
         idempotencyKey: idempotencyKeyRef.current,
       });
       // Success: reset key for next capture, clear error
@@ -108,7 +123,7 @@ export function InboxCaptureSheet({
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Close inbox capture"
+            accessibilityLabel="Close backlog capture"
             onPress={handleClose}
             style={styles.closeButton}
             testID="inbox-capture-close"
@@ -116,17 +131,21 @@ export function InboxCaptureSheet({
             <Text style={styles.closeText}>Cancel</Text>
           </Pressable>
           <Text style={styles.headerTitle} accessibilityRole="header">
-            Capture idea
+            Add to Backlog
           </Text>
           <View style={styles.headerSpacer} />
         </View>
 
-        <View style={styles.content} testID="inbox-capture-sheet">
-          <Text style={styles.eyebrow}>Inbox Capture</Text>
-          <Text style={styles.description}>Save a raw thought without choosing a Project. You can organize it later.</Text>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          testID="inbox-capture-sheet"
+        >
+          <Text style={styles.eyebrow}>Backlog Capture</Text>
+          <Text style={styles.description}>Save an idea with an optional Project. Keep it here until it becomes real work.</Text>
 
           <Text style={styles.label} nativeID="inbox-capture-title-label">
-            Thought
+            Idea
           </Text>
           <TextInput
             value={title}
@@ -135,15 +154,40 @@ export function InboxCaptureSheet({
             placeholderTextColor={mobileTheme.colors.textMuted}
             style={styles.input}
             testID="inbox-capture-title-input"
-            accessibilityLabel="Inbox capture title"
+            accessibilityLabel="Backlog capture title"
             aria-labelledby="inbox-capture-title-label"
             autoFocus
             returnKeyType="next"
             editable={!pending}
           />
 
+          <Text style={styles.label} nativeID="inbox-capture-project-label">
+            Project (optional)
+          </Text>
+          {projects.length > 0 ? (
+            <View style={styles.projectList}>
+              <SelectionRow
+                label="No project"
+                onPress={() => setProjectId("")}
+                selected={projectId === ""}
+                testID="inbox-capture-project-none"
+              />
+              {projects.map((project) => (
+                <SelectionRow
+                  key={project.id}
+                  label={project.name}
+                  onPress={() => setProjectId(project.id)}
+                  selected={project.id === projectId}
+                  testID={`inbox-capture-project-${project.id}`}
+                />
+              ))}
+            </View>
+          ) : (
+            <Text style={styles.helper}>No projects yet — you can add one later.</Text>
+          )}
+
           <Text style={styles.label} nativeID="inbox-capture-body-label">
-            Context (optional)
+            Notes (optional)
           </Text>
           <TextInput
             value={body}
@@ -152,7 +196,7 @@ export function InboxCaptureSheet({
             placeholderTextColor={mobileTheme.colors.textMuted}
             style={[styles.input, styles.bodyInput]}
             testID="inbox-capture-body-input"
-            accessibilityLabel="Inbox capture body"
+            accessibilityLabel="Backlog capture notes"
             aria-labelledby="inbox-capture-body-label"
             multiline
             textAlignVertical="top"
@@ -165,16 +209,16 @@ export function InboxCaptureSheet({
 
           <View style={styles.actions}>
             <Button
-              title={pending ? "Capturing..." : "Capture idea"}
+              title={pending ? "Adding..." : "Add to Backlog"}
               onPress={handleSubmit}
               disabled={pending}
               testID="inbox-capture-submit"
-              accessibilityLabel="Capture idea to inbox"
+              accessibilityLabel="Add to Backlog"
             />
           </View>
 
           <Text style={styles.helper}>Draft is kept if capture fails — retry won&apos;t duplicate.</Text>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -191,8 +235,8 @@ const styles = StyleSheet.create({
   closeButton: {
     minHeight: mobileTheme.layout.minTouchTarget,
     minWidth: mobileTheme.layout.minTouchTarget,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 8,
   },
   closeText: {
@@ -206,7 +250,6 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   content: {
-    flex: 1,
     gap: mobileTheme.spacing.sm,
     paddingHorizontal: mobileTheme.spacing.lg,
     paddingTop: mobileTheme.spacing.md,
@@ -222,14 +265,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: mobileTheme.font.black,
     letterSpacing: 1.1,
-    textTransform: "uppercase",
+    textTransform: 'uppercase',
   },
   header: {
-    alignItems: "center",
+    alignItems: 'center',
     borderBottomColor: mobileTheme.colors.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     paddingHorizontal: mobileTheme.spacing.md,
     paddingVertical: 8,
   },
@@ -245,7 +288,7 @@ const styles = StyleSheet.create({
     color: mobileTheme.colors.textSubtle,
     fontSize: 11,
     marginTop: 8,
-    textAlign: "center",
+    textAlign: 'center',
   },
   input: {
     backgroundColor: mobileTheme.colors.surfaceMuted,
@@ -260,5 +303,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: mobileTheme.font.semibold,
     marginTop: 4,
+  },
+  projectList: {
+    gap: mobileTheme.spacing.xs,
   },
 });

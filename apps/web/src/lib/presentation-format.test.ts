@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   DISPLAY_EMPTY,
   formatDisplayCount,
+  getDisplayTimezone,
+  setDisplayTimezone,
   formatDisplayDate,
   formatDisplayDateTime,
   formatDisplayDuration,
@@ -206,4 +208,59 @@ test("formatDisplayToken handles health and priority style values", () => {
   assert.equal(formatDisplayToken("at_risk"), "At Risk");
   assert.equal(formatDisplayToken("high"), "High");
   assert.equal(formatDisplayToken(null), DISPLAY_EMPTY);
+});
+
+test("formatDisplayTime renders an absolute timestamp in the explicit EGA timezone", () => {
+  // 2026-04-27T15:30:00Z is 17:30 in Paris (UTC+2 in April) and 00:30 in Tokyo.
+  const iso = "2026-04-27T15:30:00.000Z";
+  assert.equal(formatDisplayTime(iso, { timezone: "Europe/Paris" }), "5:30 PM");
+  assert.equal(formatDisplayTime(iso, { timezone: "Asia/Tokyo" }), "12:30 AM");
+  // Default stays UTC.
+  assert.equal(formatDisplayTime(iso), "3:30 PM");
+});
+
+test("formatDisplayDateTime renders in the explicit EGA timezone", () => {
+  const iso = "2026-04-27T15:30:00.000Z";
+  assert.equal(
+    formatDisplayDateTime(iso, { timezone: "Asia/Tokyo" }),
+    "Apr 28, 12:30 AM",
+  );
+});
+
+test("formatDisplayDate never shifts date-only values", () => {
+  // Date-only due/planned values must render as their calendar date in any zone.
+  assert.equal(formatDisplayDate("2026-04-27", "compact", "Asia/Tokyo"), "Apr 27");
+  assert.equal(formatDisplayDate("2026-04-27", "detail", "America/New_York"), "Apr 27, 2026");
+  assert.equal(formatDisplayDate("2026-04-27"), "Apr 27");
+});
+
+test("formatDisplayDate renders timestamp date parts in the explicit timezone", () => {
+  // 2026-04-27T15:30:00Z is already Apr 28 in Tokyo.
+  assert.equal(
+    formatDisplayDate("2026-04-27T15:30:00.000Z", "compact", "Asia/Tokyo"),
+    "Apr 28",
+  );
+  assert.equal(formatDisplayDate("2026-04-27T15:30:00.000Z", "compact"), "Apr 27");
+});
+
+test("formatDisplayTimeRange uses the explicit timezone for both ends", () => {
+  const range = formatDisplayTimeRange(
+    "2026-04-27T15:00:00.000Z",
+    "2026-04-27T16:00:00.000Z",
+    { timezone: "Europe/Paris" },
+  );
+  assert.equal(range, "5:00 PM – 6:00 PM");
+});
+
+test("setDisplayTimezone/getDisplayTimezone drive the default without browser-local behavior", () => {
+  const original = getDisplayTimezone();
+  try {
+    setDisplayTimezone("Africa/Casablanca");
+    assert.equal(getDisplayTimezone(), "Africa/Casablanca");
+    // 2026-04-27T15:30:00Z is 16:30 in Casablanca (UTC+1 in April).
+    assert.equal(formatDisplayTime("2026-04-27T15:30:00.000Z"), "4:30 PM");
+  } finally {
+    setDisplayTimezone(original);
+  }
+  assert.equal(getDisplayTimezone(), "UTC");
 });
