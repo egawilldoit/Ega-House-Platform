@@ -47,6 +47,21 @@ test("EGA-663: the displayed date shifts with the account zone", () => {
   assert.equal(greeting.fullDateLine, "Monday, September 23");
 });
 
+test("EGA-663: the date line is stable in far-east zones at UTC+12 and later", () => {
+  // Rendering noon-UTC inside a UTC+12/+14 zone rolls to the next local day,
+  // which used to show the wrong weekday/month for these accounts.
+  for (const timezone of ["Pacific/Auckland", "Pacific/Chatham", "Pacific/Kiritimati"]) {
+    const greeting = buildHomeGreeting({
+      date: "2024-09-24",
+      timezone,
+      name: NAME,
+      now: new Date("2024-09-24T02:00:00.000Z"),
+    });
+    assert.equal(greeting.dateLine, "TUE, SEP 24, 2024", `date line drifted in ${timezone}`);
+    assert.equal(greeting.fullDateLine, "Tuesday, September 24", `full date drifted in ${timezone}`);
+  }
+});
+
 test("EGA-663: afternoon and evening boundaries follow local hours", () => {
   const afternoon = buildHomeGreeting({
     date: "2024-09-24",
