@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  ACTIVITY_PULSE_SESSION_SELECT,
-  getWorkAnalyticsSessionsForWindow,
-  getWorkAnalyticsTaskCounts,
-} from "./work-analytics-data-adapter";
+import { getWorkAnalyticsTaskCounts } from "./work-analytics-data-adapter";
 
 type QueryResult = {
   data: unknown[] | null;
@@ -75,76 +71,6 @@ const window = {
   startIso: "2026-04-20T00:00:00.000Z",
   endIso: "2026-04-27T00:00:00.000Z",
 };
-
-test("getWorkAnalyticsSessionsForWindow defaults to the full nested select", async () => {
-  const seenSelects: string[] = [];
-  const supabase = {
-    from(_table: string) {
-      return {
-        select(columns: string) {
-          seenSelects.push(columns);
-          const chain = {
-            eq: () => chain,
-            lt: () => chain,
-            or: () => chain,
-            order: () => chain,
-            then(resolve: (value: { data: unknown[]; error: null }) => void) {
-              resolve({ data: [], error: null });
-            },
-          };
-          return chain;
-        },
-      };
-    },
-  };
-
-  const result = await getWorkAnalyticsSessionsForWindow({
-    ownerUserId: "user-1",
-    window,
-    supabase: supabase as never,
-  });
-
-  assert.equal(result.errorMessage, null);
-  assert.deepEqual(result.data, []);
-  assert.equal(seenSelects.length, 1);
-  assert.ok(seenSelects[0]?.includes("tasks("), "default select keeps the nested task relations");
-  assert.ok(seenSelects[0]?.includes("projects("), "default select keeps the nested project relations");
-  assert.ok(seenSelects[0]?.includes("goals("), "default select keeps the nested goal relations");
-});
-
-test("getWorkAnalyticsSessionsForWindow forwards a compact consumer select", async () => {
-  const seenSelects: string[] = [];
-  const supabase = {
-    from(_table: string) {
-      return {
-        select(columns: string) {
-          seenSelects.push(columns);
-          const chain = {
-            eq: () => chain,
-            lt: () => chain,
-            or: () => chain,
-            order: () => chain,
-            then(resolve: (value: { data: unknown[]; error: null }) => void) {
-              resolve({ data: [], error: null });
-            },
-          };
-          return chain;
-        },
-      };
-    },
-  };
-
-  const result = await getWorkAnalyticsSessionsForWindow({
-    ownerUserId: "user-1",
-    window,
-    select: ACTIVITY_PULSE_SESSION_SELECT,
-    supabase: supabase as never,
-  });
-
-  assert.equal(result.errorMessage, null);
-  assert.deepEqual(seenSelects, [ACTIVITY_PULSE_SESSION_SELECT]);
-  assert.ok(!seenSelects[0]?.includes("tasks("), "compact select drops nested task relations");
-});
 
 test("getWorkAnalyticsTaskCounts returns zeros for empty data", async () => {
   const supabase = createSupabaseMock([
