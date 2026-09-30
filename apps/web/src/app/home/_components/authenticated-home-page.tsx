@@ -247,11 +247,10 @@ function NowPanel({ model }: { model: HomeModel }) {
   );
 }
 
-/* ── Today (compact progress + focus list) ──────────────────────────────── */
+/* ── Today (compact progress) ─────────────────────────────────── */
 
 function TodayPanel({ model }: { model: HomeModel }) {
   const progress = model.todayProgress;
-  const tasks = model.todayTasks ?? [];
 
   return (
     <Card
@@ -330,51 +329,6 @@ function TodayPanel({ model }: { model: HomeModel }) {
               </p>
             </div>
           </div>
-
-          {tasks.length > 0 ? (
-            <div className="flex flex-col gap-1 border-t border-[var(--ega-border)] pt-3">
-              <p className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]">
-                Today&apos;s Focus
-              </p>
-              {tasks.map((task) => (
-                <div key={task.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <form action={completeTodayTaskAction} className="shrink-0">
-                      <input type="hidden" name="taskId" value={task.id} />
-                      <input type="hidden" name="returnTo" value="/home" />
-                      <button
-                        type="submit"
-                        className="h-4 w-4 rounded border border-[var(--ega-border-strong)] hover:bg-[var(--status-healthy-bg)] hover:border-[var(--status-healthy)] transition-colors"
-                        title="Complete task"
-                        aria-label={`Complete ${task.title}`}
-                      />
-                    </form>
-                    <Link
-                      href={getTaskContextHref(task.id, task.projectSlug)}
-                      className="truncate font-medium text-[color:var(--ega-text)] hover:underline"
-                    >
-                      {task.title}
-                    </Link>
-                    <span className="shrink-0 text-xs text-[color:var(--ega-text-tertiary)]">
-                      · {task.projectName}
-                    </span>
-                  </div>
-                  {task.estimateMinutes ? (
-                    <span className="shrink-0 text-xs tabular-nums text-[color:var(--ega-text-tertiary)]">
-                      {formatDisplayEstimate(task.estimateMinutes)}
-                    </span>
-                  ) : null}
-                </div>
-              ))}
-              <Link
-                href="/today"
-                className="mt-1 inline-flex items-center gap-1 text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)]"
-              >
-                View all in Today
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
-              </Link>
-            </div>
-          ) : null}
         </CardContent>
       )}
     </Card>
