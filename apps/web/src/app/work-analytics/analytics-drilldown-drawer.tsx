@@ -164,7 +164,7 @@ export function AnalyticsDrilldownDrawer({
                 </SheetTitle>
                 <SheetDescription className="mt-1">{drawerDescription(drilldown)}</SheetDescription>
               </div>
-              <SheetClose>
+              <SheetClose asChild>
                 <Button variant="ghost" size="sm" aria-label="Close drilldown">
                   <X className="h-4 w-4" aria-hidden="true" />
                 </Button>
