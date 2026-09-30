@@ -74,42 +74,83 @@ function clearDraftStorage() {
   } catch {}
 }
 
-/**
- * The single Backlog Capture controller.
- *
- * Mount once per workspace shell (see GlobalQuickActionControllers). It owns the
- * capture sheet, draft persistence, and the INBOX_CAPTURE_EVENT listener.
- * Navigation surfaces only render triggers that dispatch the event.
- */
-export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
+export type InboxCapturePanelProps = {
+  projects?: { id: string; name: string }[];
+  title?: string;
+  onTitleChange?: (title: string) => void;
+  projectId?: string;
+  onProjectIdChange?: (projectId: string) => void;
+  onSuccess?: () => void;
+  onCancel?: () => void;
+  hideHeader?: boolean;
+};
+
+export function InboxCapturePanel({
+  projects = [],
+  title: controlledTitle,
+  onTitleChange,
+  projectId: controlledProjectId,
+  onProjectIdChange,
+  onSuccess,
+  onCancel,
+  hideHeader = false,
+}: InboxCapturePanelProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
+  const [localTitle, setLocalTitle] = useState(controlledTitle ?? "");
   const [body, setBody] = useState("");
-  const [projectId, setProjectId] = useState("");
+  const [localProjectId, setLocalProjectId] = useState(controlledProjectId ?? "");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const idempotencyKeyRef = useRef<string>(createIdempotencyKey());
 
+  const title = controlledTitle !== undefined ? controlledTitle : localTitle;
+  const projectId = controlledProjectId !== undefined ? controlledProjectId : localProjectId;
+
+  const setTitle = useCallback(
+    (nextTitle: string) => {
+      setLocalTitle(nextTitle);
+      onTitleChange?.(nextTitle);
+    },
+    [onTitleChange],
+  );
+
+  const setProjectId = useCallback(
+    (nextProjectId: string) => {
+      setLocalProjectId(nextProjectId);
+      onProjectIdChange?.(nextProjectId);
+    },
+    [onProjectIdChange],
+  );
+
+  useEffect(() => {
+    if (controlledTitle !== undefined && controlledTitle !== localTitle) {
+      setLocalTitle(controlledTitle);
+    }
+  }, [controlledTitle, localTitle]);
+
+  useEffect(() => {
+    if (controlledProjectId !== undefined && controlledProjectId !== localProjectId) {
+      setLocalProjectId(controlledProjectId);
+    }
+  }, [controlledProjectId, localProjectId]);
+
   useEffect(() => {
     const draft = loadDraft();
-    if (draft) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (draft && !controlledTitle) {
       setTitle(draft.title);
       setBody(draft.body);
       setProjectId(draft.projectId);
       idempotencyKeyRef.current = draft.idempotencyKey || createIdempotencyKey();
     }
-  }, []);
+  }, [controlledTitle, setProjectId, setTitle]);
 
   useEffect(() => {
-    if (!open) return;
     const timer = window.requestAnimationFrame(() => {
       document.getElementById("inbox-capture-title")?.focus();
     });
     return () => window.cancelAnimationFrame(timer);
-  }, [open]);
+  }, []);
 
   useEffect(() => {
     if (!title && !body && !projectId) {
@@ -120,22 +161,6 @@ export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
     }
     saveDraft({ title, body, projectId, idempotencyKey: idempotencyKeyRef.current });
   }, [title, body, projectId, error]);
-
-  useEffect(() => {
-    const handler = () => {
-      setOpen(true);
-      setError(null);
-      setSuccess(null);
-    };
-    window.addEventListener(INBOX_CAPTURE_EVENT, handler);
-    return () => window.removeEventListener(INBOX_CAPTURE_EVENT, handler);
-  }, []);
-
-  const closeSheet = useCallback(() => {
-    setOpen(false);
-    setError(null);
-    setSuccess(null);
-  }, []);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {
@@ -173,7 +198,7 @@ export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
         idempotencyKeyRef.current = createIdempotencyKey();
         router.refresh();
         window.setTimeout(() => {
-          setOpen(false);
+          onSuccess?.();
           setSuccess(null);
         }, 600);
       } catch (err) {
@@ -183,27 +208,12 @@ export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
         setPending(false);
       }
     },
-    [title, body, projectId, router],
+    [title, body, projectId, router, onSuccess, setProjectId, setTitle],
   );
 
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      closeSheet();
-      return;
-    }
-    setOpen(true);
-    setError(null);
-    setSuccess(null);
-  };
-
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent
-        closeLabel="Close capture panel"
-        className="flex flex-col"
-        aria-label="Backlog quick capture sheet"
-        data-testid="inbox-quick-capture-sheet"
-      >
+    <>
+      {!hideHeader && (
         <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] px-5 pb-4 pt-5 sm:px-6">
           <SheetHeader className="min-w-0">
             <p className="glass-label">Backlog Capture</p>
@@ -218,129 +228,168 @@ export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
             size="sm"
             className="mt-1 h-9 w-9 shrink-0 rounded-full p-0"
             aria-label="Close backlog capture panel"
-            onClick={closeSheet}
+            onClick={onCancel}
             data-testid="inbox-capture-close"
           >
             <X className="h-4 w-4" />
           </Button>
         </div>
+      )}
 
-        <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-          <form onSubmit={handleSubmit} className="space-y-4" aria-label="Backlog quick capture form">
-            <div className="space-y-2">
-              <label htmlFor="inbox-capture-title" className="form-label">
-                Idea
-              </label>
-              <Input
-                id="inbox-capture-title"
-                name="title"
-                required
-                placeholder="Follow up on onboarding insight"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                className="h-10"
-                data-testid="inbox-capture-title-input"
-                aria-label="Backlog capture title"
-                autoComplete="off"
-              />
+      <div className="flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+        <form onSubmit={handleSubmit} className="space-y-4" aria-label="Backlog quick capture form">
+          <div className="space-y-2">
+            <label htmlFor="inbox-capture-title" className="form-label">
+              Idea
+            </label>
+            <Input
+              id="inbox-capture-title"
+              name="title"
+              required
+              placeholder="Follow up on onboarding insight"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className="h-10"
+              data-testid="inbox-capture-title-input"
+              aria-label="Backlog capture title"
+              autoComplete="off"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="inbox-capture-project" className="form-label">
+              Project (optional)
+            </label>
+            <select
+              id="inbox-capture-project"
+              name="projectId"
+              value={projectId}
+              onChange={(event) => setProjectId(event.target.value)}
+              className="input-instrument h-10 w-full px-2.5 text-[length:var(--text-meta-lg)]"
+              data-testid="inbox-capture-project-input"
+              aria-label="Backlog capture project"
+            >
+              <option value="">No project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="inbox-capture-body" className="form-label">
+              Notes (optional)
+            </label>
+            <Textarea
+              id="inbox-capture-body"
+              name="body"
+              placeholder="Add context, links, or next thoughts."
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              className="min-h-24 resize-none"
+              data-testid="inbox-capture-body-input"
+              aria-label="Backlog capture notes"
+            />
+          </div>
+
+          {error ? (
+            <div role="alert" className="feedback-block feedback-block-error" data-testid="inbox-capture-error">
+              {error}
             </div>
+          ) : null}
 
-            <div className="space-y-2">
-              <label htmlFor="inbox-capture-project" className="form-label">
-                Project (optional)
-              </label>
-              <select
-                id="inbox-capture-project"
-                name="projectId"
-                value={projectId}
-                onChange={(event) => setProjectId(event.target.value)}
-                className="input-instrument h-10 w-full px-2.5 text-[length:var(--text-meta-lg)]"
-                data-testid="inbox-capture-project-input"
-                aria-label="Backlog capture project"
-              >
-                <option value="">No project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+          {success ? (
+            <div role="status" className="feedback-block feedback-block-success" data-testid="inbox-capture-success">
+              {success}
             </div>
+          ) : null}
 
-            <div className="space-y-2">
-              <label htmlFor="inbox-capture-body" className="form-label">
-                Notes (optional)
-              </label>
-              <Textarea
-                id="inbox-capture-body"
-                name="body"
-                placeholder="Add context, links, or next thoughts."
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-                className="min-h-24 resize-none"
-                data-testid="inbox-capture-body-input"
-                aria-label="Backlog capture notes"
-              />
-            </div>
-
-            {error ? (
-              <div role="alert" className="feedback-block feedback-block-error" data-testid="inbox-capture-error">
-                {error}
-              </div>
-            ) : null}
-
-            {success ? (
-              <div role="status" className="feedback-block feedback-block-success" data-testid="inbox-capture-success">
-                {success}
-              </div>
-            ) : null}
-
-            <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
+          <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
+            {onCancel ? (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={closeSheet}
+                onClick={onCancel}
                 disabled={pending}
                 data-testid="inbox-capture-cancel"
               >
                 Cancel
               </Button>
-              <Button
-                type="button"
-                variant="muted"
-                size="sm"
-                onClick={() => {
-                  closeSheet();
-                  window.dispatchEvent(new CustomEvent(QUICK_TASK_EVENT));
-                }}
-                data-testid="open-quick-task-from-capture"
-              >
-                Create a task
-              </Button>
-              <Button
-                type="submit"
-                disabled={pending}
-                data-testid="inbox-capture-submit"
-                aria-label="Add to Backlog"
-              >
-                {pending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    Adding...
-                  </>
-                ) : (
-                  "Add to Backlog"
-                )}
-              </Button>
-            </div>
-          </form>
+            ) : null}
+            <Button
+              type="submit"
+              disabled={pending}
+              data-testid="inbox-capture-submit"
+              aria-label="Add to Backlog"
+            >
+              {pending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Adding...
+                </>
+              ) : (
+                "Add to Backlog"
+              )}
+            </Button>
+          </div>
+        </form>
 
-          <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">
-            Press <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Esc</kbd> to close.
-            Shortcut: <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Ctrl+Shift+I</kbd> to capture.
-          </p>
-        </div>
+        <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">
+          Press <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Esc</kbd> to close.
+          Shortcut: <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Ctrl+Shift+I</kbd> to capture.
+        </p>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The single Backlog Capture controller.
+ *
+ * Mount once per workspace shell (see GlobalQuickActionControllers). It owns the
+ * capture sheet, draft persistence, and the INBOX_CAPTURE_EVENT listener.
+ * Navigation surfaces only render triggers that dispatch the event.
+ */
+export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      setOpen(true);
+    };
+    window.addEventListener(INBOX_CAPTURE_EVENT, handler);
+    return () => window.removeEventListener(INBOX_CAPTURE_EVENT, handler);
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    setOpen(false);
+  }, []);
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      closeSheet();
+      return;
+    }
+    setOpen(true);
+  };
+
+  return (
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent
+        closeLabel="Close capture panel"
+        className="flex flex-col"
+        aria-label="Backlog quick capture sheet"
+        data-testid="inbox-quick-capture-sheet"
+      >
+        <InboxCapturePanel
+          projects={projects}
+          onSuccess={closeSheet}
+          onCancel={closeSheet}
+          hideHeader={false}
+        />
       </SheetContent>
     </Sheet>
   );

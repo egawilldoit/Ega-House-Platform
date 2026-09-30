@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 
-import { SidebarCreateTaskButton } from "./sidebar-create-task";
+import { SidebarCreateButton } from "./sidebar-create-button";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -28,18 +28,18 @@ function readSource(...segments: string[]) {
   return readFileSync(path.join(process.cwd(), "src", ...segments), "utf8");
 }
 
-describe("SidebarCreateTaskButton (EGA-649)", () => {
-  it("exposes an accessible Create task action", async () => {
-    await act(async () => root.render(<SidebarCreateTaskButton />));
+describe("SidebarCreateButton (Unified Create Flow)", () => {
+  it("exposes an accessible Create action", async () => {
+    await act(async () => root.render(<SidebarCreateButton />));
 
-    const button = container.querySelector<HTMLButtonElement>('[data-testid="sidebar-create-task"]');
+    const button = container.querySelector<HTMLButtonElement>('[data-testid="sidebar-create-button"]');
     expect(button).not.toBeNull();
     expect(button?.tagName).toBe("BUTTON");
-    expect(button?.getAttribute("aria-label")).toBe("Create task");
-    expect(button?.getAttribute("title")).toBe("Create task");
+    expect(button?.getAttribute("aria-label")).toBe("Create");
+    expect(button?.getAttribute("title")).toBe("Create");
     expect(button?.getAttribute("aria-haspopup")).toBe("dialog");
     expect(button?.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+N Meta+Shift+N");
-    expect(button?.textContent).toContain("Create task");
+    expect(button?.textContent).toContain("Create");
     expect(button?.className).toContain("workspace-create-task-trigger");
   });
 
@@ -47,8 +47,8 @@ describe("SidebarCreateTaskButton (EGA-649)", () => {
     const listener = vi.fn();
     window.addEventListener(QUICK_TASK_EVENT, listener);
 
-    await act(async () => root.render(<SidebarCreateTaskButton />));
-    const button = container.querySelector<HTMLButtonElement>('[data-testid="sidebar-create-task"]');
+    await act(async () => root.render(<SidebarCreateButton />));
+    const button = container.querySelector<HTMLButtonElement>('[data-testid="sidebar-create-button"]');
     expect(button).not.toBeNull();
 
     await act(async () => {
@@ -56,7 +56,7 @@ describe("SidebarCreateTaskButton (EGA-649)", () => {
     });
 
     expect(listener).toHaveBeenCalledTimes(1);
-    // The action reuses the shell's single QuickTaskSheet; it mounts no second form/sheet.
+    // The action reuses the shell's single UnifiedCreateSheet; it mounts no second form/sheet.
     expect(container.querySelector('[role="dialog"]')).toBeNull();
     expect(container.querySelector('[data-slot="sheet-trigger"]')).toBeNull();
 
@@ -68,26 +68,25 @@ describe("SidebarCreateTaskButton (EGA-649)", () => {
   });
 });
 
-describe("workspace navigation owns a single quick-task flow (EGA-649)", () => {
-  it("keeps the only QuickTaskSheet controller at shell level and triggers elsewhere", () => {
+describe("workspace navigation owns a single unified create flow", () => {
+  it("keeps the UnifiedCreateSheet controller at shell level and triggers elsewhere", () => {
     const sidebar = readSource("components", "layout", "sidebar.tsx");
     const drawer = readSource("components", "layout", "sidebar-mobile-drawer.tsx");
     const controllers = readSource("components", "layout", "global-quick-action-controllers.tsx");
-    const createTask = readSource("components", "layout", "sidebar-create-task.tsx");
+    const createTask = readSource("components", "layout", "sidebar-create-button.tsx");
 
-    // Exactly one controller tree mounts QuickTaskSheet (plus Inbox Capture).
-    expect((controllers.match(/<QuickTaskSheet/g) ?? []).length).toBe(1);
-    expect((controllers.match(/<InboxCaptureSheet/g) ?? []).length).toBe(1);
+    // Exactly one controller tree mounts UnifiedCreateSheet.
+    expect((controllers.match(/<UnifiedCreateSheet/g) ?? []).length).toBe(1);
 
-    // Navigation surfaces render triggers only.
+    // Navigation surfaces render the single unified trigger.
     for (const source of [sidebar, drawer]) {
-      expect(source).toContain("<SidebarCreateTaskButton");
-      expect(source).toContain("<InboxCaptureTrigger");
+      expect(source).toContain("<SidebarCreateButton");
       expect(source).not.toContain("<QuickTaskSheet");
       expect(source).not.toContain("<InboxCaptureSheet");
     }
 
-    // Create Task itself never mounts a sheet or task form.
+    // Create trigger itself never mounts a sheet or task form.
+    expect(createTask).not.toContain("<UnifiedCreateSheet");
     expect(createTask).not.toContain("<QuickTaskSheet");
     expect(createTask).not.toContain("<Sheet");
   });

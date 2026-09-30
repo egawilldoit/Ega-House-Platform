@@ -3,9 +3,8 @@
 import Image from "next/image";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
-import { InboxCaptureTrigger } from "@/components/inbox/inbox-capture-trigger";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
-import { SidebarCreateTaskButton } from "./sidebar-create-task";
+import { SidebarCreateButton } from "./sidebar-create-button";
 import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
 import { WorkspaceSearchTrigger } from "./workspace-search-trigger";
 
@@ -76,10 +75,9 @@ export function Sidebar({
         />
       </div>
 
-      {/* Capture and Create task stay pinned below the scroll region. */}
+      {/* Single unified Create button pinned below the scroll region. */}
       <div className="mt-1 flex shrink-0 flex-col gap-1.5 border-t border-[var(--ega-border)] px-1.5 pt-2">
-        <InboxCaptureTrigger />
-        <SidebarCreateTaskButton />
+        <SidebarCreateButton />
       </div>
     </aside>
   );

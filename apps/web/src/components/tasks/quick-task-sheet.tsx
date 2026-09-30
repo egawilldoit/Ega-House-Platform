@@ -63,12 +63,17 @@ type QuickTaskSheetProps = {
   showTrigger?: boolean;
 };
 
-type QuickTaskSheetPanelProps = {
+export type QuickTaskSheetPanelProps = {
   projects: QuickTaskSheetProject[];
   goals: QuickTaskSheetGoal[];
   activeTab: "single" | "multi";
   onTabChange: (mode: "single" | "multi") => void;
   onSuccess: (mode: "single" | "multi", skippedCount: number) => void;
+  hideHeader?: boolean;
+  initialCommand?: string;
+  onCommandChange?: (command: string) => void;
+  selectedProjectId?: string;
+  onProjectIdChange?: (projectId: string) => void;
 };
 
 const DEFAULT_RETURN_TO = "/tasks";
@@ -194,16 +199,44 @@ function getDraftErrors(draft: MultiTaskDraft, goals: QuickTaskSheetGoal[]) {
   return errors;
 }
 
-function QuickTaskSheetPanel({
+export function QuickTaskSheetPanel({
   projects,
   goals,
   activeTab,
   onTabChange,
   onSuccess,
+  hideHeader = false,
+  initialCommand,
+  onCommandChange,
+  selectedProjectId,
+  onProjectIdChange,
 }: QuickTaskSheetPanelProps) {
-  const defaultProjectId = projects[0]?.id ?? "";
-  const [singleCommand, setSingleCommand] = useState("");
+  const defaultProjectId = selectedProjectId || projects[0]?.id || "";
+  const [singleCommand, setSingleCommand] = useState(initialCommand ?? "");
   const [singleProjectId, setSingleProjectId] = useState(defaultProjectId);
+
+  useEffect(() => {
+    if (initialCommand !== undefined && initialCommand !== singleCommand) {
+      setSingleCommand(initialCommand);
+    }
+  }, [initialCommand]);
+
+  useEffect(() => {
+    if (selectedProjectId && selectedProjectId !== singleProjectId) {
+      setSingleProjectId(selectedProjectId);
+    }
+  }, [selectedProjectId]);
+
+  const handleCommandChange = (val: string) => {
+    setSingleCommand(val);
+    onCommandChange?.(val);
+  };
+
+  const handleProjectIdChange = (val: string) => {
+    setSingleProjectId(val);
+    setSingleGoalId("");
+    onProjectIdChange?.(val);
+  };
   const [singleGoalId, setSingleGoalId] = useState("");
   const [singleStatus, setSingleStatus] = useState("todo");
   const [singleDueDate, setSingleDueDate] = useState("");
@@ -467,40 +500,42 @@ function QuickTaskSheetPanel({
 
   return (
     <>
-      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ega-border)] px-5 pb-4 pt-5 sm:px-6">
-        <span
-          className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]"
-          aria-hidden="true"
-        >
-          <Plus className="h-4 w-4" />
-        </span>
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <p className="glass-label">Create task</p>
-          <DialogPrimitive.Title
-            id="quick-task-sheet-title"
-            className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]"
+      {!hideHeader && (
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--ega-border)] px-5 pb-4 pt-5 sm:px-6">
+          <span
+            className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface-subtle)] text-[color:var(--ega-text-secondary)]"
+            aria-hidden="true"
           >
-            Quick task
-          </DialogPrimitive.Title>
-          <DialogPrimitive.Description
-            id="quick-task-sheet-description"
-            className="max-w-lg text-[length:var(--text-body)] leading-5 text-[color:var(--ega-text-secondary)]"
-          >
-            Capture one task now, or switch to batch to stage several at once.
-          </DialogPrimitive.Description>
-        </div>
+            <Plus className="h-4 w-4" />
+          </span>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <p className="glass-label">Create task</p>
+            <DialogPrimitive.Title
+              id="quick-task-sheet-title"
+              className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]"
+            >
+              Quick task
+            </DialogPrimitive.Title>
+            <DialogPrimitive.Description
+              id="quick-task-sheet-description"
+              className="max-w-lg text-[length:var(--text-body)] leading-5 text-[color:var(--ega-text-secondary)]"
+            >
+              Capture one task now, or switch to batch to stage several at once.
+            </DialogPrimitive.Description>
+          </div>
 
-        <DialogPrimitive.Close asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-mr-2 -mt-1 h-10 w-10 shrink-0 rounded-full p-0 text-[color:var(--muted-foreground)] hover:bg-[color:var(--ega-surface-muted)] hover:text-[color:var(--foreground)]"
-            aria-label="Close quick task dialog"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </DialogPrimitive.Close>
-      </div>
+          <DialogPrimitive.Close asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="-mr-2 -mt-1 h-10 w-10 shrink-0 rounded-full p-0 text-[color:var(--muted-foreground)] hover:bg-[color:var(--ega-surface-muted)] hover:text-[color:var(--foreground)]"
+              aria-label="Close quick task dialog"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </DialogPrimitive.Close>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 sm:px-6">
         {projects.length === 0 ? (
@@ -561,7 +596,7 @@ function QuickTaskSheetPanel({
                         required
                         placeholder={commandPlaceholder}
                         value={singleCommand}
-                        onChange={(event) => setSingleCommand(event.target.value)}
+                        onChange={(event) => handleCommandChange(event.target.value)}
                         className="h-11 w-full text-[length:var(--text-body-lg)]"
                       />
                       <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
@@ -655,10 +690,7 @@ function QuickTaskSheetPanel({
                           id="quick-task-project"
                           name="projectId"
                           value={singleProjectId}
-                          onChange={(event) => {
-                            setSingleProjectId(event.target.value);
-                            setSingleGoalId("");
-                          }}
+                          onChange={(event) => handleProjectIdChange(event.target.value)}
                           className="input-instrument h-11 w-full text-sm"
                         >
                           {projects.map((project) => (
