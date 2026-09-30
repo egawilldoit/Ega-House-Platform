@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AUDIT_ATTEMPTS, AUDIT_TIMEOUT_MS, runAuditCommand } from './audit-production.mjs';
+import {
+  AUDIT_ATTEMPTS,
+  AUDIT_TIMEOUT_MS,
+  runAuditCommand,
+  evaluateAuditReport,
+  isValidReviewByFormat,
+  isExpired,
+} from './audit-production.mjs';
 
 function timeoutResult() {
   return {
@@ -51,4 +58,177 @@ test('dependency audit retries an empty response instead of treating missing evi
 
   assert.equal(calls, 2);
   assert.match(result.stdout, /vulnerabilities/);
+});
+
+test('isValidReviewByFormat validates YYYY-MM-DD format strictly', () => {
+  assert.equal(isValidReviewByFormat('2026-10-15'), true);
+  assert.equal(isValidReviewByFormat('2026-02-28'), true);
+  assert.equal(isValidReviewByFormat('2026-13-01'), false);
+  assert.equal(isValidReviewByFormat('2026-10-32'), false);
+  assert.equal(isValidReviewByFormat('2026/10/15'), false);
+  assert.equal(isValidReviewByFormat('invalid'), false);
+  assert.equal(isValidReviewByFormat(null), false);
+});
+
+test('isExpired detects past review dates correctly', () => {
+  const exception = { reviewBy: '2026-10-01' };
+  assert.equal(isExpired(exception, new Date('2026-09-30T12:00:00Z')), false);
+  assert.equal(isExpired(exception, new Date('2026-10-02T12:00:00Z')), true);
+});
+
+test('evaluateAuditReport allows valid structured exception before reviewBy', () => {
+  const report = {
+    vulnerabilities: {
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        isDirect: false,
+        via: [{ source: 1240104, name: 'brace-expansion', severity: 'high', url: 'https://github.com/advisories/GHSA-qhr7-859c-m2p7' }],
+      },
+    },
+  };
+  const exceptions = [
+    {
+      source: 1240104,
+      advisory: 'GHSA-qhr7-859c-m2p7',
+      package: 'brace-expansion',
+      reason: 'test exception',
+      reviewBy: '2026-10-15',
+      upstream: 'expo',
+    },
+  ];
+
+  const evalResult = evaluateAuditReport(report, {
+    exceptions,
+    now: new Date('2026-09-30'),
+    checkWs: false,
+  });
+
+  assert.equal(evalResult.blockingHighCritical.length, 0);
+  assert.equal(evalResult.allowedHighCritical.length, 1);
+});
+
+test('evaluateAuditReport blocks expired exceptions', () => {
+  const report = {
+    vulnerabilities: {
+      'brace-expansion': {
+        name: 'brace-expansion',
+        severity: 'high',
+        isDirect: false,
+        via: [{ source: 1240104, name: 'brace-expansion', severity: 'high', url: 'https://github.com/advisories/GHSA-qhr7-859c-m2p7' }],
+      },
+    },
+  };
+  const exceptions = [
+    {
+      source: 1240104,
+      advisory: 'GHSA-qhr7-859c-m2p7',
+      package: 'brace-expansion',
+      reason: 'test exception',
+      reviewBy: '2026-09-15', // Expired
+      upstream: 'expo',
+    },
+  ];
+
+  const evalResult = evaluateAuditReport(report, {
+    exceptions,
+    now: new Date('2026-09-30'),
+    checkWs: false,
+  });
+
+  assert.equal(evalResult.blockingHighCritical.length, 1);
+  assert.match(evalResult.blockingHighCritical[0].rejected[0].reason, /expired/);
+});
+
+test('evaluateAuditReport blocks unknown high/critical advisories', () => {
+  const report = {
+    vulnerabilities: {
+      'unknown-vuln-pkg': {
+        name: 'unknown-vuln-pkg',
+        severity: 'high',
+        isDirect: false,
+        via: [{ source: 9999999, name: 'unknown-vuln-pkg', severity: 'high', url: 'https://github.com/advisories/GHSA-xxxx-xxxx-xxxx' }],
+      },
+    },
+  };
+
+  const evalResult = evaluateAuditReport(report, {
+    exceptions: [],
+    now: new Date('2026-09-30'),
+    checkWs: false,
+  });
+
+  assert.equal(evalResult.blockingHighCritical.length, 1);
+  assert.match(evalResult.blockingHighCritical[0].rejected[0].reason, /unknown high\/critical/);
+});
+
+test('evaluateAuditReport blocks package mismatch in exception', () => {
+  const report = {
+    vulnerabilities: {
+      'malicious-pkg': {
+        name: 'malicious-pkg',
+        severity: 'critical',
+        isDirect: false,
+        via: [{ source: 1240104, name: 'malicious-pkg', severity: 'critical', url: 'https://github.com/advisories/GHSA-qhr7-859c-m2p7' }],
+      },
+    },
+  };
+  const exceptions = [
+    {
+      source: 1240104,
+      advisory: 'GHSA-qhr7-859c-m2p7',
+      package: 'brace-expansion', // Doesn't match malicious-pkg
+      reason: 'test exception',
+      reviewBy: '2026-10-15',
+      upstream: 'expo',
+    },
+  ];
+
+  const evalResult = evaluateAuditReport(report, {
+    exceptions,
+    now: new Date('2026-09-30'),
+    checkWs: false,
+  });
+
+  assert.equal(evalResult.blockingHighCritical.length, 1);
+  assert.match(evalResult.blockingHighCritical[0].rejected[0].reason, /package mismatch/);
+});
+
+test('evaluateAuditReport blocks direct high/critical dependencies unless allowDirect is true', () => {
+  const report = {
+    vulnerabilities: {
+      'direct-vuln': {
+        name: 'direct-vuln',
+        severity: 'high',
+        isDirect: true,
+        via: [{ source: 5555, name: 'direct-vuln', severity: 'high', url: 'https://github.com/advisories/GHSA-direct' }],
+      },
+    },
+  };
+  const exceptions = [
+    {
+      source: 5555,
+      advisory: 'GHSA-direct',
+      package: 'direct-vuln',
+      reason: 'test direct exception',
+      reviewBy: '2026-10-15',
+      allowDirect: false,
+    },
+  ];
+
+  const evalResult = evaluateAuditReport(report, {
+    exceptions,
+    now: new Date('2026-09-30'),
+    checkWs: false,
+  });
+
+  assert.equal(evalResult.blockingHighCritical.length, 1);
+  assert.match(evalResult.blockingHighCritical[0].rejected[0].reason, /direct high\/critical/);
+});
+
+test('evaluateAuditReport succeeds with zero vulnerabilities', () => {
+  const report = { vulnerabilities: {}, metadata: { vulnerabilities: { total: 0 } } };
+  const evalResult = evaluateAuditReport(report, { checkWs: false });
+  assert.equal(evalResult.blockingHighCritical.length, 0);
+  assert.equal(evalResult.allowedHighCritical.length, 0);
 });
