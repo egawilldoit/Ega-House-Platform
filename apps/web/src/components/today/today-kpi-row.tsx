@@ -6,11 +6,8 @@ import {
   Timer,
 } from "lucide-react";
 
-import { StatCard } from "@/components/ui/stat-card";
 import { formatDisplayDuration, formatDisplayEstimate } from "@/lib/presentation-format";
 import type { TodayPlan } from "@ega/application";
-
-const COMPACT_STAT_CARD = "pt-2.5 pb-2.5 leading-snug";
 
 export type TodayKpiRowProps = {
   summary: TodayPlan["summary"];
@@ -26,7 +23,7 @@ export type TodayKpiRowProps = {
   globalOverdueCount: number;
 };
 
-/** The Today KPI strip: planned, in progress, completed, tracked, overdue. */
+/** The Today KPI strip: compact single-line metric bar (~40px) replacing the bulky card grid. */
 export function TodayKpiRow({
   summary,
   hasActiveTimer,
@@ -37,47 +34,76 @@ export function TodayKpiRow({
   const trackedDetailed = formatDisplayDuration(summary.trackedTodaySeconds, "minute");
 
   return (
-    <div className="kpi-grid" data-testid="today-kpi-row">
-      <StatCard
-        label="Planned today"
-        icon={CalendarCheck2}
-        value={summary.plannedCount}
-        subtitle={plannedDetailed ? `${plannedDetailed} planned load` : "tasks planned for today"}
+    <div
+      className="flex flex-wrap items-center gap-3 sm:gap-6 rounded-lg border border-[var(--ega-border)] bg-[var(--ega-surface)] px-4 py-2.5 text-sm"
+      data-testid="today-kpi-row"
+    >
+      <div
+        className="flex items-center gap-2"
         data-testid="today-kpi-planned"
-        className={COMPACT_STAT_CARD}
-      />
-      <StatCard
-        label="In progress today"
-        icon={CirclePlay}
-        value={summary.inProgressCount}
-        subtitle="tasks in progress"
+        title={plannedDetailed ? `${plannedDetailed} planned load` : "tasks planned for today"}
+      >
+        <CalendarCheck2 className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]" aria-hidden="true" />
+        <span className="text-[color:var(--ega-text-secondary)]">Planned today:</span>
+        <span className="tabular-nums font-semibold text-[color:var(--ega-text)]">{summary.plannedCount}</span>
+        {plannedDetailed ? (
+          <span className="text-xs text-[color:var(--ega-text-tertiary)]">({plannedDetailed})</span>
+        ) : null}
+      </div>
+
+      <div className="hidden sm:block h-4 w-px bg-[var(--ega-border)]" aria-hidden="true" />
+
+      <div
+        className="flex items-center gap-2"
         data-testid="today-kpi-in-progress"
-        className={COMPACT_STAT_CARD}
-      />
-      <StatCard
-        label="Completed today"
-        icon={CheckCircle2}
-        value={summary.completedCount}
-        subtitle="tasks completed today"
+        title="tasks in progress"
+      >
+        <CirclePlay className="h-4 w-4 shrink-0 text-[color:var(--status-healthy)]" aria-hidden="true" />
+        <span className="text-[color:var(--ega-text-secondary)]">In progress today:</span>
+        <span className="tabular-nums font-semibold text-[color:var(--ega-text)]">{summary.inProgressCount}</span>
+      </div>
+
+      <div className="hidden sm:block h-4 w-px bg-[var(--ega-border)]" aria-hidden="true" />
+
+      <div
+        className="flex items-center gap-2"
         data-testid="today-kpi-completed"
-        className={COMPACT_STAT_CARD}
-      />
-      <StatCard
-        label="Tracked today"
-        icon={Timer}
-        value={hasActiveTimer ? `${trackedDetailed} + live` : trackedDetailed}
-        subtitle="focus time logged"
+        title="tasks completed today"
+      >
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-[color:var(--status-healthy)]" aria-hidden="true" />
+        <span className="text-[color:var(--ega-text-secondary)]">Completed today:</span>
+        <span className="tabular-nums font-semibold text-[color:var(--ega-text)]">{summary.completedCount}</span>
+      </div>
+
+      <div className="hidden sm:block h-4 w-px bg-[var(--ega-border)]" aria-hidden="true" />
+
+      <div
+        className="flex items-center gap-2"
         data-testid="today-kpi-tracked"
-        className={COMPACT_STAT_CARD}
-      />
-      <StatCard
-        label="Overdue"
-        icon={CircleAlert}
-        value={globalOverdueCount}
-        subtitle="tasks past due across the workspace"
+        title="focus time logged"
+      >
+        <Timer className="h-4 w-4 shrink-0 text-[color:var(--ega-text-tertiary)]" aria-hidden="true" />
+        <span className="text-[color:var(--ega-text-secondary)]">Tracked today:</span>
+        <span className="tabular-nums font-semibold text-[color:var(--ega-text)]">
+          {hasActiveTimer ? `${trackedDetailed} + live` : trackedDetailed}
+        </span>
+      </div>
+
+      <div className="hidden sm:block h-4 w-px bg-[var(--ega-border)]" aria-hidden="true" />
+
+      <div
+        className={`flex items-center gap-2 ${globalOverdueCount > 0 ? "text-[color:var(--status-overdue)]" : "text-[color:var(--ega-text-secondary)]"}`}
         data-testid="today-kpi-overdue"
-        className={COMPACT_STAT_CARD}
-      />
+        title="tasks past due across the workspace"
+      >
+        <CircleAlert
+          className={`h-4 w-4 shrink-0 ${globalOverdueCount > 0 ? "text-[color:var(--status-overdue)]" : "text-[color:var(--ega-text-tertiary)]"}`}
+          aria-hidden="true"
+        />
+        <span className={globalOverdueCount > 0 ? "font-medium" : ""}>Overdue:</span>
+        <span className="tabular-nums font-semibold">{globalOverdueCount}</span>
+        <span className="sr-only">tasks past due across the workspace</span>
+      </div>
     </div>
   );
 }

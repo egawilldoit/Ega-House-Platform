@@ -47,6 +47,8 @@ export type HomeModel = {
   /** At most one next actionable focus task; null when absent. */
   nextUp: OperatorTask | null;
   todayProgress: HomeTodayProgress | null;
+  /** Compact list of planned/active tasks for today (max 5). */
+  todayTasks: OperatorTask[];
   /** Null when shell attention metrics are unavailable (degraded). */
   attention: HomeAttention | null;
   availability: HomeAvailability;
@@ -94,9 +96,7 @@ function buildTodayProgress(summary: OperatorSnapshot["summary"]): HomeTodayProg
  * - Attention counts reuse the canonical shell metrics. A null `attention`
  *   marks an unavailable/degraded shell read so the UI never fabricates a
  *   verified clear state.
- * - The full focus queue and snapshot sections are NOT part of the Home
- *   contract: the queue belongs to Today/Tasks, and Home renders at most one
- *   next task.
+ * - `todayTasks` gathers up to 5 planned or in-progress tasks for Today's Focus.
  */
 export function buildHomeModel(input: {
   snapshot: OperatorSnapshot | null;
@@ -119,6 +119,24 @@ export function buildHomeModel(input: {
         !isTaskCompletedStatus(task.status),
     ) ?? null;
 
+  const rawTodayTasks = snapshot
+    ? [
+        ...(snapshot.plannedToday ?? []),
+        ...(snapshot.sections.inProgress ?? []),
+        ...(snapshot.sections.planned ?? []),
+      ]
+    : [];
+
+  const seenIds = new Set<string>();
+  const todayTasks: OperatorTask[] = [];
+  for (const t of rawTodayTasks) {
+    if (!seenIds.has(t.id)) {
+      seenIds.add(t.id);
+      todayTasks.push(t);
+      if (todayTasks.length >= 5) break;
+    }
+  }
+
   return {
     date: snapshot?.date ?? "",
     timezone: snapshot?.timezone ?? "",
@@ -133,6 +151,7 @@ export function buildHomeModel(input: {
     startHere,
     nextUp,
     todayProgress: snapshot ? buildTodayProgress(snapshot.summary) : null,
+    todayTasks,
     attention,
     availability: {
       operator: snapshot !== null ? "available" : "unavailable",

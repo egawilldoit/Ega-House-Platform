@@ -67,8 +67,9 @@ export default async function HomeRoute() {
 
   return (
     <AppShell
-      title={`Welcome back, ${identity.name}`}
-      description="What to do now, what needs attention, and what to start next."
+      title={greeting?.greeting ?? `Good morning, ${identity.name}`}
+      description={greeting ? `${greeting.fullDateLine} · ${greeting.subtitle}` : "What to do now, what needs attention, and what to start next."}
+      hideHeader
     >
       <OwnerScopedRealtimeRefresh
         ownerUserId={user?.id ?? null}

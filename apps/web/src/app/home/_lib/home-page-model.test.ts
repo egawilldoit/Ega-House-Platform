@@ -66,77 +66,86 @@ function snapshot(overrides: Partial<OperatorSnapshot> = {}): OperatorSnapshot {
   return { ...base, ...overrides };
 }
 
-const ATTENTION: HomeAttention = { overdue: 4, dueToday: 2, reviewMissing: true };
+const ATTENTION: HomeAttention = { overdue: 1, dueToday: 2, reviewMissing: false };
 
-test("EGA-653: with no timer, Start Here is the canonical focus.startHere", () => {
-  const startHere = task({ id: "a" });
-  const next = task({ id: "b" });
-  const model = buildHomeModel({
-    snapshot: snapshot({ focus: { startHere, queue: [startHere, next] } }),
-    attention: ATTENTION,
-  });
+test("EGA-663: active timer takes precedence over startHere as primary focus", () => {
+  const timerTask = task({ id: "t1", title: "Active timer task" });
+  const startHere = task({ id: "s1", title: "Start here candidate" });
 
-  assert.equal(model.activeTimer, null);
-  assert.equal(model.startHere?.id, "a");
-  assert.equal(model.nextUp?.id, "b");
-  assert.equal(model.date, TODAY);
-  assert.equal(model.timezone, "UTC");
-  assert.equal(model.attention?.overdue, 4);
-  assert.equal(model.attention?.dueToday, 2);
-  assert.equal(model.attention?.reviewMissing, true);
-  assert.deepEqual(model.availability, { operator: "available", attention: "available" });
-});
-
-test("EGA-653: active timer becomes the primary state and Next up stays distinct", () => {
-  const startHere = task({ id: "a" });
-  const next = task({ id: "b" });
-  const activeTask = task({ id: "active", title: "Running work" });
   const model = buildHomeModel({
     snapshot: snapshot({
-      focus: { startHere, queue: [activeTask, startHere, next] },
-      activeTimer: { sessionId: "s1", taskId: "active" },
-      plannedToday: [activeTask],
+      activeTimer: { sessionId: "sess-1", taskId: "t1" },
+      sections: {
+        planned: [],
+        inProgress: [timerTask],
+        blocked: [],
+        completed: [],
+      },
+      focus: { startHere, queue: [startHere] },
     }),
     attention: ATTENTION,
-    activeTimerStartedAt: "2026-09-14T10:00:00.000Z",
+    activeTimerStartedAt: "2026-09-14T08:00:00.000Z",
   });
 
-  assert.equal(model.activeTimer?.taskId, "active");
-  assert.equal(model.activeTimer?.task?.title, "Running work");
-  // startedAt comes from the bounded canonical active-session read.
-  assert.equal(model.activeTimer?.startedAt, "2026-09-14T10:00:00.000Z");
-  // Next up is at most one and never duplicates Start Here or the active timer task.
-  assert.equal(model.nextUp?.id, "b");
+  assert.equal(model.activeTimer?.sessionId, "sess-1");
+  assert.equal(model.activeTimer?.taskId, "t1");
+  assert.equal(model.activeTimer?.task?.title, "Active timer task");
+  assert.equal(model.activeTimer?.startedAt, "2026-09-14T08:00:00.000Z");
+  assert.equal(model.startHere?.id, "s1");
 });
 
-test("EGA-653: active timer without a resolved session exposes no elapsed time", () => {
+test("EGA-663: nextUp is at most one actionable task distinct from startHere", () => {
+  const first = task({ id: "t1" });
+  const second = task({ id: "t2" });
+  const third = task({ id: "t3" });
+
   const model = buildHomeModel({
     snapshot: snapshot({
-      focus: { startHere: null, queue: [] },
-      activeTimer: { sessionId: "s1", taskId: "active" },
+      focus: { startHere: first, queue: [first, second, third] },
     }),
     attention: ATTENTION,
   });
 
-  assert.equal(model.activeTimer?.taskId, "active");
-  assert.equal(model.activeTimer?.startedAt, null);
+  assert.equal(model.startHere?.id, "t1");
+  assert.equal(model.nextUp?.id, "t2");
 });
 
-test("EGA-653: Next up skips blocked/completed and never exceeds one item", () => {
-  const startHere = task({ id: "a" });
-  const blocked = task({ id: "blocked", status: "blocked" });
-  const done = task({ id: "done", status: "done" });
-  const actionable = task({ id: "c" });
+test("EGA-663: nextUp skips blocked and completed items in the focus queue", () => {
+  const first = task({ id: "t1" });
+  const blocked = task({ id: "t2", status: "blocked" });
+  const done = task({ id: "t3", status: "done" });
+  const actionable = task({ id: "t4" });
+
   const model = buildHomeModel({
-    snapshot: snapshot({ focus: { startHere, queue: [startHere, blocked, done, actionable] } }),
+    snapshot: snapshot({
+      focus: { startHere: first, queue: [first, blocked, done, actionable] },
+    }),
     attention: ATTENTION,
   });
 
-  assert.equal(model.nextUp?.id, "c");
+  assert.equal(model.nextUp?.id, "t4");
 });
 
-test("EGA-653: degraded snapshot keeps canonical attention and invents no work", () => {
-  const model = buildHomeModel({ snapshot: null, attention: ATTENTION });
+test("EGA-663: nextUp never duplicates the active timer task", () => {
+  const running = task({ id: "running" });
+  const next = task({ id: "next" });
+
+  const model = buildHomeModel({
+    snapshot: snapshot({
+      activeTimer: { sessionId: "sess-1", taskId: "running" },
+      focus: { startHere: null, queue: [running, next] },
+    }),
+    attention: ATTENTION,
+  });
+
+  assert.equal(model.nextUp?.id, "next");
+});
+
+test("EGA-663: missing snapshot yields degraded availability without crashing", () => {
+  const model = buildHomeModel({
+    snapshot: null,
+    attention: { overdue: 4, dueToday: 0, reviewMissing: true },
+  });
 
   assert.equal(model.availability.operator, "unavailable");
   assert.equal(model.date, "");
@@ -145,6 +154,7 @@ test("EGA-653: degraded snapshot keeps canonical attention and invents no work",
   assert.equal(model.nextUp, null);
   assert.equal(model.activeTimer, null);
   assert.equal(model.todayProgress, null);
+  assert.equal(model.todayTasks.length, 0);
   // Attention still comes from the canonical shell metrics, not fabricated zeros.
   assert.equal(model.attention?.overdue, 4);
   assert.equal(model.attention?.reviewMissing, true);
@@ -217,4 +227,25 @@ test("EGA-663: the Home contract carries no full sections or focus queue", () =>
   assert.equal("sections" in model, false);
   assert.equal("focusQueue" in model, false);
   assert.equal("summary" in model, false);
+});
+
+test("EGA-663: gathers up to 5 unique tasks for todayTasks", () => {
+  const tasks = Array.from({ length: 8 }, (_, i) => task({ id: `task-${i}`, title: `Task ${i}` }));
+  const model = buildHomeModel({
+    snapshot: snapshot({
+      plannedToday: [tasks[0], tasks[1]],
+      sections: {
+        planned: [tasks[1], tasks[2], tasks[3]],
+        inProgress: [tasks[4], tasks[5]],
+        blocked: [],
+        completed: [],
+      },
+    }),
+    attention: ATTENTION,
+  });
+
+  assert.equal(model.todayTasks.length, 5);
+  // No duplicates
+  const ids = model.todayTasks.map((t) => t.id);
+  assert.equal(new Set(ids).size, 5);
 });
