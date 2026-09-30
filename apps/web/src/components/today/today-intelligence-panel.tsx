@@ -42,92 +42,114 @@ export function TodayIntelligencePanel({
   const hasContextSwitch = friction.data?.contextSwitch.isFriction ?? false;
 
   return (
-    <section className="flex flex-col gap-4" aria-label="Today intelligence">
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="glass-label text-etch">Workload</p>
-              <CardTitle className="mt-1 text-[length:var(--text-panel-title)]">Health &amp; recovery</CardTitle>
-            </div>
-            <Activity className="h-5 w-5 text-signal-live" aria-hidden="true" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-0">
-          {health.errorMessage || !health.data ? (
-            <div className="feedback-block feedback-block-warn" role="status">
-              <Badge tone="muted">Unavailable</Badge>
-              <p>Workload guidance is unavailable. Your Today plan remains usable.</p>
-            </div>
+    <details
+      className="group rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--surface-primary)] overflow-hidden"
+      aria-label="Today intelligence"
+      data-testid="today-intelligence-panel"
+    >
+      <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium text-[color:var(--ega-text)] select-none hover:bg-[var(--surface-secondary)] transition-colors">
+        <span className="flex items-center gap-2">
+          <Activity className="h-4 w-4 text-[color:var(--ega-text-secondary)]" aria-hidden="true" />
+          <span>Workload &amp; friction diagnostics</span>
+        </span>
+        <div className="flex items-center gap-2">
+          {frictionCount > 0 ? (
+            <Badge tone="warn">{frictionCount} signal{frictionCount === 1 ? "" : "s"}</Badge>
           ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={health.data.quality.quality === "sufficient" ? "success" : "info"}>
-                  {health.data.quality.quality === "sufficient" ? "Enough data" : "Limited data"}
-                </Badge>
-                <Badge tone="muted">{health.data.rollingWorkload.totalTrackedLabel} this week</Badge>
-              </div>
-              <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
-                {healthRecommendation?.message ??
-                  (health.data.quality.quality === "insufficient"
-                    ? "Track a few sessions to make workload guidance more useful."
-                    : "No workload guidance is needed right now.")}
-              </p>
-              {healthRecommendation ? (
-                <p className="glass-label">
-                  Recommendation · {healthRecommendation.title}
-                </p>
-              ) : null}
-              <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
-                Workload guidance only — not medical advice.
-              </p>
-            </>
+            <Badge tone="muted">Calm</Badge>
           )}
-        </CardContent>
-      </Card>
+          <span className="text-xs text-[color:var(--ega-text-tertiary)] transition-transform group-open:rotate-180" aria-hidden="true">
+            ▼
+          </span>
+        </div>
+      </summary>
+      <div className="flex flex-col gap-4 border-t border-[var(--ega-border)] p-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="glass-label text-etch">Workload</p>
+                <CardTitle className="mt-1 text-[length:var(--text-panel-title)]">Health &amp; recovery</CardTitle>
+              </div>
+              <Activity className="h-5 w-5 text-signal-live" aria-hidden="true" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            {health.errorMessage || !health.data ? (
+              <div className="feedback-block feedback-block-warn" role="status">
+                <Badge tone="muted">Unavailable</Badge>
+                <p>Workload guidance is unavailable. Your Today plan remains usable.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={health.data.quality.quality === "sufficient" ? "success" : "info"}>
+                    {health.data.quality.quality === "sufficient" ? "Enough data" : "Limited data"}
+                  </Badge>
+                  <Badge tone="muted">{health.data.rollingWorkload.totalTrackedLabel} this week</Badge>
+                </div>
+                <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
+                  {healthRecommendation?.message ??
+                    (health.data.quality.quality === "insufficient"
+                      ? "Track a few sessions to make workload guidance more useful."
+                      : "No workload guidance is needed right now.")}
+                </p>
+                {healthRecommendation ? (
+                  <p className="glass-label">
+                    Recommendation · {healthRecommendation.title}
+                  </p>
+                ) : null}
+                <p className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                  Workload guidance only — not medical advice.
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="glass-label text-etch">Friction</p>
-              <CardTitle className="mt-1 text-lg">Keep the lane clear</CardTitle>
-            </div>
-            <Radar className="h-5 w-5 text-signal-warn" aria-hidden="true" />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3 pt-0">
-          {friction.errorMessage || !friction.data ? (
-            <div className="feedback-block feedback-block-warn" role="status">
-              <Badge tone="muted">Unavailable</Badge>
-              <p>Friction signals are unavailable. Core task execution is unaffected.</p>
-            </div>
-          ) : (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={frictionCount > 0 ? "warn" : "success"}>
-                  {frictionCount > 0 ? `${frictionCount} signal${frictionCount === 1 ? "" : "s"}` : "No material friction"}
-                </Badge>
-                {hasContextSwitch ? <Badge tone="warn">Context switching high</Badge> : null}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="glass-label text-etch">Friction</p>
+                <CardTitle className="mt-1 text-lg">Keep the lane clear</CardTitle>
               </div>
-              <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
-                {estimateSignal
-                  ? `${estimateSignal.title} is ${Math.abs(estimateSignal.percentError)}% ${estimateSignal.status === "over" ? "over" : "under"} estimate.`
-                  : hasContextSwitch
-                    ? "Several task transitions are competing for attention. Finish the current task before switching."
-                    : frictionCount > 0
-                      ? "Review the flagged work before adding more to today."
-                      : "Your current work lane is not showing a strong friction pattern."}
-              </p>
-              {frictionCount > 0 ? (
-                <p className="glass-label">
-                  Recommendation · protect one clear next step
+              <Radar className="h-5 w-5 text-signal-warn" aria-hidden="true" />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            {friction.errorMessage || !friction.data ? (
+              <div className="feedback-block feedback-block-warn" role="status">
+                <Badge tone="muted">Unavailable</Badge>
+                <p>Friction signals are unavailable. Core task execution is unaffected.</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone={frictionCount > 0 ? "warn" : "success"}>
+                    {frictionCount > 0 ? `${frictionCount} signal${frictionCount === 1 ? "" : "s"}` : "No material friction"}
+                  </Badge>
+                  {hasContextSwitch ? <Badge tone="warn">Context switching high</Badge> : null}
+                </div>
+                <p className="text-[length:var(--text-body)] leading-6 text-[color:var(--ega-text-secondary)]">
+                  {estimateSignal
+                    ? `${estimateSignal.title} is ${Math.abs(estimateSignal.percentError)}% ${estimateSignal.status === "over" ? "over" : "under"} estimate.`
+                    : hasContextSwitch
+                      ? "Several task transitions are competing for attention. Finish the current task before switching."
+                      : frictionCount > 0
+                        ? "Review the flagged work before adding more to today."
+                        : "Your current work lane is not showing a strong friction pattern."}
                 </p>
-              ) : null}
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </section>
+                {frictionCount > 0 ? (
+                  <p className="glass-label">
+                    Recommendation · protect one clear next step
+                  </p>
+                ) : null}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </details>
   );
 }
