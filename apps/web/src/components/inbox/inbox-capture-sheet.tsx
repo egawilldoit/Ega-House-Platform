@@ -76,9 +76,9 @@ export type InboxCapturePanelProps = {
   onSuccess?: () => void;
   onCancel?: () => void;
   hideHeader?: boolean;
-  controlledTitle?: string;
+  title?: string;
   onTitleChange?: (title: string) => void;
-  controlledProjectId?: string;
+  projectId?: string;
   onProjectIdChange?: (projectId: string) => void;
 };
 
@@ -87,9 +87,9 @@ export function InboxCapturePanel({
   onSuccess,
   onCancel,
   hideHeader = false,
-  controlledTitle,
+  title: controlledTitle,
   onTitleChange,
-  controlledProjectId,
+  projectId: controlledProjectId,
   onProjectIdChange,
 }: InboxCapturePanelProps) {
   const router = useRouter();
@@ -305,7 +305,7 @@ export function InboxCapturePanel({
 
           <div className="flex items-center justify-end gap-2 pt-2">
             {onCancel && (
-              <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
+              <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
                 Cancel
               </Button>
             )}
@@ -346,8 +346,9 @@ export function InboxCaptureSheet({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent
-        side="right"
-        className="flex w-full flex-col p-0 sm:max-w-md"
+        closeLabel="Close capture panel"
+        className="flex flex-col"
+        aria-label="Backlog quick capture sheet"
         data-testid="inbox-quick-capture-sheet"
       >
         <InboxCapturePanel
