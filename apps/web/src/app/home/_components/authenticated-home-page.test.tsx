@@ -110,7 +110,6 @@ function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
     startHere: null,
     nextUp: null,
     todayProgress: null,
-    todayTasks: [],
     attention: { overdue: 0, dueToday: 0, reviewMissing: false },
     availability: { operator: "available", attention: "available" },
     ...overrides,

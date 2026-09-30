@@ -154,7 +154,7 @@ test("EGA-663: missing snapshot yields degraded availability without crashing", 
   assert.equal(model.nextUp, null);
   assert.equal(model.activeTimer, null);
   assert.equal(model.todayProgress, null);
-  assert.equal(model.todayTasks.length, 0);
+  assert.equal("todayTasks" in model, false);
   // Attention still comes from the canonical shell metrics, not fabricated zeros.
   assert.equal(model.attention?.overdue, 4);
   assert.equal(model.attention?.reviewMissing, true);
@@ -227,9 +227,10 @@ test("EGA-663: the Home contract carries no full sections or focus queue", () =>
   assert.equal("sections" in model, false);
   assert.equal("focusQueue" in model, false);
   assert.equal("summary" in model, false);
+  assert.equal("todayTasks" in model, false);
 });
 
-test("EGA-663: gathers up to 5 unique tasks for todayTasks", () => {
+test("EGA-663: Home contract does not contain a multi-task todayTasks queue", () => {
   const tasks = Array.from({ length: 8 }, (_, i) => task({ id: `task-${i}`, title: `Task ${i}` }));
   const model = buildHomeModel({
     snapshot: snapshot({
@@ -244,8 +245,5 @@ test("EGA-663: gathers up to 5 unique tasks for todayTasks", () => {
     attention: ATTENTION,
   });
 
-  assert.equal(model.todayTasks.length, 5);
-  // No duplicates
-  const ids = model.todayTasks.map((t) => t.id);
-  assert.equal(new Set(ids).size, 5);
+  assert.equal("todayTasks" in model, false);
 });
