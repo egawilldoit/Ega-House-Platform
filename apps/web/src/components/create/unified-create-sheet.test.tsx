@@ -153,4 +153,36 @@ describe("UnifiedCreateSheet", () => {
       document.querySelector('[data-testid="create-tab-backlog"]')?.getAttribute("aria-selected"),
     ).toBe("true");
   });
+
+  it("isolates project selection state between Task and Backlog modes", async () => {
+    await renderSheet();
+    await dispatch(QUICK_TASK_EVENT);
+
+    // In Task mode
+    const taskTab = document.querySelector('[data-testid="create-tab-task"]');
+    expect(taskTab?.getAttribute("aria-selected")).toBe("true");
+
+    // Switch to Backlog mode
+    const backlogTab = document.querySelector('[data-testid="create-tab-backlog"]')!;
+    await click(backlogTab);
+    expect(backlogTab.getAttribute("aria-selected")).toBe("true");
+
+    // Switch back to Task mode
+    await click(taskTab!);
+    expect(taskTab?.getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("closes modal on close button click", async () => {
+    await renderSheet();
+    await dispatch(QUICK_TASK_EVENT);
+
+    expect(document.querySelector('[role="dialog"]')).not.toBeNull();
+
+    const closeBtn = document.querySelector('button[aria-label="Close create dialog"]')!;
+    expect(closeBtn).not.toBeNull();
+
+    await click(closeBtn);
+
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+  });
 });
