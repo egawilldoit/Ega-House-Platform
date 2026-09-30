@@ -92,19 +92,24 @@ export function TodayOperatorPlan({
             </div>
           </>
         ) : (
-          <>
-            <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-              Prepare a short, explainable plan from the current focus lane, then approve it before it changes Today.
-            </p>
-            <form action={createOperatorProposalAction} className="space-y-3">
-              {tasks.slice(0, 6).map((task) => <input key={task.id} type="hidden" name="taskId" value={task.id} />)}
-              <input type="hidden" name="returnTo" value={returnTo} />
-              <div className="flex flex-wrap items-center gap-2">
-                <button type="submit" className="btn-instrument h-9 px-3 text-sm" disabled={tasks.length === 0}>Prepare approval plan</button>
-                <Link href="/tasks" className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-3">Adjust in Tasks</Link>
-              </div>
-            </form>
-          </>
+          <details className="group">
+            <summary className="cursor-pointer text-sm font-medium text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)] select-none">
+              + Prepare approval plan from focus lane...
+            </summary>
+            <div className="mt-3 space-y-3">
+              <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
+                Prepare a short, explainable plan from the current focus lane, then approve it before it changes Today.
+              </p>
+              <form action={createOperatorProposalAction} className="space-y-3">
+                {tasks.slice(0, 6).map((task) => <input key={task.id} type="hidden" name="taskId" value={task.id} />)}
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="submit" className="btn-instrument h-9 px-3 text-sm" disabled={tasks.length === 0}>Prepare approval plan</button>
+                  <Link href="/tasks" className="btn-instrument btn-instrument-muted inline-flex h-9 items-center px-3">Adjust in Tasks</Link>
+                </div>
+              </form>
+            </div>
+          </details>
         )}
       </CardContent>
     </Card>
