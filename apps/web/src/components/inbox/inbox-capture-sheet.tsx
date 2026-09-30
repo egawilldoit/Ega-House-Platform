@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sheet";
 
 import { captureInboxIdea } from "./capture-action";
-import { QUICK_TASK_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
+import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
 export { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
@@ -29,15 +29,11 @@ type Draft = {
   idempotencyKey: string;
 };
 
-export type InboxCaptureSheetProps = {
-  projects?: { id: string; name: string }[];
-};
-
-function createIdempotencyKey(): string {
+function createIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  return `inbox-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `inbox-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function loadDraft(): Draft | null {
@@ -46,14 +42,11 @@ function loadDraft(): Draft | null {
     const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Draft>;
-    if (typeof parsed.title !== "string") return null;
     return {
-      title: parsed.title ?? "",
+      title: typeof parsed.title === "string" ? parsed.title : "",
       body: typeof parsed.body === "string" ? parsed.body : "",
       projectId: typeof parsed.projectId === "string" ? parsed.projectId : "",
-      idempotencyKey: typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey.trim()
-        ? parsed.idempotencyKey.trim()
-        : createIdempotencyKey(),
+      idempotencyKey: typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey ? parsed.idempotencyKey : createIdempotencyKey(),
     };
   } catch {
     return null;
@@ -64,45 +57,60 @@ function saveDraft(draft: Draft) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
-  } catch {}
+  } catch {
+    // Ignore storage quota/security errors
+  }
 }
 
 function clearDraftStorage() {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(DRAFT_STORAGE_KEY);
-  } catch {}
+  } catch {
+    // Ignore
+  }
 }
 
 export type InboxCapturePanelProps = {
-  projects?: { id: string; name: string }[];
-  title?: string;
-  onTitleChange?: (title: string) => void;
-  projectId?: string;
-  onProjectIdChange?: (projectId: string) => void;
+  projects: Array<{ id: string; name: string }>;
   onSuccess?: () => void;
   onCancel?: () => void;
   hideHeader?: boolean;
+  controlledTitle?: string;
+  onTitleChange?: (title: string) => void;
+  controlledProjectId?: string;
+  onProjectIdChange?: (projectId: string) => void;
 };
 
 export function InboxCapturePanel({
-  projects = [],
-  title: controlledTitle,
-  onTitleChange,
-  projectId: controlledProjectId,
-  onProjectIdChange,
+  projects,
   onSuccess,
   onCancel,
   hideHeader = false,
+  controlledTitle,
+  onTitleChange,
+  controlledProjectId,
+  onProjectIdChange,
 }: InboxCapturePanelProps) {
   const router = useRouter();
-  const [localTitle, setLocalTitle] = useState(controlledTitle ?? "");
-  const [body, setBody] = useState("");
-  const [localProjectId, setLocalProjectId] = useState(controlledProjectId ?? "");
+  const [localTitle, setLocalTitle] = useState(() => {
+    if (controlledTitle !== undefined) return controlledTitle;
+    return loadDraft()?.title ?? "";
+  });
+  const [localProjectId, setLocalProjectId] = useState(() => {
+    if (controlledProjectId !== undefined) return controlledProjectId;
+    return loadDraft()?.projectId ?? "";
+  });
+  const [body, setBody] = useState(() => {
+    return loadDraft()?.body ?? "";
+  });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const idempotencyKeyRef = useRef<string>(createIdempotencyKey());
+  const [initialKey] = useState(() => {
+    return loadDraft()?.idempotencyKey || createIdempotencyKey();
+  });
+  const idempotencyKeyRef = useRef<string>(initialKey);
 
   const title = controlledTitle !== undefined ? controlledTitle : localTitle;
   const projectId = controlledProjectId !== undefined ? controlledProjectId : localProjectId;
@@ -124,20 +132,9 @@ export function InboxCapturePanel({
   );
 
   useEffect(() => {
-    if (controlledTitle !== undefined && controlledTitle !== localTitle) {
-      setLocalTitle(controlledTitle);
-    }
-  }, [controlledTitle, localTitle]);
-
-  useEffect(() => {
-    if (controlledProjectId !== undefined && controlledProjectId !== localProjectId) {
-      setLocalProjectId(controlledProjectId);
-    }
-  }, [controlledProjectId, localProjectId]);
-
-  useEffect(() => {
     const draft = loadDraft();
-    if (draft && !controlledTitle) {
+    if (draft && controlledTitle === undefined) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTitle(draft.title);
       setBody(draft.body);
       setProjectId(draft.projectId);
@@ -285,50 +282,42 @@ export function InboxCapturePanel({
             <Textarea
               id="inbox-capture-body"
               name="body"
-              placeholder="Add context, links, or next thoughts."
+              rows={4}
+              placeholder="Context, next step, link, or thought fragment..."
               value={body}
               onChange={(event) => setBody(event.target.value)}
-              className="min-h-24 resize-none"
               data-testid="inbox-capture-body-input"
               aria-label="Backlog capture notes"
             />
           </div>
 
-          {error ? (
-            <div role="alert" className="feedback-block feedback-block-error" data-testid="inbox-capture-error">
+          {error && (
+            <p className="status-banner status-banner-error text-xs" role="alert" data-testid="inbox-capture-error">
               {error}
-            </div>
-          ) : null}
+            </p>
+          )}
 
-          {success ? (
-            <div role="status" className="feedback-block feedback-block-success" data-testid="inbox-capture-success">
+          {success && (
+            <p className="status-banner status-banner-success text-xs" role="status" data-testid="inbox-capture-success">
               {success}
-            </div>
-          ) : null}
+            </p>
+          )}
 
-          <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
-            {onCancel ? (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onCancel}
-                disabled={pending}
-                data-testid="inbox-capture-cancel"
-              >
+          <div className="flex items-center justify-end gap-2 pt-2">
+            {onCancel && (
+              <Button type="button" variant="outline" onClick={onCancel} disabled={pending}>
                 Cancel
               </Button>
-            ) : null}
+            )}
             <Button
               type="submit"
-              disabled={pending}
+              disabled={pending || !title.trim()}
               data-testid="inbox-capture-submit"
-              aria-label="Add to Backlog"
             >
               {pending ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                  Adding...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving...
                 </>
               ) : (
                 "Add to Backlog"
@@ -336,59 +325,35 @@ export function InboxCapturePanel({
             </Button>
           </div>
         </form>
-
-        <p className="mt-4 text-xs text-[color:var(--muted-foreground)]">
-          Press <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Esc</kbd> to close.
-          Shortcut: <kbd className="rounded border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1 py-0.5 text-[length:var(--text-micro)]">Ctrl+Shift+I</kbd> to capture.
-        </p>
       </div>
     </>
   );
 }
 
-/**
- * The single Backlog Capture controller.
- *
- * Mount once per workspace shell (see GlobalQuickActionControllers). It owns the
- * capture sheet, draft persistence, and the INBOX_CAPTURE_EVENT listener.
- * Navigation surfaces only render triggers that dispatch the event.
- */
-export function InboxCaptureSheet({ projects = [] }: InboxCaptureSheetProps) {
+export function InboxCaptureSheet({
+  projects,
+}: {
+  projects: Array<{ id: string; name: string }>;
+}) {
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const handler = () => {
-      setOpen(true);
-    };
-    window.addEventListener(INBOX_CAPTURE_EVENT, handler);
-    return () => window.removeEventListener(INBOX_CAPTURE_EVENT, handler);
+    const handleOpen = () => setOpen(true);
+    window.addEventListener(INBOX_CAPTURE_EVENT, handleOpen);
+    return () => window.removeEventListener(INBOX_CAPTURE_EVENT, handleOpen);
   }, []);
-
-  const closeSheet = useCallback(() => {
-    setOpen(false);
-  }, []);
-
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (!nextOpen) {
-      closeSheet();
-      return;
-    }
-    setOpen(true);
-  };
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetContent
-        closeLabel="Close capture panel"
-        className="flex flex-col"
-        aria-label="Backlog quick capture sheet"
+        side="right"
+        className="flex w-full flex-col p-0 sm:max-w-md"
         data-testid="inbox-quick-capture-sheet"
       >
         <InboxCapturePanel
           projects={projects}
-          onSuccess={closeSheet}
-          onCancel={closeSheet}
-          hideHeader={false}
+          onSuccess={() => setOpen(false)}
+          onCancel={() => setOpen(false)}
         />
       </SheetContent>
     </Sheet>

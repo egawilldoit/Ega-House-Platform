@@ -215,18 +215,6 @@ export function QuickTaskSheetPanel({
   const [singleCommand, setSingleCommand] = useState(initialCommand ?? "");
   const [singleProjectId, setSingleProjectId] = useState(defaultProjectId);
 
-  useEffect(() => {
-    if (initialCommand !== undefined && initialCommand !== singleCommand) {
-      setSingleCommand(initialCommand);
-    }
-  }, [initialCommand]);
-
-  useEffect(() => {
-    if (selectedProjectId && selectedProjectId !== singleProjectId) {
-      setSingleProjectId(selectedProjectId);
-    }
-  }, [selectedProjectId]);
-
   const handleCommandChange = (val: string) => {
     setSingleCommand(val);
     onCommandChange?.(val);
