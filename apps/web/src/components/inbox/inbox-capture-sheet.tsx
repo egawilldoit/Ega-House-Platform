@@ -20,40 +20,43 @@ import { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
 export { INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
 
-const DRAFT_STORAGE_KEY = "ega:inbox-quick-capture-draft";
+export const DRAFT_STORAGE_KEY = "ega:inbox-quick-capture-draft";
 
-type Draft = {
+export type Draft = {
   title: string;
   body: string;
   projectId: string;
   idempotencyKey: string;
 };
 
-function createIdempotencyKey() {
+export function createIdempotencyKey() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
   return `inbox-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function loadDraft(): Draft | null {
+export function loadDraft(): Draft | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<Draft>;
+    const draft = parsed;
+    const rawKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey.trim() : "";
+    const key = rawKey.length > 0 ? rawKey : createIdempotencyKey();
     return {
       title: typeof parsed.title === "string" ? parsed.title : "",
       body: typeof parsed.body === "string" ? parsed.body : "",
       projectId: typeof parsed.projectId === "string" ? parsed.projectId : "",
-      idempotencyKey: typeof parsed.idempotencyKey === "string" && parsed.idempotencyKey ? parsed.idempotencyKey : createIdempotencyKey(),
+      idempotencyKey: key,
     };
   } catch {
     return null;
   }
 }
 
-function saveDraft(draft: Draft) {
+export function saveDraft(draft: Draft) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
@@ -62,7 +65,7 @@ function saveDraft(draft: Draft) {
   }
 }
 
-function clearDraftStorage() {
+export function clearDraftStorage() {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(DRAFT_STORAGE_KEY);
@@ -108,7 +111,10 @@ export function InboxCapturePanel({
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [initialKey] = useState(() => {
-    return loadDraft()?.idempotencyKey || createIdempotencyKey();
+    const draft = loadDraft();
+    if (!draft) return createIdempotencyKey();
+    const rawKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey.trim() : "";
+    return rawKey.length > 0 ? rawKey : createIdempotencyKey();
   });
   const idempotencyKeyRef = useRef<string>(initialKey);
 
@@ -138,7 +144,9 @@ export function InboxCapturePanel({
       setTitle(draft.title);
       setBody(draft.body);
       setProjectId(draft.projectId);
-      idempotencyKeyRef.current = draft.idempotencyKey || createIdempotencyKey();
+      const rawKey = typeof draft.idempotencyKey === "string" ? draft.idempotencyKey.trim() : "";
+      const key = rawKey.length > 0 ? rawKey : createIdempotencyKey();
+      idempotencyKeyRef.current = key;
     }
   }, [controlledTitle, setProjectId, setTitle]);
 
@@ -170,7 +178,7 @@ export function InboxCapturePanel({
       setPending(true);
       setError(null);
       setSuccess(null);
-      if (!idempotencyKeyRef.current) {
+      if (!idempotencyKeyRef.current || !idempotencyKeyRef.current.trim()) {
         idempotencyKeyRef.current = createIdempotencyKey();
       }
       const keyToUse = idempotencyKeyRef.current;
