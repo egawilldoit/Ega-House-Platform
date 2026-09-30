@@ -28,7 +28,8 @@ export function UnifiedCreateSheet({
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<CreateMode>(initialMode);
   const [draftTitle, setDraftTitle] = useState("");
-  const [draftProjectId, setDraftProjectId] = useState(projects[0]?.id ?? "");
+  const [taskProjectId, setTaskProjectId] = useState(projects[0]?.id ?? "");
+  const [backlogProjectId, setBacklogProjectId] = useState(projects[0]?.id ?? "");
   const [taskActiveTab, setTaskActiveTab] = useState<"single" | "multi">("single");
   const lastFocusedElementRef = useRef<HTMLElement | null>(null);
 
@@ -105,6 +106,14 @@ export function UnifiedCreateSheet({
           role="dialog"
           aria-labelledby="unified-create-title"
           aria-describedby="unified-create-description"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            const targetId = mode === "task" ? "quick-task-command" : "inbox-capture-title";
+            const target = document.getElementById(targetId);
+            if (target instanceof HTMLElement) {
+              target.focus();
+            }
+          }}
           onCloseAutoFocus={(event) => {
             const lastFocusedElement = lastFocusedElementRef.current;
             if (lastFocusedElement?.isConnected) {
@@ -209,8 +218,8 @@ export function UnifiedCreateSheet({
                   hideHeader={true}
                   initialCommand={draftTitle}
                   onCommandChange={setDraftTitle}
-                  selectedProjectId={draftProjectId}
-                  onProjectIdChange={setDraftProjectId}
+                  selectedProjectId={taskProjectId}
+                  onProjectIdChange={setTaskProjectId}
                 />
               </div>
             ) : (
@@ -224,8 +233,8 @@ export function UnifiedCreateSheet({
                   projects={projects}
                   title={draftTitle}
                   onTitleChange={setDraftTitle}
-                  projectId={draftProjectId}
-                  onProjectIdChange={setDraftProjectId}
+                  projectId={backlogProjectId}
+                  onProjectIdChange={setBacklogProjectId}
                   onSuccess={closeSheet}
                   onCancel={closeSheet}
                   hideHeader={true}
@@ -238,5 +247,3 @@ export function UnifiedCreateSheet({
     </DialogPrimitive.Root>
   );
 }
-
-export const CreateSheet = UnifiedCreateSheet;
