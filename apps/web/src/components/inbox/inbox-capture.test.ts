@@ -82,17 +82,15 @@ test("inbox capture keyboard accessibility: focus, Esc, shortcut", () => {
   assert.match(keyboardDefs, /Ctrl\/Cmd \+ Shift \+ I/);
 });
 
-test("EGA-649: one shell-level owner for Inbox Capture and Quick Task", () => {
+test("Unified Create: one shell-level owner for Unified Create", () => {
   // The shell mounts exactly one controller tree...
   assert.match(appShellSource, /GlobalQuickActionControllers/);
-  assert.match(controllersSource, /<InboxCaptureSheet/);
-  assert.match(controllersSource, /<QuickTaskSheet/);
-  assert.match(controllersSource, /showTrigger=\{false\}/);
+  assert.match(controllersSource, /<UnifiedCreateSheet/);
 
   // ...and navigation surfaces only render triggers, never a second controller.
   for (const source of [sidebarSource, drawerSource]) {
-    assert.match(source, /InboxCaptureTrigger/);
-    assert.match(source, /SidebarCreateTaskButton/);
+    assert.match(source, /SidebarCreateButton/);
+    assert.doesNotMatch(source, /<UnifiedCreateSheet/);
     assert.doesNotMatch(source, /<QuickTaskSheet/);
     assert.doesNotMatch(source, /<InboxCaptureSheet/);
     assert.doesNotMatch(source, /InboxQuickCapture/);
@@ -107,15 +105,12 @@ test("EGA-649: one shell-level owner for Inbox Capture and Quick Task", () => {
   assert.match(keyboardDefs, /open-inbox-capture.*Ctrl\/Cmd \+ Shift \+ I/);
 });
 
-test("EGA-649: drawer triggers close the drawer before opening the global sheet", () => {
+test("Unified Create: drawer triggers close the drawer before opening the global sheet", () => {
   // Triggers read the drawer context and close it deterministically (no timeout).
-  assert.match(triggerSource, /useWorkspaceDrawer/);
-  assert.match(triggerSource, /closeDrawer\(\{ restoreFocus: false \}\)/);
-  const createTaskSource = read("components", "layout", "sidebar-create-task.tsx");
-  assert.match(createTaskSource, /useWorkspaceDrawer/);
-  assert.match(createTaskSource, /closeDrawer\(\{ restoreFocus: false \}\)/);
-  assert.doesNotMatch(triggerSource, /setTimeout/);
-  assert.doesNotMatch(createTaskSource, /setTimeout/);
+  const buttonSource = read("components", "layout", "sidebar-create-button.tsx");
+  assert.match(buttonSource, /useWorkspaceDrawer/);
+  assert.match(buttonSource, /closeDrawer\(\{ restoreFocus: false \}\)/);
+  assert.doesNotMatch(buttonSource, /setTimeout/);
 });
 
 test("capture action and idea-note-service handle idempotencyKey server-side", () => {

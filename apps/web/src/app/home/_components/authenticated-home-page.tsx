@@ -12,8 +12,10 @@ import {
 } from "lucide-react";
 import { Suspense } from "react";
 
+import { completeTodayTaskAction } from "@/app/today/actions";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { LiveDuration } from "@/components/timer/live-duration";
@@ -31,25 +33,29 @@ import { HomeQuickActions } from "./home-quick-actions";
 
 type HomeTask = NonNullable<HomeModel["startHere"]>;
 
-/* ── Greeting ─────────────────────────────────────────────────────────── */
+/* ── Greeting ───────────────────────────────────────────────────────────── */
 
 function HomeHeader({ greeting, name }: { greeting: HomeGreeting | null; name: string }) {
   return (
-    <header className="flex flex-col gap-2">
-      {greeting ? <p className="glass-label">{greeting.dateLine}</p> : null}
-      <h1 className="text-4xl font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)] md:text-5xl">
+    <header className="flex flex-col gap-1.5">
+      {greeting?.dateLine ? <p className="glass-label">{greeting.dateLine}</p> : null}
+      <h1
+        tabIndex={-1}
+        data-shell-page-title
+        className="text-3xl font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)] md:text-4xl"
+      >
         {greeting?.greeting ?? `Welcome back, ${name}`}
       </h1>
       {greeting ? (
-        <p className="text-[length:var(--text-body-lg)] text-[color:var(--ega-text-secondary)]">
-          {greeting.subtitle}
+        <p className="text-[length:var(--text-body)] text-[color:var(--ega-text-secondary)]">
+          {greeting.fullDateLine} · {greeting.subtitle}
         </p>
       ) : null}
     </header>
   );
 }
 
-/* ── Now (dominant) ───────────────────────────────────────────────────── */
+/* ── Now (dominant) ──────────────────────────────────────────────────────── */
 
 /** Soft green mountain scene for the running-focus state (decorative). */
 function NowCardIllustration() {
@@ -222,6 +228,18 @@ function NowPanel({ model }: { model: HomeModel }) {
         <TaskMetaBadges task={task} />
         <div className="flex flex-wrap items-center gap-2">
           <OpenTimerButton testId="home-open-timer" />
+          <form action={completeTodayTaskAction}>
+            <input type="hidden" name="taskId" value={task.id} />
+            <input type="hidden" name="returnTo" value="/home" />
+            <PendingSubmitButton
+              type="submit"
+              size="md"
+              variant="secondary"
+              pendingLabel="Saving..."
+            >
+              Done
+            </PendingSubmitButton>
+          </form>
           <ViewTaskButton task={task} />
         </div>
       </CardContent>
@@ -229,15 +247,15 @@ function NowPanel({ model }: { model: HomeModel }) {
   );
 }
 
-/* ── Today (compact progress) ─────────────────────────────────────────── */
+/* ── Today (compact progress + focus list) ──────────────────────────────── */
 
 function TodayPanel({ model }: { model: HomeModel }) {
   const progress = model.todayProgress;
+  const tasks = model.todayTasks ?? [];
 
   return (
     <Card
       title="Today"
-      className="order-2 md:order-1"
       data-testid="home-today"
       action={
         progress && progress.totalCount > 0 ? (
@@ -312,13 +330,58 @@ function TodayPanel({ model }: { model: HomeModel }) {
               </p>
             </div>
           </div>
+
+          {tasks.length > 0 ? (
+            <div className="flex flex-col gap-1 border-t border-[var(--ega-border)] pt-3">
+              <p className="text-[length:var(--text-meta)] font-medium text-[color:var(--ega-text-secondary)]">
+                Today&apos;s Focus
+              </p>
+              {tasks.map((task) => (
+                <div key={task.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <form action={completeTodayTaskAction} className="shrink-0">
+                      <input type="hidden" name="taskId" value={task.id} />
+                      <input type="hidden" name="returnTo" value="/home" />
+                      <button
+                        type="submit"
+                        className="h-4 w-4 rounded border border-[var(--ega-border-strong)] hover:bg-[var(--status-healthy-bg)] hover:border-[var(--status-healthy)] transition-colors"
+                        title="Complete task"
+                        aria-label={`Complete ${task.title}`}
+                      />
+                    </form>
+                    <Link
+                      href={getTaskContextHref(task.id, task.projectSlug)}
+                      className="truncate font-medium text-[color:var(--ega-text)] hover:underline"
+                    >
+                      {task.title}
+                    </Link>
+                    <span className="shrink-0 text-xs text-[color:var(--ega-text-tertiary)]">
+                      · {task.projectName}
+                    </span>
+                  </div>
+                  {task.estimateMinutes ? (
+                    <span className="shrink-0 text-xs tabular-nums text-[color:var(--ega-text-tertiary)]">
+                      {formatDisplayEstimate(task.estimateMinutes)}
+                    </span>
+                  ) : null}
+                </div>
+              ))}
+              <Link
+                href="/today"
+                className="mt-1 inline-flex items-center gap-1 text-[length:var(--text-meta-lg)] font-medium text-[color:var(--ega-text-secondary)] hover:text-[color:var(--ega-text)]"
+              >
+                View all in Today
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </div>
+          ) : null}
         </CardContent>
       )}
     </Card>
   );
 }
 
-/* ── Next (at most one task) ──────────────────────────────────────────── */
+/* ── Next Up (at most one task) ─────────────────────────────────────────── */
 
 function NextPanel({ model }: { model: HomeModel }) {
   const next = model.nextUp;
@@ -326,7 +389,6 @@ function NextPanel({ model }: { model: HomeModel }) {
   return (
     <Card
       title="Next"
-      className="order-3 md:order-2"
       data-testid="home-next"
       action={
         <Link
@@ -361,7 +423,7 @@ function NextPanel({ model }: { model: HomeModel }) {
       ) : (
         <CardContent>
           <p className="text-[length:var(--text-meta-lg)] text-[color:var(--ega-text-secondary)]">
-            Nothing next — Today holds the full queue.
+            Nothing next &mdash; Today holds the full queue.
           </p>
         </CardContent>
       )}
@@ -369,7 +431,7 @@ function NextPanel({ model }: { model: HomeModel }) {
   );
 }
 
-/* ── Needs attention ──────────────────────────────────────────────────── */
+/* ── Needs attention ────────────────────────────────────────────────────── */
 
 function AttentionRow({
   href,
@@ -414,7 +476,6 @@ function AttentionPanel({ model }: { model: HomeModel }) {
   return (
     <Card
       title="Needs attention"
-      className="order-1 md:order-3"
       data-testid="home-attention"
     >
       <CardContent className="flex flex-col gap-1">
@@ -482,7 +543,7 @@ function AttentionPanel({ model }: { model: HomeModel }) {
   );
 }
 
-/* ── Degraded states ──────────────────────────────────────────────────── */
+/* ── Degraded states ────────────────────────────────────────────────────── */
 
 function DegradedNotice() {
   return (
@@ -493,7 +554,7 @@ function DegradedNotice() {
   );
 }
 
-/* ── Page ─────────────────────────────────────────────────────────────── */
+/* ── Page Layout ────────────────────────────────────────────────────────── */
 
 export function AuthenticatedHomePage({
   model,
@@ -505,24 +566,28 @@ export function AuthenticatedHomePage({
   name: string;
 }) {
   return (
-    <div className="flex max-w-350 flex-col gap-8" data-testid="home-workspace">
+    <div className="flex flex-col gap-6" data-testid="home-workspace">
       {model.availability.operator === "unavailable" ? <DegradedNotice /> : null}
 
       <HomeHeader greeting={greeting} name={name} />
 
-      <NowPanel model={model} />
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-12">
+        {/* Left/Main Column: 8 cols (~67%) */}
+        <div className="flex flex-col gap-6 lg:col-span-8">
+          <NowPanel model={model} />
+          <HomeQuickActions />
+          <TodayPanel model={model} />
+          <NextPanel model={model} />
+        </div>
 
-      <HomeQuickActions />
-
-      <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3">
-        <TodayPanel model={model} />
-        <NextPanel model={model} />
-        <AttentionPanel model={model} />
+        {/* Right/Rail Column: 4 cols (~33%) */}
+        <div className="flex flex-col gap-6 lg:col-span-4">
+          <AttentionPanel model={model} />
+          <Suspense fallback={<ActivityPulseSkeleton />}>
+            <ActivityPulseSection />
+          </Suspense>
+        </div>
       </div>
-
-      <Suspense fallback={<ActivityPulseSkeleton />}>
-        <ActivityPulseSection />
-      </Suspense>
     </div>
   );
 }

@@ -16,6 +16,7 @@ type AppShellProps = {
   actions?: ReactNode;
   className?: string;
   contentClassName?: string;
+  hideHeader?: boolean;
 };
 
 // Request-level only — see SHELL-PERSISTENCE-EVALUATION.md
@@ -91,6 +92,7 @@ export async function AppShell({
   actions,
   className,
   contentClassName,
+  hideHeader = false,
 }: AppShellProps) {
   const [projects, goals, metrics, identity] = await Promise.all([
     getSidebarProjects(),
@@ -113,6 +115,7 @@ export async function AppShell({
         actions={actions}
         className={cn(className)}
         contentClassName={contentClassName}
+        hideHeader={hideHeader}
       >
         {children}
       </WorkspaceShell>

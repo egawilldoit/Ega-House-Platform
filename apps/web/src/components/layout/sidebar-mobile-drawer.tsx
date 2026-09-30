@@ -13,9 +13,8 @@ import {
 } from "react";
 import { Menu, X } from "lucide-react";
 
-import { InboxCaptureTrigger } from "@/components/inbox/inbox-capture-trigger";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
-import { SidebarCreateTaskButton } from "./sidebar-create-task";
+import { SidebarCreateButton } from "./sidebar-create-button";
 import { SidebarNavigation, type SidebarProject } from "./sidebar-navigation";
 import { WorkspaceDrawerContext } from "./workspace-drawer-context";
 import { WorkspaceSearchTrigger } from "./workspace-search-trigger";
@@ -98,10 +97,8 @@ export function WorkspaceNavigationDrawer({
       if (event.key !== "Tab" || !panelRef.current) return;
 
       const focusable = getVisibleFocusableElements(panelRef.current);
-
       if (focusable.length === 0) {
         event.preventDefault();
-        panelRef.current.focus();
         return;
       }
 
@@ -212,8 +209,7 @@ export function SidebarMobileDrawer({
       </div>
       <SidebarNavigation projects={projects} metrics={metrics} />
       <div className="mt-1 flex flex-col gap-1.5 border-t border-[var(--ega-border)] px-1.5 pt-2">
-        <InboxCaptureTrigger />
-        <SidebarCreateTaskButton />
+        <SidebarCreateButton />
       </div>
     </WorkspaceNavigationDrawer>
   );

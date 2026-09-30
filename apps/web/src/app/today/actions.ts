@@ -15,7 +15,7 @@ import {
 function getTodayReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
 
-  if (returnTo.startsWith("/today")) {
+  if (returnTo.startsWith("/today") || returnTo.startsWith("/home")) {
     return returnTo;
   }
 
@@ -108,6 +108,7 @@ export async function markTodayTaskBlockedAction(formData: FormData) {
 export async function clearCompletedFromTodayAction(formData: FormData) {
   const returnPath = getTodayReturnPath(formData.get("returnTo"));
   const localDate = await resolveAccountLocalDate();
+
   const result = await clearCompletedFromToday({ localDate: localDate ?? undefined });
 
   if (result.errorMessage) {

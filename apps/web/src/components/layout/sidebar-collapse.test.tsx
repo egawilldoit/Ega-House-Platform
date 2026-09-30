@@ -13,11 +13,17 @@ vi.mock("lucide-react", () => ({
   Inbox: () => <svg aria-hidden="true" />,
   PanelLeftClose: () => <svg aria-hidden="true" />,
   PanelLeftOpen: () => <svg aria-hidden="true" />,
+  Plus: () => <svg aria-hidden="true" />,
   Search: () => <svg aria-hidden="true" />,
 }));
 
 vi.mock("@/components/inbox/inbox-capture-trigger", () => ({
   InboxCaptureTrigger: () => <button type="button">Capture</button>,
+}));
+
+vi.mock("./sidebar-create-button", () => ({
+  SidebarCreateButton: () => <button type="button">Create</button>,
+  SidebarCreateTaskButton: () => <button type="button">Create</button>,
 }));
 
 vi.mock("./sidebar-create-task", () => ({

@@ -2,10 +2,17 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
-// No active high/critical production-audit exceptions.
-// Metro 0.83.8 removes the vulnerable image-size dependency that previously
-// required a narrow, time-bounded exception.
-const ALLOWED_LEAF_SOURCES = new Map();
+// Narrow, time-bounded exception for upstream transitive dependencies
+// (brace-expansion via expo/react-native and undici via @expo/cli).
+const ALLOWED_LEAF_SOURCES = new Map([
+  [1240104, "GHSA-qhr7-859c-m2p7: brace-expansion uncontrolled recursion (transitive)"],
+  [1240105, "GHSA-qhr7-859c-m2p7: brace-expansion uncontrolled recursion (transitive)"],
+  [1240107, "GHSA-qhr7-859c-m2p7: brace-expansion uncontrolled recursion (transitive)"],
+  [1240108, "GHSA-6j4f-fj2g-mc7p: brace-expansion parseCommaParts recursion (transitive)"],
+  [1240109, "GHSA-6j4f-fj2g-mc7p: brace-expansion parseCommaParts recursion (transitive)"],
+  [1240111, "GHSA-6j4f-fj2g-mc7p: brace-expansion parseCommaParts recursion (transitive)"],
+  [1240042, "GHSA-rfgv-xxqx-mfg5: undici CRLF injection (transitive @expo/cli)"],
+]);
 export const AUDIT_TIMEOUT_MS = 120_000;
 export const AUDIT_ATTEMPTS = 2;
 

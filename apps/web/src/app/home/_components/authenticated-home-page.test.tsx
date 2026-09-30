@@ -22,7 +22,7 @@ vi.mock("../_lib/home-activity-pulse", () => ({
 
 import type { OperatorTask } from "@ega/application";
 
-import { INBOX_CAPTURE_EVENT, QUICK_TASK_EVENT } from "@/lib/workspace-events";
+import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import { getHomeActivityPulseData } from "../_lib/home-activity-pulse";
 import type { HomeActivityPulse } from "../_lib/home-activity-pulse";
 
@@ -110,6 +110,7 @@ function emptyModel(overrides: Partial<HomeModel> = {}): HomeModel {
     startHere: null,
     nextUp: null,
     todayProgress: null,
+    todayTasks: [],
     attention: { overdue: 0, dueToday: 0, reviewMissing: false },
     availability: { operator: "available", attention: "available" },
     ...overrides,
@@ -319,11 +320,9 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
     expect(container.textContent).not.toContain("Let's make progress today.");
   });
 
-  it("quick actions dispatch the canonical existing events with the new labels", async () => {
+  it("quick actions dispatch the canonical existing events with the simplified controls", async () => {
     const quickTask = vi.fn();
-    const capture = vi.fn();
     window.addEventListener(QUICK_TASK_EVENT, quickTask);
-    window.addEventListener(INBOX_CAPTURE_EVENT, capture);
 
     await render(emptyModel());
 
@@ -332,29 +331,22 @@ describe("AuthenticatedHomePage (EGA-663)", () => {
         .querySelector('[data-testid="home-create-task"]')
         ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    await act(async () => {
-      container
-        .querySelector('[data-testid="home-capture"]')
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
 
     expect(quickTask).toHaveBeenCalledTimes(1);
-    expect(capture).toHaveBeenCalledTimes(1);
 
-    expect(container.textContent).toContain("Create Task");
-    expect(container.textContent).toContain("Add to Backlog");
+    expect(container.textContent).toContain("Create");
+    expect(container.textContent).not.toContain("Add to Backlog");
     expect(container.textContent).toContain("Timer");
     expect(container.querySelector('[data-testid="home-start-timer"]')?.getAttribute("href")).toBe(
       "/timer",
     );
 
-    // Shortcut hints must match the canonical bindings (Ctrl/Cmd+Shift+N/I/T),
-    // never the misleading plain Cmd+N/B/T that the shell does not handle.
+    // Shortcut hints must match the canonical bindings (Ctrl/Cmd+Shift+N/T),
+    // never misleading bindings that the shell does not handle.
     const hints = Array.from(container.querySelectorAll("kbd")).map((node) => node.textContent?.trim());
-    expect(hints).toEqual(["⌘⇧N", "⌘⇧I", "⌘⇧T"]);
+    expect(hints).toEqual(["⌘⇧N", "⌘⇧T"]);
 
     window.removeEventListener(QUICK_TASK_EVENT, quickTask);
-    window.removeEventListener(INBOX_CAPTURE_EVENT, capture);
   });
 
   it("removes the four-card Daily execution overview KPI grid", async () => {

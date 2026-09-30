@@ -259,7 +259,7 @@ function WorkActivityDayDrawer({ date, details, loading, error, onClose }: WorkA
                     : "Loading day details…"}
                 </SheetDescription>
               </div>
-              <SheetClose>
+              <SheetClose asChild>
                 <Button variant="ghost" size="sm" aria-label="Close day details">
                   <X className="h-4 w-4" aria-hidden="true" />
                 </Button>

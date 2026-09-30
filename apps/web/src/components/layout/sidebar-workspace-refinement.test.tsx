@@ -89,9 +89,9 @@ describe("workspace sidebar refinement", () => {
     expect(sidebar).toContain("overscroll-contain");
     expect(sidebar).toContain('className="overflow-visible"');
 
-    // Capture and Create task stay pinned below the scroll region.
+    // Unified Create button stays pinned below the scroll region.
     expect(sidebar).toMatch(
-      /mt-1 flex shrink-0[\s\S]*?InboxCaptureTrigger[\s\S]*?SidebarCreateTaskButton/,
+      /mt-1 flex shrink-0[\s\S]*?SidebarCreateButton/,
     );
 
     // The project list keeps its own bounded scroll containment.
