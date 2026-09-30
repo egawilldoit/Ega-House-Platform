@@ -20,6 +20,7 @@ type WorkspaceShellProps = {
   actions?: ReactNode;
   className?: string;
   contentClassName?: string;
+  hideHeader?: boolean;
 };
 
 function buildBreadcrumb(pathname: string) {
@@ -47,6 +48,7 @@ export function WorkspaceShell({
   actions,
   className,
   contentClassName,
+  hideHeader = false,
 }: WorkspaceShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -72,20 +74,22 @@ export function WorkspaceShell({
         />
 
         <div className="app-page ega-shell-max">
-          <header className="app-page-header">
-            <div className="app-page-heading">
-              <div className="app-page-eyebrow">{buildBreadcrumb(pathname)}</div>
-              <h1
-                tabIndex={-1}
-                data-shell-page-title
-                className="app-page-title focus:outline-none"
-              >
-                {title}
-              </h1>
-              {description ? <p className="app-page-description">{description}</p> : null}
-            </div>
-            {actions ? <div className="app-page-actions">{actions}</div> : null}
-          </header>
+          {!hideHeader ? (
+            <header className="app-page-header">
+              <div className="app-page-heading">
+                <div className="app-page-eyebrow">{buildBreadcrumb(pathname)}</div>
+                <h1
+                  tabIndex={-1}
+                  data-shell-page-title
+                  className="app-page-title focus:outline-none"
+                >
+                  {title}
+                </h1>
+                {description ? <p className="app-page-description">{description}</p> : null}
+              </div>
+              {actions ? <div className="app-page-actions">{actions}</div> : null}
+            </header>
+          ) : null}
 
           <div className={cn("app-content", contentClassName)}>{children}</div>
         </div>
