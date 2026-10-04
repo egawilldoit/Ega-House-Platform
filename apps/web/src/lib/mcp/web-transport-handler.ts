@@ -15,6 +15,53 @@ type TransportOptions = {
 const MCP_PROTOCOL_VERSION = "2026-07-28";
 const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
 
+export const MCP_PREFLIGHT_METHODS = "POST, OPTIONS";
+export const MCP_PREFLIGHT_REQUEST_HEADERS =
+  "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name";
+const MCP_PREFLIGHT_MAX_AGE_SECONDS = "86400";
+
+export type McpOriginPolicy = {
+  expectedHost: string;
+  expectedOrigin: string;
+};
+
+/**
+ * The single preflight implementation. Host and Origin are validated with
+ * exactly the functions the authenticated path uses, so OPTIONS cannot be a
+ * less-guarded entry point than POST.
+ *
+ * When the browser's Origin matches the resource origin it is echoed back with
+ * `Vary: Origin`; a wildcard is never returned, because a wildcard would again
+ * promise access the authenticated path then refuses. A mismatched Origin is
+ * refused outright and no allow-origin header is emitted, which is what makes
+ * the browser block it.
+ */
+export function createMcpPreflightResponse(
+  request: Request,
+  policy: McpOriginPolicy,
+): Response {
+  const hostError = validateMcpHost(request, policy.expectedHost);
+  if (hostError) return hostError;
+
+  const originError = validateMcpOrigin(request, policy.expectedOrigin);
+  if (originError) return originError;
+
+  const origin = request.headers.get("origin");
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": MCP_PREFLIGHT_METHODS,
+    "Access-Control-Allow-Headers": MCP_PREFLIGHT_REQUEST_HEADERS,
+    "Access-Control-Max-Age": MCP_PREFLIGHT_MAX_AGE_SECONDS,
+    Vary: "Origin",
+  };
+
+  // No Origin means a non-browser caller; there is nothing for CORS to gate.
+  if (origin) {
+    headers["Access-Control-Allow-Origin"] = new URL(origin).origin;
+  }
+
+  return new Response(null, { status: 204, headers });
+}
+
 function invalidRequest(description: string, status: 400 | 403 | 413 | 421 = 400): Response {
   return Response.json(
     { error: "invalid_request", error_description: description },
@@ -22,7 +69,7 @@ function invalidRequest(description: string, status: 400 | 403 | 413 | 421 = 400
   );
 }
 
-function validateHost(request: Request, expectedHost: string): Response | null {
+export function validateMcpHost(request: Request, expectedHost: string): Response | null {
   const hostHeader = request.headers.get("host");
   if (!hostHeader) return invalidRequest("Missing Host header.");
   if (hostHeader.includes(",") || /[\s/#?@]/.test(hostHeader)) {
@@ -39,7 +86,19 @@ function validateHost(request: Request, expectedHost: string): Response | null {
   return null;
 }
 
-function validateOrigin(request: Request, expectedOrigin: string): Response | null {
+/**
+ * ONE origin policy, shared by preflight and by the actual request.
+ *
+ * The authenticated browser surface is exactly the MCP resource origin: an
+ * exact match, never a wildcard. Preflight previously advertised
+ * `Access-Control-Allow-Origin: *` while POST rejected every origin but one, so
+ * a browser on any other origin was told it was allowed and then refused.
+ *
+ * A missing Origin is allowed, because a server-to-server client legitimately
+ * omits it; Host validation still applies, and auth is a Bearer header a
+ * browser cannot attach cross-origin without CORS approval.
+ */
+export function validateMcpOrigin(request: Request, expectedOrigin: string): Response | null {
   const origin = request.headers.get("origin");
   if (!origin) {
     // Server-to-server (non-browser) may omit Origin; allow if no Origin but Host validated
@@ -56,7 +115,7 @@ function validateOrigin(request: Request, expectedOrigin: string): Response | nu
   return null;
 }
 
-function validateRequestSize(request: Request, maxBytes = 4 * 1024 * 1024): Response | null {
+function validateRequestSize(request: Request, maxBytes = MAX_REQUEST_BODY_BYTES): Response | null {
   const contentLength = request.headers.get("content-length");
   if (contentLength) {
     const len = Number(contentLength);
@@ -158,9 +217,9 @@ export function createWebMcpHandler(
 
   return async (request: Request): Promise<Response> => {
     // Explicit Host/Origin validation BEFORE auth and before handler — not delegated to createMcpHandler
-    const hostError = validateHost(request, expectedHost);
+    const hostError = validateMcpHost(request, expectedHost);
     if (hostError) return hostError;
-    const originError = validateOrigin(request, expectedOrigin);
+    const originError = validateMcpOrigin(request, expectedOrigin);
     if (originError) return originError;
     const protocolError = validateProtocolVersion(request);
     if (protocolError) return protocolError;
@@ -182,7 +241,7 @@ export function createWebMcpHandler(
       });
     }
     if (request.method === "OPTIONS") {
-      return new Response(null, { status: 204 });
+      return createMcpPreflightResponse(request, { expectedHost, expectedOrigin });
     }
 
     // Auth is pass-through: withEgaMcpAuth wrapper will have verified and will call this handler

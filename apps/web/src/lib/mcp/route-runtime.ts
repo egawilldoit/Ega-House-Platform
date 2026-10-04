@@ -25,7 +25,10 @@ import { filterToolsByPermissions } from "@/lib/mcp/tool-discovery";
 import { readPrincipalFromAuthInfo } from "@/lib/mcp/auth-info";
 import { isValidMcpPrincipal } from "@/lib/mcp/principal";
 import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
-import { createWebMcpHandler } from "@/lib/mcp/web-transport-handler";
+import {
+  createMcpPreflightResponse,
+  createWebMcpHandler,
+} from "@/lib/mcp/web-transport-handler";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
 import { createAuditedMcpWriteHandlers } from "@/lib/mcp/audited-write-handlers";
 
@@ -126,18 +129,10 @@ const DEFAULT_DEPENDENCIES: McpRouteRuntimeDependencies = {
   wrapAuth: withEgaMcpAuth,
 };
 
-const PREFLIGHT_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
-  "Access-Control-Max-Age": "86400",
-};
-
 export type McpRouteRuntime = {
   GET: RequestHandler;
   POST: RequestHandler;
-  OPTIONS: () => Promise<Response>;
+  OPTIONS: RequestHandler;
 };
 
 export function createMcpRouteRuntime(
@@ -185,10 +180,16 @@ export function createMcpRouteRuntime(
   return {
     GET: authenticatedHandler,
     POST: authenticatedHandler,
-    OPTIONS: async () =>
-      new Response(null, {
-        status: 204,
-        headers: PREFLIGHT_HEADERS,
-      }),
+    // Preflight runs through the SAME Host/Origin policy as the authenticated
+    // POST path rather than a hardcoded wildcard. It used to answer with
+    // `Access-Control-Allow-Origin: *` while POST rejected every origin but
+    // the resource origin, and it skipped Host/Origin/size validation entirely.
+    OPTIONS: (request) =>
+      Promise.resolve(
+        createMcpPreflightResponse(request, {
+          expectedHost: new URL(config.resource).host,
+          expectedOrigin: new URL(config.resource).origin,
+        }),
+      ),
   };
 }

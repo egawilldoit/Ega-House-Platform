@@ -14,6 +14,6 @@ export async function POST(request: Request): Promise<Response> {
   return endpoint.POST(request);
 }
 
-export async function OPTIONS(): Promise<Response> {
-  return endpoint.OPTIONS();
+export async function OPTIONS(request: Request): Promise<Response> {
+  return endpoint.OPTIONS(request);
 }

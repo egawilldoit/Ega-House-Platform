@@ -67,7 +67,11 @@ describe("createLazyMcpEndpoint", () => {
     await expect(endpoint.POST(postRequest)).resolves.toEqual(
       expect.objectContaining({ status: 200 }),
     );
-    await expect(endpoint.OPTIONS()).resolves.toEqual(
+    const optionsRequest = new Request("https://ega.example.com/api/mcp", {
+      method: "OPTIONS",
+      headers: { host: "ega.example.com" },
+    });
+    await expect(endpoint.OPTIONS(optionsRequest)).resolves.toEqual(
       expect.objectContaining({ status: 204 }),
     );
 
@@ -76,6 +80,8 @@ describe("createLazyMcpEndpoint", () => {
     expect(buildRuntime).toHaveBeenCalledWith(config);
     expect(runtime.GET).toHaveBeenCalledWith(getRequest);
     expect(runtime.POST).toHaveBeenCalledWith(postRequest);
-    expect(runtime.OPTIONS).toHaveBeenCalledTimes(1);
+    // The request is forwarded, not discarded: preflight needs the Host and
+    // Origin headers to apply the same policy the authenticated path applies.
+    expect(runtime.OPTIONS).toHaveBeenCalledWith(optionsRequest);
   });
 });

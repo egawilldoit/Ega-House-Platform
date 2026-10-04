@@ -136,6 +136,82 @@ describe("createWebMcpHandler", () => {
     expect(response.status).toBe(413);
   });
 
+  describe("preflight and POST share one origin policy", () => {
+    const RESOURCE_ORIGIN = "https://ega.example.com";
+
+    /**
+     * The regression this pins: preflight used to answer
+     * `Access-Control-Allow-Origin: *` and skip Host/Origin validation entirely,
+     * while POST validated the exact resource origin. A browser on any other
+     * origin was told it was allowed and then received 403.
+     *
+     * Each case asserts the same decision is reached on both paths, so the two
+     * cannot drift apart again without failing here.
+     */
+    it.each([
+      // A refused origin need not share one status: an unparseable Origin is a
+      // malformed request (400) while a parseable mismatch is forbidden (403).
+      // The invariant under test is that preflight and POST agree, and that a
+      // refused origin is never advertised as allowed.
+      ["matching browser origin", RESOURCE_ORIGIN, true],
+      ["foreign browser origin", "https://evil.example", false],
+      ["no origin (server to server)", undefined, true],
+      ["opaque origin", "null", false],
+    ])("%s", async (_label, origin, allowed) => {
+      const headers = new Headers();
+      headers.set("host", "ega.example.com");
+      if (origin !== undefined) headers.set("origin", origin);
+
+      const preflightResponse = await createHandler()(
+        new Request("https://ega.example.com/api/mcp", { method: "OPTIONS", headers }),
+      );
+
+      const postHeaders = new Headers(MCP_HEADERS);
+      postHeaders.set("host", "ega.example.com");
+      if (origin !== undefined) postHeaders.set("origin", origin);
+      const postResponse = await createHandler()(
+        createRequest({ jsonrpc: "2.0", id: 1, method: "ping" }, postHeaders),
+      );
+
+      // The POST may still be refused further downstream (a bare ping is not a
+      // complete MCP session), so the assertion is about the ORIGIN decision
+      // specifically: both paths must reach the same verdict, and a refused
+      // origin must never be advertised as allowed.
+      const postBody = await postResponse.clone().text();
+
+      if (allowed) {
+        expect(preflightResponse.status).toBe(204);
+        expect(postBody).not.toContain("Origin");
+        expect(postResponse.headers.get("access-control-allow-origin")).not.toBe("*");
+      } else {
+        expect(preflightResponse.status).toBe(postResponse.status);
+        expect(preflightResponse.status).toBeGreaterThanOrEqual(400);
+        expect(postBody).toContain("Origin");
+        expect(preflightResponse.headers.get("access-control-allow-origin")).toBeNull();
+      }
+    });
+
+    it("never returns a wildcard allow-origin on the matching-origin preflight", async () => {
+      const headers = new Headers({ host: "ega.example.com", origin: RESOURCE_ORIGIN });
+      const response = await createHandler()(
+        new Request("https://ega.example.com/api/mcp", { method: "OPTIONS", headers }),
+      );
+
+      expect(response.headers.get("access-control-allow-origin")).toBe(RESOURCE_ORIGIN);
+      expect(response.headers.get("access-control-allow-origin")).not.toBe("*");
+      expect(response.headers.get("vary")).toBe("Origin");
+    });
+
+    it("applies Host validation to preflight, which previously skipped it entirely", async () => {
+      const headers = new Headers({ host: "ega.example.com.evil", origin: RESOURCE_ORIGIN });
+      const response = await createHandler()(
+        new Request("https://ega.example.com/api/mcp", { method: "OPTIONS", headers }),
+      );
+
+      expect(response.status).toBe(421);
+    });
+  });
+
   it.each([
     ["ega.example.com.evil", undefined, 421],
     ["ega.example.com/path", undefined, 400],
