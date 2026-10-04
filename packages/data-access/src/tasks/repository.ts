@@ -457,8 +457,17 @@ export class SupabaseTasksRepository implements TasksRepository {
       .update({ status: input.status, updated_at: new Date().toISOString() })
       .eq("id", input.reminderId)
       .eq("task_id", input.taskId)
-      .eq("owner_user_id", actor.userId);
+      .eq("owner_user_id", actor.userId)
+      .select("id")
+      .maybeSingle();
     if (result.error) return failure(result.error);
+
+    // Row-level security filters silently: an update that matches no visible row
+    // is not an error, it simply affects nothing. Without this check the caller
+    // reported a successful cancellation for a reminder that stayed pending and
+    // was still delivered - which is exactly what happened to
+    // ega_cancel_task_reminder while task_reminders had no MCP UPDATE policy.
+    if (!result.data) return failure(null);
 
     const task = await this.getTask(actor, input.taskId);
     return task.ok && task.value ? { ok: true, value: task.value } : task.ok ? failure(null) : task;
