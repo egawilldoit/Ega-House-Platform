@@ -470,6 +470,20 @@
       "when": 1787880000016,
       "tag": "0066_mcp_permission_version_2",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1787880000017,
+      "tag": "0067_mcp_audit_tool_allowlist",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1787880000018,
+      "tag": "0068_mcp_write_fence_insert_branch",
+      "breakpoints": true
     }
   ]
 }
