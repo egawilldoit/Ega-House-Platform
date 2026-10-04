@@ -959,7 +959,10 @@ async function proveDomainConcurrency(
   );
   const winners = outcomes.filter((outcome) => outcome.ok);
   const losers = outcomes.filter((outcome) => !outcome.ok);
-  assert(winners.length === 1, `${label} concurrency must have one winner`);
+  const describe = outcomes
+    .map((outcome, index) => (outcome.ok ? "ok" : `${outcome.error?.code}: ${postgresErrorText(outcome.error)}`))
+    .join(" | ");
+  assert(winners.length === 1, `${label} concurrency must have one winner; outcomes: ${describe}`);
   assert(losers.length === attemptIds.length - 1, `${label} concurrency must fence all other attempts`);
   for (const loser of losers) {
     assert(loser.error?.code === "23505", `${label} loser must hit SQLSTATE 23505`);
@@ -1031,7 +1034,11 @@ async function runDomainFencingProof(sql) {
     RETURNING id
   `;
 
-  await proveDomainCrashReplay(sql, {
+  // The MCP write fence replaces caller-chosen primary keys with the generated
+  // default, so the ids these inserts end up with are not the ones passed in.
+  // Everything downstream must therefore reference the id the fence actually
+  // assigned, which is what these calls return.
+  const domainProjectId = await proveDomainCrashReplay(sql, {
     label: "PROJECT_CREATE",
     table: "projects",
     indexNames: ["projects_mcp_operation_unique", "projects_owner_user_id_slug_unique"],
@@ -1041,45 +1048,45 @@ async function runDomainFencingProof(sql) {
     firstParams: [DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_PROJECT_OP, CLIENT_ID],
     retryParams: ["88888888-8888-4888-8888-888888888826", OWNER_A, DOMAIN_PROJECT_OP, CLIENT_ID],
   });
-  await proveDomainCrashReplay(sql, {
+  const domainGoalId = await proveDomainCrashReplay(sql, {
     label: "GOAL_CREATE",
     table: "goals",
     indexNames: ["goals_mcp_operation_unique"],
     toolName: "ega_create_goal",
     operationId: DOMAIN_GOAL_OP,
     insertSql: goalInsert,
-    firstParams: [DOMAIN_GOAL_ID, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888827", DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
+    firstParams: [DOMAIN_GOAL_ID, domainProjectId, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888827", domainProjectId, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
   });
-  await proveDomainCrashReplay(sql, {
+  const domainTaskId = await proveDomainCrashReplay(sql, {
     label: "TASK_CREATE",
     table: "tasks",
     indexNames: ["tasks_mcp_operation_unique"],
     toolName: "ega_create_task",
     operationId: DOMAIN_TASK_OP,
     insertSql: taskInsert,
-    firstParams: [DOMAIN_TASK_ID, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888828", DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
+    firstParams: [DOMAIN_TASK_ID, domainProjectId, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888828", domainProjectId, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
   });
-  await proveDomainCrashReplay(sql, {
+  const domainReminderId = await proveDomainCrashReplay(sql, {
     label: "REMINDER_CREATE",
     table: "task_reminders",
     indexNames: ["task_reminders_mcp_operation_unique"],
     toolName: "ega_create_task_reminder",
     operationId: DOMAIN_REMINDER_OP,
     insertSql: reminderInsert,
-    firstParams: [DOMAIN_REMINDER_ID, OWNER_A, DOMAIN_TASK_ID, DOMAIN_REMINDER_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888829", OWNER_A, DOMAIN_TASK_ID, DOMAIN_REMINDER_OP, CLIENT_ID],
+    firstParams: [DOMAIN_REMINDER_ID, OWNER_A, domainTaskId, DOMAIN_REMINDER_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888829", OWNER_A, domainTaskId, DOMAIN_REMINDER_OP, CLIENT_ID],
   });
-  await proveDomainCrashReplay(sql, {
+  const domainSessionId = await proveDomainCrashReplay(sql, {
     label: "SESSION_CREATE",
     table: "task_sessions",
     indexNames: ["task_sessions_mcp_operation_unique", "task_sessions_owner_open_unique"],
     toolName: "ega_start_timer",
     operationId: DOMAIN_SESSION_OP,
     insertSql: sessionInsert,
-    firstParams: [DOMAIN_SESSION_ID, OWNER_A, DOMAIN_TASK_ID, DOMAIN_SESSION_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888830", OWNER_A, DOMAIN_TASK_ID, DOMAIN_SESSION_OP, CLIENT_ID],
+    firstParams: [DOMAIN_SESSION_ID, OWNER_A, domainTaskId, DOMAIN_SESSION_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888830", OWNER_A, domainTaskId, DOMAIN_SESSION_OP, CLIENT_ID],
   });
 
   const concurrentProjectInsert = projectInsert.replace("domain-fenced-project", "domain-concurrent-project");
@@ -1106,7 +1113,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888834",
     ],
     insertSql: goalInsert,
-    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_GOAL_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, domainProjectId, OWNER_A, DOMAIN_CONCURRENT_GOAL_OP, CLIENT_ID],
   });
 
   await proveDomainConcurrency(sql, {
@@ -1119,7 +1126,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888836",
     ],
     insertSql: taskInsert,
-    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_TASK_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, domainProjectId, OWNER_A, DOMAIN_CONCURRENT_TASK_OP, CLIENT_ID],
   });
 
   await proveDomainConcurrency(sql, {
@@ -1132,7 +1139,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888838",
     ],
     insertSql: reminderInsert,
-    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_TASK_ID, DOMAIN_CONCURRENT_REMINDER_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, domainTaskId, DOMAIN_CONCURRENT_REMINDER_OP, CLIENT_ID],
   });
 
   // Close the crash-proof session before exercising the owner-open invariant
@@ -1142,6 +1149,14 @@ async function runDomainFencingProof(sql) {
      SET ended_at = '2026-08-29T11:00:00Z', duration_seconds = 3600
      WHERE id = $1::uuid`,
     [DOMAIN_SESSION_ID],
+  );
+  // task_sessions_owner_open_unique is keyed on the owner alone, so the open
+  // session left by the crash-replay proof above would make every concurrency
+  // attempt collide on it and there would be no winner. Close it first.
+  await sql.unsafe(
+    `UPDATE public.task_sessions SET ended_at = now()
+     WHERE owner_user_id = $1::uuid AND ended_at IS NULL`,
+    [OWNER_A],
   );
   await proveDomainConcurrency(sql, {
     label: "SESSION_CREATE",
@@ -1153,7 +1168,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888840",
     ],
     insertSql: sessionInsert,
-    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_TASK_ID, DOMAIN_CONCURRENT_SESSION_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, domainTaskId, DOMAIN_CONCURRENT_SESSION_OP, CLIENT_ID],
   });
 
   await proveDomainConcurrency(sql, {
@@ -1174,7 +1189,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888850",
     ],
     insertSql: taskInsert,
-    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_TASK_TEN_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, domainProjectId, OWNER_A, DOMAIN_CONCURRENT_TASK_TEN_OP, CLIENT_ID],
   });
 }
 

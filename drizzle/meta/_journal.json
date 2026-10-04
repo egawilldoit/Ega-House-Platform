@@ -484,6 +484,20 @@
       "when": 1787880000018,
       "tag": "0068_mcp_write_fence_insert_branch",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1787880000019,
+      "tag": "0069_mcp_write_fence_insert_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1787880000020,
+      "tag": "0070_mcp_referential_ownership_isolation",
+      "breakpoints": true
     }
   ]
 }

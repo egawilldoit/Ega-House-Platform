@@ -699,27 +699,202 @@ async function assertColumnFence(sql) {
     assert(rows.length === 1, "the application-written idempotency fence columns must remain writable");
   });
 
-  // INSERT-time fence: the calendar/scheduled columns have no usable default
-  // so a non-default value proves an explicit, out-of-contract choice.
-  for (const [column, expression] of [
-    ["scheduled_start_at", `now() + interval '1 day'`],
-    ["scheduled_end_at", `now() + interval '2 days'`],
-    ["calendar_event_id", `'forged-gcal-event'`],
-    ["calendar_sync_status", `'synced'`],
-    ["calendar_sync_failure_reason", `'forged'`],
-    ["calendar_sync_enabled", `true`],
-    ["calendar_reminder_minutes", `999`],
-  ]) {
-    await expectDenied(`tasks.${column} out-of-contract INSERT`, () =>
-      session.run((tx) =>
-        tx.unsafe(
-          `INSERT INTO public.tasks (project_id, title, ${column}) VALUES ($1::uuid, 'fenced', ${expression})`,
-          [PROJECT_A],
-        ),
-      ),
+  // INSERT-time fence. Asserted BEHAVIOURALLY: the caller supplies forbidden
+  // values and the proof reads the stored row back to confirm they did not
+  // survive. The fence resets rather than raises, because a column's default
+  // can be volatile (id is gen_random_uuid()) and no comparison against "the
+  // value the default would have produced" can distinguish a caller-chosen key
+  // from a generated one. Asserting a SQLSTATE here would also pass for the
+  // wrong reason: a stripped value can trip an unrelated CHECK constraint.
+  await session.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.tasks (
+         project_id, title, focus_rank, archived_at, archived_by, created_at,
+         scheduled_start_at, scheduled_end_at, calendar_sync_enabled,
+         calendar_reminder_minutes, calendar_event_id, calendar_sync_status,
+         calendar_sync_failure_reason
+       ) VALUES (
+         $1::uuid, 'fenced insert', 999, now(), $2::uuid,
+         '2000-01-01T00:00:00Z'::timestamptz,
+         now() + interval '1 day', now() + interval '2 days', true, 999,
+         'forged-gcal-event', 'synced', 'forged'
+       ) RETURNING id, focus_rank, archived_at, archived_by, created_at,
+         scheduled_start_at, scheduled_end_at, calendar_sync_enabled,
+         calendar_reminder_minutes, calendar_event_id, calendar_sync_status,
+         calendar_sync_failure_reason`,
+      [PROJECT_A, OWNER_A],
+    );
+    assert(row, "the INSERT must succeed so the reset can be observed");
+    assert(row.focus_rank === null, `focus_rank must be reset, got ${row.focus_rank}`);
+    assert(row.archived_at === null, `archived_at must be reset, got ${row.archived_at}`);
+    assert(row.archived_by === null, `archived_by must be reset, got ${row.archived_by}`);
+    assert(row.created_at.getFullYear() >= 2024, `created_at must be reset to now(), got ${row.created_at}`);
+    assert(row.scheduled_start_at === null, "scheduled_start_at must be reset");
+    assert(row.scheduled_end_at === null, "scheduled_end_at must be reset");
+    assert(row.calendar_sync_enabled === false, "calendar_sync_enabled must be reset to its default");
+    assert(Number(row.calendar_reminder_minutes) === 10, "calendar_reminder_minutes must be reset to its default");
+    assert(row.calendar_event_id === null, "calendar_event_id must be reset");
+    assert(row.calendar_sync_status === null, "calendar_sync_status must be reset");
+    assert(row.calendar_sync_failure_reason === null, "calendar_sync_failure_reason must be reset");
+  });
+  log("COLUMN-FENCE", "A task INSERT could not carry focus_rank, archive state, a back-dated created_at, scheduling or calendar columns.");
+
+  // A caller-chosen primary key must not survive.
+  await session.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.tasks (id, project_id, title) VALUES ($1::uuid, $2::uuid, 'key probe')
+       RETURNING id`,
+      ["99999999-9999-4999-8999-9999999999f1", PROJECT_A],
+    );
+    assert(row.id !== "99999999-9999-4999-8999-9999999999f1", `a caller-chosen task id must be replaced by the default, got ${row.id}`);
+  });
+  log("COLUMN-FENCE", "A caller-chosen task primary key was replaced by the generated default.");
+
+  // The other four fenced tables get the same INSERT treatment. task_reminders
+  // is the sharp one: status is authorisable on UPDATE (ega_cancel_task_reminder
+  // needs it) but not at INSERT, because a reminder created as 'sent' is
+  // invisible to both delivery indexes, which filter on status = 'pending'.
+  await session.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.task_reminders (
+         task_id, remind_at, channel, delivery_mode, status, sent_at,
+         processed_at, processing_error, failure_reason, source, source_id, created_at
+       ) VALUES ($1::uuid, now() + interval '2 hours', 'email', 'email', 'sent', now(),
+         now(), 'forged', 'forged', 'forged-src', 'forged-src-1',
+         '2000-01-01T00:00:00Z'::timestamptz)
+       RETURNING id, status, sent_at, processed_at, processing_error,
+         failure_reason, source, source_id, created_at`,
+      [TASK_A],
+    );
+    assert(row.status === "pending", `a reminder must be created pending, got ${row.status}`);
+    for (const column of ["sent_at", "processed_at", "processing_error", "failure_reason", "source", "source_id"]) {
+      assert(row[column] === null, `task_reminders.${column} must be reset, got ${row[column]}`);
+    }
+    assert(row.created_at.getFullYear() >= 2024, "task_reminders.created_at must be reset to now()");
+  });
+  log("COLUMN-FENCE", "A reminder INSERT could not forge delivery-worker state; it is always created pending.");
+
+  await session.run(async (tx) => {
+    // The seeded session is open and the product allows only one open session per
+    // owner+task, so close it before probing a new insert.
+    await tx.unsafe(`UPDATE public.task_sessions SET ended_at = now() WHERE id = $1::uuid`, [SESSION_A]);
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.task_sessions (task_id, started_at, ended_at, duration_seconds, created_at)
+       VALUES ($1::uuid, now(), now() + interval '5 hours', 999999, '2000-01-01T00:00:00Z'::timestamptz)
+       RETURNING id, started_at, ended_at, duration_seconds, created_at`,
+      [TASK_A],
+    );
+    assert(row.ended_at === null, "a session must not be insertable as already stopped");
+    assert(row.duration_seconds === null, "duration_seconds must be reset");
+    assert(row.created_at.getFullYear() >= 2024, "task_sessions.created_at must be reset to now()");
+  });
+  log("COLUMN-FENCE", "A timer session INSERT could not fabricate a stopped session or a duration.");
+
+  await session.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.goals (project_id, title, slug, description, created_at)
+       VALUES ($1::uuid, 'create only probe', 'probe-slug', 'probe', '2000-01-01T00:00:00Z'::timestamptz)
+       RETURNING id, created_at`,
+      [PROJECT_A],
+    );
+    assert(row.created_at.getFullYear() >= 2024, "goals.created_at must be reset to now()");
+    // title/slug/description ARE authorisable at INSERT under goals.create.
+    assert(row.id, "goals INSERT must return its generated id");
+  });
+  log("COLUMN-FENCE", "A goal INSERT could not carry a back-dated created_at; its create columns remained writable.");
+
+  await session.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.projects (name, slug, description, created_at)
+       VALUES ('probe', 'probe-slug', 'probe', '2000-01-01T00:00:00Z'::timestamptz)
+       RETURNING id, name, created_at`,
+    );
+    assert(row.created_at.getFullYear() >= 2024, "projects.created_at must be reset to now()");
+    assert(row.name === "probe", "projects.name is authorisable at INSERT under projects.create");
+  });
+  log("COLUMN-FENCE", "A project INSERT could not carry a back-dated created_at; its create columns remained writable.");
+
+  // A create-only grant must not inherit the UPDATE surface. task_manager is
+  // create+update, so no shipped document isolates tasks.create; the synthetic
+  // grant is installed by relaxing the profile/document CHECK inside the same
+  // transaction, which is what an intermediate release would look like.
+  // Capture the live constraint text so it can be restored byte-identically
+  // rather than from a copy that could drift away from the migration.
+  const [documentCheck] = await sql`
+    SELECT pg_get_constraintdef(oid) AS definition
+    FROM pg_constraint
+    WHERE conname = 'mcp_authorization_grants_profile_permissions_check'
+  `;
+  assert(documentCheck?.definition, "the permission-document CHECK constraint must exist to be relaxed");
+  try {
+    await sql.begin(async (tx) => {
+      await tx.unsafe(
+        `ALTER TABLE public.mcp_authorization_grants DROP CONSTRAINT mcp_authorization_grants_profile_permissions_check`,
+      );
+      await tx.unsafe(
+        `INSERT INTO public.mcp_authorization_grants (
+           owner_user_id, oauth_client_id, client_name, resource_uri, status,
+           permission_profile, permissions, permissions_version, approved_at, updated_at
+         ) VALUES ($1::uuid, 'create-only-client', 'create-only-client', $2::text, 'active',
+           'workspace_manager', '["tasks.create"]'::jsonb, 1, now(), now())`,
+        [OWNER_A, RESOURCE_URI],
+      );
+    });
+  //
+  // No RETURNING here on purpose. This grant holds tasks.create and no read
+  // permission, so tasks_select_access filters every row and a RETURNING clause
+  // is itself refused - PostgreSQL reports that as the INSERT violating RLS,
+  // which reads like an insert failure rather than a read failure. The durable
+  // effect is instead read back by an independent observer.
+  await mcpSession(sql, { clientId: "create-only-client" }).run((tx) =>
+    tx.unsafe(
+      `INSERT INTO public.tasks (project_id, title, focus_rank, archived_at, archived_by, planned_for_date, created_at)
+       VALUES ($1::uuid, 'create only probe', 999, now(), $2::uuid, current_date,
+         '2000-01-01T00:00:00Z'::timestamptz)`,
+      [PROJECT_A, OWNER_A],
+    ),
+  );
+  const [created] = await sql`
+    SELECT focus_rank, archived_at, archived_by, planned_for_date, created_at, status
+    FROM public.tasks
+    WHERE title = 'create only probe'
+  `;
+  assert(created, "a tasks.create-only grant must still be able to create a task");
+  for (const column of ["focus_rank", "archived_at", "archived_by", "planned_for_date"]) {
+    assert(
+      created[column] === null,
+      `tasks.create must not confer ${column} at INSERT, got ${created[column]}`,
     );
   }
-  log("COLUMN-FENCE", "Out-of-contract task columns are refused on INSERT as well as UPDATE.");
+  assert(created.created_at.getFullYear() >= 2024, "created_at must be reset");
+  log("COLUMN-FENCE", "A tasks.create-only grant gained no UPDATE surface at INSERT: no focus rank, no archive state, no planning.");
+
+  // And the coupling 0070 removed: creating a task in the caller's OWN project
+  // must not require the projects.read permission that would let it see the
+  // project row.
+  await mcpSession(sql, { clientId: "create-only-client" }).run((tx) =>
+    tx.unsafe(
+      `INSERT INTO public.tasks (project_id, title) VALUES ($1::uuid, 'own project probe')`,
+      [PROJECT_A],
+    ),
+  );
+  const [ownProject] = await sql`
+    SELECT count(*)::int AS count FROM public.tasks WHERE title = 'own project probe'
+  `;
+  assert(ownProject.count === 1, "task creation must not be coupled to the projects.read permission");
+  log("COLUMN-FENCE", "Task creation in the caller's own project no longer depends on a projects.read grant.");
+  } finally {
+    // Restored in a finally so a failed assertion above cannot leave the
+    // document constraint absent and quietly disarm the GRANT-SHAPE section.
+    // The synthetic grant is removed first: ADD CONSTRAINT validates existing
+    // rows, and its permissions are deliberately not a real document.
+    await sql.unsafe(
+      `DELETE FROM public.mcp_authorization_grants WHERE oauth_client_id = 'create-only-client'`,
+    );
+    await sql.unsafe(
+      `ALTER TABLE public.mcp_authorization_grants ADD CONSTRAINT mcp_authorization_grants_profile_permissions_check ${documentCheck.definition}`,
+    );
+  }
 
   // Other MCP-writable tables get the same treatment on their own columns.
   await expectDenied("projects.name out-of-contract write", () =>
@@ -734,12 +909,26 @@ async function assertColumnFence(sql) {
   await expectDenied("goals.slug out-of-contract write", () =>
     session.run((tx) => tx.unsafe(`UPDATE public.goals SET slug = 'hijacked' WHERE id = $1::uuid`, [GOAL_A])),
   );
-  // task_reminders has no MCP UPDATE policy at all, so this is a row filter
-  // rather than a fence: an MCP bearer cannot drive a reminder to 'sent' and
-  // bypass the delivery worker either way.
-  await expectNoRows("task_reminders.status out-of-contract write", () =>
+  // ega_cancel_task_reminder is an advertised tool gated on tasks.update. Before
+  // 0069 it issued an UPDATE that affected zero rows because task_reminders had
+  // no MCP UPDATE policy, and the repository reported success anyway - so the
+  // tool claimed to cancel a reminder that stayed pending and was still
+  // delivered. Prove the tool's own transition now works.
+  await session.run(async (tx) => {
+    const rows = await tx.unsafe(
+      `UPDATE public.task_reminders SET status = 'cancelled', updated_at = now()
+       WHERE id = $1::uuid RETURNING status`,
+      [REMINDER_A],
+    );
+    assert(rows.length === 1, "ega_cancel_task_reminder must be able to change a reminder's status");
+    assert(rows[0].status === "cancelled", `expected status 'cancelled', got ${rows[0].status}`);
+  });
+  log("COLUMN-FENCE", "ega_cancel_task_reminder now actually cancels; it previously reported success over zero rows.");
+
+  // Worker-owned delivery state remains unreachable on UPDATE.
+  await expectNoRows("task_reminders.sent_at out-of-contract write", () =>
     session.run((tx) =>
-      tx.unsafe(`UPDATE public.task_reminders SET status = 'sent', sent_at = now() WHERE id = $1::uuid RETURNING id`, [REMINDER_A]),
+      tx.unsafe(`UPDATE public.task_reminders SET sent_at = now(), processed_at = now() WHERE id = $1::uuid RETURNING id`, [REMINDER_A]),
     ),
   );
   log("COLUMN-FENCE", "projects/goals/task_reminders out-of-contract column writes were refused.");
@@ -962,10 +1151,16 @@ async function assertDirectUserParity(sql) {
         description = 'changed', health = 'on_track', next_step = 'do it', status = 'active',
         project_id = $1::uuid WHERE id = $2::uuid RETURNING id`, [PROJECT_A2, GOAL_A]],
 
-    // Timer sessions: the seeded session is still open, and the product allows
-    // only one open session per owner+task, so close it before starting another.
+    // Timer sessions: the product allows only one open session per owner+task,
+    // and earlier sections have opened sessions, so close the seeded one and
+    // start a fresh open session the way the start/stop path does.
     ["task_sessions closed", `UPDATE public.task_sessions SET ended_at = now() + interval '45 minutes',
         duration_seconds = 2700 WHERE id = $1::uuid RETURNING id`, [SESSION_A]],
+    // The product allows one open session per owner+task, and earlier sections
+    // opened some, so the owner closes any open session first - exactly the
+    // shape of the stop-then-start path.
+    ["task_sessions all closed", `UPDATE public.task_sessions SET ended_at = now(),
+        duration_seconds = 60 WHERE owner_user_id = $1::uuid AND ended_at IS NULL RETURNING id`, [OWNER_A]],
     ["task_sessions inserted", `INSERT INTO public.task_sessions (owner_user_id, task_id, started_at)
         VALUES ($1::uuid, $2::uuid, now()) RETURNING id`, [OWNER_A, TASK_A]],
 
@@ -1149,11 +1344,21 @@ async function assertRpcSurface(sql) {
     "private.has_any_active_mcp_permission",
     "private.is_registered_mcp_tool",
     "private.mcp_writable_columns",
+    "private.mcp_insertable_columns",
     "private.enforce_mcp_write_fence",
+    "private.user_owns_project",
+    "private.user_owns_goal",
+    "private.user_owns_task",
   ];
 
+  // Fence internals that must stay uncallable by an authenticated principal.
+  // They are only reachable from the SECURITY DEFINER trigger, which runs as the
+  // migration role, so granting EXECUTE to authenticated would be unnecessary
+  // surface rather than a convenience.
+  const PRIVATE_INTERNAL = ["private.mcp_known_fenced_columns"];
+
   const unclassified = [...authenticatedRpcs.keys()].filter(
-    (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS].includes(name),
+    (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS, ...PRIVATE_INTERNAL].includes(name),
   );
   assert(
     unclassified.length === 0,
@@ -1161,11 +1366,18 @@ async function assertRpcSurface(sql) {
   );
   log("RPC-SURFACE", "Every function authenticated may execute is classified; no unclassified entry point exists.");
 
-  // Nothing in the MCP-internal or direct-user-only sets may have lost its
-  // EXECUTE grant - that would break the product, not secure it.
+  // Nothing in the MCP-internal, direct-user-only or predicate-helper sets may
+  // have lost its EXECUTE grant - that would break the product, not secure it.
   for (const name of [...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS]) {
     assert(authenticatedRpcs.has(name), `${name} must remain executable by authenticated`);
   }
+  for (const name of PRIVATE_INTERNAL) {
+    assert(
+      !authenticatedRpcs.has(name),
+      `${name} is a fence internal reachable only from the SECURITY DEFINER trigger and must not be executable by authenticated`,
+    );
+  }
+  log("RPC-SURFACE", `${PRIVATE_INTERNAL.length} fence internal(s) are not reachable as authenticated RPCs.`);
 
   // Every SECURITY DEFINER function reachable by authenticated must be
   // deliberately classified: a new definer function is exactly how a
@@ -1174,7 +1386,7 @@ async function assertRpcSurface(sql) {
     .filter((row) => row.security_definer)
     .map((row) => `${row.schema}.${row.name}`);
   const unclassifiedDefiners = definers.filter(
-    (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS].includes(name),
+    (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS, ...PRIVATE_INTERNAL].includes(name),
   );
   assert(
     unclassifiedDefiners.length === 0,
