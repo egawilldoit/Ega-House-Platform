@@ -205,8 +205,14 @@ export function createWebMcpHandler(
               return codec.verify(token);
             },
           },
-        } as unknown as ConstructorParameters<typeof RuntimeMcpServer>[1],
-      ) as unknown as McpServer;
+          // No cast. `requestState` is a declared member of the SDK's
+          // ServerOptions, verified against both 2.0.0 and 2.3.0 typings, so the
+          // `as unknown as` that used to sit here was suppressing type checking
+          // over this whole object - including the exact field the MRTR
+          // confirmation flow depends on - for nothing. A future rename now
+          // fails at compile time instead of at runtime.
+        },
+      );
       registerServer(server, ctx.authInfo);
       return server;
     },
