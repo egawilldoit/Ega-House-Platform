@@ -97,7 +97,10 @@ function createReadHandlers(config: McpRuntimeConfig): McpReadToolHandlers {
 
   return createAuditedMcpReadHandlers(baseHandlers, {
     createUserClient,
-    consumeRateLimit: consumeMcpRateLimit,
+    // Bound to the configured aggregate allowances so the risk class the
+    // capability registry assigns actually reaches the limiter.
+    consumeRateLimit: (client, toolName) =>
+      consumeMcpRateLimit(client, toolName, config.aggregateRateLimits),
     writeAudit: writeMcpAuditEvent,
     nowMs: () => performance.now(),
     createRequestId: randomUUID,
@@ -113,7 +116,10 @@ function createWriteHandlers(config: McpRuntimeConfig): McpWriteToolHandlers {
   const baseHandlers = createMcpWriteToolHandlers({ createUserClient }, config.writesEnabled, config.resource);
   return createAuditedMcpWriteHandlers(baseHandlers, {
     createUserClient,
-    consumeRateLimit: consumeMcpRateLimit,
+    // Bound to the configured aggregate allowances so the risk class the
+    // capability registry assigns actually reaches the limiter.
+    consumeRateLimit: (client, toolName) =>
+      consumeMcpRateLimit(client, toolName, config.aggregateRateLimits),
     writeAudit: writeMcpAuditEvent,
     nowMs: () => performance.now(),
     createRequestId: randomUUID,

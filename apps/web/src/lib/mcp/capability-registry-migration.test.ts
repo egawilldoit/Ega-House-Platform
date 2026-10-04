@@ -7,6 +7,7 @@ import {
   MCP_CAPABILITIES,
   getAllCapabilityNames,
 } from "@/lib/mcp/capability-registry";
+import { MCP_AGGREGATE_BUCKET_PREFIX } from "@/lib/mcp/rate-limit-repository";
 import {
   CURRENT_MCP_PERMISSION_VERSION,
   MCP_PERMISSIONS,
@@ -108,6 +109,18 @@ describe("MCP capability registry integrity", () => {
       for (const permission of requirement.permissions) {
         expect(permission).toMatch(/^[a-z]+\.[a-z]+$/);
       }
+    }
+  });
+
+  it("cannot have a capability name collide with an aggregate rate-limit bucket", () => {
+    // Aggregate buckets reuse the distributed counter keyed on a window name.
+    // A capability sharing that namespace would let a tool's own window and an
+    // aggregate window collide and silently corrupt both counters.
+    for (const name of getAllCapabilityNames()) {
+      expect(
+        name.startsWith(MCP_AGGREGATE_BUCKET_PREFIX),
+        `${name} would collide with the aggregate rate-limit namespace`,
+      ).toBe(false);
     }
   });
 
