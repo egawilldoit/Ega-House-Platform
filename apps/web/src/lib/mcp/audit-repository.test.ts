@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it, vi } from "vitest";
 
+import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 import { writeMcpAuditEvent } from "@/lib/mcp/audit-repository";
@@ -11,7 +12,7 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  permissions: getPermissionsForProfile("read_only", 1),
 };
 
 function createClient(result: { data?: unknown; error: unknown }) {

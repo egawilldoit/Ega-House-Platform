@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
 import {
   McpToolAuthorizationError,
@@ -13,7 +14,11 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "read_only",
   permissionsVersion: 1,
-  permissions: ["projects.read", "goals.read", "tasks.read"],
+  // Derived from the canonical document so this fixture cannot drift from the
+  // authority it is meant to represent. It previously listed only three of the
+  // five v1 read_only permissions - a principal outside its own profile, which
+  // the old weak auth-info validator silently accepted.
+  permissions: getPermissionsForProfile("read_only", 1),
 };
 
 describe("requireMcpPermission", () => {

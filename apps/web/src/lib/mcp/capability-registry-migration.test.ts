@@ -1,0 +1,246 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  MCP_CAPABILITIES,
+  getAllCapabilityNames,
+} from "@/lib/mcp/capability-registry";
+import {
+  CURRENT_MCP_PERMISSION_VERSION,
+  MCP_PERMISSIONS,
+  MCP_PERMISSION_PROFILES,
+  MCP_PERMISSION_VERSIONS,
+  getPermissionsForProfile,
+  isSupportedPermissionDocument,
+  listPermissionDocuments,
+  listUnsupportedPermissionDocuments,
+} from "@/lib/mcp/permissions";
+
+const drizzlePath = (...segments: string[]): string =>
+  resolve(process.cwd(), "..", "..", "drizzle", ...segments);
+
+const readMigration = (name: string): string =>
+  readFileSync(drizzlePath(name), "utf8");
+
+/**
+ * Extracts the quoted MCP tool identities from private.is_registered_mcp_tool.
+ *
+ * This reads the migration's actual VALUES list rather than merely checking that
+ * the file or the function name exists, so the assertions below are sensitive
+ * to the contents. The migration that defines the function last wins, matching
+ * how the journal applies them.
+ */
+function readAuditToolAllowlist(): Set<string> {
+  const migrations = [
+    "0065_mcp_oauth_table_scope_hardening.sql",
+    "0067_mcp_audit_tool_allowlist.sql",
+  ];
+
+  let latest: string | undefined;
+  for (const migration of migrations) {
+    const sql = readMigration(migration);
+    if (sql.includes("FUNCTION private.is_registered_mcp_tool")) latest = sql;
+  }
+
+  if (latest === undefined) {
+    throw new Error("No migration defines private.is_registered_mcp_tool.");
+  }
+
+  const body = latest.slice(latest.indexOf("FUNCTION private.is_registered_mcp_tool"));
+  return new Set([...body.matchAll(/'(ega_[a-z0-9_]+)'/g)].map((match) => match[1]));
+}
+
+/** Extracts every jsonb array literal that looks like a permission document. */
+function readPermissionDocumentsFromSql(sql: string): string[][] {
+  return [...sql.matchAll(/'\[(?:"[a-z_.]+"(?:,\s*)?)+\]'::jsonb/g)].map((match) =>
+    [...match[0].matchAll(/"([a-z_.]+)"/g)].map((entry) => entry[1]),
+  );
+}
+
+describe("MCP capability registry integrity", () => {
+  it("has no duplicate capability names", () => {
+    const names = getAllCapabilityNames();
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it("gives every mutation capability a writes-enabled requirement", () => {
+    for (const capability of MCP_CAPABILITIES) {
+      if (capability.mutation) {
+        expect(
+          capability.writesEnabledRequired,
+          `${capability.name} mutates but does not require MCP_WRITES_ENABLED`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("never marks a destructive capability as idempotent", () => {
+    for (const capability of MCP_CAPABILITIES) {
+      if (capability.destructive) {
+        expect(
+          capability.idempotent,
+          `${capability.name} is destructive but advertises idempotentHint`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("never marks a read capability as a mutation", () => {
+    for (const capability of MCP_CAPABILITIES) {
+      if (capability.primitive === "read") {
+        expect(capability.mutation, `${capability.name} is a read but mutates`).toBe(false);
+        expect(capability.writesEnabledRequired).toBe(false);
+        expect(capability.rateClass).toBe("read");
+      }
+    }
+  });
+
+  it("requires at least one permission for every non-always capability", () => {
+    for (const capability of MCP_CAPABILITIES) {
+      const requirement = capability.permissionRequirement;
+      if (requirement.kind === "always") {
+        expect(capability.name).toBe("ega_get_capabilities");
+        continue;
+      }
+      expect(requirement.permissions.length).toBeGreaterThan(0);
+      for (const permission of requirement.permissions) {
+        expect(permission).toMatch(/^[a-z]+\.[a-z]+$/);
+      }
+    }
+  });
+
+  it("supports always, allOf and anyOf requirement semantics", async () => {
+    const { isCapabilityAuthorized } = await import("@/lib/mcp/capability-registry");
+    const base = { primitive: "read" as const, mutation: false, destructive: false, idempotent: true, writesEnabledRequired: false, rateClass: "read" as const, confirmationClass: "none" as const };
+
+    const always = { ...base, name: "t", domain: "tasks" as const, permissionRequirement: { kind: "always" as const } };
+    expect(isCapabilityAuthorized(always, [])).toBe(true);
+
+    const allOf = { ...base, name: "t", domain: "tasks" as const, permissionRequirement: { kind: "allOf" as const, permissions: ["tasks.read", "goals.read"] as const } };
+    expect(isCapabilityAuthorized(allOf, ["tasks.read", "goals.read"])).toBe(true);
+    expect(isCapabilityAuthorized(allOf, ["tasks.read"])).toBe(false);
+    expect(isCapabilityAuthorized(allOf, ["goals.read", "today.read"])).toBe(false);
+
+    const anyOf = { ...base, name: "t", domain: "tasks" as const, permissionRequirement: { kind: "anyOf" as const, permissions: ["tasks.read", "goals.read"] as const } };
+    expect(isCapabilityAuthorized(anyOf, ["tasks.read"])).toBe(true);
+    expect(isCapabilityAuthorized(anyOf, ["goals.read"])).toBe(true);
+    expect(isCapabilityAuthorized(anyOf, ["today.read"])).toBe(false);
+  });
+});
+
+/**
+ * The audit allowlist is the same authorization statement expressed twice: once
+ * as the runtime registry, once as SQL the database enforces. Divergence in
+ * either direction is a real defect, not a style issue:
+ *
+ *   - runtime knows a tool the database does not  -> a legitimate tool call
+ *     cannot be audited, so audit writes fail closed and every such call errors
+ *   - database knows a tool the runtime does not -> the auditable surface at
+ *     the database is wider than any invocable capability
+ */
+describe("MCP audit tool allowlist stays synchronized with the runtime registry", () => {
+  it("admits every runtime capability", () => {
+    const allowlist = readAuditToolAllowlist();
+    const missing = getAllCapabilityNames().filter((name) => !allowlist.has(name));
+    expect(
+      missing,
+      `capabilities exist in the runtime registry but not in private.is_registered_mcp_tool; widen the allowlist migration in the same wave as the handler`,
+    ).toEqual([]);
+  });
+
+  it("admits nothing the runtime registry does not recognize", () => {
+    const allowlist = readAuditToolAllowlist();
+    const runtime = new Set(getAllCapabilityNames());
+    const extra = [...allowlist].filter((name) => !runtime.has(name));
+    expect(
+      extra,
+      "private.is_registered_mcp_tool admits tool identities with no executable implementation; a planned tool must never be auditable before it has a handler",
+    ).toEqual([]);
+  });
+});
+
+/**
+ * The permissions_version CHECK constraint in 0066 is the database's copy of the
+ * versioned authorization documents defined in permissions.ts. If the two drift,
+ * a consent screen can write a document the database rejects (surfacing as a
+ * generic activation failure with no in-app recovery) or, worse, a document the
+ * resolver considers non-matching so every existing connection fails closed.
+ */
+describe("MCP permission documents stay synchronized with the database CHECK constraint", () => {
+  it("defines an exact, duplicate-free document for every supported pairing", () => {
+    const documents = listPermissionDocuments();
+    const allPairings = MCP_PERMISSION_PROFILES.length * MCP_PERMISSION_VERSIONS.length;
+    expect(documents.length).toBeLessThanOrEqual(allPairings);
+    expect(documents.length).toBeGreaterThan(0);
+    for (const { profile, version, permissions } of documents) {
+      expect(new Set(permissions).size, `${profile} v${version} has duplicates`).toBe(permissions.length);
+      expect(permissions.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("treats an unsupported profile/version pairing as invalid, not as an empty document", () => {
+    for (const { profile, version } of listUnsupportedPermissionDocuments()) {
+      expect(isSupportedPermissionDocument(profile, version)).toBe(false);
+      expect(() => getPermissionsForProfile(profile, version)).toThrow();
+    }
+    // task_manager is the deliberate case: legacy, never offered by consent,
+    // so it stays representable at v1 and gains no later version speculatively.
+    expect(isSupportedPermissionDocument("task_manager", 1)).toBe(true);
+    expect(isSupportedPermissionDocument("task_manager", 2)).toBe(false);
+  });
+
+  it("makes every later version strictly additive over the previous one", () => {
+    for (const profile of MCP_PERMISSION_PROFILES) {
+      if (!isSupportedPermissionDocument(profile, 2)) continue;
+      const v1 = new Set(getPermissionsForProfile(profile, 1));
+      const v2 = getPermissionsForProfile(profile, 2);
+      for (const permission of v1) {
+        expect(v2, `v2 of ${profile} dropped v1 permission ${permission}`).toContain(permission);
+      }
+      expect(v2.length).toBeGreaterThan(v1.size);
+    }
+  });
+
+  it("keeps every document's permissions inside the declared universe", () => {
+    const universe = new Set<string>(MCP_PERMISSIONS);
+    for (const { profile, version, permissions } of listPermissionDocuments()) {
+      for (const permission of permissions) {
+        expect(universe.has(permission), `${profile} v${version} has unknown permission ${permission}`).toBe(true);
+      }
+    }
+  });
+
+  it("pins the TS documents to the jsonb arrays enforced by drizzle/0066", () => {
+    const sqlDocuments = readPermissionDocumentsFromSql(
+      readMigration("0066_mcp_permission_version_2.sql"),
+    );
+    expect(sqlDocuments.length).toBeGreaterThan(0);
+
+    const sqlSets = sqlDocuments.map((document) => new Set(document).size === document.length
+      ? [...document].sort().join("|")
+      : `NON-UNIQUE:${document.join("|")}`);
+    const sqlUnique = new Set(sqlSets);
+
+    for (const { profile, version, permissions } of listPermissionDocuments()) {
+      const key = [...permissions].sort().join("|");
+      expect(
+        sqlUnique.has(key),
+        `${profile} v${version} document is not enforced by drizzle/0066; the database would reject a grant the app writes`,
+      ).toBe(true);
+    }
+  });
+
+  it("issues v1 until the v2 capability set is complete", () => {
+    // Not a style assertion: CURRENT is what grant-admin writes. Flipping it
+    // early would let a consent screen promise v2 authority with no tool
+    // behind it, and would freeze a document later additions would have to
+    // mutate instead of versioning as v3.
+    expect(MCP_PERMISSION_VERSIONS).toContain(CURRENT_MCP_PERMISSION_VERSION);
+    const issued = getPermissionsForProfile("workspace_manager", CURRENT_MCP_PERMISSION_VERSION);
+    for (const additive of ["friction.read", "inbox.read", "notifications.read", "operator.read", "workload.read"]) {
+      expect(issued).not.toContain(additive);
+    }
+  });
+});
