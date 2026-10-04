@@ -100,24 +100,73 @@ describe("createMcpRouteRuntime", () => {
     expect(runtime.POST).toBe(handler);
   });
 
-  it("returns a credential-aware JSON-only preflight response", async () => {
-    const dependencies: McpRouteRuntimeDependencies = {
-      createReadHandlers: vi.fn().mockReturnValue({}),
-      registerReadTools: vi.fn(),
-      createTransportHandler: vi.fn().mockReturnValue(vi.fn()),
-      createTokenVerifier: vi.fn().mockReturnValue(vi.fn()),
-      wrapAuth: vi.fn().mockReturnValue(vi.fn()),
-    };
+  describe("preflight and POST express one origin policy", () => {
+    const RESOURCE_ORIGIN = "https://ega.example.com";
+    const RESOURCE_HOST = "ega.example.com";
 
-    const response = await createMcpRouteRuntime(CONFIG, dependencies).OPTIONS();
+    function runtime() {
+      const dependencies: McpRouteRuntimeDependencies = {
+        createReadHandlers: vi.fn().mockReturnValue({}),
+        registerReadTools: vi.fn(),
+        createTransportHandler: vi.fn().mockReturnValue(vi.fn()),
+        createTokenVerifier: vi.fn().mockReturnValue(vi.fn()),
+        wrapAuth: vi.fn().mockReturnValue(vi.fn()),
+      };
+      return createMcpRouteRuntime(CONFIG, dependencies);
+    }
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get("access-control-allow-origin")).toBe("*");
-    expect(response.headers.get("access-control-allow-methods")).toBe(
-      "POST, OPTIONS",
-    );
-    expect(response.headers.get("access-control-allow-headers")).toBe(
-      "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
-    );
+    function preflight(init: { origin?: string; host?: string } = {}): Request {
+      const headers = new Headers();
+      if (init.origin !== undefined) headers.set("origin", init.origin);
+      headers.set("host", init.host ?? RESOURCE_HOST);
+      return new Request(`${CONFIG.resource}#preflight`, { method: "OPTIONS", headers });
+    }
+
+    it("echoes the resource origin for a matching browser origin, never a wildcard", async () => {
+      const response = await runtime().OPTIONS(preflight({ origin: RESOURCE_ORIGIN }));
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBe(RESOURCE_ORIGIN);
+      expect(response.headers.get("access-control-allow-origin")).not.toBe("*");
+      expect(response.headers.get("vary")).toBe("Origin");
+      expect(response.headers.get("access-control-allow-methods")).toBe("POST, OPTIONS");
+      expect(response.headers.get("access-control-allow-headers")).toBe(
+        "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Method, Mcp-Name",
+      );
+    });
+
+    it("refuses a foreign browser origin instead of advertising it as allowed", async () => {
+      const response = await runtime().OPTIONS(preflight({ origin: "https://evil.example" }));
+
+      // The browser only needs the missing allow-origin header to block the
+      // request; a 403 additionally makes the refusal unambiguous.
+      expect(response.status).toBe(403);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("allows a server-to-server preflight with no Origin", async () => {
+      const response = await runtime().OPTIONS(preflight());
+
+      expect(response.status).toBe(204);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+      expect(response.headers.get("access-control-allow-methods")).toBe("POST, OPTIONS");
+    });
+
+    it("refuses a preflight whose Host does not match the resource", async () => {
+      const response = await runtime().OPTIONS(
+        preflight({ origin: RESOURCE_ORIGIN, host: "ega.example.com.evil" }),
+      );
+
+      expect(response.status).toBe(421);
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("never emits Access-Control-Allow-Credentials, so a wildcard could not be reintroduced", async () => {
+      const response = await runtime().OPTIONS(preflight({ origin: RESOURCE_ORIGIN }));
+
+      // Auth is a Bearer token, not a cookie, so credentialed CORS is neither
+      // needed nor wanted here. Asserting its absence pins the decision.
+      expect(response.headers.get("access-control-allow-credentials")).toBeNull();
+    });
   });
 });

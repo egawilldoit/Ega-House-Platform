@@ -60,9 +60,9 @@ export function createLazyMcpEndpoint(
       return await getRuntime().POST(request);
     },
 
-    async OPTIONS(): Promise<Response> {
+    async OPTIONS(request: Request): Promise<Response> {
       if (!isEnabled()) return disabledResponse();
-      return await getRuntime().OPTIONS();
+      return await getRuntime().OPTIONS(request);
     },
   };
 }
