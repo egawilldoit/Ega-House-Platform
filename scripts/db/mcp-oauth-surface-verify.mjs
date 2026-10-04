@@ -37,7 +37,16 @@
  *   COLUMN-FENCE    an MCP bearer holding tasks.update cannot write task
  *                   columns outside the advertised contract, and CAN write the
  *                   columns the contract does advertise
+ *   DIRECT-USER-PARITY
+ *                   the same policies do not narrow ordinary owner sessions:
+ *                   42 legitimate owner writes and reads across every table the
+ *                   MCP hardening touched, plus owner isolation and the
+ *                   installed state of the fence triggers
  *   CROSS-OWNER     every permitted MCP path rejects a foreign owner
+ *   RPC-SURFACE     every function `authenticated` may EXECUTE is enumerated
+ *                   from the catalog and classified; direct-user-only RPCs
+ *                   refuse an MCP bearer; MCP-internal RPCs remain reachable
+ *                   and token-fenced
  *   REVOCATION      a revoked grant loses ALL database capability immediately
  *   WRONG-CLIENT    same owner, wrong client_id -> denied
  *   WRONG-RESOURCE  same owner/client, wrong aud -> denied
@@ -276,10 +285,14 @@ const MCP_INTERNAL_TABLES = [
 ];
 
 const PROJECT_A = "44444444-4444-4444-8444-444444444441";
+const PROJECT_A2 = "44444444-4444-4444-8444-444444444443";
 const PROJECT_B = "44444444-4444-4444-8444-444444444442";
 const GOAL_A = "55555555-5555-4555-8555-555555555551";
+const GOAL_A2 = "55555555-5555-4555-8555-555555555553";
 const GOAL_B = "55555555-5555-4555-8555-555555555552";
 const TASK_A = "66666666-6666-4666-8666-666666666661";
+/** Owner-created during the parity run; has no dependents, so its key is rewritable. */
+const TASK_NEW = "66666666-6666-4666-8666-6666666666aa";
 const TASK_B = "66666666-6666-4666-8666-666666666662";
 const SESSION_A = "77777777-7777-4777-8777-777777777771";
 const REMINDER_A = "88888888-8888-4888-8888-888888888881";
@@ -322,10 +335,24 @@ async function capturePostgresError(fn) {
   }
 }
 
-/** Assert a statement is *refused* (42501 or a trigger raise). */
+/** Assert a statement is *refused* by the authorization boundary (42501). */
 async function expectDenied(label, fn) {
   const code = await capturePostgresError(fn);
   assert(code === "42501", `${label} must be refused with SQLSTATE 42501, got ${code ?? "no error"}`);
+}
+
+/**
+ * Assert a statement is refused, allowing a documented set of SQLSTATEs.
+ * Used where the refusal is correct but the mechanism is not the RLS/policy
+ * path - e.g. PostgreSQL refusing to invoke a trigger function as an RPC
+ * (0A000) is exactly as unreachable as a 42501.
+ */
+async function expectRefused(label, allowedCodes, fn) {
+  const code = await capturePostgresError(fn);
+  assert(
+    code !== null && allowedCodes.includes(code),
+    `${label} must be refused with one of ${allowedCodes.join("/")}, got ${code ?? "no error"}`,
+  );
 }
 
 /**
@@ -406,6 +433,7 @@ async function seedDomainRows(sql) {
     INSERT INTO public.projects (id, owner_user_id, name, slug, description, status)
     VALUES
       ('${PROJECT_A}', '${OWNER_A}', 'A project', 'a-project', 'owner A', 'active'),
+      ('${PROJECT_A2}', '${OWNER_A}', 'A second project', 'a-second-project', 'owner A again', 'active'),
       ('${PROJECT_B}', '${OWNER_B}', 'B project', 'b-project', 'owner B', 'active')
     ON CONFLICT (id) DO NOTHING
   `);
@@ -413,6 +441,7 @@ async function seedDomainRows(sql) {
     INSERT INTO public.goals (id, owner_user_id, project_id, title, status)
     VALUES
       ('${GOAL_A}', '${OWNER_A}', '${PROJECT_A}', 'A goal', 'active'),
+      ('${GOAL_A2}', '${OWNER_A}', '${PROJECT_A2}', 'A second goal', 'active'),
       ('${GOAL_B}', '${OWNER_B}', '${PROJECT_B}', 'B goal', 'active')
     ON CONFLICT (id) DO NOTHING
   `);
@@ -757,13 +786,13 @@ async function assertCrossOwner(sql, clientIds) {
           `${label} cross-owner: ${table} leaked ${row.count} row(s) not owned by the caller`,
         );
       }
-      // The owner must still be able to see their own rows, otherwise
-      // "invisible" would be passing for the wrong reason.
-      const [own] = await tx.unsafe(
-        `SELECT count(*)::int AS count FROM public.tasks WHERE owner_user_id = $1::uuid`,
-        [OWNER_A],
+      // The owner must still see their own seeded row, otherwise "invisible"
+      // would be passing for the wrong reason (an empty table reads as success).
+      const own = await tx.unsafe(
+        `SELECT id FROM public.tasks WHERE id = $1::uuid AND owner_user_id = $2::uuid`,
+        [TASK_A, OWNER_A],
       );
-      assert(own.count === 1, `${label}: the caller must still see their own rows`);
+      assert(own.length === 1, `${label}: the caller must still see their own seeded task`);
     });
   }
   log("CROSS-OWNER", "Every permitted MCP path filtered the foreign owner's rows while still serving the caller's own.");
@@ -868,6 +897,394 @@ async function assertInternalUnreachable(sql, clientId = V1_WORKSPACE_CLIENT) {
     ),
   );
   log("INTERNAL", "Device-claim RPC and the status-event ledger refused direct MCP writes.");
+}
+
+// ---------------------------------------------------------------------------
+// DIRECT-USER-PARITY
+// ---------------------------------------------------------------------------
+
+/**
+ * The MCP hardening must not have narrowed ordinary owner sessions.
+ *
+ * This is asserted separately and positively. Inferring parity from "the MCP
+ * denial passed" would be unsound: the same policy that refuses an MCP
+ * principal could refuse a direct one and every MCP assertion would still be
+ * green. Each case below is a write the product legitimately performs, so a
+ * failure here is a product regression rather than a security improvement.
+ */
+async function assertDirectUserParity(sql) {
+  const owner = directUserSession(sql, { userId: OWNER_A });
+  const otherOwner = directUserSession(sql, { userId: OWNER_B });
+
+  const cases = [
+    // Tasks: the ordinary editing surface.
+    ["tasks ordinary fields", `UPDATE public.tasks SET title = 'owner edit', description = 'd',
+        blocked_reason = null, status = 'in_progress', priority = 'high',
+        due_date = current_date, estimate_minutes = 30 WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    // Tasks: scheduling. The MCP fence must be completely inert here, because
+    // apps/web/src/lib/services/task-service.ts writes scheduled_* directly.
+    ["tasks scheduling window", `UPDATE public.tasks SET scheduled_start_at = now() + interval '1 day',
+        scheduled_end_at = now() + interval '1 day 2 hours' WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    ["tasks scheduling cleared", `UPDATE public.tasks SET scheduled_start_at = NULL,
+        scheduled_end_at = NULL WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    // Tasks: the Google Calendar mirror. The calendar sync worker and the
+    // product's own reschedule path both own these columns.
+    ["tasks calendar mirror", `UPDATE public.tasks SET calendar_sync_enabled = true,
+        calendar_reminder_minutes = 45, calendar_event_id = 'owner-event',
+        calendar_sync_status = 'pending', calendar_sync_failure_reason = 'retrying'
+        WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    ["tasks focus rank", `UPDATE public.tasks SET focus_rank = 3 WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    ["tasks archive and unarchive", `UPDATE public.tasks SET archived_at = now(), archived_by = $1::uuid
+        WHERE id = $2::uuid RETURNING id`, [OWNER_A, TASK_A]],
+    ["tasks unarchive", `UPDATE public.tasks SET archived_at = NULL, archived_by = NULL
+        WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    // Tasks: back-dating creation and forcing the primary key stay owner-only.
+    ["tasks created_at backdated", `UPDATE public.tasks SET created_at = '2020-01-01T00:00:00Z'::timestamptz
+        WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+    // Rewriting the primary key is owner-only. On a task with children the FK
+    // legitimately refuses it, so prove it on a row the owner just created.
+    ["tasks inserted by owner", `INSERT INTO public.tasks (id, owner_user_id, project_id, title)
+        VALUES ($1::uuid, $2::uuid, $3::uuid, 'owner-created') RETURNING id`, [TASK_NEW, OWNER_A, PROJECT_A]],
+    ["tasks primary key rewritten", `UPDATE public.tasks SET id = $1::uuid WHERE id = $2::uuid RETURNING id`,
+      ["66666666-6666-4666-8666-6666666666ff", TASK_NEW]],
+    // Referential moves that stay inside the owner's own hierarchy.
+    ["tasks reassigned within owner", `UPDATE public.tasks SET project_id = $1::uuid WHERE id = $2::uuid RETURNING id`,
+      [PROJECT_A2, TASK_A]],
+    ["tasks goal reassigned within owner", `UPDATE public.tasks SET goal_id = $1::uuid WHERE id = $2::uuid RETURNING id`,
+      [GOAL_A2, TASK_A]],
+    ["tasks completed_at set directly", `UPDATE public.tasks SET status = 'done', completed_at = now()
+        WHERE id = $1::uuid RETURNING id`, [TASK_A]],
+
+    // Projects and goals: the owner renames and re-parents their own rows.
+    ["projects renamed", `UPDATE public.projects SET name = 'renamed', slug = 'renamed-slug',
+        description = 'changed', status = 'archived' WHERE id = $1::uuid RETURNING id`, [PROJECT_A]],
+    ["goals edited and re-parented", `UPDATE public.goals SET title = 'renamed', slug = 'renamed-slug',
+        description = 'changed', health = 'on_track', next_step = 'do it', status = 'active',
+        project_id = $1::uuid WHERE id = $2::uuid RETURNING id`, [PROJECT_A2, GOAL_A]],
+
+    // Timer sessions: the seeded session is still open, and the product allows
+    // only one open session per owner+task, so close it before starting another.
+    ["task_sessions closed", `UPDATE public.task_sessions SET ended_at = now() + interval '45 minutes',
+        duration_seconds = 2700 WHERE id = $1::uuid RETURNING id`, [SESSION_A]],
+    ["task_sessions inserted", `INSERT INTO public.task_sessions (owner_user_id, task_id, started_at)
+        VALUES ($1::uuid, $2::uuid, now()) RETURNING id`, [OWNER_A, TASK_A]],
+
+    // Reminders: create then cancel, the reminder path.
+    ["task_reminders inserted", `INSERT INTO public.task_reminders (owner_user_id, task_id, remind_at,
+        channel, delivery_mode, source, source_id)
+        VALUES ($1::uuid, $2::uuid, now() + interval '3 hours', 'email', 'email', 'owner', 'owner-src-1')
+        RETURNING id`, [OWNER_A, TASK_A]],
+    ["task_reminders marked sent", `UPDATE public.task_reminders SET status = 'sent', sent_at = now()
+        WHERE id = $1::uuid RETURNING id`, [REMINDER_A]],
+    ["task_reminders deleted", `DELETE FROM public.task_reminders WHERE id = $1::uuid RETURNING id`, [REMINDER_A]],
+
+    // The 0045-0049 tables the hardening replaced. These are exactly the ones
+    // whose policies were rewritten, so owner parity matters most here.
+    ["notifications read", `UPDATE public.notifications SET read_at = now(), opened_at = now()
+        WHERE id = $1::uuid RETURNING id`, ["99999999-9999-4999-8999-999999999991"]],
+    ["notification preferences disabled", `UPDATE public.notification_preferences SET push_enabled = false,
+        email_enabled = false WHERE owner_user_id = $1::uuid RETURNING id`, [OWNER_A]],
+    ["notification preferences re-enabled", `UPDATE public.notification_preferences SET push_enabled = true,
+        email_enabled = true WHERE owner_user_id = $1::uuid RETURNING id`, [OWNER_A]],
+    ["notification preferences deleted", `DELETE FROM public.notification_preferences
+        WHERE owner_user_id = $1::uuid RETURNING id`, [OWNER_A]],
+    ["user time context written", `INSERT INTO public.user_time_context (user_id, iana_timezone)
+        VALUES ($1::uuid, 'Europe/Berlin') ON CONFLICT (user_id) DO UPDATE SET iana_timezone = 'Europe/Berlin'
+        RETURNING user_id`, [OWNER_A]],
+    ["user time context deleted", `DELETE FROM public.user_time_context WHERE user_id = $1::uuid RETURNING user_id`,
+      [OWNER_A]],
+    ["operator proposal inserted", `INSERT INTO public.operator_proposals (revision, owner_user_id,
+        local_date, time_context_id, baseline_hash, proposed_task_ids, task_versions, idempotency_key, status)
+        VALUES (1, $1::uuid, current_date, 'Europe/Berlin', 'direct-hash', '[]'::jsonb, '[]'::jsonb,
+        'direct-owner-key', 'generated') RETURNING id`, [OWNER_A]],
+    ["operator proposal approved", `UPDATE public.operator_proposals SET status = 'approved', approved_at = now()
+        WHERE idempotency_key = 'direct-owner-key' RETURNING id`, []],
+    ["operator proposal applied", `UPDATE public.operator_proposals SET status = 'applied', applied_at = now()
+        WHERE idempotency_key = 'direct-owner-key' RETURNING id`, []],
+    ["operator proposal deleted", `DELETE FROM public.operator_proposals
+        WHERE idempotency_key = 'direct-owner-key' RETURNING id`, []],
+    ["inbox item inserted", `INSERT INTO public.idea_notes (owner_user_id, title, body, status, type, priority)
+        VALUES ($1::uuid, 'direct item', 'body', 'inbox', 'idea', 'high') RETURNING id`, [OWNER_A]],
+    ["inbox item updated", `UPDATE public.idea_notes SET status = 'reviewing', title = 'direct item v2'
+        WHERE owner_user_id = $1::uuid AND status = 'inbox' RETURNING id`, [OWNER_A]],
+    ["inbox item deleted", `DELETE FROM public.idea_notes WHERE owner_user_id = $1::uuid AND status = 'reviewing'
+        RETURNING id`, [OWNER_A]],
+    // inbox_idempotency_keys.inbox_item_id is a NOT NULL FK to idea_notes, so the
+    // host item is created in the same statement.
+    ["inbox idempotency key inserted", `WITH host_item AS (
+          INSERT INTO public.idea_notes (owner_user_id, title, status, type)
+          VALUES ($1::uuid, 'idempotency host', 'inbox', 'idea') RETURNING id
+        )
+        INSERT INTO public.inbox_idempotency_keys (owner_user_id, key, inbox_item_id, fingerprint)
+        SELECT $1::uuid, 'direct-capture-key', host_item.id, 'direct-fingerprint'
+        FROM host_item RETURNING id`, [OWNER_A]],
+    ["inbox idempotency key deleted", `DELETE FROM public.inbox_idempotency_keys
+        WHERE key = 'direct-capture-key' RETURNING id`, []],
+    ["task recurrence inserted", `INSERT INTO public.task_recurrences (owner_user_id, task_id, rule,
+        anchor_date, timezone, next_occurrence_date) VALUES ($1::uuid, $2::uuid, 'weekly:monday',
+        current_date, 'Europe/Berlin', current_date + 7) RETURNING id`, [OWNER_A, TASK_A]],
+    ["task recurrence updated", `UPDATE public.task_recurrences SET next_occurrence_date = current_date + 14
+        WHERE owner_user_id = $1::uuid RETURNING id`, [OWNER_A]],
+    ["task recurrence deleted", `DELETE FROM public.task_recurrences WHERE owner_user_id = $1::uuid RETURNING id`,
+      [OWNER_A]],
+    ["weekly review inserted", `INSERT INTO public.week_reviews (owner_user_id, week_start, week_end, summary)
+        VALUES ($1::uuid, date_trunc('week', current_date)::date,
+        (date_trunc('week', current_date)::date + 6), 'direct summary') RETURNING id`, [OWNER_A]],
+    ["weekly review updated", `UPDATE public.week_reviews SET wins = 'direct wins'
+        WHERE owner_user_id = $1::uuid RETURNING id`, [OWNER_A]],
+    ["weekly review deleted", `DELETE FROM public.week_reviews WHERE owner_user_id = $1::uuid RETURNING id`, [OWNER_A]],
+
+    // Mobile device registration must still work: the MCP guard added to
+    // claim_notification_device keys on client_id being absent.
+    ["notification device claimed", `SELECT public.claim_notification_device($1, $2, $3, $4) AS claimed`,
+      ["installation-direct", "android", "fcm", "direct-token"]],
+  ];
+
+  let passed = 0;
+  for (const [label, statement, params] of cases) {
+    let rows;
+    try {
+      rows = await owner.run((tx) => tx.unsafe(statement, params));
+    } catch (error) {
+      console.error(`[PROOF] FAILED: DIRECT-USER-PARITY: ${label} raised ${error?.code}: ${error?.message}`);
+      console.error(`[PROOF]   statement: ${statement.replace(/\s+/g, " ").trim()}`);
+      exit(1);
+    }
+    assert(rows.length > 0, `DIRECT-USER-PARITY: ${label} must succeed for an owner session, got ${rows.length} row(s)`);
+    passed += 1;
+  }
+  log("DIRECT-USER-PARITY", `${passed} legitimate owner writes and reads all succeeded under the MCP hardening.`);
+
+  // Parity must not become a cross-owner leak.
+  await otherOwner.run(async (tx) => {
+    for (const table of [
+      "projects", "goals", "tasks", "task_sessions", "task_reminders",
+      ...NEW_DOMAIN_TABLES, ...V1_READABLE_TABLES, "idea_notes", "task_recurrences", "week_reviews",
+    ]) {
+      if (aclRevokedTables.has(table)) continue;
+      const ownerColumn = table === "user_time_context" ? "user_id" : "owner_user_id";
+      const [row] = await tx.unsafe(
+        `SELECT count(*)::int AS count FROM public.${table} WHERE ${ownerColumn} = $1::uuid`,
+        [OWNER_A],
+      );
+      assert(row.count === 0, `DIRECT-USER-PARITY: owner B must not read owner A's ${table}`);
+    }
+  });
+  log("DIRECT-USER-PARITY", "Owner isolation still holds for direct sessions: no foreign-owner rows were readable.");
+
+  // The fence must be inert, not merely permissive, for direct owners. The 42
+  // cases above are the real evidence - they wrote every column the MCP fence
+  // forbids for MCP principals. This only asserts the fence is actually
+  // installed on every table it is supposed to guard, so a dropped trigger
+  // cannot make the parity cases pass for the wrong reason.
+  const expectedFencedTables = [
+    "projects", "goals", "tasks", "task_sessions", "task_reminders",
+  ];
+  const triggers = await sql`
+    SELECT c.relname AS table_name, t.tgname AS trigger_name, t.tgenabled
+    FROM pg_trigger t
+    JOIN pg_class c ON c.oid = t.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgname LIKE '%_mcp_write_fence'
+    ORDER BY c.relname
+  `;
+  const fenced = new Set(triggers.map((row) => row.table_name));
+  for (const table of expectedFencedTables) {
+    assert(fenced.has(table), `the ${table} write-fence trigger must exist`);
+  }
+  const disabled = triggers.filter((row) => row.tgenabled === "D");
+  assert(disabled.length === 0, `write-fence triggers must not be disabled: ${disabled.map((row) => row.trigger_name).join(", ")}`);
+  log(
+    "DIRECT-USER-PARITY",
+    `Write-fence triggers are installed and enabled on all ${expectedFencedTables.length} fenced tables; owner writes passed them without being refused.`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RPC-SURFACE
+// ---------------------------------------------------------------------------
+
+/** Functions in public/ that `authenticated` may EXECUTE, from the catalog. */
+let authenticatedRpcs = new Map();
+
+async function computeAuthenticatedRpcs(sql) {
+  const rows = await sql`
+    SELECT n.nspname AS schema, p.proname AS name, p.oid::regprocedure::text AS signature,
+           p.prosecdef AS security_definer, p.provolatile AS volatility
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.prokind = 'f'
+      AND n.nspname IN ('public', 'private')
+      AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+    ORDER BY n.nspname, p.proname
+  `;
+  authenticatedRpcs = new Map(rows.map((row) => [`${row.schema}.${row.name}`, row]));
+  log(
+    "RPC-SURFACE",
+    `authenticated may EXECUTE ${rows.length} function(s): ${[...authenticatedRpcs.keys()].join(", ")}`,
+  );
+}
+
+async function assertRpcSurface(sql) {
+  // Classification. Enumerated from the catalog above so the inventory cannot
+  // silently fall behind the schema; the sets below are the intent, and the
+  // exhaustiveness assertion below is what forces every new function to be
+  // classified deliberately.
+  const MCP_INTERNAL_ALLOWED = [
+    "public.resolve_active_mcp_grant",
+    "public.consume_mcp_rate_limit",
+    "public.mcp_claim_mutation_receipt",
+    "public.mcp_store_mutation_result",
+    "public.mcp_fail_mutation_result",
+    "public.record_mcp_audit_event",
+  ];
+  const DIRECT_USER_ONLY = [
+    "public.claim_notification_device",
+    "public.purge_archived_project",
+  ];
+  // private.* helpers are reachable only as authenticated, never exposed by
+  // PostgREST, and carry no independent authority of their own.
+  const PRIVATE_HELPERS = [
+    "private.has_active_mcp_permission",
+    "private.has_any_active_mcp_permission",
+    "private.is_registered_mcp_tool",
+    "private.mcp_writable_columns",
+    "private.enforce_mcp_write_fence",
+  ];
+
+  const unclassified = [...authenticatedRpcs.keys()].filter(
+    (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS].includes(name),
+  );
+  assert(
+    unclassified.length === 0,
+    `every authenticated-executable function must be classified; unclassified: ${unclassified.join(", ")}`,
+  );
+  log("RPC-SURFACE", "Every function authenticated may execute is classified; no unclassified entry point exists.");
+
+  // Nothing in the MCP-internal or direct-user-only sets may have lost its
+  // EXECUTE grant - that would break the product, not secure it.
+  for (const name of [...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS]) {
+    assert(authenticatedRpcs.has(name), `${name} must remain executable by authenticated`);
+  }
+
+  // Every SECURITY DEFINER function reachable by authenticated must be
+  // deliberately classified: a new definer function is exactly how a
+  // privilege escalation would enter.
+  const definers = [...authenticatedRpcs.values()]
+    .filter((row) => row.security_definer)
+    .map((row) => `${row.schema}.${row.name}`);
+  const unclassifiedDefiners = definers.filter(
+    (name) => ![...MCP_INTERNAL_ALLOWED, ...DIRECT_USER_ONLY, ...PRIVATE_HELPERS].includes(name),
+  );
+  assert(
+    unclassifiedDefiners.length === 0,
+    `unclassified SECURITY DEFINER function(s) reachable by authenticated: ${unclassifiedDefiners.join(", ")}`,
+  );
+  log("RPC-SURFACE", `All ${definers.length} SECURITY DEFINER functions reachable by authenticated are deliberately classified.`);
+
+  // The trigger function must not be directly callable.
+  await expectRefused(
+    "private.enforce_mcp_write_fence direct call",
+    // 0A000 feature_not_supported: PostgreSQL refuses to invoke a trigger
+    // function outside a trigger context.
+    ["0A000"],
+    () =>
+      mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+        tx.unsafe(`SELECT private.enforce_mcp_write_fence()`),
+      ),
+  );
+  log("RPC-SURFACE", "The write-fence trigger function cannot be invoked directly as an RPC.");
+
+  // Direct-user-only RPCs must refuse an MCP bearer.
+  // Every context keeps a client_id, so each really is an MCP principal being
+  // refused. Omitting client_id would make it an ordinary owner session and the
+  // call would legitimately succeed.
+  const deniedContexts = [
+    ["wrong owner", mcpSession(sql, { userId: OWNER_B, clientId: V1_WORKSPACE_CLIENT })],
+    ["wrong client", mcpSession(sql, { userId: OWNER_A, clientId: "not-a-real-client" })],
+    ["wrong resource", mcpSession(sql, { userId: OWNER_A, clientId: V1_WORKSPACE_CLIENT, resource: "https://evil.example.com/api/mcp" })],
+    ["revoked grant", mcpSession(sql, { userId: OWNER_A, clientId: REVOKED_CLIENT })],
+  ];
+  for (const [label, session] of deniedContexts) {
+    await expectDenied(`claim_notification_device ${label}`, () =>
+      session.run((tx) =>
+        tx.unsafe(`SELECT public.claim_notification_device($1, $2, $3, $4)`, [`probe-${label.replaceAll(" ", "-")}`, "android", "fcm", `token-${label.replaceAll(" ", "-")}`]),
+      ),
+    );
+  }
+  const [device] = await sql.unsafe(`SELECT count(*)::int AS count FROM public.notification_devices WHERE owner_user_id = $1::uuid AND installation_id LIKE 'probe-%'`, [OWNER_A]);
+  assert(device.count === 0, "a refused claim_notification_device call must not have created a device row");
+  log("RPC-SURFACE", "claim_notification_device refused an MCP bearer under every identity mismatch and left no row behind.");
+
+  // purge_archived_project keeps its own direct-user guard.
+  await expectDenied("purge_archived_project as MCP", () =>
+    mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+      tx.unsafe(`SELECT public.purge_archived_project($1::uuid, $2, $3, $4)`, [PROJECT_A, "probe", 1, 0]),
+    ),
+  );
+  log("RPC-SURFACE", "purge_archived_project refused an MCP bearer.");
+
+  // MCP-internal RPCs must actually be reachable by an MCP bearer. Calling each
+  // with deliberately wrong arguments proves it reached its own validation
+  // instead of being blocked at the boundary.
+  const [grant] = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+    tx.unsafe(`SELECT id FROM public.resolve_active_mcp_grant()`),
+  );
+  assert(typeof grant?.id === "string", "resolve_active_mcp_grant must be reachable by an MCP bearer");
+
+  // The rate-limit RPC validates the tool name against ^[a-z0-9_]{1,128}$, so the
+  // probe uses a registered tool's name. It returns TABLE(allowed, retry_after),
+  // which postgres.js hands back as a positional array.
+  const rate = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects', 1, 60)`),
+  );
+  assert(rate[0]?.allowed === true, `consume_mcp_rate_limit must allow an MCP bearer under its own grant, got ${JSON.stringify(rate[0])}`);
+  // And the per-tool limit must actually engage rather than being decorative.
+  const limited = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects', 1, 60)`),
+  );
+  assert(limited[0]?.allowed === false, "a second call past the per-tool limit must be refused");
+  assert(Number(limited[0]?.retry_after_seconds) > 0, "a refused rate-limit call must report a retry_after");
+  // The window is bound to owner+client+tool+resource, so a different client
+  // under the same owner with the same limit is unaffected by the exhausted one.
+  const otherClient = await mcpSession(sql, { clientId: V1_READ_CLIENT }).run((tx) =>
+    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects', 1, 60)`),
+  );
+  assert(otherClient[0]?.allowed === true, "the per-tool rate-limit window must be client bound");
+
+  // Returns TABLE(outcome, claim_token, ...), so select * to get named columns.
+  const [claim] = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+    tx.unsafe(
+      `SELECT * FROM public.mcp_claim_mutation_receipt($1, $2::uuid, $3)`,
+      ["rpc_surface_probe", "00000000-0000-4000-8000-00000000abcd", "rpc_surface_probe"],
+    ),
+  );
+  assert(
+    claim?.claim_outcome === "CLAIM_GRANTED",
+    `mcp_claim_mutation_receipt must be reachable, got ${JSON.stringify(claim)}`,
+  );
+  assert(typeof claim?.claim_token === "string", "a granted claim must return a claim token");
+
+  // Stale-token fencing proves store/fail are reachable and token-fenced, not
+  // that they are simply absent.
+  const stale = await capturePostgresError(() =>
+    mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+      tx.unsafe(`SELECT public.mcp_store_mutation_result($1, $2::uuid, $3::uuid, $4::jsonb)`, [
+        "rpc_surface_probe", "00000000-0000-4000-8000-00000000abcd", "00000000-0000-4000-8000-0000000000ff", "{}",
+      ]),
+    ),
+  );
+  assert(stale === "02000", `mcp_store_mutation_result must reject a stale claim token with 02000, got ${stale}`);
+
+  const staleFail = await capturePostgresError(() =>
+    mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
+      tx.unsafe(`SELECT public.mcp_fail_mutation_result($1, $2::uuid, $3::uuid, true)`, [
+        "rpc_surface_probe", "00000000-0000-4000-8000-00000000abcd", "00000000-0000-4000-8000-0000000000ff",
+      ]),
+    ),
+  );
+  assert(staleFail === "02000", `mcp_fail_mutation_result must reject a stale claim token with 02000, got ${staleFail}`);
+  log("RPC-SURFACE", "All six MCP-internal RPCs are reachable by an MCP bearer and remain token-fenced.");
 }
 
 // ---------------------------------------------------------------------------
@@ -998,6 +1415,7 @@ async function main() {
     await migrate(sql);
     await grantClientTablePrivileges(sql);
     await computeAclRevokedTables(sql);
+    await computeAuthenticatedRpcs(sql);
     await seedDomainRows(sql);
 
     await insertGrant(sql, {
@@ -1029,6 +1447,7 @@ async function main() {
     // permissions_version 2.
     await assertScopeV1(sql);
     await assertColumnFence(sql);
+    await assertRpcSurface(sql);
     await assertRevocation(sql);
     await assertWrongIdentity(sql);
     await assertInternalUnreachable(sql, V1_WORKSPACE_CLIENT);
@@ -1047,6 +1466,14 @@ async function main() {
 
     await assertScopeV2(sql);
     await assertCrossOwner(sql, [["v2", V2_WORKSPACE_CLIENT]]);
+
+    // Parity runs LAST on purpose: it is the only section that deliberately
+    // mutates and deletes the owner's own rows (it archives, unarchives, closes
+    // and creates real records). Running it earlier would perturb the row
+    // counts the surface sections assert on, and a section that deleted the
+    // notification preferences row would make the v2 read assertion below pass
+    // or fail for the wrong reason.
+    await assertDirectUserParity(sql);
 
     console.log("\n[PROOF] OK - the MCP OAuth database surface matches the advertised MCP contract.");
   } finally {
