@@ -54,6 +54,11 @@
  *                   legacy agent tokens, calendar internals and the
  *                   task_status_events ledger stay unreachable
  *   AUDIT-TOOLS     the audit RPC accepts only registered tool names
+ *   AUDIT-AUTHORITY a 'success' audit row requires the caller's ACTIVE GRANT to
+ *                   hold the capability's permission, so the ledger cannot be
+ *                   forged by the actor it audits; every denial is paired with a
+ *                   permitted call and asserted on rows, and the direct-user
+ *                   audit path is asserted to still succeed
  *   GRANT-SHAPE     the database refuses malformed permission/version documents
  *
  * Usage:
@@ -201,6 +206,10 @@ const V1_READ_CLIENT = "v1-read-client";
 const V1_WORKSPACE_CLIENT = "v1-workspace-client";
 const V2_WORKSPACE_CLIENT = "v2-workspace-client";
 const REVOKED_CLIENT = "revoked-client";
+/** Seeded by AUDIT-AUTHORITY: needed to prove a task_manager cannot claim projects/goals. */
+const V1_TASK_CLIENT = "v1-task-client";
+/** Seeded by AUDIT-AUTHORITY: a non-active grant that satisfies every other authority condition. */
+const V1_PENDING_CLIENT = "v1-pending-client";
 
 /** permissions_version 1 - exactly the documents shipped on main at 23317517. */
 const V1_PERMISSIONS = {
@@ -228,6 +237,17 @@ const V1_PERMISSIONS = {
     "timer.update",
   ],
 };
+
+/** permissions_version 1 task_manager - the document 0066 accepts at v1 and no later. */
+const V1_TASK_PERMISSIONS = [
+  "projects.read",
+  "goals.read",
+  "tasks.read",
+  "tasks.create",
+  "tasks.update",
+  "today.read",
+  "timer.read",
+];
 
 /** permissions_version 2 - v1 plus the additive read domains. */
 const V2_READ_PERMISSIONS = [
@@ -1537,6 +1557,7 @@ async function assertRpcSurface(sql) {
     "private.has_active_mcp_permission",
     "private.has_any_active_mcp_permission",
     "private.is_registered_mcp_tool",
+    "private.mcp_tool_audit_permissions",
     "private.mcp_writable_columns",
     "private.mcp_insertable_columns",
     "private.enforce_mcp_write_fence",
@@ -1778,6 +1799,350 @@ async function assertAuditToolAllowlist(sql) {
 }
 
 // ---------------------------------------------------------------------------
+// AUDIT-AUTHORITY
+// ---------------------------------------------------------------------------
+
+/**
+ * The audit ledger must not be forgeable by the actor it audits.
+ *
+ * 0073 is a regression proof for a defect reproduced against the real journal:
+ * record_mcp_audit_event proved the tool name was REGISTERED and that the
+ * caller held an active grant, but never that the grant HELD the capability
+ * permission the named tool requires. A permissions_version 1 read_only grant
+ * wrote 'success' rows naming ega_create_project, ega_archive_task,
+ * ega_start_timer and ega_clear_completed_today.
+ *
+ * Every assertion is written as a PERMITTED/DENIED PAIR on the same principal
+ * and the same tool shape, so a check that silently stopped running fails here
+ * rather than passing vacuously, and every outcome is asserted on rows
+ * returned or rows affected. Absence of an exception is never the evidence:
+ * SECURITY DEFINER means an unfiltered statement raises nothing, and RLS filters
+ * silently rather than raising.
+ */
+async function assertAuditCapabilityAuthority(sql) {
+  // A task_manager grant is required by the specification (a task_manager
+  // principal must not be able to claim a project-management capability) and is
+  // not among the v1 fixtures, so it is seeded here. permissions_version 1 is
+  // the only version task_manager has a document for, per 0066.
+  await insertGrant(sql, {
+    owner: OWNER_A,
+    client: V1_TASK_CLIENT,
+    profile: "task_manager",
+    permissions: V1_TASK_PERMISSIONS,
+    version: 1,
+  });
+  // A pending grant holding the full workspace_manager document satisfies every
+  // authority condition except being active, which isolates grant resolution
+  // from the capability check in the assertions below.
+  await insertGrant(sql, {
+    owner: OWNER_A,
+    client: V1_PENDING_CLIENT,
+    profile: "workspace_manager",
+    permissions: V1_PERMISSIONS.workspace_manager,
+    version: 1,
+    status: "pending",
+  });
+
+  /** One audit write; returns the returned event id, or null if refused. */
+  const audit = ({ clientId, toolName, outcome = "success", userId = OWNER_A, resource = RESOURCE_URI, requestId }) =>
+    mcpSession(sql, { userId, clientId, resource }).run((tx) =>
+      tx.unsafe(
+        `SELECT public.record_mcp_audit_event($1, $2, $3, 1, NULL, '{}'::jsonb) AS event_id`,
+        [requestId, toolName, outcome],
+      ),
+    );
+
+  /** Row count for a request id. The observable effect, independent of raising. */
+  const rowsFor = async (requestId) => {
+    const [row] = await sql`
+      SELECT count(*)::int AS count
+      FROM public.agent_integration_events
+      WHERE request_id = ${requestId}
+    `;
+    return row.count;
+  };
+
+  // request_id is bounded at 64 characters by the RPC, so ids are supplied
+  // explicitly and kept short rather than derived from the assertion label.
+  const requestIdFor = (spec) => spec.requestId ?? `audit-authority-${spec.toolName}`;
+
+  /** Assert a write is refused AND left no row. */
+  const assertRefused = async (label, spec) => {
+    const requestId = requestIdFor(spec);
+    assert(requestId.length <= 64, `proof request id must fit the RPC's 64-char bound: ${requestId}`);
+    await expectDenied(label, () => audit({ ...spec, requestId }));
+    const count = await rowsFor(requestId);
+    assert(count === 0, `${label} must leave zero rows behind, got ${count}`);
+  };
+
+  /** Assert a write succeeded AND returned an id. */
+  const assertAccepted = async (label, spec) => {
+    const requestId = requestIdFor(spec);
+    assert(requestId.length <= 64, `proof request id must fit the RPC's 64-char bound: ${requestId}`);
+    const rows = await audit({ ...spec, requestId });
+    const eventId = rows?.[0]?.event_id;
+    assert(typeof eventId === "string", `${label} must return an inserted event id`);
+    const count = await rowsFor(requestId);
+    assert(count === 1, `${label} must persist exactly one row, got ${count}`);
+    return eventId;
+  };
+
+  // ---- The capability the grant does NOT hold -----------------------------
+  //
+  // These are the rows a read_only principal wrote before 0073. Each is paired
+  // below with the read capability the same principal legitimately holds.
+  const readOnlyWriteClaims = [
+    "ega_create_project",
+    "ega_archive_task",
+    "ega_start_timer",
+    "ega_stop_timer",
+    "ega_clear_completed_today",
+    "ega_plan_task_for_today",
+  ];
+  for (const toolName of readOnlyWriteClaims) {
+    await assertRefused(`read_only claims write capability ${toolName}`, {
+      clientId: V1_READ_CLIENT,
+      toolName,
+      requestId: `audit-ro-write-${toolName}`,
+    });
+  }
+  log(
+    "AUDIT-AUTHORITY",
+    `A read_only principal recorded success rows for ${readOnlyWriteClaims.length} write capabilities before 0073; each is now refused and leaves zero rows.`,
+  );
+
+  // ---- task_manager must not claim project-management capabilities --------
+  //
+  // task_manager holds tasks.create and tasks.update but no projects.* write
+  // permission, so projects and goals capabilities are outside its authority.
+  const taskManagerWriteClaims = [
+    "ega_create_project",
+    "ega_update_project_status",
+    "ega_archive_project",
+    "ega_unarchive_project",
+    "ega_create_goal",
+    "ega_archive_goal",
+  ];
+  for (const toolName of taskManagerWriteClaims) {
+    await assertRefused(`task_manager claims ${toolName}`, {
+      clientId: V1_TASK_CLIENT,
+      toolName,
+      requestId: `audit-tm-write-${toolName}`,
+    });
+  }
+  log(
+    "AUDIT-AUTHORITY",
+    `A task_manager principal was refused ${taskManagerWriteClaims.length} project- and goal-management capabilities, which its tasks.create/tasks.update document does not authorize.`,
+  );
+
+  // ---- The permitted/denied PAIRS ----------------------------------------
+  //
+  // Each principal must still be able to record the capabilities it genuinely
+  // holds. Without these, a migration that refused EVERY success write would
+  // satisfy every assertion above and still be wrong.
+  await assertAccepted("read_only records its own read capability", {
+    clientId: V1_READ_CLIENT,
+    toolName: "ega_list_projects",
+    requestId: "audit-ro-ok-list-projects",
+  });
+  await assertAccepted("read_only records the always-authorized capability", {
+    clientId: V1_READ_CLIENT,
+    toolName: "ega_get_capabilities",
+    requestId: "audit-ro-ok-capabilities",
+  });
+  await assertAccepted("task_manager records a tasks capability it holds", {
+    clientId: V1_TASK_CLIENT,
+    toolName: "ega_create_task",
+    requestId: "audit-tm-ok-create-task",
+  });
+  await assertAccepted("task_manager records a task read it holds", {
+    clientId: V1_TASK_CLIENT,
+    toolName: "ega_list_tasks",
+    requestId: "audit-tm-ok-list-tasks",
+  });
+  // The paired denial, and the reason a whole-profile check would be wrong:
+  // task_manager holds today.READ and two task write permissions, so a check
+  // that only asked "does this principal hold any write permission" would let it
+  // claim ega_plan_task_for_today.
+  await assertRefused("task_manager claims a today.update capability", {
+    clientId: V1_TASK_CLIENT,
+    toolName: "ega_plan_task_for_today",
+    requestId: "audit-tm-write-today",
+  });
+  log(
+    "AUDIT-AUTHORITY",
+    "The same read_only and task_manager principals still record the capabilities their documents authorize (projects.read, tasks.read, tasks.create, and the `always` capability).",
+  );
+
+  // The pair to the read_only write-claim refusals above: a workspace_manager
+  // grant holding every write permission records the identical tool names.
+  await assertAccepted("workspace_manager records a write capability it holds", {
+    clientId: V1_WORKSPACE_CLIENT,
+    toolName: "ega_create_project",
+    requestId: "audit-wm-ok-create-project",
+  });
+  await assertAccepted("workspace_manager records a sensitive write capability", {
+    clientId: V1_WORKSPACE_CLIENT,
+    toolName: "ega_clear_completed_today",
+    requestId: "audit-wm-ok-clear-today",
+  });
+
+  // ---- Non-success outcomes are NOT gated --------------------------------
+  //
+  // The handlers record outcome 'denied' with errorCode PERMISSION_DENIED for
+  // exactly the calls a principal was NOT authorized to make. If 0073 gated
+  // every outcome, the product's own denial record would become unwritable.
+  const deniedRows = await mcpSession(sql, { clientId: V1_READ_CLIENT }).run((tx) =>
+    tx.unsafe(
+      `SELECT public.record_mcp_audit_event($1, $2, 'denied', 1, 'PERMISSION_DENIED', '{}'::jsonb) AS event_id`,
+      ["audit-authority-read-only-denied-write", "ega_create_project"],
+    ),
+  );
+  assert(
+    typeof deniedRows?.[0]?.event_id === "string",
+    "a principal must still be able to record that it was DENIED an unauthorized capability; otherwise the product cannot audit its own refusals",
+  );
+  const [deniedRow] = await sql`
+    SELECT outcome, error_code
+    FROM public.agent_integration_events
+    WHERE request_id = 'audit-authority-read-only-denied-write'
+  `;
+  assert(
+    deniedRow?.outcome === "denied" && deniedRow?.error_code === "PERMISSION_DENIED",
+    `the denial row must store the refusal it claims, got ${JSON.stringify(deniedRow)}`,
+  );
+  log(
+    "AUDIT-AUTHORITY",
+    "A 'denied' outcome naming an unauthorized capability is still recorded, so the product's own refusal record stays writable; only 'success' asserts an exercised capability.",
+  );
+
+  // ---- Identity: the RPC selects nothing -------------------------------
+  //
+  // The RPC takes no owner/client/grant parameter, so "another owner's identity
+  // cannot be selected" is proven by showing OWNER_B cannot write a row
+  // attributed to OWNER_A under OWNER_A's client, and that no row was created
+  // under OWNER_B's identity either.
+  await expectDenied("another owner's client_id", () =>
+    audit({
+      userId: OWNER_B,
+      clientId: V1_WORKSPACE_CLIENT,
+      toolName: "ega_list_projects",
+      requestId: "audit-authority-foreign-owner",
+    }),
+  );
+  const [foreignRows] = await sql`
+    SELECT count(*)::int AS count
+    FROM public.agent_integration_events
+    WHERE request_id = 'audit-authority-foreign-owner'
+  `;
+  assert(foreignRows.count === 0, "a foreign owner must not leave an audit row behind");
+
+  // And every row this section produced is attributed to the JWT's own subject.
+  const [mismatched] = await sql`
+    SELECT count(*)::int AS count
+    FROM public.agent_integration_events
+    WHERE request_id LIKE 'audit-%'
+      AND owner_user_id <> ${OWNER_A}::uuid
+  `;
+  assert(
+    mismatched.count === 0,
+    `every audit row must carry the verified subject as owner_user_id, got ${mismatched.count} row(s) attributed elsewhere`,
+  );
+  log("AUDIT-AUTHORITY", "Audit identity is derived from the verified JWT only; another owner's client_id is refused and no row is attributed elsewhere.");
+
+  // ---- Wrong client, wrong resource, revoked grant ---------------------
+  //
+  // Pairs against the accepted workspace_manager write above, so a widened
+  // grant-resolution predicate fails here.
+  await assertRefused("wrong client_id", {
+    clientId: "not-a-real-client",
+    toolName: "ega_list_projects",
+    requestId: "audit-wrong-client",
+  });
+  await assertRefused("wrong resource", {
+    clientId: V1_WORKSPACE_CLIENT,
+    toolName: "ega_list_projects",
+    resource: "https://evil.example.com/api/mcp",
+    requestId: "audit-wrong-resource",
+  });
+  await assertRefused("revoked grant", {
+    clientId: REVOKED_CLIENT,
+    toolName: "ega_list_projects",
+    requestId: "audit-revoked",
+  });
+  // The revoked fixture holds the full workspace_manager document, so it passes
+  // the capability check and is refused by grant resolution alone. Stating that
+  // is what makes this a revocation assertion rather than a duplicate of the
+  // capability assertions. The pending grant likewise satisfies every authority
+  // condition except being active.
+  await assertRefused("pending grant is not active authority", {
+    clientId: V1_PENDING_CLIENT,
+    toolName: "ega_list_projects",
+    requestId: "audit-pending",
+  });
+  log(
+    "AUDIT-AUTHORITY",
+    "Wrong client_id, wrong aud, a revoked grant and a pending grant are each refused, while the identical call under the active workspace_manager grant is accepted.",
+  );
+
+  // ---- Unregistered tool names ------------------------------------------
+  await assertRefused("unregistered tool name", {
+    clientId: V1_WORKSPACE_CLIENT,
+    toolName: "forged_tool_that_does_not_exist",
+    requestId: "audit-unregistered-tool",
+  });
+  log("AUDIT-AUTHORITY", "An unregistered tool name is refused under a grant that satisfies every other authority condition.");
+
+  // ---- The direct-user audit path is NOT narrowed ----------------------
+  //
+  // The direct-user shape is a plain INSERT with client_id IS NULL, permitted by
+  // the agent_events_direct_user_insert policy from 0056 and still used by
+  // apps/web/src/lib/services/agent-task-service.ts. 0073 touches only the RPC,
+  // so this must keep working; asserted positively rather than inferred from the
+  // MCP denial passing, because the same policy change could refuse both.
+  const directUser = directUserSession(sql, { userId: OWNER_A });
+  const directRows = await directUser.run((tx) =>
+    tx.unsafe(
+      `INSERT INTO public.agent_integration_events (
+         owner_user_id, token_id, action, resource_type, resource_id, outcome
+       ) VALUES ($1::uuid, gen_random_uuid(), 'task.updated', 'task', gen_random_uuid(), 'success')
+       RETURNING id`,
+      [OWNER_A],
+    ),
+  );
+  assert(
+    typeof directRows?.[0]?.id === "string",
+    "the direct-user audit INSERT path must still succeed; 0073 must not narrow ordinary owner sessions",
+  );
+  await sql`DELETE FROM public.agent_integration_events WHERE action = 'task.updated' AND resource_type = 'task' AND token_id IS NOT NULL`;
+  log(
+    "AUDIT-AUTHORITY",
+    "The direct-user (client_id IS NULL) audit INSERT path still succeeds, so the capability check narrowed only the MCP RPC.",
+  );
+
+  // ---- Idempotency ------------------------------------------------------
+  //
+  // The journal is up-only, and every other verifier re-applies the whole
+  // journal, so a non-idempotent 0073 would break all of them.
+  await applyFile(sql, "0073_mcp_audit_capability_authority");
+  log("IDEMPOTENCE", "Re-applied 0073_mcp_audit_capability_authority; up-only convention holds.");
+
+  // Re-prove the boundary after the re-apply: a re-apply that widened
+  // registration or dropped the capability check would show here.
+  await assertRefused("post-re-apply read_only write claim", {
+    clientId: V1_READ_CLIENT,
+    toolName: "ega_create_project",
+    requestId: "audit-reapply-denied",
+  });
+  await assertAccepted("post-re-apply permitted capability", {
+    clientId: V1_READ_CLIENT,
+    toolName: "ega_list_projects",
+    requestId: "audit-reapply-allowed",
+  });
+  log("AUDIT-AUTHORITY", "The capability boundary still holds after re-applying the migration.");
+}
+
+// ---------------------------------------------------------------------------
 // GRANT-SHAPE
 // ---------------------------------------------------------------------------
 
@@ -1915,6 +2280,7 @@ async function main() {
     await assertWrongIdentity(sql);
     await assertInternalUnreachable(sql, V1_WORKSPACE_CLIENT);
     await assertAuditToolAllowlist(sql);
+    await assertAuditCapabilityAuthority(sql);
     await assertGrantShape(sql);
     await assertCrossOwner(sql, [["v1", V1_WORKSPACE_CLIENT]]);
     await assertCrossOwnerInsert(sql, [["v1", V1_WORKSPACE_CLIENT]]);
