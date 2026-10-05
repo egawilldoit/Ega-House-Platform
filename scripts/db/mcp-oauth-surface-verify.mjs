@@ -62,6 +62,15 @@
  *                   legacy agent tokens, calendar internals and the
  *                   task_status_events ledger stay unreachable
  *   AUDIT-TOOLS     the audit RPC accepts only registered tool names
+ *   OPERATION-IDENTITY
+ *                   mcp_client_id is verified identity, not a caller-chosen
+ *                   idempotency key: a mismatched value is corrected on INSERT
+ *                   and refused on UPDATE, so one owner's v1 bearer cannot stamp
+ *                   a row as the v2 client and have the v2 integration's replay
+ *                   lookup return it as its own operation result. The honest
+ *                   identity write and 0074's both-or-neither refusal are
+ *                   asserted alongside, so a fence that refused everything would
+ *                   fail rather than pass
  *   AUDIT-AUTHORITY a 'success' audit row requires the caller's ACTIVE GRANT to
  *                   hold the capability's permission, so the ledger cannot be
  *                   forged by the actor it audits; every denial is paired with a
@@ -766,17 +775,44 @@ async function assertColumnFence(sql) {
   }
   log("COLUMN-FENCE", `All ${fenced.length} out-of-contract task columns were refused at the database.`);
 
-  // mcp_operation_id / mcp_client_id stay writable because the application
-  // itself writes them on every operationId-carrying mutation (0059). Forging
-  // them is self-limiting - the unique index is (owner, client, operation) and
-  // a collision can only fail the principal's own row - so they are an
-  // application-written column, not an advertised-tool gap. Prove that:
+  // mcp_operation_id stays writable on UPDATE because the application writes it
+  // on every operationId-carrying mutation (0059), and a caller's own operation
+  // key on their own row is exactly what that column is for. Asserted on a row
+  // that already carries a COMPLETE identity, because 0074's both-or-neither
+  // pairing constraint refuses a partial one - which is the pairing half of this
+  // contract, not an accident of the fixture.
+  //
+  // This probe previously wrote BOTH identity columns on UPDATE and asserted both
+  // were writable. That claim was the defect: mcp_client_id is the caller's
+  // verified OAuth client identity, not a caller-chosen key, and every
+  // application read-back / replay lookup filters on (mcp_client_id,
+  // mcp_operation_id). It is now asserted NOT writable, in both directions, by
+  // assertOperationIdentity below. The assertion here is narrowed in scope but
+  // strengthened in shape: it establishes the complete identity first and then
+  // proves the operation half still moves on UPDATE.
+  const [identityRow] = await session.run((tx) =>
+    tx.unsafe(
+      `INSERT INTO public.tasks (project_id, title, mcp_operation_id, mcp_client_id)
+       VALUES ($1::uuid, 'identity writable probe', gen_random_uuid(), $2)
+       RETURNING id, mcp_client_id`,
+      [PROJECT_A, V1_WORKSPACE_CLIENT],
+    ),
+  );
+  assert(
+    identityRow?.mcp_client_id === V1_WORKSPACE_CLIENT,
+    "the application writes its own client id on create, and the fence must accept that unchanged",
+  );
   await session.run(async (tx) => {
     const rows = await tx.unsafe(
-      `UPDATE public.tasks SET mcp_client_id = $1, mcp_operation_id = gen_random_uuid() WHERE id = $2::uuid RETURNING id`,
-      [V1_WORKSPACE_CLIENT, TASK_A],
+      `UPDATE public.tasks SET mcp_operation_id = gen_random_uuid() WHERE id = $1::uuid RETURNING id, mcp_operation_id, mcp_client_id`,
+      [identityRow.id],
     );
-    assert(rows.length === 1, "the application-written idempotency fence columns must remain writable");
+    assert(rows.length === 1, "the application-written idempotency key must remain writable on UPDATE");
+    assert(rows[0].mcp_operation_id !== null, "the rewritten operation id must persist");
+    assert(
+      rows[0].mcp_client_id === V1_WORKSPACE_CLIENT,
+      `rewriting the operation key must leave the client half of the pair intact, got ${rows[0].mcp_client_id}`,
+    );
   });
 
   // INSERT-time fence. Asserted BEHAVIOURALLY: the caller supplies forbidden
@@ -1235,6 +1271,153 @@ async function assertTaskCompletion(sql) {
     assert(rows[0].completed_at !== null, "the owner-set completed_at must survive");
   });
   log("COLUMN-FENCE", "An owner session still sets completed_at directly; 0078 constrains MCP principals only.");
+}
+
+// ---------------------------------------------------------------------------
+// OPERATION-IDENTITY
+// ---------------------------------------------------------------------------
+
+/**
+ * `mcp_client_id` is the caller's OAuth client identity, and the database must
+ * derive it rather than accept it.
+ *
+ * private.mcp_writable_columns / private.mcp_insertable_columns (0071) list
+ * `mcp_client_id` beside `mcp_operation_id` as caller-settable on all five
+ * fenced tables, on the reasoning that the application writes both on every
+ * operationId-carrying mutation (0059). But `mcp_operation_id` is a caller-chosen
+ * idempotency KEY and `mcp_client_id` is not - it is verified identity, and every
+ * read-back and replay lookup keys on the pair:
+ *
+ *   .eq("mcp_client_id", identity.mcpClientId).eq("mcp_operation_id", …)
+ *
+ * So an owner holding TWO grants can, with the v1 bearer, INSERT a row stamped
+ * `mcp_client_id = 'v2-workspace-client'`, and the v2 integration's replay then
+ * returns the attacker's row as its own operation result. Measured on the journal
+ * at HEAD with executed SQL: the forged row persisted with the v2 client id, and a
+ * v2-session lookup on (v2, that operation id) returned it. That is a hole in
+ * exactly the key 0074 exists to fence, and the existing proof passed over it
+ * because the only probe asserted the column stays WRITABLE.
+ *
+ * Asserted in both directions, because either alone is half a fix:
+ *
+ *   INSERT  a mismatched mcp_client_id is corrected to the caller's own (or the
+ *           write is refused), and never persists as another client's.
+ *   UPDATE  changing mcp_client_id on an existing row affects zero rows or is
+ *           refused - the second direction is what stops an attacker re-stamping
+ *           a row it created legitimately earlier.
+ *
+ * Paired with the permitted case in each direction, so a fence that simply
+ * refused every identity write would fail here: the application writes both
+ * columns together on create, and that must still work.
+ */
+async function assertOperationIdentity(sql) {
+  const attacker = mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT });
+  const victim = mcpSession(sql, { clientId: V2_WORKSPACE_CLIENT });
+  const forgedOperationId = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1";
+
+  // ---- INSERT: a mismatched client id must not survive --------------------
+  await attacker.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.tasks (
+         project_id, title, mcp_operation_id, mcp_client_id
+       ) VALUES (
+         $1::uuid, 'forged client identity', $2::uuid, $3
+       ) RETURNING id, mcp_client_id, mcp_operation_id`,
+      [PROJECT_A, forgedOperationId, V2_WORKSPACE_CLIENT],
+    );
+    assert(row, "the INSERT must succeed so the correction can be observed; 0074 pairs both columns and both were supplied");
+    assert(
+      row.mcp_client_id === V1_WORKSPACE_CLIENT,
+      `the fence must derive tasks.mcp_client_id from the verified JWT, not the caller: a v1 bearer stamped the row '${row.mcp_client_id}' (the v2 client's id) and the v2 integration's replay lookup keys on that pair`,
+    );
+    assert(row.mcp_operation_id === forgedOperationId, "the caller-chosen operation id must still be honoured");
+  });
+  log("OPERATION-IDENTITY", "An INSERT stamped with another client's mcp_client_id was corrected to the caller's own verified client id.");
+
+  // The durable effect, read back by an independent observer: the v2 session's
+  // own replay/read-back key must not resolve to the attacker's row. This is the
+  // harm 0074 exists to prevent, asserted on the lookup the application
+  // actually performs rather than on the stored column alone.
+  const forgedRow = await attacker.run((tx) =>
+    tx.unsafe(
+      `SELECT id, mcp_client_id, mcp_operation_id
+         FROM public.tasks
+        WHERE mcp_operation_id = $1::uuid`,
+      [forgedOperationId],
+    ),
+  );
+  assert(forgedRow.length === 1, "the attacker's own row must exist, or the correction assertion passed vacuously");
+  const victimLookup = await victim.run((tx) =>
+    tx.unsafe(
+      `SELECT id, title FROM public.tasks WHERE mcp_client_id = $1 AND mcp_operation_id = $2::uuid`,
+      [V2_WORKSPACE_CLIENT, forgedOperationId],
+    ),
+  );
+  assert(
+    victimLookup.length === 0,
+    `the v2 integration's replay lookup returned ${victimLookup.length} row(s) for an operation the v1 bearer performed; the operation-identity pair is the key 0074 fences`,
+  );
+  log("OPERATION-IDENTITY", "The v2 client's replay/read-back lookup resolves nothing for an operation only the v1 bearer performed.");
+
+  // ---- UPDATE: an existing row's client id must not be re-stamped ----------
+  await expectNoRows("tasks.mcp_client_id re-stamped to another client", () =>
+    attacker.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.tasks SET mcp_client_id = $1 WHERE id = $2::uuid RETURNING id, mcp_client_id`,
+        [V2_WORKSPACE_CLIENT, forgedRow[0].id],
+      ),
+    ),
+  );
+  const [afterUpdate] = await sql`
+    SELECT mcp_client_id FROM public.tasks WHERE id = ${forgedRow[0].id}::uuid
+  `;
+  assert(
+    afterUpdate.mcp_client_id === V1_WORKSPACE_CLIENT,
+    `the refused re-stamp must leave mcp_client_id at the caller's own id, got ${afterUpdate.mcp_client_id}`,
+  );
+  log("OPERATION-IDENTITY", "An UPDATE re-stamping mcp_client_id to another client affected zero rows and changed nothing.");
+
+  // ---- The permitted case: the application's own identity write -----------
+  //
+  // Without this the two assertions above would also pass on a fence that
+  // refuses every identity write, which would break 0059/0074 for every real MCP
+  // create. Proved on rows returned, on the same session and the same table.
+  await attacker.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.tasks (
+         project_id, title, mcp_operation_id, mcp_client_id
+       ) VALUES (
+         $1::uuid, 'honest identity write', $2::uuid, $3
+       ) RETURNING id, mcp_client_id, mcp_operation_id`,
+      [PROJECT_A, "dddddddd-dddd-4ddd-8ddd-ddddddddddd2", V1_WORKSPACE_CLIENT],
+    );
+    assert(row, "an honest identity-carrying INSERT must succeed");
+    assert(
+      row.mcp_client_id === V1_WORKSPACE_CLIENT && row.mcp_operation_id === "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
+      `the application's own identity write must be accepted unchanged; got client ${row.mcp_client_id}, operation ${row.mcp_operation_id}`,
+    );
+  });
+  log("OPERATION-IDENTITY", "The application's own operation-identity write is still accepted unchanged.");
+
+  // ---- The pairing constraint still governs both halves -------------------
+  //
+  // The correction must not turn the fence into "supply either half": 0074's
+  // CHECK requires both-or-neither, and a partial identity must still be refused
+  // so the unique index key is never partially NULL.
+  await expectRefused(
+    "tasks INSERT carrying only an operation id",
+    // 23514 check_violation: 0074's tasks_mcp_operation_identity_pair.
+    ["23514"],
+    () =>
+      attacker.run((tx) =>
+        tx.unsafe(
+          `INSERT INTO public.tasks (project_id, title, mcp_operation_id)
+           VALUES ($1::uuid, 'half identity', $2::uuid)`,
+          [PROJECT_A, "dddddddd-dddd-4ddd-8ddd-ddddddddddd3"],
+        ),
+      ),
+  );
+  log("OPERATION-IDENTITY", "A partial operation identity is still refused with 23514; the correction did not open a half-pairing path.");
 }
 
 // ---------------------------------------------------------------------------
@@ -2754,6 +2937,11 @@ async function main() {
     await assertScopeV2(sql);
     await assertCrossOwner(sql, [["v2", V2_WORKSPACE_CLIENT]]);
     await assertCrossOwnerInsert(sql, [["v2", V2_WORKSPACE_CLIENT]]);
+
+    // After the v2 grant exists: the operation-identity proof needs TWO grants
+    // for the same owner, because the harm it asserts is one client's bearer
+    // stamping a row as another client's.
+    await assertOperationIdentity(sql);
 
     // Parity runs LAST on purpose: it is the only section that deliberately
     // mutates and deletes the owner's own rows (it archives, unarchives, closes
