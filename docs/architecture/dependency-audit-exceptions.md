@@ -51,9 +51,15 @@ dependency trips the direct-dependency rule even though the vulnerable package i
 transitive. Removing the flag re-blocks the identical report, which is asserted
 in `audit-production.test.mjs`, so the flag is load-bearing rather than a bypass.
 
-The 2026-11-05 entries expire in a month and will block CI on that date until they
-are re-reviewed. That is the intended behaviour, not a defect, and
+The 2026-11-05 entries expire in a month and will block CI once that date passes
+until they are re-reviewed. That is the intended behaviour, not a defect, and
 `audit-production.test.mjs` asserts it rather than assuming it.
+
+One precision worth recording: `isExpired` compares against
+`new Date(reviewBy)`, which parses as midnight **UTC**, so an entry is honoured
+from 00:00 UTC on its `reviewBy` date and lapses later the same day. The practical
+effect is that an entry blocks before the calendar day is over, which is stricter
+than "expires at the end of the day" and is left as is.
 
 Metro `0.83.8` removed the vulnerable `image-size` dependency from the
 maintained `0.83.x` line by vendoring the reduced asset-dimension parser. EGA
