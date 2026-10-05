@@ -79,7 +79,7 @@ the advisory.
 | `nanoid` | GHSA-2v37-7h3g-55p8 (source 1139427) | override `nanoid -> 3.3.18` (within the `^3.3.8` parent ranges) | `npm audit` no longer lists `nanoid` |
 | `@xmldom/xmldom` | GHSA-6mj3-qw4j-hgrw, GHSA-w2rr-34g9-rvrj, GHSA-4w3w-2rp5-g8jm and related (new sources) | scoped overrides `@xmldom/xmldom@^0.9 -> 0.9.12`, `@xmldom/xmldom@^0.8 -> 0.8.15` | `npm audit` no longer lists `@xmldom/xmldom` |
 | `fast-uri` | (previously excepted, source 1130720) | resolved by the existing `fast-uri -> 3.1.7` override; no longer surfaces in the production audit | `npm audit` no longer lists `fast-uri` |
-| `brace-expansion` 1.x (six copies) | GHSA-qhr7-859c-m2p7 (`<1.1.20`), GHSA-6j4f-fj2g-mc7p (`<1.1.19`), and GHSA-q2hr-2g5m-vwhr (`<1.1.21`) | scoped override `brace-expansion@^1 -> 1.1.21`, **upgraded rather than accepted** | `npm audit` no longer lists `brace-expansion` |
+| `brace-expansion` 1.x (ten copies) | GHSA-qhr7-859c-m2p7 (`<1.1.20`), GHSA-6j4f-fj2g-mc7p (`<1.1.19`), and GHSA-q2hr-2g5m-vwhr (`<1.1.21`) | scoped override `brace-expansion@^1 -> 1.1.21`, **upgraded rather than accepted** | `npm audit` no longer lists `brace-expansion` |
 | `brace-expansion` 2.x | GHSA-qhr7-859c-m2p7 (`>=2.0.0 <2.1.6`), GHSA-6j4f-fj2g-mc7p (`>=2.0.0 <2.1.5`), GHSA-q2hr-2g5m-vwhr (`>=2.0.0 <2.1.7`) | scoped override `brace-expansion@^2 -> 2.1.7` | `npm audit` no longer lists `brace-expansion` |
 | `brace-expansion` 5.x | GHSA-qhr7-859c-m2p7 (`>=4.0.0 <5.0.11`), GHSA-6j4f-fj2g-mc7p (`>=4.0.0 <5.0.10`), GHSA-q2hr-2g5m-vwhr (`>=4.0.0 <5.0.12`) | scoped override `brace-expansion@^5 -> 5.0.12` | `npm audit` no longer lists `brace-expansion` |
 | `undici` | GHSA-rfgv-xxqx-mfg5 (`>=6.7.0 <6.28.1`), plus GHSA-3wwx-pv8p-q78v and GHSA-r53p-7pc4-xj5r | scoped override `undici@^6 -> 6.29.0` | `npm audit` no longer lists `undici` |
@@ -96,7 +96,7 @@ releases already satisfied the range its own parent declared:
 | --- | --- | --- | --- | --- | --- |
 | `<1.1.19`, `<1.1.20`, `<1.1.21` | 1.1.18 / 1.1.14 | **1.1.21** | `minimatch@3.1.5` (under `glob@7.2.3` → jest, `@react-native/codegen`, `react-native`, `rimraf`, `test-exclude`) | `^1.1.7` | yes — same major, above the floor |
 | `>=2.0.0 <2.1.5`, `<2.1.6`, `<2.1.7` | 2.1.4 | **2.1.7** | `minimatch@9.0.9` (under `expo > @expo/cli`) | `^2.0.2` | yes |
-| `>=4.0.0 <5.0.10`, `<5.0.11`, `<5.0.12` | 5.0.9 | **5.0.12** | `minimatch@10.2.6` (hoisted) | `^5.0.8` | yes |
+| `>=4.0.0 <5.0.10`, `<5.0.11`, `<5.0.12` | 5.0.9 | **5.0.12** | `minimatch@10.2.6` (under `glob@13` via `@sentry/nextjs`, and under `@expo/fingerprint`) | `^5.0.8` | yes |
 | `>=6.7.0 <6.28.1` (+ two lower severities) | 6.28.0 | **6.29.0** | `@expo/cli@54.0.27` | `^6.18.2` | yes |
 
 Because every move is inside the parent's own range, the remediation rests on
@@ -112,23 +112,31 @@ carried, because each patched release is outside all of them at once.
 **Behavioural compatibility, checked rather than assumed.** `brace-expansion`'s
 public surface differs between major lines — 1.x and 2.x export a single callable,
 5.x exports `{ expand, EXPANSION_MAX, ... }` — so each override preserves its own
-line's shape, and no line is pushed onto another's API. For each of the six
-versions (1.1.18→1.1.21, 2.1.4→2.1.7, 5.0.9→5.0.12) the patched build was executed
-and returns byte-identical output to the vulnerable build on a fixed set of ten
+line's shape, and no line is pushed onto another's API. Each of the three upgraded
+majors (1.1.18→1.1.21, 2.1.4→2.1.7, 5.0.9→5.0.12) was installed standalone and
+executed, and returns identical output to the vulnerable build on a fixed set of ten
 brace patterns (alternation, numeric and alpha ranges, nested groups, empty
 alternation, escaped braces, and a non-brace glob). The 5.x `expand` still honours
-the `max` option that `minimatch` passes, and `minimatch` is exercised for real by
-`npm run mobile:test` (jest) and `npm run mobile:bundle` (Metro export). 5.0.12 adds
-`EXPANSION_MAX_DEPTH` and `EXPANSION_MAX_REWRITES` exports; these are additive
-constants, not removals. For `undici`, `@expo/cli` imports `fetch`, `Headers`,
-`Response`, `Agent` and `EnvHttpProxyAgent`; all five are exported by 6.28.1 and
-6.29.0, both of which declare the same `node >=18.17` engine as 6.28.0.
+the `max` option that `minimatch` passes. 5.0.12 adds `EXPANSION_MAX_DEPTH` and
+`EXPANSION_MAX_REWRITES` exports; these are additive constants, not removals. For
+`undici`, `@expo/cli` imports `fetch`, `Headers`, `Response`, `Agent` and
+`EnvHttpProxyAgent`; all five are exported by 6.28.1 and 6.29.0, both of which
+declare the same `node >=18.17` engine as 6.28.0.
+
+`minimatch` — the only consumer of `brace-expansion` in this repository — is
+exercised for real rather than assumed: `npm run mobile:test` (jest, which resolves
+`minimatch@3.1.5` under five different parents) and `npm run mobile:bundle` (Metro,
+which resolves `minimatch@10.2.6` and `minimatch@9.0.9`) both pass on the patched
+tree.
 
 **Reachable surface.** Neither package is imported by any first-party source in
 `apps/`, `packages/` or `scripts/` — verified by grep. `brace-expansion` is reached
-only through `minimatch` (glob, jest, Metro, and the Expo CLI), and `undici` only
-through `expo > @expo/cli`, which is Expo build/dev tooling rather than the shipped
-app runtime. So runtime exposure was already low at this revision; the upgrade was
+only through `minimatch` (glob, jest, Metro, Sentry's bundler plugin, and the Expo
+CLI), and `undici` only through `expo > @expo/cli`, which is Expo build/dev tooling
+rather than the shipped app runtime. Neither appears in the exported Android bundle:
+`npm run mobile:bundle` exits 0 and the single emitted
+`_expo/static/js/android/entry-*.js` bundle contains zero occurrences of either
+package name. So runtime exposure was already low at this revision; the upgrade was
 taken anyway because a compatible fix existed, which is the same standard applied to
 the `next` critical above.
 
