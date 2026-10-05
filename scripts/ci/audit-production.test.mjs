@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   AUDIT_ATTEMPTS,
@@ -10,7 +14,11 @@ import {
   evaluateAuditReport,
   isValidReviewByFormat,
   isExpired,
+  main,
 } from './audit-production.mjs';
+
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const GATE_CLI = fileURLToPath(new URL('./audit-production.mjs', import.meta.url));
 
 function timeoutResult() {
   return {
@@ -18,6 +26,116 @@ function timeoutResult() {
     stderr: '',
     error: Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
   };
+}
+
+/** A report carrying one UNKNOWN high/critical advisory: nothing accepts it. */
+function unknownHighReport() {
+  return {
+    vulnerabilities: {
+      'unknown-vuln-pkg': {
+        name: 'unknown-vuln-pkg',
+        severity: 'high',
+        isDirect: false,
+        via: [
+          {
+            source: 9999999,
+            name: 'unknown-vuln-pkg',
+            severity: 'high',
+            url: 'https://github.com/advisories/GHSA-zzzz-zzzz-zzzz',
+          },
+        ],
+      },
+    },
+    metadata: { vulnerabilities: { total: 1, high: 1 } },
+  };
+}
+
+function cleanReport() {
+  return { vulnerabilities: {}, metadata: { vulnerabilities: { total: 0 } } };
+}
+
+/**
+ * Drive `main()` with a stubbed audit report and record the exit code it
+ * would leave the process with. `evaluate` and `exitCodeTarget` are the two
+ * seams `main()` exposes for exactly this; neither is allowed to change what
+ * the gate decides, which the process-level test below re-checks for real.
+ */
+function runMainWithReport(report) {
+  const exitCodeTarget = {};
+  const lines = [];
+  const errors = [];
+  const code = main({
+    runAudit: () => ({ stdout: JSON.stringify(report), stderr: '', error: undefined }),
+    // `checkWs: false` only drops the installed-ws version probe, which is a
+    // separate assertion with its own fixture; the registry decision under
+    // test is untouched.
+    evaluate: (parsed) => evaluateAuditReport(parsed, { checkWs: false }),
+    exitCodeTarget,
+    log: (line) => lines.push(line),
+    writeError: (line) => errors.push(line),
+  });
+  return { code, exitCodeTarget, stdout: lines.join('\n'), stderr: errors.join('\n') };
+}
+
+/**
+ * A `npm` shim on PATH that answers `npm audit --omit=dev --json` with a
+ * fixture report, so the gate can be run as a real child process without a
+ * registry. On Windows the shim is `npm.cmd`, matching the command `main()`
+ * itself selects.
+ */
+function makeNpmStub() {
+  const dir = mkdtempSync(path.join(tmpdir(), 'audit-production-npm-stub-'));
+  const reportPath = path.join(dir, 'report.json');
+  const name = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+  writeFileSync(
+    path.join(dir, name),
+    [
+      process.platform === 'win32'
+        ? `@node "%~dp0stub.mjs" %*`
+        : '#!/bin/sh\nexec node "$(dirname "$0")/stub.mjs" "$@"',
+      '',
+    ].join('\n'),
+  );
+  chmodSync(path.join(dir, name), 0o755);
+  writeFileSync(
+    path.join(dir, 'stub.mjs'),
+    [
+      'import { readFileSync } from "node:fs";',
+      'import { argv } from "node:process";',
+      `const report = JSON.parse(readFileSync(${JSON.stringify(reportPath)}, "utf8"));`,
+      'const expected = ["audit", "--omit=dev", "--json"];',
+      'if (argv.slice(2).join(" ") !== expected.join(" ")) {',
+      '  process.stderr.write(`stub npm called with ${argv.slice(2).join(" ")}\\n`);',
+      '  process.exit(64);',
+      '}',
+      'process.stdout.write(JSON.stringify(report));',
+      '',
+    ].join('\n'),
+  );
+
+  return {
+    dir,
+    reportPath,
+    setReport(report) {
+      writeFileSync(reportPath, JSON.stringify(report));
+    },
+    cleanup() {
+      rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Run the shipped gate CLI with the stub `npm` first on PATH. */
+function runGateCli(stub, report) {
+  stub.setReport(report);
+  return spawnSync(process.execPath, [GATE_CLI], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: {
+      ...process.env,
+      PATH: `${stub.dir}${path.delimiter}${process.env.PATH}`,
+    },
+  });
 }
 
 test('dependency audit retries a timeout with a bounded child-process timeout', () => {
@@ -37,6 +155,84 @@ test('dependency audit retries a timeout with a bounded child-process timeout', 
   assert.equal(calls[0].options.timeout, AUDIT_TIMEOUT_MS);
   assert.equal(calls[0].options.killSignal, 'SIGKILL');
   assert.match(result.stdout, /vulnerabilities/);
+});
+
+// --- 2026-10-05: the gate's BLOCKING behaviour was documented, not proven.
+//
+// `main()` ends by setting `process.exitCode = 1` when anything blocks, and the
+// architecture map calls that failing exit code the gate's evidence ("The gate
+// is a CI check with a failing exit code - that is the evidence"). Nothing in
+// the repository executed that branch: `ci:workspace` runs this file plus
+// `workspace-proofs.mjs`, neither of which spawns the live audit, and deleting
+// the branch entirely left this file at 24/24 green. The tests below drive the
+// real function and the real CLI so the branch is load-bearing.
+
+test('the audit gate sets a failing exit code for an unknown high/critical advisory', () => {
+  // No exceptions are injected, so `evaluateAuditReport` reads the SHIPPED
+  // registry - the same one the workflow step reads. This is the decision the
+  // gate exists to make.
+  const { code, exitCodeTarget, stdout } = runMainWithReport(unknownHighReport());
+
+  assert.equal(code, 1, 'main() must report the failing exit code it set');
+  assert.equal(
+    exitCodeTarget.exitCode,
+    1,
+    'a report carrying one unknown high/critical advisory must leave the process a failing exit code',
+  );
+  // The JSON it prints is the diagnosis an operator reads, so the blocking
+  // finding has to be in it rather than only in the exit code.
+  assert.match(stdout, /unknown high\/critical advisory/);
+});
+
+test('the audit gate exits zero for a clean report', () => {
+  const { code, exitCodeTarget } = runMainWithReport(cleanReport());
+
+  // A clean report must never write a failing exit code. It deliberately
+  // leaves the default alone rather than writing 0, so this asserts the
+  // absence of any assignment rather than the presence of a specific value.
+  assert.notEqual(exitCodeTarget.exitCode, 1, 'a clean report must not fail the gate');
+  assert.equal(exitCodeTarget.exitCode, undefined, 'a clean report writes no exit code at all');
+  assert.equal(code, 0);
+});
+
+test('the audit gate fails closed when the audit command itself fails', () => {
+  // The other exit path: no evidence at all is not evidence of no findings.
+  const exitCodeTarget = {};
+  const errors = [];
+  const code = main({
+    runAudit() { throw new Error('npm audit returned no JSON'); },
+    exitCodeTarget,
+    log: () => {},
+    writeError: (line) => errors.push(line),
+  });
+
+  assert.equal(exitCodeTarget.exitCode, 1);
+  assert.equal(code, 1);
+  assert.match(errors.join(''), /npm audit returned no JSON/);
+});
+
+test('the audit gate CLI exits non-zero on an unknown advisory and zero on a clean report', () => {
+  // Process-level, because that is the level CI observes. `main()` is only
+  // reachable as a child process with a stubbed `npm` on PATH, which is the
+  // only way to prove the shipped entry point (`process.argv[1] === this
+  // file`) really maps a blocking report onto a non-zero process status
+  // rather than onto a return value nobody reads.
+  const stub = makeNpmStub();
+
+  try {
+    const blocked = runGateCli(stub, unknownHighReport());
+    assert.equal(
+      blocked.status,
+      1,
+      `the CLI must exit non-zero on an unknown high/critical advisory (stdout: ${blocked.stdout}, stderr: ${blocked.stderr})`,
+    );
+    assert.match(blocked.stdout, /unknown high\/critical advisory/);
+
+    const clean = runGateCli(stub, cleanReport());
+    assert.equal(clean.status, 0, `a clean report must exit 0 (stderr: ${clean.stderr})`);
+  } finally {
+    stub.cleanup();
+  }
 });
 
 test('dependency audit fails closed after bounded timeout retries', () => {

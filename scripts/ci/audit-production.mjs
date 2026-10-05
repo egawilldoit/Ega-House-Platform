@@ -320,20 +320,48 @@ export function evaluateAuditReport(report, options = {}) {
   };
 }
 
-export function main() {
+/**
+ * The one behaviour the architecture map calls this gate's evidence: the
+ * workflow step fails. CI observes nothing else about this script - not the
+ * JSON on stdout, not the evaluation object - only the process exit code, so
+ * the exit code is the part that has to be reachable from a test.
+ *
+ * Every dependency `main()` touches is therefore injectable, with the shipped
+ * behaviour as the default, so the shipped path (`node
+ * scripts/ci/audit-production.mjs`) is unchanged while a test can drive the
+ * same function with a stubbed `npm audit` report and observe the code the
+ * process would exit with:
+ *
+ *   runAudit        the child process (defaults to runAuditCommand)
+ *   evaluate        report -> evaluation (defaults to evaluateAuditReport)
+ *   exitCodeTarget  the object whose `exitCode` is set (defaults to process)
+ *   log/writeError  stdout/stderr sinks, so a test reads no process streams
+ *
+ * `evaluate` and `exitCodeTarget` exist so that a test can isolate one
+ * concern from another; neither changes what the gate decides. Deleting the
+ * blocking branch below therefore cannot survive `audit-production.test.mjs`,
+ * which drives the real process through this function AND through the CLI.
+ */
+export function main({
+  runAudit = runAuditCommand,
+  evaluate = evaluateAuditReport,
+  exitCodeTarget = process,
+  log = (line) => console.log(line),
+  writeError = (line) => process.stderr.write(line),
+} = {}) {
   let result;
   try {
-    result = runAuditCommand();
+    result = runAudit();
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = 1;
-    return;
+    writeError(`${error instanceof Error ? error.message : String(error)}\n`);
+    exitCodeTarget.exitCode = 1;
+    return 1;
   }
 
   const report = JSON.parse(result.stdout);
-  const evaluation = evaluateAuditReport(report);
+  const evaluation = evaluate(report);
 
-  console.log(
+  log(
     JSON.stringify(
       {
         counts: report.metadata?.vulnerabilities,
@@ -346,8 +374,14 @@ export function main() {
   );
 
   if (evaluation.blockingHighCritical.length > 0) {
-    process.exitCode = 1;
+    exitCodeTarget.exitCode = 1;
+    return 1;
   }
+
+  // Nothing is written to `exitCodeTarget` on this path: zero is already the
+  // process default, and clobbering it would mask an exit code something else
+  // set. The returned 0 is what makes the clean case observable to a caller.
+  return 0;
 }
 
 const entryUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
