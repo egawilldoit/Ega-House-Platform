@@ -34,6 +34,11 @@
  *                     order with no INCLUDE columns, its partial predicate is
  *                     exactly `mcp_operation_id IS NOT NULL`, and no second
  *                     index duplicates that shape.
+ *   COVERAGE        - the operation identity is proven on EXACTLY these five
+ *                     tables and on no others, and each key column still has
+ *                     the type the identity depends on. Every other phase
+ *                     iterates this list, so without this a table that later
+ *                     received the same fence would be silently unproven.
  *   DUPLICATE       - per fenced table: a second row carrying the same
  *                     (owner, client, operation) is refused with SQLSTATE 23505
  *                     and `error.constraint` equal to that table's operation
@@ -110,6 +115,15 @@ const PAIRING_MIGRATION = "0074_mcp_operation_identity_pair";
 const FENCE_KEY_COLUMNS = ["owner_user_id", "mcp_client_id", "mcp_operation_id"];
 const FENCE_PREDICATE = "mcp_operation_id IS NOT NULL";
 const PAIRING_PREDICATE = "(mcp_operation_id IS NULL) = (mcp_client_id IS NULL)";
+
+// The identity's column types, stated once for the same reason. A widened
+// mcp_client_id, or an mcp_operation_id that is no longer uuid, would leave
+// every CATALOG string assertion true while changing what the identity means.
+const FENCE_KEY_TYPES = {
+  owner_user_id: "uuid",
+  mcp_client_id: "text",
+  mcp_operation_id: "uuid",
+};
 
 const OWNER_MAIN = "11110000-0000-4000-8000-000000000001";
 const OWNER_OTHER = "11110000-0000-4000-8000-000000000002";
@@ -331,7 +345,7 @@ const FENCES = [
     incidentalNote:
       "task_reminders_owner_source_source_id_unique only covers rows whose source and source_id " +
       "are both set, and every attempt here leaves both NULL",
-    insert: ({ id, owner, operationId, clientId, tag, taskId }) => ({
+    insert: ({ id, owner, operationId, clientId, taskId }) => ({
       text: `INSERT INTO public.task_reminders
                (id, owner_user_id, task_id, remind_at, mcp_operation_id, mcp_client_id)
              VALUES ($1::uuid, $2::uuid, $3::uuid, '2031-01-02T03:04:05Z', $4::uuid, $5)${RETURNING_ID}`,
@@ -348,7 +362,7 @@ const FENCES = [
       "operation id, so every task_sessions attempt here inserts a CLOSED session; the first " +
       "row of the pair is closed before the duplicate is attempted, which excludes it from that " +
       "index's predicate entirely",
-    insert: ({ id, owner, operationId, clientId, tag, taskId }) => ({
+    insert: ({ id, owner, operationId, clientId, taskId }) => ({
       text: `INSERT INTO public.task_sessions
                (id, owner_user_id, task_id, started_at, ended_at, duration_seconds,
                 mcp_operation_id, mcp_client_id)
@@ -723,6 +737,54 @@ async function runCatalogProof(sql) {
 }
 
 /**
+ * COVERAGE: every other phase iterates FENCES, so a table that later received
+ * the same 0059 columns and its own operation index would be fenced by exactly
+ * the same contract while being silently unproven. Asserting the SET closes
+ * that in both directions - a fenced table that is not in FENCES, and a table in
+ * FENCES that is no longer fenced.
+ *
+ * It also pins the three key column TYPES, which no other phase asserts.
+ */
+async function runCoverageProof(sql) {
+  const fencedTables = FENCES.map((fence) => fence.table).sort();
+  for (const column of ["mcp_operation_id", "mcp_client_id"]) {
+    const rows = await sql.unsafe(
+      `SELECT table_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND column_name = $1
+        ORDER BY table_name`,
+      [column],
+    );
+    const actual = rows.map((row) => row.table_name);
+    assert(
+      JSON.stringify(actual) === JSON.stringify(fencedTables),
+      `COVERAGE ${column} must exist on exactly the ${fencedTables.length} operation-fenced tables [${fencedTables.join(", ")}]; got [${actual.join(", ")}]`,
+    );
+  }
+
+  for (const fence of FENCES) {
+    const rows = await sql.unsafe(
+      `SELECT column_name, data_type
+         FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1
+          AND column_name = ANY($2::text[])`,
+      [fence.table, FENCE_KEY_COLUMNS],
+    );
+    const types = Object.fromEntries(rows.map((row) => [row.column_name, row.data_type]));
+    for (const [column, expectedType] of Object.entries(FENCE_KEY_TYPES)) {
+      assert(
+        types[column] === expectedType,
+        `COVERAGE ${fence.table}.${column} must be ${expectedType} for the operation identity; got ${types[column] ?? "missing"}`,
+      );
+    }
+  }
+  log(
+    "COVERAGE",
+    `The operation identity is proven on exactly [${fencedTables.join(", ")}], and every key column has its expected type.`,
+  );
+}
+
+/**
  * DUPLICATE: the core repair. Each second attempt repeats the operation
  * identity and changes everything else the table can collide on, and the
  * refusal must name this table's operation index and nothing else.
@@ -954,14 +1016,6 @@ async function runIncidentalProof(sql) {
       // disjunctive proof satisfiable. Closing it then proves the same owner
       // can create again, which is what lets DUPLICATE attribute its own
       // refusal to the operation index alone.
-      const open = fence.insert({
-        id: nextUuid(),
-        owner: OWNER_INCIDENTAL,
-        operationId: nextUuid(),
-        clientId: CLIENT_MAIN,
-        tag: `${tag}-open`,
-        ...fixtures,
-      });
       // fence.insert always produces a CLOSED session, which is what keeps the
       // open-session index out of the DUPLICATE attribution. The incidental
       // index needs the opposite case, so this is an explicit open-session
@@ -1323,6 +1377,7 @@ async function main() {
 
     await runPairingProof(sql, applyPairingMigration);
     await runCatalogProof(sql);
+    await runCoverageProof(sql);
     await runDuplicateProof(sql);
     await runScopeProof(sql);
     await runIncidentalProof(sql);
