@@ -43,7 +43,7 @@
 ## Audit / Rate limits
 
 - **Audit:** `agent_integration_events` with `grant_id`, `toolName`, `outcome`, `durationMs`, `metadata{resultCount, retryAfter, operationId}`. MCP OAuth audit persistence uses migration `0061_mcp_audit_event_rpc`: a claim-bound `SECURITY DEFINER` RPC derives owner/client/resource and the active grant from JWT context while direct OAuth table INSERT remains blocked. Mutation path writes receipt before success, so audit failure does not cause duplicate (retry replays receipt).
-- **Rate limits:** `consume_mcp_rate_limit(tool, limit, window)` SECURITY DEFINER, checks grant existence, fixed window per (owner,client,tool). Default: reads 120/60s, writes 30/60s. `auditedReadHandlers` already wraps reads; writes to use same.
+- **Rate limits:** `consume_mcp_rate_limit(window_name)` SECURITY DEFINER, checks grant existence, fixed window per `(owner, client, window name)`. **Default: 120/60s for every tool** — this line previously claimed `reads 120/60s, writes 30/60s` and that write path never existed. Each call also consumes a risk-class aggregate bucket (`ega_aggregate_read` 600/60s, `ega_aggregate_write` 300/60s, `ega_aggregate_sensitive_write` 60/60s) so total throughput cannot multiply as the tool count grows. The allowance and window length are derived inside the RPC and are **not** caller-supplied: until `drizzle/0071` both were arguments, and because the conflict handler treats a window mismatch as a fresh bucket one extra RPC call reset the counter while `p_limit=10000` disabled the limit outright. The three-argument overload is dropped, so passing a limit or window now fails rather than quietly succeeding. `auditedReadHandlers` already wraps reads; writes to use same.
 
 ## Rollback
 

@@ -191,11 +191,6 @@ export function getPermissionsForProfile(
   return [...document];
 }
 
-export function getCurrentPermissionsForProfile(
-  profile: McpPermissionProfile,
-): McpPermission[] {
-  return getPermissionsForProfile(profile, CURRENT_MCP_PERMISSION_VERSION);
-}
 
 /** Every profile/version pair this build can authorise. */
 export function listPermissionDocuments(): ReadonlyArray<{

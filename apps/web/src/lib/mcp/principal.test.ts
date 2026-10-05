@@ -145,7 +145,10 @@ describe("resolveMcpPrincipal", () => {
     expect(() =>
       resolveMcpPrincipal(CLAIMS, {
         ...ACTIVE_GRANT,
-        permissionsVersion: 0,
+        // Deliberately outside McpPermissionVersion: the point of the case is
+        // that an out-of-contract stored value is rejected at runtime, which is
+        // only observable by constructing one the type forbids.
+        permissionsVersion: 0 as never,
       }),
     ).toThrowError(
       expect.objectContaining({ code: "PERMISSION_DENIED", status: 403 }),

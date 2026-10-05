@@ -498,6 +498,20 @@
       "when": 1787880000020,
       "tag": "0070_mcp_referential_ownership_isolation",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1787880000021,
+      "tag": "0071_mcp_rate_limit_and_fence_classification",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1787880000022,
+      "tag": "0072_mcp_write_implies_read_back",
+      "breakpoints": true
     }
   ]
 }

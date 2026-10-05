@@ -17,7 +17,7 @@ export type McpGrantRecord = {
   status: McpGrantStatus;
   permissionProfile: string;
   permissions: unknown;
-  permissionsVersion: number;
+  permissionsVersion: McpPermissionVersion;
 };
 
 export type McpPrincipal = {

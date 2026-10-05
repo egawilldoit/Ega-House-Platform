@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import { parsePermissionProfile, parsePermissionVersion } from "@/lib/mcp/permissions";
 import type { McpGrantRecord } from "@/lib/mcp/principal";
 
 function isNonEmptyString(value: unknown): value is string {
@@ -18,17 +19,31 @@ function mapGrantRow(value: unknown): McpGrantRecord {
   }
 
   const row = value;
+
+  // Narrowed here, not only inside the principal resolver. Validating
+  // permissions_version as "integer >= 1" accepted a row claiming a future or
+  // foreign version and then propagated that unvalidated number into
+  // McpGrantRecord and the MRTR confirmation binding. The database CHECK caps
+  // the column today, so this is defence in depth rather than a live
+  // escalation - but the invariant belongs at the boundary that reads the row,
+  // not at one layer further in.
+  let permissionProfile;
+  let permissionsVersion;
+  try {
+    permissionProfile = parsePermissionProfile(row.permission_profile);
+    permissionsVersion = parsePermissionVersion(row.permissions_version);
+  } catch {
+    throw new Error("Invalid EGA MCP authorization grant record.");
+  }
+
   if (
     !isNonEmptyString(row.id)
     || !isNonEmptyString(row.owner_user_id)
     || !isNonEmptyString(row.oauth_client_id)
     || !isNonEmptyString(row.resource_uri)
     || row.status !== "active"
-    || !isNonEmptyString(row.permission_profile)
     || !Array.isArray(row.permissions)
     || !row.permissions.every((permission) => typeof permission === "string")
-    || !Number.isInteger(row.permissions_version)
-    || (row.permissions_version as number) < 1
   ) {
     throw new Error("Invalid EGA MCP authorization grant record.");
   }
@@ -39,9 +54,9 @@ function mapGrantRow(value: unknown): McpGrantRecord {
     oauthClientId: row.oauth_client_id,
     resourceUri: row.resource_uri,
     status: "active",
-    permissionProfile: row.permission_profile,
+    permissionProfile,
     permissions: row.permissions,
-    permissionsVersion: row.permissions_version as number,
+    permissionsVersion,
   };
 }
 

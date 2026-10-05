@@ -22,10 +22,8 @@ describe("consumeMcpRateLimit", () => {
     await expect(
       consumeMcpRateLimit(client, "ega_list_projects"),
     ).resolves.toEqual({ allowed: true, retryAfterSeconds: 0 });
-    expect(rpc).toHaveBeenCalledWith("consume_mcp_rate_limit", {
-      p_tool_name: "ega_list_projects",
-      p_limit: 120,
-      p_window_seconds: 60,
+    expect(rpc).toHaveBeenNthCalledWith(1, "consume_mcp_rate_limit", {
+      p_window_name: "ega_list_projects",
     });
   });
 
@@ -59,36 +57,32 @@ describe("consumeMcpRateLimit", () => {
     expect(rpc).not.toHaveBeenCalled();
   });
 
-  it("adds no aggregate round trip when every aggregate bucket is disabled", async () => {
+  it("always consumes the risk-class aggregate bucket after the tool window", async () => {
     const { client, rpc } = createClient({
       data: [{ allowed: true, retry_after_seconds: 0 }],
       error: null,
     });
 
-    await expect(consumeMcpRateLimit(client, "ega_list_projects")).resolves.toEqual({
-      allowed: true,
-      retryAfterSeconds: 0,
-    });
-    expect(rpc).toHaveBeenCalledTimes(1);
-  });
-
-  it("also consumes the risk-class aggregate bucket when one is configured", async () => {
-    const { client, rpc } = createClient({
-      data: [{ allowed: true, retry_after_seconds: 0 }],
-      error: null,
-    });
-
-    await consumeMcpRateLimit(client, "ega_list_projects", {
-      read: 600,
-      write: 0,
-      sensitive_write: 0,
-    });
+    await consumeMcpRateLimit(client, "ega_list_projects");
 
     expect(rpc).toHaveBeenCalledTimes(2);
+    // The limit and window length are derived in the database. A client must not
+    // be able to widen its own allowance by choosing them.
     expect(rpc).toHaveBeenNthCalledWith(2, "consume_mcp_rate_limit", {
-      p_tool_name: "ega_aggregate_read",
-      p_limit: 600,
-      p_window_seconds: 60,
+      p_window_name: "ega_aggregate_read",
+    });
+  });
+
+  it("buckets a write capability under the write aggregate, not the read one", async () => {
+    const { client, rpc } = createClient({
+      data: [{ allowed: true, retry_after_seconds: 0 }],
+      error: null,
+    });
+
+    await consumeMcpRateLimit(client, "ega_create_task");
+
+    expect(rpc).toHaveBeenNthCalledWith(2, "consume_mcp_rate_limit", {
+      p_window_name: "ega_aggregate_write",
     });
   });
 
@@ -100,16 +94,14 @@ describe("consumeMcpRateLimit", () => {
     const client = { rpc } as unknown as SupabaseClient<McpDatabase>;
 
     await expect(
-      consumeMcpRateLimit(client, "ega_create_task", { read: 0, write: 5, sensitive_write: 0 }),
+      consumeMcpRateLimit(client, "ega_create_task"),
     ).resolves.toEqual({ allowed: false, retryAfterSeconds: 41 });
     expect(rpc).toHaveBeenNthCalledWith(2, "consume_mcp_rate_limit", {
-      p_tool_name: "ega_aggregate_write",
-      p_limit: 5,
-      p_window_seconds: 60,
+      p_window_name: "ega_aggregate_write",
     });
   });
 
-  it("fails closed when a configured aggregate bucket cannot be evaluated", async () => {
+  it("fails closed when the aggregate bucket cannot be evaluated", async () => {
     const rpc = vi
       .fn()
       .mockResolvedValueOnce({ data: [{ allowed: true, retry_after_seconds: 0 }], error: null })
@@ -117,7 +109,7 @@ describe("consumeMcpRateLimit", () => {
     const client = { rpc } as unknown as SupabaseClient<McpDatabase>;
 
     await expect(
-      consumeMcpRateLimit(client, "ega_list_projects", { read: 600, write: 0, sensitive_write: 0 }),
+      consumeMcpRateLimit(client, "ega_list_projects"),
     ).rejects.toThrow("Failed to enforce EGA MCP rate limit.");
   });
 

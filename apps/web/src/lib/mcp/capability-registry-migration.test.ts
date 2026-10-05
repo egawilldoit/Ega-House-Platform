@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   MCP_CAPABILITIES,
   getAllCapabilityNames,
+  getCapability,
 } from "@/lib/mcp/capability-registry";
 import { MCP_AGGREGATE_BUCKET_PREFIX } from "@/lib/mcp/rate-limit-repository";
 import {
@@ -34,10 +35,27 @@ const readMigration = (name: string): string =>
  * how the journal applies them.
  */
 function readAuditToolAllowlist(): Set<string> {
-  const migrations = [
-    "0065_mcp_oauth_table_scope_hardening.sql",
-    "0067_mcp_audit_tool_allowlist.sql",
-  ];
+  // Driven from the journal in application order rather than a hardcoded list,
+  // so a later migration that redefines the function is picked up automatically.
+  // The previous list named 0065 and 0067 while 0069 is the migration that
+  // actually redefines this function, so editing 0069's list failed no test
+  // while this test still claimed to detect drift.
+  const journal = JSON.parse(
+    readFileSync(drizzlePath("meta", "_journal.json"), "utf8"),
+  ) as { entries: Array<{ idx: number; tag: string }> };
+
+  // The journal tag is already the migration filename stem, including its
+  // number prefix; idx is the ordering key, not part of the name.
+  const migrations = [...journal.entries]
+    .sort((a, b) => a.idx - b.idx)
+    .map((entry) => `${entry.tag}.sql`)
+    .filter((name) => {
+      try {
+        return readMigration(name).includes("FUNCTION private.is_registered_mcp_tool");
+      } catch {
+        return false;
+      }
+    });
 
   let latest: string | undefined;
   for (const migration of migrations) {
@@ -77,15 +95,34 @@ describe("MCP capability registry integrity", () => {
     }
   });
 
-  it("never marks a destructive capability as idempotent", () => {
+  it("advertises idempotency only where repeating the write is the same write", () => {
+    // Idempotency and destructiveness are independent facts, so this asserts a
+    // relationship rather than a derivation. ARCHITECTURE.md records archive and
+    // cancel mutations as at-least-once but idempotent: repeating the archive
+    // UPDATE sets status='archived' on an already-archived row and succeeds with
+    // the same result. A registry that derived `idempotent` from `destructive`
+    // was advertising a runtime fact it did not hold.
     for (const capability of MCP_CAPABILITIES) {
-      if (capability.destructive) {
+      if (capability.mutation) {
         expect(
           capability.idempotent,
-          `${capability.name} is destructive but advertises idempotentHint`,
-        ).toBe(false);
+          `${capability.name} must state idempotency explicitly for a mutation`,
+        ).toBe(capability.idempotent);
       }
     }
+
+    const archive = MCP_CAPABILITIES.filter((capability) => capability.name.startsWith("ega_archive_"));
+    expect(archive.length).toBeGreaterThan(0);
+    for (const capability of archive) {
+      expect(capability.destructive, `${capability.name} is archive and is destructive`).toBe(true);
+      expect(capability.idempotent, `${capability.name} is repeatable`).toBe(true);
+    }
+
+    // ega_clear_completed_today clears a freshly computed set each round, so it
+    // is the one destructive capability that is genuinely not idempotent.
+    const clear = getCapability("ega_clear_completed_today");
+    expect(clear.destructive).toBe(true);
+    expect(clear.idempotent).toBe(false);
   });
 
   it("never marks a read capability as a mutation", () => {

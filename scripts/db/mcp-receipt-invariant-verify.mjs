@@ -960,7 +960,7 @@ async function proveDomainConcurrency(
   const winners = outcomes.filter((outcome) => outcome.ok);
   const losers = outcomes.filter((outcome) => !outcome.ok);
   const describe = outcomes
-    .map((outcome, index) => (outcome.ok ? "ok" : `${outcome.error?.code}: ${postgresErrorText(outcome.error)}`))
+    .map((outcome) => (outcome.ok ? "ok" : `${outcome.error?.code}: ${postgresErrorText(outcome.error)}`))
     .join(" | ");
   assert(winners.length === 1, `${label} concurrency must have one winner; outcomes: ${describe}`);
   assert(losers.length === attemptIds.length - 1, `${label} concurrency must fence all other attempts`);
@@ -1048,7 +1048,7 @@ async function runDomainFencingProof(sql) {
     firstParams: [DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_PROJECT_OP, CLIENT_ID],
     retryParams: ["88888888-8888-4888-8888-888888888826", OWNER_A, DOMAIN_PROJECT_OP, CLIENT_ID],
   });
-  const domainGoalId = await proveDomainCrashReplay(sql, {
+  await proveDomainCrashReplay(sql, {
     label: "GOAL_CREATE",
     table: "goals",
     indexNames: ["goals_mcp_operation_unique"],
@@ -1068,7 +1068,7 @@ async function runDomainFencingProof(sql) {
     firstParams: [DOMAIN_TASK_ID, domainProjectId, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
     retryParams: ["88888888-8888-4888-8888-888888888828", domainProjectId, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
   });
-  const domainReminderId = await proveDomainCrashReplay(sql, {
+  await proveDomainCrashReplay(sql, {
     label: "REMINDER_CREATE",
     table: "task_reminders",
     indexNames: ["task_reminders_mcp_operation_unique"],
@@ -1078,7 +1078,7 @@ async function runDomainFencingProof(sql) {
     firstParams: [DOMAIN_REMINDER_ID, OWNER_A, domainTaskId, DOMAIN_REMINDER_OP, CLIENT_ID],
     retryParams: ["88888888-8888-4888-8888-888888888829", OWNER_A, domainTaskId, DOMAIN_REMINDER_OP, CLIENT_ID],
   });
-  const domainSessionId = await proveDomainCrashReplay(sql, {
+  await proveDomainCrashReplay(sql, {
     label: "SESSION_CREATE",
     table: "task_sessions",
     indexNames: ["task_sessions_mcp_operation_unique", "task_sessions_owner_open_unique"],
