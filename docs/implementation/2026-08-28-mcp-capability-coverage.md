@@ -56,7 +56,7 @@ catalog. Historical evidence and repair ledgers remain unchanged snapshots.
 
 | Capability | Application | Storage | RW | MCP candidate | Permission | MRTR | Idempotency | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| get today plan | `getTodayPlan` | derived from `tasks` + `task_sessions` | R | `ega_get_today_plan` | `tasks.read` | no | n/a | EXPOSE |
+| get today plan | `getTodayPlan` | derived from `tasks` + `task_sessions` | R | `ega_get_today_plan` | `today.read` | no | n/a | EXPOSE |
 | plan task for today | `planTaskForToday` | `tasks.planned_for_date` UPDATE | W | `ega_plan_task_for_today` | `today.update` | no | operationId | EXPOSE — at-least-once, idempotent |
 | remove from today | `removeTaskFromToday` | `tasks.planned_for_date` null | W | `ega_remove_task_from_today` | `today.update` | no | operationId | EXPOSE — at-least-once, idempotent |
 | update today task status | `updateTodayTaskStatus` | `tasks` UPDATE status via Today port | W | `ega_update_today_task_status` | `today.update` | no | operationId | EXPOSE — at-least-once, idempotent |

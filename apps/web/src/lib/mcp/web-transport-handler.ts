@@ -51,6 +51,10 @@ export function createMcpPreflightResponse(
     "Access-Control-Allow-Methods": MCP_PREFLIGHT_METHODS,
     "Access-Control-Allow-Headers": MCP_PREFLIGHT_REQUEST_HEADERS,
     "Access-Control-Max-Age": MCP_PREFLIGHT_MAX_AGE_SECONDS,
+    // 204 is heuristically cacheable, this body is origin-dependent, and the
+    // Max-Age is 24h. Every sibling response on this route is no-store; this one
+    // was not, so correctness rested entirely on Vary surviving.
+    "Cache-Control": "no-store",
     Vary: "Origin",
   };
 
@@ -60,6 +64,38 @@ export function createMcpPreflightResponse(
   }
 
   return new Response(null, { status: 204, headers });
+}
+
+/**
+ * The allow-origin the preflight advertised, applied to the actual response.
+ *
+ * Preflight and POST share one verdict, but until this the contract differed:
+ * preflight returned `Access-Control-Allow-Origin` and the authenticated POST
+ * returned none, so a cross-origin browser client that preflighted successfully
+ * had its response discarded for lack of the header. Echoing the same value
+ * here is what makes it one contract rather than one verdict.
+ *
+ * Only ever the exact resource origin - `validateMcpOrigin` has already refused
+ * anything else - so this cannot widen the policy.
+ */
+export function applyMcpCorsHeaders(
+  request: Request,
+  headers: Headers,
+  expectedOrigin: string,
+): Headers {
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).origin === expectedOrigin) {
+        headers.set("Access-Control-Allow-Origin", expectedOrigin);
+      }
+    } catch {
+      // validateMcpOrigin already rejected an unparseable Origin; nothing to do.
+    }
+  }
+  headers.set("Vary", "Origin");
+  headers.append("Cache-Control", "no-store");
+  return headers;
 }
 
 function invalidRequest(description: string, status: 400 | 403 | 413 | 421 = 400): Response {
@@ -78,7 +114,10 @@ export function validateMcpHost(request: Request, expectedHost: string): Respons
 
   let host: string;
   try {
-    host = new URL(`http://${hostHeader}`).host;
+    // https, not http: `new URL('http://host:80').host` strips the default 80 and
+    // normalises onto the resource host, so an explicit port 80 was accepted
+    // against an https-only resource.
+    host = new URL(`https://${hostHeader}`).host;
   } catch {
     return invalidRequest("Invalid Host header.");
   }
@@ -267,6 +306,17 @@ export function createWebMcpHandler(
     // The SDK's createMcpHandler validates them against body; we just ensure we don't treat them as auth
     // No authorization derived from Mcp-Method/Mcp-Name/Mcp-Param-* or body owner fields
 
-    return (handler.fetch as unknown as (r: Request, o?: unknown) => Promise<Response>)(limitedRequest, authInfo ? { authInfo } : undefined);
+    // No cast: McpHttpHandler.fetch is already
+  // (request, options?: { authInfo?: AuthInfo; parsedBody?: unknown }) => Promise<Response>.
+  // The cast suppressed type checking over the AUTHENTICATION hand-off, which is
+  // the one place where a silent rename would drop authInfo and leave every
+  // request with zero registered tools.
+  const response = await handler.fetch(
+    limitedRequest,
+    authInfo ? { authInfo } : undefined,
+  );
+  const headers = new Headers(response.headers);
+  applyMcpCorsHeaders(request, headers, expectedOrigin);
+  return new Response(response.body, { status: response.status, headers });
   };
 }

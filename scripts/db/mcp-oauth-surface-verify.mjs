@@ -712,16 +712,17 @@ async function assertColumnFence(sql) {
          project_id, title, focus_rank, archived_at, archived_by, created_at,
          scheduled_start_at, scheduled_end_at, calendar_sync_enabled,
          calendar_reminder_minutes, calendar_event_id, calendar_sync_status,
-         calendar_sync_failure_reason
+         calendar_sync_failure_reason, updated_at, completed_at
        ) VALUES (
          $1::uuid, 'fenced insert', 999, now(), $2::uuid,
          '2000-01-01T00:00:00Z'::timestamptz,
          now() + interval '1 day', now() + interval '2 days', true, 999,
-         'forged-gcal-event', 'synced', 'forged'
+         'forged-gcal-event', 'synced', 'forged',
+         '2000-01-01T00:00:00Z'::timestamptz, '2000-01-01T00:00:00Z'::timestamptz
        ) RETURNING id, focus_rank, archived_at, archived_by, created_at,
          scheduled_start_at, scheduled_end_at, calendar_sync_enabled,
          calendar_reminder_minutes, calendar_event_id, calendar_sync_status,
-         calendar_sync_failure_reason`,
+         calendar_sync_failure_reason, created_at, updated_at, completed_at`,
       [PROJECT_A, OWNER_A],
     );
     assert(row, "the INSERT must succeed so the reset can be observed");
@@ -729,6 +730,8 @@ async function assertColumnFence(sql) {
     assert(row.archived_at === null, `archived_at must be reset, got ${row.archived_at}`);
     assert(row.archived_by === null, `archived_by must be reset, got ${row.archived_by}`);
     assert(row.created_at.getFullYear() >= 2024, `created_at must be reset to now(), got ${row.created_at}`);
+    assert(row.updated_at.getFullYear() >= 2024, `updated_at must be reset to now(), got ${row.updated_at}`);
+    assert(row.completed_at === null, `completed_at must be reset, got ${row.completed_at}`);
     assert(row.scheduled_start_at === null, "scheduled_start_at must be reset");
     assert(row.scheduled_end_at === null, "scheduled_end_at must be reset");
     assert(row.calendar_sync_enabled === false, "calendar_sync_enabled must be reset to its default");
@@ -757,16 +760,17 @@ async function assertColumnFence(sql) {
   await session.run(async (tx) => {
     const [row] = await tx.unsafe(
       `INSERT INTO public.task_reminders (
-         task_id, remind_at, channel, delivery_mode, status, sent_at,
+         id, task_id, remind_at, channel, delivery_mode, status, sent_at,
          processed_at, processing_error, failure_reason, source, source_id, created_at
-       ) VALUES ($1::uuid, now() + interval '2 hours', 'email', 'email', 'sent', now(),
+       ) VALUES ($1::uuid, $2::uuid, now() + interval '2 hours', 'email', 'email', 'sent', now(),
          now(), 'forged', 'forged', 'forged-src', 'forged-src-1',
          '2000-01-01T00:00:00Z'::timestamptz)
        RETURNING id, status, sent_at, processed_at, processing_error,
          failure_reason, source, source_id, created_at`,
-      [TASK_A],
+      ["88888888-8888-4888-8888-8888888888f2", TASK_A],
     );
     assert(row.status === "pending", `a reminder must be created pending, got ${row.status}`);
+    assert(row.id !== "88888888-8888-4888-8888-8888888888f2", "a caller-chosen reminder id must be replaced by the default");
     for (const column of ["sent_at", "processed_at", "processing_error", "failure_reason", "source", "source_id"]) {
       assert(row[column] === null, `task_reminders.${column} must be reset, got ${row[column]}`);
     }
@@ -792,25 +796,33 @@ async function assertColumnFence(sql) {
 
   await session.run(async (tx) => {
     const [row] = await tx.unsafe(
-      `INSERT INTO public.goals (project_id, title, slug, description, created_at)
-       VALUES ($1::uuid, 'create only probe', 'probe-slug', 'probe', '2000-01-01T00:00:00Z'::timestamptz)
-       RETURNING id, created_at`,
-      [PROJECT_A],
+      `INSERT INTO public.goals (id, project_id, title, slug, description, created_at, status, health, next_step)
+       VALUES ($2::uuid, $1::uuid, 'create only probe', 'probe-slug', 'probe',
+         '2000-01-01T00:00:00Z'::timestamptz, 'achieved', 'at_risk', 'forged next step')
+       RETURNING id, created_at, status, health, next_step, title`,
+      [PROJECT_A, "55555555-5555-4555-8555-5555555555f2"],
     );
     assert(row.created_at.getFullYear() >= 2024, "goals.created_at must be reset to now()");
-    // title/slug/description ARE authorisable at INSERT under goals.create.
-    assert(row.id, "goals INSERT must return its generated id");
+    // title/slug/description/project_id ARE authorisable at INSERT under
+    // goals.create; status/health/next_step are goals.update authority and must
+    // not be settable at creation.
+    assert(row.title === "create only probe", "goals.title is authorisable at INSERT under goals.create");
+    assert(row.id !== "55555555-5555-4555-8555-5555555555f2", "a caller-chosen goal id must be replaced by the default");
+    for (const [column, expected] of [["status", "draft"], ["health", null], ["next_step", null]]) {
+      assert(row[column] === expected, `goals.${column} must be reset to ${expected} at INSERT, got ${row[column]}`);
+    }
   });
   log("COLUMN-FENCE", "A goal INSERT could not carry a back-dated created_at; its create columns remained writable.");
 
   await session.run(async (tx) => {
     const [row] = await tx.unsafe(
-      `INSERT INTO public.projects (name, slug, description, created_at)
-       VALUES ('probe', 'probe-slug', 'probe', '2000-01-01T00:00:00Z'::timestamptz)
-       RETURNING id, name, created_at`,
+      `INSERT INTO public.projects (name, slug, description, created_at, status)
+       VALUES ('probe', 'probe-slug', 'probe', '2000-01-01T00:00:00Z'::timestamptz, 'archived')
+       RETURNING id, name, created_at, status`,
     );
     assert(row.created_at.getFullYear() >= 2024, "projects.created_at must be reset to now()");
     assert(row.name === "probe", "projects.name is authorisable at INSERT under projects.create");
+    assert(row.status === "planned", `projects.status must be reset to planned at INSERT, got ${row.status}`);
   });
   log("COLUMN-FENCE", "A project INSERT could not carry a back-dated created_at; its create columns remained writable.");
 
@@ -896,6 +908,32 @@ async function assertColumnFence(sql) {
     );
   }
 
+  // DELETE is a separate policy surface from INSERT/UPDATE and the fence is a
+  // BEFORE INSERT OR UPDATE trigger, so column authorization does not reach it.
+  // 0051 left task_reminders_mcp_delete_access in place through this whole wave,
+  // which let an MCP bearer destroy a pending reminder outright - a more
+  // complete suppression of a user-facing notification than anything the column
+  // fence closes, using an operation with no schema, handler or audit identity.
+  // RETURNING 1 rather than RETURNING id: several of these tables key on
+  // user_id, not id, and a probe that names the wrong column fails as a
+  // relation error rather than as the authorization result it is asserting.
+  const deleteTables = [
+    "projects", "goals", "tasks", "task_sessions", "task_reminders",
+    ...NEW_DOMAIN_TABLES, ...V1_READABLE_TABLES,
+    "idea_notes", "task_recurrences", "week_reviews", "task_status_events",
+  ].filter((table) => !aclRevokedTables.has(table));
+
+  for (const table of deleteTables) {
+    await expectNoRows(`${table} DELETE by an MCP principal`, () =>
+      session.run((tx) => tx.unsafe(`DELETE FROM public.${table} RETURNING 1`)),
+    );
+  }
+  const survivors = await sql`
+    SELECT count(*)::int AS count FROM public.task_reminders
+  `;
+  assert(survivors.count > 0, "the DELETE sweep must not have removed the seeded reminder");
+  log("COLUMN-FENCE", "DELETE is closed on every fenced table and every previously leaked domain.");
+
   // Other MCP-writable tables get the same treatment on their own columns.
   await expectDenied("projects.name out-of-contract write", () =>
     session.run((tx) => tx.unsafe(`UPDATE public.projects SET name = 'renamed' WHERE id = $1::uuid`, [PROJECT_A])),
@@ -960,6 +998,89 @@ const CROSS_OWNER_TABLES = [
   ...NEW_DOMAIN_TABLES.map((table) => [table, "owner_user_id"]),
   ...V1_READABLE_TABLES.map((table) => [table, "user_id"]),
 ];
+
+/**
+ * Cross-owner INSERT, which the row-filter assertions above cannot see.
+ *
+ * An UPDATE policy is a USING row filter, so it is straightforward to assert that
+ * a principal cannot reach another owner's row. INSERT has no USING clause: the
+ * only thing standing between an MCP bearer and a cross-tenant write edge is the
+ * WITH CHECK. The referential ownership clauses restored by 0064 and hardened by
+ * 0069/0070 (private.user_owns_project / user_owns_task) exist solely in that
+ * position, and removing all three leaves the verifier fully green while a live
+ * bearer creates reminders, sessions and tasks pointing at another owner's rows.
+ *
+ * Each case is asserted twice: the caller's own transaction must be refused, AND
+ * an independent superuser read-back must show no row was created. The second is
+ * not redundant - a silently filtered insert raises no error, so a refusal
+ * assertion alone cannot distinguish it from a policy that quietly did nothing.
+ */
+async function assertCrossOwnerInsert(sql, clientIds) {
+  const crossOwnerEdgeCounts = `
+    SELECT
+      (SELECT count(*)::int FROM public.tasks WHERE project_id = $1::uuid) AS tasks_in_b,
+      (SELECT count(*)::int FROM public.task_reminders WHERE task_id = $2::uuid) AS reminders_on_b,
+      (SELECT count(*)::int FROM public.task_sessions WHERE task_id = $2::uuid) AS sessions_on_b
+  `;
+  const [before] = await sql.unsafe(crossOwnerEdgeCounts, [PROJECT_B, TASK_B]);
+
+  for (const [label, clientId] of clientIds) {
+    const session = mcpSession(sql, { clientId });
+
+    await expectDenied(`${label} task INSERT into another owner's project`, () =>
+      session.run((tx) =>
+        tx.unsafe(`INSERT INTO public.tasks (project_id, title) VALUES ($1::uuid, 'cross-owner task')`, [PROJECT_B]),
+      ),
+    );
+    await expectDenied(`${label} reminder INSERT on another owner's task`, () =>
+      session.run((tx) =>
+        tx.unsafe(
+          `INSERT INTO public.task_reminders (task_id, remind_at, channel, delivery_mode)
+           VALUES ($1::uuid, now() + interval '4 hours', 'email', 'email')`,
+          [TASK_B],
+        ),
+      ),
+    );
+    // The product allows one open session per owner, so close this owner's first;
+    // otherwise the refusal would come from the open-session index and would prove
+    // nothing about ownership.
+    await session.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.task_sessions SET ended_at = now()
+         WHERE owner_user_id = $1::uuid AND ended_at IS NULL`,
+        [OWNER_A],
+      ),
+    );
+    await expectDenied(`${label} session INSERT on another owner's task`, () =>
+      session.run((tx) =>
+        tx.unsafe(
+          `INSERT INTO public.task_sessions (task_id, started_at) VALUES ($1::uuid, now())`,
+          [TASK_B],
+        ),
+      ),
+    );
+    await expectDenied(`${label} goal INSERT into another owner's project`, () =>
+      session.run((tx) =>
+        tx.unsafe(`INSERT INTO public.goals (project_id, title) VALUES ($1::uuid, 'cross-owner goal')`, [PROJECT_B]),
+      ),
+    );
+  }
+
+  const [after] = await sql.unsafe(crossOwnerEdgeCounts, [PROJECT_B, TASK_B]);
+  assert(
+    after.tasks_in_b === before.tasks_in_b,
+    `cross-owner task INSERT created a durable edge into another tenant's project (${before.tasks_in_b} -> ${after.tasks_in_b})`,
+  );
+  assert(
+    after.reminders_on_b === before.reminders_on_b,
+    `cross-owner reminder INSERT created a durable edge on another owner's task (${before.reminders_on_b} -> ${after.reminders_on_b})`,
+  );
+  assert(
+    after.sessions_on_b === before.sessions_on_b,
+    `cross-owner session INSERT created a durable edge on another owner's task (${before.sessions_on_b} -> ${after.sessions_on_b})`,
+  );
+  log("CROSS-OWNER", "No MCP principal could INSERT a task, goal, reminder or session across the owner boundary, and no durable cross-tenant edge was created.");
+}
 
 async function assertCrossOwner(sql, clientIds) {
   for (const [label, clientId] of clientIds) {
@@ -1156,11 +1277,15 @@ async function assertDirectUserParity(sql) {
     // start a fresh open session the way the start/stop path does.
     ["task_sessions closed", `UPDATE public.task_sessions SET ended_at = now() + interval '45 minutes',
         duration_seconds = 2700 WHERE id = $1::uuid RETURNING id`, [SESSION_A]],
-    // The product allows one open session per owner+task, and earlier sections
-    // opened some, so the owner closes any open session first - exactly the
-    // shape of the stop-then-start path.
-    ["task_sessions all closed", `UPDATE public.task_sessions SET ended_at = now(),
-        duration_seconds = 60 WHERE owner_user_id = $1::uuid AND ended_at IS NULL RETURNING id`, [OWNER_A]],
+    // Setup for the case below, not an operation under test: earlier sections
+    // opened sessions and the product allows one open session per owner. Wrapped
+    // in a CTE that always returns a row, because a setup step that legitimately
+    // matches zero rows must not be asserted as "must affect rows" - that shape
+    // silently stops testing anything once the precondition changes.
+    ["open timer sessions closed", `WITH closed AS (
+        UPDATE public.task_sessions SET ended_at = now(), duration_seconds = 60
+        WHERE owner_user_id = $1::uuid AND ended_at IS NULL RETURNING 1
+      ) SELECT count(*)::int AS closed FROM closed`, [OWNER_A]],
     ["task_sessions inserted", `INSERT INTO public.task_sessions (owner_user_id, task_id, started_at)
         VALUES ($1::uuid, $2::uuid, now()) RETURNING id`, [OWNER_A, TASK_A]],
 
@@ -1250,22 +1375,77 @@ async function assertDirectUserParity(sql) {
   }
   log("DIRECT-USER-PARITY", `${passed} legitimate owner writes and reads all succeeded under the MCP hardening.`);
 
-  // Parity must not become a cross-owner leak.
-  await otherOwner.run(async (tx) => {
-    for (const table of [
-      "projects", "goals", "tasks", "task_sessions", "task_reminders",
-      ...NEW_DOMAIN_TABLES, ...V1_READABLE_TABLES, "idea_notes", "task_recurrences", "week_reviews",
-    ]) {
-      if (aclRevokedTables.has(table)) continue;
-      const ownerColumn = table === "user_time_context" ? "user_id" : "owner_user_id";
-      const [row] = await tx.unsafe(
-        `SELECT count(*)::int AS count FROM public.${table} WHERE ${ownerColumn} = $1::uuid`,
-        [OWNER_A],
-      );
-      assert(row.count === 0, `DIRECT-USER-PARITY: owner B must not read owner A's ${table}`);
-    }
+  // Re-seed one owner-A row per table the cases above created and deleted. The
+  // isolation assertions are only meaningful against a populated table: an empty
+  // one returns zero foreign rows whether or not the policy is correct.
+  await owner.run(async (tx) => {
+    await tx.unsafe(
+      `INSERT INTO public.user_time_context (user_id, iana_timezone)
+       VALUES ($1::uuid, 'Europe/Berlin')`,
+      [OWNER_A],
+    );
+    await tx.unsafe(
+      `INSERT INTO public.notification_preferences (owner_user_id, notification_type, push_enabled, email_enabled)
+       VALUES ($1::uuid, 'task_reminder', true, true)`,
+      [OWNER_A],
+    );
+    await tx.unsafe(
+      `INSERT INTO public.task_recurrences (owner_user_id, task_id, rule, anchor_date, timezone,
+         next_occurrence_date)
+       VALUES ($1::uuid, $2::uuid, 'weekly:monday', current_date, 'Europe/Berlin', current_date + 7)`,
+      [OWNER_A, TASK_A],
+    );
+    await tx.unsafe(
+      `INSERT INTO public.idea_notes (owner_user_id, title, status, type)
+       VALUES ($1::uuid, 'isolation probe', 'inbox', 'idea')`,
+      [OWNER_A],
+    );
+    await tx.unsafe(
+      `INSERT INTO public.week_reviews (owner_user_id, week_start, week_end)
+       VALUES ($1::uuid, date_trunc('week', current_date)::date,
+         date_trunc('week', current_date)::date + 6)`,
+      [OWNER_A],
+    );
   });
-  log("DIRECT-USER-PARITY", "Owner isolation still holds for direct sessions: no foreign-owner rows were readable.");
+
+  // Parity must not become a cross-owner leak.
+  //
+  // The baseline is measured as OWNER A, in owner A's own session. Measuring it
+  // from owner B cannot work: RLS filters every owner-A row out, so the total is
+  // zero by construction and "owner B saw none of owner A's rows" passes against
+  // a policy widened to the whole table. Asserting the row exists first - as the
+  // owner who owns it - is what makes the second half discriminating.
+  const isolationTables = [
+    "projects", "goals", "tasks", "task_sessions", "task_reminders",
+    ...NEW_DOMAIN_TABLES, ...V1_READABLE_TABLES,
+    "idea_notes", "task_recurrences", "week_reviews",
+  ].filter((table) => !aclRevokedTables.has(table));
+
+  for (const table of isolationTables) {
+    const ownerColumn = table === "user_time_context" ? "user_id" : "owner_user_id";
+    const [owned] = await owner.run((tx) =>
+      tx.unsafe(
+        `SELECT count(*)::int AS own FROM public.${table} WHERE ${ownerColumn} = $1::uuid`,
+        [OWNER_A],
+      ),
+    );
+    assert(
+      owned.own > 0,
+      `DIRECT-USER-PARITY: ${table} must hold an owner-A row before owner isolation can be asserted; the assertion would otherwise pass vacuously`,
+    );
+
+    const [leak] = await otherOwner.run((tx) =>
+      tx.unsafe(
+        `SELECT count(*)::int AS leaked FROM public.${table} WHERE ${ownerColumn} = $1::uuid`,
+        [OWNER_A],
+      ),
+    );
+    assert(
+      leak.leaked === 0,
+      `DIRECT-USER-PARITY: owner B must not read owner A's ${table} (${leak.leaked} row(s) leaked)`,
+    );
+  }
+  log("DIRECT-USER-PARITY", `Owner isolation still holds for direct sessions: all ${isolationTables.length} tables held an owner-A row and owner B read none of them.`);
 
   // The fence must be inert, not merely permissive, for direct owners. The 42
   // cases above are the real evidence - they wrote every column the MCP fence
@@ -1276,19 +1456,33 @@ async function assertDirectUserParity(sql) {
     "projects", "goals", "tasks", "task_sessions", "task_reminders",
   ];
   const triggers = await sql`
-    SELECT c.relname AS table_name, t.tgname AS trigger_name, t.tgenabled
+    SELECT c.relname AS table_name, t.tgname AS trigger_name, t.tgenabled,
+           (t.tgtype & 1) > 0 AS fires_row,
+           (t.tgtype & 4) > 0 AS fires_insert,
+           (t.tgtype & 16) > 0 AS fires_update,
+           (t.tgtype & 8) > 0 AS fires_delete
     FROM pg_trigger t
     JOIN pg_class c ON c.oid = t.tgrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgname LIKE '%_mcp_write_fence'
     ORDER BY c.relname
   `;
-  const fenced = new Set(triggers.map((row) => row.table_name));
+  const fenced = new Map(triggers.map((row) => [row.table_name, row]));
   for (const table of expectedFencedTables) {
-    assert(fenced.has(table), `the ${table} write-fence trigger must exist`);
+    const trigger = fenced.get(table);
+    assert(trigger, `the ${table} write-fence trigger must exist`);
+    // The event mask matters as much as existence. A trigger reduced to
+    // BEFORE UPDATE would pass an existence check while silently re-opening
+    // every INSERT hole the fence closes, and tgenabled 'R' fires in replica
+    // mode only, i.e. never in production.
+    assert(trigger.fires_row, `${table} write fence must be FOR EACH ROW`);
+    assert(trigger.fires_insert, `${table} write fence must fire on INSERT`);
+    assert(trigger.fires_update, `${table} write fence must fire on UPDATE`);
+    assert(
+      ["O", "A"].includes(trigger.tgenabled),
+      `${table} write fence must be enabled in production, got tgenabled='${trigger.tgenabled}'`,
+    );
   }
-  const disabled = triggers.filter((row) => row.tgenabled === "D");
-  assert(disabled.length === 0, `write-fence triggers must not be disabled: ${disabled.map((row) => row.trigger_name).join(", ")}`);
   log(
     "DIRECT-USER-PARITY",
     `Write-fence triggers are installed and enabled on all ${expectedFencedTables.length} fenced tables; owner writes passed them without being refused.`,
@@ -1448,21 +1642,78 @@ async function assertRpcSurface(sql) {
   // probe uses a registered tool's name. It returns TABLE(allowed, retry_after),
   // which postgres.js hands back as a positional array.
   const rate = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
-    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects', 1, 60)`),
+    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects')`),
   );
   assert(rate[0]?.allowed === true, `consume_mcp_rate_limit must allow an MCP bearer under its own grant, got ${JSON.stringify(rate[0])}`);
-  // And the per-tool limit must actually engage rather than being decorative.
-  const limited = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
-    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects', 1, 60)`),
+
+  // The production limit, not a test-sized one. The previous proof called this
+  // with p_limit = 1, which never showed the shipped allowance engaging.
+  const [signature] = await sql`
+    SELECT p.pronargs::int AS argument_count
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'consume_mcp_rate_limit'
+  `;
+  assert(
+    signature?.argument_count === 1,
+    `consume_mcp_rate_limit must take only a window name; the limit and window length are policy. It exposes ${signature?.argument_count} argument(s).`,
   );
-  assert(limited[0]?.allowed === false, "a second call past the per-tool limit must be refused");
-  assert(Number(limited[0]?.retry_after_seconds) > 0, "a refused rate-limit call must report a retry_after");
+
+  // The SHIPPED thresholds, not test-sized ones. The previous proof called this
+  // with p_limit = 1, so it only ever demonstrated that a limit of one works -
+  // it never showed the allowance that actually ships engaging.
+  //
+  // Each call here is the server's own limit, so the refusal index IS the
+  // configured allowance. That is the assertion that would have caught the
+  // caller-controlled p_limit: a client passing 10000 would push the refusal
+  // index out of range instead of to the expected value.
+  const shippedLimits = [
+    ["ega_aggregate_read", 600],
+    ["ega_aggregate_write", 300],
+    ["ega_aggregate_sensitive_write", 60],
+    ["ega_list_projects", 120],
+  ];
+  for (const [windowName, expectedLimit] of shippedLimits) {
+    // Start each measurement from an empty window. The reachability probes above
+    // already consumed part of some of these, and the assertion is about where
+    // the shipped limit bites, not about how many probes preceded it.
+    await sql.unsafe(
+      `DELETE FROM public.mcp_rate_limit_windows
+       WHERE owner_user_id = $1::uuid AND oauth_client_id = $2 AND tool_name = $3`,
+      [OWNER_A, V1_WORKSPACE_CLIENT, windowName],
+    );
+    const outcomes = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run(async (tx) => {
+      const out = [];
+      // Bounded so a regression that removes the limit cannot hang the proof.
+      for (let i = 0; i <= expectedLimit + 5; i += 1) {
+        const [row] = await tx.unsafe(
+          `SELECT * FROM public.consume_mcp_rate_limit($1)`,
+          [windowName],
+        );
+        out.push(row);
+      }
+      return out;
+    });
+    const refusedAt = outcomes.findIndex((row) => row?.allowed === false);
+    assert(
+      refusedAt === expectedLimit,
+      `${windowName} must allow exactly ${expectedLimit} calls per minute and refuse call ${expectedLimit + 1}; it first refused at call ${refusedAt + 1}`,
+    );
+    assert(
+      Number(outcomes[expectedLimit]?.retry_after_seconds) > 0,
+      `${windowName} must report a retry_after once refused`,
+    );
+  }
+  log(
+    "RPC-SURFACE",
+    `The shipped limits engage exactly at their configured values (120/600/300/60 per minute) and the caller supplies neither limit nor window length.`,
+  );
   // The window is bound to owner+client+tool+resource, so a different client
   // under the same owner with the same limit is unaffected by the exhausted one.
   const otherClient = await mcpSession(sql, { clientId: V1_READ_CLIENT }).run((tx) =>
-    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_list_projects', 1, 60)`),
+    tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit('ega_aggregate_read')`),
   );
-  assert(otherClient[0]?.allowed === true, "the per-tool rate-limit window must be client bound");
+  assert(otherClient[0]?.allowed === true, "the aggregate rate-limit window must be client bound");
 
   // Returns TABLE(outcome, claim_token, ...), so select * to get named columns.
   const [claim] = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run((tx) =>
@@ -1666,6 +1917,7 @@ async function main() {
     await assertAuditToolAllowlist(sql);
     await assertGrantShape(sql);
     await assertCrossOwner(sql, [["v1", V1_WORKSPACE_CLIENT]]);
+    await assertCrossOwnerInsert(sql, [["v1", V1_WORKSPACE_CLIENT]]);
 
     await insertGrant(sql, {
       owner: OWNER_A,
@@ -1678,6 +1930,7 @@ async function main() {
 
     await assertScopeV2(sql);
     await assertCrossOwner(sql, [["v2", V2_WORKSPACE_CLIENT]]);
+    await assertCrossOwnerInsert(sql, [["v2", V2_WORKSPACE_CLIENT]]);
 
     // Parity runs LAST on purpose: it is the only section that deliberately
     // mutates and deletes the owner's own rows (it archives, unarchives, closes

@@ -11,9 +11,11 @@ import type { McpPermission } from "@/lib/mcp/permissions";
  * behaviour it described.
  *
  * This registry is the one place that states, per capability: which
- * permissions authorise it, whether it mutates, whether it is destructive, how
- * it is rate limited, and whether it needs user confirmation. Tool discovery,
- * registration eligibility and tool annotations are derived from it. Zod
+ * permissions authorise it, whether it mutates, whether it is destructive,
+ * whether it is idempotent, and how it is rate limited. Tool discovery,
+ * registration eligibility, the risk class the rate limiter buckets on and the
+ * MCP tool annotations registered in server.ts are all derived from it, and a
+ * test pins each registered tool's annotations to this registry. Zod
  * schemas and handlers stay next to their operation, and the database
  * permissions CHECK remains explicit reviewed SQL - the registry is the
  * runtime authority, not a migration generator.
@@ -97,6 +99,17 @@ function write(
   permissionRequirement: McpPermissionRequirement,
   options: {
     destructive?: boolean;
+    /**
+     * Explicit rather than derived from `destructive`. The two are genuinely
+     * different facts: ARCHITECTURE.md records archive mutations as
+     * "at-least-once but idempotent", and repeating the archive UPDATE sets
+     * status='archived' on an already-archived row and succeeds with the same
+     * result. Deriving `idempotent` from `destructive` therefore produced a
+     * claim the runtime did not hold, in exactly the direction this registry
+     * exists to prevent - and the runtime's own WRITE_ANNOTATIONS advertised the
+     * opposite of what the registry derived.
+     */
+    idempotent?: boolean;
     rateClass?: McpRateClass;
     confirmationClass?: McpConfirmationClass;
   } = {},
@@ -108,7 +121,7 @@ function write(
     permissionRequirement,
     mutation: true,
     destructive: options.destructive ?? false,
-    idempotent: !options.destructive,
+    idempotent: options.idempotent ?? !(options.destructive ?? false),
     writesEnabledRequired: true,
     rateClass: options.rateClass ?? "write",
     confirmationClass: options.confirmationClass ?? "none",
@@ -134,21 +147,21 @@ export const MCP_CAPABILITIES: readonly McpCapability[] = [
   // ---- permissions_version 1 writes -------------------------------------
   write("ega_create_project", "projects", one("projects.create")),
   write("ega_update_project_status", "projects", one("projects.update")),
-  write("ega_archive_project", "projects", one("projects.update"), { destructive: true }),
+  write("ega_archive_project", "projects", one("projects.update"), { destructive: true, idempotent: true }),
   write("ega_unarchive_project", "projects", one("projects.update")),
   write("ega_create_goal", "goals", one("goals.create")),
   write("ega_update_goal_status", "goals", one("goals.update")),
   write("ega_update_goal_health", "goals", one("goals.update")),
   write("ega_update_goal_next_step", "goals", one("goals.update")),
-  write("ega_archive_goal", "goals", one("goals.update"), { destructive: true }),
+  write("ega_archive_goal", "goals", one("goals.update"), { destructive: true, idempotent: true }),
   write("ega_unarchive_goal", "goals", one("goals.update")),
   write("ega_create_task", "tasks", one("tasks.create")),
   write("ega_update_task", "tasks", one("tasks.update")),
-  write("ega_archive_task", "tasks", one("tasks.update"), { destructive: true }),
+  write("ega_archive_task", "tasks", one("tasks.update"), { destructive: true, idempotent: true }),
   write("ega_unarchive_task", "tasks", one("tasks.update")),
   write("ega_set_task_focus_rank", "tasks", one("tasks.update")),
   write("ega_create_task_reminder", "tasks", one("tasks.update")),
-  write("ega_cancel_task_reminder", "tasks", one("tasks.update"), { destructive: true }),
+  write("ega_cancel_task_reminder", "tasks", one("tasks.update"), { destructive: true, idempotent: true }),
   write("ega_plan_task_for_today", "today", one("today.update")),
   write("ega_remove_task_from_today", "today", one("today.update")),
   write("ega_update_today_task_status", "today", one("today.update")),
