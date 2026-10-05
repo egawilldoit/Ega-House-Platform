@@ -63,7 +63,7 @@
  *                   order 0078 depends on read from the catalog
  *   DIRECT-USER-PARITY
  *                   the same policies do not narrow ordinary owner sessions:
- *                   42 legitimate owner writes and reads across every table the
+ *                   43 legitimate owner writes and reads across every table the
  *                   MCP hardening touched, plus owner isolation and the
  *                   installed state of the fence triggers
  *   CROSS-OWNER     every permitted MCP path rejects a foreign owner
@@ -2302,6 +2302,18 @@ async function assertInternalUnreachable(sql, clientId = V1_WORKSPACE_CLIENT) {
 // ---------------------------------------------------------------------------
 
 /**
+ * The number of cases this file's header claims DIRECT-USER-PARITY runs.
+ *
+ * The header prose, the array literal and the run's own log line were three
+ * separate claims about one number, and they drifted: the header said 42 while
+ * the list held 43 and the log printed 43. Asserting the list against this
+ * constant is what keeps a later case added or removed from leaving the header
+ * quietly misstating it - a comment cannot be interpolated, so it needs
+ * something to be checked against.
+ */
+const DOCUMENTED_PARITY_CASES = 43;
+
+/**
  * The MCP hardening must not have narrowed ordinary owner sessions.
  *
  * This is asserted separately and positively. Inferring parity from "the MCP
@@ -2448,6 +2460,13 @@ async function assertDirectUserParity(sql) {
       ["installation-direct", "android", "fcm", "direct-token"]],
   ];
 
+  // The header states a count; this is what holds it to that number.
+  assert(
+    cases.length === DOCUMENTED_PARITY_CASES,
+    `DIRECT-USER-PARITY runs ${cases.length} cases but this file's header documents ` +
+      `${DOCUMENTED_PARITY_CASES}; update the header and DOCUMENTED_PARITY_CASES together`,
+  );
+
   let passed = 0;
   for (const [label, statement, params] of cases) {
     let rows;
@@ -2535,7 +2554,7 @@ async function assertDirectUserParity(sql) {
   }
   log("DIRECT-USER-PARITY", `Owner isolation still holds for direct sessions: all ${isolationTables.length} tables held an owner-A row and owner B read none of them.`);
 
-  // The fence must be inert, not merely permissive, for direct owners. The 42
+  // The fence must be inert, not merely permissive, for direct owners. The
   // cases above are the real evidence - they wrote every column the MCP fence
   // forbids for MCP principals. This only asserts the fence is actually
   // installed on every table it is supposed to guard, so a dropped trigger
