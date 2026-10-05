@@ -302,6 +302,139 @@ test('the shipped exception registry accepts only the two advisories it names', 
   }
 });
 
+// --- 2026-10-05: the seven 2026-10-15 entries were REMEDIATED, not renewed.
+//
+// Their recorded reason claimed no patched release existed. That was wrong: each
+// affected range has a published release outside it, and each of those releases
+// is inside the range its own parent already declares. Scoped root overrides
+// move them; the entries are deleted rather than given a later reviewBy. The
+// tests below pin that outcome from both ends, so neither a silent re-acceptance
+// nor a silent loss of the override can pass unnoticed.
+
+const REMEDIATED_2026_10_05 = [
+  { source: 1240104, package: 'brace-expansion', advisory: 'GHSA-qhr7-859c-m2p7', patched: '1.1.21' },
+  { source: 1240105, package: 'brace-expansion', advisory: 'GHSA-qhr7-859c-m2p7', patched: '2.1.7' },
+  { source: 1240107, package: 'brace-expansion', advisory: 'GHSA-qhr7-859c-m2p7', patched: '5.0.12' },
+  { source: 1240108, package: 'brace-expansion', advisory: 'GHSA-6j4f-fj2g-mc7p', patched: '1.1.21' },
+  { source: 1240109, package: 'brace-expansion', advisory: 'GHSA-6j4f-fj2g-mc7p', patched: '2.1.7' },
+  { source: 1240111, package: 'brace-expansion', advisory: 'GHSA-6j4f-fj2g-mc7p', patched: '5.0.12' },
+  { source: 1240042, package: 'undici', advisory: 'GHSA-rfgv-xxqx-mfg5', patched: '6.29.0' },
+];
+
+test('the registry does not carry any of the seven advisories remediated by override', () => {
+  for (const remediated of REMEDIATED_2026_10_05) {
+    const carried = SECURITY_AUDIT_EXCEPTIONS.find(
+      (e) => e.source === remediated.source || (e.package === remediated.package && e.advisory === remediated.advisory),
+    );
+    assert.equal(
+      carried,
+      undefined,
+      `source ${remediated.source} (${remediated.advisory} on ${remediated.package}) was remediated to ${remediated.patched}; it must not be excepted again`,
+    );
+  }
+});
+
+test('the overrides that remediate brace-expansion and undici are still declared', () => {
+  // If the override is deleted, brace-expansion/undici reappear in the audit and
+  // block on their own — but pinning the remediation here makes the intended
+  // version explicit and fails at review time instead of at the next advisory
+  // publication. Same shape as the `next` pin assertion above.
+  const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'));
+  const overrides = manifest.overrides ?? {};
+  assert.equal(overrides['brace-expansion@^1'], '1.1.21', 'brace-expansion 1.x is pinned past GHSA-6j4f-fj2g-mc7p and GHSA-qhr7-859c-m2p7');
+  assert.equal(overrides['brace-expansion@^2'], '2.1.7', 'brace-expansion 2.x is pinned past GHSA-6j4f-fj2g-mc7p and GHSA-qhr7-859c-m2p7');
+  assert.equal(overrides['brace-expansion@^5'], '5.0.12', 'brace-expansion 5.x is pinned past GHSA-6j4f-fj2g-mc7p and GHSA-qhr7-859c-m2p7');
+  assert.equal(overrides['undici@^6'], '6.29.0', 'undici 6.x is pinned past GHSA-rfgv-xxqx-mfg5');
+});
+
+test('every scoped override for a remediated package sits inside the parent range it replaces', () => {
+  // The remediation does not depend on npm tolerating an out-of-range override.
+  // Each patched release must satisfy the range its own parent declares, read
+  // from the committed lockfile rather than restated here, so these were
+  // ordinary in-range upgrades the repo had not taken. If a parent later widens
+  // or narrows its spec, this fails instead of the override silently becoming
+  // out-of-range.
+  const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
+  const parents = [
+    { node: 'node_modules/@react-native/codegen/node_modules/minimatch', dep: 'brace-expansion', override: '1.1.21' },
+    { node: 'node_modules/react-native/node_modules/minimatch', dep: 'brace-expansion', override: '1.1.21' },
+    { node: 'node_modules/rimraf/node_modules/minimatch', dep: 'brace-expansion', override: '1.1.21' },
+    { node: 'node_modules/test-exclude/node_modules/minimatch', dep: 'brace-expansion', override: '1.1.21' },
+    { node: 'node_modules/expo/node_modules/minimatch', dep: 'brace-expansion', override: '2.1.7' },
+    { node: 'node_modules/minimatch', dep: 'brace-expansion', override: '5.0.12' },
+    { node: 'node_modules/expo/node_modules/@expo/cli', dep: 'undici', override: '6.29.0' },
+  ];
+
+  for (const { node, dep, override } of parents) {
+    const parentMeta = lock.packages[node];
+    assert.ok(parentMeta, `lockfile still has ${node}`);
+    const declared = parentMeta.dependencies?.[dep];
+    assert.equal(typeof declared, 'string', `${node} declares ${dep}`);
+    // Caret comparison inline rather than adding a semver dependency for seven
+    // assertions: same major, and at least the declared floor.
+    const caret = declared.startsWith('^');
+    assert.ok(caret, `${node} declares ${declared} for ${dep}, which this check does not model`);
+    const [declaredMajor, declaredMinor, declaredPatch] = declared.slice(1).split('.').map(Number);
+    const [overrideMajor, overrideMinor, overridePatch] = override.split('.').map(Number);
+    const sameMajor = overrideMajor === declaredMajor;
+    const notBelowFloor =
+      overrideMinor > declaredMinor ||
+      (overrideMinor === declaredMinor && overridePatch >= declaredPatch);
+    assert.ok(
+      sameMajor && notBelowFloor,
+      `${override} must satisfy the range ${node} declares for ${dep} (${declared}); an out-of-range override would be a compatibility risk`,
+    );
+  }
+});
+
+test('a report carrying any remediated advisory blocks on the shipped registry', () => {
+  // The stronger half: even if one of these advisories ever comes back (a
+  // reverted override, a new affected range, an upstream bump), the shipped
+  // registry must reject it rather than inherit a stale acceptance.
+  for (const remediated of REMEDIATED_2026_10_05) {
+    const report = {
+      vulnerabilities: {
+        [remediated.package]: {
+          name: remediated.package,
+          severity: 'high',
+          isDirect: false,
+          via: [
+            {
+              source: remediated.source,
+              name: remediated.package,
+              severity: 'high',
+              url: `https://github.com/advisories/${remediated.advisory}`,
+            },
+          ],
+        },
+      },
+    };
+    const result = evaluateAuditReport(report, { now: new Date('2026-10-05'), checkWs: false });
+    assert.equal(
+      result.blockingHighCritical.length,
+      1,
+      `source ${remediated.source} must block on the shipped registry`,
+    );
+    assert.match(result.blockingHighCritical[0].rejected[0].reason, /unknown high\/critical/);
+  }
+});
+
+test('no carried exception is already expired, and each has a usable reviewBy', () => {
+  // A temporary acceptance that is already past its review date is not an
+  // acceptance at all: `evaluateAuditReport` would report it as a blocking
+  // finding, so leaving one in the registry ships a knowingly-red gate. Checked
+  // against the real clock, not a fixture, so the failure lands on the day the
+  // entry actually lapses.
+  for (const exception of SECURITY_AUDIT_EXCEPTIONS) {
+    assert.ok(isValidReviewByFormat(exception.reviewBy), `${exception.package} has a parsable reviewBy`);
+    assert.equal(
+      isExpired(exception, new Date()),
+      false,
+      `exception for source ${exception.source} (${exception.package}) expired on ${exception.reviewBy}; remediate it or re-review it rather than carrying it forward`,
+    );
+  }
+});
+
 test('the registry does not accept the next critical RCE advisory', () => {
   // The single most important property of this remediation: the one fixable
   // critical was UPGRADED, not excepted.

@@ -8,69 +8,17 @@ import { pathToFileURL } from 'node:url';
  * Each record represents a temporary risk acceptance for an unpatched transitive
  * dependency pending an upstream fix. Bare advisory IDs are strictly prohibited.
  * Every exception must define an explicit expiry date (reviewBy) in YYYY-MM-DD format.
+ *
+ * An entry belongs here only while no patched release exists. When a patch does
+ * appear, the advisory is remediated (upgrade or scoped override) and the entry is
+ * deleted rather than given a later `reviewBy`.
  */
 export const SECURITY_AUDIT_EXCEPTIONS = [
-  {
-    source: 1240104,
-    advisory: 'GHSA-qhr7-859c-m2p7',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion uncontrolled recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240105,
-    advisory: 'GHSA-qhr7-859c-m2p7',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion uncontrolled recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240107,
-    advisory: 'GHSA-qhr7-859c-m2p7',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion uncontrolled recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240108,
-    advisory: 'GHSA-6j4f-fj2g-mc7p',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion parseCommaParts recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240109,
-    advisory: 'GHSA-6j4f-fj2g-mc7p',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion parseCommaParts recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240111,
-    advisory: 'GHSA-6j4f-fj2g-mc7p',
-    package: 'brace-expansion',
-    reason: 'Temporary risk acceptance: brace-expansion parseCommaParts recursion DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: 'expo > react-native',
-  },
-  {
-    source: 1240042,
-    advisory: 'GHSA-rfgv-xxqx-mfg5',
-    package: 'undici',
-    reason: 'Temporary risk acceptance: undici unrequested WebSocket subprotocol DoS in transitive dependency',
-    reviewBy: '2026-10-15',
-    upstream: '@expo/cli',
-  },
   // ---------------------------------------------------------------------------
-  // Added 2026-10-05. Both advisories below were published AFTER this registry was
-  // last written, which is why they blocked a red `workspace` job on origin/main
-  // as well as on the MCP hardening branch. Neither is a defect introduced by
-  // that branch.
+  // Added 2026-10-05. Both advisories carried here were published AFTER this
+  // registry was last written, which is why they blocked a red `workspace` job on
+  // origin/main as well as on the MCP hardening branch. Neither is a defect
+  // introduced by that branch.
   //
   // For both, the newest version ever published is the affected one
   // (braces: 3.0.3; node-forge: 1.4.0) and the GitHub advisory records no
@@ -123,6 +71,28 @@ export const SECURITY_AUDIT_EXCEPTIONS = [
     reviewBy: '2026-11-05',
     upstream: 'expo > @expo/cli / @expo/code-signing-certificates',
   },
+  // ---------------------------------------------------------------------------
+  // Removed 2026-10-05 (remediated, not renewed): the seven entries that used to
+  // expire on 2026-10-15 — brace-expansion sources 1240104/1240105/1240107
+  // (GHSA-qhr7-859c-m2p7), brace-expansion sources 1240108/1240109/1240111
+  // (GHSA-6j4f-fj2g-mc7p), and undici source 1240042 (GHSA-rfgv-xxqx-mfg5).
+  //
+  // Their recorded reason ("no patched release") was wrong. Every affected range
+  // has a published release outside it, and each of those releases sits INSIDE the
+  // range the package's own parent already declares, so no out-of-range override
+  // is needed. Scoped root `overrides` in package.json now force:
+  //
+  //   brace-expansion@^1 -> 1.1.21  (minimatch@^1.1.7 under glob@7, jest,
+  //                                 react-native, rimraf, test-exclude)
+  //   brace-expansion@^2 -> 2.1.7   (minimatch@^2.0.2 under expo > @expo/cli)
+  //   brace-expansion@^5 -> 5.0.12  (minimatch@^5.0.8 at the workspace root)
+  //   undici@^6          -> 6.29.0  (@expo/cli declares ^6.18.2)
+  //
+  // `npm audit --omit=dev` reports none of the seven after that change.
+  // `audit-production.test.mjs` holds both halves of the claim: the registry must
+  // never name these sources again, and a report carrying them must block on the
+  // shipped registry rather than inherit any acceptance.
+  // ---------------------------------------------------------------------------
 ];
 
 export const ALLOWED_LEAF_EXCEPTIONS = SECURITY_AUDIT_EXCEPTIONS;
