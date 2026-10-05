@@ -1600,6 +1600,162 @@ async function assertColumnFence(sql) {
   });
   log("COLUMN-FENCE", "ega_cancel_task_reminder now actually cancels; it previously reported success over zero rows.");
 
+
+  // STATE-TRANSITIONS (0080). The column fence authorised COLUMNS; it never asked
+  // whether a write was a legal TRANSITION. With no MCP tool involved at all, all
+  // three of these were accepted at the database for a workspace_manager
+  // principal before 0080. Each refusal is paired with the permitted transition
+  // the advertised tool actually performs, so a fence that over-refuses is
+  // visible here as a lost capability rather than only as a passing refusal.
+  //
+  // 1. task_sessions: rewriting the recorded end of an ALREADY-CLOSED session.
+  //    The product invariant is that a session closes exactly once, and
+  //    finalizeOpenSession already filters `.is("ended_at", null)` - which is the
+  //    TypeScript guard the fence exists to cover.
+  // Each block below drives separate top-level sessions on purpose: a nested
+  // sql.begin() on a connection that already has a transaction open would
+  // COMMIT the outer one, so the setup and the probe must not share a
+  // transaction.
+  // The product allows one OPEN session per owner and the INSERT probes above
+  // left one open, so close the open ones first - closing an OPEN row is
+  // exactly the transition the fence keeps permitting.
+  await session.run(async (tx) => {
+    await tx.unsafe(
+      `UPDATE public.task_sessions SET ended_at = now(), duration_seconds = 0
+       WHERE owner_user_id = $1::uuid AND ended_at IS NULL`,
+      [OWNER_A],
+    );
+    await tx.unsafe(
+      `INSERT INTO public.task_sessions (task_id, started_at) VALUES ($1::uuid, now() - interval '1 hour') RETURNING id`,
+      [TASK_A],
+    );
+  });
+  const [openSession] = await sql`
+    SELECT id FROM public.task_sessions WHERE task_id = ${TASK_A}::uuid AND ended_at IS NULL
+  `;
+  assert(openSession?.id, "the closed-session probe needs a freshly open session");
+  // PERMITTED twin: closing an OPEN session is ega_stop_timer's whole job.
+  const closed = await session.run((tx) => tx.unsafe(
+    `UPDATE public.task_sessions SET ended_at = now(), duration_seconds = 3600 WHERE id = $1::uuid RETURNING id, ended_at, duration_seconds`,
+    [openSession.id],
+  ));
+  assert(closed.length === 1, `closing an OPEN session must remain permitted, got ${JSON.stringify(closed)}`);
+  // REFUSED: the same statement against the row it just closed.
+  await expectDenied(`task_sessions ended_at rewrite on a CLOSED session`, () =>
+    session.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.task_sessions SET ended_at = now() - interval '9 hours', duration_seconds = 99999 WHERE id = $1::uuid`,
+        [openSession.id],
+      ),
+    ),
+  );
+  const [survivor] = await sql`
+    SELECT ended_at, duration_seconds FROM public.task_sessions WHERE id = ${openSession.id}::uuid
+  `;
+  assert(
+    Math.abs(new Date(survivor.ended_at).getTime() - new Date(closed[0].ended_at).getTime()) < 1000
+      && Number(survivor.duration_seconds) === 3600,
+    `a refused rewrite must leave the recorded session untouched, got ${JSON.stringify(survivor)}`,
+  );
+  log("COLUMN-FENCE", "A closed task_sessions row kept its recorded end; closing an open one still works.");
+
+  // 2. task_reminders: re-arming a CANCELLED reminder straight back into both
+  //    delivery indexes, which filter on status = 'pending'.
+  const [probeReminder] = await session.run((tx) => tx.unsafe(
+    `INSERT INTO public.task_reminders (task_id, remind_at, channel, delivery_mode)
+     VALUES ($1::uuid, now() + interval '5 hours', 'email', 'email') RETURNING id`,
+    [TASK_A],
+  ));
+  // PERMITTED twin: pending -> cancelled is ega_cancel_task_reminder's job.
+  const cancelled = await session.run((tx) => tx.unsafe(
+    `UPDATE public.task_reminders SET status = 'cancelled', updated_at = now() WHERE id = $1::uuid RETURNING status`,
+    [probeReminder.id],
+  ));
+  assert(cancelled[0]?.status === "cancelled", "cancelling a PENDING reminder must remain permitted");
+  // REFUSED: pending is not reachable again.
+  await expectDenied(`task_reminders re-arm of a CANCELLED reminder`, () =>
+    session.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.task_reminders SET status = 'pending', remind_at = now() - interval '1 day' WHERE id = $1::uuid`,
+        [probeReminder.id],
+      ),
+    ),
+  );
+  // ...while an unrelated column on the same cancelled row still is.
+  const edited = await session.run((tx) => tx.unsafe(
+    `UPDATE public.task_reminders SET channel = 'push' WHERE id = $1::uuid RETURNING channel`,
+    [probeReminder.id],
+  ));
+  assert(edited[0]?.channel === "push", "a non-transitioning column must remain writable on a cancelled reminder");
+  const [afterReminder] = await sql`
+    SELECT status FROM public.task_reminders WHERE id = ${probeReminder.id}::uuid
+  `;
+  assert(afterReminder.status === "cancelled", `a refused re-arm must leave the reminder cancelled, got ${afterReminder.status}`);
+  log("COLUMN-FENCE", "A cancelled reminder could not be re-armed; cancelling a pending one and editing a cancelled one still work.");
+
+  // 3. tasks.archived_by: attributing an archive to another user. The
+  //    application always stamps it from actor.userId, and 0072 already requires
+  //    auth.uid() = owner_user_id for the write to land at all, so the
+  //    application's own value always equals auth.uid().
+  const archived = await session.run((tx) => tx.unsafe(
+    `UPDATE public.tasks SET archived_at = now(), archived_by = $1::uuid WHERE id = $2::uuid RETURNING id, archived_by`,
+    [OWNER_A, TASK_A],
+  ));
+  assert(
+    archived.length === 1 && archived[0].archived_by === OWNER_A,
+    `archiving the caller's own task must remain permitted, got ${JSON.stringify(archived)}`,
+  );
+  await expectDenied(`tasks.archived_by attributed to another user`, () =>
+    session.run((tx) =>
+      tx.unsafe(`UPDATE public.tasks SET archived_by = $1::uuid WHERE id = $2::uuid`, [OWNER_B, TASK_A]),
+    ),
+  );
+  const unarchived = await session.run((tx) => tx.unsafe(
+    `UPDATE public.tasks SET archived_at = NULL, archived_by = NULL WHERE id = $1::uuid RETURNING archived_by`,
+    [TASK_A],
+  ));
+  assert(unarchived[0]?.archived_by === null, "unarchiving must remain permitted");
+  const [afterArchive] = await sql`
+    SELECT archived_by FROM public.tasks WHERE id = ${TASK_A}::uuid
+  `;
+  assert(
+    afterArchive.archived_by === null,
+    `the archive/unarchive round trip must leave no attribution behind, got ${afterArchive.archived_by}`,
+  );
+  log("COLUMN-FENCE", "An archive could not be attributed to another user; archiving and unarchiving the caller's own task still work.");
+
+  // Direct owner sessions keep every one of these transitions. The same three
+  // statements, in the same order, with no client_id claim in the JWT.
+  const ownerClosed = await directUserSession(sql).run((tx) => tx.unsafe(
+    `INSERT INTO public.task_sessions (task_id, started_at, ended_at, duration_seconds)
+     VALUES ($1::uuid, now() - interval '2 hours', now(), 7200) RETURNING id`,
+    [TASK_A],
+  ));
+  assert(ownerClosed.length === 1, "an owner session must still be able to insert an already-closed session");
+  const ownerRewritten = await directUserSession(sql).run((tx) => tx.unsafe(
+    `UPDATE public.task_sessions SET ended_at = now() - interval '3 hours', duration_seconds = 10800 WHERE id = $1::uuid RETURNING id`,
+    [ownerClosed[0].id],
+  ));
+  assert(ownerRewritten.length === 1, "the MCP state fence must not constrain an owner's own timer history");
+
+  const [ownerReminder] = await directUserSession(sql).run((tx) => tx.unsafe(
+    `INSERT INTO public.task_reminders (task_id, remind_at, channel, delivery_mode, status)
+     VALUES ($1::uuid, now() + interval '6 hours', 'email', 'email', 'cancelled') RETURNING id`,
+    [TASK_A],
+  ));
+  const ownerRearmed = await directUserSession(sql).run((tx) => tx.unsafe(
+    `UPDATE public.task_reminders SET status = 'pending', remind_at = now() - interval '1 day' WHERE id = $1::uuid RETURNING status`,
+    [ownerReminder.id],
+  ));
+  assert(ownerRearmed[0]?.status === "pending", "the MCP state fence must not constrain an owner's own reminders");
+
+  const ownerAttributed = await directUserSession(sql).run((tx) => tx.unsafe(
+    `UPDATE public.tasks SET archived_at = now(), archived_by = $1::uuid WHERE id = $2::uuid RETURNING archived_by`,
+    [OWNER_B, TASK_A],
+  ));
+  assert(ownerAttributed.length === 1, "the MCP state fence must not constrain an owner's own archive attribution");
+  log("COLUMN-FENCE", "Direct owner sessions keep all three transitions the MCP fence now refuses.");
+
   // Worker-owned delivery state remains unreachable on UPDATE.
   await expectNoRows("task_reminders.sent_at out-of-contract write", () =>
     session.run((tx) =>
