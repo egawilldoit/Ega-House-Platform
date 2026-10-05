@@ -8,6 +8,7 @@ import {
   planTaskForToday,
   removeTaskFromToday,
   updateTodayTaskStatus,
+  type ApplicationErrorCode,
 } from "@ega/application";
 import {
   SupabaseTasksRepository,
@@ -16,6 +17,7 @@ import {
 } from "@ega/data-access";
 
 import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
+import { DEPENDENCY_UNAVAILABLE_MESSAGE } from "@/lib/mcp/application-failure";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 import { getPermissionsForProfile, type McpPermissionProfile } from "@/lib/mcp/permissions";
@@ -133,8 +135,14 @@ function okData(data: unknown) {
   return { ok: true as const, data };
 }
 
-function failure(errorMessage: string) {
-  return { ok: false as const, errorMessage };
+/**
+ * The canonical class the use case asserted. A transport that ignores it
+ * cannot tell a validation rejection from a dependency outage, so the fixture
+ * carries it: without `code` the module would be free to flatten again and
+ * these assertions would still pass.
+ */
+function failure(errorMessage: string, code?: ApplicationErrorCode) {
+  return { ok: false as const, errorMessage, code };
 }
 
 describe("createMcpTodayWriteHandlers", () => {
@@ -225,7 +233,9 @@ describe("createMcpTodayWriteHandlers", () => {
     });
 
     it("maps canonical failure to a stable error result", async () => {
-      vi.mocked(getTodayPlan).mockResolvedValue(failure("Today date is invalid.") as never);
+      vi.mocked(getTodayPlan).mockResolvedValue(
+        failure("Today date is invalid.", "validation") as never,
+      );
       const handlers = createMcpTodayWriteHandlers(createDeps());
 
       const result = await handlers.getTodayPlan(AUTH_INFO, { date: "bad-date" });
@@ -233,7 +243,7 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.isError).toBe(true);
       expect(result.structuredContent).toEqual({
         ok: false,
-        error: { code: "APPLICATION_ERROR", message: "Today date is invalid." },
+        error: { code: "INVALID_ARGUMENT", message: "Today date is invalid." },
       });
     });
 
@@ -322,7 +332,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("maps canonical failure without mutating", async () => {
       vi.mocked(planTaskForToday).mockResolvedValue(
-        failure("Unable to add task to Today right now.") as never,
+        failure("Unable to add task to Today right now.", "unknown") as never,
       );
       const handlers = createMcpTodayWriteHandlers(createDeps());
 
@@ -335,8 +345,8 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.structuredContent).toEqual({
         ok: false,
         error: {
-          code: "APPLICATION_ERROR",
-          message: "Unable to add task to Today right now.",
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
         },
       });
     });
@@ -387,7 +397,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("maps canonical failure", async () => {
       vi.mocked(removeTaskFromToday).mockResolvedValue(
-        failure("Unable to remove task from Today right now.") as never,
+        failure("Unable to remove task from Today right now.", "unknown") as never,
       );
       const handlers = createMcpTodayWriteHandlers(createDeps());
 
@@ -397,8 +407,8 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.structuredContent).toEqual({
         ok: false,
         error: {
-          code: "APPLICATION_ERROR",
-          message: "Unable to remove task from Today right now.",
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
         },
       });
     });
@@ -542,7 +552,7 @@ describe("createMcpTodayWriteHandlers", () => {
 
     it("maps canonical failure on the second round", async () => {
       vi.mocked(clearCompletedToday).mockResolvedValue(
-        failure("Unable to clear completed Today items right now.") as never,
+        failure("Unable to clear completed Today items right now.", "unknown") as never,
       );
       const deps = createDeps({
         clearCompletedMrtr: { firstRound: vi.fn(), verifySecondRound: vi.fn().mockResolvedValue(undefined) },
@@ -559,8 +569,8 @@ describe("createMcpTodayWriteHandlers", () => {
       expect(result.structuredContent).toEqual({
         ok: false,
         error: {
-          code: "APPLICATION_ERROR",
-          message: "Unable to clear completed Today items right now.",
+          code: "DEPENDENCY_UNAVAILABLE",
+          message: DEPENDENCY_UNAVAILABLE_MESSAGE,
         },
       });
     });

@@ -9,9 +9,23 @@ import {
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
-import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import {
+  applicationFailure,
+  applicationSuccess,
+  type ApplicationErrorCode,
+  type ApplicationResult,
+} from "../shared/result";
 import { normalizeProjectSlug } from "../projects/service";
 import type { CreateGoalRecordInput, GoalRecord, GoalsRepository } from "./ports";
+
+/**
+ * A repository refusal carries either a class ("conflict") or none ("unknown").
+ * Every MCP write use case must forward it: a transport that cannot tell the
+ * two apart freezes a transient dependency failure as a permanent receipt.
+ */
+function toAppErrorCode(repoCode?: string): "conflict" | "unknown" {
+  return repoCode === "conflict" ? "conflict" : "unknown";
+}
 
 export type GoalFormValues = {
   title: string;
@@ -25,7 +39,7 @@ export type GoalFormValues = {
 
 export type CreateGoalResult =
   | Readonly<{ ok: true; data: GoalRecord | null; values: GoalFormValues }>
-  | Readonly<{ ok: false; errorMessage: string; values: GoalFormValues }>;
+  | Readonly<{ ok: false; errorMessage: string; values: GoalFormValues; code?: ApplicationErrorCode }>;
 
 function goalStatusMessage() {
   return `Status must be one of: ${GOAL_STATUS_VALUES.join(", ")}.`;
@@ -88,7 +102,14 @@ export async function createGoal(
   const result = await repository.createGoal(actor, record);
 
   if (!result.ok) {
-    return { ok: false, errorMessage: "Unable to create goal right now.", values };
+    // The repository refused, so the dependency class is what a transport needs
+    // to tell a retryable outage from a request it will reject again.
+    return {
+      ok: false,
+      errorMessage: "Unable to create goal right now.",
+      values,
+      code: toAppErrorCode(result.error.code),
+    };
   }
 
   return { ok: true, data: result.value, values };
@@ -119,7 +140,7 @@ export async function updateGoalStatus(
 
   return result.ok
     ? applicationSuccess(null)
-    : applicationFailure("Unable to update goal right now.");
+    : applicationFailure("Unable to update goal right now.", toAppErrorCode(result.error.code));
 }
 
 export async function updateGoalHealth(
@@ -146,7 +167,7 @@ export async function updateGoalHealth(
 
   return result.ok
     ? applicationSuccess(null)
-    : applicationFailure("Unable to update goal right now.");
+    : applicationFailure("Unable to update goal right now.", toAppErrorCode(result.error.code));
 }
 
 export async function updateGoalNextStep(
@@ -173,7 +194,7 @@ export async function updateGoalNextStep(
 
   return result.ok
     ? applicationSuccess(null)
-    : applicationFailure("Unable to update goal right now.");
+    : applicationFailure("Unable to update goal right now.", toAppErrorCode(result.error.code));
 }
 
 async function setGoalArchiveState(
@@ -195,7 +216,7 @@ async function setGoalArchiveState(
 
   return result.ok
     ? applicationSuccess(null)
-    : applicationFailure("Unable to update goal right now.");
+    : applicationFailure("Unable to update goal right now.", toAppErrorCode(result.error.code));
 }
 
 export function archiveGoal(

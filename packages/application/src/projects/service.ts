@@ -6,8 +6,22 @@ import {
 } from "@ega/domain";
 
 import type { AuthenticatedActor } from "../auth/actor";
-import { applicationFailure, applicationSuccess, type ApplicationResult } from "../shared/result";
+import {
+  applicationFailure,
+  applicationSuccess,
+  type ApplicationErrorCode,
+  type ApplicationResult,
+} from "../shared/result";
 import type { ProjectPurgePreview, ProjectsRepository } from "./ports";
+
+/**
+ * A repository refusal carries either a class ("conflict") or none ("unknown").
+ * Every MCP write use case must forward it: a transport that cannot tell the
+ * two apart freezes a transient dependency failure as a permanent receipt.
+ */
+function toAppErrorCode(repoCode?: string): "conflict" | "unknown" {
+  return repoCode === "conflict" ? "conflict" : "unknown";
+}
 
 export type ProjectFormValues = {
   name: string;
@@ -17,7 +31,7 @@ export type ProjectFormValues = {
 
 export type CreateProjectResult =
   | Readonly<{ ok: true; data: null; values: ProjectFormValues }>
-  | Readonly<{ ok: false; errorMessage: string; values: ProjectFormValues }>;
+  | Readonly<{ ok: false; errorMessage: string; values: ProjectFormValues; code?: ApplicationErrorCode }>;
 
 export function normalizeProjectSlug(value: string) {
   return value
@@ -65,6 +79,8 @@ export async function createProject(
   const result = await repository.createProject(actor, createInput);
 
   if (!result.ok) {
+    // The repository refused, so the dependency class is what a transport needs
+    // to tell a retryable outage from a request it will reject again.
     return {
       ok: false,
       errorMessage:
@@ -72,6 +88,7 @@ export async function createProject(
           ? "That slug is already in use. Choose a different slug."
           : "Unable to create project right now. Please try again.",
       values,
+      code: toAppErrorCode(result.error.code),
     };
   }
 
@@ -98,7 +115,7 @@ export async function updateProjectStatus(
 
   return result.ok
     ? applicationSuccess(null)
-    : applicationFailure("Unable to update project right now.");
+    : applicationFailure("Unable to update project right now.", toAppErrorCode(result.error.code));
 }
 
 async function setProjectArchiveState(
@@ -117,7 +134,7 @@ async function setProjectArchiveState(
 
   return result.ok
     ? applicationSuccess(null)
-    : applicationFailure("Unable to update project right now.");
+    : applicationFailure("Unable to update project right now.", toAppErrorCode(result.error.code));
 }
 
 export function archiveProject(
