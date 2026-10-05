@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 import {
   AUDIT_ATTEMPTS,
@@ -391,4 +391,78 @@ test('evaluateAuditReport succeeds with zero vulnerabilities', () => {
   const evalResult = evaluateAuditReport(report, { checkWs: false });
   assert.equal(evalResult.blockingHighCritical.length, 0);
   assert.equal(evalResult.allowedHighCritical.length, 0);
+});
+
+test('the documented audit-exception count matches the registry', () => {
+  // The count in ARCHITECTURE.md is a point-in-time fact about a registry that
+  // changes: entries are added, re-reviewed or retired, and the two 2026-10-15
+  // entries that predate the hardening program will block CI when they expire.
+  // Prose about that number rots silently, so it is checked against the registry
+  // the gate actually reads.
+  const architecture = readFileSync(
+    new URL('../../ARCHITECTURE.md', import.meta.url),
+    'utf8',
+  );
+
+  const stated = architecture.match(/(\w+) carried audit exceptions/);
+  assert.ok(stated, 'ARCHITECTURE.md states how many audit exceptions are carried');
+
+  const words = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  const statedCount = words[String(stated[1]).toLowerCase()] ?? Number(stated[1]);
+  assert.equal(
+    statedCount,
+    SECURITY_AUDIT_EXCEPTIONS.length,
+    `ARCHITECTURE.md states ${stated[1]} carried audit exceptions but the registry holds ${SECURITY_AUDIT_EXCEPTIONS.length}`,
+  );
+
+  // Each expiry cohort must also be stated, because the two cohorts are governed
+  // differently and expire on different dates.
+  const byReviewBy = new Map();
+  for (const entry of SECURITY_AUDIT_EXCEPTIONS) {
+    byReviewBy.set(entry.reviewBy, (byReviewBy.get(entry.reviewBy) ?? 0) + 1);
+  }
+  for (const [reviewBy, count] of byReviewBy) {
+    assert.ok(
+      architecture.includes(reviewBy),
+      `ARCHITECTURE.md does not mention the reviewBy date ${reviewBy} carried by ${count} exception(s)`,
+    );
+  }
+});
+
+test('ARCHITECTURE.md does not attribute the live audit gate to ci:workspace', () => {
+  // ci:workspace runs `node --test audit-production.test.mjs && node
+  // workspace-proofs.mjs`. Neither executes the live audit; the workflow runs
+  // `node scripts/ci/audit-production.mjs` as its own step. Attributing the
+  // blocking behaviour to ci:workspace sent an operator to the wrong command.
+  const architecture = readFileSync(
+    new URL('../../ARCHITECTURE.md', import.meta.url),
+    'utf8',
+  );
+
+  assert.doesNotMatch(
+    architecture,
+    /ci:workspace[^\n]{0,120}runs[^\n]{0,80}audit-production\.mjs/i,
+    'ci:workspace does not run scripts/ci/audit-production.mjs; the workflow runs it as a separate step',
+  );
+});
+
+test('the documented scripts/db verifier inventory matches the directory', () => {
+  // ARCHITECTURE.md names each verifier and what it proves. A new verifier that is
+  // not named there would leave the document claiming a complete set that is not
+  // complete.
+  const architecture = readFileSync(
+    new URL('../../ARCHITECTURE.md', import.meta.url),
+    'utf8',
+  );
+
+  const dir = new URL('../../scripts/db/', import.meta.url);
+  const verifiers = readdirSync(dir).filter((name) => name.endsWith('.mjs'));
+
+  assert.ok(verifiers.length > 0, 'no verifiers found in scripts/db');
+  for (const name of verifiers) {
+    assert.ok(
+      architecture.includes(name),
+      `scripts/db/${name} exists but ARCHITECTURE.md does not mention it; the documented verifier set is incomplete`,
+    );
+  }
 });
