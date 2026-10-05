@@ -7,6 +7,10 @@ import {
   markMcpGrantFailed,
 } from "@/lib/oauth/grant-admin";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import {
+  CURRENT_MCP_PERMISSION_VERSION,
+  getPermissionsForProfile,
+} from "@/lib/mcp/permissions";
 
 function createAdminClient(options?: {
   upsertError?: unknown;
@@ -105,6 +109,60 @@ describe("OAuth MCP grant administration", () => {
         permissions_version: 1,
       }),
       { onConflict: "owner_user_id,oauth_client_id" },
+    );
+  });
+
+  /**
+   * This is the only writer of a permission document, so it is what keeps
+   * permissions_version 2 defined but unissued: the version and the document are
+   * written from the same constant, so no consent decision, and no caller of
+   * this module, can pair a document with a version it was not defined under.
+   * Derived from the resolver rather than restated, so the assertion cannot
+   * drift from the authority it is checking.
+   */
+  it("writes the issued version and the document that version defines", async () => {
+    for (const profile of ["read_only", "workspace_manager"] as const) {
+      const { client, upsert } = createAdminClient();
+
+      await activateMcpGrant(client, {
+        ownerUserId: "user-123",
+        oauthClientId: "client-123",
+        clientName: "Hermes",
+        resourceUri: "https://preview.example/api/mcp",
+        permissionProfile: profile,
+        now: "2026-08-01T18:00:00.000Z",
+      });
+
+      const written = upsert.mock.calls[0][0];
+      expect(written.permissions_version).toBe(CURRENT_MCP_PERMISSION_VERSION);
+      expect(written.permissions).toEqual(
+        getPermissionsForProfile(profile, CURRENT_MCP_PERMISSION_VERSION),
+      );
+      // A v2-only permission is in no issued document, so nothing this module
+      // writes can promise it.
+      for (const additive of ["friction.read", "inbox.read", "workload.read"]) {
+        expect(written.permissions).not.toContain(additive);
+      }
+    }
+  });
+
+  it("defaults to the read-only profile rather than a wider one", async () => {
+    const { client, upsert } = createAdminClient();
+
+    await activateMcpGrant(client, {
+      ownerUserId: "user-123",
+      oauthClientId: "client-123",
+      clientName: "Hermes",
+      resourceUri: "https://preview.example/api/mcp",
+      now: "2026-08-01T18:00:00.000Z",
+    });
+
+    expect(upsert.mock.calls[0][0]).toEqual(
+      expect.objectContaining({
+        permission_profile: "read_only",
+        permissions: getPermissionsForProfile("read_only", 1),
+        permissions_version: 1,
+      }),
     );
   });
 
