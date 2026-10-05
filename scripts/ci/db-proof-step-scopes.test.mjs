@@ -21,6 +21,13 @@ import { test } from "node:test";
  * it without needing a database or a runner, and it catches it for every
  * verifier at once rather than one hand-picked step at a time.
  *
+ * WHY THE DEFINITION MUST BE IN THE STEP. Both the per-step check and the
+ * precondition test below read one scope only: the step's own. A variable
+ * declared at job or workflow scope would make the per-step check vacuous -
+ * every step would appear to define it whether or not it did - so that scope is
+ * rejected outright rather than accommodated. This is why no failure message
+ * here advises moving a variable outward.
+ *
  * WHAT IT DELIBERATELY DOES NOT DO. It does not assert that each verifier uses a
  * distinct database, and it does not require any particular URL. A shared
  * database is legitimate here because every verifier drops and recreates
@@ -36,6 +43,7 @@ const WORKFLOW_PATH = new URL(
 );
 
 const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+const workflowLines = workflow.split("\n");
 
 /** Indentation of a `run:`/`env:` key, used to walk a step's scope. */
 const INDENT = /^( *)/;
@@ -79,20 +87,23 @@ function referencedVariables(runLines) {
 }
 
 /**
- * Split the workflow into steps and, for each step that runs a scripts/db
- * verifier, report the variable names its own scope defines.
+ * Split the workflow into steps and, for each step, report the variable names
+ * its own scope defines plus the source lines that scope covers. The line set
+ * is what lets the precondition test below tell a step-scope declaration apart
+ * from one at job or workflow scope.
  */
 function verifierSteps() {
-  const lines = workflow.split("\n");
   const steps = [];
   let current = null;
+  // Every source line the parser attributed to a step, by its line index.
+  const stepOwnedLines = new Set();
 
   const flush = () => {
     if (current) steps.push(current);
     current = null;
   };
 
-  for (const line of lines) {
+  for (const [index, line] of workflowLines.entries()) {
     const indent = INDENT.exec(line)[1].length;
     const isListItem = /^ *- /.test(line);
 
@@ -101,6 +112,7 @@ function verifierSteps() {
     // name; both are steps, so the inline form must not be discarded.
     if (isListItem) {
       flush();
+      stepOwnedLines.add(index);
       const inline = /- run:\s*(.*)$/.exec(line.trim());
       current = {
         header: line.trim(),
@@ -111,6 +123,7 @@ function verifierSteps() {
       continue;
     }
     if (!current) continue;
+    stepOwnedLines.add(index);
 
     // Dedent back to or above the step's own list-item level: the step is over.
     if (line.trim() !== "" && indent <= current.indent) {
@@ -134,10 +147,10 @@ function verifierSteps() {
     }
   }
   flush();
-  return steps;
+  return { steps, stepOwnedLines };
 }
 
-const steps = verifierSteps();
+const { steps, stepOwnedLines } = verifierSteps();
 
 const verifierStepsFound = steps.filter((step) =>
   step.runLines.some((line) => /node scripts\/db\/[^ ]+\.mjs/.test(line)),
@@ -181,8 +194,11 @@ test("every scripts/db verifier step defines every variable its command reads", 
           `step ${step.header}`,
           `runs a scripts/db verifier but never defines $${name}, so the variable`,
           `expands to the empty string and the verifier is invoked with an empty`,
-          `--url and exits without proving anything. Add it to that step's env:`,
-          `block, or move it to job/workflow scope if every step should share it.`,
+          `--url and exits without proving anything. Add it to that step's own env:`,
+          `block. Job or workflow scope is not an alternative: the check named`,
+          `"PROOF_DATABASE_URL is declared in step scope only" below exists because`,
+          `a variable at that scope makes this one vacuous, so this failure has to`,
+          `be fixed in the step.`,
         ].join(" "),
       );
     }
@@ -191,14 +207,39 @@ test("every scripts/db verifier step defines every variable its command reads", 
   assert.deepEqual(problems, [], problems.join("\n"));
 });
 
-test("PROOF_DATABASE_URL is not relied on from workflow or job scope", () => {
-  // If it ever becomes a job-level env, the per-step check above stops proving
-  // anything, because every step would appear to define it. This asserts the
-  // precondition that keeps that check meaningful.
-  const beforeJobs = workflow.split(/\n  [a-z][a-z0-9-]*:\n/)[0];
+test("PROOF_DATABASE_URL is declared in step scope only, never at workflow or job scope", () => {
+  // If it ever becomes a job- or workflow-level env, the per-step check above
+  // stops proving anything, because every step would appear to define it. This
+  // asserts the precondition that keeps that check meaningful.
+  //
+  // The previous version of this test matched /^ {2}PROOF_DATABASE_URL:/ against
+  // the text BEFORE the first job key, so it could only ever see a workflow-level
+  // declaration: a job-level one sits at four spaces and after the split, and
+  // both were invisible. Matching the key at ANY indentation over the WHOLE
+  // workflow and requiring every occurrence to be a line the step parser owns is
+  // the shape that cannot miss a scope, and it cannot false-positive on the
+  // legitimate case either, because a step's own env: key is owned by that step.
+  const declarations = [];
+  for (const [index, line] of workflowLines.entries()) {
+    if (/^\s*PROOF_DATABASE_URL\s*:/.test(line)) {
+      declarations.push({ index, line, owned: stepOwnedLines.has(index) });
+    }
+  }
+
   assert.ok(
-    !/^ {2}PROOF_DATABASE_URL:/m.test(beforeJobs),
-    "PROOF_DATABASE_URL is declared at workflow/job scope; the per-step " +
-      "definition check is now vacuous and must be revisited",
+    declarations.length > 0,
+    "no PROOF_DATABASE_URL declaration was found in the workflow; the scope " +
+      "check below would pass vacuously, and the verifier steps would be reading " +
+      "an undefined variable",
+  );
+
+  const outsideSteps = declarations.filter((d) => !d.owned);
+  assert.deepEqual(
+    outsideSteps.map((d) => `line ${d.index + 1}: ${d.line.trim()}`),
+    [],
+    "PROOF_DATABASE_URL is declared at workflow or job scope, where the per-step " +
+      "definition check cannot see it; every verifier step would then appear to " +
+      "define it whether or not it did, and that check is now vacuous. Move the " +
+      "declaration back into each step's own env: block, or revisit this file.",
   );
 });
