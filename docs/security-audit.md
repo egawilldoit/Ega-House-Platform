@@ -121,26 +121,48 @@ state `16e22cd9`. This section records **what is enforced and what is carried**,
 with no accepted-risk language beyond what the exception registry itself carries
 with named owners and expiry dates.
 
-**Enforced.** `npm run ci:workspace` blocks any high/critical
-`npm audit --omit=dev` advisory that is not a structured exception in
-[`scripts/ci/audit-production.mjs`](../scripts/ci/audit-production.mjs). An
-exception must name one advisory id on one package and carry a `reviewBy` date;
-the script rejects a malformed or expired entry, and matching one advisory never
-excuses another. `scripts/ci/workspace-proofs.mjs` additionally pins the `next`
-and `ws` versions. The gate is a CI check with a failing exit code — that is the
-evidence; this document does not restate its result as a finding.
+**Enforced.** CI runs `node scripts/ci/audit-production.mjs` as its own step,
+"Dependency audit high/critical policy"; it blocks any high/critical
+`npm audit --omit=dev` advisory that is not a structured exception in that same
+file. An exception names one advisory source id on one package and carries a
+`reviewBy` date; an entry that is expired or whose `reviewBy` is malformed is
+reported as a blocking finding in its own right rather than honoured, and
+matching one advisory never excuses another. This is distinct from
+`npm run ci:workspace`, which asserts properties *about* the registry and the
+lockfile (`audit-production.test.mjs` + `workspace-proofs.mjs`) without running
+the live audit. `scripts/ci/workspace-proofs.mjs` pins the direct web pins
+(`next` 16.3.8, React 19.1.0) and the mobile toolchain pins (`expo` ~54.0.37,
+`react-native` 0.81.5, `expo-router` ~6.0.23). The gate is a CI check with a
+failing exit code — that is the evidence; this document does not restate its
+result as a finding.
 
-**`next` 16.3.8** (was 16.3.5), pinned in `apps/web/package.json`. GHSA-vcvr-r3jv-pc5j
-is a critical RCE in `next/og`; 16.3.8 is the first release on the 16.3 line
-containing the fix. **No product code imports `next/og`** — verified by `grep`
-across `apps/`, `packages/`, `src/` and `scripts/`, which finds the string only in
-a comment inside `workspace-proofs.mjs` that asserts the pin. `apps/web` sets
-`openGraph` metadata as plain object literals in `src/app/layout.tsx` and never
-constructs an `ImageResponse`. So the vulnerable surface is unreachable at this
-revision; the upgrade was taken regardless.
+**`next` 16.3.8** (was 16.3.5), pinned in `apps/web/package.json`.
+GHSA-vcvr-r3jv-pc5j is treated as a critical RCE in `next/og`, and it was
+**upgraded past rather than excepted** — `scripts/ci/audit-production.test.mjs`
+asserts that no registry entry ever names `next` or that advisory id, so
+re-introducing it would be caught rather than inherited. **No product code imports
+`next/og`** — verified by `grep` across `apps/`, `packages/`, `src/` and
+`scripts/`, which finds the string only in the comment at
+`scripts/ci/workspace-proofs.mjs:167` that justifies the pin; no `ImageResponse`
+is constructed anywhere in first-party source; and `apps/web` sets `openGraph`
+metadata as plain object literals in `src/app/layout.tsx:45`. So the vulnerable
+surface is unreachable at this revision and the upgrade was taken regardless. The
+advisory's exact patched version boundary is **not derivable from this
+repository** and is not asserted here; the `workspace-proofs.mjs:167` comment
+describing 16.3.8 as "the first release containing the fix" is a code comment
+this document cannot verify, not evidence.
 
-**Two exceptions are carried, and both are narrow with a 2026-11-05 review date.**
-This is *not* a claim that the risk is accepted indefinitely:
+**Nine exceptions are carried, in two expiry cohorts.** Counted by importing
+`SECURITY_AUDIT_EXCEPTIONS` rather than by reading this table: 9 entries,
+grouped `{2026-10-15: 7, 2026-11-05: 2}`, none expired on 2026-10-05. The seven
+2026-10-15 entries predate this audit's refresh — `brace-expansion` ×6 (reached
+via `expo > react-native`) and `undici` ×1 (via `@expo/cli`) — and they expire in
+days, blocking CI on that date until re-reviewed. That is the registry working as
+designed, not a finding. The canonical per-entry table, with the reason each is
+unfixable today, is
+[`docs/architecture/dependency-audit-exceptions.md`](architecture/dependency-audit-exceptions.md).
+The two entries added by the hardening program are narrow, fully governed, and
+carry a 2026-11-05 review date:
 
 | Package | Version | Advisory | Why it cannot be fixed here | Reachability (verified in `package-lock.json`) |
 |---|---|---|---|---|
