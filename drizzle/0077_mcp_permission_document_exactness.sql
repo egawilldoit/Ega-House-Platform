@@ -77,8 +77,12 @@
 -- would refuse (it should return no rows; every write path to this table has
 -- gone through an exact-document enumeration since 0039):
 --
---   SELECT permission_profile, permissions_version, status, jsonb_array_length(permissions) AS n, permissions
---   FROM public.mcp_authorization_grants
+--   SELECT permission_profile, permissions_version, status, n, permissions
+--   FROM (
+--     SELECT permission_profile, permissions_version, status,
+--            jsonb_array_length(permissions) AS n, permissions
+--     FROM public.mcp_authorization_grants
+--   ) AS grants_with_length
 --   WHERE NOT (
 --     (status IN ('active','pending') AND (
 --        (permissions_version = 1 AND permission_profile = 'read_only' AND n = 5)
