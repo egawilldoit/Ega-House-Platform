@@ -519,6 +519,13 @@
       "when": 1787880000023,
       "tag": "0074_mcp_operation_identity_pair",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1787880000024,
+      "tag": "0076_mcp_rate_limit_execute_grant",
+      "breakpoints": true
     }
   ]
 }
