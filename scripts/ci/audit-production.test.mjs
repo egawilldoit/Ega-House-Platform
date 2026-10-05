@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import {
   AUDIT_ATTEMPTS,
   AUDIT_TIMEOUT_MS,
+  SECURITY_AUDIT_EXCEPTIONS,
   runAuditCommand,
   evaluateAuditReport,
   isValidReviewByFormat,
@@ -224,6 +226,164 @@ test('evaluateAuditReport blocks direct high/critical dependencies unless allowD
 
   assert.equal(evalResult.blockingHighCritical.length, 1);
   assert.match(evalResult.blockingHighCritical[0].rejected[0].reason, /direct high\/critical/);
+});
+
+// --- 2026-10-05: the advisories published after this registry was last written.
+// `next` is the one that had a compatible fix and was upgraded rather than
+// accepted. braces and node-forge have no patched release at all, so they are
+// carried as narrow expiring entries. The tests below pin the properties that
+// make those entries safe to keep rather than merely convenient.
+
+test('evaluateAuditReport blocks the pre-upgrade next advisory even when it is direct', () => {
+  // Guards the actual fix: GHSA-vcvr-r3jv-pc5j must never be accepted by an
+  // exception. `next` 16.3.8 is pinned in apps/web/package.json instead, so if
+  // someone tries to silence this advisory with an exception the gate refuses.
+  const report = {
+    vulnerabilities: {
+      next: {
+        name: 'next',
+        severity: 'critical',
+        isDirect: true,
+        via: [
+          {
+            source: 1240609,
+            name: 'next',
+            severity: 'critical',
+            url: 'https://github.com/advisories/GHSA-vcvr-r3jv-pc5j',
+          },
+        ],
+      },
+    },
+  };
+
+  const blocked = evaluateAuditReport(report, { exceptions: [], now: new Date('2026-10-05'), checkWs: false });
+  assert.equal(blocked.blockingHighCritical.length, 1);
+
+  // An exception keyed on a DIFFERENT advisory must not accidentally cover it.
+  const wrongKey = evaluateAuditReport(report, {
+    exceptions: [
+      {
+        source: 1240992,
+        advisory: 'GHSA-vfj7-8cjw-p6xm',
+        package: 'braces',
+        reason: 'mismatched advisory',
+        reviewBy: '2026-11-05',
+        allowDirect: true,
+      },
+    ],
+    now: new Date('2026-10-05'),
+    checkWs: false,
+  });
+  assert.equal(wrongKey.blockingHighCritical.length, 1, 'a braces exception must not accept a next advisory');
+});
+
+test('the shipped exception registry accepts only the two advisories it names', () => {
+  // Structural guard against the registry growing into a catch-all. Every entry
+  // must name exactly one concrete advisory and one concrete package; anything
+  // that looks like a wildcard or an aggregate is a policy failure.
+  for (const exception of SECURITY_AUDIT_EXCEPTIONS) {
+    assert.equal(typeof exception.advisory, 'string', 'exception names an advisory id');
+    assert.match(exception.advisory, /^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}$/, 'advisory id is concrete, not a wildcard');
+    assert.equal(typeof exception.package, 'string', 'exception names a package');
+    assert.doesNotMatch(exception.package, /[*]/, 'package is not a wildcard');
+    assert.equal(typeof exception.source, 'number', 'exception pins one advisory source id');
+    assert.equal(typeof exception.reason, 'string', 'exception carries a reason');
+    assert.ok(exception.reason.length > 20, 'reason is substantive');
+    assert.ok(isValidReviewByFormat(exception.reviewBy), `exception ${exception.package} has a reviewBy date`);
+  }
+  // The two advisories carried after the 2026-10-05 publication carry the extra
+  // governance fields a temporary acceptance must have.
+  for (const source of [1240992, 1240912]) {
+    const entry = SECURITY_AUDIT_EXCEPTIONS.find((e) => e.source === source);
+    assert.ok(entry, `exception for source ${source} exists`);
+    assert.ok(entry.affectedSurface, 'exception states the affected surface');
+    assert.ok(entry.whyNotFixableNow, 'exception states why it cannot be fixed now');
+    assert.ok(entry.owner, 'exception names an owner');
+  }
+});
+
+test('the registry does not accept the next critical RCE advisory', () => {
+  // The single most important property of this remediation: the one fixable
+  // critical was UPGRADED, not excepted.
+  const nextSources = SECURITY_AUDIT_EXCEPTIONS.filter(
+    (e) => e.package === 'next' || e.advisory === 'GHSA-vcvr-r3jv-pc5j',
+  );
+  assert.equal(nextSources.length, 0, 'next/GHSA-vcvr-r3jv-pc5j must never be excepted');
+
+  const manifest = JSON.parse(readFileSync(new URL('../../apps/web/package.json', import.meta.url), 'utf8'));
+  assert.equal(manifest.dependencies.next, '16.3.8', 'web pins the patched next release');
+});
+
+test('evaluateAuditReport blocks an expired 2026-10-05 registry entry', () => {
+  // Sensitivity: the temporary acceptances must actually expire. Simulate the
+  // reviewBy date passing and prove the gate re-blocks rather than accepting
+  // indefinitely.
+  const bracesException = SECURITY_AUDIT_EXCEPTIONS.find((e) => e.source === 1240992);
+  const report = {
+    vulnerabilities: {
+      micromatch: {
+        name: 'micromatch',
+        severity: 'high',
+        isDirect: false,
+        via: [
+          {
+            source: 1240992,
+            name: 'braces',
+            severity: 'high',
+            url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm',
+          },
+        ],
+      },
+    },
+  };
+
+  const before = evaluateAuditReport(report, {
+    exceptions: [bracesException],
+    now: new Date('2026-10-05'),
+    checkWs: false,
+  });
+  assert.equal(before.blockingHighCritical.length, 0, 'accepted while within reviewBy');
+
+  const after = evaluateAuditReport(report, {
+    exceptions: [bracesException],
+    now: new Date('2026-11-06'),
+    checkWs: false,
+  });
+  assert.equal(after.blockingHighCritical.length, 1, 're-blocks once reviewBy passes');
+  assert.match(after.blockingHighCritical[0].rejected[0].reason, /expired/);
+});
+
+test('evaluateAuditReport blocks a direct advisory when allowDirect is absent', () => {
+  // Sensitivity: allowDirect:true is what admits braces/node-forge through the
+  // direct `expo` / `react-native` parents. Remove it and the same report must
+  // block, proving the flag is load-bearing rather than decorative.
+  const bracesException = { ...SECURITY_AUDIT_EXCEPTIONS.find((e) => e.source === 1240992) };
+  delete bracesException.allowDirect;
+  const report = {
+    vulnerabilities: {
+      expo: {
+        name: 'expo',
+        severity: 'high',
+        isDirect: true,
+        via: [
+          {
+            source: 1240992,
+            name: 'braces',
+            severity: 'high',
+            url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm',
+          },
+        ],
+      },
+    },
+  };
+
+  const result = evaluateAuditReport(report, {
+    exceptions: [bracesException],
+    now: new Date('2026-10-05'),
+    checkWs: false,
+  });
+  assert.equal(result.blockingHighCritical.length, 1);
+  assert.match(result.blockingHighCritical[0].rejected[0].reason, /direct high\/critical/);
 });
 
 test('evaluateAuditReport succeeds with zero vulnerabilities', () => {

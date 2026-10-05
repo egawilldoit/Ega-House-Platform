@@ -164,7 +164,9 @@ assert(mobile.devDependencies?.['babel-preset-expo'] === '~54.0.12', 'mobile Exp
 // branches declare them at the root. Accept whichever manifest owns the web
 // app so the proof stays valid across the stack.
 const webOwnerManifest = root.dependencies?.next ? root : readJson('apps/web/package.json');
-assert(webOwnerManifest.dependencies?.next === '16.3.5', 'Next pin 16.3.5');
+// 16.3.8 is the first release containing the fix for GHSA-vcvr-r3jv-pc5j
+// (critical RCE in next/og). 16.3.5 was pinned before that advisory existed.
+assert(webOwnerManifest.dependencies?.next === '16.3.8', 'Next pin 16.3.8 (GHSA-vcvr-r3jv-pc5j patched)');
 assert(
   webOwnerManifest.dependencies?.react === '19.1.0' &&
     webOwnerManifest.dependencies?.['react-dom'] === '19.1.0',
