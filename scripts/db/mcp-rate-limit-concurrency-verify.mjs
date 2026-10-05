@@ -49,11 +49,18 @@
  *
  * CONCURRENCY IS REAL, NOT SLEPT ON. Every burst is Promise.all over N
  * independent connections, each in its own transaction, so the calls genuinely
- * contend for the same row. There are no sleeps and no timing assumptions: the
- * assertions are on the allowance each call RETURNED and on the durable
- * request_count, never on the absence of an error. A lost update shows up as
- * an extra allowed=true or as a counter below the call count, and both are
- * asserted.
+ * contend for the same row. The assertions are on the allowance each call
+ * RETURNED and on the durable request_count, never on the absence of an error. A
+ * lost update shows up as an extra allowed=true or as a counter below the call
+ * count, and both are asserted.
+ *
+ * EVERY MEASUREMENT IS PROVEN TO SIT IN ONE WINDOW. The limiter restarts a
+ * bucket whenever the stored window differs from the incoming one, so a
+ * measurement split across a boundary silently restarts its allowance and
+ * yields a plausible but meaningless index. Every call therefore reports the
+ * window the RPC derived for it, in the same statement, and a measurement is
+ * only judged when all of its calls agree. See MAX_MEASUREMENT_ATTEMPTS and
+ * consumeReportingWindow().
  *
  * Usage:
  *   node scripts/db/mcp-rate-limit-concurrency-verify.mjs --url <postgres-url>
