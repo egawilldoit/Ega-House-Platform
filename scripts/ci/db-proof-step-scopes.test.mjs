@@ -41,6 +41,44 @@ const workflow = readFileSync(WORKFLOW_PATH, "utf8");
 const INDENT = /^( *)/;
 
 /**
+ * Every variable name a step's `run:` lines interpolate, in BOTH spellings
+ * GitHub Actions expands.
+ *
+ *   $NAME / ${NAME}            the shell form, which the shell expands
+ *   ${{ env.NAME }}            the expression form, which Actions expands before
+ *                               the shell ever sees the line
+ *
+ * The second form was invisible to the previous `/\$\{?([A-Za-z_]\w*)\}?/`
+ * regex: after `$` and `{` comes another `{`, so nothing matched, the step read
+ * no variables, and a verifier rewritten to the expression form passed this
+ * guard while still being invoked with an empty `--url`.
+ *
+ * Only `env.NAME` is read out of an expression. `github.*`, `needs.*`,
+ * `steps.*`, `runner.*`, `matrix.*` and friends are supplied by the runner and
+ * cannot be declared in a step's `env:` block at all, so counting them as
+ * missing definitions would report failures for correct workflow; `secrets.*`
+ * and `vars.*` come from the repository, not from this file, and a step cannot
+ * define them either. `env.` is exactly the context a step's own `env:` block
+ * feeds, which is the failure this file exists to catch.
+ */
+function referencedVariables(runLines) {
+  const referenced = new Set();
+
+  for (const line of runLines) {
+    for (const match of line.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g)) {
+      referenced.add(match[1]);
+    }
+    for (const expression of line.matchAll(/\$\{\{([^}]*)\}\}/g)) {
+      for (const match of expression[1].matchAll(/\benv\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+        referenced.add(match[1]);
+      }
+    }
+  }
+
+  return referenced;
+}
+
+/**
  * Split the workflow into steps and, for each step that runs a scripts/db
  * verifier, report the variable names its own scope defines.
  */
@@ -133,13 +171,8 @@ test("every scripts/db verifier step defines every variable its command reads", 
   const problems = [];
 
   for (const step of verifierStepsFound) {
-    // Variables this step's own run: lines interpolate.
-    const referenced = new Set();
-    for (const line of step.runLines) {
-      for (const match of line.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/g)) {
-        referenced.add(match[1]);
-      }
-    }
+    // Variables this step's own run: lines interpolate, in either spelling.
+    const referenced = referencedVariables(step.runLines);
 
     for (const name of referenced) {
       if (step.envKeys.has(name)) continue;
