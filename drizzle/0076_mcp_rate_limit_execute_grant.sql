@@ -1,0 +1,76 @@
+-- Restore the rate limiter's least-privilege boundary to its intended state.
+--
+-- WHY THIS MIGRATION EXISTS. 0040 created consume_mcp_rate_limit with a
+-- caller-supplied limit and window, and closed its surface explicitly:
+--
+--   REVOKE ALL ON FUNCTION public.consume_mcp_rate_limit(text, integer, integer)
+--     FROM PUBLIC, anon;
+--   GRANT EXECUTE
+--     ON FUNCTION public.consume_mcp_rate_limit(text, integer, integer)
+--     TO authenticated;
+--
+-- 0071 then reduced the signature to (p_window_name text) and explicitly
+-- dropped the three-argument overload. That was correct in itself, but
+-- CREATE OR REPLACE with a DIFFERENT argument list does not touch the old
+-- object - it creates a second function and leaves the old one in place until
+-- the explicit DROP. So the surviving one-argument function was created by
+-- 0071 and never received either statement above:
+--
+--   - the REVOKE named the three-argument signature, which 0071 then dropped
+--   - no GRANT followed the one-argument CREATE
+--
+-- A newly created function carries the default privilege, which grants EXECUTE
+-- to PUBLIC. Measured on a database migrated through the journal, the surviving
+-- function is the only SECURITY DEFINER function in public/ that anon can
+-- execute:
+--
+--   consume_mcp_rate_limit(text)                     anon EXECUTE: YES
+--   claim_notification_device(text,...)             anon EXECUTE: no
+--   mcp_claim_mutation_receipt(text,uuid,text)      anon EXECUTE: no
+--   mcp_store_mutation_result(text,uuid,uuid,jsonb) anon EXECUTE: no
+--   mcp_fail_mutation_result(text,uuid,uuid,bool)   anon EXECUTE: no
+--   record_mcp_audit_event(...)                      anon EXECUTE: no
+--   resolve_active_mcp_grant()                       anon EXECUTE: no
+--   purge_archived_project(...)                      anon EXECUTE: no
+--   normalize_task_completed_at()                    anon EXECUTE: no
+--
+-- WHY THIS MATTERS EVEN THOUGH auth.uid() STILL FAILS CLOSED. An anonymous
+-- request that arrives with no claims is refused by the function's own
+-- identity check, so this is not a proven end-to-end bypass on its own. It is
+-- a broken boundary in two concrete ways:
+--
+--   1. The rate limiter became the single entry point an unauthenticated role
+--      may invoke, which is exactly what 0040 was written to prevent. Every
+--      other MCP SECURITY DEFINER surface in this schema keeps anon shut out,
+--      so the invariant "an MCP bearer needs a verified JWT to reach any MCP
+--      function" had a single exception.
+--   2. The function's safety now rests entirely on a GUC the caller can set.
+--      auth.uid() and auth.jwt() read request.jwt.claim.sub and
+--      request.jwt.claims, and any role may set those for its own session via
+--      set_config. Demonstrated on the migrated database: as anon, setting
+--      both GUCs to another owner's identity made the call succeed and wrote a
+--      row into that owner's bucket:
+--
+--        SET LOCAL ROLE anon;
+--        SELECT set_config('request.jwt.claim.sub', '<owner A>', true);
+--        SELECT set_config('request.jwt.claims',
+--          '{"client_id":"v1-workspace-client","aud":"https://ega.example.com/api/mcp"}', true);
+--        SELECT * FROM public.consume_mcp_rate_limit('ega_aggregate_read');
+--        -- allowed | retry_after_seconds = t | 0
+--
+--      That is unauthenticated cross-owner traffic into a distributed counter.
+--      PostgREST controls these GUCs per request in the deployed platform, so
+--      this is not shown to be remotely reachable today; it is a
+--      defence-in-depth regression that removes the grant-level control and
+--      makes the function's only remaining defence a value the caller owns.
+--      Restoring the REVOKE makes the grant, not a caller-controlled GUC, the
+--      control - which is what every sibling function already relies on.
+--
+-- The fix is the two statements 0071 dropped, applied to the signature that
+-- actually survives.
+
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION public.consume_mcp_rate_limit(text) FROM PUBLIC, anon;
+
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION public.consume_mcp_rate_limit(text) TO authenticated;

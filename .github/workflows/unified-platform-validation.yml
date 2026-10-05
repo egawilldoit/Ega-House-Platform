@@ -497,6 +497,8 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-operation-fence-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MCP rate-limit thresholds and counter atomicity under concurrency
+        run: node scripts/db/mcp-rate-limit-concurrency-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove archived project purge invariants through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
