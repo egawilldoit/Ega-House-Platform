@@ -1694,27 +1694,69 @@ async function assertRpcSurface(sql) {
     ["ega_aggregate_sensitive_write", 60],
     ["ega_list_projects", 120],
   ];
+  // The 60s bucket is WALL CLOCK: consume_mcp_rate_limit derives
+  // to_timestamp(floor(epoch / window_seconds) * window_seconds). A sweep that
+  // crosses a minute boundary restarts its own counter mid-measurement, so the
+  // refusal index shifts and the assertion below fails for a reason that has
+  // nothing to do with the code. That made this proof fail roughly 1 run in 3 on
+  // any host, on the unmodified base as well - measured here at 15/21 passing.
+  //
+  // The fix is to observe, not to sleep. Every call reports the window the RPC
+  // derived for it, in the same statement that consumes the allowance, and a
+  // measurement is only judged when all of its calls landed in ONE window. A
+  // measurement that straddles is re-run rather than scored, bounded so a
+  // genuinely broken limiter cannot loop forever - and a broken limiter cannot
+  // roll the window, so retrying is not retry-until-green.
+  const windowSeconds = 60;
+
   for (const [windowName, expectedLimit] of shippedLimits) {
-    // Start each measurement from an empty window. The reachability probes above
-    // already consumed part of some of these, and the assertion is about where
-    // the shipped limit bites, not about how many probes preceded it.
-    await sql.unsafe(
-      `DELETE FROM public.mcp_rate_limit_windows
-       WHERE owner_user_id = $1::uuid AND oauth_client_id = $2 AND tool_name = $3`,
-      [OWNER_A, V1_WORKSPACE_CLIENT, windowName],
-    );
-    const outcomes = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run(async (tx) => {
-      const out = [];
-      // Bounded so a regression that removes the limit cannot hang the proof.
-      for (let i = 0; i <= expectedLimit + 5; i += 1) {
-        const [row] = await tx.unsafe(
-          `SELECT * FROM public.consume_mcp_rate_limit($1)`,
-          [windowName],
-        );
-        out.push(row);
+    let scored = null;
+    let straddled = 0;
+    for (let attempt = 1; attempt <= 4 && scored === null; attempt += 1) {
+      // Start each measurement from an empty window. The reachability probes
+      // above already consumed part of some of these, and the assertion is about
+      // where the shipped limit bites, not about how many probes preceded it.
+      await sql.unsafe(
+        `DELETE FROM public.mcp_rate_limit_windows
+         WHERE owner_user_id = $1::uuid AND oauth_client_id = $2 AND tool_name = $3`,
+        [OWNER_A, V1_WORKSPACE_CLIENT, windowName],
+      );
+      const outcomes = await mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT }).run(async (tx) => {
+        const out = [];
+        // Bounded so a regression that removes the limit cannot hang the proof.
+        for (let i = 0; i <= expectedLimit + 5; i += 1) {
+          const [row] = await tx.unsafe(
+            `SELECT r.*,
+                    to_timestamp(
+                      floor(extract(epoch FROM clock_timestamp()) / $2::integer) * $2::integer
+                    ) AS window_started_at
+             FROM public.consume_mcp_rate_limit($1) AS r`,
+            [windowName, windowSeconds],
+          );
+          out.push(row);
+        }
+        return out;
+      });
+      // Compare by VALUE. The driver hands back a fresh Date per row, so a Set of
+      // Date objects compares by reference and reports every row as a distinct
+      // window even when they are all the same instant.
+      const windows = new Set(
+        outcomes
+          .map((row) => row?.window_started_at)
+          .filter((value) => value !== null && value !== undefined)
+          .map((value) => (value instanceof Date ? value.getTime() : new Date(value).getTime())),
+      );
+      if (windows.size > 1) {
+        straddled += 1;
+        continue;
       }
-      return out;
-    });
+      scored = { outcomes, windows: windows.size };
+    }
+    assert(
+      scored !== null,
+      `${windowName}: the ${windowName} sweep spanned more than one 60s window on all 4 attempts (${straddled} straddles), so the refusal index cannot be attributed to the threshold. This is a harness limit, not a limiter verdict.`,
+    );
+    const { outcomes } = scored;
     const refusedAt = outcomes.findIndex((row) => row?.allowed === false);
     assert(
       refusedAt === expectedLimit,
