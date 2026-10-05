@@ -49,11 +49,18 @@
  *
  * CONCURRENCY IS REAL, NOT SLEPT ON. Every burst is Promise.all over N
  * independent connections, each in its own transaction, so the calls genuinely
- * contend for the same row. There are no sleeps and no timing assumptions: the
- * assertions are on the allowance each call RETURNED and on the durable
- * request_count, never on the absence of an error. A lost update shows up as
- * an extra allowed=true or as a counter below the call count, and both are
- * asserted.
+ * contend for the same row. The assertions are on the allowance each call
+ * RETURNED and on the durable request_count, never on the absence of an error. A
+ * lost update shows up as an extra allowed=true or as a counter below the call
+ * count, and both are asserted.
+ *
+ * EVERY MEASUREMENT IS PROVEN TO SIT IN ONE WINDOW. The limiter restarts a
+ * bucket whenever the stored window differs from the incoming one, so a
+ * measurement split across a boundary silently restarts its allowance and
+ * yields a plausible but meaningless index. Every call therefore reports the
+ * window the RPC derived for it, in the same statement, and a measurement is
+ * only judged when all of its calls agree. See MAX_MEASUREMENT_ATTEMPTS and
+ * consumeReportingWindow().
  *
  * Usage:
  *   node scripts/db/mcp-rate-limit-concurrency-verify.mjs --url <postgres-url>
@@ -91,6 +98,29 @@ const BURST_WIDTH = 24;
 const BURST_REFUSALS = 10;
 const HEADROOM_BURST_WIDTH = 16;
 const CONCURRENT_CONNECTIONS = 40;
+
+// HOW A MEASUREMENT IS KEPT INSIDE ONE WINDOW.
+//
+// The limiter counts per fixed 60s window, so a sample split across a boundary
+// is meaningless rather than wrong: the counter legitimately resets. The obvious
+// fix - predict how long the sample will take and wait for a window with enough
+// room - is machine-dependent and flaked here, because the per-call cost differs
+// by an order of magnitude between "one statement in a transaction" (~9ms) and
+// "its own transaction" (~130ms of commit), and drifts with load.
+//
+// So the proof does not predict. It samples, then checks whether the window
+// identity held either side of the sample, and re-takes the sample if it did
+// not. This is NOT retry-until-green: the retry discards a sample that a
+// rollover contaminated and takes a fresh one, bounded by MAX_MEASUREMENT_ATTEMPTS,
+// and it triggers on the window boundary alone - never on a result. Every
+// limiter assertion is evaluated only on a sample proven to sit inside a single
+// window, so a retry cannot convert a defect into a pass. A non-atomic counter
+// cannot roll a window, which is why break (a) is still caught rather than
+// absorbed by this loop.
+const MAX_MEASUREMENT_ATTEMPTS = 4;
+// Enough room to begin comfortably. Not a prediction of sample duration -
+// anything that still overruns is caught by the window-identity check.
+const MIN_WINDOW_HEADROOM_SECONDS = 5;
 
 function parseArgs() {
   const args = {};
@@ -409,6 +439,44 @@ function consume(tx, windowName) {
   return tx.unsafe(`SELECT * FROM public.consume_mcp_rate_limit($1)`, [windowName]);
 }
 
+/**
+ * Same call, but each invocation also reports the fixed window the RPC itself
+ * derived, in the SAME statement and therefore at the same instant.
+ *
+ * This exists because reading the window before and after a sweep is not
+ * sufficient. That edge check has a real hole: the limiter resets the counter to
+ * 1 whenever the stored window differs from the incoming one, so a sweep that
+ * crosses a boundary restarts its allowance and produces a plausible-looking but
+ * meaningless refusal index. Sampling the edges cannot see that reliably,
+ * because the boundary can fall between the edge samples. Reporting the window
+ * per call closes the hole - a sweep is single-window exactly when every call
+ * reports the same window, which is an observation rather than an inference.
+ */
+function consumeReportingWindow(tx, windowName, windowSeconds) {
+  return tx.unsafe(
+    `SELECT r.allowed, r.retry_after_seconds,
+            to_timestamp(floor(extract(epoch FROM clock_timestamp()) / $2::integer) * $2::integer) AS window_started_at
+     FROM public.consume_mcp_rate_limit($1) AS r`,
+    [windowName, windowSeconds],
+  );
+}
+
+/**
+ * True when every call in the sweep was served in the same fixed window.
+ * Returns the distinct windows so a failure can say what happened.
+ */
+function windowsUsedBy(rows, windowSeconds) {
+  const distinct = [
+    ...new Set(
+      rows
+        .map((row) => row?.window_started_at)
+        .filter(Boolean)
+        .map((start) => new Date(start).getTime()),
+    ),
+  ].sort((a, b) => a - b);
+  return { single: distinct.length <= 1, distinct, windowSeconds };
+}
+
 async function capturePostgresError(fn) {
   try {
     await fn();
@@ -437,9 +505,9 @@ async function resetBucket(sql, { userId = OWNER_A, clientId = CLIENT_A, windowN
 }
 
 /**
- * Seconds left in the CURRENT fixed window. Every threshold scenario below is
- * required to happen inside one window, so a scenario that would straddle a
- * boundary is detected and reported rather than silently measured across two.
+ * Seconds left in the CURRENT fixed window. Used only to decide whether to wait
+ * before measuring; whether a measurement actually stayed inside one window is
+ * decided per call by consumeReportingWindow().
  */
 async function secondsLeftInWindow(sql, windowSeconds) {
   const [row] = await sql.unsafe(
@@ -450,44 +518,31 @@ async function secondsLeftInWindow(sql, windowSeconds) {
 }
 
 /**
- * The fixed window the RPC itself derives, computed with the same expression so
- * the proof compares against the shipped alignment rather than an assumed one.
- */
-async function currentWindowStart(sql, windowSeconds) {
-  const [row] = await sql.unsafe(
-    `SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp()) / $1::integer) * $1::integer) AS start`,
-    [windowSeconds],
-  );
-  return row.start;
-}
-
-/**
- * Waits until the current fixed window has enough room left to complete a
- * measurement without crossing a boundary.
+ * Waits, if necessary, for the current fixed window to have `neededSeconds` of
+ * room left so a measurement can begin with space to work in.
  *
- * This is SCHEDULING, NOT EVIDENCE. Nothing about the limiter's behaviour is
- * inferred from the wait: it exists only so a sweep is not measured across two
- * windows, where the counter legitimately resets and the refusal index would be
- * meaningless. The assertions still run against real returned allowances, and
- * the window identity is re-checked after every measurement, so a wait that
- * misbehaved could only ever produce a failure, never a false pass.
+ * This is SCHEDULING, NOT EVIDENCE, and correctness does not depend on it. It
+ * cannot promise a measurement will finish before the boundary - only the
+ * window-identity check taken either side of each sample can, and a sample that
+ * still overruns is re-taken (see MAX_MEASUREMENT_ATTEMPTS). Nothing about the
+ * limiter's behaviour is inferred from this wait; it exists so most samples
+ * start with room, so a run beginning just after a boundary does not pay for a
+ * doomed first attempt on every scenario.
  */
 async function alignToFreshWindow(sql, windowSeconds, neededSeconds, label) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const left = await secondsLeftInWindow(sql, windowSeconds);
-    if (left > neededSeconds) return left;
-    log(
-      "WINDOW-ALIGN",
-      `${label}: only ${left.toFixed(1)}s left in the current ${windowSeconds}s window; waiting ${(left + 0.2).toFixed(1)}s for a fresh window so the measurement is not split.`,
-    );
-    await sql.unsafe(`SELECT pg_sleep($1)`, [Number((left + 0.2).toFixed(2))]);
-  }
   const left = await secondsLeftInWindow(sql, windowSeconds);
-  assert(
-    left > neededSeconds,
-    `${label}: could not obtain a ${windowSeconds}s window with more than ${neededSeconds}s remaining (last saw ${left.toFixed(1)}s)`,
+  if (left > neededSeconds) return left;
+  log(
+    "WINDOW-ALIGN",
+    `${label}: only ${left.toFixed(1)}s left in the current ${windowSeconds}s window; waiting ${(left + 0.2).toFixed(1)}s for a fresh one so the measurement starts with room.`,
   );
-  return left;
+  await sql.unsafe(`SELECT pg_sleep($1)`, [Number((left + 0.2).toFixed(2))]);
+  const after = await secondsLeftInWindow(sql, windowSeconds);
+  assert(
+    after > neededSeconds,
+    `${label}: after waiting for a fresh window only ${after.toFixed(1)}s remained (needed >${neededSeconds}s)`,
+  );
+  return after;
 }
 
 /**
@@ -517,37 +572,92 @@ async function proveConcurrentBurst({
 }) {
   const session = mcpSession(pool, sessionOptions);
 
-  // The durable request_count assertion below is only meaningful inside one
-  // window: a rollover mid-burst would reset the counter and the count would no
-  // longer have to equal the call count. Align to a fresh window first, then
-  // assert the window identity afterwards so a passing run is never a
-  // straddled one.
-  await alignToFreshWindow(sql, windowSeconds, 15, label);
-  const windowAtStart = await currentWindowStart(sql, windowSeconds);
+  // TAKE A SAMPLE, THEN CHECK IT LIES INSIDE ONE WINDOW, THEN JUDGE IT.
+  //
+  // A window rollover invalidates a sample rather than refuting it: the counter
+  // legitimately resets, so the durable count stops describing these calls and
+  // the refusal indices carry no verdict. Predicting the rollover away with a
+  // wall-clock estimate does not work - the estimate drifts with machine load,
+  // and the cost of one RPC differs by an order of magnitude depending on
+  // whether it shares a transaction (~9ms) or commits on its own (~130ms). So
+  // the proof does not predict: it samples, compares the window identity either
+  // side of the sample, and re-takes the sample if they differ.
+  //
+  // This is NOT retry-until-green. A retry replaces a sample that carried no
+  // verdict at all; it is bounded by MAX_MEASUREMENT_ATTEMPTS; and it triggers only
+  // on the window boundary, which is observed rather than inferred from any
+  // result. A non-atomic counter cannot make a window roll, so no real defect
+  // can hide behind a retry - which is why break (a) is still caught rather than
+  // absorbed. Every assertion below runs only on a sample proven to sit inside a
+  // single window.
+  for (let attempt = 1; attempt <= MAX_MEASUREMENT_ATTEMPTS; attempt += 1) {
+    // Ask for a little room so a rollover is unlikely. This is an optimisation
+    // only: correctness comes from the window-identity check below, not here.
+    await alignToFreshWindow(sql, windowSeconds, MIN_WINDOW_HEADROOM_SECONDS, label);
 
-  await resetBucket(sql, { windowName, ...sessionOptions });
+    await resetBucket(sql, { windowName, ...sessionOptions });
 
-  // Burn the head of the allowance sequentially, so the concurrent burst starts
-  // just below the threshold and its refusals are produced by contention rather
-  // than by the burst simply outlasting the window.
-  for (let i = 0; i < preConsume; i += 1) {
-    const [row] = await session((tx) => consume(tx, windowName));
-    assert(
-      row?.allowed === true,
-      `${label}: the pre-consume warm-up call ${i + 1} of ${preConsume} was refused before the burst began; the burst would not straddle the threshold`,
+    // Burn the head of the allowance sequentially so the concurrent burst starts
+    // just below the threshold and its refusals are produced BY contention,
+    // which is the only way the refusal half of the limiter gets exercised.
+    //
+    // The warm-up runs as sequential statements inside ONE transaction. Each call
+    // in its own transaction costs ~130ms of commit overhead, so the 590-call
+    // warm-up the 600/min aggregate needs would take 76s and could not fit
+    // inside a 60s window at all; sharing a transaction costs ~9ms each and
+    // advances the counter identically. Only the BURST needs independent
+    // transactions, because only the burst has to contend.
+    const warmup = [];
+    if (preConsume > 0) {
+      warmup.push(
+        ...(await session(async (tx) => {
+          const rows = [];
+          for (let i = 0; i < preConsume; i += 1) {
+            rows.push((await consumeReportingWindow(tx, windowName, windowSeconds))[0]);
+          }
+          return rows;
+        })),
+      );
+      const firstWarmupRefusal = warmup.findIndex((row) => row?.allowed === false);
+      assert(
+        firstWarmupRefusal === -1,
+        `${label}: warm-up call ${firstWarmupRefusal + 1} of ${preConsume} was refused, so the bucket cannot be filled to the intended head and the burst would not straddle the threshold`,
+      );
+    }
+
+    const outcomes = await Promise.all(
+      Array.from({ length: width }, () =>
+        session((tx) => consumeReportingWindow(tx, windowName, windowSeconds)),
+      ),
     );
+
+    // Every call - warm-up and burst alike - must report the same window. This
+    // is an observation per call, so a boundary falling between two calls cannot
+    // slip through the way an edge-sampled check allows.
+    const windows = windowsUsedBy([...warmup, ...outcomes.map((row) => row[0])], windowSeconds);
+    if (!windows.single) {
+      log(
+        "WINDOW-ALIGN",
+        `${label}: attempt ${attempt} spanned ${windows.distinct.length} fixed windows ` +
+          `(${windows.distinct.map((start) => new Date(start).toISOString()).join(", ")}). ` +
+          "The limiter restarts a bucket when the window changes, so the durable count would not " +
+          "describe these calls; re-measuring inside a single window.",
+      );
+      continue;
+    }
+
+    await judgeBurstSample({ sql, outcomes, windowName, limit, width, preConsume, label, sessionOptions });
+    return;
   }
-
-  const outcomes = await Promise.all(
-    Array.from({ length: width }, () => session((tx) => consume(tx, windowName))),
-  );
-
-  const windowAtEnd = await currentWindowStart(sql, windowSeconds);
   assert(
-    windowAtStart.getTime() === windowAtEnd.getTime(),
-    `${label}: the burst crossed a fixed-window boundary (${windowAtStart.toISOString()} -> ${windowAtEnd.toISOString()}); the durable count no longer describes these calls`,
+    false,
+    `${label}: no measurement fit inside one ${windowSeconds}s window after ${MAX_MEASUREMENT_ATTEMPTS} attempts; the burst is too wide or the window too short to measure it`,
   );
+}
 
+// Kept separate from the sampling loop so it is structurally impossible to run
+// these assertions against a sample that straddled a window.
+async function judgeBurstSample({ sql, outcomes, windowName, limit, width, preConsume, label, sessionOptions }) {
   const allowed = outcomes.filter((row) => row[0]?.allowed === true).length;
   const refused = outcomes.filter((row) => row[0]?.allowed === false).length;
   const malformed = outcomes.filter(
@@ -625,37 +735,50 @@ async function proveThresholdIndex({
   sessionOptions = {},
 }) {
   const session = mcpSession(pool, sessionOptions);
-  await resetBucket(sql, { windowName, ...sessionOptions });
 
-  // The sweep must land entirely inside ONE fixed window. A rollover mid-sweep
-  // legitimately resets the counter, which would make the refusal index
-  // meaningless rather than wrong - so record the window the first call was
-  // served in and refuse to report a threshold if the sweep crossed a boundary.
-  // The sweep costs wall-clock time, not one second per call: measured at a few
-  // milliseconds per RPC a 601-call sweep finishes in single-digit seconds, so
-  // 20s of headroom is ample. The window identity is asserted afterwards
-  // regardless, so a too-optimistic bound cannot produce a false pass.
-  await alignToFreshWindow(sql, windowSeconds, 20, label);
-  const windowAtStart = await currentWindowStart(sql, windowSeconds);
+  // Sample, then confirm every call in the sample was served in ONE window, then
+  // read the index. A rollover invalidates the sweep rather than refuting it -
+  // see MAX_MEASUREMENT_ATTEMPTS for why this is not retry-until-green.
+  for (let attempt = 1; attempt <= MAX_MEASUREMENT_ATTEMPTS; attempt += 1) {
+    await alignToFreshWindow(sql, windowSeconds, MIN_WINDOW_HEADROOM_SECONDS, label);
+    await resetBucket(sql, { windowName, ...sessionOptions });
 
-  const outcomes = await session(async (tx) => {
-    const rows = [];
-    // Sweep a few calls PAST the threshold. At the shipped boundary the first
-    // refusal is call limit+1, so the overshoot is never reached; it is there so
-    // a boundary that is one call too generous reports the exact wrong index
-    // instead of only "no refusal was observed".
-    for (let i = 0; i <= limit + 4; i += 1) {
-      rows.push((await consume(tx, windowName))[0]);
+    const outcomes = await session(async (tx) => {
+      const rows = [];
+      // Sweep a few calls PAST the threshold. At the shipped boundary the first
+      // refusal is call limit+1, so the overshoot is never reached; it is there
+      // so a boundary that is one call too generous reports the exact wrong index
+      // instead of only "no refusal was observed".
+      for (let i = 0; i <= limit + 4; i += 1) {
+        rows.push((await consumeReportingWindow(tx, windowName, windowSeconds))[0]);
+      }
+      return rows;
+    });
+
+    const windows = windowsUsedBy(outcomes, windowSeconds);
+    if (!windows.single) {
+      log(
+        "WINDOW-ALIGN",
+        `${label}: sweep ${attempt} spanned ${windows.distinct.length} fixed windows ` +
+          `(${windows.distinct.map((start) => new Date(start).toISOString()).join(", ")}). ` +
+          "The limiter restarts a bucket when the window changes, so the allowance restarts too and the " +
+          "refusal index would describe two windows rather than one; re-sweeping.",
+      );
+      continue;
     }
-    return rows;
-  });
 
-  const windowAtEnd = await currentWindowStart(sql, windowSeconds);
+    judgeRefusalIndex(outcomes, limit, label);
+    return;
+  }
   assert(
-    windowAtStart.getTime() === windowAtEnd.getTime(),
-    `${label}: the sweep crossed a fixed-window boundary (${windowAtStart.toISOString()} -> ${windowAtEnd.toISOString()}); the refusal index cannot be read across two windows`,
+    false,
+    `${label}: no sweep landed entirely inside one ${windowSeconds}s window after ${MAX_MEASUREMENT_ATTEMPTS} attempts`,
   );
+}
 
+// Separate from the sampling loop so the index can only ever be read from a
+// sweep proven to have used a single window.
+function judgeRefusalIndex(outcomes, limit, label) {
   const refusedIndex = outcomes.findIndex((row) => row?.allowed === false);
   assert(
     refusedIndex === limit,
@@ -762,21 +885,40 @@ async function proveFailsClosed({ sql, pool, policy }) {
 
   // The reserved aggregate namespace: a name the policy does not configure is
   // bounded by the per-tool allowance, never unlimited. Measured by sweeping it
-  // to its own refusal index.
+  // to its own refusal index, with the same single-window discipline as every
+  // other sweep here.
   const unconfigured = `${policy.aggregatePrefix}not_a_configured_class`;
-  await resetBucket(sql, { windowName: unconfigured });
-  await alignToFreshWindow(sql, policy.windowSeconds, 20, `unconfigured bucket ${unconfigured}`);
-  const sweep = await session(async (tx) => {
-    const rows = [];
-    for (let i = 0; i <= policy.perToolLimit; i += 1) {
-      rows.push((await consume(tx, unconfigured))[0]);
+  let unconfiguredRefusedIndex = null;
+  for (let attempt = 1; attempt <= MAX_MEASUREMENT_ATTEMPTS; attempt += 1) {
+    await alignToFreshWindow(sql, policy.windowSeconds, MIN_WINDOW_HEADROOM_SECONDS, `unconfigured bucket ${unconfigured}`);
+    await resetBucket(sql, { windowName: unconfigured });
+
+    const sweep = await session(async (tx) => {
+      const rows = [];
+      for (let i = 0; i <= policy.perToolLimit; i += 1) {
+        rows.push((await consumeReportingWindow(tx, unconfigured, policy.windowSeconds))[0]);
+      }
+      return rows;
+    });
+
+    const windows = windowsUsedBy(sweep, policy.windowSeconds);
+    if (!windows.single) {
+      log(
+        "WINDOW-ALIGN",
+        `${unconfigured}: sweep ${attempt} spanned ${windows.distinct.length} fixed windows, so the refusal index carries no verdict; re-sweeping.`,
+      );
+      continue;
     }
-    return rows;
-  });
-  const refusedIndex = sweep.findIndex((row) => row?.allowed === false);
+    unconfiguredRefusedIndex = sweep.findIndex((row) => row?.allowed === false);
+    break;
+  }
   assert(
-    refusedIndex === policy.perToolLimit,
-    `${unconfigured} must be bounded by the per-tool allowance ${policy.perToolLimit} (first refusal at 0-based ${refusedIndex}), not left unlimited`,
+    unconfiguredRefusedIndex !== null,
+    `${unconfigured}: no sweep landed entirely inside one ${policy.windowSeconds}s window after ${MAX_MEASUREMENT_ATTEMPTS} attempts`,
+  );
+  assert(
+    unconfiguredRefusedIndex === policy.perToolLimit,
+    `${unconfigured} must be bounded by the per-tool allowance ${policy.perToolLimit} (first refusal at 0-based ${unconfiguredRefusedIndex}), not left unlimited`,
   );
 
   log(
