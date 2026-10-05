@@ -7,10 +7,12 @@ import {
   createProject as createProjectInApplication,
   unarchiveProject as unarchiveProjectInApplication,
   updateProjectStatus as updateProjectStatusInApplication,
+  type ApplicationErrorCode,
   type AuthenticatedActor,
 } from "@ega/application";
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
+import { mcpApplicationFailurePayload } from "@/lib/mcp/application-failure";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import { requireMcpPermission } from "@/lib/mcp/tool-authorization";
 
@@ -33,11 +35,14 @@ function toCallToolResult(payload: ToolPayload, isError = false): CallToolResult
   return result;
 }
 
-function applicationErrorResult(message: string): CallToolResult {
-  return toCallToolResult(
-    { ok: false, error: { code: "INVALID_ARGUMENT", message } },
-    true,
-  );
+/**
+ * Carries the canonical ApplicationResult class through to the protocol code
+ * (apps/web/src/lib/mcp/application-failure.ts) so a transient dependency
+ * failure is retryable instead of being frozen as a permanent receipt.
+ */
+function applicationErrorResult(message: string, code?: ApplicationErrorCode): CallToolResult {
+  const payload = mcpApplicationFailurePayload(message, code);
+  return toCallToolResult({ ok: false, error: payload }, true);
 }
 
 function resolveActor(
@@ -70,7 +75,7 @@ export async function createProject(
   } as unknown as { name: unknown; slug: unknown; description: unknown });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   const readBack = await repository.getProjectBySlug(actor, result.values.slug);
@@ -100,7 +105,7 @@ export async function updateProjectStatus(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({
@@ -122,7 +127,7 @@ export async function archiveProject(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({
@@ -144,7 +149,7 @@ export async function unarchiveProject(
   });
 
   if (!result.ok) {
-    return applicationErrorResult(result.errorMessage);
+    return applicationErrorResult(result.errorMessage, result.code);
   }
 
   return toCallToolResult({

@@ -5,6 +5,15 @@ import { applicationFailure, applicationSuccess, type ApplicationResult } from "
 import type { TaskRecord } from "../tasks/ports";
 import type { TodayTaskRepository } from "../tasks/mutations-ports";
 
+/**
+ * A repository refusal carries either a class ("conflict") or none ("unknown").
+ * Every MCP write use case must forward it: a transport that cannot tell the
+ * two apart freezes a transient dependency failure as a permanent receipt.
+ */
+function toAppErrorCode(repoCode?: string): "conflict" | "unknown" {
+  return repoCode === "conflict" ? "conflict" : "unknown";
+}
+
 function normalizeDate(value: unknown): string | null {
   const date = String(value ?? "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
@@ -23,7 +32,10 @@ export async function planTaskForToday(
   const result = await repository.setPlannedDate(actor, { taskId, plannedForDate: date });
   return result.ok
     ? applicationSuccess(result.value)
-    : applicationFailure("Unable to add task to Today right now.");
+    : applicationFailure(
+        "Unable to add task to Today right now.",
+        toAppErrorCode(result.error.code),
+      );
 }
 
 export async function removeTaskFromToday(
@@ -37,7 +49,10 @@ export async function removeTaskFromToday(
   const result = await repository.setPlannedDate(actor, { taskId, plannedForDate: null });
   return result.ok
     ? applicationSuccess(result.value)
-    : applicationFailure("Unable to remove task from Today right now.");
+    : applicationFailure(
+        "Unable to remove task from Today right now.",
+        toAppErrorCode(result.error.code),
+      );
 }
 
 export async function updateTodayTaskStatus(
@@ -58,7 +73,10 @@ export async function updateTodayTaskStatus(
   const result = await repository.setStatus(actor, { taskId, status, blockedReason });
   return result.ok
     ? applicationSuccess(result.value)
-    : applicationFailure("Unable to update Today task right now.");
+    : applicationFailure(
+        "Unable to update Today task right now.",
+        toAppErrorCode(result.error.code),
+      );
 }
 
 export async function clearCompletedToday(
@@ -72,5 +90,8 @@ export async function clearCompletedToday(
   const result = await repository.clearCompletedPlannedDate(actor, { plannedForDate: date });
   return result.ok
     ? applicationSuccess({ clearedCount: result.value })
-    : applicationFailure("Unable to clear completed Today items right now.");
+    : applicationFailure(
+        "Unable to clear completed Today items right now.",
+        toAppErrorCode(result.error.code),
+      );
 }

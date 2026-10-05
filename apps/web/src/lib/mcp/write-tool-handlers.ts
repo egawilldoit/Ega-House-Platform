@@ -3,6 +3,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import { isPermanentMcpFailureCode } from "@/lib/mcp/application-failure";
 import {
   acceptedContent,
   inputRequired,
@@ -145,8 +146,7 @@ async function withExclusiveMutation(
     if (result.isError) {
       const errorCode = (result.structuredContent as Record<string, unknown> | undefined)?.error as { code?: string } | undefined;
       const code = errorCode?.code;
-      const isPermanent = code ? ["INVALID_ARGUMENT", "PERMISSION_DENIED", "CONFLICT", "FAILED_FINAL", "CONFIRMATION_DECLINED", "WRITES_DISABLED"].includes(code) : false;
-      await failMcpMutation(client, toolName, operationId, claim.claimToken, isPermanent);
+      await failMcpMutation(client, toolName, operationId, claim.claimToken, isPermanentMcpFailureCode(code));
       return result;
     }
     await storeMcpMutationResult(
