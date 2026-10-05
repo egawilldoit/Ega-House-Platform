@@ -293,6 +293,12 @@ jobs:
         run: node scripts/ci/verify-platform-optionals.mjs
       - name: Agent context regression
         run: npm run validate:agent-context
+      # src/db/mcp-schema.ts is an input to db:generate/db:push, so a stale
+      # declaration there silently reverts hand-written MCP constraint
+      # migrations. Unconditional because the security model lives in the
+      # migration journal, which no path filter would reliably catch.
+      - name: MCP permission-version schema drift regression
+        run: npm run test:mcp-schema-drift
       - name: Runner typecheck regression
         run: npm run typecheck:ega-runner
       - name: Runner PR-loop regression
@@ -532,6 +538,13 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-normal-user-rls-verify.mjs --url "$PROOF_DATABASE_URL"
+      # Names its own database like the verifier above, for the same reason: it
+      # drops the public/auth/automation schemas and then lets drizzle-kit push
+      # rewrite the result.
+      - name: Prove db:generate and db:push cannot regress the MCP permission-version model
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-schema-drift-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
