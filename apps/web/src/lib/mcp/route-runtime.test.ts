@@ -166,6 +166,30 @@ describe("createMcpRouteRuntime", () => {
       expect(response.headers.get("cache-control")).toContain("no-store");
     });
 
+    it("Vary: Origin on every refusal, so the route's cache contract has no exception", async () => {
+      // The 204, the 401/403 (http-auth.ts) and the 404 (endpoint.ts) all carry
+      // `Vary: Origin`. The refusals below did not: `invalidRequest` set only
+      // `Cache-Control: no-store`. Asserted across every refusal class the
+      // preflight can produce so the exception cannot come back on one of them.
+      const refusals = [
+        ["a wrong host", { origin: RESOURCE_ORIGIN, host: `${RESOURCE_HOST}.evil` }],
+        ["a foreign origin", { origin: "https://evil.example", host: RESOURCE_HOST }],
+        ["an opaque origin", { origin: "null", host: RESOURCE_HOST }],
+        ["an explicit :80", { origin: RESOURCE_ORIGIN, host: `${RESOURCE_HOST}:80` }],
+        ["a backslash host", { origin: RESOURCE_ORIGIN, host: `${RESOURCE_HOST}\\evil.com` }],
+      ] as const;
+
+      for (const [label, init] of refusals) {
+        const response = await runtime().OPTIONS(preflight(init));
+
+        expect(response.status, label).toBeGreaterThanOrEqual(400);
+        expect(response.headers.get("vary"), label).toContain("Origin");
+        expect(response.headers.get("cache-control"), label).toContain("no-store");
+        // Still no allow-origin: Vary is not permission.
+        expect(response.headers.get("access-control-allow-origin"), label).toBeNull();
+      }
+    });
+
     it("refuses a Host whose authority only re-parses to the resource host", async () => {
       // `ega.example.com\evil.com` parses (via WHATWG URL, which treats `\` as
       // a path separator) to the resource host, so a Host check written as

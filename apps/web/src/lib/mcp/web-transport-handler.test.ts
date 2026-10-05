@@ -213,6 +213,68 @@ describe("createWebMcpHandler", () => {
     expect(response.status).toBe(413);
   });
 
+  it("refuses an over-limit body with this route's own error shape, not the SDK's", async () => {
+    // The SDK enforces a POST body bound too (2.3.0 `maxRequestBodySize`, default
+    // 4 MiB). Left at its default, the two bounds were independent constants that
+    // happened to be equal, and the proof that ours is the one that fired is the
+    // BODY: ours is `{error: "invalid_request"}`, the SDK's is a JSON-RPC error
+    // with code -32e3. A test asserting only the 413 status would pass either way,
+    // which is exactly the failure this pins shut.
+    const headers = new Headers(MCP_HEADERS);
+    headers.set("content-length", String(4 * 1024 * 1024 + 1));
+
+    const response = await createHandler()(createRequest(
+      { jsonrpc: "2.0", id: 1, method: "ping" },
+      headers,
+    ));
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({
+      error: "invalid_request",
+      error_description: "Request body too large.",
+    });
+    // And the SDK agrees with our bound rather than holding a private one, so
+    // raising `MAX_REQUEST_BODY_BYTES` cannot leave a stale 4 MiB behind. The SDK
+    // throwing a RangeError at construction for a bad value is the mechanism; this
+    // asserts the handler is constructible with the value wired, i.e. no
+    // non-positive or non-finite bound reached it.
+    expect(() => createHandler()).not.toThrow();
+  });
+
+  it("answers every over-limit length itself, so the SDK's own bound can never answer instead", async () => {
+    // The assertion above pins ONE length, at the bound. This pins the RANGE a
+    // bound raised above ours would admit, because that is the only place the two
+    // bounds can be told apart: `readRequestBody` in 2.3.0 refuses on DECLARED
+    // Content-Length without reading anything, so a length between the two
+    // bounds is answered by whichever bound is lower - ours as
+    // `{error: "invalid_request"}`, the SDK's as a JSON-RPC body whose message
+    // contains "Payload Too Large". Probed and confirmed:
+    //   413 {"jsonrpc":"2.0","error":{"code":-32000,"message":"Payload Too
+    //   Large: Request body must not exceed 4194304 bytes"},"id":null}
+    //
+    // So if `maxRequestBodySize` were left at the SDK's own default, raising
+    // `MAX_REQUEST_BODY_BYTES` would silently leave a stale 4 MiB behind and every
+    // one of these would come back in the SDK's shape - the symptom being "the
+    // limit did not change", with an error body that is not this route's.
+    for (const declaredLength of [5 * 1024 * 1024, 8 * 1024 * 1024]) {
+      const headers = new Headers(MCP_HEADERS);
+      headers.set("content-length", String(declaredLength));
+
+      const response = await createHandler()(createRequest(
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        headers,
+      ));
+
+      expect(response.status, String(declaredLength)).toBe(413);
+      const body = await response.text();
+      expect(body, String(declaredLength)).not.toContain("Payload Too Large");
+      expect(JSON.parse(body), String(declaredLength)).toMatchObject({
+        error: "invalid_request",
+        error_description: "Request body too large.",
+      });
+    }
+  });
+
   it("rejects a non-numeric Content-Length rather than trusting it", async () => {
     const headers = new Headers(MCP_HEADERS);
     // undici recomputes Content-Length for a string body, so the header is set
@@ -326,6 +388,49 @@ describe("createWebMcpHandler", () => {
       expect(response.status).toBe(421);
     });
 
+    it.each([
+      ["a wrong host", { origin: RESOURCE_ORIGIN, host: `${RESOURCE_HOST}.evil` }, 421],
+      ["a foreign origin", { origin: "https://evil.example", host: RESOURCE_HOST }, 403],
+      ["an opaque origin", { origin: "null", host: RESOURCE_HOST }, 400],
+      ["an explicit :80", { origin: RESOURCE_ORIGIN, host: `${RESOURCE_HOST}:80` }, 421],
+    ])(
+      "Vary: Origin on the %s refusal, because every response here is decided per origin",
+      async (_label, init, status) => {
+        // The 204 carries `Vary: Origin` and so do the 401/403 in http-auth.ts and
+        // the 404 in endpoint.ts, but these Host/Origin refusals were produced by
+        // `invalidRequest`, which set only `Cache-Control: no-store` - so they were
+        // the one origin-dependent response on this route with no Vary at all. They
+        // emit no allow-origin either (correct: the origin was not accepted), so Vary
+        // was the only thing marking them as origin-scoped. A shared cache that
+        // stored one origin's refusal could otherwise replay it for another.
+        const response = await createHandler()(preflight(init));
+
+        expect(response.status).toBe(status);
+        expect(response.headers.get("vary")).toContain("Origin");
+        expect(response.headers.get("cache-control")).toContain("no-store");
+        expect(response.headers.get("access-control-allow-origin")).toBeNull();
+      },
+    );
+
+    it("Vary: Origin on the POST-path refusals too, not just the preflight's", async () => {
+      // The same `invalidRequest` produces these, so proving it once on the
+      // preflight would leave the POST path unpinned. The two paths share the
+      // function; a change that only fixed the preflight would keep this green
+      // otherwise.
+      const headers = new Headers(MCP_HEADERS);
+      headers.set("origin", "https://evil.example");
+
+      const response = await createHandler()(createRequest(
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        headers,
+      ));
+
+      expect(response.status).toBe(403);
+      expect(response.headers.get("vary")).toContain("Origin");
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      expect(response.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
     it("gives preflight and POST the same verdict for every Host it rejects", async () => {
       // The single-policy invariant stated over Host rather than Origin. Asserted
       // on the status only because the status is the observable decision; the
@@ -354,6 +459,91 @@ describe("createWebMcpHandler", () => {
         expect(preflightResponse.status, `preflight host ${host}`).toBe(postResponse.status);
         expect(preflightResponse.status, `preflight host ${host}`).toBeGreaterThanOrEqual(400);
         expect(preflightResponse.headers.get("access-control-allow-origin"), host).toBeNull();
+      }
+    });
+
+    /**
+     * The single-policy invariant stated as a matrix rather than as a list of
+     * individual cases: for every (Host, Origin) pair, preflight and POST must
+     * reach the SAME verdict, and a refusal must carry no allow-origin on either.
+     *
+     * The pairs below are chosen so each axis is exercised independently (Host
+     * wrong with Origin right, and the reverse) and then jointly, plus the
+     * server-to-server no-Origin case. A per-axis test could pass while the pair
+     * behaved differently from each of its parts; a matrix cannot.
+     */
+    it.each([
+      ["both correct", { host: RESOURCE_HOST, origin: RESOURCE_ORIGIN }, true],
+      ["both absent", { host: RESOURCE_HOST, origin: undefined }, true],
+      ["host wrong only", { host: `${RESOURCE_HOST}.evil`, origin: RESOURCE_ORIGIN }, false],
+      ["origin wrong only", { host: RESOURCE_HOST, origin: "https://evil.example" }, false],
+      ["both wrong", { host: `${RESOURCE_HOST}.evil`, origin: "https://evil.example" }, false],
+      ["host port wrong only", { host: `${RESOURCE_HOST}:8443`, origin: RESOURCE_ORIGIN }, false],
+      ["host :80 only", { host: `${RESOURCE_HOST}:80`, origin: RESOURCE_ORIGIN }, false],
+      ["host :443 only", { host: `${RESOURCE_HOST}:443`, origin: RESOURCE_ORIGIN }, true],
+      ["origin opaque only", { host: RESOURCE_HOST, origin: "null" }, false],
+      ["origin path only", { host: RESOURCE_HOST, origin: `${RESOURCE_ORIGIN}/path` }, false],
+      ["host backslash only", { host: `${RESOURCE_HOST}\\evil.com`, origin: RESOURCE_ORIGIN }, false],
+      ["both malformed", { host: `${RESOURCE_HOST}\\evil.com`, origin: "null" }, false],
+    ])("agrees on both paths: %s", async (_label, init, allowed) => {
+      const preflightHeaders = new Headers({ host: init.host });
+      if (init.origin !== undefined) preflightHeaders.set("origin", init.origin);
+
+      const preflightResponse = await createHandler()(
+        new Request(RESOURCE_URL, { method: "OPTIONS", headers: preflightHeaders }),
+      );
+
+      const postHeaders = new Headers(MCP_HEADERS);
+      postHeaders.set("host", init.host);
+      if (init.origin !== undefined) postHeaders.set("origin", init.origin);
+      const postResponse = await createHandler()(createRequest(
+        { jsonrpc: "2.0", id: 1, method: "ping" },
+        postHeaders,
+      ));
+
+      if (allowed) {
+        expect(preflightResponse.status, _label).toBe(204);
+        // The POST echoes the SAME allow-origin the preflight advertised. This is
+        // the half of "one policy" that a status comparison cannot reach: two
+        // paths could agree on the verdict while echoing different allow-origins,
+        // and the browser would still discard the POST as opaque.
+        expect(postResponse.headers.get("access-control-allow-origin"), _label)
+          .toBe(preflightResponse.headers.get("access-control-allow-origin"));
+        // With no Origin sent there is nothing to echo, so "equal" means equal to
+        // each other AND absent on both. Asserted explicitly because the general
+        // rule (echo the resource origin) would otherwise be read as applying here.
+        const expected = init.origin === undefined ? null : RESOURCE_ORIGIN;
+        expect(preflightResponse.headers.get("access-control-allow-origin"), _label)
+          .toBe(expected);
+      } else {
+        // Same status, which is the whole point: two independent policies would
+        // pick different statuses for at least one of these rows.
+        expect(preflightResponse.status, _label).toBe(postResponse.status);
+        expect(preflightResponse.status, _label).toBeGreaterThanOrEqual(400);
+        expect(preflightResponse.headers.get("access-control-allow-origin"), _label).toBeNull();
+        expect(postResponse.headers.get("access-control-allow-origin"), _label).toBeNull();
+      }
+    });
+
+    it("refuses everything a wildcard would have allowed, so no wildcard is reachable", async () => {
+      // Enumerated rather than sampled: a wildcard implementation returns 204 and
+      // `*` for every refused row below, so each row independently discriminates.
+      const refused = [
+        "https://evil.example",
+        "http://ega.example.com",
+        "https://ega.example.com.evil",
+        "https://sub.ega.example.com",
+        "null",
+        "https://ega.example.com:8443",
+        "https://EGA.example.com",
+      ];
+
+      for (const origin of refused) {
+        const response = await createHandler()(preflight({ origin }));
+
+        expect(response.status, origin).toBeGreaterThanOrEqual(400);
+        expect(response.headers.get("access-control-allow-origin"), origin).toBeNull();
+        expect(response.headers.get("access-control-allow-origin"), origin).not.toBe("*");
       }
     });
   });

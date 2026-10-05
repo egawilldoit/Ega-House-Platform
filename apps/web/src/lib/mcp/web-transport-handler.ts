@@ -170,10 +170,22 @@ export function applyMcpCorsHeaders(
   return headers;
 }
 
+/**
+ * Every refusal this module produces: a malformed Host, a refused Origin, an
+ * unsupported protocol version, an over-limit or malformed body size.
+ *
+ * `Vary: Origin` is on it for the same reason it is on the 401/403 in
+ * http-auth.ts and the 404 in endpoint.ts: the verdict is decided per Origin, so
+ * a cache must key on it. `no-store` is what forbids reuse; `Vary` is what says
+ * the response belongs to this origin rather than to the URL alone. Without it
+ * these were the only origin-dependent responses on the route carrying no Vary
+ * at all - and they deliberately carry NO allow-origin, so Vary was the only
+ * thing marking them as origin-scoped.
+ */
 function invalidRequest(description: string, status: 400 | 403 | 413 | 421 = 400): Response {
   return Response.json(
     { error: "invalid_request", error_description: description },
-    { status, headers: { "Cache-Control": "no-store" } },
+    { status, headers: { "Cache-Control": "no-store", Vary: "Origin" } },
   );
 }
 
@@ -250,12 +262,18 @@ export function validateMcpOrigin(request: Request, expectedOrigin: string): Res
   return null;
 }
 
-function validateRequestSize(request: Request, maxBytes = MAX_REQUEST_BODY_BYTES): Response | null {
+/**
+ * Declared-length check only. The bound is the module constant, not a parameter:
+ * every caller in the repo passed nothing, so a `maxBytes` argument here was an
+ * override knob with no override, and `limitRequestBody` below already uses the
+ * constant directly - two readers of one bound, one of them unreachable.
+ */
+function validateRequestSize(request: Request): Response | null {
   const contentLength = request.headers.get("content-length");
   if (contentLength) {
     const len = Number(contentLength);
     if (!Number.isSafeInteger(len) || len < 0) return invalidRequest("Invalid Content-Length header.");
-    if (len > maxBytes) return invalidRequest("Request body too large.", 413);
+    if (len > MAX_REQUEST_BODY_BYTES) return invalidRequest("Request body too large.", 413);
   }
   return null;
 }
@@ -348,6 +366,17 @@ export function createWebMcpHandler(
     },
     {
       legacy: "reject",
+      // The SDK enforces a POST body bound of its own (verified in the installed
+      // 2.3.0 tree: `DEFAULT_MAX_REQUEST_BODY_SIZE` and `maxRequestBodySize`,
+      // read by `resolveMaxRequestBodySize`, which THROWS a RangeError on a
+      // non-positive value). It is left at its 4 MiB default by omission, so the
+      // SDK's bound and `MAX_REQUEST_BODY_BYTES` are two independent constants
+      // that happen to be equal today. Raise ours and the SDK would silently keep
+      // refusing at 4 MiB, producing a 413 whose body is the SDK's JSON-RPC
+      // error rather than this route's `invalid_request` - the observable symptom
+      // being "the limit did not change". Passing the constant makes one number
+      // authoritative for both layers instead of two that agree by coincidence.
+      maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
     },
   );
 
