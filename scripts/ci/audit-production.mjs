@@ -129,9 +129,9 @@ export function isValidReviewByFormat(dateStr) {
  * Whether an exception names ONE concrete package, which is the whole basis of
  * the registry's narrowness.
  *
- * Every other predicate here treats an absent `package` as "no opinion" and
- * carries on. That is wrong for this field: `package: ''` is falsy, so a
- * truthiness guard reads it as "no opinion" and the advisory is accepted for
+ * The registry's other predicates do not have this property, and copying their
+ * shape here was the defect: `package: ''` is falsy, so a truthiness guard
+ * reads it as "no opinion" and the advisory is accepted for
  * ANY package, which turns one entry into a blanket exemption while the
  * structural guard still sees a `string` with no `*`. A missing, blank or
  * wildcard package is therefore a policy failure in its own right - the same
