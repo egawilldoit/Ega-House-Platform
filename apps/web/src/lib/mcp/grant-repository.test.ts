@@ -108,6 +108,104 @@ describe("loadActiveMcpGrant", () => {
       ).rejects.toThrow("Invalid EGA MCP authorization grant record.");
   });
 
+  /**
+   * `permissions_version` is an integer column, so the number that reaches
+   * McpGrantRecord - and from there the MRTR confirmation binding - is validated
+   * here, at the boundary that reads the row, rather than one layer in. Each
+   * case is a value the column's type could carry or a future constraint could
+   * admit; none may be coerced into McpGrantRecord.
+   */
+  it.each([
+    ["a version below one", 0],
+    ["a negative version", -1],
+    ["a future version", 3],
+    ["a far-future version", 99],
+    ["a non-integer version", 1.5],
+    ["a numeric string version", "1"],
+    ["a null version", null],
+    ["an absent version", undefined],
+  ])("refuses a row claiming %s", async (_label, permissionsVersion) => {
+    const query = createRpcClient({
+      data: [{
+        id: "10000000-0000-0000-0000-000000000001",
+        owner_user_id: OWNER_USER_ID,
+        oauth_client_id: OAUTH_CLIENT_ID,
+        resource_uri: RESOURCE_URI,
+        status: "active",
+        permission_profile: "read_only",
+        permissions: ["projects.read", "goals.read", "tasks.read"],
+        permissions_version: permissionsVersion,
+      }],
+      error: null,
+    });
+
+    await expect(
+      loadActiveMcpGrant(
+        query.client,
+        OWNER_USER_ID,
+        OAUTH_CLIENT_ID,
+        RESOURCE_URI,
+      ),
+    ).rejects.toThrow("Invalid EGA MCP authorization grant record.");
+  });
+
+  it.each([
+    ["an unknown profile", "administrator"],
+    ["the retired delivery_observer profile", "delivery_observer"],
+  ])("refuses a row claiming %s", async (_label, permission_profile) => {
+    const query = createRpcClient({
+      data: [{
+        id: "10000000-0000-0000-0000-000000000001",
+        owner_user_id: OWNER_USER_ID,
+        oauth_client_id: OAUTH_CLIENT_ID,
+        resource_uri: RESOURCE_URI,
+        status: "active",
+        permission_profile,
+        permissions: ["projects.read", "goals.read", "tasks.read"],
+        permissions_version: 1,
+      }],
+      error: null,
+    });
+
+    await expect(
+      loadActiveMcpGrant(
+        query.client,
+        OWNER_USER_ID,
+        OAUTH_CLIENT_ID,
+        RESOURCE_URI,
+      ),
+    ).rejects.toThrow("Invalid EGA MCP authorization grant record.");
+  });
+
+  it.each([
+    ["pending", "pending"],
+    ["failed", "failed"],
+    ["revoked", "revoked"],
+  ])("refuses a %s row from the active-grant RPC", async (_label, status) => {
+    const query = createRpcClient({
+      data: [{
+        id: "10000000-0000-0000-0000-000000000001",
+        owner_user_id: OWNER_USER_ID,
+        oauth_client_id: OAUTH_CLIENT_ID,
+        resource_uri: RESOURCE_URI,
+        status,
+        permission_profile: "read_only",
+        permissions: ["projects.read", "goals.read", "tasks.read"],
+        permissions_version: 1,
+      }],
+      error: null,
+    });
+
+    await expect(
+      loadActiveMcpGrant(
+        query.client,
+        OWNER_USER_ID,
+        OAUTH_CLIENT_ID,
+        RESOURCE_URI,
+      ),
+    ).rejects.toThrow("Invalid EGA MCP authorization grant record.");
+  });
+
   it.each([
     ["owner", { owner_user_id: "00000000-0000-0000-0000-000000000002" }],
     ["client", { oauth_client_id: "other-client" }],

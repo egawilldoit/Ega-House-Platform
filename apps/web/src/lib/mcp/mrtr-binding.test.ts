@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createRequestStateCodec, getRequestStateSecret, McpRequestStateConfigurationError } from "@/lib/mcp/request-state";
 import { assertVerifiedMcpMutationState, McpMutationStateError, mintMcpMutationState } from "@/lib/mcp/mrtr-binding";
 import type { McpMutationBinding, McpMutationCurrent } from "@/lib/mcp/mrtr-binding";
+import type { McpPermissionVersion } from "@/lib/mcp/permissions";
 
 const TEST_SECRET = "test-secret-32-bytes-long-for-dev-only-1234";
 const STABLE_CONFIG_MESSAGE = "MCP_REQUEST_STATE_SECRET must be configured with at least 32 bytes of entropy.";
@@ -10,12 +11,21 @@ function createTestCodec() {
   return createRequestStateCodec<McpMutationBinding>({ key: TEST_SECRET, ttlSeconds: 300 });
 }
 
+/**
+ * Both sides of the binding are stated with REAL permission versions. They used
+ * to be 3, a value no shipped code path can produce - the resolver refuses
+ * anything outside {1, 2} - so the suite proved the comparison on inputs that
+ * cannot occur and never proved the property that matters: a confirmation minted
+ * under one document cannot be redeemed under another.
+ */
+const GRANTED_VERSION: McpPermissionVersion = 1;
+
 function createBinding(): McpMutationBinding {
   return {
     user: "00000000-0000-0000-0000-000000000001",
     client: "hermes-client",
     grantId: "10000000-0000-0000-0000-000000000001",
-    grantVersion: 3,
+    grantVersion: GRANTED_VERSION,
     resource: "https://ega.example.com/api/mcp",
     tool: "ega_clear_completed_today",
     operationId: "op-1",
@@ -31,7 +41,7 @@ function createCurrent(): McpMutationCurrent {
       ownerUserId: "00000000-0000-0000-0000-000000000001",
       oauthClientId: "hermes-client",
       grantId: "10000000-0000-0000-0000-000000000001",
-      permissionsVersion: 3,
+      permissionsVersion: GRANTED_VERSION,
     },
     resource: "https://ega.example.com/api/mcp",
     tool: "ega_clear_completed_today",
@@ -92,7 +102,21 @@ describe("mrtr binding verified-state assertion", () => {
     const codec = createTestCodec();
     const verified = await codec.verify(await mintMcpMutationState(codec, createBinding()));
     const current = createCurrent();
-    current.principal.permissionsVersion = 999;
+    // A different REAL version, not an out-of-range number. The grant identity
+    // is unchanged, so this is exactly the reachable shape: the owner re-consents
+    // and the row moves to the next permission document, and the confirmation
+    // minted under the previous one must not be redeemable under it.
+    current.principal.permissionsVersion = 2;
+    expectStateMismatch(current, verified, "grantVersion");
+  });
+
+  it("rejects a confirmation minted under another version of the same grant", async () => {
+    const codec = createTestCodec();
+    const binding = createBinding();
+    binding.grantVersion = 2;
+    const verified = await codec.verify(await mintMcpMutationState(codec, binding));
+    const current = createCurrent();
+    current.principal.permissionsVersion = 1;
     expectStateMismatch(current, verified, "grantVersion");
   });
 
