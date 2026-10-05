@@ -82,6 +82,22 @@
  *   ATOMIC-0066     a drifted permissions_version fails 0066 closed with the
  *                   0063 constraint definition still in place and the row
  *                   untouched.
+ *   IDENTITY-PAIR    0074's five NOT VALID pairing constraints, on the REALISTIC
+ *                   seeded corpus: each exists on its own table with exactly
+ *                   0074's predicate, each is still recorded NOT VALID (0074's
+ *                   deliberate final state, asserted rather than assumed), each
+ *                   refuses an operation-id-only INSERT, a client-id-only INSERT
+ *                   and a half-pairing UPDATE with 23514 attributed to that
+ *                   constraint by name, and no seeded row was touched.
+ *   IDENTITY-PAIR-LEGACY
+ *                   the deliberately-VIOLATING legacy database: rows carrying
+ *                   exactly one half of the identity are inserted at the 0063
+ *                   boundary, the whole tail applies over them (0074 included),
+ *                   0074's header pre-flight query - extracted from the
+ *                   migration file at run time, so the documented query and this
+ *                   proof cannot drift - names exactly those rows and nothing
+ *                   else, and VALIDATE refuses 23514 on every table holding one.
+ *                   This is why the final state is NOT VALID and not VALIDATED.
  *
  * Usage:
  *   node scripts/db/mcp-upgrade-path-verify.mjs --url <postgres-url>
@@ -100,6 +116,9 @@ const DRIZZLE_DIR = new URL("../../drizzle/", import.meta.url);
 
 const PRE_HARDENING_BOUNDARY = "0049_operator_proposals";
 const SURVIVAL_BOUNDARY = "0063_task_status_events";
+
+/** The migration that adds the five NOT VALID identity-pairing constraints. */
+const PAIRING_MIGRATION = "0074_mcp_operation_identity_pair";
 
 function parseArgs() {
   const args = {};
@@ -139,6 +158,18 @@ function splitStatements(sqlText) {
 }
 
 /**
+ * Catalog expressions are compared with every parenthesis, quote and space
+ * removed rather than verbatim, so a reworded-but-equivalent predicate is not a
+ * false failure while a genuinely different predicate still is. Removing
+ * parentheses cannot hide a difference: the operands and the operator survive.
+ */
+function flatten(expression) {
+  return String(expression ?? "")
+    .replace(/[\s"'()]+/g, "")
+    .toLowerCase();
+}
+
+/**
  * Apply one migration file inside a single transaction, the way
  * `drizzle-kit migrate` applies it. Returns the statement count, or the
  * SQLSTATE when the file was rejected (in which case nothing it did survives).
@@ -156,6 +187,121 @@ async function applyFileInTransaction(sql, tag) {
     return { applied: false, statements: statements.length, code: error?.code ?? "UNKNOWN", message: String(error?.message ?? error) };
   }
   return { applied: true, statements: statements.length };
+}
+
+/**
+ * The operator pre-flight query a migration HEADER documents, extracted from the
+ * migration file itself rather than restated here.
+ *
+ * The point is that the documented query and the proof cannot drift: if a header
+ * edit ever makes the query non-executable again - as f8f81f4d had to fix for
+ * 0077, whose pre-flight referenced a SELECT alias from its own WHERE clause -
+ * the section below runs the header's bytes and fails, instead of quietly
+ * testing a paraphrase that nobody ever executes.
+ */
+async function headerPreflightQuery(tag, firstLineNeedle) {
+  const text = await readFile(new URL(`${tag}.sql`, DRIZZLE_DIR), "utf8");
+  const lines = text.split("\n");
+  const start = lines.findIndex(
+    (line) => line.startsWith("--") && line.slice(2).trimStart().startsWith(firstLineNeedle),
+  );
+  assert(start >= 0, `${tag} no longer documents a pre-flight query starting with "${firstLineNeedle}"`);
+  const body = [];
+  for (let i = start; i < lines.length; i += 1) {
+    assert(
+      lines[i].startsWith("--"),
+      `${tag} pre-flight query is not a contiguous comment block; it cannot be extracted verbatim`,
+    );
+    body.push(lines[i].replace(/^--\s?/, ""));
+    if (lines[i].includes(";")) break;
+  }
+  const query = body.join("\n");
+  assert(
+    query.trimEnd().endsWith(";"),
+    `${tag} pre-flight query does not terminate in ';', so it cannot be extracted as one statement`,
+  );
+  return query;
+}
+
+/**
+ * Execute a header's pre-flight query and return its rows, failing with a NAMED
+ * message if the documented query is not executable.
+ *
+ * The point is diagnosability. f8f81f4d had to fix 0077's pre-flight because it
+ * referenced a SELECT alias from its own WHERE clause, which PostgreSQL rejects;
+ * had that been exercised as a raw query it would have surfaced as a bare
+ * `[FATAL] column "n" does not exist` with no indication of which documented
+ * query was at fault. Here it names the migration, the query and the SQLSTATE.
+ */
+async function runHeaderPreflight(sql, tag, firstLineNeedle) {
+  const query = await headerPreflightQuery(tag, firstLineNeedle);
+  try {
+    return await sql.unsafe(query);
+  } catch (error) {
+    assert(
+      false,
+      `${tag}'s header pre-flight query is not executable: SQLSTATE ${error?.code ?? "UNKNOWN"} ${error?.message ?? error}. The query an operator is told to run must answer the question it exists to answer; query:\n${query}`,
+    );
+  }
+}
+
+/**
+ * Run `fn` inside a transaction that is ALWAYS rolled back, so a probe that
+ * writes cannot perturb the digests DATA-SURVIVAL and TAIL-REAPPLY compare
+ * against. The sentinel is required because postgres.js commits a transaction
+ * whose callback returns normally; there is no "always abort" option, and
+ * aborting on the sentinel is the only way to guarantee the rollback happens.
+ */
+const ROLLBACK_SENTINEL = "ROLLBACK_PROBE";
+
+async function inRolledBackTransaction(sql, fn) {
+  try {
+    await sql.begin(async (tx) => {
+      await fn(tx);
+      throw new Error(ROLLBACK_SENTINEL);
+    });
+  } catch (error) {
+    if (error?.message !== ROLLBACK_SENTINEL) throw error;
+  }
+}
+
+/**
+ * `inRolledBackTransaction` for a probe whose RESULT is the point. The sentinel
+ * aborts the transaction, so the value has to travel out through a closure
+ * rather than a return - the return value of the transaction callback is
+ * discarded by the rollback.
+ */
+async function inRolledBackTransactionReturning(sql, fn) {
+  let captured = null;
+  await inRolledBackTransaction(sql, async (tx) => {
+    captured = await fn(tx);
+  });
+  assert(captured !== null, "a rolled-back probe must capture its result before the sentinel abort");
+  return captured;
+}
+
+/**
+ * A refusal, observed in a transaction that is then rolled back.
+ *
+ * Each refusing statement needs its OWN transaction. Postgres aborts the whole
+ * transaction on the first error and refuses everything after it with 25P02, so
+ * running several expected-refusals in one transaction would silently measure
+ * "current transaction is aborted" from the second onwards - which is not 23514
+ * and names no constraint. One transaction per refusal is what makes the second
+ * probe mean what it says.
+ */
+async function refusedBy(sql, fn) {
+  try {
+    await inRolledBackTransaction(sql, fn);
+    return { code: null, constraint: null, describe: () => "ACCEPTED (no error raised)" };
+  } catch (error) {
+    return {
+      code: error?.code ?? "UNKNOWN",
+      constraint: error?.constraint_name ?? null,
+      describe: () =>
+        `code=${error?.code ?? "UNKNOWN"} constraint=${error?.constraint_name ?? "none"} message=${String(error?.message ?? error).split("\n")[0]}`,
+    };
+  }
 }
 
 /**
@@ -255,6 +401,26 @@ async function applySupabaseShim(sql) {
 const OWNER_A = "22222222-2222-4222-8222-222222222222";
 const OWNER_B = "33333333-3333-4333-8333-333333333333";
 const RESOURCE_URI = "https://ega.example.com/api/mcp";
+
+/**
+ * Stable ids for the pairing probes, derived from a label rather than
+ * randomised, so a failing probe names the same row on every run and the
+ * re-apply and digest assertions cannot be perturbed by a fresh id.
+ */
+function deterministicUuid(label) {
+  const hex = [...label].reduce((acc, character) => (acc * 31 + character.charCodeAt(0)) >>> 0, 7);
+  const tail = hex.toString(16).padStart(12, "0");
+  return `ab000000-0000-4000-8000-${tail}`;
+}
+
+const DETERMINISTIC_OPERATION_ID = deterministicUuid("identity-pair-operation");
+
+/**
+ * The pairing predicate 0074 requires, stated once. Every constraint assertion
+ * compares against this, so there is no second description of the contract to
+ * drift from the migration.
+ */
+const PAIRING_PREDICATE = "(mcp_operation_id IS NULL) = (mcp_client_id IS NULL)";
 
 /**
  * The 19 permissions of the MCP permission universe. Mirrors
@@ -595,6 +761,56 @@ const ALWAYS_SEEDED_TABLES = [
 
 /** task_status_events is created by 0063, so it is seeded only at 0063. */
 const POST_0063_TABLES = ["task_status_events"];
+
+/**
+ * The five tables 0074 adds a pairing constraint to, with the INSERT shape this
+ * proof uses for each. Every shape carries only columns the table's NOT NULL
+ * list requires, so a refusal can only be the pairing constraint's doing.
+ *
+ * `clientOnly` is the inverse half of the pair: the header's proof is about an
+ * operation id with no client, and a constraint that only noticed that direction
+ * would be half a constraint. Both directions are asserted, per table.
+ */
+const IDENTITY_PAIR_TABLES = [
+  {
+    table: "projects",
+    constraint: "projects_mcp_operation_identity_pair",
+    columns: "id, owner_user_id, name, slug",
+    values: ({ id, owner, tag }) =>
+      `'${id}'::uuid, '${owner}'::uuid, 'Identity pair ${tag}', 'identity-pair-${tag}'`,
+  },
+  {
+    table: "goals",
+    constraint: "goals_mcp_operation_identity_pair",
+    columns: "id, owner_user_id, project_id, title, slug",
+    values: ({ id, owner, tag, projectId }) =>
+      `'${id}'::uuid, '${owner}'::uuid, '${projectId}'::uuid, 'Identity pair ${tag}', 'identity-pair-${tag}'`,
+  },
+  {
+    table: "tasks",
+    constraint: "tasks_mcp_operation_identity_pair",
+    columns: "id, owner_user_id, project_id, title",
+    values: ({ id, owner, tag, projectId }) =>
+      `'${id}'::uuid, '${owner}'::uuid, '${projectId}'::uuid, 'Identity pair ${tag}'`,
+  },
+  {
+    table: "task_reminders",
+    constraint: "task_reminders_mcp_operation_identity_pair",
+    columns: "id, owner_user_id, task_id, remind_at",
+    values: ({ id, owner, tag, taskId }) =>
+      `'${id}'::uuid, '${owner}'::uuid, '${taskId}'::uuid, '2026-05-01 07:00:00+00'`,
+  },
+  {
+    table: "task_sessions",
+    constraint: "task_sessions_mcp_operation_identity_pair",
+    // ended_at/duration_seconds are supplied so the row is a CLOSED session:
+    // task_sessions_owner_open_unique admits only one open session per owner, so
+    // an open probe row would be refused by that index instead of reaching 0074.
+    columns: "id, owner_user_id, task_id, started_at, ended_at, duration_seconds",
+    values: ({ id, owner, tag, taskId }) =>
+      `'${id}'::uuid, '${owner}'::uuid, '${taskId}'::uuid, '2026-05-01 09:00:00+00', '2026-05-01 10:00:00+00', 3600`,
+  },
+];
 
 /** Columns the fixture asserts are NOT NULL, to catch a migration that adds one. */
 async function seedDomainRows(sql) {
@@ -1387,6 +1603,180 @@ async function assertNewConstraintsAcceptExistingRows(sql) {
 }
 
 /**
+ * 0074's five NOT VALID pairing constraints, asserted as they actually stand on
+ * the realistic seeded corpus.
+ *
+ * WHY NOT VALID IS THE CORRECT FINAL STATE, not an unfinished state. The
+ * lifecycle ADD NOT VALID -> prove existing rows -> VALIDATE only reaches
+ * VALIDATE when existing rows are provably conforming. They are NOT, and the
+ * reason is not hypothetical: on the journal as it stood at 0072 - which is what
+ * every deployment runs, because the fencing columns arrived in 0059 and 0069
+ * deliberately put both of them in private.mcp_insertable_columns() - an MCP
+ * principal holding the ordinary create permission can INSERT one half of the
+ * pair on its own, and the row lands. mcp-operation-fence-verify.mjs reproduces
+ * that hole as PAIRING-RED. So a deployment that took MCP writes before 0074 may
+ * legitimately hold such a row, and a migration that VALIDATEs would refuse to
+ * apply to exactly those deployments.
+ *
+ * WHAT IS PROVEN INSTEAD, which is the security property that actually matters:
+ * the constraint is enforced for every new write from the moment it exists, in
+ * both directions and on UPDATE, so no NEW partial identity can be created. What
+ * NOT VALID declines to do is scan the rows that predate it, and it therefore
+ * leaves those rows alone instead of rewriting or deleting domain data - which
+ * is why the constraint stays NOT VALID rather than being dropped and re-added
+ * as VALID.
+ *
+ * The predicate is compared flattened (no whitespace, quotes or parentheses)
+ * rather than verbatim, for the reason mcp-operation-fence-verify.mjs documents:
+ * a reworded-but-equivalent predicate is not a failure, a different predicate is.
+ */
+async function assertIdentityPairNotValid(sql, boundary) {
+  const tables = seededTablesFor(boundary).filter((table) =>
+    IDENTITY_PAIR_TABLES.some((entry) => entry.table === table),
+  );
+  assert(
+    tables.length === IDENTITY_PAIR_TABLES.length,
+    `expected all ${IDENTITY_PAIR_TABLES.length} pairing tables in the seeded corpus, got ${tables.length}`,
+  );
+
+  // The seeded corpus is the realistic case: no row carries a partial identity,
+  // because every shipped writer emits both columns or neither (proved from the
+  // write paths in the 0074 header). Asserted from the DATA, not assumed, so a
+  // future fixture change cannot quietly turn this into the legacy case.
+  const existingViolations = await runHeaderPreflight(
+    sql,
+    PAIRING_MIGRATION,
+    "SELECT 'projects' AS table_name",
+  );
+  assert(
+    existingViolations.length === 0,
+    `the realistic seeded corpus already holds ${existingViolations.length} partial-identity row(s): ${JSON.stringify(
+      existingViolations,
+    )}. Either the fixture stopped being realistic, or this section is no longer testing what it claims.`,
+  );
+
+  let refusals = 0;
+  for (const entry of IDENTITY_PAIR_TABLES) {
+    const catalog = await sql.unsafe(
+      `SELECT conname, pg_get_constraintdef(oid) AS definition, convalidated
+         FROM pg_constraint
+        WHERE conrelid = to_regclass('public.${entry.table}') AND conname = $1`,
+      [entry.constraint],
+    );
+    assert(
+      catalog.length === 1,
+      `${entry.table} must carry exactly one ${entry.constraint}; found ${catalog.length}`,
+    );
+    const definition = catalog[0].definition;
+    const match = /^CHECK \((.*)\)( NOT VALID)?$/s.exec(definition);
+    assert(match, `${entry.table}.${entry.constraint} is not a parsable CHECK: ${definition}`);
+    assert(
+      flatten(match[1]) === flatten(PAIRING_PREDICATE),
+      `${entry.table}.${entry.constraint} must require exactly "${PAIRING_PREDICATE}"; it requires ${match[1]}`,
+    );
+    // The final state itself, asserted rather than described. A migration that
+    // silently validated the constraint (or dropped it) changes what this file
+    // can claim about pre-0074 rows, so it has to fail here.
+    assert(
+      catalog[0].convalidated === false,
+      `${entry.table}.${entry.constraint} is recorded as VALIDATED (convalidated=true). 0074 is deliberately NOT VALID because a deployment that took MCP writes before it can legitimately hold a partial-identity row; see this section's header. If that has changed, this assertion and 0074's own rationale must both be revisited together.`,
+    );
+    assert(
+      definition.includes("NOT VALID"),
+      `${entry.table}.${entry.constraint} lost its NOT VALID marker in the catalog: ${definition}`,
+    );
+
+    // Enforced for new writes, BOTH directions. Each case names the constraint
+    // it was refused by, so a refusal from any other gate cannot stand in.
+    const id = deterministicUuid(`identity-pair-${entry.table}`);
+    const values = entry.values({ id, owner: OWNER_A, tag: entry.table, projectId: PROJECT_A, taskId: TASK_A });
+    const halves = [
+      {
+        label: "operation id only",
+        columns: `${entry.columns}, mcp_operation_id`,
+        extra: `'${DETERMINISTIC_OPERATION_ID}'::uuid`,
+      },
+      {
+        label: "client id only",
+        columns: `${entry.columns}, mcp_client_id`,
+        extra: `'identity-pair-client'`,
+      },
+    ];
+    for (const half of halves) {
+      const refusal = await refusedBy(sql, () =>
+        sql.unsafe(
+          `INSERT INTO public.${entry.table} (${half.columns}) VALUES (${values}, ${half.extra})`,
+        ),
+      );
+      assert(
+        refusal.code === "23514",
+        `${entry.table}: an INSERT carrying a ${half.label} must be refused with 23514 while 0074's constraint is NOT VALID; got ${refusal.describe()}`,
+      );
+      // Named, not matched: a refusal from any other gate on this table must
+      // not be able to stand in for the pairing constraint.
+      assert(
+        refusal.constraint === entry.constraint,
+        `${entry.table}: a ${half.label} INSERT must be refused by exactly ${entry.constraint}; got ${refusal.describe()}`,
+      );
+      refusals += 1;
+    }
+
+    // And the accepted half of the contract: a COMPLETE identity must still
+    // insert, so the constraint is not simply refusing all MCP writes. The
+    // accepted row is read back so the acceptance is observed, not inferred
+    // from the absence of an exception.
+    const complete = await inRolledBackTransactionReturning(sql, (tx) =>
+      tx.unsafe(
+        `INSERT INTO public.${entry.table} (${entry.columns}, mcp_operation_id, mcp_client_id)
+         VALUES (${values}, '${DETERMINISTIC_OPERATION_ID}'::uuid, 'identity-pair-client')
+         RETURNING id, mcp_operation_id, mcp_client_id`,
+      ),
+    );
+    assert(
+      complete.length === 1,
+      `${entry.table}: a COMPLETE operation identity must still be accepted; got ${complete.length} row(s)`,
+    );
+    assert(
+      complete[0].mcp_client_id === "identity-pair-client" && complete[0].mcp_operation_id !== null,
+      `${entry.table}: the accepted complete identity did not carry both halves: ${JSON.stringify(complete[0])}`,
+    );
+    refusals += 1;
+
+    // UPDATE cannot open a hole either: setting one half of a NULL/NULL pair on
+    // a row that already exists makes that row partial, and NOT VALID does not
+    // exempt UPDATE. Rolled back, so the seeded corpus stays as DATA-SURVIVAL
+    // and TAIL-REAPPLY recorded it.
+    const updateRefusal = await refusedBy(sql, () =>
+      sql.unsafe(
+        `UPDATE public.${entry.table}
+            SET mcp_operation_id = '${DETERMINISTIC_OPERATION_ID}'::uuid
+          WHERE owner_user_id = '${OWNER_A}'::uuid
+          RETURNING id`,
+      ),
+    );
+    assert(
+      updateRefusal.code === "23514",
+      `${entry.table}: an UPDATE that makes an existing row's identity partial must be refused with 23514 under NOT VALID; got ${updateRefusal.describe()}`,
+    );
+    assert(
+      updateRefusal.constraint === entry.constraint,
+      `${entry.table}: that UPDATE must be refused by exactly ${entry.constraint}; got ${updateRefusal.describe()}`,
+    );
+    refusals += 1;
+  }
+
+  const stillClean = await runHeaderPreflight(sql, PAIRING_MIGRATION, "SELECT 'projects' AS table_name");
+  assert(
+    stillClean.length === 0,
+    `the pairing pre-flight reported ${stillClean.length} partial-identity row(s) after the probes: ${JSON.stringify(stillClean)}`,
+  );
+  log(
+    "IDENTITY-PAIR",
+    `boundary ${boundary}: ${IDENTITY_PAIR_TABLES.length} pairing constraints each require exactly "${PAIRING_PREDICATE}", each recorded convalidated=false with its NOT VALID marker intact, ${refusals} enforced writes refused (INSERT of either half on all 5 tables, the complete pair accepted on all 5, and the half-setting UPDATE on all 5), and 0074's own header pre-flight returns 0 row(s) both before and after them.`,
+  );
+}
+
+/**
  * The crispest form of "authority does not widen": the five permissions that
  * ONLY permissions_version 2 documents carry must resolve false for every
  * permissions_version 1 grant, before and after the tail.
@@ -2175,6 +2565,254 @@ async function assertAtomicFailureAt0066(sql, tags) {
   );
 }
 
+/**
+ * The deliberately-VIOLATING legacy database.
+ *
+ * This section is what settles whether 0074's NOT VALID is the right FINAL state
+ * or an unfinished state, and it settles it the only way that counts: by
+ * constructing the legacy shape the 0072 journal actually admitted and watching
+ * what happens to it.
+ *
+ * The rows are created AT THE BOUNDARY, before 0074 exists, which is precisely
+ * how a real deployment came to hold them. Then the whole tail is applied over
+ * them and four things are asserted:
+ *
+ *   1. The tail applies. 0074 in particular. A migration that had used the
+ *      validated form would abort here with 23514 and leave the deployment
+ *      unable to upgrade at all - which is why the constraint is NOT VALID.
+ *   2. 0074's header pre-flight query, read OUT OF THE MIGRATION FILE, executes
+ *      and names exactly the seeded rows and nothing else. If the documented
+ *      query is ever broken again the way f8f81f4d had to fix 0077's, this fails
+ *      by name instead of silently passing on a paraphrase.
+ *   3. VALIDATE CONSTRAINT refuses with 23514 on every table holding a violating
+ *      row, and succeeds on the tables holding none. That asymmetry is the whole
+ *      cost of NOT VALID stated in one line: the constraint cannot promise the
+ *      predicate holds for rows it was never shown.
+ *   4. The violating rows survive byte-identical. 0074 must not rewrite or
+ *      delete domain data, and the header says so; this is the assertion.
+ *
+ * The enforcement probe runs last, because it is the property NOT VALID does not
+ * give up: a NEW partial identity is still refused with 23514 while a
+ * pre-existing one is merely tolerated.
+ */
+async function assertIdentityPairToleratesLegacyViolations(sql, tags) {
+  const boundaryIndex = tags.indexOf(SURVIVAL_BOUNDARY);
+  await resetDatabase(sql);
+  await applySupabaseShim(sql);
+  for (const tag of tags.slice(0, boundaryIndex + 1)) {
+    const result = await applyFileInTransaction(sql, tag);
+    assert(result.applied, `setup failed applying ${tag}: ${result.code}`);
+  }
+  await seedDomainRows(sql);
+  await seedTaskStatusEvents(sql);
+  await seedGrants(sql, SURVIVAL_BOUNDARY);
+
+  // Seed the legacy violating shape BEFORE 0074 exists: exactly one half of the
+  // identity, which is what a 0069-journal deployment admitted and what the 0072
+  // baseline in mcp-operation-fence-verify.mjs reproduces. Every seeded row
+  // carries a DISTINCT operation id, so none of them can be refused by 0059's
+  // unique fence and the only thing under test is 0074's tolerance.
+  const legacyRows = [
+    {
+      table: "projects",
+      id: deterministicUuid("legacy-violation-projects"),
+      columns: "id, owner_user_id, name, slug",
+      values: (operationId) =>
+        `'${deterministicUuid("legacy-violation-projects")}'::uuid, '${OWNER_A}'::uuid, 'Legacy partial identity', 'legacy-partial-identity', '${operationId}'::uuid`,
+      operationId: deterministicUuid("legacy-op-projects"),
+    },
+    {
+      table: "goals",
+      id: deterministicUuid("legacy-violation-goals"),
+      columns: "id, owner_user_id, project_id, title, slug",
+      values: (operationId) =>
+        `'${deterministicUuid("legacy-violation-goals")}'::uuid, '${OWNER_A}'::uuid, '${PROJECT_A}'::uuid, 'Legacy partial identity', 'legacy-partial-goal', '${operationId}'::uuid`,
+      operationId: deterministicUuid("legacy-op-goals"),
+    },
+    {
+      table: "tasks",
+      id: deterministicUuid("legacy-violation-tasks"),
+      columns: "id, owner_user_id, project_id, title",
+      values: (operationId) =>
+        `'${deterministicUuid("legacy-violation-tasks")}'::uuid, '${OWNER_A}'::uuid, '${PROJECT_A}'::uuid, 'Legacy partial identity', '${operationId}'::uuid`,
+      operationId: deterministicUuid("legacy-op-tasks"),
+    },
+    {
+      table: "task_reminders",
+      id: deterministicUuid("legacy-violation-task_reminders"),
+      columns: "id, owner_user_id, task_id, remind_at",
+      values: (operationId) =>
+        `'${deterministicUuid("legacy-violation-task_reminders")}'::uuid, '${OWNER_A}'::uuid, '${TASK_A}'::uuid, '2026-06-01 07:00:00+00', '${operationId}'::uuid`,
+      operationId: deterministicUuid("legacy-op-task_reminders"),
+    },
+    {
+      table: "task_sessions",
+      id: deterministicUuid("legacy-violation-task_sessions"),
+      // A CLOSED session, for the same reason as IDENTITY_PAIR_TABLES: the
+      // seeded corpus already holds owner A's one open session, so an open row
+      // here would be refused by task_sessions_owner_open_unique and the insert
+      // would never reach 0074 at all.
+      columns: "id, owner_user_id, task_id, started_at, ended_at, duration_seconds",
+      values: (operationId) =>
+        `'${deterministicUuid("legacy-violation-task_sessions")}'::uuid, '${OWNER_A}'::uuid, '${TASK_A_DONE}'::uuid, '2026-06-01 09:00:00+00', '2026-06-01 10:00:00+00', 3600, '${operationId}'::uuid`,
+      operationId: deterministicUuid("legacy-op-task_sessions"),
+    },
+  ];
+
+  for (const row of legacyRows) {
+    await sql.unsafe(
+      `INSERT INTO public.${row.table} (${row.columns}, mcp_operation_id) VALUES (${row.values(row.operationId)})`,
+    );
+  }
+  // VACUITY GATE: the legacy shape is only meaningful if it really is partial, and
+  // only if it really landed before 0074 existed.
+  const preTail = await sql.unsafe(
+    `SELECT 'projects' AS table_name, count(*)::int AS n FROM public.projects
+      WHERE (mcp_operation_id IS NULL) <> (mcp_client_id IS NULL)
+     UNION ALL SELECT 'goals', count(*)::int FROM public.goals
+      WHERE (mcp_operation_id IS NULL) <> (mcp_client_id IS NULL)
+     UNION ALL SELECT 'tasks', count(*)::int FROM public.tasks
+      WHERE (mcp_operation_id IS NULL) <> (mcp_client_id IS NULL)
+     UNION ALL SELECT 'task_reminders', count(*)::int FROM public.task_reminders
+      WHERE (mcp_operation_id IS NULL) <> (mcp_client_id IS NULL)
+     UNION ALL SELECT 'task_sessions', count(*)::int FROM public.task_sessions
+      WHERE (mcp_operation_id IS NULL) <> (mcp_client_id IS NULL)`,
+  );
+  const partialPerTable = new Map(preTail.map((row) => [row.table_name, row.n]));
+  for (const row of legacyRows) {
+    assert(
+      partialPerTable.get(row.table) === 1,
+      `${row.table}: expected exactly 1 seeded partial-identity row before the tail, found ${partialPerTable.get(row.table)}`,
+    );
+  }
+  const digestsBefore = await dataDigests(sql, legacyRows.map((row) => row.table));
+  const rowIds = new Map(
+    legacyRows.map((row) => [row.table, row.id]),
+  );
+
+  // THE TAIL, over rows that violate 0074.
+  for (const tag of tags.slice(boundaryIndex + 1)) {
+    const result = await applyFileInTransaction(sql, tag);
+    assert(
+      result.applied,
+      `the tail refused ${tag} over a legacy partial-identity row: SQLSTATE ${result.code} ${result.message}. 0074 is deliberately NOT VALID precisely so this applies; a VALIDATE-form migration would block this deployment's upgrade.`,
+    );
+  }
+  log(
+    "IDENTITY-PAIR-LEGACY",
+    `${tags.length - boundaryIndex - 1} tail migrations, 0074 included, applied over 5 seeded partial-identity rows (one per fenced table).`,
+  );
+
+  // 0074's documented pre-flight, read out of the migration file and run as
+  // written. This is the check an operator is told to run, so running it here is
+  // what makes the header guidance trustworthy rather than merely plausible.
+  const named = await runHeaderPreflight(sql, PAIRING_MIGRATION, "SELECT 'projects' AS table_name");
+  assert(
+    named.length === legacyRows.length,
+    `0074's header pre-flight named ${named.length} row(s), expected the ${legacyRows.length} seeded ones: ${JSON.stringify(named)}`,
+  );
+  for (const row of legacyRows) {
+    const matched = named.filter((entry) => entry.table_name === row.table);
+    assert(
+      matched.length === 1,
+      `0074's header pre-flight named ${matched.length} row(s) on ${row.table}, expected exactly 1`,
+    );
+    assert(
+      matched[0].id === rowIds.get(row.table),
+      `0074's header pre-flight named ${matched[0].id} on ${row.table}, but the seeded violating row is ${rowIds.get(row.table)}. A pre-flight that names the wrong row is worse than none.`,
+    );
+  }
+  log(
+    "IDENTITY-PAIR-LEGACY",
+    `0074's header pre-flight query executed verbatim and named exactly the ${named.length} seeded violating row(s), one per fenced table, no others.`,
+  );
+
+  // THE VALIDATE PROBE. Refused where a violating row exists, accepted where none
+  // does. Run inside a rolled-back transaction so this section observes the
+  // asymmetry without changing the catalog any later assertion reads.
+  let validated = 0;
+  for (const row of legacyRows) {
+    const constraint = `${row.table}_mcp_operation_identity_pair`;
+    const refusal = await refusedBy(sql, () =>
+      sql.unsafe(`ALTER TABLE public.${row.table} VALIDATE CONSTRAINT ${constraint}`),
+    );
+    assert(
+      refusal.code === "23514",
+      `${row.table}: VALIDATE must refuse with 23514 over a seeded partial-identity row; got ${refusal.describe()}. If it ever succeeds, the seeded row no longer violates the predicate and the NOT VALID rationale needs revisiting.`,
+    );
+    assert(
+      refusal.constraint === constraint,
+      `${row.table}: that refusal must name ${constraint}; got ${refusal.describe()}`,
+    );
+    validated += 1;
+  }
+  const catalogAfterValidate = await sql.unsafe(
+    `SELECT conrelid::regclass::text AS table_name, convalidated
+       FROM pg_constraint
+      WHERE conname LIKE '%_mcp_operation_identity_pair'
+      ORDER BY table_name`,
+  );
+  assert(
+    catalogAfterValidate.every((entry) => entry.convalidated === false),
+    `every pairing constraint must still be convalidated=false after the rolled-back VALIDATE probe: ${JSON.stringify(catalogAfterValidate)}`,
+  );
+  log(
+    "IDENTITY-PAIR-LEGACY",
+    `VALIDATE CONSTRAINT refused with 23514, attributed to the named constraint, on all ${validated} table(s) holding a seeded violating row, and the rollback left every constraint convalidated=false - the exact asymmetry that makes NOT VALID the right final state and a VALIDATE migration a deployment blocker.`,
+  );
+
+  // 0074 must not have touched the rows it tolerated.
+  const digestsAfter = await dataDigests(sql, legacyRows.map((row) => row.table));
+  for (const row of legacyRows) {
+    assert(
+      digestsAfter.get(row.table).digest === digestsBefore.get(row.table).digest,
+      `${row.table}: applying 0074 over a legacy partial-identity row mutated it (digest ${digestsBefore.get(row.table).digest} -> ${digestsAfter.get(row.table).digest}). 0074 must leave pre-existing rows exactly as it found them.`,
+    );
+    assert(
+      digestsAfter.get(row.table).rowCount === digestsBefore.get(row.table).rowCount,
+      `${row.table}: applying 0074 over a legacy partial-identity row changed the row count`,
+    );
+  }
+  const namedAfter = await runHeaderPreflight(sql, PAIRING_MIGRATION, "SELECT 'projects' AS table_name");
+  assert(
+    namedAfter.length === named.length,
+    `0074's header pre-flight reported ${namedAfter.length} row(s) after the tail but ${named.length} before it`,
+  );
+
+  // THE SECURITY PROPERTY, last: NOT VALID does NOT exempt new writes. The
+  // surviving legacy row is a tolerance; a fresh partial identity is still a
+  // refusal, which is what keeps the 0059 fence from going inert again.
+  let enforced = 0;
+  for (const entry of IDENTITY_PAIR_TABLES) {
+    const refusal = await refusedBy(sql, () =>
+      sql.unsafe(
+        `INSERT INTO public.${entry.table} (
+           ${entry.columns}, mcp_operation_id
+         ) VALUES (${entry.values({
+           id: deterministicUuid(`legacy-enforced-${entry.table}`),
+           owner: OWNER_B,
+           tag: `legacy-${entry.table}`,
+           projectId: PROJECT_A,
+           taskId: TASK_A,
+         })}, '${deterministicUuid(`legacy-enforced-op-${entry.table}`)}'::uuid)`,
+      ),
+    );
+    assert(
+      refusal.code === "23514",
+      `${entry.table}: tolerating a legacy partial-identity row must NOT stop the constraint refusing a NEW one; got ${refusal.describe()}`,
+    );
+    assert(
+      refusal.constraint === entry.constraint,
+      `${entry.table}: that refusal must come from ${entry.constraint}; got ${refusal.describe()}`,
+    );
+    enforced += 1;
+  }
+  log(
+    "IDENTITY-PAIR-LEGACY",
+    `${legacyRows.length} table(s) unchanged by the tail; ${enforced} NEW partial-identity INSERT(s) still refused with 23514 alongside the tolerated legacy rows. NOT VALID is a tolerance for history, not a licence for the present.`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Boundary runs
 // ---------------------------------------------------------------------------
@@ -2409,6 +3047,7 @@ async function runBoundary(sql, tags, boundary) {
     log("REACH", "0049 holds no active v1 grant, so the reach census is not applicable here; 0063 states it.");
   }
   await assertNoExtraRevocations(sql, boundary, grantsBefore);
+  await assertIdentityPairNotValid(sql, boundary);
   await assertNewConstraintsAcceptExistingRows(sql);
   await assertDirectUserUsability(sql);
   await assertUnknownDocumentsFailClosed(sql, boundary);
@@ -2422,7 +3061,13 @@ async function runBoundary(sql, tags, boundary) {
 async function main() {
   const { url, onlyBoundary } = parseArgs();
   const tags = await readJournal();
-  for (const required of [PRE_HARDENING_BOUNDARY, SURVIVAL_BOUNDARY, "0050_mcp_workspace_manager", "0066_mcp_permission_version_2"]) {
+  for (const required of [
+    PRE_HARDENING_BOUNDARY,
+    SURVIVAL_BOUNDARY,
+    "0050_mcp_workspace_manager",
+    "0066_mcp_permission_version_2",
+    PAIRING_MIGRATION,
+  ]) {
     assert(tags.includes(required), `journal does not contain ${required}; cannot run the upgrade-path proof`);
   }
 
@@ -2435,6 +3080,7 @@ async function main() {
     if (!onlyBoundary) {
       await assertAtomicFailureAt0050(sql, tags);
       await assertAtomicFailureAt0066(sql, tags);
+      await assertIdentityPairToleratesLegacyViolations(sql, tags);
     }
     console.log("MCP-UPGRADE-PATH-VERIFY PASS");
   } finally {
