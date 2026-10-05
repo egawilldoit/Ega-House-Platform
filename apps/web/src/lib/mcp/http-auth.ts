@@ -7,7 +7,6 @@ type TokenVerifier = (
 ) => AuthInfo | undefined | Promise<AuthInfo | undefined>;
 
 export type EgaMcpAuthOptions = {
-  required: boolean;
   requiredScopes: string[];
   resourceMetadataPath: string;
   resourceUrl: string;
@@ -48,7 +47,14 @@ function oauthError(
       status,
       headers: {
         "WWW-Authenticate": challenge(options, error, description),
+        // Every response on this route is no-store and origin-dependent. This one
+        // is produced BEFORE Host/Origin is validated, so it must not echo an
+        // allow-origin: doing so would advertise the authenticated path to any
+        // origin, which is exactly the wildcard failure in a narrower shape.
+        // `Vary: Origin` is still correct - it tells a cache this refusal is
+        // decided per origin, and no-store is what stops it being stored.
         "Cache-Control": "no-store",
+        Vary: "Origin",
       },
     },
   );
@@ -61,6 +67,15 @@ function extractBearerToken(request: Request): string | undefined {
   return match?.[1];
 }
 
+/**
+ * The one place the verified identity is read off a request.
+ *
+ * `withEgaMcpAuth` writes it and every consumer should read it here. The
+ * transport used to reach for `(request as Request & { auth?: AuthInfo }).auth`
+ * itself, which left this exported accessor looking canonical while the
+ * production path quietly bypassed it - two readers of one piece of state, one
+ * of them a cast.
+ */
 export function getMcpRequestAuthInfo(request: Request): AuthInfo | undefined {
   return (request as AuthenticatedRequest).auth;
 }
@@ -73,7 +88,11 @@ export function withEgaMcpAuth(
   return async (request: Request): Promise<Response> => {
     const bearerToken = extractBearerToken(request);
     if (!bearerToken) {
-      if (!options.required) return await handler(request);
+      // No `required: false` escape. It existed as an option, every caller in
+      // the repo passed `true`, and its only effect was to reach this line and
+      // forward an unauthenticated request - a fail-open path kept alive by a
+      // flag no one set. Removing it deletes the path rather than documenting
+      // it.
       return oauthError(
         401,
         options,
