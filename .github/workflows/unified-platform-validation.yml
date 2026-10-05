@@ -299,6 +299,11 @@ jobs:
       # migration journal, which no path filter would reliably catch.
       - name: MCP permission-version schema drift regression
         run: npm run test:mcp-schema-drift
+      # The journal must stay totally ordered by `when`, the one number
+      # drizzle-orm's migrator compares. Needs no database, so it runs here
+      # unconditionally; its behavioural sibling is the db-invariants step.
+      - name: Migration journal order regression
+        run: node --test scripts/ci/journal-order.test.mjs
       # A scripts/db verifier wired into a step that never defines its --url
       # expands to the empty string and exits without proving anything, which
       # happened to one security proof here. This reads the workflow itself.
@@ -532,6 +537,14 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-upgrade-path-verify.mjs --url "$PROOF_DATABASE_URL"
+      # Every other proof in this job applies the journal with the repository's
+      # own applier, which walks the journal as an array and never reads `when`.
+      # This one drives drizzle-orm's real migrator, because a non-increasing or
+      # shared `when` makes it SKIP entries while reporting success.
+      - name: Prove the real migrator applies every remaining journal entry
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/journal-order-verify.mjs --url "$PROOF_DATABASE_URL"
       # The two proofs below were written for this program and never wired into
       # any job, so the two largest security verifiers in scripts/db gated
       # nothing. They share this job's single database with every other step
