@@ -493,6 +493,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove the MCP operation fences by name, not by disjunction
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-operation-fence-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove archived project purge invariants through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
