@@ -294,3 +294,88 @@ describe("MCP permission documents stay synchronized with the database CHECK con
     }
   });
 });
+
+/**
+ * ARCHITECTURE.md documents the enforced rate-limit thresholds, the shipped SDK
+ * version and the shipped migration range. Those three facts are stated in prose
+ * that nothing checked: a migration changing `v_limit`, or an SDK bump, left the
+ * document silently wrong while every executable proof stayed green.
+ *
+ * The RPC-SURFACE section proves the shipped limits BITE at their configured
+ * values. It cannot prove the document agrees with them, so these assertions
+ * read both sides and compare.
+ */
+describe("ARCHITECTURE.md states the enforced rate-limit thresholds", () => {
+  const architecture = readFileSync(
+    resolve(process.cwd(), "..", "..", "ARCHITECTURE.md"),
+    "utf8",
+  );
+
+  it("names every aggregate bucket limit the RPC actually enforces", () => {
+    // Read the CASE arms out of the migration rather than restating them here,
+    // so a threshold change breaks this assertion instead of being missed.
+    const sql = readMigration("0071_mcp_rate_limit_and_fence_classification.sql");
+    const arms = [...sql.matchAll(
+      /WHEN p_window_name = '(ega_aggregate_[a-z_]+)' THEN (\d+)/g,
+    )];
+
+    expect(arms.length, "no aggregate bucket arms found in 0071").toBeGreaterThan(0);
+
+    for (const [, bucket, limit] of arms) {
+      expect(
+        architecture.includes(`${bucket}`),
+        `ARCHITECTURE.md does not document the aggregate bucket ${bucket}`,
+      ).toBe(true);
+      expect(
+        architecture.includes(`${limit}/min`),
+        `ARCHITECTURE.md does not state the enforced ${limit}/min allowance for ${bucket}`,
+      ).toBe(true);
+    }
+  });
+
+  it("states the per-tool default the RPC falls through to", () => {
+    const sql = readMigration("0071_mcp_rate_limit_and_fence_classification.sql");
+    const fallback = sql.match(/ELSE (\d+)\s*\n/);
+    expect(fallback, "could not read the per-tool fallback limit from 0071").not.toBeNull();
+    expect(
+      architecture.includes(`${fallback![1]}/min`),
+      `ARCHITECTURE.md does not state the per-tool allowance of ${fallback![1]}/min enforced by 0071`,
+    ).toBe(true);
+  });
+
+  });
+
+/**
+ * The migration range and the SDK version are the two facts most likely to go
+ * stale in prose, because drizzle-kit never regenerates documentation and the
+ * SDK is only version-checked indirectly through the lockfile.
+ */
+describe("ARCHITECTURE.md states the shipped migration range and SDK version", () => {
+  const architecture = readFileSync(
+    resolve(process.cwd(), "..", "..", "ARCHITECTURE.md"),
+    "utf8",
+  );
+
+  it("names the last migration in the journal", () => {
+    const journal = JSON.parse(
+      readFileSync(drizzlePath("meta", "_journal.json"), "utf8"),
+    ) as { entries: Array<{ idx: number; tag: string }> };
+    const last = [...journal.entries].sort((a, b) => a.idx - b.idx).at(-1);
+    expect(last, "journal is empty").toBeDefined();
+    expect(
+      architecture.includes(last!.tag),
+      `ARCHITECTURE.md does not mention the last journal migration ${last!.tag}`,
+    ).toBe(true);
+  });
+
+  it("states the SDK version the lockfile actually resolves", () => {
+    const root = resolve(process.cwd(), "..", "..");
+    const sdkVersion = JSON.parse(
+      readFileSync(resolve(root, "node_modules", "@modelcontextprotocol", "server", "package.json"), "utf8"),
+    ).version as string;
+    expect(
+      architecture.includes(sdkVersion),
+      `ARCHITECTURE.md does not state the installed MCP SDK version ${sdkVersion}`,
+    ).toBe(true);
+  });
+});
