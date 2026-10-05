@@ -161,8 +161,17 @@ test("cancelling a reminder that matched no visible row fails instead of reporti
   // Row-level security filters silently, so an update matching nothing is not an
   // error. Reporting success there is how ega_cancel_task_reminder claimed to
   // cancel a reminder that was still pending and still delivered.
+  //
+  // The follow-up read is queued so it SUCCEEDS. Without it the missing `tasks`
+  // response makes the read return null and the failure arrives by an unrelated
+  // path, so the assertion below also holds on an implementation with no
+  // zero-row check at all - it would not be a regression test. Queueing a
+  // readable task means only the zero-row check can produce ok: false here.
   const fake = new FakeSupabase();
   fake.push("task_reminders", { data: null, error: null });
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
 
   const result = await repository(fake).cancelReminder(ACTOR, {
     taskId: "task-1",
@@ -171,6 +180,13 @@ test("cancelling a reminder that matched no visible row fails instead of reporti
   });
 
   assert.equal(result.ok, false);
+  // The follow-up read must not have been needed at all: a refusal means the
+  // cancellation touched nothing, so there is no task state to return.
+  assert.equal(
+    fake.calls.filter((call) => call.table === "tasks").length,
+    0,
+    "a zero-row cancellation must not read the task back",
+  );
 });
 
 // EGA-662 completed_at parity: the shared repository seam (Hono/mobile/MCP)
