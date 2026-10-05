@@ -4,12 +4,45 @@ Unified CI blocks every new or directly-owned **high/critical** npm advisory. Th
 file records the exceptions enforced by advisory source ID in
 `scripts/ci/audit-production.mjs`, plus the remediation history.
 
-Re-reviewed **2026-09-25**. There are currently **no active high/critical
-production-audit exceptions**. Any high/critical advisory is blocking.
+Re-reviewed **2026-10-05**.
+
+An earlier revision of this file claimed there were no active exceptions. That
+was wrong before this revision and is corrected below: the registry in
+`scripts/ci/audit-production.mjs` has carried active entries throughout, and the
+table is now generated from the same source the gate reads. Any high/critical
+advisory that is not listed here is blocking.
 
 ## Active exceptions
 
-None.
+Nine entries, in two expiry cohorts. Each entry names one advisory source ID on
+one package — there are no wildcards and no aggregate entries, so an unrelated
+advisory cannot inherit an acceptance.
+
+| Source | Package | Advisory | Expires | Why it cannot be fixed now |
+| --- | --- | --- | --- | --- |
+| 1240104, 1240105, 1240107 | `brace-expansion` | GHSA-qhr7-859c-m2p7 | 2026-10-15 | no patched release; reached via `expo > react-native` |
+| 1240108, 1240109, 1240111 | `brace-expansion` | GHSA-6j4f-fj2g-mc7p | 2026-10-15 | no patched release; reached via `expo > react-native` |
+| 1240042 | `undici` | GHSA-rfgv-xxqx-mfg5 | 2026-10-15 | no patched release; reached via `@expo/cli` |
+| 1240992 | `braces` | GHSA-vfj7-8cjw-p6xm | 2026-11-05 | **no patched release exists — 3.0.3 is the newest version ever published** |
+| 1240912 | `node-forge` | GHSA-86w9-cpqp-85rv | 2026-11-05 | **no patched release exists — 1.4.0 is the newest version ever published** |
+
+The two 2026-11-05 entries were added on 2026-10-05 after the advisories they
+cover were published. Both `braces` and `node-forge` are absent from the shipped
+bundle and from all application source: `braces` is reached only through
+`micromatch` under the jest, metro and `@expo/metro` toolchain, and `node-forge`
+only through `@expo/cli` and `@expo/code-signing-certificates`, where it verifies
+EAS build artifacts rather than untrusted input. Each entry records its affected
+surface, why it is unfixable, an owner, and its `reviewBy` date in
+`audit-production.mjs`.
+
+Both carry `allowDirect`, because the gate attributes a leaf advisory to the
+*direct* package that reaches it — so `braces` reached through the direct `expo`
+dependency trips the direct-dependency rule even though the vulnerable package is
+transitive. Removing the flag re-blocks the identical report, which is asserted
+in `audit-production.test.mjs`, so the flag is load-bearing rather than a bypass.
+
+The seven 2026-10-15 entries expire in ten days and will block CI on that date
+until they are re-reviewed. That is the intended behaviour, not a defect.
 
 Metro `0.83.8` removed the vulnerable `image-size` dependency from the
 maintained `0.83.x` line by vendoring the reduced asset-dimension parser. EGA
@@ -23,6 +56,7 @@ the advisory.
 | --- | --- | --- | --- |
 | `image-size@1.2.1` | GHSA-w3rx-r6r6-pgpr, GHSA-5p2g-fcmc-qvqq | align the full Metro 0.83 family (`metro`, its 13 sibling packages, and `ob1`) to `0.83.8`; Metro 0.83.8 removed `image-size` and vendors a reduced parser that excludes the affected ICNS/JXL/HEIF handlers | lockfile contains no `image-size`; production audit has no image-size high leaf; no Expo/RN downgrade |
 | `next` (direct, critical) | GHSA-p293-qw3h-jr36, GHSA-2xp9-vwfh-vxw4 (`>=16.0.0 <16.3.3`) | `next 16.2.12 -> 16.3.5` (non-major), owner-approved Next pin move; `eslint-config-next` and `@next/swc-linux-x64-gnu` moved with it | production audit `critical 1 -> 0`; `workspace-proofs` Next pin updated to 16.3.5 |
+| `next` (direct, critical) | GHSA-vcvr-r3jv-pc5j (`>=16.2.0 <16.3.6`), RCE in `next/og` `ImageResponse` | `next 16.3.5 -> 16.3.8` (non-major) — upgraded rather than accepted, because a compatible patched release exists. No application source imports `next/og`, so runtime exposure was already nil, but a critical advisory on a direct dependency is fixed rather than documented around | production audit `critical 1 -> 0`; `workspace-proofs` Next pin asserts 16.3.8; `audit-production.test.mjs` asserts no registry entry ever names this advisory or `next` |
 | `sharp` | GHSA-rgj7-g3m4-5g8c (`<0.35.4`, reached via `next`) | override `sharp 0.35.3 -> 0.35.4` (satisfies the `next`/`@next/*` range) | `npm audit` no longer lists `sharp` |
 | `js-yaml` | GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh (sources 1123911/1138115/1193726/1193727) | scoped overrides `js-yaml@^4 -> 4.3.2`, `js-yaml@^3 -> 3.15.2` (both within the parents' existing major ranges) | `npm audit` no longer lists `js-yaml` |
 | `nanoid` | GHSA-2v37-7h3g-55p8 (source 1139427) | override `nanoid -> 3.3.18` (within the `^3.3.8` parent ranges) | `npm audit` no longer lists `nanoid` |
