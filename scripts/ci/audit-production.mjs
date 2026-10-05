@@ -66,6 +66,63 @@ export const SECURITY_AUDIT_EXCEPTIONS = [
     reviewBy: '2026-10-15',
     upstream: '@expo/cli',
   },
+  // ---------------------------------------------------------------------------
+  // Added 2026-10-05. Both advisories below were published AFTER this registry was
+  // last written, which is why they blocked a red `workspace` job on origin/main
+  // as well as on the MCP hardening branch. Neither is a defect introduced by
+  // that branch.
+  //
+  // For both, the newest version ever published is the affected one
+  // (braces: 3.0.3; node-forge: 1.4.0) and the GitHub advisory records no
+  // patched version, so there is no upgrade and no override that fixes them.
+  // Both are accepted as build-time-only transitive risk until upstream ships a
+  // release. These are NOT a catch-all: an entry matches one advisory id on one
+  // package, and any other advisory still blocks.
+  // ---------------------------------------------------------------------------
+  {
+    source: 1240992,
+    advisory: 'GHSA-vfj7-8cjw-p6xm',
+    package: 'braces',
+    reason:
+      'Temporary risk acceptance: braces stack-exhaustion DoS via deeply nested glob patterns. No patched ' +
+      'release exists - 3.0.3 is the newest version ever published and the advisory lists no patched version. ' +
+      'Reached only through micromatch, itself only a build/test-time dependency of jest, metro and ' +
+      '@expo/metro*. No shipped application code imports braces or micromatch, and the trigger requires an ' +
+      'attacker-supplied glob pattern compiled at build time, which this repository does not do. Removable by ' +
+      'dropping braces@3.0.3 the moment upstream publishes a fix.',
+    affectedSurface: 'mobile build/test toolchain only (jest, metro, @expo/metro); absent from the shipped app bundle',
+    whyNotFixableNow: 'no patched braces release exists; micromatch requires ^3.0.3',
+    // The script attributes a leaf advisory to the DIRECT package that reaches it,
+    // so reaching braces through the direct `expo` / `react-native` /
+    // `react-native-reanimated` deps trips the direct-dependency gate. The
+    // vulnerable package is still the transitive braces, not those direct
+    // packages. allowDirect widens the accepted set only for THIS advisory id on
+    // THIS package; any other advisory on a direct dependency still blocks.
+    allowDirect: true,
+    owner: 'platform (mobile build toolchain)',
+    reviewBy: '2026-11-05',
+    upstream: 'expo > metro/jest > micromatch',
+  },
+  {
+    source: 1240912,
+    advisory: 'GHSA-86w9-cpqp-85rv',
+    package: 'node-forge',
+    reason:
+      'Temporary risk acceptance: node-forge accepts extra nested DigestAlgorithm elements when verifying an ' +
+      'RSA PKCS#1 v1.5 signature. No patched release exists - 1.4.0 is the newest version ever published and ' +
+      'the advisory lists no patched version. Reached only through @expo/cli and ' +
+      '@expo/code-signing-certificates, both of which use node-forge to verify EAS build artifacts rather than ' +
+      'to serve untrusted input. No shipped application code imports node-forge. Removable by dropping ' +
+      'node-forge@1.4.0 the moment upstream publishes a fix.',
+    affectedSurface: 'Expo CLI build-artifact signature verification only; absent from the shipped app bundle',
+    whyNotFixableNow: 'no patched node-forge release exists; @expo/code-signing-certificates requires ^1.3.3',
+    // Same reasoning as the braces entry above: the direct package is only the
+    // parent, the vulnerable package is the transitive node-forge.
+    allowDirect: true,
+    owner: 'platform (mobile release tooling)',
+    reviewBy: '2026-11-05',
+    upstream: 'expo > @expo/cli / @expo/code-signing-certificates',
+  },
 ];
 
 export const ALLOWED_LEAF_EXCEPTIONS = SECURITY_AUDIT_EXCEPTIONS;
