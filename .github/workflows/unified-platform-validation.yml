@@ -299,6 +299,11 @@ jobs:
       # migration journal, which no path filter would reliably catch.
       - name: MCP permission-version schema drift regression
         run: npm run test:mcp-schema-drift
+      # A scripts/db verifier wired into a step that never defines its --url
+      # expands to the empty string and exits without proving anything, which
+      # happened to one security proof here. This reads the workflow itself.
+      - name: DB proof step scope regression
+        run: node --test scripts/ci/db-proof-step-scopes.test.mjs
       - name: Runner typecheck regression
         run: npm run typecheck:ega-runner
       - name: Runner PR-loop regression
@@ -504,6 +509,8 @@ jobs:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-operation-fence-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove MCP rate-limit thresholds and counter atomicity under concurrency
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-rate-limit-concurrency-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove archived project purge invariants through the migration journal
         env:
@@ -527,9 +534,12 @@ jobs:
         run: node scripts/db/mcp-upgrade-path-verify.mjs --url "$PROOF_DATABASE_URL"
       # The two proofs below were written for this program and never wired into
       # any job, so the two largest security verifiers in scripts/db gated
-      # nothing. Each names its own database on purpose: every verifier drops and
-      # recreates the public/auth/automation schemas, so two of them sharing one
-      # database would race on the reset.
+      # nothing. They share this job's single database with every other step
+      # above, deliberately and contrary to an earlier comment here that claimed
+      # each named its own: every verifier drops and recreates
+      # public/auth/automation as its first act and restores them before it
+      # exits, so sequential steps in one job are safe and a shared service
+      # container stays the only Postgres this job needs.
       - name: Prove the MCP OAuth database authorization surface
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof

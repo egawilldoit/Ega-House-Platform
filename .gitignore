@@ -2,6 +2,13 @@
 
 # dependencies
 /node_modules
+# Tool caches inside workspace node_modules trees. The root rule above is
+# anchored, so it does not reach them, and a vitest results.json was committed
+# that way by accident. Scoped to the cache directories rather than to
+# `**/node_modules/` on purpose: scripts/ega-runner/node_modules is deliberately
+# vendored in this repository and must stay committable.
+/**/node_modules/.vite/
+/**/node_modules/.cache/
 /.pnp
 .pnp.*
 .yarn/*
