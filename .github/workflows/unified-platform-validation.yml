@@ -509,6 +509,10 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL" --upgrade-from 0049_operator_proposals --expect-unknown-shape-failure
+      - name: Prove the MCP hardening tail upgrades existing data from 0049 and 0063
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-upgrade-path-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]
