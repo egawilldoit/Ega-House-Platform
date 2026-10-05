@@ -152,17 +152,22 @@ repository** and is not asserted here; the `workspace-proofs.mjs:167` comment
 describing 16.3.8 as "the first release containing the fix" is a code comment
 this document cannot verify, not evidence.
 
-**Nine exceptions are carried, in two expiry cohorts.** Counted by importing
-`SECURITY_AUDIT_EXCEPTIONS` rather than by reading this table: 9 entries,
-grouped `{2026-10-15: 7, 2026-11-05: 2}`, none expired on 2026-10-05. The seven
-2026-10-15 entries predate this audit's refresh — `brace-expansion` ×6 (reached
-via `expo > react-native`) and `undici` ×1 (via `@expo/cli`) — and they expire in
-days, blocking CI on that date until re-reviewed. That is the registry working as
-designed, not a finding. The canonical per-entry table, with the reason each is
-unfixable today, is
+**Two exceptions are carried, both in the 2026-11-05 cohort.** Counted by
+importing `SECURITY_AUDIT_EXCEPTIONS` rather than by reading this table: 2
+entries, grouped `{2026-11-05: 2}`, none expired on 2026-10-05. The seven entries
+that used to expire on 2026-10-15 — `brace-expansion` ×6 (reached via
+`expo > react-native`) and `undici` ×1 (via `@expo/cli`) — were **remediated, not
+renewed**: their recorded reason "no patched release" was false, and scoped root
+overrides now pin them past every reported range (`brace-expansion@^1 -> 1.1.21`,
+`@^2 -> 2.1.7`, `@^5 -> 5.0.12`, `undici@^6 -> 6.29.0`). Each patched release
+satisfies the range its own parent already declares, so none of these is an
+out-of-range override. `npm audit --omit=dev` reports none of the seven after the
+change, and `audit-production.test.mjs` asserts both that the registry never names
+those sources again and that a report carrying any of them blocks. The canonical
+per-entry table, with the reason each remaining entry is unfixable today, is
 [`docs/architecture/dependency-audit-exceptions.md`](architecture/dependency-audit-exceptions.md).
-The two entries added by the hardening program are narrow, fully governed, and
-carry a 2026-11-05 review date:
+The two remaining entries are narrow, fully governed, and carry a 2026-11-05
+review date:
 
 | Package | Version | Advisory | Why it cannot be fixed here | Reachability (verified in `package-lock.json`) |
 |---|---|---|---|---|
@@ -173,9 +178,18 @@ Neither package is flagged `dev` in `package-lock.json`, which is why they surfa
 in a `--omit=dev` audit at all. "Build-time only" is therefore a *reachability*
 claim established by walking the lockfile's dependency edges, not an npm
 `devDependency` flag — the distinction is why these are governed as expiring
-exceptions rather than dismissed as development dependencies. The full
-governance fields for each entry (`affectedSurface`, `whyNotFixableNow`,
-`allowDirect`, `owner`, `reviewBy`, `upstream`) live in the script; see
+exceptions rather than dismissed as development dependencies. The same distinction
+applies to `brace-expansion` and `undici`, which are likewise reached only through
+build/test tooling and the Expo CLI rather than the shipped app runtime.
+
+Expiry is enforced, not decorative: `isExpired` is mutation-tested in this
+repository. Breaking it to always return `false` fails 3 of 24 tests; reversing the
+comparison fails 8. Both directions were confirmed to fail and then confirmed green
+after restoring `nowDate > reviewDate`.
+
+The full governance fields for each carried entry (`affectedSurface`,
+`whyNotFixableNow`, `allowDirect`, `owner`, `reviewBy`, `upstream`) live in the
+script; see
 [`docs/architecture/dependency-audit-exceptions.md`](architecture/dependency-audit-exceptions.md)
 for the surrounding history.
 

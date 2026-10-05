@@ -12,19 +12,29 @@ was wrong before this revision and is corrected below: the registry in
 table is now generated from the same source the gate reads. Any high/critical
 advisory that is not listed here is blocking.
 
+This revision corrects a second error. The seven entries that expired 2026-10-15
+recorded "no patched release" as their reason, and that was also wrong — every one
+of their advisories had a fixed release, each one inside the range its own parent
+already required. They were remediated rather than renewed, so the count of active
+exceptions drops from nine to two. The reasoning and evidence are under
+[Remediated advisories](#remediated-advisories).
+
 ## Active exceptions
 
-Nine entries, in two expiry cohorts. Each entry names one advisory source ID on
-one package — there are no wildcards and no aggregate entries, so an unrelated
+Two entries, both in the 2026-11-05 cohort. Each entry names one advisory source ID
+on one package — there are no wildcards and no aggregate entries, so an unrelated
 advisory cannot inherit an acceptance.
 
 | Source | Package | Advisory | Expires | Why it cannot be fixed now |
 | --- | --- | --- | --- | --- |
-| 1240104, 1240105, 1240107 | `brace-expansion` | GHSA-qhr7-859c-m2p7 | 2026-10-15 | no patched release; reached via `expo > react-native` |
-| 1240108, 1240109, 1240111 | `brace-expansion` | GHSA-6j4f-fj2g-mc7p | 2026-10-15 | no patched release; reached via `expo > react-native` |
-| 1240042 | `undici` | GHSA-rfgv-xxqx-mfg5 | 2026-10-15 | no patched release; reached via `@expo/cli` |
 | 1240992 | `braces` | GHSA-vfj7-8cjw-p6xm | 2026-11-05 | **no patched release exists — 3.0.3 is the newest version ever published** |
 | 1240912 | `node-forge` | GHSA-86w9-cpqp-85rv | 2026-11-05 | **no patched release exists — 1.4.0 is the newest version ever published** |
+
+An entry belongs in this table only while no patched release exists. Where a patch
+does exist, the advisory is remediated and the entry is deleted rather than given a
+later `reviewBy`; the seven entries that used to expire on 2026-10-15 were resolved
+that way on 2026-10-05 and are listed under
+[Remediated advisories](#remediated-advisories) below.
 
 The two 2026-11-05 entries were added on 2026-10-05 after the advisories they
 cover were published. Both `braces` and `node-forge` are absent from the shipped
@@ -41,8 +51,9 @@ dependency trips the direct-dependency rule even though the vulnerable package i
 transitive. Removing the flag re-blocks the identical report, which is asserted
 in `audit-production.test.mjs`, so the flag is load-bearing rather than a bypass.
 
-The seven 2026-10-15 entries expire in ten days and will block CI on that date
-until they are re-reviewed. That is the intended behaviour, not a defect.
+The 2026-11-05 entries expire in a month and will block CI on that date until they
+are re-reviewed. That is the intended behaviour, not a defect, and
+`audit-production.test.mjs` asserts it rather than assuming it.
 
 Metro `0.83.8` removed the vulnerable `image-size` dependency from the
 maintained `0.83.x` line by vendoring the reduced asset-dimension parser. EGA
@@ -62,10 +73,64 @@ the advisory.
 | `nanoid` | GHSA-2v37-7h3g-55p8 (source 1139427) | override `nanoid -> 3.3.18` (within the `^3.3.8` parent ranges) | `npm audit` no longer lists `nanoid` |
 | `@xmldom/xmldom` | GHSA-6mj3-qw4j-hgrw, GHSA-w2rr-34g9-rvrj, GHSA-4w3w-2rp5-g8jm and related (new sources) | scoped overrides `@xmldom/xmldom@^0.9 -> 0.9.12`, `@xmldom/xmldom@^0.8 -> 0.8.15` | `npm audit` no longer lists `@xmldom/xmldom` |
 | `fast-uri` | (previously excepted, source 1130720) | resolved by the existing `fast-uri -> 3.1.7` override; no longer surfaces in the production audit | `npm audit` no longer lists `fast-uri` |
+| `brace-expansion` 1.x (six copies) | GHSA-qhr7-859c-m2p7 (`<1.1.20`), GHSA-6j4f-fj2g-mc7p (`<1.1.19`), and GHSA-q2hr-2g5m-vwhr (`<1.1.21`) | scoped override `brace-expansion@^1 -> 1.1.21`, **upgraded rather than accepted** | `npm audit` no longer lists `brace-expansion` |
+| `brace-expansion` 2.x | GHSA-qhr7-859c-m2p7 (`>=2.0.0 <2.1.6`), GHSA-6j4f-fj2g-mc7p (`>=2.0.0 <2.1.5`), GHSA-q2hr-2g5m-vwhr (`>=2.0.0 <2.1.7`) | scoped override `brace-expansion@^2 -> 2.1.7` | `npm audit` no longer lists `brace-expansion` |
+| `brace-expansion` 5.x | GHSA-qhr7-859c-m2p7 (`>=4.0.0 <5.0.11`), GHSA-6j4f-fj2g-mc7p (`>=4.0.0 <5.0.10`), GHSA-q2hr-2g5m-vwhr (`>=4.0.0 <5.0.12`) | scoped override `brace-expansion@^5 -> 5.0.12` | `npm audit` no longer lists `brace-expansion` |
+| `undici` | GHSA-rfgv-xxqx-mfg5 (`>=6.7.0 <6.28.1`), plus GHSA-3wwx-pv8p-q78v and GHSA-r53p-7pc4-xj5r | scoped override `undici@^6 -> 6.29.0` | `npm audit` no longer lists `undici` |
+
+### The seven 2026-10-15 entries, and why the "no patched release" reason was wrong
+
+Six `brace-expansion` advisories and one `undici` advisory were carried as entries
+until 2026-10-15, each recording "no patched release". That reason was false, and
+the entries were **remediated instead of renewed**. Every affected advisory range
+had a published release outside it, and — the part that matters — each of those
+releases already satisfied the range its own parent declared:
+
+| Advisory range | Vulnerable | Patched | Parent that requires it | Parent's declared range | Override in range? |
+| --- | --- | --- | --- | --- | --- |
+| `<1.1.19`, `<1.1.20`, `<1.1.21` | 1.1.18 / 1.1.14 | **1.1.21** | `minimatch@3.1.5` (under `glob@7.2.3` → jest, `@react-native/codegen`, `react-native`, `rimraf`, `test-exclude`) | `^1.1.7` | yes — same major, above the floor |
+| `>=2.0.0 <2.1.5`, `<2.1.6`, `<2.1.7` | 2.1.4 | **2.1.7** | `minimatch@9.0.9` (under `expo > @expo/cli`) | `^2.0.2` | yes |
+| `>=4.0.0 <5.0.10`, `<5.0.11`, `<5.0.12` | 5.0.9 | **5.0.12** | `minimatch@10.2.6` (hoisted) | `^5.0.8` | yes |
+| `>=6.7.0 <6.28.1` (+ two lower severities) | 6.28.0 | **6.29.0** | `@expo/cli@54.0.27` | `^6.18.2` | yes |
+
+Because every move is inside the parent's own range, the remediation rests on
+nothing but an ordinary upgrade the repository had not taken — not on npm tolerating
+an out-of-range override. `audit-production.test.mjs` reads those parent specs out
+of `package-lock.json` and fails if a later parent bump makes an override
+out-of-range.
+
+This also cleared the three moderate `brace-expansion` advisories
+(GHSA-q2hr-2g5m-vwhr) and the moderate/low `undici` advisories that the old pins
+carried, because each patched release is outside all of them at once.
+
+**Behavioural compatibility, checked rather than assumed.** `brace-expansion`'s
+public surface differs between major lines — 1.x and 2.x export a single callable,
+5.x exports `{ expand, EXPANSION_MAX, ... }` — so each override preserves its own
+line's shape, and no line is pushed onto another's API. For each of the six
+versions (1.1.18→1.1.21, 2.1.4→2.1.7, 5.0.9→5.0.12) the patched build was executed
+and returns byte-identical output to the vulnerable build on a fixed set of ten
+brace patterns (alternation, numeric and alpha ranges, nested groups, empty
+alternation, escaped braces, and a non-brace glob). The 5.x `expand` still honours
+the `max` option that `minimatch` passes, and `minimatch` is exercised for real by
+`npm run mobile:test` (jest) and `npm run mobile:bundle` (Metro export). 5.0.12 adds
+`EXPANSION_MAX_DEPTH` and `EXPANSION_MAX_REWRITES` exports; these are additive
+constants, not removals. For `undici`, `@expo/cli` imports `fetch`, `Headers`,
+`Response`, `Agent` and `EnvHttpProxyAgent`; all five are exported by 6.28.1 and
+6.29.0, both of which declare the same `node >=18.17` engine as 6.28.0.
+
+**Reachable surface.** Neither package is imported by any first-party source in
+`apps/`, `packages/` or `scripts/` — verified by grep. `brace-expansion` is reached
+only through `minimatch` (glob, jest, Metro, and the Expo CLI), and `undici` only
+through `expo > @expo/cli`, which is Expo build/dev tooling rather than the shipped
+app runtime. So runtime exposure was already low at this revision; the upgrade was
+taken anyway because a compatible fix existed, which is the same standard applied to
+the `next` critical above.
 
 Remediation constraints honoured: **no breaking downgrades** and **no
 `npm audit fix --force`**. The Metro move stays on the maintained `0.83.x`
-line and keeps the complete Metro package family coherent at `0.83.8`.
+line and keeps the complete Metro package family coherent at `0.83.8`. The
+`brace-expansion` and `undici` overrides each stay inside the major their parent
+already requires, so no consumer sees a major it did not ask for.
 
 `ws` is **not** excepted: the workspace overrides it to patched `8.21.3`, which is
 compatible with the observed `^8.x` parent ranges. Hono is also **not** excepted:
