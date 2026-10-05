@@ -1,11 +1,25 @@
 # MCP Capability Coverage — 2026-08-29
 
-**Branch:** `feat/mcp-v2-full-read-write`
+**Branch:** `feat/mcp-v2-full-read-write` (original authoring branch); refreshed against repository state `16e22cd9` on 2026-10-05
 **Reference checkpoint:** integrated feature head is recorded in the final merge report
-**Protocol target:** `2026-07-28`, SDK v2 (`@modelcontextprotocol/server` 2.0.0)
+**Protocol target:** `2026-07-28`, SDK v2 (`@modelcontextprotocol/server` / `client` / `core` all **2.3.0**, per `apps/web/package.json`)
 
 This living document defines the current **FULL READ/WRITE** EGA House MCP
 catalog. Historical evidence and repair ledgers remain unchanged snapshots.
+
+**Where the counts in this document are authored.** Every tool count, permission
+requirement, risk class and confirmation flag below is *derived* from the
+`MCP_CAPABILITIES` array in
+[`apps/web/src/lib/mcp/capability-registry.ts`](../../apps/web/src/lib/mcp/capability-registry.ts).
+That registry is the single source: tool discovery, `server.ts` registration
+eligibility, the rate-limiter risk class, the MCP tool annotations and the
+database audit allowlist (`drizzle/0067`) all read from it, and
+`capability-registry-migration.test.ts` asserts the registry and the SQL
+allowlist agree in **both** directions. This document is a description of that
+array, not a second declaration of it; when the two disagree, the registry is
+right and this document is stale. The registry only ever contains capabilities
+that have a registry entry, Zod schema, handler, application delegation and
+tests added in the same wave.
 
 ## Authority
 
@@ -49,8 +63,8 @@ catalog. Historical evidence and repair ledgers remain unchanged snapshots.
 | archive/unarchive task | `archiveTask`/`unarchiveTask` | `tasks` UPDATE archived_at | W | `ega_archive_task` / `ega_unarchive_task` | `tasks.update` | no | operationId | EXPOSE — at-least-once, idempotent |
 | focus rank | `getFocusRank`/`setFocusRank` | `tasks.focus_rank` | W | `ega_set_task_focus_rank` | `tasks.update` | no | operationId | EXPOSE — at-least-once, idempotent |
 | reminders | `createTaskReminder`/`cancelTaskReminder` | `task_reminders` | W | `ega_create_task_reminder`/`ega_cancel_task_reminder` | `tasks.update` | no | operationId + domain fence for create | EXPOSE |
-| recurrence | `createTask` recurrence field | `task_recurrences` | W | — | — | — | — | DEFER — not in MCP v1 schema |
-| scheduling | `UpdateTaskRecordInput.scheduledStartAt/EndAt` | `tasks.scheduled_*` | W | — | — | — | — | DEFER — not in MCP v1 schema |
+| recurrence | `createTask` recurrence field | `task_recurrences` | W | — | — | — | — | DEFER — not in the MCP schema |
+| scheduling | `UpdateTaskRecordInput.scheduledStartAt/EndAt` | `tasks.scheduled_*` | W | — | — | — | — | DEFER — not in the MCP schema |
 
 ### Today (projection)
 
@@ -87,13 +101,18 @@ Timer invariant: `task_sessions_owner_open_unique` enforces one open per owner �
 
 ## Counts (current runtime)
 
-- **Read tools:** 7 (`ega_get_capabilities` plus the six permission-filtered reads).
-- **Write tools:** 23, all present in `apps/web/src/lib/mcp/server.ts` and permission-filtered by `tool-discovery.ts`.
-- **Workspace manager:** discovers all 30 tools when writes are enabled.
-- **Task manager:** discovers the seven reads plus task create/update, archive/unarchive, focus rank, and reminder create/cancel.
-- **Read-only:** discovers only the seven reads.
-- **Writes disabled:** every profile discovers only the seven reads.
-- **Deferred/excluded product surfaces:** calendar integration, week reviews, external refs, sync jobs, recurrence, scheduling, idea-note writes, saved views, and Runner delivery state.
+Derived from `MCP_CAPABILITIES` (30 entries: 7 declared with `read(...)`, 23
+with `write(...)`).
+
+- **Read tools:** 7 (`ega_get_capabilities`, which is `kind: "always"` and therefore advertised to every authenticated principal, plus the six permission-filtered reads `ega_list_projects`, `ega_get_task`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan`, `ega_list_timer_sessions`).
+- **Write tools:** 23. Every one sets `writesEnabledRequired: true` (enforced by a registry test), so all 23 disappear from discovery whenever `MCP_WRITES_ENABLED` is false.
+- **Total: 30 executable tools.** `apps/web/src/lib/mcp/server.ts` contains 30 `registerTool` calls; that is the *registration*, not the authority, and the registry test pins each registered tool's annotations back to the registry entry.
+- **Workspace manager (v1, writes enabled):** discovers all 30.
+- **Task manager (v1):** discovers the 7 reads plus 7 writes — `ega_create_task`, `ega_update_task`, `ega_archive_task`, `ega_unarchive_task`, `ega_set_task_focus_rank`, `ega_create_task_reminder`, `ega_cancel_task_reminder` = 14 tools.
+- **Read-only (v1):** discovers only the 7 reads.
+- **Writes disabled:** every profile discovers only the 7 reads.
+- **Risk classes (drive the aggregate rate-limit buckets):** 7 `read`, 22 `write`, 1 `sensitive_write`. `ega_clear_completed_today` is the sole `sensitive_write` and the sole capability with `confirmationClass: "required"`; a read always defaults to `read` and a write to `write` unless it opts in.
+- **Deferred/excluded product surfaces:** calendar integration, week reviews, external refs, sync jobs, recurrence, scheduling, idea notes, saved views, and Runner delivery state.
 
 ## Permission catalog for MCP
 
@@ -109,6 +128,18 @@ workspace_manager:    full workspace
 ```
 
 `workspace_manager` is the explicit human-consented write grant. `MCP_WRITES_ENABLED` global kill switch gates all writes even when grant permits.
+
+The list above is the **`permissions_version 1`** universe. `MCP_PERMISSIONS`
+also declares five additive read-only permissions — `friction.read`,
+`inbox.read`, `notifications.read`, `operator.read`, `workload.read` — that
+exist only in the `permissions_version 2` document for `read_only` and
+`workspace_manager`. Version 2 is defined and frozen but **not issued**:
+`CURRENT_MCP_PERMISSION_VERSION = 1`, so every newly consented grant is written
+at v1 and no v2 permission is currently held by anyone. `task_manager` has no v2
+document by design, so that an invalid (profile, version) pairing still fails
+closed and stays testable. This catalog therefore documents the v1 surface only;
+the v2 capability set does not exist yet. See
+[`ARCHITECTURE.md`](../../ARCHITECTURE.md) for the version contract.
 
 ## MRTR candidates
 
@@ -164,5 +195,14 @@ mobile user through those APIs.
 
 ## Open items
 
+All of the following are **deferred, not shipped**. None of them has a
+registry entry, so none of them is discoverable, invocable or auditable at this
+revision. Do not read the `McpDomain` type union in `capability-registry.ts`
+(which names `friction`, `inbox`, `notifications`, `operator` and `workload`)
+as evidence that a capability exists — it is a type, and only `MCP_CAPABILITIES`
+entries are capabilities.
+
 - Saved views write deferred — explicit rollout decision, not an MCP fencing gap.
 - Idea notes write deferred — needs a product decision on an MCP-owned idea pipeline.
+- The five `permissions_version 2` read domains (`friction`, `inbox`, `notifications`, `operator`, `workload`) are deferred behind the version-2 switch. Shipping v2 before the v2 tool set is complete would let a consent screen promise authority with no tool behind it.
+- Recurrence and scheduled-window writes remain out of the MCP schema (deferred in the Tasks table above).

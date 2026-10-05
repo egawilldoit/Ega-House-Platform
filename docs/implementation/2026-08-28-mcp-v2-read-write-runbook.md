@@ -1,7 +1,7 @@
 # Runbook — MCP v2 read/write (2026-08-29)
 
-**Branch:** `feat/mcp-v2-full-read-write`
-**SDK:** `@modelcontextprotocol/server` 2.0.0, `@modelcontextprotocol/client` 2.0.0, `@modelcontextprotocol/core` 2.0.0
+**Branch:** `feat/mcp-v2-full-read-write` (original authoring branch); refreshed against repository state `16e22cd9` on 2026-10-05
+**SDK:** `@modelcontextprotocol/server` **2.3.0**, `@modelcontextprotocol/client` **2.3.0**, `@modelcontextprotocol/core` **2.3.0** (per `apps/web/package.json`; this line previously said 2.0.0)
 **Protocol:** `2026-07-28` only (stateless `createMcpHandler`, `legacy: 'reject'`, `server/discover`, `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, `Mcp-Param-*`)
 
 ## Serving
@@ -14,7 +14,8 @@
 ## Authorization
 
 - **OAuth:** Supabase OAuth, `aud` = `resource` = `MCP_RESOURCE_URL`, `client_id` from JWT, `mcp_authorization_grants` (owner, client, resource, profile, permissions, version, status)
-- **Profiles:** `read_only` (7 read tools), `task_manager` (read tools + task-management writes), `workspace_manager` (all 30 tools when writes are enabled). `delivery_observer` is retired. `MCP_WRITES_ENABLED` global kill switch gates all writes even when grant permits.
+- **Profiles:** `read_only` (7 read tools), `task_manager` (7 reads + 7 task-management writes = 14), `workspace_manager` (all 30 tools when writes are enabled). `delivery_observer` is retired. `MCP_WRITES_ENABLED` global kill switch gates all writes even when grant permits.
+- **Permission version:** grants are issued at `permissions_version 1`; v2 is defined and frozen in both `permissions.ts` and `drizzle/0066` but **not issued**, so the v2 read permissions (friction/inbox/notifications/operator/workload) authorize nothing today and have no tool behind them.
 - **Consent:** `/oauth/consent?authorization_id=...` shows Read-only vs Workspace management when `MCP_WRITES_ENABLED=true`; otherwise only Read-only. User explicitly picks; no silent elevation of existing grants.
 - **RLS:** `private.has_active_mcp_permission(perm)` checks `auth.uid()`, `client_id`, `aud`, `status='active'`, `permissions @> [perm]`. Policies:
   - `*_select_access`: owner + (client null OR has read perm)
@@ -43,7 +44,7 @@
 ## Audit / Rate limits
 
 - **Audit:** `agent_integration_events` with `grant_id`, `toolName`, `outcome`, `durationMs`, `metadata{resultCount, retryAfter, operationId}`. MCP OAuth audit persistence uses migration `0061_mcp_audit_event_rpc`: a claim-bound `SECURITY DEFINER` RPC derives owner/client/resource and the active grant from JWT context while direct OAuth table INSERT remains blocked. Mutation path writes receipt before success, so audit failure does not cause duplicate (retry replays receipt).
-- **Rate limits:** `consume_mcp_rate_limit(window_name)` SECURITY DEFINER, checks grant existence, fixed window per `(owner, client, window name)`. **Default: 120/60s for every tool** — this line previously claimed `reads 120/60s, writes 30/60s` and that write path never existed. Each call also consumes a risk-class aggregate bucket (`ega_aggregate_read` 600/60s, `ega_aggregate_write` 300/60s, `ega_aggregate_sensitive_write` 60/60s) so total throughput cannot multiply as the tool count grows. The allowance and window length are derived inside the RPC and are **not** caller-supplied: until `drizzle/0071` both were arguments, and because the conflict handler treats a window mismatch as a fresh bucket one extra RPC call reset the counter while `p_limit=10000` disabled the limit outright. The three-argument overload is dropped, so passing a limit or window now fails rather than quietly succeeding. `auditedReadHandlers` already wraps reads; writes to use same.
+- **Rate limits:** `consume_mcp_rate_limit(window_name)` SECURITY DEFINER, checks grant existence, fixed window per `(owner, client, window name)`. **Default: 120/60s for every tool** — this line previously claimed `reads 120/60s, writes 30/60s` and that write path never existed. Each permitted call also consumes a risk-class aggregate bucket (`ega_aggregate_read` 600/60s, `ega_aggregate_write` 300/60s, `ega_aggregate_sensitive_write` 60/60s) so total throughput cannot multiply as the tool count grows; at this revision those three buckets contain 7, 22 and 1 capability respectively, because `ega_clear_completed_today` is the only `sensitive_write`. The allowance and window length are derived inside the RPC and are **not** caller-supplied: until `drizzle/0071` both were arguments, and because the conflict handler treats a window mismatch as a fresh bucket one extra RPC call reset the counter while `p_limit=10000` disabled the limit outright. The three-argument overload is dropped, so passing a limit or window now fails rather than quietly succeeding. Both numbers are enforced values; only the *choice* of those values is an open product decision, and it is recorded as such in [`ARCHITECTURE.md`](../../ARCHITECTURE.md). `auditedReadHandlers` already wraps reads; writes to use same.
 
 ## Rollback
 
@@ -62,7 +63,7 @@ mobile user through those owner-scoped APIs.
 
 ## Production deployment notes
 
-- Migrations `0050..0061` are the MCP tail after current-main migrations `0045..0049`; production application status is verified from the target database migration history before deployment.
+- Migrations `0050..0072` are the MCP tail after current-main migrations `0045..0049`; the shipped journal ends at `0072_mcp_write_implies_read_back` (this document previously said `0050..0061`). Production application status is verified from the target database migration history before deployment — the repository journal says what has been *written*, never what has been *applied*.
 - `MCP_REQUEST_STATE_SECRET` not rotated in prod (to be set out-of-band before cutover).
 - Production deployment and migration status are operational evidence, not inferred from this runbook; verify the target database and Vercel deployment before declaring rollout complete.
 
@@ -74,8 +75,11 @@ mobile user through those owner-scoped APIs.
 
 ## SDK & protocol proof
 
-- `apps/web/package.json`: `@modelcontextprotocol/server/client/core` 2.0.0
-- `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas
+- `apps/web/package.json`: `@modelcontextprotocol/server/client/core` **2.3.0** (all three pinned exactly, no range)
+- `apps/web/src/lib/mcp/capability-registry.ts`: the canonical `MCP_CAPABILITIES` array — 30 entries (7 read, 23 write), the single source for discovery, registration eligibility, risk class and annotations
+- `apps/web/src/lib/mcp/permissions.ts`: `MCP_PERMISSION_VERSIONS = [1, 2]`, `CURRENT_MCP_PERMISSION_VERSION = 1` (v2 defined, not issued)
+- `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas, 30 `registerTool` calls pinned to the registry by `capability-registry-migration.test.ts`
 - `apps/web/src/lib/mcp/request-state.ts`: `createRequestStateCodec`
-- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0061` + `meta/_journal.json`
+- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0072` + `meta/_journal.json` (73 entries, last `idx: 72`)
+- Database behaviour of every fence above is proven by the `scripts/db/*.mjs` ephemeral-database verifiers, not by the application tests; see the table in [`ARCHITECTURE.md`](../../ARCHITECTURE.md). Each takes `--url <postgres-url>`, `exit 2` without it, and each begins by `DROP SCHEMA … CASCADE` on `public`, `auth` and `automation` — so every schema in the named database is destroyed. Point them only at a disposable container.
 - Final command results are recorded in the delivery report; this document does not substitute for executed evidence.
