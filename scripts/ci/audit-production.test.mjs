@@ -619,6 +619,24 @@ test('the overrides that remediate brace-expansion and undici are still declared
   assert.equal(overrides['undici@^6'], '6.29.0', 'undici 6.x is pinned past GHSA-rfgv-xxqx-mfg5');
 });
 
+/**
+ * Resolve `dep` as Node would from `fromNode`, walking the lockfile's
+ * `node_modules` chain outward: the package's own nested copy first, then each
+ * ancestor's, ending at the hoisted root entry. This is the copy npm actually
+ * installs, which is why asserting on it is not the same assertion as reading
+ * the override out of package.json.
+ */
+function resolveFromLock(lock, fromNode, dep) {
+  const segments = fromNode.split('/node_modules/');
+  for (let end = segments.length; end > 0; end -= 1) {
+    const prefix = segments.slice(0, end).join('/node_modules/');
+    const candidate = `${prefix}/node_modules/${dep}`;
+    if (lock.packages[candidate]) return candidate;
+  }
+  const hoisted = `node_modules/${dep}`;
+  return lock.packages[hoisted] ? hoisted : null;
+}
+
 test('every scoped override for a remediated package sits inside the parent range it replaces', () => {
   // The remediation does not depend on npm tolerating an out-of-range override.
   // Each patched release must satisfy the range its own parent declares, read
@@ -656,6 +674,76 @@ test('every scoped override for a remediated package sits inside the parent rang
       sameMajor && notBelowFloor,
       `${override} must satisfy the range ${node} declares for ${dep} (${declared}); an out-of-range override would be a compatibility risk`,
     );
+  }
+});
+
+test('the lockfile RESOLVES the remediated versions, not only declares them', () => {
+  // The declared override and the installed tree are two different facts, and
+  // until now only the declared one was pinned: rewriting
+  // package-lock.json's root `node_modules/brace-expansion` from the fixed
+  // 5.0.12 back to the vulnerable 5.0.9 left both this file and
+  // `workspace-proofs.mjs` green, because neither read the resolved version of
+  // a remediated package.
+  //
+  // What the registry claims is that `npm audit --omit=dev` reports none of the
+  // seven advisories. That claim is about the tree npm resolves, so it is
+  // asserted here against the lockfile npm installs from, walked the way Node
+  // resolves each parent's copy.
+  const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
+  const resolved = [
+    { node: 'node_modules/@react-native/codegen/node_modules/minimatch', dep: 'brace-expansion', expect: '1.1.21' },
+    { node: 'node_modules/react-native/node_modules/minimatch', dep: 'brace-expansion', expect: '1.1.21' },
+    { node: 'node_modules/rimraf/node_modules/minimatch', dep: 'brace-expansion', expect: '1.1.21' },
+    { node: 'node_modules/test-exclude/node_modules/minimatch', dep: 'brace-expansion', expect: '1.1.21' },
+    { node: 'node_modules/expo/node_modules/minimatch', dep: 'brace-expansion', expect: '2.1.7' },
+    { node: 'node_modules/minimatch', dep: 'brace-expansion', expect: '5.0.12' },
+    { node: 'node_modules/expo/node_modules/@expo/cli', dep: 'undici', expect: '6.29.0' },
+  ];
+
+  for (const { node, dep, expect } of resolved) {
+    const path = resolveFromLock(lock, node, dep);
+    assert.ok(path, `the lockfile still resolves ${dep} for ${node}`);
+    assert.equal(
+      lock.packages[path].version,
+      expect,
+      `${node} resolves ${dep} from ${path}, which is the version ${dep} must be ` +
+        `remediated to; a resolved vulnerable version means the advisory is present again`,
+    );
+  }
+
+  // The two hoisted entries the other tests reason about directly, so a
+  // downgrade of the root copy cannot hide behind a nested one.
+  assert.equal(lock.packages['node_modules/brace-expansion'].version, '5.0.12');
+  assert.equal(lock.packages['node_modules/undici'].version, '6.29.0');
+});
+
+test('no remediated package resolves anywhere in the lockfile to a vulnerable version', () => {
+  // The seven advisories are remediated per parent, but a lockfile edit that
+  // adds a NEW copy of brace-expansion or undici is not covered by the
+  // per-parent walk above, because no parent in that list declares it. Sweep
+  // every entry instead: each resolved copy must be one of the patched
+  // versions, so any new copy arrives remediated or fails here.
+  const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'));
+  const patched = new Map([
+    ['brace-expansion', new Set(['1.1.21', '2.1.7', '5.0.12'])],
+    ['undici', new Set(['6.29.0'])],
+  ]);
+
+  const found = new Map([...patched.keys()].map((name) => [name, 0]));
+  for (const [path, meta] of Object.entries(lock.packages)) {
+    const name = path.replace(/^.*node_modules\//, '');
+    if (!patched.has(name)) continue;
+    found.set(name, found.get(name) + 1);
+    assert.ok(
+      patched.get(name).has(meta.version),
+      `${path} resolves ${name}@${meta.version}, which no override remediates; one of the seven ` +
+        'remediated advisories covers that version',
+    );
+  }
+
+  // The sweep must not pass vacuously on an empty lockfile or a renamed path.
+  for (const [name, count] of found) {
+    assert.ok(count > 0, `no ${name} entry was found in the lockfile; the sweep above checked nothing`);
   }
 });
 
