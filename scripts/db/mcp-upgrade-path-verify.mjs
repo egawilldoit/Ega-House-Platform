@@ -2053,33 +2053,33 @@ async function assertUnknownDocumentsFailClosed(sql, boundary) {
  * first so a refusal is a policy decision rather than a missing ACL.
  */
 const REACH_PROBES = [
-  { table: "projects", writeColumn: "description" },
-  { table: "goals", writeColumn: "next_step" },
-  { table: "tasks", writeColumn: "description" },
-  { table: "task_sessions", writeColumn: null },
-  { table: "task_reminders", writeColumn: "failure_reason" },
-  { table: "task_recurrences", writeColumn: "last_generated_at" },
-  { table: "task_external_refs", writeColumn: null },
-  { table: "task_saved_views", writeColumn: "status" },
-  { table: "week_reviews", writeColumn: "summary" },
-  { table: "idea_notes", writeColumn: "body" },
-  { table: "inbox_idempotency_keys", writeColumn: null },
-  { table: "notifications", writeColumn: "body" },
-  { table: "notification_devices", writeColumn: null },
-  { table: "notification_deliveries", writeColumn: "last_error_reason" },
-  { table: "notification_preferences", writeColumn: null },
-  { table: "user_time_context", writeColumn: "iana_timezone" },
-  { table: "operator_proposals", writeColumn: "ai_ref" },
-  { table: "calendar_integration_settings", writeColumn: null },
-  { table: "calendar_sync_jobs", writeColumn: null },
-  { table: "agent_integration_events", writeColumn: null },
-  { table: "mcp_authorization_grants", writeColumn: null },
+  { table: "projects" },
+  { table: "goals" },
+  { table: "tasks" },
+  { table: "task_sessions" },
+  { table: "task_reminders" },
+  { table: "task_recurrences" },
+  { table: "task_external_refs" },
+  { table: "task_saved_views" },
+  { table: "week_reviews" },
+  { table: "idea_notes" },
+  { table: "inbox_idempotency_keys" },
+  { table: "notifications" },
+  { table: "notification_devices" },
+  { table: "notification_deliveries" },
+  { table: "notification_preferences" },
+  { table: "user_time_context" },
+  { table: "operator_proposals" },
+  { table: "calendar_integration_settings" },
+  { table: "calendar_sync_jobs" },
+  { table: "agent_integration_events" },
+  { table: "mcp_authorization_grants" },
 ];
 
 /** Created by the tail, so absent at the boundary and probed only afterwards. */
 const REACH_TAIL_PROBES = [
-  { table: "mcp_mutation_receipts", writeColumn: null },
-  { table: "mcp_rate_limit_windows", writeColumn: null },
+  { table: "mcp_mutation_receipts" },
+  { table: "mcp_rate_limit_windows" },
 ];
 
 /**
@@ -2137,6 +2137,39 @@ const REACH_OPENED_BY_0065 = { table: "task_recurrences", permission: "tasks.rea
  */
 const REACH_WRITE_OPENED_BY_0069 = { table: "task_reminders", permission: "tasks.update" };
 
+/**
+ * Updatatable, non-generated columns per table, straight from the catalog.
+ * Identity columns are excluded because Postgres forbids assigning them; every
+ * other column is probed, so the census is column-complete rather than
+ * sampling one representative column.
+ */
+async function updatableColumns(sql, table) {
+  const rows = await sql.unsafe(`
+    SELECT a.attname
+    FROM pg_attribute AS a
+    WHERE a.attrelid = to_regclass('public.${table}')
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+      AND a.attidentity = ''
+      AND a.attgenerated = ''
+      AND a.attname <> 'owner_user_id'
+      AND a.attname <> 'user_id'
+    ORDER BY a.attname
+  `);
+  assert(rows.length > 0, `${table}: catalog returned no updatable columns to probe`);
+  return rows.map((row) => row.attname);
+}
+
+async function resolveProbes(sql, probes) {
+  const resolved = [];
+  for (const probe of probes) {
+    const exists = await sql.unsafe(`SELECT to_regclass('public.${probe.table}') IS NOT NULL AS present`);
+    if (!exists[0].present) continue;
+    resolved.push({ ...probe, columns: await updatableColumns(sql, probe.table) });
+  }
+  return resolved;
+}
+
 async function reachCensus(sql, grants, probes) {
   const census = new Map();
   for (const grant of grants) {
@@ -2155,18 +2188,47 @@ async function reachCensus(sql, grants, probes) {
         // makes the outcome observable. Probing with `WHERE false` instead
         // would match no row and so could not distinguish "writable" from
         // "silently filtered" - which is exactly the difference under test.
-        let write = "read-only-surface";
-        if (probe.writeColumn) {
+        //
+        // Every updatable column is probed, NOT one representative column, so a
+        // per-column ACL or per-column RLS difference cannot hide behind a
+        // sample. It also lets the declarations below be checked in both
+        // directions per column rather than once per table.
+        //
+        // WHAT THIS PROBE STILL CANNOT SEE, so nobody re-derives the same false
+        // conclusion: it observes the ACL and RLS layers only. 0071's write fence
+        // is a trigger, and its UPDATE branch builds its refusal set from
+        // columns whose value actually CHANGED
+        // (`v_new -> col IS DISTINCT FROM v_old -> col`). `SET col = col`
+        // therefore trips no fence at all, so `private.mcp_writable_columns()`
+        // is invisible here. Measured, on this journal: removing 'updated_at'
+        // from `private.mcp_writable_columns('tasks')` leaves this census GREEN
+        // - every one of tasks' 27 columns still reports `writable` - and it
+        // does the same for 'completed_at', which 0071 deliberately refuses to
+        // authorise. Closing that needs either a value-changing probe or an
+        // independent declaration of the intended write surface to compare
+        // against; neither exists in this file today.
+        //
+        // A column-level privilege change is also masked here: the GRANT below
+        // is table-level, and PostgreSQL ignores a column-level REVOKE once a
+        // table-level grant exists (`attacl` stays empty), so no per-column ACL
+        // variation is observable under it.
+        const writeByColumn = {};
+        for (const column of probe.columns) {
           try {
             const rows = await tx.unsafe(
-              `UPDATE public.${probe.table} SET ${probe.writeColumn} = ${probe.writeColumn} RETURNING 1`,
+              `UPDATE public.${probe.table} SET ${column} = ${probe.table}.${column} RETURNING 1`,
             );
-            write = rows.length > 0 ? "writable" : "filtered-no-rows";
+            writeByColumn[column] = rows.length > 0 ? "writable" : "filtered";
           } catch (error) {
-            write = `refused:${error?.code ?? "UNKNOWN"}`;
+            writeByColumn[column] = `refused:${error?.code ?? "UNKNOWN"}`;
           }
         }
-        observed[probe.table] = { read, write };
+        const writable = Object.entries(writeByColumn).filter(([, value]) => value === "writable").map(([column]) => column);
+        observed[probe.table] = {
+          read,
+          writable: writable.sort().join(","),
+          writeByColumn,
+        };
       }
     });
     census.set(grant.client, observed);
@@ -2174,6 +2236,11 @@ async function reachCensus(sql, grants, probes) {
   return census;
 }
 
+/**
+ * Every per-column outcome that moved, plus the table-level read movement.
+ * Column-level granularity is what makes a single-column allowlist change
+ * visible; a table-level "writable/not writable" summary is not.
+ */
 function censusDiffs(before, after) {
   const diffs = [];
   for (const [client, beforeTables] of before) {
@@ -2181,12 +2248,26 @@ function censusDiffs(before, after) {
     for (const [table, value] of Object.entries(beforeTables)) {
       const now = afterTables[table];
       if (now === undefined) continue;
-      if (now.read !== value.read || now.write !== value.write) {
-        diffs.push({ client, table, before: value, after: now });
+      if (now.read !== value.read) {
+        diffs.push({ client, table, kind: "read", before: value.read, after: now.read });
+        continue;
+      }
+      for (const column of Object.keys(value.writeByColumn)) {
+        const previous = value.writeByColumn[column];
+        const current = now.writeByColumn[column];
+        if (previous !== current) {
+          diffs.push({ client, table, kind: "write", column, before: previous, after: current });
+        }
       }
     }
   }
   return diffs;
+}
+
+function describeDiff(diff) {
+  return diff.kind === "read"
+    ? `${diff.client}.${diff.table} read ${diff.before} -> ${diff.after}`
+    : `${diff.client}.${diff.table}.${diff.column} ${diff.before} -> ${diff.after}`;
 }
 
 /**
@@ -2864,7 +2945,7 @@ async function runBoundary(sql, tags, boundary) {
       ${REACH_PROBES.map((probe) => `public.${probe.table}`).join(", ")}
     TO authenticated
   `);
-  const reachBefore = await reachCensus(sql, activeCanonical, REACH_PROBES);
+  const reachBefore = await reachCensus(sql, activeCanonical, await resolveProbes(sql, REACH_PROBES));
   // A pending grant holds no authority at any point, so its resolved set must
   // be empty on BOTH sides of the tail. That is a real assertion, not a
   // vacuous one: it fails if a migration activates it or grants it authority.
@@ -2904,7 +2985,7 @@ async function runBoundary(sql, tags, boundary) {
         ${REACH_TAIL_PROBES.map((probe) => `public.${probe.table}`).join(", ")}
       TO authenticated
     `);
-    const reachAfter = await reachCensus(sql, activeCanonical, [...REACH_PROBES, ...REACH_TAIL_PROBES]);
+    const reachAfter = await reachCensus(sql, activeCanonical, await resolveProbes(sql, [...REACH_PROBES, ...REACH_TAIL_PROBES]));
     const diffs = censusDiffs(reachBefore, reachAfter);
     // Use the PRE-tail resolved permission sets, captured by authoritySnapshot
     // before the tail ran. A migration that granted tasks.update during the
@@ -2920,68 +3001,80 @@ async function runBoundary(sql, tags, boundary) {
     const undeclared = [];
     for (const diff of diffs) {
       if (REACH_SEALED_BY_0065.includes(diff.table)) {
-        assert(
-          diff.after.read.startsWith("rows=0"),
-          `0065 sealed ${diff.table} from v1 bearers but ${diff.client} still reads ${diff.after.read}`,
-        );
-        assert(
-          diff.after.write !== "accepted",
-          `0065 sealed ${diff.table} from v1 bearers but ${diff.client} can still write it: ${diff.after.write}`,
-        );
-        continue;
-      }
-      if (diff.table === REACH_WRITE_SEALED_BY_0065.table) {
-        // Read must survive, under a permission the v1 document really holds;
-        // write must not.
-        assert(
-          diff.after.read.startsWith("rows=") && !diff.after.read.startsWith("rows=0"),
-          `0065 keeps a v1 READ path on ${diff.table} under ${REACH_WRITE_SEALED_BY_0065.retainedBy}, but ${diff.client} reads ${diff.after.read}`,
-        );
-        assert(
-          diff.after.write !== "accepted",
-          `0065 declares the ${diff.table} WRITE a direct-user action, but ${diff.client} can write it: ${diff.after.write}`,
-        );
-        continue;
-      }
-      if (diff.table === REACH_OPENED_BY_0065.table) {
-        assert(
-          diff.after.read.startsWith("rows=") && !diff.after.read.startsWith("rows=0"),
-          `${REACH_OPENED_BY_0065.table} was declared readable under ${REACH_OPENED_BY_0065.permission} but ${diff.client} reads ${diff.after.read}`,
-        );
-        // 0065 adds only a SELECT policy here, so an MCP UPDATE must change
-        // zero rows. "filtered-no-rows" is that outcome; "writable" is the bug.
-        assert(
-          diff.after.write === "filtered-no-rows",
-          `${REACH_OPENED_BY_0065.table} was declared READ-ONLY but ${diff.client} could write it: ${diff.after.write}`,
-        );
-        continue;
-      }
-      if (diff.table === REACH_WRITE_OPENED_BY_0069.table) {
-        // Movement on this table is permitted ONLY as the permission-scoped
-        // widening 0069 F-6 declares, and only on the WRITE axis. Any change
-        // to READ here is a separate, undeclared movement and falls through to
-        // the undeclared list below.
-        assert(
-          diff.after.read === diff.before.read,
-          `${REACH_WRITE_OPENED_BY_0069.table} read reach moved for ${diff.client} (${diff.before.read} -> ${diff.after.read}); 0069 declares a WRITE opening only`,
-        );
-        const holds = heldPermissions.get(diff.client)?.has(REACH_WRITE_OPENED_BY_0069.permission) ?? false;
-        if (holds) {
+        // Declared: read AND write both go to zero for every v1 bearer.
+        if (diff.kind === "read") {
           assert(
-            diff.after.write === "writable",
-            `${diff.client} holds ${REACH_WRITE_OPENED_BY_0069.permission}, so 0069 F-6 must have opened ${REACH_WRITE_OPENED_BY_0069.table} for it, but its write outcome is ${diff.after.write}`,
+            diff.after.startsWith("rows=0"),
+            `0065 sealed ${diff.table} from v1 bearers but ${describeDiff(diff)}`,
           );
         } else {
           assert(
-            diff.after.write === "filtered-no-rows",
-            `${diff.client} does NOT hold ${REACH_WRITE_OPENED_BY_0069.permission}, so ${REACH_WRITE_OPENED_BY_0069.table} must stay closed to it, but its write outcome is ${diff.after.write}`,
+            diff.after !== "writable",
+            `0065 sealed ${diff.table} from v1 bearers but ${describeDiff(diff)}`,
           );
         }
         continue;
       }
-      undeclared.push(
-        `${diff.client}.${diff.table}: ${diff.before.read}/${diff.before.write} -> ${diff.after.read}/${diff.after.write}`,
-      );
+      if (diff.table === REACH_WRITE_SEALED_BY_0065.table) {
+        // Declared: read survives under today.read; every write column is
+        // withdrawn. Both directions are checked, so neither an over-tight
+        // seal (read lost) nor a leaked write passes.
+        if (diff.kind === "read") {
+          assert(
+            diff.after.startsWith("rows=") && !diff.after.startsWith("rows=0"),
+            `0065 keeps a v1 READ path on ${diff.table} under ${REACH_WRITE_SEALED_BY_0065.retainedBy}, but ${describeDiff(diff)}`,
+          );
+        } else {
+          assert(
+            diff.after !== "writable",
+            `0065 declares the ${diff.table} WRITE a direct-user action, but ${describeDiff(diff)}`,
+          );
+        }
+        continue;
+      }
+      if (diff.table === REACH_OPENED_BY_0065.table) {
+        // Declared: newly readable, and read-only. 0065 adds only a SELECT
+        // policy here, so an MCP UPDATE must change zero rows. "filtered" is
+        // that outcome; "writable" is the bug. Kept as an exact match rather
+        // than `!= "writable"`, so a column that stops being REACHABLE at all
+        // (a `refused:` SQLSTATE, e.g. a revoked ACL) is not silently accepted
+        // as "still closed" - the declaration is that it is closed by policy,
+        // not that it vanished.
+        if (diff.kind === "read") {
+          assert(
+            diff.after.startsWith("rows=") && !diff.after.startsWith("rows=0"),
+            `${REACH_OPENED_BY_0065.table} was declared readable under ${REACH_OPENED_BY_0065.permission} but ${describeDiff(diff)}`,
+          );
+        } else {
+          assert(
+            diff.after === "filtered",
+            `${REACH_OPENED_BY_0065.table} was declared READ-ONLY but ${describeDiff(diff)}`,
+          );
+        }
+        continue;
+      }
+      if (diff.table === REACH_WRITE_OPENED_BY_0069.table) {
+        // Movement here is permitted ONLY as the permission-scoped widening
+        // 0069 F-6 declares, and only on the WRITE axis.
+        assert(
+          diff.kind !== "read",
+          `${REACH_WRITE_OPENED_BY_0069.table} read reach moved for ${diff.client}: ${describeDiff(diff)}; 0069 declares a WRITE opening only`,
+        );
+        const holds = heldPermissions.get(diff.client)?.has(REACH_WRITE_OPENED_BY_0069.permission) ?? false;
+        if (holds) {
+          assert(
+            diff.after === "writable",
+            `${diff.client} holds ${REACH_WRITE_OPENED_BY_0069.permission}, so 0069 F-6 must have opened ${diff.column} on ${REACH_WRITE_OPENED_BY_0069.table}, but ${describeDiff(diff)}`,
+          );
+        } else {
+          assert(
+            diff.after === "filtered",
+            `${diff.client} does NOT hold ${REACH_WRITE_OPENED_BY_0069.permission}, so ${diff.column} on ${REACH_WRITE_OPENED_BY_0069.table} must stay closed to it, but ${describeDiff(diff)}`,
+          );
+        }
+        continue;
+      }
+      undeclared.push(describeDiff(diff));
     }
     assert(
       undeclared.length === 0,
@@ -3011,16 +3104,17 @@ async function runBoundary(sql, tags, boundary) {
     for (const grant of activeCanonical) {
       const outcome = reachAfter.get(grant.client)[REACH_WRITE_OPENED_BY_0069.table];
       const holds = heldPermissions.get(grant.client).has(REACH_WRITE_OPENED_BY_0069.permission);
+      const writableColumns = outcome.writable ? outcome.writable.split(",") : [];
       if (holds) {
         assert(
-          outcome.write === "writable",
-          `${grant.client} holds ${REACH_WRITE_OPENED_BY_0069.permission}, so ${REACH_WRITE_OPENED_BY_0069.table} must be writable for it after the tail; got ${outcome.write}`,
+          writableColumns.length > 0,
+          `${grant.client} holds ${REACH_WRITE_OPENED_BY_0069.permission}, so 0069 F-6 must leave ${REACH_WRITE_OPENED_BY_0069.table} with at least one writable column for it; got none`,
         );
         widenedClients.push(grant.client);
       } else {
         assert(
-          outcome.write !== "writable",
-          `${grant.client} lacks ${REACH_WRITE_OPENED_BY_0069.permission}, so ${REACH_WRITE_OPENED_BY_0069.table} must not be writable for it; got ${outcome.write}`,
+          writableColumns.length === 0,
+          `${grant.client} lacks ${REACH_WRITE_OPENED_BY_0069.permission}, so no column of ${REACH_WRITE_OPENED_BY_0069.table} may be writable for it; got [${writableColumns.join(", ")}]`,
         );
         withheldClients.push(grant.client);
       }
@@ -3029,6 +3123,36 @@ async function runBoundary(sql, tags, boundary) {
       widenedClients.length > 0 && withheldClients.length > 0,
       `the ${REACH_WRITE_OPENED_BY_0069.permission} declaration needs BOTH a holder and a non-holder to be discriminating; widened=${widenedClients.length} withheld=${withheldClients.length}`,
     );
+    // The SEAL declarations, confirmed from the final state rather than from the
+    // diff list, for the same reason the 0069 declaration is: the diff loop only
+    // inspects tables that MOVED, so a seal that never moved is invisible to it.
+    //
+    // That gap is reachable, not hypothetical. Measured on this journal: adding
+    // an MCP UPDATE policy to user_time_context in 0065 leaves the diff-based
+    // proof GREEN, because 0063 already had every principal able to write it and
+    // it stays able to, so no movement is recorded for the loop to inspect. A
+    // declaration is a statement about the state the tail must leave behind, so
+    // it is read off the post-tail census - per column, which is the granularity
+    // the probe now records.
+    const sealedAfter = [
+      ...REACH_SEALED_BY_0065,
+      REACH_WRITE_SEALED_BY_0065.table,
+      REACH_OPENED_BY_0065.table,
+    ];
+    for (const grant of activeCanonical) {
+      const after = reachAfter.get(grant.client);
+      for (const table of sealedAfter) {
+        const outcome = after[table];
+        assert(
+          outcome !== undefined,
+          `0065 declared ${table} closed to MCP writes but it is absent from ${grant.client}'s post-tail census`,
+        );
+        assert(
+          outcome.writable === "",
+          `0065 declared ${table} closed to MCP writes but ${grant.client} can still write [${outcome.writable}] after the tail; the diff loop cannot catch this when the table never moved`,
+        );
+      }
+    }
     // Every probed table must be accounted for by exactly one declared
     // movement; the rest must not have moved at all. Deriving the count from
     // the data keeps the summary honest if the probe list changes.
