@@ -81,5 +81,5 @@ mobile user through those owner-scoped APIs.
 - `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas, 30 `registerTool` calls pinned to the registry by `capability-registry-migration.test.ts`
 - `apps/web/src/lib/mcp/request-state.ts`: `createRequestStateCodec`
 - `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0072` + `meta/_journal.json` (73 entries, last `idx: 72`)
-- Database behaviour of every fence above is proven by the `scripts/db/*.mjs` ephemeral-database verifiers, not by the application tests; see the table in [`ARCHITECTURE.md`](../../ARCHITECTURE.md). Each takes `--url <postgres-url>` and **destroys** the database it is given.
+- Database behaviour of every fence above is proven by the `scripts/db/*.mjs` ephemeral-database verifiers, not by the application tests; see the table in [`ARCHITECTURE.md`](../../ARCHITECTURE.md). Each takes `--url <postgres-url>`, `exit 2` without it, and each begins by `DROP SCHEMA … CASCADE` on `public`, `auth` and `automation` — so every schema in the named database is destroyed. Point them only at a disposable container.
 - Final command results are recorded in the delivery report; this document does not substitute for executed evidence.
