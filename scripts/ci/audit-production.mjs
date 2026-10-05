@@ -125,6 +125,26 @@ export function isValidReviewByFormat(dateStr) {
   );
 }
 
+/**
+ * Whether an exception names ONE concrete package, which is the whole basis of
+ * the registry's narrowness.
+ *
+ * Every other predicate here treats an absent `package` as "no opinion" and
+ * carries on. That is wrong for this field: `package: ''` is falsy, so a
+ * truthiness guard reads it as "no opinion" and the advisory is accepted for
+ * ANY package, which turns one entry into a blanket exemption while the
+ * structural guard still sees a `string` with no `*`. A missing, blank or
+ * wildcard package is therefore a policy failure in its own right - the same
+ * treatment a malformed `reviewBy` already gets - never a silent skip.
+ */
+export function isConcretePackageName(value) {
+  return (
+    typeof value === 'string' &&
+    value.trim() !== '' &&
+    !value.includes('*')
+  );
+}
+
 export function isExpired(exception, now = new Date()) {
   const reviewDate = new Date(exception.reviewBy);
   const nowDate = now instanceof Date ? now : new Date(now);
@@ -181,6 +201,16 @@ export function evaluateAuditReport(report, options = {}) {
         name: exception?.package ?? 'unknown',
         source: exception?.source,
         reason: `malformed reviewBy date format: ${exception?.reviewBy}`,
+      });
+    }
+    if (!isConcretePackageName(exception?.package)) {
+      // An exception that names no concrete package cannot be honoured
+      // without becoming a blanket exemption, so it is reported as a blocking
+      // finding in its own right rather than quietly matching every package.
+      blocking.push({
+        name: exception?.package || 'unknown',
+        source: exception?.source,
+        reason: `malformed exception package: ${JSON.stringify(exception?.package)}; an exception must name one concrete package`,
       });
     }
   }
@@ -254,7 +284,11 @@ export function evaluateAuditReport(report, options = {}) {
         continue;
       }
 
-      if (exception.package && leaf.name !== exception.package) {
+      // Equality, not truthiness plus equality. An exception whose `package` is
+      // absent or blank must not reach this point as a match, so the check is
+      // written so that a non-concrete package fails here rather than skipping
+      // the comparison; the validation loop above has already reported it.
+      if (!isConcretePackageName(exception.package) || leaf.name !== exception.package) {
         rejected.push({
           source: leaf.source,
           name: leaf.name,
