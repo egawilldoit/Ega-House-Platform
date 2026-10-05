@@ -36,7 +36,10 @@
  *   SCOPE-V2        a permissions-version-2 grant reaches the new read domains
  *   COLUMN-FENCE    an MCP bearer holding tasks.update cannot write task
  *                   columns outside the advertised contract, and CAN write the
- *                   columns the contract does advertise
+ *                   columns the contract does advertise; including the done /
+ *                   reopen transitions through the MCP UPDATE path, asserted on
+ *                   rows RETURNED, with the capture/normalizer/fence trigger
+ *                   order 0078 depends on read from the catalog
  *   DIRECT-USER-PARITY
  *                   the same policies do not narrow ordinary owner sessions:
  *                   42 legitimate owner writes and reads across every table the
@@ -377,6 +380,25 @@ async function capturePostgresError(fn) {
     return null;
   } catch (error) {
     return error?.code ?? "UNKNOWN";
+  }
+}
+
+/**
+ * Run a mutation and report all three outcomes separately: rows returned, the
+ * SQLSTATE, and the message.
+ *
+ * `expectDenied`/`expectNoRows` collapse a refusal to a SQLSTATE, which is the
+ * right shape for asserting that something is CLOSED. It is the wrong shape for
+ * asserting something is OPEN: there, "no rows" and "refused with 42501" are
+ * two different regressions, and a mutation report is only actionable if it
+ * names which one happened. Used where a capability is expected to work.
+ */
+async function captureMcpOutcome(fn) {
+  try {
+    const rows = await fn();
+    return { rows: Array.isArray(rows) ? rows : [], error: null, message: null };
+  } catch (error) {
+    return { rows: [], error: error?.code ?? "UNKNOWN", message: error?.message ?? null };
   }
 }
 
@@ -1042,6 +1064,177 @@ async function assertColumnFence(sql) {
     assert(rows.length === 1, "the MCP write fence must not constrain ordinary owner sessions on projects");
   });
   log("COLUMN-FENCE", "Direct owner sessions keep unrestricted column access.");
+}
+
+// ---------------------------------------------------------------------------
+// TASK-COMPLETION
+// ---------------------------------------------------------------------------
+
+/**
+ * The 0063 completion trigger owns tasks.completed_at, and 0071 correctly refused
+ * to authorise the column because no repository payload sets it. That left the
+ * fence observing a completed_at that normalize_task_completed_at had just
+ * written and reporting the trigger's own write as a caller modification, so
+ * `ega_update_task {status: "done"}` failed for EVERY MCP principal:
+ *
+ *   ERROR:  MCP write fence: an MCP OAuth principal may not modify
+ *           completed_at on public.tasks
+ *
+ * 0078 fixes it with private.capture_tasks_mcp_caller_completed_at, which records
+ * whether the caller changed completed_at at all, before the normalizer touches
+ * it, and the fence exempts the column only when that record says the caller
+ * supplied nothing.
+ *
+ * The fix has TWO halves and each is asserted here, plus the installed trigger
+ * order that 0078's own header names as the mechanism being corrected:
+ *
+ *   1. The honest path WORKS, asserted on ROWS RETURNED rather than on the
+ *      absence of an exception - `RETURNING` makes a silently filtered RLS
+ *      update visible as zero rows.
+ *   2. The forged path is still REFUSED 42501, so the exemption has not become
+ *      "allow completed_at".
+ *
+ * Without (1) the whole advertised capability is dead and this section stays
+ * green, because 0071's refusal is itself a correct-looking denial.
+ */
+async function assertTaskCompletion(sql) {
+  const session = mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT });
+
+  // ---- The installed trigger order ----------------------------------------
+  //
+  // PostgreSQL fires same-timing row triggers in alphabetical order by name, so
+  // the ordering IS the mechanism: 'c' < 'n' < 't'. Asserted from the catalog
+  // rather than inferred from a passing write, because renaming the capture
+  // trigger would restore the breakage silently while the behavioural cases
+  // below would keep reporting whatever they happened to observe.
+  //
+  // pg_trigger is a heap, so its natural scan order is creation order and says
+  // nothing about firing order. Ordered by NAME here because that IS the firing
+  // order PostgreSQL uses for same-timing row triggers, which is why the capture
+  // trigger was named to sort first rather than merely created first.
+  const triggers = await sql`
+    SELECT t.tgname AS name
+      FROM pg_trigger AS t
+     WHERE t.tgrelid = 'public.tasks'::regclass
+       AND NOT t.tgisinternal
+     ORDER BY t.tgname
+  `;
+  const order = triggers.map((row) => row.name);
+  const positionOf = (name) => {
+    const index = order.indexOf(name);
+    assert(index >= 0, `the trigger 0078 installs (${name}) must exist on public.tasks; found: ${order.join(", ")}`);
+    return index;
+  };
+  const capture = positionOf("capture_tasks_mcp_caller_completed_at");
+  const normalize = positionOf("normalize_task_completed_at");
+  const fence = positionOf("tasks_mcp_write_fence");
+  assert(
+    capture < normalize,
+    `capture_tasks_mcp_caller_completed_at must sort before normalize_task_completed_at or the fence cannot tell a caller write from the trigger's own; installed order is ${order.join(", ")}`,
+  );
+  assert(
+    normalize < fence,
+    `the fence must run after normalize_task_completed_at for the exemption to have anything to exempt; installed order is ${order.join(", ")}`,
+  );
+  log("COLUMN-FENCE", `public.tasks trigger order is ${order.join(" -> ")}; the capture trigger precedes the normalizer, which precedes the fence.`);
+
+  // ---- A row to transition -------------------------------------------------
+  await session.run((tx) =>
+    tx.unsafe(
+      `INSERT INTO public.tasks (project_id, title) VALUES ($1::uuid, 'completion probe') RETURNING id`,
+      [PROJECT_A],
+    ),
+  );
+  const [probe] = await sql`SELECT id FROM public.tasks WHERE title = 'completion probe'`;
+  assert(probe, "the completion probe task must exist");
+  // Prefer the dedicated id if the fence ever lets a caller choose it; the point
+  // is that the row exists, not which uuid it carries.
+  const taskId = probe.id;
+
+  // ---- 1. The honest done transition, on ROWS RETURNED --------------------
+  //
+  // The two error shapes are separated explicitly rather than letting the raw
+  // PostgresError escape, because they are different failures of the same
+  // capability and a mutation report has to name which one it is:
+  //   * 0 rows returned      -> RLS filtered the write; capability is dead
+  //   * an exception         -> the fence refused the trigger's own write
+  const doneOutcome = await captureMcpOutcome(() =>
+    session.run((tx) =>
+      tx.unsafe(`UPDATE public.tasks SET status = 'done' WHERE id = $1::uuid RETURNING status, completed_at`, [taskId]),
+    ),
+  );
+  assert(
+    doneOutcome.error === null,
+    `ega_update_task {status:"done"} is an advertised capability that must complete a task for an MCP principal, but the database REFUSED it (SQLSTATE ${doneOutcome.error}): ${doneOutcome.message}. 0078's capture trigger and its completed_at exemption are what make this path work; with 0078 absent the fence sees normalize_task_completed_at's own write and reports it as a caller modification.`,
+  );
+  assert(
+    doneOutcome.rows.length === 1,
+    `ega_update_task {status:"done"} must return exactly 1 row for an MCP principal, got ${doneOutcome.rows.length} (0 rows means the write was silently filtered)`,
+  );
+  assert(doneOutcome.rows[0].status === "done", `expected status 'done', got ${doneOutcome.rows[0].status}`);
+  assert(
+    doneOutcome.rows[0].completed_at !== null,
+    "the done transition must stamp completed_at from the trigger, not leave it NULL",
+  );
+  log("COLUMN-FENCE", "ega_update_task {status:'done'} completes a task for an MCP principal and the trigger stamped completed_at.");
+
+  // ---- The honest reopen ---------------------------------------------------
+  const reopenOutcome = await captureMcpOutcome(() =>
+    session.run((tx) =>
+      tx.unsafe(`UPDATE public.tasks SET status = 'todo' WHERE id = $1::uuid RETURNING status, completed_at`, [taskId]),
+    ),
+  );
+  assert(
+    reopenOutcome.error === null,
+    `ega_update_task {status:"todo"} is an advertised capability that must reopen a task for an MCP principal, but the database REFUSED it (SQLSTATE ${reopenOutcome.error}): ${reopenOutcome.message}`,
+  );
+  assert(
+    reopenOutcome.rows.length === 1,
+    `ega_update_task {status:"todo"} must return exactly 1 row for an MCP principal, got ${reopenOutcome.rows.length}`,
+  );
+  assert(reopenOutcome.rows[0].status === "todo", `expected status 'todo', got ${reopenOutcome.rows[0].status}`);
+  assert(
+    reopenOutcome.rows[0].completed_at === null,
+    `reopening a task must clear completed_at, got ${reopenOutcome.rows[0].completed_at}`,
+  );
+  log("COLUMN-FENCE", "ega_update_task {status:'todo'} reopens the same task and completed_at is cleared.");
+
+  // ---- 2. The forged contrast ---------------------------------------------
+  //
+  // Pairs against the honest transition above on the same principal and the same
+  // row: the exemption must be "the caller supplied nothing", not "allow
+  // completed_at". normalize_task_completed_at uses COALESCE(NEW.completed_at,
+  // now()), so a caller-supplied value survives it - which is precisely why the
+  // column was removed from the allowlist in 0071 and must stay removed.
+  await expectDenied("back-dated completion through the MCP UPDATE path", () =>
+    session.run((tx) =>
+      tx.unsafe(
+        `UPDATE public.tasks SET status = 'done', completed_at = '2000-01-01T00:00:00Z'::timestamptz
+          WHERE id = $1::uuid RETURNING status, completed_at`,
+        [taskId],
+      ),
+    ),
+  );
+  const [afterRefusal] = await sql`
+    SELECT status, completed_at FROM public.tasks WHERE id = ${taskId}::uuid
+  `;
+  assert(afterRefusal.status === "todo", `the refused write must leave status alone, got ${afterRefusal.status}`);
+  assert(
+    afterRefusal.completed_at === null,
+    `the refused write must leave completed_at NULL, got ${afterRefusal.completed_at}`,
+  );
+  log("COLUMN-FENCE", "A caller-supplied completed_at on the same transition is still refused 42501 and changes nothing, so the honest path is not 'allow the column'.");
+
+  // ---- The direct-user path is unaffected ----------------------------------
+  await directUserSession(sql).run(async (tx) => {
+    const rows = await tx.unsafe(
+      `UPDATE public.tasks SET status = 'done', completed_at = now() WHERE id = $1::uuid RETURNING status, completed_at`,
+      [taskId],
+    );
+    assert(rows.length === 1, "the MCP write fence must not constrain an owner setting completed_at directly");
+    assert(rows[0].completed_at !== null, "the owner-set completed_at must survive");
+  });
+  log("COLUMN-FENCE", "An owner session still sets completed_at directly; 0078 constrains MCP principals only.");
 }
 
 // ---------------------------------------------------------------------------
@@ -2537,6 +2730,7 @@ async function main() {
     // permissions_version 2.
     await assertScopeV1(sql);
     await assertColumnFence(sql);
+    await assertTaskCompletion(sql);
     await assertRpcSurface(sql);
     await assertRevocation(sql);
     await assertActiveGrantPredicateParity(sql);
