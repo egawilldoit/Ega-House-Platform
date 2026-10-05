@@ -1276,19 +1276,24 @@ async function assertColumnFence(sql) {
   // value the default would have produced" can distinguish a caller-chosen key
   // from a generated one. Asserting a SQLSTATE here would also pass for the
   // wrong reason: a stripped value can trip an unrelated CHECK constraint.
+  //
+  // completed_at is NOT in that list, and is proved separately below: from 0079
+  // it is refused rather than reset, because resetting it erased the completion
+  // instant normalize_task_completed_at had just stamped (the "done" row with no
+  // completed_at defect) and silently discarded a value the caller did send.
   await session.run(async (tx) => {
     const [row] = await tx.unsafe(
       `INSERT INTO public.tasks (
          project_id, title, focus_rank, archived_at, archived_by, created_at,
          scheduled_start_at, scheduled_end_at, calendar_sync_enabled,
          calendar_reminder_minutes, calendar_event_id, calendar_sync_status,
-         calendar_sync_failure_reason, updated_at, completed_at
+         calendar_sync_failure_reason, updated_at
        ) VALUES (
          $1::uuid, 'fenced insert', 999, now(), $2::uuid,
          '2000-01-01T00:00:00Z'::timestamptz,
          now() + interval '1 day', now() + interval '2 days', true, 999,
          'forged-gcal-event', 'synced', 'forged',
-         '2000-01-01T00:00:00Z'::timestamptz, '2000-01-01T00:00:00Z'::timestamptz
+         '2000-01-01T00:00:00Z'::timestamptz
        ) RETURNING id, focus_rank, archived_at, archived_by, created_at,
          scheduled_start_at, scheduled_end_at, calendar_sync_enabled,
          calendar_reminder_minutes, calendar_event_id, calendar_sync_status,
@@ -1301,7 +1306,7 @@ async function assertColumnFence(sql) {
     assert(row.archived_by === null, `archived_by must be reset, got ${row.archived_by}`);
     assert(row.created_at.getFullYear() >= 2024, `created_at must be reset to now(), got ${row.created_at}`);
     assert(row.updated_at.getFullYear() >= 2024, `updated_at must be reset to now(), got ${row.updated_at}`);
-    assert(row.completed_at === null, `completed_at must be reset, got ${row.completed_at}`);
+    assert(row.completed_at === null, `a non-done task must carry no completed_at, got ${row.completed_at}`);
     assert(row.scheduled_start_at === null, "scheduled_start_at must be reset");
     assert(row.scheduled_end_at === null, "scheduled_end_at must be reset");
     assert(row.calendar_sync_enabled === false, "calendar_sync_enabled must be reset to its default");
@@ -1311,6 +1316,68 @@ async function assertColumnFence(sql) {
     assert(row.calendar_sync_failure_reason === null, "calendar_sync_failure_reason must be reset");
   });
   log("COLUMN-FENCE", "A task INSERT could not carry focus_rank, archive state, a back-dated created_at, scheduling or calendar columns.");
+
+  // 0063's canonical invariant on the MCP path: completed_at is non-null if and
+  // only if the status is a done spelling. From 0078 until 0079 this INSERT
+  // returned {"status":"done","completed_at":null} for every MCP principal -
+  // normalize_task_completed_at stamped the instant and then the fence reset it,
+  // because completed_at is not in the INSERT allowlist - so a task created as
+  // done stayed "completed but never completed" for its whole life, and every
+  // consumer of completion evidence inherited that. Paired with the direct-user
+  // control below so a change that breaks BOTH paths is visible.
+  const doneInsert = await session.run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.tasks (project_id, title, status)
+       VALUES ($1::uuid, 'mcp done insert', 'done')
+       RETURNING id, status, completed_at`,
+      [PROJECT_A],
+    );
+    return row;
+  });
+  assert(doneInsert.status === "done", `the INSERT must keep the requested status, got ${doneInsert.status}`);
+  assert(
+    doneInsert.completed_at !== null,
+    `an MCP-created done task must carry completed_at, got ${doneInsert.completed_at}`,
+  );
+  // The append-only ledger is the heatmap's completion source of truth, so it
+  // must stamp the same instant the column carries rather than its own now().
+  // Read by an independent observer: task_status_events is client-append-only,
+  // so the principal itself cannot SELECT it.
+  const ledgerRows = await sql.unsafe(
+    `SELECT occurred_at FROM public.task_status_events WHERE task_id = $1::uuid AND to_status = 'done'`,
+    [doneInsert.id],
+  );
+  assert(ledgerRows.length === 1, `an MCP-created done task must record exactly one completion event, got ${JSON.stringify(ledgerRows)}`);
+  assert(
+    new Date(ledgerRows[0].occurred_at).toISOString() === new Date(doneInsert.completed_at).toISOString(),
+    `the completion event must be stamped at the column's instant, got ${ledgerRows[0].occurred_at} vs ${doneInsert.completed_at}`,
+  );
+  await directUserSession(sql).run(async (tx) => {
+    const [row] = await tx.unsafe(
+      `INSERT INTO public.tasks (project_id, title, status)
+       VALUES ($1::uuid, 'owner done insert', 'done')
+       RETURNING id, status, completed_at`,
+      [PROJECT_A],
+    );
+    assert(row.completed_at !== null, "an owner-created done task must also carry completed_at");
+  });
+  // The caller's value is refused, not quietly dropped: a silent reset would
+  // report success for a write the caller did not get, and completed_at is the
+  // one INSERT column a reset cannot express without breaking 0063.
+  await expectDenied("task INSERT supplying completed_at", () =>
+    session.run((tx) =>
+      tx.unsafe(
+        `INSERT INTO public.tasks (project_id, title, status, completed_at)
+         VALUES ($1::uuid, 'mcp backdated insert', 'done', '2001-01-01T00:00:00Z'::timestamptz)`,
+        [PROJECT_A],
+      ),
+    ),
+  );
+  const backdated = await sql`
+    SELECT count(*)::int AS count FROM public.tasks WHERE title = 'mcp backdated insert'
+  `;
+  assert(backdated[0]?.count === 0, "a refused back-dated completion must leave no row behind");
+  log("COLUMN-FENCE", "An MCP-created done task carries completed_at, matching the owner control; a caller-supplied completed_at is refused and leaves no row.");
 
   // A caller-chosen primary key must not survive.
   await session.run(async (tx) => {
