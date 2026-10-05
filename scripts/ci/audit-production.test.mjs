@@ -939,6 +939,70 @@ test('ARCHITECTURE.md does not attribute the live audit gate to ci:workspace', (
   );
 });
 
+test('the documented upgrade-path seeded-table counts match the verifier', () => {
+  // ARCHITECTURE.md states how many tables this boundary seeds at each of the
+  // upgrade-path verifier's two boundaries. Those are counts of the verifier's
+  // own ALWAYS_SEEDED_TABLES plus POST_0063_TABLES, so they are read from the
+  // script rather than restated here: the review that found "18 tables / 41
+  // rows and 19 tables / 45 rows" against a measured 15 and 16 was reading prose
+  // that nothing tied to the arrays it described.
+  //
+  // The row and grant counts beside them (41, 45, 9, 13) are NOT derived here:
+  // they are what the proof measures against a real database, and a static read
+  // cannot produce them. They are asserted to be present so the sentence cannot
+  // silently lose them.
+  const verifier = readFileSync(
+    new URL('../../scripts/db/mcp-upgrade-path-verify.mjs', import.meta.url),
+    'utf8',
+  );
+
+  function seededTableCount(name) {
+    const declaration = new RegExp(`const ${name} = \\[([^\\]]*)\\];`).exec(verifier);
+    assert.ok(
+      declaration,
+      `${name} is not a literal array in scripts/db/mcp-upgrade-path-verify.mjs; ` +
+        'update this derivation when that changes rather than letting it read zero',
+    );
+    const tables = [...declaration[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    // The non-vacuity guard: an array that stopped parsing would otherwise
+    // derive 0 and quietly satisfy any comparison against 0.
+    assert.ok(tables.length > 0, `${name} parsed as empty; the derivation below would be vacuous`);
+    return tables;
+  }
+
+  const always = seededTableCount('ALWAYS_SEEDED_TABLES');
+  const post0063 = seededTableCount('POST_0063_TABLES');
+
+  const architecture = readFileSync(new URL('../../ARCHITECTURE.md', import.meta.url), 'utf8');
+  const stated = architecture.match(
+    /(\d+) tables \/ (\d+) rows at `0049` and (\d+) tables \/ (\d+) rows at `0063`[^\n]*?(\d+) then (\d+) grants/,
+  );
+  assert.ok(
+    stated,
+    'ARCHITECTURE.md must state the upgrade-path seeded-table and row counts per boundary, ' +
+      'naming both boundaries, for this check to compare against',
+  );
+
+  assert.equal(
+    Number(stated[1]),
+    always.length,
+    `ARCHITECTURE.md states ${stated[1]} tables at 0049 but ALWAYS_SEEDED_TABLES holds ${always.length}`,
+  );
+  assert.equal(
+    Number(stated[3]),
+    always.length + post0063.length,
+    `ARCHITECTURE.md states ${stated[3]} tables at 0063 but ALWAYS_SEEDED_TABLES plus ` +
+      `POST_0063_TABLES hold ${always.length + post0063.length}`,
+  );
+
+  // The measured counts beside them. Not derived, only required to be stated.
+  assert.deepEqual(
+    [stated[2], stated[4], stated[5], stated[6]],
+    ['41', '45', '9', '13'],
+    'the row and grant counts the verifier measures at run time are 41, 45, 9 and 13',
+  );
+});
+
 test('the documented scripts/db verifier inventory matches the directory', () => {
   // ARCHITECTURE.md names each verifier and what it proves. A new verifier that is
   // not named there would leave the document claiming a complete set that is not
