@@ -1,10 +1,51 @@
-import type { AuthInfo } from "@modelcontextprotocol/server";
-import { describe, expect, it } from "vitest";
+import type { AuthInfo, CreateMcpHandlerOptions } from "@modelcontextprotocol/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyMcpCorsHeaders,
   createWebMcpHandler,
 } from "@/lib/mcp/web-transport-handler";
+
+/**
+ * Mirrors `MAX_REQUEST_BODY_BYTES` in `web-transport-handler.ts`, which is
+ * module-private. Its value is not asserted from the production module - it is
+ * pinned BEHAVIOURALLY by the boundary cases in this file (`413` one byte over,
+ * admitted at exactly the bound), and this constant is the third leg of that
+ * chain: it is the number the SDK must be told, asserted directly at the seam
+ * below.
+ */
+const MAX_REQUEST_BODY_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Records the options `createWebMcpHandler` hands the SDK's `createMcpHandler`,
+ * then delegates to the real implementation. OBSERVATION, NOT REPLACEMENT: every
+ * request in this file is still served by the installed 2.3.0 handler, so the
+ * assertions below describe what the transport really does, not what a stand-in
+ * was told to do. (A full module replacement would make this file prove only
+ * that a mock agrees with itself.) `{...actual}` is a complete spread - the SDK
+ * package exports 92 names and all 92 survive it.
+ */
+const sdkHandlerFactoryCalls = vi.hoisted(() => ({
+  options: [] as (CreateMcpHandlerOptions | undefined)[],
+}));
+
+vi.mock("@modelcontextprotocol/server", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@modelcontextprotocol/server")>();
+  return {
+    ...actual,
+    createMcpHandler: (
+      factory: Parameters<typeof actual.createMcpHandler>[0],
+      options?: CreateMcpHandlerOptions,
+    ) => {
+      sdkHandlerFactoryCalls.options.push(options);
+      return actual.createMcpHandler(factory, options);
+    },
+  };
+});
+
+beforeEach(() => {
+  sdkHandlerFactoryCalls.options.length = 0;
+});
 
 const AUTH_INFO: AuthInfo = {
   token: "signed-token",
@@ -156,7 +197,21 @@ describe("createWebMcpHandler", () => {
     expect(response.headers.get("cache-control")).toContain("no-store");
   });
 
-  it("rejects an oversized streamed body without Content-Length", async () => {
+  it("rejects an oversized streamed body without Content-Length, in this route's error shape", async () => {
+    // The status alone cannot tell the two layers apart: `validateRequestSize`
+    // and the SDK's `readRequestBody` both answer `413`. What distinguishes them
+    // is the BODY - ours is `{error: "invalid_request"}`, the SDK's is a JSON-RPC
+    // error. With no Content-Length there is nothing for `validateRequestSize` to
+    // read, so the streamed guard `limitRequestBody` is the ONLY thing on this
+    // path that can answer, and asserting the shape is what proves it did:
+    //
+    //   deleted body  -> 413 {"jsonrpc":"2.0","error":{"code":-32000,
+    //                    "message":"Payload Too Large: Request body must not
+    //                    exceed 4194304 bytes"},"id":null}
+    //
+    // An assertion of `413` alone stays green through that mutation, which is
+    // exactly the failure this closes - the same one the declared-length case
+    // below already pins for `validateRequestSize`.
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(new Uint8Array(4 * 1024 * 1024));
@@ -176,6 +231,12 @@ describe("createWebMcpHandler", () => {
     const response = await createHandler()(request);
 
     expect(response.status).toBe(413);
+    const body = await response.text();
+    expect(body).not.toContain("Payload Too Large");
+    expect(JSON.parse(body)).toMatchObject({
+      error: "invalid_request",
+      error_description: "Request body too large.",
+    });
   });
 
   it("accepts a body of exactly the 4 MiB bound", async () => {
@@ -236,9 +297,35 @@ describe("createWebMcpHandler", () => {
     // And the SDK agrees with our bound rather than holding a private one, so
     // raising `MAX_REQUEST_BODY_BYTES` cannot leave a stale 4 MiB behind. The SDK
     // throwing a RangeError at construction for a bad value is the mechanism; this
-    // asserts the handler is constructible with the value wired, i.e. no
-    // non-positive or non-finite bound reached it.
+    // asserts the handler is constructible, i.e. no non-positive or non-finite
+    // bound reached `resolveMaxRequestBodySize`. On its own it does NOT observe the
+    // wiring - an omitted `maxRequestBodySize` is valid by definition, so this
+    // stayed green through deleting the option. That is what the next test is for;
+    // this one is kept because it is the only thing here guarding the RangeError.
     expect(() => createHandler()).not.toThrow();
+  });
+
+  it("hands the SDK this route's own body bound, so one number is authoritative for both layers", () => {
+    // THE WIRING, observed at the seam rather than inferred from a response.
+    //
+    // Every other case here reasons from the RESPONSE, which cannot see this: our
+    // bound and the SDK's default are both 4 MiB today, so every observable is
+    // identical whether the option is passed or omitted. Deleting
+    // `maxRequestBodySize: MAX_REQUEST_BODY_BYTES` from the transport options
+    // therefore left all 61 cases in this file and all 17 in
+    // `route-runtime.test.ts` GREEN - the invariant "one number, two layers" was
+    // true in the code and invisible to the suite.
+    //
+    // Asserting at the factory call is what makes it observable, and it pins the
+    // value to the same 4 MiB the boundary cases above pin behaviourally - so the
+    // option cannot be re-pointed at a second literal that has drifted from the
+    // constant, which is the failure mode this whole change exists to prevent.
+    // It also means a future SDK bump to its own default cannot quietly change
+    // this route's limit.
+    createHandler();
+
+    expect(sdkHandlerFactoryCalls.options).toHaveLength(1);
+    expect(sdkHandlerFactoryCalls.options[0]?.maxRequestBodySize).toBe(MAX_REQUEST_BODY_BYTES);
   });
 
   it("answers every over-limit length itself, so the SDK's own bound can never answer instead", async () => {
