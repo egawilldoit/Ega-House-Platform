@@ -47,7 +47,12 @@
  *                   from the catalog and classified; direct-user-only RPCs
  *                   refuse an MCP bearer; MCP-internal RPCs remain reachable
  *                   and token-fenced
- *   REVOCATION      a revoked grant loses ALL database capability immediately
+ *   REVOCATION      a revoked grant loses ALL database capability immediately,
+ *                   and does so whichever SINGLE column it was revoked by
+ *                   (`revoked_at` alone with status left 'active', and status
+ *                   alone with `revoked_at` left NULL); every copy of the
+ *                   active-grant predicate in the catalog is proven to carry the
+ *                   same `revoked_at IS NULL` guard as the authority
  *   WRONG-CLIENT    same owner, wrong client_id -> denied
  *   WRONG-RESOURCE  same owner/client, wrong aud -> denied
  *   INTERNAL        device/provider infrastructure, internal MCP tables,
@@ -205,7 +210,27 @@ const RESOURCE_URI = "https://ega.example.com/api/mcp";
 const V1_READ_CLIENT = "v1-read-client";
 const V1_WORKSPACE_CLIENT = "v1-workspace-client";
 const V2_WORKSPACE_CLIENT = "v2-workspace-client";
+/** Revoked the way the existing fixture does it: BOTH status='revoked' and revoked_at set. */
 const REVOKED_CLIENT = "revoked-client";
+/**
+ * Revoked by `revoked_at` ALONE, with `status` left 'active'.
+ *
+ * private.has_active_mcp_permission requires `status = 'active' AND
+ * revoked_at IS NULL`, and those are two independent conditions. An operator (or
+ * any writer holding UPDATE on the grant table) can set `revoked_at` without
+ * flipping `status`; the row is schema-legal - `mcp_authorization_grants_status_check`
+ * admits 'active' and nothing couples the two columns - so the half-updated row is
+ * representable and the guard must cover it. Deleting `AND
+ * grant_record.revoked_at IS NULL` from 0051 leaves every other fixture green
+ * because this one is the only thing that can tell the two halves apart.
+ */
+const REVOKED_AT_CLIENT = "revoked-at-client";
+/**
+ * Revoked by `status` ALONE, with `revoked_at` left NULL. The mirror image of
+ * REVOKED_AT_CLIENT, so neither ordering can pass by accident: a guard that read
+ * only one of the two conditions fails one fixture or the other.
+ */
+const STATUS_REVOKED_CLIENT = "status-revoked-client";
 /** Seeded by AUDIT-AUTHORITY: needed to prove a task_manager cannot claim projects/goals. */
 const V1_TASK_CLIENT = "v1-task-client";
 /** Seeded by AUDIT-AUTHORITY: a non-active grant that satisfies every other authority condition. */
@@ -392,7 +417,20 @@ async function expectNoRows(label, fn) {
   assert(Array.isArray(rows) && rows.length === 0, `${label} must affect zero rows, got ${rows?.length ?? "?"}`);
 }
 
-async function insertGrant(sql, { owner, client, profile, permissions, version, status = "active", resource = RESOURCE_URI }) {
+/**
+ * Seed one grant row.
+ *
+ * `status` and `revokedAt` are independent parameters, not one "revoked" flag,
+ * because REVOCATION must prove the two halves of the predicate are load-bearing
+ * separately. `revokedAt` defaults to now() when the status is revoked, which is
+ * the shape a real revocation writes; pass it explicitly (or as null) to build
+ * the two single-condition rows the predicate has to keep closed.
+ */
+async function insertGrant(
+  sql,
+  { owner, client, profile, permissions, version, status = "active", resource = RESOURCE_URI, revokedAt },
+) {
+  const revoked = revokedAt === undefined ? (status === "revoked" ? sql`now()` : null) : revokedAt;
   const [row] = await sql`
     INSERT INTO public.mcp_authorization_grants (
       owner_user_id, oauth_client_id, client_name, resource_uri, status,
@@ -400,7 +438,7 @@ async function insertGrant(sql, { owner, client, profile, permissions, version, 
     ) VALUES (
       ${owner}::uuid, ${client}, ${client}, ${resource}, ${status},
       ${profile}, ${sql.json(permissions)}, ${version},
-      now(), ${status === "revoked" ? sql`now()` : null}, now()
+      now(), ${revoked}, now()
     )
     RETURNING id
   `;
@@ -1147,25 +1185,185 @@ async function assertCrossOwner(sql, clientIds) {
   log("CROSS-OWNER", "Cross-owner project/goal/owner reassignment was refused.");
 }
 
-async function assertRevocation(sql) {
-  const before = await sql.unsafe(`SELECT status, revoked_at FROM public.mcp_authorization_grants WHERE oauth_client_id = '${REVOKED_CLIENT}'`);
-  assert(before[0].status === "revoked", "the revoked fixture must be revoked");
+/**
+ * Assert one grant row, however it was revoked, has lost every capability.
+ *
+ * Each case is asserted on rows/rows-affected, never on the absence of an
+ * exception: `private.has_active_mcp_permission` is a STABLE predicate feeding
+ * RLS, so a widened grant filters nothing and every statement below succeeds.
+ *
+ * @param expected the shape the fixture row is asserted to actually hold, so the
+ *   fixture cannot silently become a both-set row and pass for the wrong reason.
+ */
+async function assertRevokedClientHasNoCapability(sql, { label, clientId, expected }) {
+  const [row] = await sql.unsafe(
+    `SELECT status, revoked_at IS NOT NULL AS has_revoked_at
+       FROM public.mcp_authorization_grants
+      WHERE oauth_client_id = $1`,
+    [clientId],
+  );
+  assert(row, `${label}: the revocation fixture grant must exist`);
+  assert(row.status === expected.status, `${label}: fixture status must be '${expected.status}', got '${row.status}'`);
+  assert(
+    row.has_revoked_at === expected.hasRevokedAt,
+    `${label}: fixture revoked_at must be ${expected.hasRevokedAt ? "set" : "NULL"}, got ${row.has_revoked_at ? "set" : "NULL"}`,
+  );
 
-  await mcpSession(sql, { clientId: REVOKED_CLIENT }).run(async (tx) => {
+  await mcpSession(sql, { clientId }).run(async (tx) => {
     for (const table of ["projects", "goals", "tasks", "task_sessions", ...NEW_DOMAIN_TABLES, ...MCP_INTERNAL_TABLES]) {
-      await assertInvisible(tx, "revoked grant", table);
+      await assertInvisible(tx, label, table);
     }
   });
-  await expectNoRows("revoked grant task write", () =>
-    mcpSession(sql, { clientId: REVOKED_CLIENT }).run((tx) =>
+  await expectNoRows(`${label} task write`, () =>
+    mcpSession(sql, { clientId }).run((tx) =>
       tx.unsafe(`UPDATE public.tasks SET title = 'after revocation' WHERE id = $1::uuid RETURNING id`, [TASK_A]),
     ),
   );
-  const grants = await mcpSession(sql, { clientId: REVOKED_CLIENT }).run((tx) =>
+  const grants = await mcpSession(sql, { clientId }).run((tx) =>
     tx.unsafe(`SELECT count(*)::int AS count FROM public.mcp_authorization_grants`),
   );
-  assert(grants[0].count === 0, "a revoked grant must not be able to read the grant table");
-  log("REVOCATION", "A revoked grant lost every database capability immediately, including the newer domains.");
+  assert(grants[0].count === 0, `${label} must not be able to read the grant table`);
+
+  // The audit RPC is SECURITY DEFINER over the same predicate, so it would
+  // happily write an attributed row for a grant that is no longer active. Assert
+  // the refusal leaves nothing behind rather than trusting the raise.
+  const requestId = `revocation-${clientId}`;
+  await expectDenied(`${label} audit write`, () =>
+    mcpSession(sql, { clientId }).run((tx) =>
+      tx.unsafe(`SELECT public.record_mcp_audit_event($1, 'ega_list_projects', 'denied', 1, NULL, '{}'::jsonb)`, [requestId]),
+    ),
+  );
+  const [audited] = await sql`
+    SELECT count(*)::int AS count
+      FROM public.agent_integration_events
+     WHERE request_id = ${requestId}
+  `;
+  assert(audited.count === 0, `${label} must leave zero audit rows behind, got ${audited.count}`);
+}
+
+/**
+ * REVOCATION, in both halves.
+ *
+ * `private.has_active_mcp_permission` reads
+ *
+ *   AND grant_record.status = 'active'
+ *   AND grant_record.revoked_at IS NULL
+ *
+ * and both conditions are load-bearing, because revocation is representable in
+ * two independent ways. The schema admits status='active' alongside a set
+ * revoked_at, and nothing in the journal couples them; an operator revoking a
+ * grant by stamping revoked_at is the ordinary way to express "this is over now",
+ * and it must not leave a fully privileged grant behind.
+ *
+ * The previous proof seeded exactly one revoked fixture, which set BOTH columns
+ * at once, so it could not tell the two conditions apart. Deleting `AND
+ * grant_record.revoked_at IS NULL` from 0051 left it fully green and immediately
+ * restored full read + write authority for every revoked_at-only grant.
+ */
+async function assertRevocation(sql) {
+  await assertRevokedClientHasNoCapability(sql, {
+    label: "revoked grant (status + revoked_at)",
+    clientId: REVOKED_CLIENT,
+    expected: { status: "revoked", hasRevokedAt: true },
+  });
+  log("REVOCATION", "A grant revoked the ordinary way (status='revoked' AND revoked_at set) lost every database capability immediately, including the newer domains.");
+
+  // The discriminating case: revoked_at stamped, status still 'active'. The label
+  // names the guard, so a mutation of that guard fails HERE and reads as the
+  // revocation gap rather than as an anonymous table-visibility failure.
+  await assertRevokedClientHasNoCapability(sql, {
+    label: "revocation gap: revoked_at-only grant (revoked_at IS NULL guard removed or ineffective)",
+    clientId: REVOKED_AT_CLIENT,
+    expected: { status: "active", hasRevokedAt: true },
+  });
+  log("REVOCATION", "A grant revoked by revoked_at ALONE (status left 'active') lost every capability too; the revoked_at IS NULL guard is load-bearing and now proven to be.");
+
+  // And the mirror image, so neither ordering can pass by accident.
+  await assertRevokedClientHasNoCapability(sql, {
+    label: "revocation gap: status-only grant (status = 'active' guard removed or ineffective)",
+    clientId: STATUS_REVOKED_CLIENT,
+    expected: { status: "revoked", hasRevokedAt: false },
+  });
+  log("REVOCATION", "A grant revoked by status ALONE (revoked_at left NULL) lost every capability too; the two halves are proven independent in both directions.");
+}
+
+/**
+ * The active-grant predicate is written out by hand in several places, and only
+ * one of them (private.has_active_mcp_permission) is the authority the RLS
+ * policies call. Every copy has to keep BOTH conditions, or a copy that resolved
+ * the grant more loosely than the policies do would hand authority back.
+ *
+ * Read from the catalog rather than from the migration files, because what
+ * matters is what the deployed functions and policies say, not what a file once
+ * contained. Today this finds the predicate duplicated across the grant
+ * resolution functions below, and in NO row-level policy: every policy calls
+ * private.has_active_mcp_permission() instead of inlining it, so the policies
+ * cannot drift from the authority. The migration-line history (0037:116,
+ * 0038:29, 0040:80, 0041:30, 0042:35, 0060:39, 0061:72, 0064:52, 0065:351,
+ * 0071:96, 0073:231) is the reason this assertion exists; it is a catalog check
+ * on the deployed result, not a file-diff.
+ */
+const GRANT_PREDICATE_STATUS_RE = /status\s*=\s*'active'/;
+
+async function assertActiveGrantPredicateParity(sql) {
+  // Every function that reads the grant table and declares the active predicate.
+  // `prosrc` is the installed body, so a function redefined by a later migration
+  // is judged on its final definition.
+  const functions = await sql`
+    SELECT n.nspname AS schema, p.proname AS name, p.prosrc AS source
+      FROM pg_proc AS p
+      JOIN pg_namespace AS n ON n.oid = p.pronamespace
+     WHERE n.nspname IN ('public', 'private')
+       AND p.prokind = 'f'
+       AND p.prosrc LIKE '%mcp_authorization_grants%'
+  `;
+
+  const [authority] = functions.filter((row) => row.name === "has_active_mcp_permission");
+  assert(authority, "private.has_active_mcp_permission must exist as the single active-grant authority");
+
+  // The authority itself must carry both halves, named in the assertion that
+  // fails, so a mutation of 0051 is reported as a revocation gap rather than as a
+  // catalog drift.
+  assert(
+    GRANT_PREDICATE_STATUS_RE.test(authority.source),
+    "private.has_active_mcp_permission must require status = 'active'",
+  );
+  assert(
+    /revoked_at\s+IS\s+NULL/.test(authority.source),
+    "private.has_active_mcp_permission must require revoked_at IS NULL (the revocation guard 0051 declares)",
+  );
+
+  const copies = functions.filter(
+    (row) => row.name !== "has_active_mcp_permission" && GRANT_PREDICATE_STATUS_RE.test(row.source),
+  );
+  assert(
+    copies.length > 0,
+    "the active-grant predicate must be asserted against its known copies, not against an empty set",
+  );
+  const drift = copies.filter((row) => !/revoked_at\s+IS\s+NULL/.test(row.source));
+  assert(
+    drift.length === 0,
+    `every copy of the active-grant predicate must also require revoked_at IS NULL; these do not: ${drift.map((row) => `${row.schema}.${row.name}`).join(", ")}`,
+  );
+
+  // Row-level policies: assert they do not inline the predicate at all. Inlining
+  // is what would let a policy resolve the grant more loosely than the authority,
+  // and asserting it is absent is stronger than asserting each copy is correct.
+  const inlined = await sql`
+    SELECT tablename, policyname
+      FROM pg_policies
+     WHERE schemaname = 'public'
+       AND (qual LIKE '%status = ''active''%' OR with_check LIKE '%status = ''active''%')
+  `;
+  assert(
+    inlined.length === 0,
+    `no row-level policy may inline the active-grant predicate; these do, and can drift from private.has_active_mcp_permission: ${inlined.map((row) => `${row.tablename}.${row.policyname}`).join(", ")}`,
+  );
+
+  log(
+    "REVOCATION",
+    `The active-grant predicate appears in ${copies.length} function(s) besides the authority (${copies.map((row) => `${row.schema}.${row.name}`).join(", ")}) and every one requires revoked_at IS NULL; 0 row-level policies inline it.`,
+  );
 }
 
 async function assertWrongIdentity(sql) {
@@ -2310,7 +2508,29 @@ async function main() {
       version: 1,
       status: "revoked",
     });
-    log("SEED", "Grants seeded: v1 read_only, v1 workspace_manager, v1 revoked");
+    // The two half-revoked rows REVOCATION needs. Both hold the full
+    // workspace_manager document, so grant resolution is the only thing that can
+    // refuse them - see assertRevocation's header for why each column is set
+    // alone.
+    await insertGrant(sql, {
+      owner: OWNER_A,
+      client: REVOKED_AT_CLIENT,
+      profile: "workspace_manager",
+      permissions: V1_PERMISSIONS.workspace_manager,
+      version: 1,
+      status: "active",
+      revokedAt: sql`now()`,
+    });
+    await insertGrant(sql, {
+      owner: OWNER_A,
+      client: STATUS_REVOKED_CLIENT,
+      profile: "workspace_manager",
+      permissions: V1_PERMISSIONS.workspace_manager,
+      version: 1,
+      status: "revoked",
+      revokedAt: null,
+    });
+    log("SEED", "Grants seeded: v1 read_only, v1 workspace_manager, v1 revoked (both columns), v1 revoked by revoked_at alone, v1 revoked by status alone");
 
     // The v1-only assertions run first so the surface proof still produces
     // discriminating output on a revision that does not yet know about
@@ -2319,6 +2539,7 @@ async function main() {
     await assertColumnFence(sql);
     await assertRpcSurface(sql);
     await assertRevocation(sql);
+    await assertActiveGrantPredicateParity(sql);
     await assertWrongIdentity(sql);
     await assertInternalUnreachable(sql, V1_WORKSPACE_CLIENT);
     await assertAuditToolAllowlist(sql);
