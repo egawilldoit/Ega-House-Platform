@@ -480,7 +480,15 @@ test('the shipped exception registry accepts only the two advisories it names', 
   for (const exception of SECURITY_AUDIT_EXCEPTIONS) {
     assert.equal(typeof exception.advisory, 'string', 'exception names an advisory id');
     assert.match(exception.advisory, /^GHSA-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}$/, 'advisory id is concrete, not a wildcard');
+    // A non-empty concrete package, not merely "a string with no `*`": an
+    // empty `package` is falsy, so the gate's own match treated it as "no
+    // opinion" and accepted the advisory on ANY package, which turned one
+    // entry into a blanket exemption this guard used to pass.
     assert.equal(typeof exception.package, 'string', 'exception names a package');
+    assert.ok(
+      exception.package.trim().length > 0,
+      `exception ${exception.source} names an empty package; the gate would accept its advisory on any package`,
+    );
     assert.doesNotMatch(exception.package, /[*]/, 'package is not a wildcard');
     assert.equal(typeof exception.source, 'number', 'exception pins one advisory source id');
     assert.equal(typeof exception.reason, 'string', 'exception carries a reason');
@@ -496,6 +504,74 @@ test('the shipped exception registry accepts only the two advisories it names', 
     assert.ok(entry.whyNotFixableNow, 'exception states why it cannot be fixed now');
     assert.ok(entry.owner, 'exception names an owner');
   }
+});
+
+test('evaluateAuditReport blocks an exception that names no concrete package', () => {
+  // The falsy-package hole, proven end to end. `package: ''` passed the old
+  // structural guard (`typeof === 'string'`, no `*`) and, because the gate's
+  // own match was `exception.package && leaf.name !== exception.package`,
+  // skipped the comparison entirely: the advisory below is CRITICAL and lands
+  // on a package the exception never named, and it was accepted.
+  const report = {
+    vulnerabilities: {
+      'malicious-pkg': {
+        name: 'malicious-pkg',
+        severity: 'critical',
+        isDirect: false,
+        via: [{ source: 1240992, name: 'malicious-pkg', severity: 'critical', url: 'https://github.com/advisories/GHSA-vfj7-8cjw-p6xm' }],
+      },
+    },
+  };
+  const exceptions = [
+    {
+      source: 1240992,
+      advisory: 'GHSA-vfj7-8cjw-p6xm',
+      package: '',
+      reason: 'empty package must not be honoured',
+      reviewBy: '2026-11-05',
+      allowDirect: true,
+    },
+  ];
+
+  const evalResult = evaluateAuditReport(report, {
+    exceptions,
+    now: new Date('2026-10-05'),
+    checkWs: false,
+  });
+
+  assert.equal(
+    evalResult.allowedHighCritical.length,
+    0,
+    'an exception naming no concrete package must accept nothing, including an advisory on an unrelated package',
+  );
+  assert.equal(
+    evalResult.blockingHighCritical.length,
+    2,
+    'the malformed package is a blocking finding in its own right AND the advisory it tried to carry is rejected',
+  );
+  assert.match(
+    evalResult.blockingHighCritical[0].reason,
+    /malformed exception package/,
+    'an empty package is reported as a policy failure, not silently ignored',
+  );
+  assert.match(evalResult.blockingHighCritical[1].rejected[0].reason, /package mismatch/);
+});
+
+test('evaluateAuditReport reports a shipped entry with a blank package as blocking', () => {
+  // Sensitivity: the same hole reached through the SHIPPED registry. A blank
+  // package on a carried entry must block on its own, without any report
+  // naming its advisory.
+  const evalResult = evaluateAuditReport(cleanReport(), {
+    exceptions: [{ ...SECURITY_AUDIT_EXCEPTIONS[0], package: '   ' }],
+    checkWs: false,
+  });
+
+  assert.equal(
+    evalResult.blockingHighCritical.length,
+    1,
+    'a carried exception with a blank package must block the gate by itself',
+  );
+  assert.match(evalResult.blockingHighCritical[0].reason, /malformed exception package/);
 });
 
 // --- 2026-10-05: the seven 2026-10-15 entries were REMEDIATED, not renewed.
