@@ -28,6 +28,7 @@ import { createMcpSupabaseClient } from "@/lib/mcp/supabase-user-client";
 import {
   createMcpPreflightResponse,
   createWebMcpHandler,
+  mcpOriginPolicy,
 } from "@/lib/mcp/web-transport-handler";
 import { createMcpWriteToolHandlers } from "@/lib/mcp/write-tool-handlers";
 import { createAuditedMcpWriteHandlers } from "@/lib/mcp/audited-write-handlers";
@@ -38,15 +39,21 @@ type TokenVerifier = (
   bearerToken?: string,
 ) => AuthInfo | undefined | Promise<AuthInfo | undefined>;
 
+// One option, because that is all the transport reads. `basePath`,
+// `maxDuration` and `verboseLogs` used to be declared here, passed here, and
+// read by nothing: the URL is routed by Next.js, the request budget belongs to
+// the route module's `export const maxDuration`, and no transport code logs.
+//
+// The seam also used to carry a `serverOptions: Record<string, never>` slot that
+// every caller filled with `{}` and that the transport ignored (it was declared
+// `_serverOptions` at the implementation). A parameter typed to accept nothing
+// and passed an empty object at every call site is the clearest possible
+// "configuration" with no reader, so it is gone too.
 type TransportOptions = {
-  basePath: string;
-  maxDuration: number;
-  verboseLogs: boolean;
   resourceUrl: string;
 };
 
 type AuthOptions = {
-  required: boolean;
   requiredScopes: string[];
   resourceMetadataPath: string;
   resourceUrl: string;
@@ -68,7 +75,6 @@ export type McpRouteRuntimeDependencies = {
   ) => void;
   createTransportHandler: (
     registerServer: (server: McpServer, authInfo?: AuthInfo) => void,
-    serverOptions: Record<string, never>,
     transportOptions: TransportOptions,
   ) => RequestHandler;
   createTokenVerifier: (config: McpRuntimeConfig) => TokenVerifier;
@@ -155,25 +161,23 @@ export function createMcpRouteRuntime(
       dependencies.registerToolsForPrincipal(server, readHandlers, writeHandlers, allowed);
     } catch { /* Fail closed: an invalid principal receives no registered tools. */ }
   };
+  // One derivation of the Host/Origin policy, from the same `config.resource`
+  // both the transport and the preflight below are built from. It used to be
+  // parsed twice - once inside the transport, once here - so the two could only
+  // agree by coincidence of two matching literals.
+  const originPolicy = mcpOriginPolicy(config.resource);
   const transportHandler = dependencies.createTransportHandler(
     register,
-    {},
-    {
-      basePath: "/api",
-      maxDuration: 60,
-      verboseLogs: false,
-      resourceUrl: config.resource,
-    },
+    { resourceUrl: config.resource },
   );
   const verifyToken = dependencies.createTokenVerifier(config);
   const authenticatedHandler = dependencies.wrapAuth(
     transportHandler,
     verifyToken,
     {
-      required: true,
       requiredScopes: [MCP_AUTHORIZED_SCOPE],
       resourceMetadataPath: "/.well-known/oauth-protected-resource",
-      resourceUrl: new URL(config.resource).origin,
+      resourceUrl: originPolicy.expectedOrigin,
     },
   );
 
@@ -184,12 +188,14 @@ export function createMcpRouteRuntime(
     // POST path rather than a hardcoded wildcard. It used to answer with
     // `Access-Control-Allow-Origin: *` while POST rejected every origin but
     // the resource origin, and it skipped Host/Origin/size validation entirely.
+    //
+    // It also runs OUTSIDE `wrapAuth`, deliberately: a browser preflight carries
+    // no Authorization header, so routing it through the auth wrapper would
+    // answer every preflight with 401 and no allow-origin header. The cost is
+    // that an unauthenticated request is answered 401 before Host/Origin is
+    // examined; that ordering is asserted in route-runtime.test.ts rather than
+    // left implicit.
     OPTIONS: (request) =>
-      Promise.resolve(
-        createMcpPreflightResponse(request, {
-          expectedHost: new URL(config.resource).host,
-          expectedOrigin: new URL(config.resource).origin,
-        }),
-      ),
+      Promise.resolve(createMcpPreflightResponse(request, originPolicy)),
   };
 }

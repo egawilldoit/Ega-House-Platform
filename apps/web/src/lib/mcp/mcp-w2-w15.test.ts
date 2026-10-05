@@ -92,8 +92,7 @@ describe("W3 Host/Origin", () => {
   it("rejects bad Host", async () => {
     const handler = createWebMcpHandler(
       () => {},
-      {},
-      { basePath: "/api", maxDuration: 60, verboseLogs: false, resourceUrl: "https://ega.example.com/api/mcp" },
+      { resourceUrl: "https://ega.example.com/api/mcp" },
     );
     const request = new Request("https://evil.com/api/mcp", {
       method: "POST",
@@ -107,8 +106,7 @@ describe("W3 Host/Origin", () => {
   it("rejects bad Origin", async () => {
     const handler = createWebMcpHandler(
       () => {},
-      {},
-      { basePath: "/api", maxDuration: 60, verboseLogs: false, resourceUrl: "https://ega.example.com/api/mcp" },
+      { resourceUrl: "https://ega.example.com/api/mcp" },
     );
     const request = new Request("https://ega.example.com/api/mcp", {
       method: "POST",
