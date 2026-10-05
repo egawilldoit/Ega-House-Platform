@@ -1418,6 +1418,46 @@ async function assertOperationIdentity(sql) {
       ),
   );
   log("OPERATION-IDENTITY", "A partial operation identity is still refused with 23514; the correction did not open a half-pairing path.");
+
+  // ---- Every fenced table, not just the one probed above -------------------
+  //
+  // The behavioural cases above run against public.tasks because it is the table
+  // the replay harm is easiest to read there, but 0079 changes the allowlist for
+  // all five fenced tables. A table-by-table regression - someone re-adding
+  // 'mcp_client_id' to one branch, or removing the derivation from one INSERT
+  // path - would leave every assertion above green. Read both allowlists per
+  // table from the database, under a real MCP session so the permission branches
+  // are actually evaluated, and assert the intended shape of each.
+  const FENCED_TABLES = ["projects", "goals", "tasks", "task_sessions", "task_reminders"];
+  await attacker.run(async (tx) => {
+    for (const table of FENCED_TABLES) {
+      const [row] = await tx.unsafe(
+        `SELECT private.mcp_writable_columns($1) AS updatable,
+                private.mcp_insertable_columns($1) AS insertable`,
+        [table],
+      );
+      assert(
+        row.updatable !== null && row.insertable !== null,
+        `${table}: the fence must reach both allowlists under an MCP session, or the assertions above pass vacuously`,
+      );
+      assert(
+        !row.updatable.includes("mcp_client_id"),
+        `${table}: mcp_client_id must not be authorisable on UPDATE; private.mcp_writable_columns returned ${JSON.stringify(row.updatable)}`,
+      );
+      assert(
+        row.updatable.includes("mcp_operation_id"),
+        `${table}: mcp_operation_id must remain authorisable on UPDATE; the application writes its own operation key there`,
+      );
+      assert(
+        row.insertable.includes("mcp_client_id"),
+        `${table}: mcp_client_id must remain authorisable at INSERT, because the fence derives it rather than resetting it and 0074's pairing needs the caller able to supply the pair`,
+      );
+    }
+  });
+  log(
+    "OPERATION-IDENTITY",
+    `Across all ${FENCED_TABLES.length} fenced tables, mcp_client_id is insertable-but-derived and absent from the UPDATE allowlist, while mcp_operation_id stays authorisable on UPDATE.`,
+  );
 }
 
 // ---------------------------------------------------------------------------
