@@ -30,10 +30,31 @@
  * defect are asserted against in CONTRAST: a permitted case and its denied
  * twin, so a policy that silently widened would fail here.
  *
+ * A third class is about the proofs themselves rather than the policies, and
+ * WRITE-GATE exists for it. When an UPDATE or DELETE carries a qualifying
+ * clause, PostgreSQL OR-s the SELECT policies into its row-visibility filter, so
+ * a probe driven by a principal that cannot read the row observes zero rows
+ * whichever write policy is installed: its expected value is zero by
+ * construction, and it cannot fail when the gate it names is removed. Deleting
+ * the `AND ((SELECT auth.jwt()) ->> 'client_id') IS NULL` clause from
+ * `notifications_direct_user_update` left every scripts/db verifier green while a
+ * v2 bearer could rewrite the owner's notifications. Every gated write is
+ * therefore driven by a principal that already holds the read permission - so the
+ * SELECT policies pass for free and the gate is the only thing left - and every
+ * one is also asserted by reading the committed table back independently as the
+ * superuser, because a statement reporting zero rows is not by itself evidence
+ * that nothing happened.
+ *
  * Sections:
  *   SCOPE-V1        a permissions-version-1 grant reaches exactly the v1
  *                   database surface and nothing newer
  *   SCOPE-V2        a permissions-version-2 grant reaches the new read domains
+ *   WRITE-GATE      every `client_id IS NULL` gate on a `*_direct_user_*`
+ *                   policy is load-bearing: driven by a principal that can
+ *                   already READ the row, so no other policy can hand the
+ *                   assertion its zero rows for free. Asserted on rows
+ *                   affected AND on an independent superuser read-back of the
+ *                   committed table
  *   COLUMN-FENCE    an MCP bearer holding tasks.update cannot write task
  *                   columns outside the advertised contract, and CAN write the
  *                   columns the contract does advertise; including the done /
@@ -722,6 +743,439 @@ async function assertScopeV2(sql) {
     }
   });
   log("SCOPE-V2", "A permissions_version 2 grant reaches every v2 read surface; the push credential, provider deliveries and the inbox dedup ledger stay closed.");
+}
+
+// ---------------------------------------------------------------------------
+// WRITE-GATE
+// ---------------------------------------------------------------------------
+
+/** A durable value the write below must not have changed. */
+const GATE_PROBE = "mcp-write-gate-probe";
+const NOTIFICATION_ID = "99999999-9999-4999-8999-999999999991";
+const IDEA_NOTE_ID = "99999999-9999-4999-8999-999999999996";
+const OPERATOR_PROPOSAL_ID = "99999999-9999-4999-8999-999999999993";
+const INBOX_KEY_ID = "99999999-9999-4999-8999-999999999994";
+
+/** Capture a statement's outcome: either the rows it returned, or its SQLSTATE. */
+async function captureWriteOutcome(fn) {
+  try {
+    return { rows: await fn() };
+  } catch (error) {
+    return { code: error?.code ?? "UNKNOWN" };
+  }
+}
+
+/**
+ * Assert a write that the `client_id IS NULL` gate on a `*_direct_user_*`
+ * policy is supposed to close, on both halves of the gate:
+ *
+ *   1. the statement reported no affected rows, and
+ *   2. an INDEPENDENT superuser read of the committed table shows no trace.
+ *
+ * (2) is not redundant. A qualifying clause makes PostgreSQL OR the SELECT
+ * policies into the statement's row-visibility filter, so a zero-row result can
+ * be produced by the SELECT policies alone and says nothing about the write
+ * policy named in `policy`. Reading the committed table back as the superuser is
+ * the only observation here that cannot be satisfied by the blocked statement's
+ * own RLS view.
+ */
+async function expectGatedWriteClosed(sql, label, probe) {
+  const { policy, clientId, stmt, params = [], durableSql, durableParams = params, durableMessage, durableExpect } = probe;
+
+  const outcome = await captureWriteOutcome(() =>
+    mcpSession(sql, { clientId }).run((tx) => tx.unsafe(stmt, params)),
+  );
+  if (outcome.code !== undefined) {
+    // An INSERT whose WITH CHECK fails raises instead of filtering. That is as
+    // closed as zero rows, but a different SQLSTATE is a real difference.
+    assert(
+      outcome.code === "42501",
+      `${label} must affect zero rows or be refused by the client_id gate on ${policy}, got SQLSTATE ${outcome.code}`,
+    );
+  } else {
+    assert(
+      outcome.rows.length === 0,
+      `${label} must affect zero rows - the client_id IS NULL gate on ${policy} did not close the write (${outcome.rows.length} row(s) affected)`,
+    );
+  }
+
+  const [row] = await sql.unsafe(durableSql, durableParams);
+  assert(
+    durableExpect(row),
+    `${label}: ${durableMessage} - read back independently as superuser: ${JSON.stringify(row)}`,
+  );
+}
+
+/**
+ * The gates are load-bearing only for a principal that cannot get the zero for
+ * free, and that is the whole point of this section.
+ *
+ * A permissions_version 1 workspace_manager grant holds no `notifications.read`,
+ * `operator.read` or `inbox.read`, so both `notifications_mcp_select_access` and
+ * `notifications_direct_user_select` evaluate false for it, and SCOPE-V1's
+ * `UPDATE public.notifications SET read_at = now() WHERE owner_user_id = <owner>
+ * RETURNING id` observes zero rows *regardless of what
+ * `notifications_direct_user_update` says*. Its expected value is zero by
+ * construction, so it cannot fail when the gate is removed. Every probe below
+ * is therefore driven by V2_WORKSPACE_CLIENT, the broadest principal in this
+ * file, which holds the read permission that satisfies the SELECT policy for
+ * free - leaving the `client_id IS NULL` gate as the only thing that can refuse.
+ *
+ * That rests on PostgreSQL's actual rule, measured against this journal rather
+ * than assumed. When an UPDATE or DELETE carries a qualifying clause, the SELECT
+ * policies are OR-ed into the row-visibility filter alongside the command's own
+ * USING; EXPLAIN on a v1 bearer against a gate-stripped `notifications` shows it
+ * plainly:
+ *
+ *     Filter: (((jwt->>'client_id') IS NOT NULL
+ *                AND private.has_active_mcp_permission('notifications.read'))
+ *               OR ((jwt->>'client_id') IS NULL))
+ *
+ * Three consequences shape these probes:
+ *
+ *   - Without that OR the filter is false for every row, so a v1 principal sees
+ *     zero rows and learns nothing about the write policy. Driving the same
+ *     statement as a v2 principal satisfies the OR for free and leaves the gate
+ *     as the only thing that can refuse it.
+ *   - The same rule has a sharp edge in the other direction: with the qualifying
+ *     clause removed, the SELECT policies drop out of the plan entirely and the
+ *     same principal CAN write a row it cannot read. A statement that reports
+ *     zero rows is therefore not evidence that nothing happened, which is why
+ *     every probe here also asserts an independent superuser read-back of the
+ *     committed table.
+ *   - An INSERT consults no SELECT policy at all: only the INSERT policy's WITH
+ *     CHECK decides it. That makes INSERT the one command a probe can
+ *     discriminate on without any read permission, and it is what makes the
+ *     `pre`/`post` rows below necessary - an upsert against a seeded owner would
+ *     be decided by the sibling UPDATE policy instead.
+ *
+ * One gate needs its own note. `inbox_idempotency_keys` has no MCP SELECT policy
+ * at any permission version, so the OR above is false for every MCP principal on
+ * every row: a `DELETE ... WHERE owner_user_id = <owner>` against it matches
+ * nothing whatever the DELETE policy says - with the gate present, with it
+ * removed, and (measured) even with the SELECT policy dropped altogether, where
+ * the plan degrades to `Filter: false`. Only the filterless statement shape, which
+ * drops the SELECT policies out of the plan entirely, can reach the gate, and
+ * that is how it is proven below. The qualifying-clause form of the same DELETE is
+ * kept as a claim check rather than a gate check.
+ */
+async function assertWriteGates(sql) {
+  const clientId = V2_WORKSPACE_CLIENT;
+  const owner = [OWNER_A];
+
+  /**
+   * One row per `client_id`-gated write policy 0065 and 0056 declare on a table
+   * an MCP principal can reach, plus the two internal tables that carry no write
+   * policy at all (asserted from the catalogue below). `policy` is named so a
+   * failure names the policy that failed to close the write, not just the
+   * statement that found it open.
+   *
+   * Each `durableExpect` names the seeded value the write must not have changed,
+   * rather than merely "not the probe value": a read-back that matched nothing
+   * would otherwise satisfy "not the probe value" for free.
+   */
+  const probes = [
+    // ---- notifications: readable under notifications.read, never writable.
+    // 0065 declares no INSERT or DELETE policy for this table at all (0045
+    // dropped both so only service_role writes it); asserted below. ----
+    {
+      policy: "notifications_direct_user_update",
+      op: "UPDATE",
+      table: "notifications",
+      stmt: `UPDATE public.notifications SET title = $2::text WHERE owner_user_id = $1::uuid RETURNING id`,
+      params: [OWNER_A, GATE_PROBE],
+      durableSql: `SELECT title FROM public.notifications WHERE id = $1::uuid`,
+      durableParams: [NOTIFICATION_ID],
+      durableMessage: "the owner's notification title must be unchanged",
+      durableExpect: (row) => row.title === "Owner A reminder",
+    },
+
+    // ---- notification_preferences: the unread/preference summary is honest to
+    // read, but flipping a delivery toggle stays a direct-user action ----
+    {
+      policy: "notification_preferences_direct_user_update",
+      op: "UPDATE",
+      table: "notification_preferences",
+      stmt: `UPDATE public.notification_preferences SET push_enabled = false WHERE owner_user_id = $1::uuid RETURNING id`,
+      params: owner,
+      durableSql: `SELECT push_enabled FROM public.notification_preferences WHERE owner_user_id = $1::uuid`,
+      durableParams: owner,
+      durableMessage: "push delivery must still be enabled",
+      durableExpect: (row) => row.push_enabled === true,
+    },
+    {
+      policy: "notification_preferences_direct_user_insert",
+      op: "INSERT",
+      table: "notification_preferences",
+      // notification_type is CHECK-constrained to 'task_reminder' and unique per
+      // owner, so this table admits exactly one row per owner and the only
+      // client-reachable write against a seeded owner is an upsert. An upsert's
+      // ON CONFLICT DO UPDATE branch is closed by the sibling UPDATE policy, so
+      // probing the upsert would pass whenever EITHER gate held and could not
+      // fail when this one was removed. Clearing the conflicting row isolates
+      // the INSERT policy's WITH CHECK - and an INSERT consults no SELECT
+      // policy, so that CHECK alone decides the write.
+      pre: `DELETE FROM public.notification_preferences WHERE owner_user_id = '${OWNER_A}'::uuid`,
+      post: `INSERT INTO public.notification_preferences (owner_user_id, notification_type, push_enabled, email_enabled)
+        VALUES ('${OWNER_A}'::uuid, 'task_reminder', true, true)
+        ON CONFLICT (owner_user_id, notification_type) DO UPDATE SET push_enabled = true, email_enabled = true`,
+      stmt: `INSERT INTO public.notification_preferences (owner_user_id, notification_type, push_enabled, email_enabled)
+        VALUES ($1::uuid, 'task_reminder', false, false) RETURNING id`,
+      params: owner,
+      durableSql: `SELECT count(*)::int AS count FROM public.notification_preferences WHERE owner_user_id = $1::uuid`,
+      durableParams: owner,
+      durableMessage: "a forged preference row must not be created",
+      durableExpect: (row) => row.count === 0,
+    },
+    {
+      policy: "notification_preferences_direct_user_delete",
+      op: "DELETE",
+      table: "notification_preferences",
+      stmt: `DELETE FROM public.notification_preferences WHERE owner_user_id = $1::uuid RETURNING id`,
+      params: owner,
+      durableSql: `SELECT count(*)::int AS count FROM public.notification_preferences WHERE owner_user_id = $1::uuid`,
+      durableParams: owner,
+      durableMessage: "the owner's preference row must survive",
+      durableExpect: (row) => row.count === 1,
+    },
+
+    // ---- operator_proposals: readable under operator.read. 0065 deliberately
+    // does not open the lifecycle, so the 'applied' transition a v1 read_only
+    // bearer could once force directly stays a direct-user action ----
+    {
+      policy: "operator_proposals_direct_user_update",
+      op: "UPDATE",
+      table: "operator_proposals",
+      stmt: `UPDATE public.operator_proposals SET status = 'applied', applied_at = now()
+        WHERE owner_user_id = $1::uuid RETURNING id`,
+      params: owner,
+      durableSql: `SELECT status FROM public.operator_proposals WHERE id = $1::uuid`,
+      durableParams: [OPERATOR_PROPOSAL_ID],
+      durableMessage: "the owner's proposal must still be 'generated'",
+      durableExpect: (row) => row.status === "generated",
+    },
+    {
+      policy: "operator_proposals_direct_user_insert",
+      op: "INSERT",
+      table: "operator_proposals",
+      stmt: `INSERT INTO public.operator_proposals (revision, owner_user_id, local_date, time_context_id,
+          baseline_hash, proposed_task_ids, task_versions, idempotency_key, status)
+        VALUES (1, $1::uuid, current_date, 'Europe/Berlin', 'mcp-gate-baseline', '[]'::jsonb, '[]'::jsonb,
+          $2::text, 'applied') RETURNING id`,
+      params: [OWNER_A, GATE_PROBE],
+      durableSql: `SELECT count(*)::int AS count FROM public.operator_proposals WHERE idempotency_key = $1::text`,
+      durableParams: [GATE_PROBE],
+      durableMessage: "no operator proposal may be forged",
+      durableExpect: (row) => row.count === 0,
+    },
+    {
+      policy: "operator_proposals_direct_user_delete",
+      op: "DELETE",
+      table: "operator_proposals",
+      stmt: `DELETE FROM public.operator_proposals WHERE owner_user_id = $1::uuid RETURNING id`,
+      params: owner,
+      durableSql: `SELECT count(*)::int AS count FROM public.operator_proposals WHERE id = $1::uuid`,
+      durableParams: [OPERATOR_PROPOSAL_ID],
+      durableMessage: "the owner's proposal must survive",
+      durableExpect: (row) => row.count === 1,
+    },
+
+    // ---- user_time_context: readable so today.read can resolve the owner's
+    // timezone; writing a timezone is a device setting, not a workspace
+    // mutation ----
+    {
+      policy: "user_time_context_direct_user_update",
+      op: "UPDATE",
+      table: "user_time_context",
+      stmt: `UPDATE public.user_time_context SET iana_timezone = 'Mars/Olympus' WHERE user_id = $1::uuid RETURNING user_id`,
+      params: owner,
+      durableSql: `SELECT iana_timezone FROM public.user_time_context WHERE user_id = $1::uuid`,
+      durableParams: owner,
+      durableMessage: "the owner's timezone must be unchanged",
+      durableExpect: (row) => row.iana_timezone === "Europe/Berlin",
+    },
+    {
+      policy: "user_time_context_direct_user_insert",
+      op: "INSERT",
+      table: "user_time_context",
+      // user_id is the primary key, so this table admits one row per owner and
+      // a seeded owner's only client-reachable write is an upsert. Isolated the
+      // same way as notification_preferences_direct_user_insert above.
+      pre: `DELETE FROM public.user_time_context WHERE user_id = '${OWNER_A}'::uuid`,
+      post: `INSERT INTO public.user_time_context (user_id, iana_timezone)
+        VALUES ('${OWNER_A}'::uuid, 'Europe/Berlin')
+        ON CONFLICT (user_id) DO UPDATE SET iana_timezone = 'Europe/Berlin'`,
+      stmt: `INSERT INTO public.user_time_context (user_id, iana_timezone)
+        VALUES ($1::uuid, 'Mars/Olympus') RETURNING user_id`,
+      params: owner,
+      durableSql: `SELECT count(*)::int AS count FROM public.user_time_context WHERE user_id = $1::uuid`,
+      durableParams: owner,
+      durableMessage: "a forged timezone row must not be created",
+      durableExpect: (row) => row.count === 0,
+    },
+    {
+      policy: "user_time_context_direct_user_delete",
+      op: "DELETE",
+      table: "user_time_context",
+      stmt: `DELETE FROM public.user_time_context WHERE user_id = $1::uuid RETURNING user_id`,
+      params: owner,
+      durableSql: `SELECT count(*)::int AS count FROM public.user_time_context WHERE user_id = $1::uuid`,
+      durableParams: owner,
+      durableMessage: "the owner's timezone row must survive",
+      durableExpect: (row) => row.count === 1,
+    },
+
+    // ---- idea_notes: opened to MCP at v2 by 0065's inbox.read policy, and
+    // gated for writes by 0056. An MCP bearer may read inbox items; only the
+    // owner may create, edit or delete them ----
+    {
+      policy: "idea_notes_direct_user_update",
+      op: "UPDATE",
+      table: "idea_notes",
+      stmt: `UPDATE public.idea_notes SET title = $2::text WHERE id = $1::uuid RETURNING id`,
+      params: [IDEA_NOTE_ID, GATE_PROBE],
+      durableSql: `SELECT title FROM public.idea_notes WHERE id = $1::uuid`,
+      durableParams: [IDEA_NOTE_ID],
+      durableMessage: "the owner's inbox item must be unchanged",
+      durableExpect: (row) => row.title === "Owner A inbox item",
+    },
+    {
+      policy: "idea_notes_direct_user_insert",
+      op: "INSERT",
+      table: "idea_notes",
+      stmt: `INSERT INTO public.idea_notes (owner_user_id, title, status, type)
+        VALUES ($1::uuid, $2::text, 'inbox', 'idea') RETURNING id`,
+      params: [OWNER_A, GATE_PROBE],
+      durableSql: `SELECT count(*)::int AS count FROM public.idea_notes WHERE title = $1::text`,
+      durableParams: [GATE_PROBE],
+      durableMessage: "no inbox item may be forged",
+      durableExpect: (row) => row.count === 0,
+    },
+    {
+      policy: "idea_notes_direct_user_delete",
+      op: "DELETE",
+      table: "idea_notes",
+      stmt: `DELETE FROM public.idea_notes WHERE id = $1::uuid RETURNING id`,
+      params: [IDEA_NOTE_ID],
+      durableSql: `SELECT count(*)::int AS count FROM public.idea_notes WHERE id = $1::uuid`,
+      durableParams: [IDEA_NOTE_ID],
+      durableMessage: "the owner's inbox item must survive",
+      durableExpect: (row) => row.count === 1,
+    },
+
+    // ---- inbox_idempotency_keys: the inbox dedup ledger, which has no MCP
+    // SELECT policy at any permission version. 0065's claim is that an MCP
+    // bearer can no longer forge or delete a capture key and so can no longer
+    // defeat inbox conversion idempotency. The INSERT is judged purely by its
+    // own WITH CHECK; the DELETE needs the filterless shape at the end of this
+    // list, for the reason given on that probe. ----
+    {
+      policy: "inbox_idempotency_keys_direct_user_insert",
+      op: "INSERT",
+      table: "inbox_idempotency_keys",
+      stmt: `INSERT INTO public.inbox_idempotency_keys (owner_user_id, key, inbox_item_id, fingerprint)
+        VALUES ($1::uuid, $2::text, $3::uuid, 'mcp-write-gate-probe')`,
+      params: [OWNER_A, GATE_PROBE, IDEA_NOTE_ID],
+      durableSql: `SELECT count(*)::int AS count FROM public.inbox_idempotency_keys WHERE key = $1::text`,
+      durableParams: [GATE_PROBE],
+      durableMessage: "no inbox capture key may be forged",
+      durableExpect: (row) => row.count === 0,
+    },
+    {
+      // A claim check, not a gate check: no MCP principal can see a row of this
+      // table, so the qualifying clause in this DELETE matches zero rows whatever
+      // the DELETE policy says, and no probe can distinguish a present gate from
+      // an absent one. The filterless probe at the end of this list is what
+      // actually pins the gate; keep this one because it is the statement shape
+      // 0065's own claim describes.
+      policy: "inbox_idempotency_keys_direct_user_delete",
+      op: "DELETE",
+      table: "inbox_idempotency_keys",
+      stmt: `DELETE FROM public.inbox_idempotency_keys WHERE owner_user_id = $1::uuid`,
+      params: owner,
+      durableSql: `SELECT count(*)::int AS count FROM public.inbox_idempotency_keys WHERE id = $1::uuid`,
+      durableParams: [INBOX_KEY_ID],
+      durableMessage: "the owner's capture key must survive",
+      durableExpect: (row) => row.count === 1,
+    },
+
+    // ---- Filterless statements. These two carry NO qualifying clause, which is
+    // the one shape where the SELECT policies drop out of the plan altogether
+    // (see this function's comment) and the gate stands completely alone. It is
+    // also a shape a client can actually issue - a PostgREST PATCH or DELETE with
+    // no filter - so it is the sharpest available test of a USING clause, and the
+    // only way to reach the gate on a table no MCP principal can read. Each is
+    // asserted by the superuser read-back alone, since a filterless statement
+    // reports no rows either way. ----
+    {
+      policy: "notifications_direct_user_update",
+      op: "UPDATE",
+      table: "notifications",
+      stmt: `UPDATE public.notifications SET title = $1::text`,
+      params: [GATE_PROBE],
+      durableSql: `SELECT title FROM public.notifications WHERE id = $1::uuid`,
+      durableParams: [NOTIFICATION_ID],
+      durableMessage: "a filterless MCP write must not reach the owner's notifications",
+      durableExpect: (row) => row.title === "Owner A reminder",
+    },
+    {
+      policy: "inbox_idempotency_keys_direct_user_delete",
+      op: "DELETE",
+      table: "inbox_idempotency_keys",
+      stmt: `DELETE FROM public.inbox_idempotency_keys`,
+      params: [],
+      durableSql: `SELECT count(*)::int AS count FROM public.inbox_idempotency_keys WHERE id = $1::uuid`,
+      durableParams: [INBOX_KEY_ID],
+      durableMessage: "a filterless MCP delete must not destroy the owner's capture key",
+      durableExpect: (row) => row.count === 1,
+    },
+  ];
+
+  for (const probe of probes) {
+    // `pre`/`post` exist only to clear a uniqueness conflict that would otherwise
+    // route the write through a sibling policy; both run as the superuser.
+    if (probe.pre) await sql.unsafe(probe.pre);
+    try {
+      await expectGatedWriteClosed(sql, `MCP ${probe.op.toLowerCase()} on ${probe.table}`, { ...probe, clientId });
+    } finally {
+      if (probe.post) await sql.unsafe(probe.post);
+    }
+  }
+  log(
+    "WRITE-GATE",
+    `All ${probes.length} gated writes on MCP-reachable tables left the owner's rows untouched: no statement affected a row, and an independent superuser read-back of every target confirmed no durable change.`,
+  );
+
+  // Two tables are closed for a different reason: notification_devices (which
+  // holds the live FCM provider credential) and notification_deliveries carry no
+  // INSERT, UPDATE or DELETE policy for `authenticated` at all, so there is no
+  // gate to strip and no statement that could reach them. This has to be read
+  // from the catalogue: a data-level probe cannot tell "no policy exists" from
+  // "a policy filters every row", because to a WHERE clause the two are the
+  // same observation.
+  const internalWritePolicies = await sql`
+    SELECT c.relname AS table, p.polname AS policy
+    FROM pg_policy AS p
+    JOIN pg_class AS c ON c.oid = p.polrelid
+    JOIN pg_namespace AS n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'public'
+      AND c.relname = ANY(${sql.array(["notification_devices", "notification_deliveries"])})
+      -- pg_policy.polcmd is the raw command character: a=INSERT, w=UPDATE,
+      -- d=DELETE, r=SELECT. SELECT is deliberately excluded: these tables are
+      -- supposed to have a read policy, and that policy's own client_id gate is
+      -- covered by the WRITE-GATE probes above.
+      AND p.polcmd IN ('a', 'w', 'd')
+  `;
+  assert(
+    internalWritePolicies.length === 0,
+    `notification_devices/notification_deliveries must carry no INSERT/UPDATE/DELETE policy for authenticated, found ${internalWritePolicies
+      .map((row) => `${row.table}.${row.policy}`)
+      .join(", ")}`,
+  );
+  log(
+    "WRITE-GATE",
+    "notification_devices and notification_deliveries carry no INSERT/UPDATE/DELETE policy for authenticated at all, so their closure needs no gate to hold.",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -2975,6 +3429,10 @@ async function main() {
     log("SEED", "permissions_version 2 grant seeded");
 
     await assertScopeV2(sql);
+    // Needs the v2 grant: every probe here is driven by a principal that can
+    // already read the row, so that the client_id gate is the only thing left
+    // that can refuse the write.
+    await assertWriteGates(sql);
     await assertCrossOwner(sql, [["v2", V2_WORKSPACE_CLIENT]]);
     await assertCrossOwnerInsert(sql, [["v2", V2_WORKSPACE_CLIENT]]);
 
