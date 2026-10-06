@@ -441,17 +441,39 @@ export function createMcpWriteToolHandlers(
         assertWritesEnabled(writesEnabled);
         requireMcpPermission(authInfo, "tasks.update");
         const client = dependencies.createUserClient(authInfo!.token);
-        const semantic = { taskId: input.taskId, title: input.title ?? null, description: input.description ?? null, blockedReason: input.blockedReason ?? null, status: input.status ?? null, priority: input.priority ?? null, dueDate: input.dueDate ?? null, estimateMinutes: input.estimateMinutes ?? null };
+        // PATCH, not PUT. `ega_update_task` documents that an OMITTED optional field
+        // preserves the stored value while an EXPLICIT null clears it, and both the
+        // update service (packages/application/src/tasks/service.ts, which guards each
+        // field with `if (input.x !== undefined)`) and the write module
+        // (apps/web/src/lib/mcp/write/tasks.ts, which forwards the value as received)
+        // already honour that distinction.
+        //
+        // These two objects used `input.x ?? null`, which destroyed the distinction at
+        // the transport and caused two defects:
+        //   1. an omitted field arrived as an explicit null, so `updateTaskService`
+        //      CLEARED description / blockedReason / dueDate / estimateMinutes instead
+        //      of preserving them - a partial update silently wiped untouched columns;
+        //   2. omission and explicit null produced the SAME fingerprint, because both
+        //      became null. A retry that omitted a field after one that cleared it
+        //      replayed the stored result instead of applying the new intent.
+        //
+        // Passing the value through unchanged fixes both. `undefined` is preserved in
+        // the payload, so the application skips the field; and
+        // `canonicalizeFingerprintValue` drops `undefined` object entries while
+        // keeping `null`, so the fingerprint still distinguishes the two cases - the
+        // omission is hashed as ABSENT rather than as null, which is exactly what
+        // makes it a different mutation from an explicit clear.
+        const semantic = { taskId: input.taskId, title: input.title, description: input.description, blockedReason: input.blockedReason, status: input.status, priority: input.priority, dueDate: input.dueDate, estimateMinutes: input.estimateMinutes };
         return await withExclusiveMutation(client, "ega_update_task", input.operationId, semantic, () =>
           taskHandlers.updateTask(authInfo, {
             taskId: input.taskId,
             title: input.title,
-            description: input.description ?? null,
-            blockedReason: input.blockedReason ?? null,
+            description: input.description,
+            blockedReason: input.blockedReason,
             status: input.status,
             priority: input.priority,
-            dueDate: input.dueDate ?? null,
-            estimateMinutes: input.estimateMinutes ?? null,
+            dueDate: input.dueDate,
+            estimateMinutes: input.estimateMinutes,
           }),
         );
       } catch (error) {

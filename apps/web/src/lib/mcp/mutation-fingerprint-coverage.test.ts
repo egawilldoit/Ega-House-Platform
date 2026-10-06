@@ -542,21 +542,35 @@ describe("write-module surface cannot exceed the fingerprinted MCP contract", ()
       goalId: UUID_C,
     } as never);
     expect(claims).toHaveLength(1);
-    // The fingerprint is the handler's full normalized projection: every
-    // declared update_task material field, with absent optionals as null.
-    // projectId/goalId are NOT among them — that is the point of this test.
+    // The fingerprint is the handler's full normalized projection over the declared
+    // update_task material fields. An OMITTED optional is now hashed as ABSENT rather
+    // than as null: `canonicalizeFingerprintValue` drops `undefined` object entries, and
+    // the transport now forwards the value as received instead of coercing it with
+    // `?? null`. That is what makes an omission a different mutation from an explicit
+    // clear. projectId/goalId are NOT among the fields at all — that is still the point
+    // of this test, and it is asserted by the source scan below.
     expect(claims[0].argsHash).toBe(
       canonicalMutationFingerprint("ega_update_task", {
         taskId: UUID_A,
         title: "Task",
-        description: null,
-        blockedReason: null,
-        status: null,
-        priority: null,
-        dueDate: null,
-        estimateMinutes: null,
+        description: undefined,
+        blockedReason: undefined,
+        status: undefined,
+        priority: undefined,
+        dueDate: undefined,
+        estimateMinutes: undefined,
       }),
     );
+
+    // And the corrected semantics must not have made a smuggled field fingerprinted:
+    // the hash above is unchanged whether or not projectId/goalId were supplied.
+    const { handlers: hWithoutSmuggle, claims: claimsWithoutSmuggle } = handlers();
+    await hWithoutSmuggle.updateTask(AUTH_INFO, {
+      taskId: UUID_A,
+      title: "Task",
+      operationId: OP,
+    } as never);
+    expect(claimsWithoutSmuggle[0].argsHash).toBe(claims[0].argsHash);
 
     // Guard 2: the registered schema is `.strict()`, so the SDK rejects the
     // extra keys before a handler ever runs. Asserted against the schema

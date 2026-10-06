@@ -313,11 +313,30 @@ const todayPlanOutputSchema = z.object({
 
 const timerSessionsOutputSchema = z.object({
   ok: z.literal(true),
+  // The session object mirrors the CANONICAL `TimerSessionRecord`
+  // (packages/application/src/timer/ports.ts) field for field, because the SDK
+  // validates a tool's declared output against what the handler returns and this
+  // object is `.strict()`.
+  //
+  // It previously declared four of the six fields. `mapSession` in
+  // packages/data-access/src/timer/repository.ts emits all six, so a strict
+  // four-field object rejected every real timer result: the capability was
+  // advertised, the tool answered, and the answer could not be delivered.
+  //
+  // `durationSeconds` and `taskTitle` are `nullable()` and NOT optional because
+  // the record always carries both keys - `mapSession` normalises a missing value
+  // to null rather than omitting it. Making them optional would accept a record
+  // the repository can never produce and quietly re-admit the same drift.
+  //
+  // Strictness is deliberate and asserted in `timer-output-contract.test.ts`:
+  // `.passthrough()` would have hidden the drift rather than closing it.
   sessions: z.array(z.object({
     id: uuidSchema,
     taskId: uuidSchema,
     startedAt: z.string(),
     endedAt: z.string().nullable(),
+    durationSeconds: z.number().int().nonnegative().nullable(),
+    taskTitle: z.string().nullable(),
   }).strict()),
   count: z.number().int().nonnegative(),
 }).strict();
