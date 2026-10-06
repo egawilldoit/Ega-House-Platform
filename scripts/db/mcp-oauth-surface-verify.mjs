@@ -1830,6 +1830,16 @@ async function assertTaskCompletion(sql) {
   // trigger would restore the breakage silently while the behavioural cases
   // below would keep reporting whatever they happened to observe.
   //
+  // WHICH MIGRATION OWNS IT. 0078 introduced the capture trigger; 0080 re-creates
+  // it under the same name (same alphabetical position) and widens it to
+  // BEFORE INSERT OR UPDATE. The order asserted here is therefore kept in place
+  // by 0080, and 0080 is the migration whose removal turns this verifier red -
+  // measured on this journal: removing 0078 leaves all four scripts/db verifiers
+  // and both scripts/ci node tests green, because 0080 installs the identical
+  // function and trigger; removing 0080 fails the completed_at assertion below.
+  // The behavioural cases, not this catalog read, are what make the capture
+  // trigger load-bearing.
+  //
   // pg_trigger is a heap, so its natural scan order is creation order and says
   // nothing about firing order. Ordered by NAME here because that IS the firing
   // order PostgreSQL uses for same-timing row triggers, which is why the capture
@@ -1844,7 +1854,14 @@ async function assertTaskCompletion(sql) {
   const order = triggers.map((row) => row.name);
   const positionOf = (name) => {
     const index = order.indexOf(name);
-    assert(index >= 0, `the trigger 0078 installs (${name}) must exist on public.tasks; found: ${order.join(", ")}`);
+    // 0078 introduced the capture trigger; 0080 re-creates it (with the same
+    // name, so the same alphabetical position) and widens it to INSERT OR UPDATE.
+    // The order this assertion protects is therefore 0080's to keep, and it is
+    // 0080 that turns red when removed - not 0078, which a later replacement
+    // makes inert. Measured on this journal: removing 0078 from the journal
+    // leaves all four verifiers and both CI node tests green; removing 0080 turns
+    // the surface verifier red on the completed_at assertion.
+    assert(index >= 0, `the capture trigger 0078 introduced and 0080 re-installs (${name}) must exist on public.tasks; found: ${order.join(", ")}`);
     return index;
   };
   const capture = positionOf("capture_tasks_mcp_caller_completed_at");
