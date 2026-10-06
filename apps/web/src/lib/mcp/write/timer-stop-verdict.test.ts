@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getPermissionsForProfile } from "@/lib/mcp/permissions";
@@ -71,12 +70,6 @@ const OP = "44444444-4444-4444-8444-444444444444";
 function deps(): { createUserClient: (t: string) => SupabaseClient<McpDatabase> } {
   return { createUserClient: vi.fn().mockReturnValue({} as SupabaseClient<McpDatabase>) };
 }
-
-function structured(result: CallToolResult): Record<string, unknown> {
-  return (result.structuredContent ?? {}) as Record<string, unknown>;
-}
-
-
 
 describe("STOP_TIMER VERDICT: ega_stop_timer needs no domain operation fence", () => {
   it("stopTaskSession accepts no operation identity — the port has no such parameter", () => {
