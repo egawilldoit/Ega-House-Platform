@@ -797,7 +797,7 @@ const IDENTITY_PAIR_TABLES = [
     table: "task_reminders",
     constraint: "task_reminders_mcp_operation_identity_pair",
     columns: "id, owner_user_id, task_id, remind_at",
-    values: ({ id, owner, tag, taskId }) =>
+    values: ({ id, owner, taskId }) =>
       `'${id}'::uuid, '${owner}'::uuid, '${taskId}'::uuid, '2026-05-01 07:00:00+00'`,
   },
   {
@@ -807,7 +807,7 @@ const IDENTITY_PAIR_TABLES = [
     // task_sessions_owner_open_unique admits only one open session per owner, so
     // an open probe row would be refused by that index instead of reaching 0074.
     columns: "id, owner_user_id, task_id, started_at, ended_at, duration_seconds",
-    values: ({ id, owner, tag, taskId }) =>
+    values: ({ id, owner, taskId }) =>
       `'${id}'::uuid, '${owner}'::uuid, '${taskId}'::uuid, '2026-05-01 09:00:00+00', '2026-05-01 10:00:00+00', 3600`,
   },
 ];
