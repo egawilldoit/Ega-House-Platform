@@ -11,10 +11,12 @@ import {
   unarchiveTask as unarchiveTaskService,
   unpinTask,
   updateTask as updateTaskService,
+  type ApplicationErrorCode,
 } from "@ega/application";
 import { SupabaseTasksRepository } from "@ega/data-access";
 
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
+import { mcpApplicationFailurePayload } from "@/lib/mcp/application-failure";
 import {
   McpToolAuthorizationError,
   requireMcpPermission,
@@ -53,11 +55,16 @@ function errorPayload(payload: McpToolErrorPayload): CallToolResult {
 }
 
 /**
- * Canonical use-case rejections (validation, ownership, scope) map to
- * INVALID_ARGUMENT with the canonical message; transports decide status codes.
+ * Canonical use-case rejections map onto the protocol error code that matches
+ * the class the application asserted, keeping the canonical message. Transports
+ * decide status codes; the exclusive-execution wrapper decides whether the
+ * outcome is permanent. Flattening every class onto INVALID_ARGUMENT is what
+ * froze a transient dependency failure as a permanent FAILED_FINAL receipt -
+ * see apps/web/src/lib/mcp/application-failure.ts.
  */
-function invalidArgumentResult(message: string): CallToolResult {
-  return errorPayload({ ok: false, error: { code: "INVALID_ARGUMENT", message } });
+function applicationFailureResult(message: string, code?: ApplicationErrorCode): CallToolResult {
+  const { code: transportCode, message: transportMessage } = mcpApplicationFailurePayload(message, code);
+  return errorPayload({ ok: false, error: { code: transportCode, message: transportMessage } });
 }
 
 function unexpectedErrorResult(error: unknown): CallToolResult {
@@ -109,7 +116,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
           principal.ownerUserId,
         );
         const result = await getTaskReadModel(actor, repository, input.taskId);
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         if (!result.data) {
           return errorPayload({ ok: false, error: { code: "NOT_FOUND", message: "Task not found." } });
         }
@@ -155,7 +162,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
             ? { mcpOperationId: input.operationId, mcpClientId: principal.oauthClientId }
             : {}),
         });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data });
       } catch (error) {
         return unexpectedErrorResult(error);
@@ -196,7 +203,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
           projectId: input.projectId,
           goalId: input.goalId,
         });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data });
       } catch (error) {
         return unexpectedErrorResult(error);
@@ -217,7 +224,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
         const result = await archiveTaskService(actor, repository, {
           taskId: input.taskId,
         });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data });
       } catch (error) {
         return unexpectedErrorResult(error);
@@ -238,7 +245,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
         const result = await unarchiveTaskService(actor, repository, {
           taskId: input.taskId,
         });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data });
       } catch (error) {
         return unexpectedErrorResult(error);
@@ -265,7 +272,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
         const result = input.pinned
           ? await pinTask(actor, repository, { taskId: input.taskId })
           : await unpinTask(actor, repository, { taskId: input.taskId });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data.task });
       } catch (error) {
         return unexpectedErrorResult(error);
@@ -290,7 +297,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
             ? { mcpOperationId: input.operationId, mcpClientId: principal.oauthClientId }
             : {}),
         });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data });
       } catch (error) {
         return unexpectedErrorResult(error);
@@ -312,7 +319,7 @@ export function createTaskMcpWriteHandlers(deps: McpWriteModuleDeps) {
           taskId: input.taskId,
           reminderId: input.reminderId,
         });
-        if (!result.ok) return invalidArgumentResult(result.errorMessage);
+        if (!result.ok) return applicationFailureResult(result.errorMessage, result.code);
         return okPayload({ ok: true, task: result.data });
       } catch (error) {
         return unexpectedErrorResult(error);

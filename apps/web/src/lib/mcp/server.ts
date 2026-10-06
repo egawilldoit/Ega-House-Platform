@@ -4,6 +4,10 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import { z } from "zod-v4";
 
 import { MCP_PERMISSIONS, MCP_PERMISSION_PROFILES } from "@/lib/mcp/permissions";
+import {
+  getCapability,
+  getMutableCapabilityAnnotations,
+} from "@/lib/mcp/capability-registry";
 import type {
   McpGoalFilters,
   McpTaskFilters,
@@ -181,26 +185,22 @@ export type McpWriteToolHandlers = {
   ) => Promise<CallToolResult>;
 };
 
-const READ_ONLY_ANNOTATIONS = {
-  readOnlyHint: true,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
-
-const WRITE_ANNOTATIONS = {
-  readOnlyHint: false,
-  destructiveHint: false,
-  idempotentHint: true,
-  openWorldHint: false,
-} as const;
-
-const DESTRUCTIVE_ANNOTATIONS = {
-  readOnlyHint: false,
-  destructiveHint: true,
-  idempotentHint: false,
-  openWorldHint: false,
-} as const;
+/**
+ * Annotations are DERIVED from the canonical capability registry, not written a
+ * second time here. These were three hand-maintained literals, which made the
+ * registry's central claim - that it is the one place stating whether a
+ * capability is destructive or idempotent - false: flipping `destructive` in the
+ * registry changed nothing a client was told.
+ *
+ * Resolved per tool rather than per group. Grouping does not survive contact
+ * with the registry: `ega_archive_task` is destructive AND idempotent (repeating
+ * the archive UPDATE succeeds with the same result, as ARCHITECTURE.md records)
+ * while `ega_clear_completed_today` is destructive and NOT idempotent, so a
+ * single "destructive" literal would have to be wrong about one of them.
+ */
+function annotationsFor(name: string): Record<string, boolean> {
+  return getMutableCapabilityAnnotations(getCapability(name));
+}
 
 const limitSchema = z.number().int().min(1).max(100).default(25);
 const uuidSchema = z.string().uuid();
@@ -313,11 +313,30 @@ const todayPlanOutputSchema = z.object({
 
 const timerSessionsOutputSchema = z.object({
   ok: z.literal(true),
+  // The session object mirrors the CANONICAL `TimerSessionRecord`
+  // (packages/application/src/timer/ports.ts) field for field, because the SDK
+  // validates a tool's declared output against what the handler returns and this
+  // object is `.strict()`.
+  //
+  // It previously declared four of the six fields. `mapSession` in
+  // packages/data-access/src/timer/repository.ts emits all six, so a strict
+  // four-field object rejected every real timer result: the capability was
+  // advertised, the tool answered, and the answer could not be delivered.
+  //
+  // `durationSeconds` and `taskTitle` are `nullable()` and NOT optional because
+  // the record always carries both keys - `mapSession` normalises a missing value
+  // to null rather than omitting it. Making them optional would accept a record
+  // the repository can never produce and quietly re-admit the same drift.
+  //
+  // Strictness is deliberate and asserted in `timer-output-contract.test.ts`:
+  // `.passthrough()` would have hidden the drift rather than closing it.
   sessions: z.array(z.object({
     id: uuidSchema,
     taskId: uuidSchema,
     startedAt: z.string(),
     endedAt: z.string().nullable(),
+    durationSeconds: z.number().int().nonnegative().nullable(),
+    taskTitle: z.string().nullable(),
   }).strict()),
   count: z.number().int().nonnegative(),
 }).strict();
@@ -500,7 +519,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
             "Return the active EGA House permission profile and capabilities for this OAuth connection.",
           inputSchema: capabilitiesInputSchema,
           outputSchema: capabilitiesOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_get_capabilities"),
         },
         async (_input, ctx) =>
           handlers.getCapabilities(getAuthInfo(ctx as unknown as ServerContext), getProtocolContext(ctx as unknown as ServerContext)),
@@ -517,7 +536,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
             "List projects owned by the authenticated EGA House user. Results are bounded and ordered newest first.",
           inputSchema: projectsInputSchema,
           outputSchema: projectsOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_list_projects"),
         },
         async (input, ctx) =>
           handlers.listProjects(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -534,7 +553,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
             "List goals owned by the authenticated EGA House user, optionally filtered by project.",
           inputSchema: goalsInputSchema,
           outputSchema: goalsOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_list_goals"),
         },
         async (input, ctx) =>
           handlers.listGoals(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -551,7 +570,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
             "List tasks owned by the authenticated EGA House user with optional project, goal, status, priority, and archive filters.",
           inputSchema: tasksInputSchema,
           outputSchema: tasksOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_list_tasks"),
         },
         async (input, ctx) =>
           handlers.listTasks(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -567,7 +586,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
           description: "Get a single owned task by id. Requires tasks.read.",
           inputSchema: getTaskInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_get_task"),
         },
         async (input, ctx) =>
           handlers.getTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -583,7 +602,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
           description: "Get Today projection (selected tasks, suggestions, timer snapshot) for date. Requires today.read.",
           inputSchema: todayPlanInputSchema,
           outputSchema: todayPlanOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_get_today_plan"),
         },
         async (input, ctx) =>
           handlers.getTodayPlan(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -599,7 +618,7 @@ const READ_TOOL_REGISTRATIONS: readonly ReadToolRegistration[] = [
           description: "List timer sessions (open and recent) for the authenticated user. Requires timer.read.",
           inputSchema: timerSessionsInputSchema,
           outputSchema: timerSessionsOutputSchema,
-          annotations: READ_ONLY_ANNOTATIONS,
+          annotations: annotationsFor("ega_list_timer_sessions"),
         },
         async (input, ctx) =>
           handlers.listTimerSessions(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -632,7 +651,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Create a new project owned by the authenticated user. Requires workspace_manager.",
           inputSchema: createProjectInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_create_project"),
         },
         async (input, ctx) =>
           handlers.createProject(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -648,7 +667,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Update status of an owned project. Requires workspace_manager.",
           inputSchema: updateProjectStatusInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_update_project_status"),
         },
         async (input, ctx) =>
           handlers.updateProjectStatus(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -664,7 +683,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Archive an owned project. Requires workspace_manager.",
           inputSchema: archiveProjectInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: DESTRUCTIVE_ANNOTATIONS,
+          annotations: annotationsFor("ega_archive_project"),
         },
         async (input, ctx) =>
           handlers.archiveProject(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -680,7 +699,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Restore an archived project. Requires workspace_manager.",
           inputSchema: archiveProjectInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_unarchive_project"),
         },
         async (input, ctx) =>
           handlers.unarchiveProject(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -696,7 +715,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Create a goal under an owned project. Requires workspace_manager.",
           inputSchema: createGoalInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_create_goal"),
         },
         async (input, ctx) =>
           handlers.createGoal(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -712,7 +731,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Update the status of an owned goal. Requires workspace_manager.",
           inputSchema: updateGoalStatusInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_update_goal_status"),
         },
         async (input, ctx) =>
           handlers.updateGoalStatus(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -728,7 +747,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Update the health of an owned goal. Requires workspace_manager.",
           inputSchema: updateGoalHealthInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_update_goal_health"),
         },
         async (input, ctx) =>
           handlers.updateGoalHealth(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -744,7 +763,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Update the next step of an owned goal. Requires workspace_manager.",
           inputSchema: updateGoalNextStepInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_update_goal_next_step"),
         },
         async (input, ctx) =>
           handlers.updateGoalNextStep(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -760,7 +779,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Archive an owned goal. Requires workspace_manager.",
           inputSchema: archiveGoalInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: DESTRUCTIVE_ANNOTATIONS,
+          annotations: annotationsFor("ega_archive_goal"),
         },
         async (input, ctx) =>
           handlers.archiveGoal(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -776,7 +795,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Restore an archived goal. Requires workspace_manager.",
           inputSchema: archiveGoalInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_unarchive_goal"),
         },
         async (input, ctx) =>
           handlers.unarchiveGoal(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -792,7 +811,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Create a task under an owned project. Requires tasks.create and operationId for idempotency.",
           inputSchema: createTaskInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_create_task"),
         },
         async (input, ctx) =>
           handlers.createTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -808,7 +827,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Update an owned task. Requires tasks.update.",
           inputSchema: updateTaskInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_update_task"),
         },
         async (input, ctx) =>
           handlers.updateTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -824,7 +843,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Archive an owned task. Requires tasks.update.",
           inputSchema: archiveTaskInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: DESTRUCTIVE_ANNOTATIONS,
+          annotations: annotationsFor("ega_archive_task"),
         },
         async (input, ctx) =>
           handlers.archiveTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -840,7 +859,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Restore an archived task. Requires tasks.update.",
           inputSchema: archiveTaskInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_unarchive_task"),
         },
         async (input, ctx) =>
           handlers.unarchiveTask(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -856,7 +875,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Pin or unpin an owned task in the focus queue. Requires tasks.update.",
           inputSchema: setTaskFocusRankInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_set_task_focus_rank"),
         },
         async (input, ctx) =>
           handlers.setTaskFocusRank(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -872,7 +891,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Create a reminder for an owned task. Requires tasks.update.",
           inputSchema: createTaskReminderInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_create_task_reminder"),
         },
         async (input, ctx) =>
           handlers.createTaskReminder(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -888,7 +907,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Cancel a reminder on an owned task. Requires tasks.update.",
           inputSchema: cancelTaskReminderInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: DESTRUCTIVE_ANNOTATIONS,
+          annotations: annotationsFor("ega_cancel_task_reminder"),
         },
         async (input, ctx) =>
           handlers.cancelTaskReminder(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -904,7 +923,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Set planned_for_date on an owned task (Today is a projection). Requires today.update.",
           inputSchema: planTaskForTodayInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_plan_task_for_today"),
         },
         async (input, ctx) =>
           handlers.planTaskForToday(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -920,7 +939,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Clear planned_for_date on an owned task (task is kept). Requires today.update.",
           inputSchema: removeTaskFromTodayInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_remove_task_from_today"),
         },
         async (input, ctx) =>
           handlers.removeTaskFromToday(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -936,7 +955,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Update the status of an owned task via the Today projection. Requires today.update.",
           inputSchema: updateTodayTaskStatusInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_update_today_task_status"),
         },
         async (input, ctx) =>
           handlers.updateTodayTaskStatus(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -952,7 +971,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Start a timer session for an owned task. Enforces single open timer. Requires timer.create.",
           inputSchema: startTimerInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_start_timer"),
         },
         async (input, ctx) =>
           handlers.startTimer(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -968,7 +987,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Stop an open timer session. Requires timer.update.",
           inputSchema: stopTimerInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: WRITE_ANNOTATIONS,
+          annotations: annotationsFor("ega_stop_timer"),
         },
         async (input, ctx) =>
           handlers.stopTimer(getAuthInfo(ctx as unknown as ServerContext), input, getProtocolContext(ctx as unknown as ServerContext)),
@@ -984,7 +1003,7 @@ const WRITE_TOOL_REGISTRATIONS: readonly WriteToolRegistration[] = [
           description: "Clear completed tasks planned for date. Requires today.update and human confirmation via MRTR.",
           inputSchema: clearCompletedTodayInputSchema,
           outputSchema: genericWriteOutputSchema,
-          annotations: DESTRUCTIVE_ANNOTATIONS,
+          annotations: annotationsFor("ega_clear_completed_today"),
         },
         async (input, ctx) =>
           handlers.clearCompletedToday(getAuthInfo(ctx as unknown as ServerContext), input, ctx as unknown as ServerContext),

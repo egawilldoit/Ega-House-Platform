@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 
+import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import {
   archiveGoal,
   createGoal,
@@ -38,17 +39,7 @@ const WORKSPACE_MANAGER_PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "workspace_manager",
   permissionsVersion: 1,
-  permissions: [
-    "projects.read",
-    "projects.create",
-    "projects.update",
-    "goals.read",
-    "goals.create",
-    "goals.update",
-    "tasks.read",
-    "today.read",
-    "timer.read",
-  ],
+  permissions: getPermissionsForProfile("workspace_manager", 1),
 };
 
 const READ_ONLY_PRINCIPAL: McpPrincipal = {

@@ -41,6 +41,7 @@ function isExplicitlyEnabled(value: string | undefined): boolean {
   return value === "true";
 }
 
+
 export function getMcpRuntimeConfig(
   env: McpEnvironment = process.env as McpEnvironment,
 ): McpRuntimeConfig {
@@ -59,6 +60,6 @@ export function getMcpRuntimeConfig(
     publishableKey: requireEnv(
       env,
       "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-    ),
+    )
   };
 }

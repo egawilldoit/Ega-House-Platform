@@ -5,6 +5,7 @@ import {
   createAuthenticatedActor,
   startTaskSession,
   stopTaskSession,
+  type ApplicationErrorCode,
   TIMER_ALREADY_RUNNING_MESSAGE,
   TIMER_NO_OPEN_SESSION_MATCH_MESSAGE,
   TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE,
@@ -13,6 +14,7 @@ import {
 } from "@ega/application";
 import { SupabaseTimerSessionRepository } from "@ega/data-access";
 
+import { mcpApplicationFailurePayload } from "@/lib/mcp/application-failure";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import { McpToolAuthorizationError, requireMcpPermission } from "@/lib/mcp/tool-authorization";
 
@@ -66,10 +68,15 @@ function isWritesDisabledError(error: unknown): error is Error {
 
 /**
  * Map a canonical timer ApplicationResult failure onto a protocol error code
- * without duplicating the canonical wording. Unrecognized canonical business
- * failures (for example task eligibility rejections) surface verbatim.
+ * from the CLASS the use case asserted, not from string-matching its wording,
+ * and without duplicating that wording. The named constants are still honoured
+ * so a canonical business failure keeps its established code even if a future
+ * use case forgets to tag it.
  */
-function mapCanonicalTimerFailure(errorMessage: string): { code: string; message: string } {
+function mapCanonicalTimerFailure(
+  errorMessage: string,
+  code?: ApplicationErrorCode,
+): { code: string; message: string } {
   if (
     errorMessage === TIMER_ALREADY_RUNNING_MESSAGE
     || errorMessage === TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE
@@ -82,10 +89,10 @@ function mapCanonicalTimerFailure(errorMessage: string): { code: string; message
   ) {
     return { code: "NOT_FOUND", message: errorMessage };
   }
-  if (errorMessage.startsWith("Unable to ")) {
+  if (code === "unknown") {
     return { code: "DEPENDENCY_UNAVAILABLE", message: DEPENDENCY_UNAVAILABLE_MESSAGE };
   }
-  return { code: "INVALID_ARGUMENT", message: errorMessage };
+  return mcpApplicationFailurePayload(errorMessage, code);
 }
 
 function mapModuleError(error: unknown): CallToolResult {
@@ -168,7 +175,7 @@ export function createMcpTimerModuleHandlers(
             : {}),
         });
         if (!result.ok) {
-          return errorResult(mapCanonicalTimerFailure(result.errorMessage));
+          return errorResult(mapCanonicalTimerFailure(result.errorMessage, result.code));
         }
 
         const { sessionId, taskId, startedAt, elapsedLabel, taskTitle } = result.data;
@@ -190,7 +197,7 @@ export function createMcpTimerModuleHandlers(
 
         const result = await stopTaskSession(actor, repository, { sessionId: input.sessionId });
         if (!result.ok) {
-          return errorResult(mapCanonicalTimerFailure(result.errorMessage));
+          return errorResult(mapCanonicalTimerFailure(result.errorMessage, result.code));
         }
 
         return resultFromPayload({

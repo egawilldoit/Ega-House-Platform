@@ -149,7 +149,7 @@ jobs:
 
   workspace:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -196,7 +196,7 @@ jobs:
 
   contracts:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -216,7 +216,7 @@ jobs:
 
   domain:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -236,7 +236,7 @@ jobs:
 
   application:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -256,7 +256,7 @@ jobs:
 
   data-access:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -276,7 +276,7 @@ jobs:
 
   regressions:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -293,6 +293,22 @@ jobs:
         run: node scripts/ci/verify-platform-optionals.mjs
       - name: Agent context regression
         run: npm run validate:agent-context
+      # src/db/mcp-schema.ts is an input to db:generate/db:push, so a stale
+      # declaration there silently reverts hand-written MCP constraint
+      # migrations. Unconditional because the security model lives in the
+      # migration journal, which no path filter would reliably catch.
+      - name: MCP permission-version schema drift regression
+        run: npm run test:mcp-schema-drift
+      # The journal must stay totally ordered by `when`, the one number
+      # drizzle-orm's migrator compares. Needs no database, so it runs here
+      # unconditionally; its behavioural sibling is the db-invariants step.
+      - name: Migration journal order regression
+        run: node --test scripts/ci/journal-order.test.mjs
+      # A scripts/db verifier wired into a step that never defines its --url
+      # expands to the empty string and exits without proving anything, which
+      # happened to one security proof here. This reads the workflow itself.
+      - name: DB proof step scope regression
+        run: node --test scripts/ci/db-proof-step-scopes.test.mjs
       - name: Runner typecheck regression
         run: npm run typecheck:ega-runner
       - name: Runner PR-loop regression
@@ -300,7 +316,7 @@ jobs:
 
   lint-changed:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -328,7 +344,7 @@ jobs:
 
   lint-report:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     continue-on-error: true
     steps:
       - name: Checkout exact head
@@ -351,7 +367,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.web == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -381,7 +397,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.mobile == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -409,7 +425,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.server == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -434,7 +450,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.api-client == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout exact head
         uses: actions/checkout@v5
@@ -459,7 +475,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.db == 'true' || needs.changes.outputs.force_full == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     services:
       postgres:
         image: postgres:16
@@ -493,6 +509,14 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove the MCP operation fences by name, not by disjunction
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-operation-fence-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove MCP rate-limit thresholds and counter atomicity under concurrency
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-rate-limit-concurrency-verify.mjs --url "$PROOF_DATABASE_URL"
       - name: Prove archived project purge invariants through the migration journal
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
@@ -509,6 +533,41 @@ jobs:
         env:
           PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
         run: node scripts/db/mcp-receipt-invariant-verify.mjs --url "$PROOF_DATABASE_URL" --upgrade-from 0049_operator_proposals --expect-unknown-shape-failure
+      - name: Prove the MCP hardening tail upgrades existing data from 0049 and 0063
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-upgrade-path-verify.mjs --url "$PROOF_DATABASE_URL"
+      # Every other proof in this job applies the journal with the repository's
+      # own applier, which walks the journal as an array and never reads `when`.
+      # This one drives drizzle-orm's real migrator, because a non-increasing or
+      # shared `when` makes it SKIP entries while reporting success.
+      - name: Prove the real migrator applies every remaining journal entry
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/journal-order-verify.mjs --url "$PROOF_DATABASE_URL"
+      # The two proofs below were written for this program and never wired into
+      # any job, so the two largest security verifiers in scripts/db gated
+      # nothing. They share this job's single database with every other step
+      # above, deliberately and contrary to an earlier comment here that claimed
+      # each named its own: every verifier drops and recreates
+      # public/auth/automation as its first act and restores them before it
+      # exits, so sequential steps in one job are safe and a shared service
+      # container stays the only Postgres this job needs.
+      - name: Prove the MCP OAuth database authorization surface
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-oauth-surface-verify.mjs --url "$PROOF_DATABASE_URL"
+      - name: Prove direct-user RLS is unchanged by the MCP hardening
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-normal-user-rls-verify.mjs --url "$PROOF_DATABASE_URL"
+      # Names its own database like the verifier above, for the same reason: it
+      # drops the public/auth/automation schemas and then lets drizzle-kit push
+      # rewrite the result.
+      - name: Prove db:generate and db:push cannot regress the MCP permission-version model
+        env:
+          PROOF_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/ega_proof
+        run: node scripts/db/mcp-schema-drift-verify.mjs --url "$PROOF_DATABASE_URL"
 
   hygiene:
     needs: [changes, workspace, contracts, domain, application, data-access, regressions, lint-changed, lint-report, web, mobile, server, api-client, db-invariants]

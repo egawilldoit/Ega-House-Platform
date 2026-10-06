@@ -131,9 +131,10 @@ test("reminder create and cancel are owner scoped", async () => {
   const fake = new FakeSupabase();
   fake.push("task_reminders", { data: null, error: null });
   fake.push("tasks", { data: taskRow(), error: null });
-  fake.push("task_reminders", { data: [], error: null });
   fake.push("task_recurrences", { data: [], error: null });
-  fake.push("task_reminders", { data: null, error: null });
+  // cancelReminder selects the updated row so a zero-row RLS match is
+  // observable; it must return one.
+  fake.push("task_reminders", { data: [{ id: "reminder-1" }], error: null });
   fake.push("tasks", { data: taskRow(), error: null });
   fake.push("task_reminders", { data: [], error: null });
   fake.push("task_recurrences", { data: [], error: null });
@@ -154,6 +155,38 @@ test("reminder create and cancel are owner scoped", async () => {
   const reminderCalls = fake.calls.filter((call) => call.table === "task_reminders");
   assert.ok(reminderCalls[0]?.steps.some((step) => step.method === "insert" && (step.args[0] as Record<string, unknown>).owner_user_id === "user-123"));
   assert.ok(reminderCalls.some((call) => call.steps.some((step) => step.method === "eq" && step.args[0] === "owner_user_id" && step.args[1] === "user-123")));
+});
+
+test("cancelling a reminder that matched no visible row fails instead of reporting success", async () => {
+  // Row-level security filters silently, so an update matching nothing is not an
+  // error. Reporting success there is how ega_cancel_task_reminder claimed to
+  // cancel a reminder that was still pending and still delivered.
+  //
+  // The follow-up read is queued so it SUCCEEDS. Without it the missing `tasks`
+  // response makes the read return null and the failure arrives by an unrelated
+  // path, so the assertion below also holds on an implementation with no
+  // zero-row check at all - it would not be a regression test. Queueing a
+  // readable task means only the zero-row check can produce ok: false here.
+  const fake = new FakeSupabase();
+  fake.push("task_reminders", { data: null, error: null });
+  fake.push("tasks", { data: taskRow(), error: null });
+  fake.push("task_reminders", { data: [], error: null });
+  fake.push("task_recurrences", { data: [], error: null });
+
+  const result = await repository(fake).cancelReminder(ACTOR, {
+    taskId: "task-1",
+    reminderId: "reminder-missing",
+    status: "cancelled",
+  });
+
+  assert.equal(result.ok, false);
+  // The follow-up read must not have been needed at all: a refusal means the
+  // cancellation touched nothing, so there is no task state to return.
+  assert.equal(
+    fake.calls.filter((call) => call.table === "tasks").length,
+    0,
+    "a zero-row cancellation must not read the task back",
+  );
 });
 
 // EGA-662 completed_at parity: the shared repository seam (Hono/mobile/MCP)

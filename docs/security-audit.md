@@ -3,6 +3,14 @@
 Date: 2026-04-24
 Scope: EGA-268 practical RLS, owner-scope, auth/session, middleware, and secret-handling audit for the personal OS web and mobile API surfaces.
 
+> **Scope boundary.** Everything below is the dated 2026-04-24 EGA-268 audit and
+> is left as recorded. It predates the MCP/OAuth surface and does not cover it.
+> The one section this file now owns beyond that audit is
+> [Dependency and licence posture](#dependency-and-licence-posture-2026-10-05),
+> which is the only part of this document that tracks supply-chain risk. For the
+> current MCP/OAuth authorization architecture, see
+> [`ARCHITECTURE.md`](../ARCHITECTURE.md) §6.
+
 ## Current Risk Level
 
 Low for the current personal OS scope.
@@ -105,6 +113,96 @@ No Supabase service-role key variable was found in `.env.local` or app code.
 | Low | Consider making `owner_user_id` columns `NOT NULL` in a future migration after confirming existing rows are backfilled. Current RLS blocks null-owned rows from authenticated access, so this is integrity hardening, not an active leak. |
 | Low | Rename `PENCLAW_HEALTH_URL` if it is a typo for `OPENCLAW_HEALTH_URL`; not security-sensitive, but it can cause config confusion. |
 
+## Dependency and licence posture (2026-10-05)
+
+Recorded separately from the 2026-04-24 audit above because the supply-chain
+gate and the MCP/OAuth surface both postdate it. Verified against repository
+state `16e22cd9`. This section records **what is enforced and what is carried**,
+with no accepted-risk language beyond what the exception registry itself carries
+with named owners and expiry dates.
+
+**Enforced.** CI runs `node scripts/ci/audit-production.mjs` as its own step,
+"Dependency audit high/critical policy"; it blocks any high/critical
+`npm audit --omit=dev` advisory that is not a structured exception in that same
+file. An exception names one advisory source id on one package and carries a
+`reviewBy` date; an entry that is expired or whose `reviewBy` is malformed is
+reported as a blocking finding in its own right rather than honoured, and
+matching one advisory never excuses another. This is distinct from
+`npm run ci:workspace`, which asserts properties *about* the registry and the
+lockfile (`audit-production.test.mjs` + `workspace-proofs.mjs`) without running
+the live audit. `scripts/ci/workspace-proofs.mjs` pins the direct web pins
+(`next` 16.3.8, React 19.1.0) and the mobile toolchain pins (`expo` ~54.0.37,
+`react-native` 0.81.5, `expo-router` ~6.0.23). The gate is a CI check with a
+failing exit code — that is the evidence; this document does not restate its
+result as a finding.
+
+**`next` 16.3.8** (was 16.3.5), pinned in `apps/web/package.json`.
+GHSA-vcvr-r3jv-pc5j is treated as a critical RCE in `next/og`, and it was
+**upgraded past rather than excepted** — `scripts/ci/audit-production.test.mjs`
+asserts that no registry entry ever names `next` or that advisory id, so
+re-introducing it would be caught rather than inherited. **No product code imports
+`next/og`** — verified by `grep` across `apps/`, `packages/`, `src/` and
+`scripts/`, which finds the string only in the comment at
+`scripts/ci/workspace-proofs.mjs:167` that justifies the pin; no `ImageResponse`
+is constructed anywhere in first-party source; and `apps/web` sets `openGraph`
+metadata as plain object literals in `src/app/layout.tsx:45`. So the vulnerable
+surface is unreachable at this revision and the upgrade was taken regardless. The
+advisory's exact patched version boundary is **not derivable from this
+repository** and is not asserted here; the `workspace-proofs.mjs:167` comment
+describing 16.3.8 as "the first release containing the fix" is a code comment
+this document cannot verify, not evidence.
+
+**Two exceptions are carried, both in the 2026-11-05 cohort.** Counted by
+importing `SECURITY_AUDIT_EXCEPTIONS` rather than by reading this table: 2
+entries, grouped `{2026-11-05: 2}`, none expired on 2026-10-05. The seven entries
+that used to expire on 2026-10-15 — `brace-expansion` ×6 (reached via
+`expo > react-native`) and `undici` ×1 (via `@expo/cli`) — were **remediated, not
+renewed**: their recorded reason "no patched release" was false, and scoped root
+overrides now pin them past every reported range (`brace-expansion@^1 -> 1.1.21`,
+`@^2 -> 2.1.7`, `@^5 -> 5.0.12`, `undici@^6 -> 6.29.0`). Each patched release
+satisfies the range its own parent already declares, so none of these is an
+out-of-range override. `npm audit --omit=dev` reports none of the seven after the
+change, and `audit-production.test.mjs` asserts both that the registry never names
+those sources again and that a report carrying any of them blocks. The canonical
+per-entry table, with the reason each remaining entry is unfixable today, is
+[`docs/architecture/dependency-audit-exceptions.md`](architecture/dependency-audit-exceptions.md).
+The two remaining entries are narrow, fully governed, and carry a 2026-11-05
+review date:
+
+| Package | Version | Advisory | Why it cannot be fixed here | Reachability (verified in `package-lock.json`) |
+|---|---|---|---|---|
+| `braces` | 3.0.3 | GHSA-vfj7-8cjw-p6xm | No patched release has ever been published; 3.0.3 is the newest version that exists and the advisory lists no fixed version, so there is no upgrade and no override that resolves it. Dropped by removing the entry the moment upstream ships a fix. | Only parent is `micromatch`, whose parents are `@jest/*`, `jest-*`, `fast-glob` and `metro-file-map` — test/build tooling. Not imported by any first-party source. |
+| `node-forge` | 1.4.0 | GHSA-86w9-cpqp-85rv | No patched release has ever been published; 1.4.0 is the newest version that exists. Dropped the same way. | Only parents are `@expo/code-signing-certificates` and `@expo/cli`, which use it to verify EAS build artifacts, not to serve untrusted input. Not imported by any first-party source. |
+
+Neither package is flagged `dev` in `package-lock.json`, which is why they surface
+in a `--omit=dev` audit at all. "Build-time only" is therefore a *reachability*
+claim established by walking the lockfile's dependency edges, not an npm
+`devDependency` flag — the distinction is why these are governed as expiring
+exceptions rather than dismissed as development dependencies. The same distinction
+applies to `brace-expansion` and `undici`, which are likewise reached only through
+build/test tooling and the Expo CLI rather than the shipped app runtime.
+
+Expiry is enforced, not decorative: `isExpired` is mutation-tested in this
+repository. Breaking it to always return `false` fails 3 of 24 tests; reversing the
+comparison fails 8. Both directions were confirmed to fail and then confirmed green
+after restoring `nowDate > reviewDate`.
+
+The full governance fields for each carried entry (`affectedSurface`,
+`whyNotFixableNow`, `allowDirect`, `owner`, `reviewBy`, `upstream`) live in the
+script; see
+[`docs/architecture/dependency-audit-exceptions.md`](architecture/dependency-audit-exceptions.md)
+for the surrounding history.
+
+**Licences.** The MCP SDK dependency change (2.0.0 → 2.3.0, Apache-2.0) is
+recorded in [`docs/third-party-licenses.md`](third-party-licenses.md). No
+`NOTICE` file is shipped by any of the three SDK packages, so no upstream NOTICE
+content exists to carry forward. That document is an inventory of observed
+metadata and shipped files; it is not legal advice and states no obligation
+beyond the observations it records.
+
 ## Conclusion
 
 No obvious cross-user data leak remains in app code for the checked private workflow surfaces. The live database now has forced owner-scoped RLS for `projects`, `goals`, `tasks`, `task_sessions`, `task_saved_views`, and `week_reviews`. App code consistently uses authenticated request-scoped or bearer-scoped Supabase clients for private reads and writes.
+
+*(Conclusion as recorded 2026-04-24 for the EGA-268 scope. It says nothing about
+the MCP/OAuth surface, which did not exist at that revision.)*

@@ -23,6 +23,15 @@ export const TIMER_NO_OPEN_SESSION_MATCH_MESSAGE =
 export const TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE =
   "That timer session is no longer running.";
 
+/**
+ * A repository refusal carries either a class ("conflict") or none ("unknown").
+ * Every MCP write use case must forward it: a transport that cannot tell the
+ * two apart freezes a transient dependency failure as a permanent receipt.
+ */
+function toAppErrorCode(repoCode?: string): "conflict" | "unknown" {
+  return repoCode === "conflict" ? "conflict" : "unknown";
+}
+
 export type TimerActiveSession = Readonly<{
   sessionId: string;
   taskId: string;
@@ -125,7 +134,7 @@ export async function getTimerWorkspace(
 ): Promise<ApplicationResult<TimerWorkspace>> {
   const now = input.now ?? new Date();
   if (Number.isNaN(now.getTime())) {
-    return applicationFailure("Current time is invalid.");
+    return applicationFailure("Current time is invalid.", "validation");
   }
   const nowIso = now.toISOString();
   const requestedTimezone =
@@ -136,7 +145,10 @@ export async function getTimerWorkspace(
     now,
   });
   if (!timeContextResult.ok) {
-    return applicationFailure("Unable to load the timer workspace right now.");
+    return applicationFailure(
+      "Unable to load the timer workspace right now.",
+      timeContextResult.code ?? "unknown",
+    );
   }
 
   const dayWindow = timeContextResult.data.dayWindow;
@@ -150,8 +162,8 @@ export async function getTimerWorkspace(
     repository.listRecentSessions(actor, { limit: 150 }),
   ]);
 
-  if (!openResult.ok) return applicationFailure("Unable to load the timer workspace right now.");
-  if (!recentResult.ok) return applicationFailure("Unable to load the timer workspace right now.");
+  if (!openResult.ok) return applicationFailure("Unable to load the timer workspace right now.", toAppErrorCode(openResult.error.code));
+  if (!recentResult.ok) return applicationFailure("Unable to load the timer workspace right now.", toAppErrorCode(recentResult.error.code));
 
   const openSessions = [...openResult.value].sort((left, right) =>
     right.startedAt.localeCompare(left.startedAt),
@@ -175,7 +187,7 @@ export async function startTaskSession(
   options: Readonly<{ now?: Date }> = {},
 ): Promise<ApplicationResult<TimerActiveSession>> {
   const taskId = String(input.taskId ?? "").trim();
-  if (!taskId) return applicationFailure("Task is required.");
+  if (!taskId) return applicationFailure("Task is required.", "validation");
 
   const startedAtIso = (options.now ?? new Date()).toISOString();
 
@@ -188,15 +200,15 @@ export async function startTaskSession(
   // is the original timer start, even if the task changed after the crash.
   if (operationIdentity) {
     const replayResult = await repository.findSessionByOperation(actor, operationIdentity);
-    if (!replayResult.ok) return applicationFailure("Unable to verify the timer operation right now.");
+    if (!replayResult.ok) return applicationFailure("Unable to verify the timer operation right now.", toAppErrorCode(replayResult.error.code));
     if (replayResult.value) return applicationSuccess(toActiveSession(replayResult.value, startedAtIso));
   }
 
   const taskResult = await repository.getStartableTask(actor, { taskId });
-  if (!taskResult.ok) return applicationFailure("Unable to verify the task right now.");
-  if (!taskResult.value) return applicationFailure(TIMER_TASK_UNAVAILABLE_MESSAGE);
+  if (!taskResult.ok) return applicationFailure("Unable to verify the task right now.", toAppErrorCode(taskResult.error.code));
+  if (!taskResult.value) return applicationFailure(TIMER_TASK_UNAVAILABLE_MESSAGE, "notFound");
   if (!taskResult.value.eligible) {
-    return applicationFailure(taskResult.value.reason ?? "This task cannot start a timer.");
+    return applicationFailure(taskResult.value.reason ?? "This task cannot start a timer.", "validation");
   }
 
   // A fenced MCP create must reach the domain INSERT before the open-session
@@ -204,9 +216,9 @@ export async function startTaskSession(
   // proof; the pre-check alone cannot distinguish replay from a new timer.
   if (!operationIdentity) {
     const openResult = await repository.listOpenSessions(actor);
-    if (!openResult.ok) return applicationFailure("Unable to verify running timers right now.");
+    if (!openResult.ok) return applicationFailure("Unable to verify running timers right now.", toAppErrorCode(openResult.error.code));
     if (openResult.value.length > 0) {
-      return applicationFailure(TIMER_ALREADY_RUNNING_MESSAGE);
+      return applicationFailure(TIMER_ALREADY_RUNNING_MESSAGE, "conflict");
     }
   }
 
@@ -216,11 +228,9 @@ export async function startTaskSession(
     ...(operationIdentity ?? {}),
   });
   if (!insertResult.ok) {
-    return applicationFailure(
-      insertResult.error.code === "conflict"
-        ? TIMER_ALREADY_RUNNING_MESSAGE
-        : "Unable to start the timer right now.",
-    );
+    return insertResult.error.code === "conflict"
+      ? applicationFailure(TIMER_ALREADY_RUNNING_MESSAGE, "conflict")
+      : applicationFailure("Unable to start the timer right now.", "unknown");
   }
 
   return applicationSuccess(toActiveSession(insertResult.value, startedAtIso));
@@ -235,7 +245,7 @@ export async function stopTaskSession(
   const requestedSessionId = String(input.sessionId ?? "").trim();
 
   const openResult = await repository.listOpenSessions(actor);
-  if (!openResult.ok) return applicationFailure("Unable to load running timers right now.");
+  if (!openResult.ok) return applicationFailure("Unable to load running timers right now.", toAppErrorCode(openResult.error.code));
 
   const openSessions = [...openResult.value].sort((left, right) =>
     right.startedAt.localeCompare(left.startedAt),
@@ -246,7 +256,7 @@ export async function stopTaskSession(
     : openSessions[0];
 
   if (!target) {
-    return applicationFailure(TIMER_NO_OPEN_SESSION_MATCH_MESSAGE);
+    return applicationFailure(TIMER_NO_OPEN_SESSION_MATCH_MESSAGE, "notFound");
   }
 
   const endedAtIso = (options.now ?? new Date()).toISOString();
@@ -257,9 +267,9 @@ export async function stopTaskSession(
     endedAtIso,
     durationSeconds,
   });
-  if (!finalizeResult.ok) return applicationFailure("Unable to stop the timer right now.");
+  if (!finalizeResult.ok) return applicationFailure("Unable to stop the timer right now.", toAppErrorCode(finalizeResult.error.code));
   if (!finalizeResult.value) {
-    return applicationFailure(TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE);
+    return applicationFailure(TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE, "conflict");
   }
 
   return applicationSuccess({ sessionId: target.id, taskId: target.taskId });

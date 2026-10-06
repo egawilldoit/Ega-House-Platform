@@ -2,6 +2,7 @@ import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { getPermissionsForProfile } from "@/lib/mcp/permissions";
 import {
   TIMER_ALREADY_RUNNING_MESSAGE,
   TIMER_NO_OPEN_SESSION_MATCH_MESSAGE,
@@ -42,13 +43,13 @@ const PRINCIPAL: McpPrincipal = {
   grantId: "10000000-0000-0000-0000-000000000001",
   permissionProfile: "workspace_manager",
   permissionsVersion: 1,
-  permissions: ["timer.read", "timer.create", "timer.update"],
+  permissions: getPermissionsForProfile("workspace_manager", 1),
 };
 
 const READ_ONLY_PRINCIPAL: McpPrincipal = {
   ...PRINCIPAL,
   permissionProfile: "read_only",
-  permissions: ["timer.read"],
+  permissions: getPermissionsForProfile("read_only", 1),
 };
 
 const OPEN_SESSION = {

@@ -29,7 +29,16 @@ function disabledResponse(): Response {
         message: "MCP endpoint is disabled.",
       },
     },
-    { status: 404 },
+    {
+      status: 404,
+      // 404 is heuristically cacheable (RFC 9110 15.1) and this route is
+      // origin-dependent, so an intermediary was free to store "MCP is
+      // disabled" and keep serving it after the endpoint was enabled - a config
+      // change that would not take effect until the entry expired. `Vary: Origin`
+      // is present for the same reason it is on the enabled path: the response
+      // is decided for this origin and must not be replayed for another.
+      headers: { "Cache-Control": "no-store", Vary: "Origin" },
+    },
   );
 }
 
@@ -60,9 +69,9 @@ export function createLazyMcpEndpoint(
       return await getRuntime().POST(request);
     },
 
-    async OPTIONS(): Promise<Response> {
+    async OPTIONS(request: Request): Promise<Response> {
       if (!isEnabled()) return disabledResponse();
-      return await getRuntime().OPTIONS();
+      return await getRuntime().OPTIONS(request);
     },
   };
 }

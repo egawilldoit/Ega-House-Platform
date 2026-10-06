@@ -33,6 +33,14 @@
  *                   resets to CLAIM_GRANTED with a fresh token (safe retry).
  *   FAIL-CLOSED   - missing auth context or a revoked grant raises SQLSTATE
  *                   42501 (no receipt is created).
+ *   FINGERPRINT-MATRIX - for ALL 23 MCP write capabilities, the real claim
+ *                   RPC REPLAYs an identical retry and CONFLICTs a retry that
+ *                   changed a material field, and the tool name is shown to be
+ *                   part of the receipt key. This is the boundary the
+ *                   TypeScript fingerprint contract depends on: a field
+ *                   missing from canonicalMutationFingerprint is invisible
+ *                   here, so the SQL side is proved for every registered tool
+ *                   rather than the one name the earlier phases use.
  *   DOMAIN-FENCE  - each of projects, goals, tasks, task_reminders, and
  *                   task_sessions claims a receipt, commits once, loses the
  *                   receipt before store, expires the lease, reclaims with a
@@ -51,7 +59,7 @@
  * public/auth CASCADE). Only point it at a throwaway container.
  */
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { argv, exit } from "node:process";
 
 import postgres from "postgres";
@@ -387,6 +395,119 @@ function fingerprint(args, tool = TOOL) {
   // Mirrors canonicalMutationFingerprint's hashed shape ({tool, args}); the
   // invariants under proof only need stable, distinct, argument-derived hashes.
   return createHash("sha256").update(JSON.stringify({ tool, args })).digest("hex");
+}
+
+/**
+ * Every MCP write capability, paired with one representative material input
+ * and a CHANGED variant of that input.
+ *
+ * The receipt ledger's whole safety argument rests on args_hash: a second
+ * request reusing (owner, client, tool, operation_id) must be told CONFLICT
+ * when any material argument differs, and REPLAY only when it does not. That
+ * branch is pure SQL, so it is proved here for EVERY write tool rather than
+ * only the handful the earlier phases exercise — a new tool that could not
+ * express its arguments, or a tool name the receipt CHECK rejects, would
+ * otherwise fail closed at runtime instead of here.
+ */
+const WRITE_TOOL_FINGERPRINT_MATRIX = [
+  { tool: "ega_create_project", base: { name: "Alpha", slug: "alpha", description: "d" }, changed: { name: "Beta", slug: "alpha", description: "d" }, field: "name" },
+  { tool: "ega_update_project_status", base: { projectId: DOMAIN_PROJECT_ID, status: "active" }, changed: { projectId: DOMAIN_PROJECT_ID, status: "paused" }, field: "status" },
+  { tool: "ega_archive_project", base: { projectId: DOMAIN_PROJECT_ID }, changed: { projectId: DOMAIN_SESSION_ID }, field: "projectId" },
+  { tool: "ega_unarchive_project", base: { projectId: DOMAIN_PROJECT_ID }, changed: { projectId: DOMAIN_SESSION_ID }, field: "projectId" },
+  { tool: "ega_create_goal", base: { title: "G", projectId: DOMAIN_PROJECT_ID, description: "d", status: "draft", slug: "g", nextStep: "s", health: "on_track" }, changed: { title: "G", projectId: DOMAIN_PROJECT_ID, description: "d", status: "draft", slug: "g", nextStep: "CHANGED", health: "on_track" }, field: "nextStep" },
+  { tool: "ega_update_goal_status", base: { goalId: DOMAIN_GOAL_ID, status: "draft" }, changed: { goalId: DOMAIN_GOAL_ID, status: "active" }, field: "status" },
+  { tool: "ega_update_goal_health", base: { goalId: DOMAIN_GOAL_ID, health: "on_track" }, changed: { goalId: DOMAIN_GOAL_ID, health: "at_risk" }, field: "health" },
+  { tool: "ega_update_goal_next_step", base: { goalId: DOMAIN_GOAL_ID, nextStep: "s" }, changed: { goalId: DOMAIN_GOAL_ID, nextStep: "t" }, field: "nextStep" },
+  { tool: "ega_archive_goal", base: { goalId: DOMAIN_GOAL_ID }, changed: { goalId: DOMAIN_TASK_ID }, field: "goalId" },
+  { tool: "ega_unarchive_goal", base: { goalId: DOMAIN_GOAL_ID }, changed: { goalId: DOMAIN_TASK_ID }, field: "goalId" },
+  { tool: "ega_create_task", base: { title: "T", projectId: DOMAIN_PROJECT_ID, goalId: null, description: "d", blockedReason: null, status: "todo", priority: "medium", dueDate: null, estimateMinutes: null }, changed: { title: "T2", projectId: DOMAIN_PROJECT_ID, goalId: null, description: "d", blockedReason: null, status: "todo", priority: "medium", dueDate: null, estimateMinutes: null }, field: "title" },
+  { tool: "ega_update_task", base: { taskId: DOMAIN_TASK_ID, title: "T", description: null, blockedReason: null, status: "todo", priority: "medium", dueDate: null, estimateMinutes: null }, changed: { taskId: DOMAIN_TASK_ID, title: "T", description: null, blockedReason: null, status: "todo", priority: "high", dueDate: null, estimateMinutes: null }, field: "priority" },
+  { tool: "ega_archive_task", base: { taskId: DOMAIN_TASK_ID }, changed: { taskId: DOMAIN_SESSION_ID }, field: "taskId" },
+  { tool: "ega_unarchive_task", base: { taskId: DOMAIN_TASK_ID }, changed: { taskId: DOMAIN_SESSION_ID }, field: "taskId" },
+  { tool: "ega_set_task_focus_rank", base: { taskId: DOMAIN_TASK_ID, pinned: true }, changed: { taskId: DOMAIN_TASK_ID, pinned: false }, field: "pinned" },
+  { tool: "ega_create_task_reminder", base: { taskId: DOMAIN_TASK_ID, remindAt: "2030-08-29T10:00:00Z" }, changed: { taskId: DOMAIN_TASK_ID, remindAt: "2030-08-30T10:00:00Z" }, field: "remindAt" },
+  { tool: "ega_cancel_task_reminder", base: { taskId: DOMAIN_TASK_ID, reminderId: DOMAIN_REMINDER_ID }, changed: { taskId: DOMAIN_TASK_ID, reminderId: DOMAIN_SESSION_ID }, field: "reminderId" },
+  { tool: "ega_plan_task_for_today", base: { taskId: DOMAIN_TASK_ID, date: "2026-08-29" }, changed: { taskId: DOMAIN_TASK_ID, date: "2026-08-30" }, field: "date" },
+  { tool: "ega_remove_task_from_today", base: { taskId: DOMAIN_TASK_ID }, changed: { taskId: DOMAIN_SESSION_ID }, field: "taskId" },
+  { tool: "ega_update_today_task_status", base: { taskId: DOMAIN_TASK_ID, status: "in_progress", blockedReason: "waiting" }, changed: { taskId: DOMAIN_TASK_ID, status: "in_progress", blockedReason: "unblocked" }, field: "blockedReason" },
+  { tool: "ega_clear_completed_today", base: { date: "2026-08-29" }, changed: { date: "2026-08-30" }, field: "date" },
+  { tool: "ega_start_timer", base: { taskId: DOMAIN_TASK_ID }, changed: { taskId: DOMAIN_SESSION_ID }, field: "taskId" },
+  { tool: "ega_stop_timer", base: { sessionId: DOMAIN_SESSION_ID }, changed: { sessionId: DOMAIN_TASK_ID }, field: "sessionId" },
+];
+
+/**
+ * Proves the args_hash CONFLICT branch for every write tool against the real
+ * claim RPC, and proves the tool_name CHECK accepts each name (a rejected
+ * name would raise 22023 and the tool would be unusable, which the ledger
+ * proof above would never notice because it only ever used one tool name).
+ */
+async function runWriteToolFingerprintProof(sql) {
+  assert(
+    WRITE_TOOL_FINGERPRINT_MATRIX.length === 23,
+    `expected all 23 MCP write tools in the fingerprint matrix, got ${WRITE_TOOL_FINGERPRINT_MATRIX.length}`,
+  );
+
+  for (const entry of WRITE_TOOL_FINGERPRINT_MATRIX) {
+    const operationId = randomUUID();
+    const baseHash = fingerprint(entry.base, entry.tool);
+    const changedHash = fingerprint(entry.changed, entry.tool);
+    assert(baseHash !== changedHash, `${entry.tool} test fixture must vary ${entry.field}`);
+
+    const first = await mcpSession(sql).run((tx) => claimReceipt(tx, entry.tool, operationId, baseHash));
+    assert(
+      first?.claim_outcome === "CLAIM_GRANTED",
+      `${entry.tool} fresh claim expected CLAIM_GRANTED, got ${JSON.stringify(first)}`,
+    );
+    assert(typeof first.claim_token === "string", `${entry.tool} must receive a claim token`);
+
+    // Identical arguments replay: the same request retried is not a conflict.
+    await mcpSession(sql).run((tx) =>
+      storeResult(tx, entry.tool, operationId, first.claim_token, { ok: true, tool: entry.tool }),
+    );
+    const replay = await mcpSession(sql).run((tx) => claimReceipt(tx, entry.tool, operationId, baseHash));
+    assert(
+      replay?.claim_outcome === "REPLAY",
+      `${entry.tool} identical retry expected REPLAY, got ${JSON.stringify(replay)}`,
+    );
+
+    // Changed material field: CONFLICT, never REPLAY. This is the invariant
+    // that makes the audit trail trustworthy.
+    const conflict = await mcpSession(sql).run((tx) => claimReceipt(tx, entry.tool, operationId, changedHash));
+    assert(
+      conflict?.claim_outcome === "CONFLICT",
+      `${entry.tool} changed ${entry.field} expected CONFLICT, got ${JSON.stringify(conflict)}`,
+    );
+    assert(
+      conflict?.existing_result == null,
+      `${entry.tool} CONFLICT must not leak the previous result payload`,
+    );
+
+    // A different tool reusing the same operationId is a DIFFERENT receipt:
+    // the primary key is (owner, client, tool, operation_id), so tool identity
+    // is part of the key and cross-tool args_hash equality is irrelevant.
+    const otherTool = entry.tool === "ega_create_task" ? "ega_update_task" : "ega_create_task";
+    const otherHash = fingerprint({ probe: true }, otherTool);
+    const other = await mcpSession(sql).run((tx) => claimReceipt(tx, otherTool, operationId, otherHash));
+    assert(
+      other?.claim_outcome === "CLAIM_GRANTED",
+      `${otherTool} must be able to reuse operationId ${operationId} independently of ${entry.tool}, got ${JSON.stringify(other)}`,
+    );
+  }
+
+  // The tool_name CHECK is the gate that would reject an unrecognised tool
+  // name with 22023 instead of CONFLICT; assert the shape admits every
+  // capability name this server actually registers.
+  for (const entry of WRITE_TOOL_FINGERPRINT_MATRIX) {
+    assert(
+      /^[a-z0-9_]{1,128}$/.test(entry.tool),
+      `${entry.tool} must satisfy the mcp_mutation_receipts_tool_check pattern`,
+    );
+  }
+
+  log(
+    "FINGERPRINT-MATRIX",
+    `All ${WRITE_TOOL_FINGERPRINT_MATRIX.length} write tools: identical args REPLAY, changed ${WRITE_TOOL_FINGERPRINT_MATRIX.length > 0 ? "material" : ""} field CONFLICT, and tool name is part of the receipt key.`,
+  );
 }
 
 async function seedActiveGrant(sql) {
@@ -959,7 +1080,10 @@ async function proveDomainConcurrency(
   );
   const winners = outcomes.filter((outcome) => outcome.ok);
   const losers = outcomes.filter((outcome) => !outcome.ok);
-  assert(winners.length === 1, `${label} concurrency must have one winner`);
+  const describe = outcomes
+    .map((outcome) => (outcome.ok ? "ok" : `${outcome.error?.code}: ${postgresErrorText(outcome.error)}`))
+    .join(" | ");
+  assert(winners.length === 1, `${label} concurrency must have one winner; outcomes: ${describe}`);
   assert(losers.length === attemptIds.length - 1, `${label} concurrency must fence all other attempts`);
   for (const loser of losers) {
     assert(loser.error?.code === "23505", `${label} loser must hit SQLSTATE 23505`);
@@ -1031,7 +1155,11 @@ async function runDomainFencingProof(sql) {
     RETURNING id
   `;
 
-  await proveDomainCrashReplay(sql, {
+  // The MCP write fence replaces caller-chosen primary keys with the generated
+  // default, so the ids these inserts end up with are not the ones passed in.
+  // Everything downstream must therefore reference the id the fence actually
+  // assigned, which is what these calls return.
+  const domainProjectId = await proveDomainCrashReplay(sql, {
     label: "PROJECT_CREATE",
     table: "projects",
     indexNames: ["projects_mcp_operation_unique", "projects_owner_user_id_slug_unique"],
@@ -1048,18 +1176,18 @@ async function runDomainFencingProof(sql) {
     toolName: "ega_create_goal",
     operationId: DOMAIN_GOAL_OP,
     insertSql: goalInsert,
-    firstParams: [DOMAIN_GOAL_ID, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888827", DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
+    firstParams: [DOMAIN_GOAL_ID, domainProjectId, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888827", domainProjectId, OWNER_A, DOMAIN_GOAL_OP, CLIENT_ID],
   });
-  await proveDomainCrashReplay(sql, {
+  const domainTaskId = await proveDomainCrashReplay(sql, {
     label: "TASK_CREATE",
     table: "tasks",
     indexNames: ["tasks_mcp_operation_unique"],
     toolName: "ega_create_task",
     operationId: DOMAIN_TASK_OP,
     insertSql: taskInsert,
-    firstParams: [DOMAIN_TASK_ID, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888828", DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
+    firstParams: [DOMAIN_TASK_ID, domainProjectId, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888828", domainProjectId, OWNER_A, DOMAIN_TASK_OP, CLIENT_ID],
   });
   await proveDomainCrashReplay(sql, {
     label: "REMINDER_CREATE",
@@ -1068,8 +1196,8 @@ async function runDomainFencingProof(sql) {
     toolName: "ega_create_task_reminder",
     operationId: DOMAIN_REMINDER_OP,
     insertSql: reminderInsert,
-    firstParams: [DOMAIN_REMINDER_ID, OWNER_A, DOMAIN_TASK_ID, DOMAIN_REMINDER_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888829", OWNER_A, DOMAIN_TASK_ID, DOMAIN_REMINDER_OP, CLIENT_ID],
+    firstParams: [DOMAIN_REMINDER_ID, OWNER_A, domainTaskId, DOMAIN_REMINDER_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888829", OWNER_A, domainTaskId, DOMAIN_REMINDER_OP, CLIENT_ID],
   });
   await proveDomainCrashReplay(sql, {
     label: "SESSION_CREATE",
@@ -1078,8 +1206,8 @@ async function runDomainFencingProof(sql) {
     toolName: "ega_start_timer",
     operationId: DOMAIN_SESSION_OP,
     insertSql: sessionInsert,
-    firstParams: [DOMAIN_SESSION_ID, OWNER_A, DOMAIN_TASK_ID, DOMAIN_SESSION_OP, CLIENT_ID],
-    retryParams: ["88888888-8888-4888-8888-888888888830", OWNER_A, DOMAIN_TASK_ID, DOMAIN_SESSION_OP, CLIENT_ID],
+    firstParams: [DOMAIN_SESSION_ID, OWNER_A, domainTaskId, DOMAIN_SESSION_OP, CLIENT_ID],
+    retryParams: ["88888888-8888-4888-8888-888888888830", OWNER_A, domainTaskId, DOMAIN_SESSION_OP, CLIENT_ID],
   });
 
   const concurrentProjectInsert = projectInsert.replace("domain-fenced-project", "domain-concurrent-project");
@@ -1106,7 +1234,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888834",
     ],
     insertSql: goalInsert,
-    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_GOAL_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, domainProjectId, OWNER_A, DOMAIN_CONCURRENT_GOAL_OP, CLIENT_ID],
   });
 
   await proveDomainConcurrency(sql, {
@@ -1119,7 +1247,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888836",
     ],
     insertSql: taskInsert,
-    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_TASK_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, domainProjectId, OWNER_A, DOMAIN_CONCURRENT_TASK_OP, CLIENT_ID],
   });
 
   await proveDomainConcurrency(sql, {
@@ -1132,7 +1260,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888838",
     ],
     insertSql: reminderInsert,
-    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_TASK_ID, DOMAIN_CONCURRENT_REMINDER_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, domainTaskId, DOMAIN_CONCURRENT_REMINDER_OP, CLIENT_ID],
   });
 
   // Close the crash-proof session before exercising the owner-open invariant
@@ -1142,6 +1270,14 @@ async function runDomainFencingProof(sql) {
      SET ended_at = '2026-08-29T11:00:00Z', duration_seconds = 3600
      WHERE id = $1::uuid`,
     [DOMAIN_SESSION_ID],
+  );
+  // task_sessions_owner_open_unique is keyed on the owner alone, so the open
+  // session left by the crash-replay proof above would make every concurrency
+  // attempt collide on it and there would be no winner. Close it first.
+  await sql.unsafe(
+    `UPDATE public.task_sessions SET ended_at = now()
+     WHERE owner_user_id = $1::uuid AND ended_at IS NULL`,
+    [OWNER_A],
   );
   await proveDomainConcurrency(sql, {
     label: "SESSION_CREATE",
@@ -1153,7 +1289,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888840",
     ],
     insertSql: sessionInsert,
-    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, DOMAIN_TASK_ID, DOMAIN_CONCURRENT_SESSION_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, OWNER_A, domainTaskId, DOMAIN_CONCURRENT_SESSION_OP, CLIENT_ID],
   });
 
   await proveDomainConcurrency(sql, {
@@ -1174,7 +1310,7 @@ async function runDomainFencingProof(sql) {
       "88888888-8888-4888-8888-888888888850",
     ],
     insertSql: taskInsert,
-    paramsForAttempt: (attemptId) => [attemptId, DOMAIN_PROJECT_ID, OWNER_A, DOMAIN_CONCURRENT_TASK_TEN_OP, CLIENT_ID],
+    paramsForAttempt: (attemptId) => [attemptId, domainProjectId, OWNER_A, DOMAIN_CONCURRENT_TASK_TEN_OP, CLIENT_ID],
   });
 }
 
@@ -1367,6 +1503,7 @@ async function main() {
     }
     await assertCurrentGrantConstraints(sql);
     await runProofPhases(sql);
+    await runWriteToolFingerprintProof(sql);
     await runDomainFencingProof(sql);
     await runConcurrencyProof(sql, mcpSession(sql));
     await runRlsProof(sql);

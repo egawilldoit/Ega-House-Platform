@@ -18,7 +18,7 @@ describe("getMcpRuntimeConfig", () => {
       resource: "https://ega.example.com/api/mcp",
       issuer: "https://example.supabase.co/auth/v1",
       supabaseUrl: "https://example.supabase.co/",
-      publishableKey: "publishable-key",
+      publishableKey: "publishable-key"
     });
   });
 

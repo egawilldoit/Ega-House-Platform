@@ -6,12 +6,22 @@ Pull request: `#112`
 Production Supabase project: `ofpqkogwatceimtzvenh`
 Free MCP staging Supabase project: `atmzqhpioaepykehjbui`
 
+> **Refreshed 2026-10-05 against repository state `16e22cd9`.** This is the
+> original 2026-08-01 activation runbook and it remains the OAuth *activation*
+> procedure. Points where the repository has since moved are corrected inline and
+> marked. For the current MCP runtime contract — migration range, SDK version,
+> tool count, rate limits, permission versions — use
+> [`2026-08-28-mcp-v2-read-write-runbook.md`](2026-08-28-mcp-v2-read-write-runbook.md)
+> and [`ARCHITECTURE.md`](../../ARCHITECTURE.md), not this document.
+
 ## Current safety state
+
+*(as of 2026-08-01 on `feat/mcp-oauth-integration`; two items have since changed)*
 
 - The MCP endpoint is disabled unless `MCP_ENABLED=true`.
 - MCP writes remain disabled unless `MCP_WRITES_ENABLED=true`.
-- The current implementation exposes four read-only tools only.
-- No MCP migration has been applied to production.
+- ~~The current implementation exposes four read-only tools only.~~ **Superseded:** the runtime now exposes **30 executable tools** — 7 reads and 23 writes — from the canonical `MCP_CAPABILITIES` registry in `apps/web/src/lib/mcp/capability-registry.ts`. The current catalog and profile matrix are in [`2026-08-28-mcp-capability-coverage.md`](2026-08-28-mcp-capability-coverage.md).
+- No MCP migration has been applied to production. *(This remains environment-specific: the shipped `drizzle/` journal now ends at `0081_mcp_write_fence_state_transitions`, but what is *applied* to any given database is verified from that database's migration history, never from this repository.)*
 - A separate free Supabase project is used for MCP staging instead of paid Supabase Branching.
 - The staging project has the reviewed MCP schema, RLS policies, distributed limiter, OAuth server, Dynamic Client Registration, and Custom Access Token Hook enabled.
 - The Vercel Preview environment for `feat/mcp-oauth-integration` overrides `NEXT_PUBLIC_SUPABASE_URL` to the staging project.
@@ -43,7 +53,7 @@ Do not enable the production endpoint until every item below is complete:
 6. The Vercel Preview environment points to the staging Supabase project.
 7. A trusted administrator creates an active, resource-bound authorization grant.
 8. A real Supabase OAuth token proves the exact MCP resource in its `aud` claim.
-9. MCP Inspector or an equivalent wire test proves discovery, authentication, tool listing, and all four read tools.
+9. MCP Inspector or an equivalent wire test proves discovery, authentication, tool listing, and ~~all four read tools~~ **all seven read tools** (`ega_get_capabilities`, `ega_list_projects`, `ega_get_task`, `ega_list_goals`, `ega_list_tasks`, `ega_get_today_plan`, `ega_list_timer_sessions`).
 10. Rollback steps have been rehearsed against staging.
 
 ## 1. Staging Supabase project
@@ -58,7 +68,45 @@ Never test these migrations directly on production first.
 
 ## 2. Applied staging migrations
 
-The staging project contains the reviewed MCP foundation and hardening migrations:
+**Superseded 2026-10-05.** The five migrations below were the MCP foundation as
+of 2026-08-01 and are *not* the current set. The shipped journal now runs
+`0000_green_warpath.sql` through `0081_mcp_write_fence_state_transitions.sql`
+(81 entries in `drizzle/meta/_journal.json`; the tag sequence skips `0075`, which
+was never used, while `idx` stays dense). The foundation migrations below
+remain a subset of that journal; the hardening tail that has been added since is
+`0040` onward, and the pieces that materially change *this* runbook are:
+
+```text
+drizzle/0051_mcp_write_rls.sql                     write RLS + column fence base
+drizzle/0052_mcp_mutation_receipts.sql            receipt claim/store API
+drizzle/0059_mcp_domain_operation_fencing.sql     (owner, client, operation) uniqueness
+drizzle/0060_mcp_grant_resolution_rpc.sql         resolve_active_mcp_grant()
+drizzle/0061_mcp_audit_event_rpc.sql              record_mcp_audit_event()
+drizzle/0064_mcp_write_column_fence.sql           per-column write fence trigger
+drizzle/0065_mcp_oauth_table_scope_hardening.sql  client_id gate on 0045-0049 tables
+drizzle/0066_mcp_permission_version_2.sql         (profile, version) -> exact document
+drizzle/0067_mcp_audit_tool_allowlist.sql         audit allowlist == registry
+drizzle/0068 / 0069                               INSERT branch of the fence
+drizzle/0070_mcp_referential_ownership_isolation.sql
+drizzle/0071_mcp_rate_limit_and_fence_classification.sql  rate limiter is non-bypassable
+drizzle/0072_mcp_write_implies_read_back.sql
+drizzle/0073_mcp_audit_capability_authority.sql  audit RPC checks the grant's authority
+drizzle/0074_mcp_operation_identity_pair.sql    operation identity is all-or-nothing
+drizzle/0076_mcp_rate_limit_execute_grant.sql   the limiter's EXECUTE grant
+drizzle/0077_mcp_permission_document_exactness.sql  one document per (profile, version)
+drizzle/0078_mcp_write_fence_trigger_order.sql task completion through MCP
+drizzle/0079_mcp_client_id_derivation.sql       the client half is derived, not chosen
+drizzle/0080_mcp_completed_at_insert_authority.sql  completed_at at INSERT
+drizzle/0081_mcp_write_fence_state_transitions.sql  legal transitions, not just legal columns
+```
+
+Each of these replaces `private.enforce_mcp_write_fence()` or a function beside
+it, so a new migration editing the fence must carry the CURRENT body forward:
+`CREATE OR REPLACE FUNCTION` is a whole-function replacement, so two migrations
+editing one function cannot be authored independently and merged in any order
+without one silently reverting the other.
+
+For the original foundation set, retained as dated history:
 
 ```text
 drizzle/0037_mcp_oauth_foundation.sql
@@ -75,8 +123,9 @@ Verify:
 - Authenticated and anonymous roles cannot insert, update, or delete grants.
 - `projects`, `goals`, and `tasks` have owner-scoped direct-user policies.
 - OAuth reads require user, client, resource audience, active status, and permission match.
-- `agent_integration_events` accepts OAuth client/grant audit events.
-- `consume_mcp_rate_limit` is executable only by authenticated callers and uses JWT-derived identity.
+- `agent_integration_events` accepts OAuth client/grant audit events **only through the `record_mcp_audit_event` RPC** — direct OAuth INSERT stays blocked, and the RPC accepts only tool identities present in the `drizzle/0067` allowlist.
+- `consume_mcp_rate_limit` is executable only by authenticated callers and uses JWT-derived identity. **Signature changed at `0071`:** it now takes `p_window_name text` only. The limit and window length are derived server-side and are no longer arguments; the superseded `(text, integer, integer)` overload is dropped. Passing a limit now fails rather than silently succeeding.
+- `consume_mcp_rate_limit` re-checks the active grant on **every** call, so a revoked grant loses database capability immediately rather than at connection time.
 
 ## 3. Supabase OAuth settings
 
@@ -111,16 +160,32 @@ oauth_client_id
 resource_uri
 status = active
 permission_profile = read_only
-permissions = [projects.read, goals.read, tasks.read]
+permissions = [projects.read, goals.read, tasks.read, today.read, timer.read]
 permissions_version = 1
 approved_at
 ```
+
+> **Corrected 2026-10-05.** The original list here was
+> `permissions = [projects.read, goals.read, tasks.read]`. That was the *catalog*
+> at the time; it is no longer a valid document. Since `drizzle/0066`, the
+> `(permission_profile, permissions_version)` pair is the key to an **exact**
+> permission document and a SQL CHECK rejects anything else — so a
+> `read_only` / version 1 row must carry all five read permissions
+> (`projects.read`, `goals.read`, `tasks.read`, `today.read`, `timer.read`), and
+> inserting the three-element array would now be refused. `workspace_manager` at
+> version 1 carries all 14. The canonical documents live in
+> `apps/web/src/lib/mcp/permissions.ts` (`PROFILE_V1_PERMISSIONS`); read them
+> from there rather than transcribing them into a ticket.
 
 `resource_uri` must exactly equal the deployed MCP URL, for example:
 
 ```text
 https://<preview-host>/api/mcp
 ```
+
+`resource_uri` is not cosmetic: it is matched against the token's `aud` claim by
+`resolve_active_mcp_grant()`. A mismatch resolves no grant and the token
+authorizes nothing.
 
 ## 6. Configure the preview deployment
 
@@ -156,7 +221,7 @@ Capture evidence for each case:
 - `ega_get_capabilities` returns the `read_only` profile.
 - Project, goal, and task results are owner-scoped.
 - Unsupported status, priority, UUID, limit, and unknown arguments are rejected.
-- Rate limiting returns a stable denial and retry duration.
+- Rate limiting returns a stable denial and retry duration. *(2026-10-05: the enforced values are 120/60s per tool plus the risk-class aggregate buckets `ega_aggregate_read` 600/60s, `ega_aggregate_write` 300/60s, `ega_aggregate_sensitive_write` 60/60s.)*
 - Every tool call creates one token-free audit event with request ID, tool, outcome, duration, client ID, and grant ID.
 - GET is rejected for this JSON-only stateless deployment; POST is the supported MCP transport.
 
