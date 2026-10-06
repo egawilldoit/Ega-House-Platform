@@ -85,8 +85,6 @@ function parseArgs() {
   return args;
 }
 
-let failures = 0;
-
 function log(section, message) {
   console.log(`[${section}] ${message}`);
 }

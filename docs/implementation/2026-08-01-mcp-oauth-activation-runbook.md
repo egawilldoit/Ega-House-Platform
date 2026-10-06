@@ -21,7 +21,7 @@ Free MCP staging Supabase project: `atmzqhpioaepykehjbui`
 - The MCP endpoint is disabled unless `MCP_ENABLED=true`.
 - MCP writes remain disabled unless `MCP_WRITES_ENABLED=true`.
 - ~~The current implementation exposes four read-only tools only.~~ **Superseded:** the runtime now exposes **30 executable tools** — 7 reads and 23 writes — from the canonical `MCP_CAPABILITIES` registry in `apps/web/src/lib/mcp/capability-registry.ts`. The current catalog and profile matrix are in [`2026-08-28-mcp-capability-coverage.md`](2026-08-28-mcp-capability-coverage.md).
-- No MCP migration has been applied to production. *(This remains environment-specific: the shipped `drizzle/` journal now ends at `0072_mcp_write_implies_read_back`, but what is *applied* to any given database is verified from that database's migration history, never from this repository.)*
+- No MCP migration has been applied to production. *(This remains environment-specific: the shipped `drizzle/` journal now ends at `0081_mcp_write_fence_state_transitions`, but what is *applied* to any given database is verified from that database's migration history, never from this repository.)*
 - A separate free Supabase project is used for MCP staging instead of paid Supabase Branching.
 - The staging project has the reviewed MCP schema, RLS policies, distributed limiter, OAuth server, Dynamic Client Registration, and Custom Access Token Hook enabled.
 - The Vercel Preview environment for `feat/mcp-oauth-integration` overrides `NEXT_PUBLIC_SUPABASE_URL` to the staging project.
@@ -70,8 +70,9 @@ Never test these migrations directly on production first.
 
 **Superseded 2026-10-05.** The five migrations below were the MCP foundation as
 of 2026-08-01 and are *not* the current set. The shipped journal now runs
-`0000_green_warpath.sql` through `0072_mcp_write_implies_read_back.sql`
-(73 entries in `drizzle/meta/_journal.json`). The foundation migrations below
+`0000_green_warpath.sql` through `0081_mcp_write_fence_state_transitions.sql`
+(81 entries in `drizzle/meta/_journal.json`; the tag sequence skips `0075`, which
+was never used, while `idx` stays dense). The foundation migrations below
 remain a subset of that journal; the hardening tail that has been added since is
 `0040` onward, and the pieces that materially change *this* runbook are:
 
@@ -89,7 +90,21 @@ drizzle/0068 / 0069                               INSERT branch of the fence
 drizzle/0070_mcp_referential_ownership_isolation.sql
 drizzle/0071_mcp_rate_limit_and_fence_classification.sql  rate limiter is non-bypassable
 drizzle/0072_mcp_write_implies_read_back.sql
+drizzle/0073_mcp_audit_capability_authority.sql  audit RPC checks the grant's authority
+drizzle/0074_mcp_operation_identity_pair.sql    operation identity is all-or-nothing
+drizzle/0076_mcp_rate_limit_execute_grant.sql   the limiter's EXECUTE grant
+drizzle/0077_mcp_permission_document_exactness.sql  one document per (profile, version)
+drizzle/0078_mcp_write_fence_trigger_order.sql task completion through MCP
+drizzle/0079_mcp_client_id_derivation.sql       the client half is derived, not chosen
+drizzle/0080_mcp_completed_at_insert_authority.sql  completed_at at INSERT
+drizzle/0081_mcp_write_fence_state_transitions.sql  legal transitions, not just legal columns
 ```
+
+Each of these replaces `private.enforce_mcp_write_fence()` or a function beside
+it, so a new migration editing the fence must carry the CURRENT body forward:
+`CREATE OR REPLACE FUNCTION` is a whole-function replacement, so two migrations
+editing one function cannot be authored independently and merged in any order
+without one silently reverting the other.
 
 For the original foundation set, retained as dated history:
 

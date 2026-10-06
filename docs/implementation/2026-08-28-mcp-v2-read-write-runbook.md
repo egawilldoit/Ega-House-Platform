@@ -63,7 +63,7 @@ mobile user through those owner-scoped APIs.
 
 ## Production deployment notes
 
-- Migrations `0050..0072` are the MCP tail after current-main migrations `0045..0049`; the shipped journal ends at `0072_mcp_write_implies_read_back` (this document previously said `0050..0061`). Production application status is verified from the target database migration history before deployment — the repository journal says what has been *written*, never what has been *applied*.
+- Migrations `0050..0081` are the MCP tail after current-main migrations `0045..0049`; the shipped journal ends at `0081_mcp_write_fence_state_transitions` (this document previously said `0050..0061`, then `0050..0072`). Production application status is verified from the target database migration history before deployment — the repository journal says what has been *written*, never what has been *applied*.
 - `MCP_REQUEST_STATE_SECRET` not rotated in prod (to be set out-of-band before cutover).
 - Production deployment and migration status are operational evidence, not inferred from this runbook; verify the target database and Vercel deployment before declaring rollout complete.
 
@@ -80,6 +80,6 @@ mobile user through those owner-scoped APIs.
 - `apps/web/src/lib/mcp/permissions.ts`: `MCP_PERMISSION_VERSIONS = [1, 2]`, `CURRENT_MCP_PERMISSION_VERSION = 1` (v2 defined, not issued)
 - `apps/web/src/lib/mcp/server.ts`: `registerMcpWriteTools`, `ServerContext` (`ctx.http.authInfo`, `ctx.mcpReq.id`), strict zod 4 schemas, 30 `registerTool` calls pinned to the registry by `capability-registry-migration.test.ts`
 - `apps/web/src/lib/mcp/request-state.ts`: `createRequestStateCodec`
-- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0072` + `meta/_journal.json` (73 entries, last `idx: 72`)
+- `drizzle/` migrations: current-main `0045..0049` plus MCP `0050..0081` + `meta/_journal.json` (81 entries, last `idx: 80`; the tag sequence skips `0075`)
 - Database behaviour of every fence above is proven by the `scripts/db/*.mjs` ephemeral-database verifiers, not by the application tests; see the table in [`ARCHITECTURE.md`](../../ARCHITECTURE.md). Each takes `--url <postgres-url>`, `exit 2` without it, and each begins by `DROP SCHEMA … CASCADE` on `public`, `auth` and `automation` — so every schema in the named database is destroyed. Point them only at a disposable container.
 - Final command results are recorded in the delivery report; this document does not substitute for executed evidence.
