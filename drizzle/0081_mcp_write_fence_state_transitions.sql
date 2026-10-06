@@ -63,7 +63,8 @@
 -- lost capability rather than only as a passing refusal.
 --
 -- The fence body below is 0080's, byte for byte, with these three predicates
--- added to the UPDATE branch.
+-- added to the UPDATE branch. As in 0080, the body is carried whole so that
+-- 0079's mcp_client_id derivation and 0080's reserved completed_at survive.
 
 --> statement-breakpoint
 CREATE OR REPLACE FUNCTION private.enforce_mcp_write_fence()
@@ -79,6 +80,7 @@ DECLARE
   v_old jsonb;
   v_new jsonb;
   v_actual text[];
+  v_verified_client_id text;
 BEGIN
   v_allowed := private.mcp_writable_columns(TG_TABLE_NAME);
   IF v_allowed IS NULL THEN
@@ -136,6 +138,7 @@ BEGIN
     -- Column authority answers "which columns", not "which transitions". Three
     -- refusals close the state edges an authorised column would otherwise let a
     -- replayed bearer rewrite; see the migration header for each.
+    --
     -- The prior row is read through v_old (to_jsonb(OLD)) rather than OLD.<field>.
     -- This one function is attached to five tables, and PL/pgSQL prepares a
     -- statement against the relation the trigger fired on: naming a column that
@@ -190,6 +193,30 @@ BEGIN
   ELSE
     v_new := to_jsonb(NEW);
     v_allowed := private.mcp_insertable_columns(TG_TABLE_NAME);
+
+    -- mcp_client_id is the caller's verified OAuth client identity, not a key the
+    -- caller chooses, and every application read-back / replay lookup keys on
+    -- (mcp_client_id, mcp_operation_id). An owner holding two grants could
+    -- otherwise stamp a row as the other client and have that client's replay
+    -- return it as its own operation result, which is the key 0074 exists to
+    -- fence. Derive it from the verified token instead of trusting the payload.
+    --
+    -- Only a SUPPLIED value is corrected. A NULL stays NULL, so 0074's
+    -- both-or-neither pairing constraint still refuses an operation-id-only
+    -- INSERT with 23514, and a caller that sends neither half stores neither.
+    -- Fail closed: an absent or empty client_id claim cannot happen on this branch
+    -- (mcp_insertable_columns already returned NULL without one, and the enclosing
+    -- branch is only reached when v_allowed is not NULL), and if it somehow did,
+    -- NULLIF leaves the column NULL rather than writing a forged value.
+    IF 'mcp_client_id' = ANY (v_allowed) THEN
+      v_verified_client_id := NULLIF(coalesce((SELECT auth.jwt()) ->> 'client_id', ''), '');
+      IF v_verified_client_id IS NOT NULL
+        AND NEW.mcp_client_id IS NOT NULL
+        AND NEW.mcp_client_id IS DISTINCT FROM v_verified_client_id
+      THEN
+        NEW.mcp_client_id := v_verified_client_id;
+      END IF;
+    END IF;
 
     -- completed_at is the one INSERT column that is RESERVED rather than
     -- resettable. Resetting it is what silently produced a completed task with

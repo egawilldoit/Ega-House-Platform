@@ -1601,10 +1601,10 @@ async function assertColumnFence(sql) {
   log("COLUMN-FENCE", "ega_cancel_task_reminder now actually cancels; it previously reported success over zero rows.");
 
 
-  // STATE-TRANSITIONS (0080). The column fence authorised COLUMNS; it never asked
+  // STATE-TRANSITIONS (0081). The column fence authorised COLUMNS; it never asked
   // whether a write was a legal TRANSITION. With no MCP tool involved at all, all
   // three of these were accepted at the database for a workspace_manager
-  // principal before 0080. Each refusal is paired with the permitted transition
+  // principal before 0081. Each refusal is paired with the permitted transition
   // the advertised tool actually performs, so a fence that over-refuses is
   // visible here as a lost capability rather than only as a passing refusal.
   //
