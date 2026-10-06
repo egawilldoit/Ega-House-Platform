@@ -286,11 +286,6 @@ class FakeTimerRepository {
   async finalizeOpenSession() { return this.finalizeResult; }
 }
 
-class FakeTimeContextRepository {
-  async resolveTimezone() { return ok("UTC"); }
-  async setTimezone(_actor: unknown, timezone: string) { return ok(timezone); }
-}
-
 test("timer start and stop forward the repository class", async () => {
   const fake = new FakeTimerRepository();
   const repository = fake as unknown as TimerSessionRepository;

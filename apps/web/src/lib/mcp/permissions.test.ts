@@ -200,10 +200,6 @@ describe("drizzle/0077 keeps (profile, version) bound to one exact document", ()
     subset: JSON.parse(match[5]) as string[],
   }));
 
-  /** The document the resolver resolves for a supported pairing. */
-  const issued = (profile: string, version: number): string[] =>
-    getPermissionsForProfile(profile as never, version as never);
-
   it("pins every document clause to a version, a profile and an exact length", () => {
     // 5 issued documents in the active/pending branch, plus 7 in the terminal
     // branch: each version's own full document plus the 2 legacy short
