@@ -1947,6 +1947,130 @@ async function assertTaskCompletion(sql) {
   );
   log("COLUMN-FENCE", "A caller-supplied completed_at on the same transition is still refused 42501 and changes nothing, so the honest path is not 'allow the column'.");
 
+  // ---- 3. The SAME column, named ALONE (0083) ------------------------------
+  //
+  // The refusal above proves nothing about the case that actually shipped. It
+  // names status AND completed_at in one statement, and on that path
+  // normalize_task_completed_at's COALESCE preserves the caller's value long
+  // enough for the fence to see it. Naming completed_at ALONE is different: the
+  // normalizer assigns NEW.completed_at unconditionally on UPDATE
+  // (OLD.completed_at when already done, NULL when not), so the caller's value
+  // is GONE before the fence diffs OLD against NEW, completed_at never enters
+  // v_forbidden, and the UPDATE branch's `= 'false'` exemption - which only
+  // removes a column that IS already in v_forbidden - has nothing to exempt.
+  //
+  // Measured on 0081 with executed SQL: both of these returned rows=1 and
+  // reported success, i.e. success-shaped data for a write the caller did not
+  // get, which is precisely what 0080's own header rejects as the reason to
+  // raise on INSERT.
+  //
+  // Two rows, because the normalizer's substitution differs by status, and the
+  // caller-visible symptom differs with it: on a 'todo' row the caller's value
+  // is replaced with NULL, on an already-'done' row with the trigger's own
+  // stamp. A fix that only covers one of them leaves the other reporting
+  // success.
+  //
+  // PERMITTED TWIN on each: a title-only UPDATE of the SAME already-done row -
+  // the same row, the same principal, the same statement shape minus the
+  // forbidden column - must still succeed and must still carry the trigger's
+  // stamp. Without it, a fence that refused every UPDATE on a done task would
+  // pass this section, because a refusal is what the two cases above assert.
+  const completionLone = [
+    {
+      label: "on an already-done row",
+      toStatus: "done",
+      expectedStored: "the normalizer's own stamp",
+    },
+    {
+      label: "on a 'todo' row",
+      toStatus: "todo",
+      expectedStored: "NULL",
+    },
+  ];
+
+  for (const shape of completionLone) {
+    // Put the row into the status this shape needs, through the honest path the
+    // tool uses, so the only variable in the statement below is the column.
+    const setup = await captureMcpOutcome(() =>
+      session.run((tx) =>
+        tx.unsafe(
+          `UPDATE public.tasks SET status = $2 WHERE id = $1::uuid RETURNING status, completed_at`,
+          [taskId, shape.toStatus],
+        ),
+      ),
+    );
+    assert(
+      setup.error === null && setup.rows.length === 1,
+      `completion probe setup (${shape.label}) failed: ${setup.error ?? `${setup.rows.length} rows`}`,
+    );
+    const [storedBefore] = await sql`
+      SELECT status, completed_at FROM public.tasks WHERE id = ${taskId}::uuid
+    `;
+    assert(
+      storedBefore.status === shape.toStatus,
+      `the probe row must be '${shape.toStatus}' before this case, got ${storedBefore.status}`,
+    );
+    const stampBefore =
+      shape.toStatus === "done" ? storedBefore.completed_at?.getTime() ?? null : null;
+
+    // PERMITTED TWIN first, so a green run has proven the honest write works
+    // before the refusal it is contrasted with is asserted.
+    const twin = await captureMcpOutcome(() =>
+      session.run((tx) =>
+        tx.unsafe(
+          `UPDATE public.tasks SET title = 'twin edit' WHERE id = $1::uuid
+            RETURNING status, title, completed_at`,
+          [taskId],
+        ),
+      ),
+    );
+    assert(
+      twin.error === null && twin.rows.length === 1,
+      `ega_update_task {title:...} ${shape.label} is an advertised capability and must still succeed; got ${twin.error ?? `${twin.rows.length} row(s)`}: ${twin.message ?? ""}`,
+    );
+    if (shape.toStatus === "done") {
+      assert(
+        twin.rows[0].completed_at !== null && twin.rows[0].completed_at.getTime() === stampBefore,
+        `an unrelated edit of an already-done task must preserve the completion instant; got ${twin.rows[0].completed_at} against ${storedBefore.completed_at}`,
+      );
+    }
+
+    // Now the case that reported success: completed_at named alone.
+    await expectDenied(`caller-supplied completed_at ${shape.label}`, () =>
+      session.run((tx) =>
+        tx.unsafe(
+          `UPDATE public.tasks SET completed_at = '1999-01-01T00:00:00Z'::timestamptz
+            WHERE id = $1::uuid RETURNING status, completed_at`,
+          [taskId],
+        ),
+      ),
+    );
+    // Independent superuser read-back: the refusal must have changed nothing,
+    // and a statement that reported success is not by itself evidence of that.
+    const [storedAfter] = await sql`
+      SELECT status, completed_at FROM public.tasks WHERE id = ${taskId}::uuid
+    `;
+    assert(
+      storedAfter.status === shape.toStatus,
+      `a refused completed_at write must leave status alone (${shape.label}), got ${storedAfter.status}`,
+    );
+    if (shape.toStatus === "done") {
+      assert(
+        storedAfter.completed_at !== null && storedAfter.completed_at.getTime() === stampBefore,
+        `a refused completed_at write must leave the completion instant as ${shape.expectedStored} (${shape.label}), got ${storedAfter.completed_at} against ${storedBefore.completed_at}`,
+      );
+    } else {
+      assert(
+        storedAfter.completed_at === null,
+        `a refused completed_at write must leave completed_at as ${shape.expectedStored} (${shape.label}), got ${storedAfter.completed_at}`,
+      );
+    }
+  }
+  log(
+    "COLUMN-FENCE",
+    "A caller-supplied completed_at named ALONE is refused 42501 on both an already-done and a 'todo' row, each leaving the stored value untouched, while a title-only edit of the same already-done row still succeeds and preserves the instant.",
+  );
+
   // ---- The direct-user path is unaffected ----------------------------------
   await directUserSession(sql).run(async (tx) => {
     const rows = await tx.unsafe(
