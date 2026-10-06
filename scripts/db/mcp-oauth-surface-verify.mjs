@@ -84,14 +84,19 @@
  *                   task_status_events ledger stay unreachable
  *   AUDIT-TOOLS     the audit RPC accepts only registered tool names
  *   OPERATION-IDENTITY
- *                   mcp_client_id is verified identity, not a caller-chosen
- *                   idempotency key: a mismatched value is corrected on INSERT
- *                   and refused on UPDATE, so one owner's v1 bearer cannot stamp
- *                   a row as the v2 client and have the v2 integration's replay
- *                   lookup return it as its own operation result. The honest
- *                   identity write and 0074's both-or-neither refusal are
- *                   asserted alongside, so a fence that refused everything would
- *                   fail rather than pass
+ *                   the replay key is (mcp_client_id, mcp_operation_id) and NEITHER
+ *                   half is re-keyable on UPDATE: a mismatched client id is
+ *                   corrected on INSERT, and on an existing row BOTH identity
+ *                   columns are refused, so one owner's v1 bearer cannot stamp a
+ *                   row as the v2 client and have the v2 integration's replay
+ *                   lookup return it as its own operation result. Asserted per
+ *                   fenced table, each refusal paired with an independent
+ *                   superuser read-back, the victim's own replay lookup and a
+ *                   permitted twin (the caller's honest identity write, and a
+ *                   write to an ordinary column of the same identity-bearing
+ *                   row), so a fence that refused every identity write would
+ *                   fail rather than pass. 0074's both-or-neither refusal is
+ *                   asserted alongside
  *   AUDIT-AUTHORITY a 'success' audit row requires the caller's ACTIVE GRANT to
  *                   hold the capability's permission, so the ledger cannot be
  *                   forged by the actor it audits; every denial is paired with a
@@ -374,6 +379,18 @@ const TASK_NEW = "66666666-6666-4666-8666-6666666666aa";
 const TASK_B = "66666666-6666-4666-8666-666666666662";
 const SESSION_A = "77777777-7777-4777-8777-777777777771";
 const REMINDER_A = "88888888-8888-4888-8888-888888888881";
+
+/**
+ * A stable uuid per label, so an assertion can name the operation id it created
+ * in one step and compare against it in another without threading a variable
+ * through every read-back. Deterministic (not random) so a failure message
+ * reproduces the same ids on a re-run. `4` in the third group and `8` in the
+ * fourth pin the RFC 4122 version and variant the other fixtures use.
+ */
+function deterministicUuid(label) {
+  const hex = [...label].reduce((acc, character) => (acc * 31 + character.charCodeAt(0)) >>> 0, 7);
+  return `ab000000-0000-4000-8000-${hex.toString(16).padStart(12, "0")}`;
+}
 
 /**
  * An MCP session: exactly what PostgREST builds from an MCP OAuth bearer.
@@ -1229,21 +1246,21 @@ async function assertColumnFence(sql) {
   }
   log("COLUMN-FENCE", `All ${fenced.length} out-of-contract task columns were refused at the database.`);
 
-  // mcp_operation_id stays writable on UPDATE because the application writes it
-  // on every operationId-carrying mutation (0059), and a caller's own operation
-  // key on their own row is exactly what that column is for. Asserted on a row
-  // that already carries a COMPLETE identity, because 0074's both-or-neither
-  // pairing constraint refuses a partial one - which is the pairing half of this
-  // contract, not an accident of the fixture.
+  // The caller's own operation identity is still writable AT INSERT: the caller
+  // chooses the idempotency key it creates the row under, which is what the
+  // column is for. Asserted on a row that carries a COMPLETE identity, because
+  // 0074's both-or-neither pairing constraint refuses a partial one - which is
+  // the pairing half of this contract, not an accident of the fixture.
   //
-  // This probe previously wrote BOTH identity columns on UPDATE and asserted both
-  // were writable. That claim was the defect: mcp_client_id is the caller's
-  // verified OAuth client identity, not a caller-chosen key, and every
-  // application read-back / replay lookup filters on (mcp_client_id,
-  // mcp_operation_id). It is now asserted NOT writable, in both directions, by
-  // assertOperationIdentity below. The assertion here is narrowed in scope but
-  // strengthened in shape: it establishes the complete identity first and then
-  // proves the operation half still moves on UPDATE.
+  // This probe previously went on to UPDATE mcp_operation_id and asserted it was
+  // writable, on the reasoning 0079 records: "with mcp_client_id frozen to the
+  // verified client at INSERT, the only value a writer can put there is their
+  // own operation key on their own row". That is true only for rows the writer
+  // CREATED. An owner holds several grants, so the v1 bearer could re-key the
+  // v2 CLIENT's row and make the v2 integration's replay lookup resolve it -
+  // measured, in assertOperationIdentity below, which now owns the UPDATE
+  // direction for both identity columns on all five fenced tables and asserts
+  // each refusal with a superuser read-back.
   const [identityRow] = await session.run((tx) =>
     tx.unsafe(
       `INSERT INTO public.tasks (project_id, title, mcp_operation_id, mcp_client_id)
@@ -1256,18 +1273,10 @@ async function assertColumnFence(sql) {
     identityRow?.mcp_client_id === V1_WORKSPACE_CLIENT,
     "the application writes its own client id on create, and the fence must accept that unchanged",
   );
-  await session.run(async (tx) => {
-    const rows = await tx.unsafe(
-      `UPDATE public.tasks SET mcp_operation_id = gen_random_uuid() WHERE id = $1::uuid RETURNING id, mcp_operation_id, mcp_client_id`,
-      [identityRow.id],
-    );
-    assert(rows.length === 1, "the application-written idempotency key must remain writable on UPDATE");
-    assert(rows[0].mcp_operation_id !== null, "the rewritten operation id must persist");
-    assert(
-      rows[0].mcp_client_id === V1_WORKSPACE_CLIENT,
-      `rewriting the operation key must leave the client half of the pair intact, got ${rows[0].mcp_client_id}`,
-    );
-  });
+  log(
+    "COLUMN-FENCE",
+    "The caller's own operation identity is still writable at INSERT; re-keying either half of an existing row is assertOperationIdentity's business.",
+  );
 
   // INSERT-time fence. Asserted BEHAVIOURALLY: the caller supplies forbidden
   // values and the proof reads the stored row back to confirm they did not
@@ -1979,13 +1988,20 @@ async function assertTaskCompletion(sql) {
  *
  *   INSERT  a mismatched mcp_client_id is corrected to the caller's own (or the
  *           write is refused), and never persists as another client's.
- *   UPDATE  changing mcp_client_id on an existing row affects zero rows or is
- *           refused - the second direction is what stops an attacker re-stamping
- *           a row it created legitimately earlier.
+ *   UPDATE  NEITHER identity column may be re-keyed on an existing row. The
+ *           client half stopped at 0079; the operation half stopped at 0082,
+ *           because freezing only one half of a key leaves the pair
+ *           re-keyable by anyone who can reach the row. Measured on this
+ *           journal at 0081 with executed SQL: the v2 client created a project
+ *           under (v2-workspace-client, '3333…'), the v1 bearer - a DIFFERENT
+ *           grant of the SAME owner - re-keyed it to '4444…', the re-key was
+ *           DURABLE, and the v2 session's own replay lookup on
+ *           (v2-workspace-client, '4444…') then resolved that row.
  *
  * Paired with the permitted case in each direction, so a fence that simply
  * refused every identity write would fail here: the application writes both
- * columns together on create, and that must still work.
+ * columns together on create, and that must still work - and an
+ * identity-bearing ROW is not frozen, only its identity columns are.
  */
 async function assertOperationIdentity(sql) {
   const attacker = mcpSession(sql, { clientId: V1_WORKSPACE_CLIENT });
@@ -2099,12 +2115,18 @@ async function assertOperationIdentity(sql) {
   // ---- Every fenced table, not just the one probed above -------------------
   //
   // The behavioural cases above run against public.tasks because it is the table
-  // the replay harm is easiest to read there, but 0079 changes the allowlist for
-  // all five fenced tables. A table-by-table regression - someone re-adding
-  // 'mcp_client_id' to one branch, or removing the derivation from one INSERT
-  // path - would leave every assertion above green. Read both allowlists per
-  // table from the database, under a real MCP session so the permission branches
-  // are actually evaluated, and assert the intended shape of each.
+  // the replay harm is easiest to read there, but 0079 and 0082 both change the
+  // allowlist for all five fenced tables. A table-by-table regression - someone
+  // re-adding 'mcp_client_id' or 'mcp_operation_id' to one branch, or removing
+  // the derivation from one INSERT path - would leave every assertion above
+  // green. Two independent per-table probes, because the census alone would only
+  // prove the allowlist TEXT and the behaviour alone would only prove the one
+  // table it names:
+  //
+  //   1. the catalog shape, read under a real MCP session so the permission
+  //      branches are actually evaluated, and
+  //   2. the BEHAVIOUR - a v1 bearer re-keying the v2 client's identity on a row
+  //      the v2 client created, per table.
   const FENCED_TABLES = ["projects", "goals", "tasks", "task_sessions", "task_reminders"];
   await attacker.run(async (tx) => {
     for (const table of FENCED_TABLES) {
@@ -2122,18 +2144,242 @@ async function assertOperationIdentity(sql) {
         `${table}: mcp_client_id must not be authorisable on UPDATE; private.mcp_writable_columns returned ${JSON.stringify(row.updatable)}`,
       );
       assert(
-        row.updatable.includes("mcp_operation_id"),
-        `${table}: mcp_operation_id must remain authorisable on UPDATE; the application writes its own operation key there`,
+        !row.updatable.includes("mcp_operation_id"),
+        `${table}: mcp_operation_id must not be authorisable on UPDATE either - the replay key is the PAIR, so a re-keyable operation half leaves it reachable by any principal that can reach the row; private.mcp_writable_columns returned ${JSON.stringify(row.updatable)}`,
       );
       assert(
-        row.insertable.includes("mcp_client_id"),
-        `${table}: mcp_client_id must remain authorisable at INSERT, because the fence derives it rather than resetting it and 0074's pairing needs the caller able to supply the pair`,
+        row.insertable.includes("mcp_client_id") && row.insertable.includes("mcp_operation_id"),
+        `${table}: both halves of the identity must remain authorisable at INSERT - the caller chooses the operation key its row is created under, and 0074's pairing needs the caller able to supply the pair; private.mcp_insertable_columns returned ${JSON.stringify(row.insertable)}`,
       );
     }
   });
   log(
     "OPERATION-IDENTITY",
-    `Across all ${FENCED_TABLES.length} fenced tables, mcp_client_id is insertable-but-derived and absent from the UPDATE allowlist, while mcp_operation_id stays authorisable on UPDATE.`,
+    `Across all ${FENCED_TABLES.length} fenced tables, neither half of the identity is authorisable on UPDATE, while both remain authorisable at INSERT.`,
+  );
+
+  // ---- 0082, BEHAVIOURALLY, ON EVERY FENCED TABLE --------------------------
+  //
+  // The defect 0082 fixes is directional and per-table, so the catalog census
+  // above is necessary but not sufficient: it proves the allowlist TEXT, not
+  // that a re-key is refused and durably absent. What follows is the harm itself,
+  // once per fenced table:
+  //
+  //   1. the v2 client creates a row carrying ITS OWN identity, legitimately;
+  //   2. the v1 bearer - a different grant of the SAME owner, so RLS and the
+  //      owner-scoped UPDATE policies both pass - re-keys the OPERATION half to
+  //      an id it chose. Before 0082 this succeeded and was durable; the v2
+  //      session's own replay lookup then resolved the v2 client's row under an
+  //      operation the v1 bearer performed. Every step below is asserted, and the
+  //      three consequences separately, because each can fail on its own:
+  //        * rows affected by the re-key (refused, or zero),
+  //        * an INDEPENDENT superuser read-back of the stored pair,
+  //        * the victim's own (mcp_client_id, mcp_operation_id) lookup.
+  //
+  // PERMITTED TWIN, per table, and the reason the refusal above is not vacuous:
+  //   (a) the caller's own COMPLETE identity write still inserts unchanged - the
+  //       capability 0059/0074 exist to provide, which is why the columns are
+  //       closed on UPDATE rather than everywhere; and
+  //   (b) an ordinary, advertised column of the caller's OWN identity-bearing row
+  //       still updates - the identity columns are closed, the ROW is not, so a
+  //       fence that froze the row rather than the key fails here.
+  //
+  // Each table needs its own INSERT columns (the five tables' NOT NULL sets
+  // differ) and its own advertised writable column for the twin.
+  const IDENTITY_PROBES = [
+    {
+      table: "projects",
+      insert: `INSERT INTO public.projects (name, slug, mcp_client_id, mcp_operation_id)
+               VALUES ($1, $2, $3, $4::uuid)`,
+      params: (label) => [`identity probe ${label}`, `identity-probe-${label}`],
+      twinColumn: "status",
+      twinValue: "'archived'",
+      twinNote: "projects.status is ega_update_project's advertised column",
+    },
+    {
+      table: "goals",
+      insert: `INSERT INTO public.goals (project_id, title, mcp_client_id, mcp_operation_id)
+               VALUES ($1::uuid, $2, $3, $4::uuid)`,
+      params: (label) => [PROJECT_A, `identity probe ${label}`],
+      twinColumn: "next_step",
+      twinValue: "'a permitted edit'",
+      twinNote: "goals.next_step is ega_update_goal's advertised column",
+    },
+    {
+      table: "tasks",
+      insert: `INSERT INTO public.tasks (project_id, title, mcp_client_id, mcp_operation_id)
+               VALUES ($1::uuid, $2, $3, $4::uuid)`,
+      params: (label) => [PROJECT_A, `identity probe ${label}`],
+      twinColumn: "title",
+      twinValue: "'a permitted edit'",
+      twinNote: "tasks.title is ega_update_task's advertised column",
+    },
+    {
+      table: "task_sessions",
+      insert: `INSERT INTO public.task_sessions (task_id, started_at, mcp_client_id, mcp_operation_id)
+               VALUES ($1::uuid, now() - interval '10 minutes', $2, $3::uuid)`,
+      params: () => [TASK_A],
+      // An already-closed session is 0081's refused transition, so the twin
+      // closes this freshly-OPEN one - which is exactly ega_stop_timer's job.
+      twinColumn: "ended_at",
+      twinValue: "now()",
+      twinNote: "closing a freshly-OPEN session is ega_stop_timer's whole job",
+    },
+    {
+      table: "task_reminders",
+      insert: `INSERT INTO public.task_reminders (task_id, remind_at, channel, delivery_mode, mcp_client_id, mcp_operation_id)
+               VALUES ($1::uuid, now() + interval '3 hours', 'email', 'email', $2, $3::uuid)`,
+      params: () => [TASK_A],
+      twinColumn: "channel",
+      twinValue: "'push'",
+      twinNote: "task_reminders.channel is advertised by the reminder tools",
+    },
+  ];
+
+  // One open session per owner (0044's task_sessions_owner_open_unique), and both
+  // principals below are the SAME owner, so the probes cannot both hold an open
+  // session at once. Closed as the superuser before the loop, outside any MCP
+  // transaction: closing an OPEN row is a transition the fence still permits.
+  await sql.unsafe(
+    `UPDATE public.task_sessions SET ended_at = now()
+      WHERE owner_user_id = $1::uuid AND ended_at IS NULL`,
+    [OWNER_A],
+  );
+
+  for (const probe of IDENTITY_PROBES) {
+    const label = probe.table.replace(/_/g, "-");
+    const victimOperationId = deterministicUuid(`f1-victim-${label}`);
+    const attackOperationId = deterministicUuid(`f1-attack-${label}`);
+
+    // 1. The v2 client creates the row under its OWN identity. Nothing here is a
+    //    forgery - this is the legitimate write the replay lookup belongs to.
+    const created = await captureMcpOutcome(() =>
+      victim.run((tx) =>
+        tx.unsafe(
+          `${probe.insert} RETURNING id, mcp_client_id, mcp_operation_id`,
+          [...probe.params(label), V2_WORKSPACE_CLIENT, victimOperationId],
+        ),
+      ),
+    );
+    assert(
+      created.error === null && created.rows.length === 1,
+      `${probe.table}: the victim's own identity-carrying INSERT must succeed or the re-key refusal below is asserted against no row; got ${created.error ?? `${created.rows.length} row(s)`}`,
+    );
+    assert(
+      created.rows[0].mcp_client_id === V2_WORKSPACE_CLIENT
+        && created.rows[0].mcp_operation_id === victimOperationId,
+      `${probe.table}: the victim's row must carry its own identity; got ${JSON.stringify(created.rows[0])}`,
+    );
+    const victimRowId = created.rows[0].id;
+
+    // 2. The v1 bearer re-keys the OPERATION half of someone else's row.
+    await expectNoRows(`${probe.table}.mcp_operation_id re-keyed on another client's row`, () =>
+      attacker.run((tx) =>
+        tx.unsafe(
+          `UPDATE public.${probe.table} SET mcp_operation_id = $1::uuid WHERE id = $2::uuid
+            RETURNING id, mcp_client_id, mcp_operation_id`,
+          [attackOperationId, victimRowId],
+        ),
+      ),
+    );
+
+    // 3. Independent superuser read-back: the stored pair is untouched. A
+    //    statement reporting zero rows is not by itself evidence that nothing
+    //    happened, and this is the durable harm 0082 closes.
+    const [stored] = await sql.unsafe(
+      `SELECT mcp_client_id, mcp_operation_id FROM public.${probe.table} WHERE id = $1::uuid`,
+      [victimRowId],
+    );
+    assert(
+      stored.mcp_client_id === V2_WORKSPACE_CLIENT && stored.mcp_operation_id === victimOperationId,
+      `${probe.table}: a refused re-key must leave the row's identity pair exactly as its creator wrote it, got ${JSON.stringify(stored)}`,
+    );
+
+    // 4. The victim client's OWN replay lookup, which is the lookup the
+    //    application performs on every operationId-carrying mutation. This is the
+    //    harm itself, asserted on the read-back rather than on the stored column.
+    const victimLookup = await victim.run((tx) =>
+      tx.unsafe(
+        `SELECT id FROM public.${probe.table} WHERE mcp_client_id = $1 AND mcp_operation_id = $2::uuid`,
+        [V2_WORKSPACE_CLIENT, attackOperationId],
+      ),
+    );
+    assert(
+      victimLookup.length === 0,
+      `${probe.table}: the v2 client's replay lookup resolved ${victimLookup.length} row(s) under an operation id only the v1 bearer chose; the operation half of the replay key is still re-keyable`,
+    );
+
+    // PERMITTED TWIN (a): the caller's own complete identity write, on this same
+    // table. Before 0081 the rejection path and the acceptance path of this very
+    // section were indistinguishable when only tasks was probed, because the
+    // honest write was asserted on tasks alone.
+    //
+    // task_sessions first: it allows one OPEN session per owner (0044's
+    // task_sessions_owner_open_unique) and both principals here are the same
+    // owner, so the victim's still-open row would make the honest INSERT fail on
+    // that index and the twin would report an open-session collision rather than
+    // a fence verdict. Closed as the superuser - outside any MCP transaction and
+    // not a statement the fence judges.
+    if (probe.table === "task_sessions") {
+      await sql.unsafe(
+        `UPDATE public.task_sessions SET ended_at = now()
+          WHERE owner_user_id = $1::uuid AND ended_at IS NULL`,
+        [OWNER_A],
+      );
+    }
+    const honest = await captureMcpOutcome(() =>
+      attacker.run((tx) =>
+        tx.unsafe(
+          `${probe.insert} RETURNING id, mcp_client_id, mcp_operation_id`,
+          [...probe.params(`${label}-own`), V1_WORKSPACE_CLIENT, deterministicUuid(`f1-own-${label}`)],
+        ),
+      ),
+    );
+    assert(
+      honest.error === null && honest.rows.length === 1,
+      `${probe.table}: the caller's own complete identity write must still be accepted - 0082 closes the identity columns on UPDATE, not the identity; got ${honest.error ?? `${honest.rows.length} row(s)`}`,
+    );
+    assert(
+      honest.rows[0].mcp_client_id === V1_WORKSPACE_CLIENT
+        && honest.rows[0].mcp_operation_id === deterministicUuid(`f1-own-${label}`),
+      `${probe.table}: the caller's own identity must persist unchanged, got ${JSON.stringify(honest.rows[0])}`,
+    );
+
+    // PERMITTED TWIN (b): an ordinary advertised column of the caller's OWN
+    // identity-bearing row. This is what distinguishes "the replay key is frozen"
+    // from "rows carrying an identity are frozen": 0081's state predicates took
+    // the second shape deliberately, and an identity column is not a state edge.
+    const twin = await captureMcpOutcome(() =>
+      attacker.run((tx) =>
+        tx.unsafe(
+          `UPDATE public.${probe.table} SET ${probe.twinColumn} = ${probe.twinValue}
+            WHERE id = $1::uuid RETURNING id, mcp_client_id, mcp_operation_id`,
+          [honest.rows[0].id],
+        ),
+      ),
+    );
+    assert(
+      twin.error === null && twin.rows.length === 1,
+      `${probe.table}: ${probe.twinNote} - an advertised column of the caller's own identity-bearing row must remain writable, or the identity columns have frozen the ROW; got ${twin.error ?? `${twin.rows.length} row(s)`}`,
+    );
+    assert(
+      twin.rows[0].mcp_client_id === V1_WORKSPACE_CLIENT
+        && twin.rows[0].mcp_operation_id === deterministicUuid(`f1-own-${label}`),
+      `${probe.table}: that permitted write must leave the caller's identity pair intact, got ${JSON.stringify(twin.rows[0])}`,
+    );
+    const [twinStored] = await sql.unsafe(
+      `SELECT mcp_client_id, mcp_operation_id FROM public.${probe.table} WHERE id = $1::uuid`,
+      [honest.rows[0].id],
+    );
+    assert(
+      twinStored.mcp_client_id === V1_WORKSPACE_CLIENT
+        && twinStored.mcp_operation_id === deterministicUuid(`f1-own-${label}`),
+      `${probe.table}: the caller's own identity must survive its own permitted write, got ${JSON.stringify(twinStored)}`,
+    );
+  }
+  log(
+    "OPERATION-IDENTITY",
+    `On all ${IDENTITY_PROBES.length} fenced tables a v1 bearer could not re-key the v2 client's row (refused, absent from the stored pair, and absent from the v2 replay lookup), while the caller's own identity write and an advertised column of its own identity-bearing row both still work.`,
   );
 }
 
