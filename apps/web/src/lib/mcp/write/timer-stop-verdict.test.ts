@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AuthInfo, CallToolResult } from "@modelcontextprotocol/server";
+import type { CallToolResult } from "@modelcontextprotocol/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getPermissionsForProfile } from "@/lib/mcp/permissions";
@@ -9,7 +9,6 @@ import {
   TIMER_SESSION_NO_LONGER_RUNNING_MESSAGE,
 } from "@ega/application";
 
-import { createMcpAuthInfo } from "@/lib/mcp/auth-info";
 import type { McpDatabase } from "@/lib/mcp/mcp-database.types";
 import type { McpPrincipal } from "@/lib/mcp/principal";
 import { createMcpTimerModuleHandlers } from "@/lib/mcp/write/timer";
@@ -64,7 +63,6 @@ const PRINCIPAL: McpPrincipal = {
   permissionsVersion: 1,
   permissions: getPermissionsForProfile("workspace_manager", 1),
 };
-const AUTH: AuthInfo = createMcpAuthInfo("bearer", PRINCIPAL);
 const SESSION = "aaaaaaaa-0000-0000-0000-000000000001";
 const OTHER_SESSION = "aaaaaaaa-0000-0000-0000-000000000002";
 const TASK = "bbbbbbbb-0000-0000-0000-000000000001";
@@ -76,10 +74,6 @@ function deps(): { createUserClient: (t: string) => SupabaseClient<McpDatabase> 
 
 function structured(result: CallToolResult): Record<string, unknown> {
   return (result.structuredContent ?? {}) as Record<string, unknown>;
-}
-
-function errorCode(result: CallToolResult): string | undefined {
-  return (structured(result).error as { code?: string } | undefined)?.code;
 }
 
 
