@@ -24,7 +24,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { formatDisplayCount } from "@/lib/presentation-format";
+import { formatDisplayCount, formatDisplayCountLabel } from "@/lib/presentation-format";
 import type { WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -61,7 +61,7 @@ type SidebarNavigationProps = {
  */
 function getProjectAccessibleLabel(project: SidebarProject) {
   if (project.activeTaskCount <= 0) return project.name;
-  return `${project.name} — ${formatDisplayCount(project.activeTaskCount)} active tasks`;
+  return `${project.name} — ${formatDisplayCountLabel(project.activeTaskCount, "active task")}`;
 }
 
 const ROUTE_ICONS: Record<string, LucideIcon> = {

@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   DISPLAY_EMPTY,
   formatDisplayCount,
+  formatDisplayCountLabel,
   getDisplayTimezone,
   setDisplayTimezone,
   formatDisplayDate,
@@ -70,6 +71,16 @@ test("formatDisplayCount groups thousands and handles missing values", () => {
   assert.equal(formatDisplayCount(1402), "1,402");
   assert.equal(formatDisplayCount(0), "0");
   assert.equal(formatDisplayCount(null), DISPLAY_EMPTY);
+});
+
+test("formatDisplayCountLabel pluralizes from the count", () => {
+  assert.equal(formatDisplayCountLabel(1, "task"), "1 task");
+  assert.equal(formatDisplayCountLabel(2, "task"), "2 tasks");
+  assert.equal(formatDisplayCountLabel(0, "task"), "0 tasks");
+  assert.equal(formatDisplayCountLabel(1, "active task", "active tasks"), "1 active task");
+  assert.equal(formatDisplayCountLabel(12, "active task", "active tasks"), "12 active tasks");
+  assert.equal(formatDisplayCountLabel(1402, "task"), "1,402 tasks");
+  assert.equal(formatDisplayCountLabel(null, "task"), DISPLAY_EMPTY);
 });
 
 test("formatDisplayMultiple renders a compact multiplier", () => {
