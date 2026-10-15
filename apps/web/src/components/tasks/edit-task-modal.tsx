@@ -1,5 +1,6 @@
 "use client";
 
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import {
   type ReactNode,
   type RefObject,
@@ -366,6 +367,7 @@ function TaskEditorPanel({
     },
   );
 
+  const [titleLength, setTitleLength] = useState(taskTitle.length);
   const [selectedProjectId, setSelectedProjectId] = useState(defaultProjectId);
   const [selectedGoalId, setSelectedGoalId] = useState(defaultGoalId ?? "");
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
@@ -467,10 +469,15 @@ function TaskEditorPanel({
                         </span>
                         <Input
                           name="title"
+                          maxLength={TASK_TITLE_MAX}
+                          onChange={event => setTitleLength(event.target.value.length)}
+                          aria-describedby={`task-title-count-${taskId}${state.errorMessage === TASK_TITLE_LENGTH_ERROR ? ` ${saveErrorId}` : ""}`}
+                          aria-invalid={state.errorMessage === TASK_TITLE_LENGTH_ERROR}
                           required
                           defaultValue={taskTitle}
                           className="min-h-11 w-full"
                         />
+                        <span id={`task-title-count-${taskId}`} className="block text-xs text-ega-text-secondary">{titleLength}/{TASK_TITLE_MAX}</span>
                       </label>
 
                       <div className="grid gap-3 sm:grid-cols-2">

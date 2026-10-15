@@ -1,5 +1,6 @@
 "use server";
 
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import type { TablesInsert } from "@/lib/supabase/database.types";
 import { after } from "next/server";
 import { normalizeManualWorkedTimeInput } from "@/lib/manual-worked-time";
@@ -66,6 +67,7 @@ async function resolveAccountTimezone(): Promise<{
 
 export type CreateTaskFormState = {
   error: string | null;
+  titleError?: string;
   success?: string | null;
   values: {
     title: string;
@@ -125,7 +127,7 @@ function createErrorState(
   error: string,
   values: CreateTaskFormState["values"],
 ): CreateTaskFormState {
-  return { error, success: null, values };
+  return { error, success: null, values, ...(error === TASK_TITLE_LENGTH_ERROR || error === "Task title is required." ? { titleError: error } : {}) };
 }
 
 function createBulkErrorState(
@@ -298,6 +300,10 @@ export async function createTaskAction(
     return createErrorState("Task title is required.", values);
   }
 
+  if (title.length > TASK_TITLE_MAX) {
+    return createErrorState(TASK_TITLE_LENGTH_ERROR, values);
+  }
+
   if (!projectId) {
     return createErrorState("Project is required.", values);
   }
@@ -463,6 +469,11 @@ export async function createTasksBulkAction(
 
     if (!taskRow.title) {
       skippedLines.push({ value: lineLabel, reason: "Task title is required." });
+      continue;
+    }
+
+    if (taskRow.title.length > TASK_TITLE_MAX) {
+      skippedLines.push({ value: taskRow.title, reason: TASK_TITLE_LENGTH_ERROR });
       continue;
     }
 

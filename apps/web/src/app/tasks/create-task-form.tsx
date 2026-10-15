@@ -1,5 +1,6 @@
 "use client";
 
+import { TASK_TITLE_MAX } from "@/lib/task-domain";
 import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,12 @@ export function CreateTaskForm({
     createTaskAction,
     initialState,
   );
+  const [titleValue, setTitleValue] = useState(state.values.title);
+  const [previousValues, setPreviousValues] = useState(state.values);
+  if (state.values !== previousValues) {
+    setPreviousValues(state.values);
+    setTitleValue(state.values.title);
+  }
   const [selectedStatus, setSelectedStatus] = useState(state.values.status);
   const [previousStatusValue, setPreviousStatusValue] = useState(state.values.status);
   const availableGoalCount = goals.length;
@@ -116,11 +123,17 @@ export function CreateTaskForm({
             <Input
               id="title"
               name="title"
+              maxLength={TASK_TITLE_MAX}
+              onChange={event => setTitleValue(event.target.value)}
+              aria-describedby="task-title-count task-title-error"
+              aria-invalid={Boolean(state.titleError)}
               required
               placeholder="Ship timer session recovery"
-              defaultValue={state.values.title}
+              value={titleValue}
               className="ega-glass-input h-10 rounded-xl"
             />
+            <p id="task-title-count" className="text-xs text-ega-text-secondary">{titleValue.length}/{TASK_TITLE_MAX}</p>
+            <p id="task-title-error" role={state.titleError ? "alert" : undefined}>{state.titleError}</p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
