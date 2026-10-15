@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useRef } from "react";
 import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskEditModalTrigger } from "@/components/tasks/task-edit-modal-trigger";
+import { ConfirmDeleteTaskButton } from "@/components/tasks/confirm-delete-task-button";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { TaskReminderPanel } from "@/components/tasks/task-reminder-panel";
@@ -110,6 +111,8 @@ export function TaskKanbanCard({
   const showTimerAction = !isArchived && !isCompleted && Boolean(startTimerAction);
   const showActiveActions = !isArchived && Boolean(pinToggleAction || archiveAction || deleteAction);
   const showArchivedActions = isArchived && Boolean(unarchiveAction || deleteAction);
+  const deleteActiveFormRef = useRef<HTMLFormElement | null>(null);
+  const deleteArchivedFormRef = useRef<HTMLFormElement | null>(null);
   const showOverflowActions = showStatusControls || showActiveActions || showArchivedActions;
   const showReminderPanel = Boolean(
     createReminderAction && cancelReminderAction && !updateEditorAction,
@@ -372,17 +375,15 @@ export function TaskKanbanCard({
                       ) : null}
 
                       {deleteAction ? (
-                        <form action={deleteAction}>
+                        <form action={deleteAction} ref={deleteActiveFormRef}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <PendingSubmitButton
-                            type="submit"
-                            size="sm"
-                            variant="danger"
+                          <ConfirmDeleteTaskButton
+                            taskTitle={task.title}
+                            formRef={deleteActiveFormRef}
                             pendingLabel="Deleting…"
-                          >
-                            Delete
-                          </PendingSubmitButton>
+                            triggerLabel="Delete"
+                          />
                         </form>
                       ) : null}
                     </div>
@@ -408,17 +409,15 @@ export function TaskKanbanCard({
                       ) : null}
 
                       {deleteAction ? (
-                        <form action={deleteAction}>
+                        <form action={deleteAction} ref={deleteArchivedFormRef}>
                           <TaskKanbanActionHiddenFields taskId={task.id} returnTo={returnTo} />
                           <input type="hidden" name="confirmDelete" value="true" />
-                          <PendingSubmitButton
-                            type="submit"
-                            size="sm"
-                            variant="danger"
+                          <ConfirmDeleteTaskButton
+                            taskTitle={task.title}
+                            formRef={deleteArchivedFormRef}
                             pendingLabel="Deleting…"
-                          >
-                            Delete
-                          </PendingSubmitButton>
+                            triggerLabel="Delete"
+                          />
                         </form>
                       ) : null}
                     </div>
