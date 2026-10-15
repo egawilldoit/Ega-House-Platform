@@ -1,4 +1,10 @@
 import assert from "node:assert/strict";
+import { vi } from "vitest";
+
+vi.mock("@/lib/monitoring/capture-server-exception", () => ({
+  captureServerException: vi.fn(),
+}));
+
 import test from "node:test";
 
 import {
@@ -7,6 +13,7 @@ import {
   planStartupTasksForToday,
   type StartupPlanningEvidence,
 } from "./startup-planner-service";
+import { captureServerException } from "@/lib/monitoring/capture-server-exception";
 import type { NormalizedTaskRow } from "./task-read-service";
 
 type MockTask = {
@@ -519,6 +526,52 @@ test("loads startup planning review.latest when multiple saved reviews exist", a
   assert.ok(result.data);
   assert.equal(result.data?.review.latest?.id, "review-newest");
   assert.equal(result.data?.review.latest?.weekStart, "2026-04-20");
+});
+
+test("captures normalized Supabase review errors with code", async () => {
+  const base = createStartupSupabaseMock({
+    tasks: [],
+    goals: [],
+    reviews: [],
+  }) as any;
+  const originalFrom = base.from.bind(base);
+  base.from = (table: string) => {
+    const result = originalFrom(table);
+    if (table !== "week_reviews") {
+      return result;
+    }
+    const originalSelect = result.select.bind(result);
+    result.select = (columns: string) => {
+      const query = originalSelect(columns);
+      query.maybeSingle = () =>
+        Promise.resolve({
+          data: null,
+          error: { code: "PGRSTBAD", message: "boom review error" },
+        });
+      return query;
+    };
+    return result;
+  };
+
+  vi.mocked(captureServerException).mockClear();
+
+  const result = await getStartupPlannerData({
+    now: new Date("2026-04-20T08:00:00.000Z"),
+    supabase: base as never,
+  });
+
+  assert.equal(result.errorMessage, "Could not load startup planning review context.");
+  assert.equal(result.data, null);
+  assert.equal(vi.mocked(captureServerException).mock.calls.length, 1);
+  const [errorArg, optionsArg] = vi.mocked(captureServerException).mock.calls[0] as [
+    Error,
+    { area: string; operation: string; extras?: { code?: string } },
+  ];
+  assert.ok(errorArg instanceof Error);
+  assert.equal(errorArg.message, "boom review error");
+  assert.equal(optionsArg.area, "service.startup-planner");
+  assert.equal(optionsArg.operation, "load_review_context");
+  assert.deepEqual(optionsArg.extras, { code: "PGRSTBAD" });
 });
 
 function createScopedPlanningSupabaseMock() {

@@ -13,9 +13,10 @@ vi.mock("next/link", () => ({
 import { StartupErrorView } from "./StartupPageView";
 
 describe("StartupErrorView", () => {
-  it("renders a Retry control", () => {
+  it("renders a single Retry link control", () => {
     const markup = renderToStaticMarkup(React.createElement(StartupErrorView, { actionError: null }));
     expect(markup).toContain("Retry");
     expect(markup).toContain('href="/startup"');
+    expect(markup).not.toContain("<button");
   });
 });

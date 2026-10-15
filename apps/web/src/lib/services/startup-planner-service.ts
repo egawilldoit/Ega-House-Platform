@@ -251,14 +251,21 @@ export async function getStartupPlanningEvidence(options?: {
     };
   }
 
-  if (currentWeekReviewResult.error || latestReviewResult.error) {
-    captureServerException(
-      (currentWeekReviewResult.error ?? latestReviewResult.error) as unknown,
-      {
-        area: "service.startup-planner",
-        operation: "load_review_context",
-      },
-    );
+  const reviewError = (currentWeekReviewResult.error ?? latestReviewResult.error) as {
+    message?: string;
+    code?: string;
+  } | null;
+
+  if (reviewError) {
+    const normalizedError =
+      reviewError instanceof Error
+        ? reviewError
+        : new Error(reviewError.message ?? "Could not load startup planning review context.");
+    captureServerException(normalizedError, {
+      area: "service.startup-planner",
+      operation: "load_review_context",
+      extras: reviewError.code ? { code: reviewError.code } : undefined,
+    });
     return {
       errorMessage: "Could not load startup planning review context.",
       data: null,
