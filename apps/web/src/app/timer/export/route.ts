@@ -4,24 +4,59 @@ import { buildTimerExportCsv } from "@/lib/timer-export";
 
 export const dynamic = "force-dynamic";
 
+const EXPORT_PAGE_SIZE = 500;
+
 export async function GET() {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("task_sessions")
-    .select(
-      "id, task_id, started_at, ended_at, duration_seconds, created_at, updated_at, tasks(title, status, priority, goals(title), projects(name, slug))",
-    )
-    .order("started_at", { ascending: false });
+  const {
+    data: authData,
+    error: authError,
+  } = await supabase.auth.getUser();
 
-  if (error) {
-    captureServerException(error, {
-      area: "route.timer-export",
-      operation: "load_sessions",
-    });
-    return Response.json({ error: "Unable to export timer sessions right now." }, { status: 500 });
+  if (authError || !authData?.user) {
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
 
-  const csv = buildTimerExportCsv(data ?? []);
+  const ownerUserId = authData.user.id;
+  const rows: Array<Parameters<typeof buildTimerExportCsv>[0][number]> = [];
+
+  let offset = 0;
+  // Page explicitly so large accounts do not depend on PostgREST's default
+  // max_rows cap and the query can use the owner-scoped index.
+  while (true) {
+    const { data, error } = await supabase
+      .from("task_sessions")
+      .select(
+        "id, task_id, started_at, ended_at, duration_seconds, created_at, updated_at, tasks(title, status, priority, goals(title), projects(name, slug))",
+      )
+      .eq("owner_user_id", ownerUserId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(offset, offset + EXPORT_PAGE_SIZE - 1);
+
+    if (error) {
+      captureServerException(error, {
+        area: "route.timer-export",
+        operation: "load_sessions",
+        extras: { offset },
+      });
+      return Response.json(
+        { error: "Unable to export timer sessions right now." },
+        { status: 500 },
+      );
+    }
+
+    const pageRows = (data ?? []) as Array<Parameters<typeof buildTimerExportCsv>[0][number]>;
+    rows.push(...pageRows);
+
+    if (pageRows.length < EXPORT_PAGE_SIZE) {
+      break;
+    }
+
+    offset += EXPORT_PAGE_SIZE;
+  }
+
+  const csv = buildTimerExportCsv(rows);
 
   return new Response(csv, {
     headers: {
