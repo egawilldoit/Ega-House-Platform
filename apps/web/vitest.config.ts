@@ -43,7 +43,6 @@ export default defineConfig({
       "src/app/tasks/create-task-form.test.ts",
       "src/components/layout/shell-signals.test.tsx",
       "src/components/layout/top-bar.test.tsx",
-      "src/components/review/trend-bar-chart.test.tsx",
       "src/components/review/session-heatmap.test.tsx",
       "src/components/tasks/task-kanban-card.test.ts",
       "src/components/tasks/task-reminder-panel.test.tsx",

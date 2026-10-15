@@ -173,3 +173,11 @@ test("AllocationDonut renders its empty state without data", () => {
   );
   assert.match(markup, /No tracked time by project in this range yet/);
 });
+
+test("FocusTrendChart labels weekly and monthly bars accurately", () => {
+  for (const groupBy of ["week", "month"] as const) {
+    const markup = renderToStaticMarkup(<FocusTrendChart data={[{ date: "2026-09-14", workedMinutes: 60, sessionCount: 1 }]} groupBy={groupBy} ariaLabel="Focus" tableCaption="Focus" />);
+    assert.match(markup, new RegExp(groupBy === "week" ? "Weekly focus" : "Monthly focus"));
+    assert.doesNotMatch(markup, /Daily focus/);
+  }
+});
