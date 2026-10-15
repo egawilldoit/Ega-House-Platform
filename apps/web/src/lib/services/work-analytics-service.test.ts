@@ -248,7 +248,7 @@ test("distributes multi-day session across days", () => {
   // 2 hours on 20th (22:00-00:00), 2 hours on 21st (00:00-02:00)
   assert.deepEqual(result, [
     { date: "2026-04-20", workedMinutes: 120, sessionCount: 1, completedTaskCount: undefined },
-    { date: "2026-04-21", workedMinutes: 120, sessionCount: 1, completedTaskCount: undefined },
+    { date: "2026-04-21", workedMinutes: 120, sessionCount: 0, completedTaskCount: undefined },
   ]);
 });
 
@@ -1817,6 +1817,14 @@ test("calculateWorkAnalyticsDailySeries splits sessions at local midnight in Asi
   assert.equal(tokyo[0]?.workedMinutes, 60);
   assert.equal(tokyo[1]?.date, "2026-04-28");
   assert.equal(tokyo[1]?.workedMinutes, 60);
+  assert.deepEqual(tokyo.map(day => day.sessionCount), [1, 0]);
+  const totals = calculateWorkAnalytics(sessions, {
+    startIso: "2026-04-26T15:00:00.000Z",
+    endIso: "2026-04-28T15:00:00.000Z",
+  });
+  assert.equal(tokyo.reduce((sum, day) => sum + day.sessionCount, 0), totals.sessionCount);
+  const clipped = calculateWorkAnalyticsDailySeries(sessions, "2026-04-28", "2026-04-28", { timezone: "Asia/Tokyo" });
+  assert.equal(clipped[0]?.sessionCount, 1);
 
   // The same instant split by UTC days stays on one day.
   const utc = calculateWorkAnalyticsDailySeries(

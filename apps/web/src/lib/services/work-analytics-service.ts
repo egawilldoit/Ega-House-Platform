@@ -309,7 +309,8 @@ export function calculateWorkAnalyticsDailySeries(
       const bucket = result.find((day) => day.date === part.dayKey);
       if (bucket) {
         bucket.workedMinutes += part.seconds;
-        bucket.sessionCount += 1;
+        // Count each session once in the selected range, even across midnight.
+        if (part === dayParts[0]) bucket.sessionCount += 1;
       }
     }
   }
