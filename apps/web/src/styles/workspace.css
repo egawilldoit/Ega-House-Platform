@@ -1362,6 +1362,12 @@ select.ega-glass-input {
   gap: 10px;
 }
 
+.app-shell .workspace-drawer-panel .workspace-create-task-trigger {
+  justify-content: flex-start;
+  padding-inline: 12px;
+  gap: 10px;
+}
+
 .workspace-drawer-panel .sidebar-project-list {
   max-height: none;
   overflow-y: visible;
