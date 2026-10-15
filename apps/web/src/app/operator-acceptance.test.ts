@@ -24,6 +24,25 @@ describe("EGA-516 Operator acceptance", () => {
     expect(dashboardPage).not.toContain("getDashboardHealthData");
   });
 
+  it("Apps launcher advertises Home directly and /dashboard stays a legacy redirect (EGA-709)", () => {
+    // The launcher must not link the retired /dashboard route: it only
+    // server-redirects to /home, so operators lost the history entry.
+    const launcherItems = read("src/app/apps/launcher-items.ts");
+    expect(launcherItems).not.toContain('"/dashboard"');
+    expect(launcherItems).toContain('label: "Home"');
+    expect(launcherItems).toContain('href: "/home"');
+
+    // /apps/dashboard deep links go straight to Home instead of chaining
+    // /apps/dashboard -> /dashboard -> /home.
+    const appsWorkspacePage = read("src/app/apps/[workspace]/page.tsx");
+    expect(appsWorkspacePage).toContain('dashboard: "/home"');
+    expect(appsWorkspacePage).toContain('home: "/home"');
+
+    // Old bookmarks still resolve: /dashboard redirects to /home.
+    const dashboardPage = read("src/app/dashboard/page.tsx");
+    expect(dashboardPage).toContain('redirect("/home")');
+  });
+
   it("web Today no longer forks shared ranking/status semantics", () => {
     const todayPage = read("src/app/today/page.tsx");
     // Must use canonical operator service, not web-local planner service
