@@ -98,7 +98,7 @@ export function ReviewPageView({
     generatedDraft,
   } = model.data;
 
-  const reviewTimezone = model.timezone ?? model.persistedTimezone ?? "UTC";
+  const reviewTimezone = model.timezone;
 
   const selectedWeekOf = model.weekOf;
   const previousWeekOf = shiftIsoDateByDays(selectedWeekOf, -7);
