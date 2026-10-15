@@ -4,6 +4,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { TimerActionFeedback } from "@/components/timer/timer-action-feedback";
 import { getTimerPageModel } from "./_lib/timer-page-model";
 import { TimerPageView } from "./_components/TimerPageView";
+import { ExportCsvButton } from "@/components/ui/export-csv-button";
 
 export const metadata: Metadata = {
   title: "Timer",
@@ -25,12 +26,13 @@ export default async function TimerPage({ searchParams }: { searchParams: Promis
           >
             Open Today
           </Link>
-          <a
+          <ExportCsvButton
             href="/timer/export"
+            defaultFilename="timer-sessions.csv"
             className="btn-instrument btn-instrument-muted flex h-8 items-center px-3 text-sm"
           >
             Export CSV
-          </a>
+          </ExportCsvButton>
         </div>
       }
     >
