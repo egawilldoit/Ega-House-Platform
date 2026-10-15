@@ -40,7 +40,7 @@ describe("ExportCsvButton", () => {
       return element;
     });
     const createObjectURLSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:mock");
-    const revokeObjectURLSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
 
     root = createRoot(container);
     act(() => {
