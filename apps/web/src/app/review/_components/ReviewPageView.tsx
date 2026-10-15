@@ -98,6 +98,8 @@ export function ReviewPageView({
     generatedDraft,
   } = model.data;
 
+  const reviewTimezone = model.timezone;
+
   const selectedWeekOf = model.weekOf;
   const previousWeekOf = shiftIsoDateByDays(selectedWeekOf, -7);
   const nextWeekOf = shiftIsoDateByDays(selectedWeekOf, 7);
@@ -237,7 +239,7 @@ export function ReviewPageView({
                     {selectedReview ? (
                       <>
                         Saved{" "}
-                        {formatDateTime(selectedReview.updated_at ?? selectedReview.created_at)}
+                        {formatDateTime(selectedReview.updated_at ?? selectedReview.created_at, reviewTimezone)}
                       </>
                     ) : (
                       "Not saved yet"
@@ -293,7 +295,7 @@ export function ReviewPageView({
                           {task.blockedReason?.trim() || "Blocked with no reason recorded yet."}
                         </span>
                         <span className="text-[length:var(--text-meta)] text-ega-text-tertiary">
-                          Updated {formatDateTime(task.updatedAt)}
+                          Updated {formatDateTime(task.updatedAt, reviewTimezone)}
                         </span>
                       </span>
                     </li>
@@ -329,7 +331,7 @@ export function ReviewPageView({
                   <span className="row-meta">{toSummaryPreview(review.summary, 140)}</span>
                 </Link>
                 <span className="shrink-0 text-[length:var(--text-meta)] tabular-nums text-ega-text-tertiary">
-                  {formatDateTime(review.updated_at ?? review.created_at)}
+                  {formatDateTime(review.updated_at ?? review.created_at, reviewTimezone)}
                 </span>
               </li>
             ))}
