@@ -87,7 +87,17 @@ describe("UnifiedCreateSheet", () => {
     expect(backlogTab?.getAttribute("aria-selected")).toBe("false");
 
     // Task command input is rendered
-    expect(document.getElementById("quick-task-command")).not.toBeNull();
+    const title = document.getElementById("quick-task-command") as HTMLInputElement;
+    expect(title).not.toBeNull();
+    expect(title.getAttribute("aria-describedby")).toContain("quick-task-title-count");
+    await act(async () => changeInput(title, "Draft"));
+    expect(document.getElementById("quick-task-title-count")?.textContent).toBe("5/256");
+    await act(async () => changeInput(title, "x".repeat(257)));
+    expect(title.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById("quick-task-title-error")?.textContent).toBe("Title must be 256 characters or fewer.");
+    await act(async () => changeInput(title, "x".repeat(256) + " high 45m"));
+    expect(title.getAttribute("aria-invalid")).toBe("false");
+    expect(document.getElementById("quick-task-title-count")?.textContent).toBe("256/256");
   });
 
   it("opens in Backlog mode upon INBOX_CAPTURE_EVENT", async () => {

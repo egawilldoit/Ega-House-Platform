@@ -1,5 +1,6 @@
 "use client";
 
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -169,6 +170,8 @@ function getDraftErrors(draft: MultiTaskDraft, goals: QuickTaskSheetGoal[]) {
     errors.push("Task title is required.");
   }
 
+  if (draft.title.trim().length > TASK_TITLE_MAX) errors.push(TASK_TITLE_LENGTH_ERROR);
+
   if (!draft.projectId) {
     errors.push("Project is required.");
   }
@@ -296,7 +299,9 @@ export function QuickTaskSheetPanel({
     }),
     [singleCommand, projects, goals, singleProjectId, displayTimezone],
   );
+  const titleTooLong = parsedSingleCommand.title.length > TASK_TITLE_MAX;
   const hasCommandError =
+    titleTooLong ||
     Boolean(parsedSingleCommand.projectError)
     || Boolean(parsedSingleCommand.goalError)
     || Boolean(parsedSingleCommand.blockedError);
@@ -584,12 +589,16 @@ export function QuickTaskSheetPanel({
                       </label>
                       <Input
                         id="quick-task-command"
+                        aria-invalid={titleTooLong}
+                        aria-describedby="quick-task-title-count quick-task-title-error"
                         required
                         placeholder={commandPlaceholder}
                         value={singleCommand}
                         onChange={(event) => handleCommandChange(event.target.value)}
                         className="h-11 w-full text-[length:var(--text-body-lg)]"
                       />
+                      <p id="quick-task-title-count" className="text-xs text-ega-text-secondary">{parsedSingleCommand.title.length}/{TASK_TITLE_MAX}</p>
+                      <p id="quick-task-title-error" role={titleTooLong ? "alert" : undefined}>{titleTooLong ? TASK_TITLE_LENGTH_ERROR : null}</p>
                       <p className="text-xs leading-5 text-[color:var(--muted-foreground)]">
                         Use #Project, /Goal, today or tomorrow, high or urgent, 45m, and
                         @blocked:reason.
@@ -1060,6 +1069,8 @@ export function QuickTaskSheetPanel({
                             <label htmlFor={`draft-${draft.id}-title`} className={FIELD_LABEL}>Title</label>
                             <Input
                               id={`draft-${draft.id}-title`}
+                              maxLength={TASK_TITLE_MAX}
+                              aria-describedby={`draft-${draft.id}-title-count`}
                               value={draft.title}
                               onChange={(event) =>
                                 updateDraftField(draft.id, "title", event.target.value)
@@ -1067,6 +1078,7 @@ export function QuickTaskSheetPanel({
                               placeholder="What needs to be done?"
                               className="h-11 w-full"
                             />
+                            <p id={`draft-${draft.id}-title-count`} className="text-xs text-ega-text-secondary">{draft.title.length}/{TASK_TITLE_MAX}</p>
                           </div>
 
                           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
