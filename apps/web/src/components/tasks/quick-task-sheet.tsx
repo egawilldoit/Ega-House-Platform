@@ -341,9 +341,23 @@ export function QuickTaskSheetPanel({
     setSingleBlockedReason(singleState.values.blockedReason);
   }
 
-  const [previousParsedCommand, setPreviousParsedCommand] = useState<typeof parsedSingleCommand | null>(null);
-  if (parsedSingleCommand !== previousParsedCommand) {
-    setPreviousParsedCommand(parsedSingleCommand);
+  const parsedCommandFields = [
+    parsedSingleCommand.projectId,
+    parsedSingleCommand.goalId,
+    parsedSingleCommand.status,
+    parsedSingleCommand.blockedReason,
+    parsedSingleCommand.blockedError,
+    parsedSingleCommand.dueDate,
+    parsedSingleCommand.priority,
+    parsedSingleCommand.estimateMinutes,
+  ] as const;
+  const [previousParsedCommandFields, setPreviousParsedCommandFields] =
+    useState<typeof parsedCommandFields | null>(null);
+  if (
+    previousParsedCommandFields === null ||
+    parsedCommandFields.some((value, index) => value !== previousParsedCommandFields[index])
+  ) {
+    setPreviousParsedCommandFields(parsedCommandFields);
     if (parsedSingleCommand.projectId) {
       setSingleProjectId(parsedSingleCommand.projectId);
       setSingleGoalId(parsedSingleCommand.goalId ?? "");
