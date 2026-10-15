@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useRef } from "react";
 import { ChevronDown, Clock3, Folder, Pin } from "lucide-react";
 
@@ -381,6 +383,7 @@ export function TaskKanbanCard({
                           <ConfirmDeleteTaskButton
                             taskTitle={task.title}
                             formRef={deleteActiveFormRef}
+                            dataTestId={`task-kanban-delete-${task.id}`}
                             pendingLabel="Deleting…"
                             triggerLabel="Delete"
                           />
@@ -415,6 +418,7 @@ export function TaskKanbanCard({
                           <ConfirmDeleteTaskButton
                             taskTitle={task.title}
                             formRef={deleteArchivedFormRef}
+                            dataTestId={`task-kanban-delete-${task.id}`}
                             pendingLabel="Deleting…"
                             triggerLabel="Delete"
                           />
