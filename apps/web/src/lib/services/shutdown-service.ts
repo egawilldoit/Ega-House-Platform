@@ -6,6 +6,7 @@ import {
   getActiveTasksForOwner,
   type NormalizedTaskRow,
 } from "@/lib/services/task-read-service";
+import type { Database } from "@/lib/supabase/database.types";
 import {
   getTodayPlannerData,
   type TodayPlannerData,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/services/today-planner-service";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type TaskUpdate = Database["public"]["Tables"]["tasks"]["Update"];
 
 type ShutdownTask = {
   id: string;
@@ -233,7 +235,9 @@ export async function getShutdownData(options?: {
     ...todayResult.data.planned,
     ...todayResult.data.inProgress,
     ...todayResult.data.blocked,
-  ].map(mapTodayTaskToShutdownTask);
+  ]
+    .map(mapTodayTaskToShutdownTask)
+    .filter((task) => task.plannedForDate !== tomorrowDate);
   const blockers = todayResult.data.blocked.map(mapTodayTaskToShutdownTask);
   const dueSoonTasks = dueSoonRowsResult.data.map(mapDueSoonTaskRow);
   const tomorrowShortlist = buildShortlist(todayResult.data, dueSoonTasks, tomorrowDate);
@@ -265,12 +269,13 @@ async function getOwnedTaskById(taskId: string, supabase: SupabaseServerClient) 
     return {
       errorMessage: "Task is required.",
       taskId: null,
+      dueDate: null,
     };
   }
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id")
+    .select("id, due_date")
     .eq("id", normalizedTaskId)
     .maybeSingle();
 
@@ -278,6 +283,7 @@ async function getOwnedTaskById(taskId: string, supabase: SupabaseServerClient) 
     return {
       errorMessage: "Unable to verify task scope right now.",
       taskId: null,
+      dueDate: null,
     };
   }
 
@@ -285,18 +291,29 @@ async function getOwnedTaskById(taskId: string, supabase: SupabaseServerClient) 
     return {
       errorMessage: "Task is unavailable.",
       taskId: null,
+      dueDate: null,
     };
   }
 
   return {
     errorMessage: null,
     taskId: data.id,
+    dueDate: (data.due_date as string | null) ?? null,
   };
 }
 
 export async function queueTaskForTomorrow(
   taskId: string,
-  options?: { supabase?: SupabaseServerClient; now?: Date; localDate?: string },
+  options?: {
+    supabase?: SupabaseServerClient;
+    now?: Date;
+    localDate?: string;
+    intent?: string;
+    carry?: boolean;
+    carryIntent?: string;
+    moveDueDate?: boolean;
+    isCarry?: boolean;
+  },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
   const scope = await getOwnedTaskById(taskId, supabase);
@@ -307,19 +324,44 @@ export async function queueTaskForTomorrow(
 
   const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
   const tomorrowDate = shiftIsoDateByDays(today, 1);
-  const { error } = await supabase
-    .from("tasks")
-    .update({
-      planned_for_date: tomorrowDate,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", scope.taskId);
 
-  if (error) {
-    return { errorMessage: "Unable to queue this task for tomorrow right now." };
+  const carrySource = options?.intent ?? options?.carryIntent;
+  const isCarryIntent =
+    (typeof carrySource === "string" && carrySource.toLowerCase().startsWith("carry")) ||
+    options?.carry === true ||
+    options?.moveDueDate === true ||
+    options?.isCarry === true;
+
+  const updatePayload: TaskUpdate = {
+    planned_for_date: tomorrowDate,
+    updated_at: new Date().toISOString(),
+  };
+  // Only explicit Carry moves an overdue/today due date; Add preserves due dates.
+  if (isCarryIntent && scope.dueDate !== null && scope.dueDate <= today) {
+    updatePayload.due_date = tomorrowDate;
   }
 
-  return { errorMessage: null, tomorrowDate };
+  const { data: updatedRow, error } = await supabase
+    .from("tasks")
+    .update(updatePayload)
+    .eq("id", scope.taskId)
+    .select("id, title")
+    .maybeSingle();
+
+  if (error || !updatedRow) {
+    return {
+      errorMessage: error
+        ? "Unable to queue this task for tomorrow right now."
+        : "Task is unavailable.",
+      tomorrowDate,
+    };
+  }
+
+  return {
+    errorMessage: null,
+    title: updatedRow.title,
+    tomorrowDate,
+  };
 }
 
 export async function saveShutdownReflectionNote(

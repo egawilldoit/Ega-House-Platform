@@ -57,6 +57,7 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
             action={carryForwardTaskToTomorrowAction}
             actionLabel="Carry to tomorrow"
             actionPendingLabel="Carrying forward…"
+            intent="carry"
             returnTo="/shutdown"
           />
           <ShutdownTaskList
@@ -79,7 +80,8 @@ export function ShutdownPageView({ model }: { model: ShutdownPageModel }) {
           tasks={data.tomorrowShortlist}
           action={carryForwardTaskToTomorrowAction}
           actionLabel="Add to tomorrow"
-          actionPendingLabel="Carrying forward…"
+          actionPendingLabel="Adding to tomorrow…"
+          intent="add"
           returnTo="/shutdown"
         />
       </DashboardSection>
