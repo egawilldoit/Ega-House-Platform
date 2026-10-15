@@ -10,6 +10,7 @@ import {
 } from "@/lib/services/task-read-service";
 
 import { addTaskToToday } from "./today-planner-service";
+import { captureServerException } from "@/lib/monitoring/capture-server-exception";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -225,12 +226,14 @@ export async function getStartupPlanningEvidence(options?: {
         .eq("week_start", weekBounds.weekStart)
         .eq("week_end", weekBounds.weekEnd)
         .order("updated_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
       supabase
         .from("week_reviews")
         .select("id, week_start, week_end, summary, wins, blockers, next_steps, updated_at")
         .order("week_start", { ascending: false })
         .order("updated_at", { ascending: false })
+        .limit(1)
         .maybeSingle(),
     ]);
 
@@ -249,6 +252,13 @@ export async function getStartupPlanningEvidence(options?: {
   }
 
   if (currentWeekReviewResult.error || latestReviewResult.error) {
+    captureServerException(
+      (currentWeekReviewResult.error ?? latestReviewResult.error) as unknown,
+      {
+        area: "service.startup-planner",
+        operation: "load_review_context",
+      },
+    );
     return {
       errorMessage: "Could not load startup planning review context.",
       data: null,

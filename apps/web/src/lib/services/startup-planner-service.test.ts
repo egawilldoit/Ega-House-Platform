@@ -121,6 +121,7 @@ function createStartupSupabaseMock(input?: {
   ) {
     const filters: Filter[] = [];
     const orderBy: Array<{ column: string; ascending: boolean }> = [];
+    let limitValue: number | null = null;
 
     function apply() {
       let rows = [...sourceRows];
@@ -164,6 +165,14 @@ function createStartupSupabaseMock(input?: {
       return rows.map((row) => transform(row, columns));
     }
 
+    function selectRows() {
+      const matchedRows = apply();
+      if (limitValue === null) {
+        return matchedRows;
+      }
+      return matchedRows.slice(0, limitValue);
+    }
+
     const query = {
       eq(column: string, value: unknown) {
         filters.push({ op: "eq", column, value });
@@ -194,11 +203,18 @@ function createStartupSupabaseMock(input?: {
         return this;
       },
       limit(value: number) {
-        const selectedRows = apply().slice(0, value);
-        return Promise.resolve({ data: selectedRows, error: null });
+        limitValue = value;
+        return this;
       },
       maybeSingle() {
-        const selectedRows = apply();
+        const matchedRows = apply();
+        if (limitValue === null && matchedRows.length > 1) {
+          return Promise.resolve({
+            data: null,
+            error: { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" },
+          });
+        }
+        const selectedRows = limitValue === null ? matchedRows : matchedRows.slice(0, limitValue);
         return Promise.resolve({
           data: selectedRows[0] ?? null,
           error: null,
@@ -206,8 +222,13 @@ function createStartupSupabaseMock(input?: {
       },
     };
 
-    const awaitable = Promise.resolve().then(() => ({ data: apply(), error: null }));
-    return Object.assign(awaitable, query);
+    const queryWithThen = Object.assign(query, {
+      then(onFulfilled?: (value: { data: unknown; error: unknown }) => unknown, onRejected?: (reason: unknown) => unknown) {
+        return Promise.resolve({ data: selectRows(), error: null }).then(onFulfilled, onRejected);
+      },
+    });
+
+    return queryWithThen;
   }
 
   function toSelectedTask(task: MockTask, columns: string) {
@@ -461,6 +482,43 @@ test("loads startup planning with existing weekly review and section data", asyn
   assert.equal(result.data?.blockersCarryForward[0]?.id, "blocked-1");
   assert.equal(result.data?.focusTasks[0]?.id, "focus-1");
   assert.equal(result.data?.keyGoals[0]?.linkedOpenTaskCount, 2);
+});
+
+test("loads startup planning review.latest when multiple saved reviews exist", async () => {
+  const result = await getStartupPlannerData({
+    now: new Date("2026-04-20T08:00:00.000Z"),
+    supabase: createStartupSupabaseMock({
+      tasks: [],
+      goals: [],
+      reviews: [
+        {
+          id: "review-older",
+          week_start: "2026-04-06",
+          week_end: "2026-04-12",
+          summary: "Older week.",
+          wins: null,
+          blockers: null,
+          next_steps: null,
+          updated_at: "2026-04-12T05:00:00.000Z",
+        },
+        {
+          id: "review-newest",
+          week_start: "2026-04-20",
+          week_end: "2026-04-26",
+          summary: "Newest week.",
+          wins: null,
+          blockers: null,
+          next_steps: null,
+          updated_at: "2026-04-20T05:00:00.000Z",
+        },
+      ],
+    }) as never,
+  });
+
+  assert.equal(result.errorMessage, null);
+  assert.ok(result.data);
+  assert.equal(result.data?.review.latest?.id, "review-newest");
+  assert.equal(result.data?.review.latest?.weekStart, "2026-04-20");
 });
 
 function createScopedPlanningSupabaseMock() {
