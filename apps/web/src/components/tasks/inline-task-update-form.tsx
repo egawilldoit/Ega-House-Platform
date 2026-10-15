@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -145,13 +145,15 @@ export function InlineTaskUpdateForm({
   stickyFooter = false,
 }: InlineTaskUpdateFormProps) {
   const [selectedStatus, setSelectedStatus] = useState(defaultStatus);
+  const [previousDefaultStatus, setPreviousDefaultStatus] = useState(defaultStatus);
   const updateFormId = `task-update-${taskId}`;
   const isArchived = Boolean(archivedAt);
   const isCompleted = isTaskCompletedStatus(defaultStatus);
 
-  useEffect(() => {
+  if (defaultStatus !== previousDefaultStatus) {
+    setPreviousDefaultStatus(defaultStatus);
     setSelectedStatus(defaultStatus);
-  }, [defaultStatus]);
+  }
 
   const scheduledStartAtDefaultValue = defaultScheduledStartAt
     ? defaultScheduledStartAt.slice(0, 16)
