@@ -331,21 +331,19 @@ export function QuickTaskSheetPanel({
     }
   }, [onSuccess, singleState.success]);
 
-  useEffect(() => {
+  const [previousSingleState, setPreviousSingleState] = useState(singleState);
+  if (singleState !== previousSingleState) {
+    setPreviousSingleState(singleState);
     setSingleStatus(singleState.values.status);
     setSingleDueDate(singleState.values.dueDate);
     setSinglePriority(singleState.values.priority);
     setSingleEstimateMinutes(singleState.values.estimateMinutes);
     setSingleBlockedReason(singleState.values.blockedReason);
-  }, [
-    singleState.values.blockedReason,
-    singleState.values.dueDate,
-    singleState.values.estimateMinutes,
-    singleState.values.priority,
-    singleState.values.status,
-  ]);
+  }
 
-  useEffect(() => {
+  const [previousParsedCommand, setPreviousParsedCommand] = useState<typeof parsedSingleCommand | null>(null);
+  if (parsedSingleCommand !== previousParsedCommand) {
+    setPreviousParsedCommand(parsedSingleCommand);
     if (parsedSingleCommand.projectId) {
       setSingleProjectId(parsedSingleCommand.projectId);
       setSingleGoalId(parsedSingleCommand.goalId ?? "");
@@ -375,16 +373,7 @@ export function QuickTaskSheetPanel({
     if (parsedSingleCommand.estimateMinutes !== null) {
       setSingleEstimateMinutes(String(parsedSingleCommand.estimateMinutes));
     }
-  }, [
-    parsedSingleCommand.dueDate,
-    parsedSingleCommand.estimateMinutes,
-    parsedSingleCommand.goalId,
-    parsedSingleCommand.priority,
-    parsedSingleCommand.projectId,
-    parsedSingleCommand.status,
-    parsedSingleCommand.blockedReason,
-    parsedSingleCommand.blockedError,
-  ]);
+  }
 
   useEffect(() => {
     if (bulkState.success) {
