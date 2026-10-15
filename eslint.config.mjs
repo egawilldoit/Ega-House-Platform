@@ -13,6 +13,8 @@ const eslintConfig = defineConfig([
     "**/out/**",
     "**/coverage/**",
     "**/test-results/**",
+    "**/.worktrees/**",
+    "**/.expo/**",
   ]),
   {
     files: ["scripts/ega-runner/**/*.ts"],

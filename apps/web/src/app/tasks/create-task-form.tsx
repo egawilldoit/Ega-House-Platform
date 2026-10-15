@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -84,11 +84,13 @@ export function CreateTaskForm({
     initialState,
   );
   const [selectedStatus, setSelectedStatus] = useState(state.values.status);
+  const [previousStatusValue, setPreviousStatusValue] = useState(state.values.status);
   const availableGoalCount = goals.length;
 
-  useEffect(() => {
+  if (state.values.status !== previousStatusValue) {
+    setPreviousStatusValue(state.values.status);
     setSelectedStatus(state.values.status);
-  }, [state.values.status]);
+  }
 
   return (
     <form action={formAction} className="space-y-4">
