@@ -308,11 +308,7 @@ export async function queueTaskForTomorrow(
     supabase?: SupabaseServerClient;
     now?: Date;
     localDate?: string;
-    intent?: string;
-    carry?: boolean;
-    carryIntent?: string;
-    moveDueDate?: boolean;
-    isCarry?: boolean;
+    intent?: "carry" | "add";
   },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
@@ -325,19 +321,12 @@ export async function queueTaskForTomorrow(
   const today = options?.localDate ?? getTodayLocalIsoDate(options?.now ?? new Date());
   const tomorrowDate = shiftIsoDateByDays(today, 1);
 
-  const carrySource = options?.intent ?? options?.carryIntent;
-  const isCarryIntent =
-    (typeof carrySource === "string" && carrySource.toLowerCase().startsWith("carry")) ||
-    options?.carry === true ||
-    options?.moveDueDate === true ||
-    options?.isCarry === true;
-
   const updatePayload: TaskUpdate = {
     planned_for_date: tomorrowDate,
     updated_at: new Date().toISOString(),
   };
   // Only explicit Carry moves an overdue/today due date; Add preserves due dates.
-  if (isCarryIntent && scope.dueDate !== null && scope.dueDate <= today) {
+  if (options?.intent === "carry" && scope.dueDate !== null && scope.dueDate <= today) {
     updatePayload.due_date = tomorrowDate;
   }
 
