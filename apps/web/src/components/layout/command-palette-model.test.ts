@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildWorkspaceSections,
   filterNavigationItems,
+  filterQuickActionItems,
   flattenPaletteSections,
   nextActiveIndex,
 } from "./command-palette-model";
@@ -82,4 +83,12 @@ test("active index wraps in both directions and clamps to valid ranges", () => {
   assert.equal(nextActiveIndex(-1, 3, -1), 2);
   assert.equal(nextActiveIndex(-1, 3, 1), 0);
   assert.equal(nextActiveIndex(0, 0, 1), -1);
+});
+
+test("quick actions contain creation commands without duplicate navigation", () => {
+  const actions = filterQuickActionItems("");
+  assert.deepEqual(actions.map(item => item.label), ["Add to Backlog", "New task", "New Project"]);
+  const destinations = new Set(filterNavigationItems("").map(item => item.href));
+  assert.ok(actions.every(item => item.action || !destinations.has(item.href)));
+  assert.ok(actions.every(item => !item.label.startsWith("Open ")));
 });
