@@ -10,9 +10,11 @@ export async function getReviewPageModel(searchParams: ReviewSearchParams) {
   const { data: authData } = await supabase.auth.getUser();
   const ownerUserId = authData.user?.id ?? "";
   let todayIsoForSelection: string;
+  let persistedTimezone: string | null = null;
   try {
     if (ownerUserId) {
       const timeContext = await getWebTimeContext();
+      persistedTimezone = timeContext.persistedTimezone;
       todayIsoForSelection = getTodayIsoDateForTimezone(
         timeContext.persistedTimezone,
         new Date(),
@@ -23,11 +25,12 @@ export async function getReviewPageModel(searchParams: ReviewSearchParams) {
   } catch {
     todayIsoForSelection = getTodayIsoDate();
   }
+  const timezone = persistedTimezone ?? "UTC";
   const selectedWeekOf =
     typeof searchParams.weekOf === "string" && isIsoDate(searchParams.weekOf) ? searchParams.weekOf : todayIsoForSelection;
   const useGeneratedDraft = searchParams.draft === "generated";
   const data = await getWeeklyReviewPageData({ ownerUserId, selectedWeekOf, useGeneratedDraft });
-  return { weekOf: selectedWeekOf, data, supabase };
+  return { weekOf: selectedWeekOf, data, supabase, timezone, persistedTimezone };
 }
 
 export type ReviewPageModel = Awaited<ReturnType<typeof getReviewPageModel>>;

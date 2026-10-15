@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { formatDateTime, formatIsoDate } from "@/lib/review-week";
 import { createClient } from "@/lib/supabase/server";
+import { getWebTimeContext } from "@/lib/services/time-context-service";
 
 import { getReviewDetailFields, toFieldValue } from "../review-detail-state";
 
@@ -59,6 +60,13 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
     notFound();
   }
 
+  let reviewTimezone = "UTC";
+  try {
+    reviewTimezone = (await getWebTimeContext()).persistedTimezone ?? "UTC";
+  } catch {
+    reviewTimezone = "UTC";
+  }
+
   return (
     <AppShell
       title="Past review detail"
@@ -94,10 +102,10 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-[length:var(--text-body)] leading-[var(--leading-relaxed)] text-ega-text-secondary">
             <p>
-              <span className="text-ega-text">Created:</span> {formatDateTime(review.created_at)}
+              <span className="text-ega-text">Created:</span> {formatDateTime(review.created_at, reviewTimezone)}
             </p>
             <p>
-              <span className="text-ega-text">Updated:</span> {formatDateTime(review.updated_at)}
+              <span className="text-ega-text">Updated:</span> {formatDateTime(review.updated_at, reviewTimezone)}
             </p>
             <p className="break-all">
               <span className="text-ega-text">Review ID:</span> {review.id}
