@@ -40,7 +40,6 @@ export default defineConfig({
       // Server transport tests run under node --test via server:test
       // (package convention, like packages/application and packages/data-access).
       "apps/server/test/**",
-      "src/app/tasks/create-task-form.test.ts",
       "src/components/layout/shell-signals.test.tsx",
       "src/components/layout/top-bar.test.tsx",
       "src/components/review/session-heatmap.test.tsx",

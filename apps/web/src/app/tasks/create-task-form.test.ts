@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
-import test from "node:test";
 
-import { buildCreateTaskFormInitialState } from "./create-task-form";
+
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { test, vi } from "vitest";
+vi.mock("./actions", () => ({ createTaskAction: vi.fn() }));
+
+import { CreateTaskForm, buildCreateTaskFormInitialState } from "./create-task-form";
 
 const projects = [
   { id: "project-1", name: "Execution OS" },
@@ -52,4 +57,14 @@ test("create task form keeps list mode return path free of layout=list", () => {
 
   assert.equal(state.initialState.values.returnTo, "/tasks?status=todo&project=project-1");
   assert.equal(state.initialState.values.returnTo.includes("layout=list"), false);
+});
+
+test("title input enforces the schema limit and describes its counter", () => {
+  const markup = renderToStaticMarkup(React.createElement(CreateTaskForm, { projects, goals: [] }));
+  const container = document.createElement("div");
+  container.innerHTML = markup;
+  const title = container.querySelector<HTMLInputElement>('input[name="title"]');
+  assert.equal(title?.maxLength, 256);
+  assert.equal(container.querySelector("#task-title-count")?.textContent, "0/256");
+  assert.ok(title?.getAttribute("aria-describedby")?.includes("task-title-count"));
 });

@@ -180,6 +180,15 @@ function saveButton() {
 }
 
 describe("EditTaskModal centered editor", () => {
+  it("limits the title and describes the character count", async () => {
+    await renderModal();
+    await click(container.querySelector('button[aria-label="Edit task"]')!);
+    const title = document.querySelector<HTMLInputElement>('input[name="title"]');
+    expect(title?.maxLength).toBe(256);
+    const counterId = title?.getAttribute("aria-describedby");
+    expect(counterId && document.getElementById(counterId)?.textContent).toBe(`${baseProps.taskTitle.length}/256`);
+  });
+
   it("opens the editor populated with the task's saved values", async () => {
     await renderModal({ taskReminders: [reminder] });
     await click(container.querySelector('button[aria-label="Edit task"]')!);

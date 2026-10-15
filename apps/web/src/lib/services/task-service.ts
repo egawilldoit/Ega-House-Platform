@@ -1,3 +1,4 @@
+import { TASK_TITLE_MAX, TASK_TITLE_LENGTH_ERROR } from "@/lib/task-domain";
 import { zonedWallTimeToUtcIso } from "@ega/domain/time-context";
 import { createClient } from "@/lib/supabase/server";
 import type { Json, TablesInsert, TablesUpdate } from "@/lib/supabase/database.types";
@@ -1056,6 +1057,7 @@ export async function createTasks(
   }
 
   for (const row of taskRows) {
+    if (row.title.length > TASK_TITLE_MAX) return { errorMessage: TASK_TITLE_LENGTH_ERROR };
     const statusValue = String(row.status ?? "todo").trim();
     const blockedReason = normalizeTaskBlockedReasonInput(row.blocked_reason);
 
@@ -1087,6 +1089,8 @@ export async function createTasks(
   }
 
   if (error) {
+    if (error.code === "22001") return { errorMessage: TASK_TITLE_LENGTH_ERROR };
+    console.error("Task insert failed", { code: error.code });
     return { errorMessage: "Unable to create task right now." };
   }
 
@@ -1467,6 +1471,10 @@ export function validateTaskInlineUpdateInput(input: ValidateTaskInlineUpdateInp
     };
   }
 
+  if (title !== undefined && title.length > TASK_TITLE_MAX) {
+    return { errorMessage: TASK_TITLE_LENGTH_ERROR };
+  }
+
   if (projectId !== undefined && !projectId) {
     return {
       errorMessage: "Project is required.",
@@ -1780,6 +1788,9 @@ export async function updateTaskInline(
   },
 ) {
   const supabase = await resolveSupabaseClient(options?.supabase);
+  if (input.title !== undefined && input.title.length > TASK_TITLE_MAX) {
+    return { errorMessage: TASK_TITLE_LENGTH_ERROR };
+  }
   const updatedAtIso = options?.updatedAtIso ?? new Date().toISOString();
 
   let { data: currentTask, error: currentTaskError } = await supabase
