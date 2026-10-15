@@ -14,6 +14,7 @@ import {
   PROJECT_STATUS_VALUES,
   TASK_PRIORITY_VALUES,
   TASK_STATUS_VALUES,
+  TASK_TITLE_MAX,
 } from "@/lib/task-domain";
 
 export type McpProtocolContext = {
@@ -379,7 +380,7 @@ const getTaskInputSchema = z.object({
 }).strict();
 
 const createTaskInputSchema = z.object({
-  title: z.string().min(1).max(256),
+  title: z.string().min(1).max(TASK_TITLE_MAX),
   projectId: uuidSchema,
   goalId: uuidSchema.nullable().optional(),
   description: z.string().max(4000).nullable().optional(),
@@ -393,7 +394,7 @@ const createTaskInputSchema = z.object({
 
 const updateTaskInputSchema = z.object({
   taskId: uuidSchema,
-  title: z.string().min(1).max(256).optional(),
+  title: z.string().min(1).max(TASK_TITLE_MAX).optional(),
   status: z.enum(TASK_STATUS_VALUES).optional(),
   priority: z.enum(TASK_PRIORITY_VALUES).optional(),
   description: z.string().max(4000).nullable().optional(),
