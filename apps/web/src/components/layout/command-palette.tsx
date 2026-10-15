@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { CornerDownLeft, Search, X } from "lucide-react";
 
 import { searchWorkspaceAction } from "@/app/search/actions";
-import { COMMAND_PALETTE_EVENT, INBOX_CAPTURE_EVENT } from "@/lib/workspace-events";
+import { COMMAND_PALETTE_EVENT, INBOX_CAPTURE_EVENT, QUICK_TASK_EVENT } from "@/lib/workspace-events";
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
 import { WORKSPACE_SEARCH_MIN_QUERY_LENGTH } from "@/lib/workspace-search";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
@@ -190,6 +190,10 @@ export function CommandPalette() {
       window.dispatchEvent(new CustomEvent(INBOX_CAPTURE_EVENT));
       return;
     }
+    if (item.action === "quick-task") {
+      window.dispatchEvent(new CustomEvent(QUICK_TASK_EVENT));
+      return;
+    }
     router.push(canonicalUrl.resolve(item.href));
   };
 
@@ -313,6 +317,8 @@ export function CommandPalette() {
                       id={`${listId}-option-${flatIndex}`}
                       role="option"
                       aria-selected={isActive}
+                      aria-label={item.label}
+                      aria-describedby={item.hint ? `${listId}-option-${flatIndex}-hint` : undefined}
                       onClick={() => goToItem(item)}
                       onMouseEnter={() => setRequestedActiveIndex(flatIndex)}
                       className={`flex w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm ${
@@ -321,7 +327,7 @@ export function CommandPalette() {
                     >
                       <span className="min-w-0 truncate">{item.label}</span>
                       <span className="flex shrink-0 items-center gap-2 text-xs text-[var(--ega-text-secondary)]">
-                        {item.hint ? <span className="truncate">{item.hint}</span> : null}
+                        {item.hint ? <span id={`${listId}-option-${flatIndex}-hint`} className="truncate">{item.hint}</span> : null}
                         {isActive ? <CornerDownLeft aria-hidden="true" className="h-3.5 w-3.5" /> : null}
                       </span>
                     </button>

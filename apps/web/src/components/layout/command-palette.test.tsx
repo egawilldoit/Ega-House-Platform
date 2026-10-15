@@ -2,6 +2,8 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { QUICK_TASK_EVENT } from "@/lib/workspace-events";
+
 import { CommandPalette, COMMAND_PALETTE_EVENT } from "./command-palette";
 
 const searchWorkspaceAction = vi.fn();
@@ -65,8 +67,8 @@ describe("CommandPalette", () => {
     await openViaShortcut();
 
     const options = document.body.querySelectorAll('[role="option"]');
-    // 13 nav + 7 quick actions = 20 when query empty
-    expect(options.length).toBe(20);
+    // 13 destinations plus three creation commands.
+    expect(options.length).toBe(16);
     expect(options[0].textContent).toContain("Today");
     expect(options[0].getAttribute("aria-selected")).toBe("true");
 
@@ -78,6 +80,27 @@ describe("CommandPalette", () => {
 
     expect(routerPush).toHaveBeenCalledWith("/today");
     expect(dialog()).toBeNull();
+  });
+
+  it("separates hints from option names and opens quick task creation", async () => {
+    const onQuickTask = vi.fn();
+    window.addEventListener(QUICK_TASK_EVENT, onQuickTask);
+    try {
+      await renderPalette();
+      await openViaShortcut();
+      const capture = document.body.querySelector('[role="option"][aria-label="Add to Backlog"]');
+      expect(capture).not.toBeNull();
+      const hintId = capture?.getAttribute("aria-describedby");
+      expect(hintId && document.getElementById(hintId)?.textContent).toBe("Capture");
+      const newTask = document.body.querySelector<HTMLButtonElement>('[role="option"][aria-label="New task"]');
+      expect(newTask).not.toBeNull();
+      await act(async () => newTask?.click());
+      expect(onQuickTask).toHaveBeenCalledOnce();
+      expect(dialog()).toBeNull();
+      expect(routerPush).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener(QUICK_TASK_EVENT, onQuickTask);
+    }
   });
 
   it("toggles closed on a repeat shortcut event and closes on Escape anywhere", async () => {
@@ -133,6 +156,9 @@ describe("CommandPalette", () => {
       const options = document.body.querySelectorAll('[role="option"]');
       expect(options.length).toBe(1);
       expect(options[0].textContent).toContain("Ship landing page");
+      expect(options[0].getAttribute("aria-label")).toBe("Ship landing page");
+      const hintId = options[0].getAttribute("aria-describedby");
+      expect(hintId && document.getElementById(hintId)?.textContent).toBe("Web");
       expect(options[0].id).toMatch(/option-0$/);
       expect(input()?.getAttribute("aria-activedescendant")).toBe(options[0].id);
     } finally {

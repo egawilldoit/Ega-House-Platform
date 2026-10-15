@@ -9,7 +9,7 @@ export type CommandPaletteItem = {
   label: string;
   hint: string | null;
   href: `/${string}`;
-  action?: "capture";
+  action?: "capture" | "quick-task";
 };
 
 export type CommandPaletteSection = {
@@ -44,12 +44,8 @@ const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
 
 const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint" | "action">> = [
   { label: "Add to Backlog", href: "/backlog", hint: "Capture", action: "capture" },
-  { label: "Open Tasks", href: "/tasks", hint: "Tasks" },
+  { label: "New task", href: "/tasks", hint: "Task", action: "quick-task" },
   { label: "New Project", href: "/tasks/projects/new", hint: "Project" },
-  { label: "Open Goals", href: "/goals", hint: "Goals" },
-  { label: "Open Timer", href: "/timer", hint: "Timer" },
-  { label: "Open Today", href: "/today", hint: "Today" },
-  { label: "Open Review", href: "/review", hint: "Review" },
 ];
 
 function navigationItems(): CommandPaletteItem[] {
