@@ -24,9 +24,7 @@ export async function getShutdownReturnPath(rawReturnTo: unknown) {
 export async function carryForwardTaskToTomorrowAction(formData: FormData) {
   const returnPath = await getShutdownReturnPath(formData.get("returnTo"));
   const taskId = String(formData.get("taskId") ?? "").trim();
-  const intent = String(formData.get("intent") ?? "")
-    .trim()
-    .toLowerCase();
+  const intent = formData.get("intent") === "carry" ? "carry" : "add";
   const localDate = (await getWebTimeContext().catch(() => null))?.localDate ?? null;
 
   const result = await queueTaskForTomorrow(taskId, {
@@ -40,8 +38,7 @@ export async function carryForwardTaskToTomorrowAction(formData: FormData) {
 
   revalidateWorkspaceFor("shutdown", { returnTo: returnPath });
 
-  const isAddIntent = intent.startsWith("add");
-  const successMessage = isAddIntent
+  const successMessage = intent === "add"
     ? "Task queued for tomorrow."
     : `Carried "${result.title ?? "Task"}" to ${formatTaskDueDate(
         result.tomorrowDate ?? localDate ?? getTodayLocalIsoDate(),

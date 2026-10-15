@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { vi } from "vitest";
+import { queueTaskForTomorrow } from "@/lib/services/shutdown-service";
 
 import { getShutdownReturnPath, carryForwardTaskToTomorrowAction } from "./actions";
 
@@ -53,6 +54,9 @@ test("carry intent success message names the task and target date", async () => 
     await carryForwardTaskToTomorrowAction(formData);
   });
   assert.ok(url.includes('actionSuccess=Carried+%22QA+carry+today%22+to+Apr+22%2C+2026'));
+  assert.deepEqual(vi.mocked(queueTaskForTomorrow).mock.lastCall, [
+    "task-1", { localDate: "2026-04-21", intent: "carry" },
+  ]);
 });
 
 test("add intent keeps the distinct queued message", async () => {
@@ -66,8 +70,7 @@ test("add intent keeps the distinct queued message", async () => {
 });
 
 test("carry failure reports an error instead of success", async () => {
-  const { queueTaskForTomorrow } = await import("@/lib/services/shutdown-service");
-  (queueTaskForTomorrow as any).mockResolvedValueOnce({
+  vi.mocked(queueTaskForTomorrow).mockResolvedValueOnce({
     errorMessage: "Task is unavailable.",
   });
   const formData = new FormData();
@@ -77,4 +80,17 @@ test("carry failure reports an error instead of success", async () => {
     await carryForwardTaskToTomorrowAction(formData);
   });
   assert.ok(url.includes("actionError=Task+is+unavailable."));
+});
+
+test("missing or unknown intent preserves add semantics", async () => {
+  for (const intent of [null, "unknown"]) {
+    const formData = new FormData();
+    formData.set("taskId", "task-1");
+    if (intent !== null) formData.set("intent", intent);
+    const url = await captureRedirect(() => carryForwardTaskToTomorrowAction(formData));
+    assert.ok(url.includes("actionSuccess=Task+queued+for+tomorrow."));
+    assert.deepEqual(vi.mocked(queueTaskForTomorrow).mock.lastCall, [
+      "task-1", { localDate: "2026-04-21", intent: "add" },
+    ]);
+  }
 });
