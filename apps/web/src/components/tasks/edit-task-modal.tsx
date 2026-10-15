@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { Archive as ArchiveIcon, CalendarClock, Pencil, X } from "lucide-react";
+import { ConfirmDeleteTaskButton } from "./confirm-delete-task-button";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 
 import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
@@ -355,6 +356,7 @@ function TaskEditorPanel({
 }: Omit<EditTaskModalProps, "open" | "onOpenChange" | "trigger"> & { onClose: () => void }) {
   const router = useRouter();
   const saveErrorRef = useRef<HTMLParagraphElement | null>(null);
+  const deleteFormRef = useRef<HTMLFormElement | null>(null);
   const [state, formAction, isPending] = useActionState<UpdateTaskEditorFormState, FormData>(
     updateAction,
     {
@@ -800,30 +802,15 @@ function TaskEditorPanel({
                     timer history and cannot be undone.
                   </p>
                   <div>
-                    <form
-                      action={deleteAction}
-                      onSubmit={(event) => {
-                        if (
-                          !window.confirm(
-                            `Delete "${taskTitle}"? This is permanent and is blocked if the task has timer history.`,
-                          )
-                        ) {
-                          event.preventDefault();
-                        }
-                      }}
-                    >
+                    <form action={deleteAction} ref={deleteFormRef}>
                       <input type="hidden" name="taskId" value={taskId} />
                       <input type="hidden" name="returnTo" value={returnTo} />
                       <input type="hidden" name="confirmDelete" value="true" />
-                      <PendingSubmitButton
-                        type="submit"
-                        size="sm"
-                        variant="danger"
-                        pendingLabel="Deleting…"
-                        data-testid={`task-editor-delete-${taskId}`}
-                      >
-                        Delete task
-                      </PendingSubmitButton>
+                      <ConfirmDeleteTaskButton
+                        taskTitle={taskTitle}
+                        formRef={deleteFormRef}
+                        dataTestId={`task-editor-delete-${taskId}`}
+                      />
                     </form>
                   </div>
                 </EditorCard>

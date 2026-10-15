@@ -420,7 +420,7 @@ describe("EditTaskModal centered editor", () => {
     expect(saveAction).not.toHaveBeenCalled();
   });
 
-  it("delete lives in the danger zone with confirmation and never submits on open", async () => {
+  it("delete opens an in-app confirmation, Cancel does not submit, Confirm submits", async () => {
     const deleteAction = vi.fn();
     await renderModal({ deleteAction });
     await click(container.querySelector('button[aria-label="Edit task"]')!);
@@ -428,6 +428,32 @@ describe("EditTaskModal centered editor", () => {
     expect(dialog()!.textContent).toContain("Danger zone");
     expect(document.body.querySelector<HTMLInputElement>('input[name="confirmDelete"]')).not.toBeNull();
     expect(deleteAction).not.toHaveBeenCalled();
+
+    let deleteTrigger = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="task-editor-delete-task-1"]',
+    )!;
+    await click(deleteTrigger);
+    expect(document.body.textContent).toContain("saas meeting cdc");
+
+    const cancel = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="task-editor-delete-task-1-cancel"]',
+    )!;
+    await click(cancel);
+    await act(async () => {});
+    expect(deleteAction).not.toHaveBeenCalled();
+
+    deleteTrigger = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="task-editor-delete-task-1"]',
+    )!;
+    await click(deleteTrigger);
+    await act(async () => {});
+    const confirm = document.body.querySelector<HTMLButtonElement>(
+      '[data-testid="task-editor-delete-task-1-confirm"]',
+    )!;
+    expect(confirm).toBeDefined();
+    await click(confirm);
+    await act(async () => {});
+    expect(deleteAction).toHaveBeenCalledTimes(1);
   });
 
   it("closes with Escape and restores focus to the originating trigger", async () => {
