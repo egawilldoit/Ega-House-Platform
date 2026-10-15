@@ -15,9 +15,21 @@ export async function GET(request: Request) {
   const selectedWeekOf = getReviewExportWeekOf(url.searchParams);
   const supabase = await createClient();
 
+  const {
+    data: authData,
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !authData?.user) {
+    return Response.json({ error: "Unauthorized." }, { status: 401 });
+  }
+
+  const ownerUserId = authData.user.id;
+
   let reviewQuery = supabase
     .from("week_reviews")
     .select("id, week_start, week_end, summary, wins, blockers, next_steps, created_at, updated_at")
+    .eq("owner_user_id", ownerUserId)
     .order("week_start", { ascending: false });
 
   if (selectedWeekOf) {
@@ -73,16 +85,19 @@ export async function GET(request: Request) {
       supabase
         .from("tasks")
         .select("id", { count: "exact", head: true })
+        .eq("owner_user_id", ownerUserId)
         .gte("created_at", window.startIso)
         .lt("created_at", window.endExclusiveIso),
       supabase
         .from("task_sessions")
         .select("task_id, started_at, ended_at, duration_seconds")
+        .eq("owner_user_id", ownerUserId)
         .gte("started_at", window.startIso)
         .lt("started_at", window.endExclusiveIso),
       supabase
         .from("goals")
         .select("status")
+        .eq("owner_user_id", ownerUserId)
         .gte("updated_at", window.startIso)
         .lt("updated_at", window.endExclusiveIso),
     ]);
