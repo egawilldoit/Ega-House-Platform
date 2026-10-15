@@ -532,12 +532,19 @@
 .app-shell[data-collapsed="true"] .sidebar-project-status,
 .app-shell[data-collapsed="true"] .workspace-search-label,
 .app-shell[data-collapsed="true"] .workspace-search kbd,
+.app-shell[data-collapsed="true"] .workspace-create-kbd,
 .app-shell[data-collapsed="true"] .sidebar-section-action {
   display: none;
 }
 
 .app-shell[data-collapsed="true"] .sidebar-link,
 .app-shell[data-collapsed="true"] .sidebar-project-link {
+  justify-content: center;
+  padding-inline: 0;
+  gap: 0;
+}
+
+.app-shell[data-collapsed="true"] .workspace-create-task-trigger {
   justify-content: center;
   padding-inline: 0;
   gap: 0;
@@ -1332,6 +1339,7 @@ select.ega-glass-input {
 .app-shell .workspace-drawer-panel .sidebar-project-status,
 .app-shell .workspace-drawer-panel .workspace-search-label,
 .app-shell .workspace-drawer-panel .workspace-search kbd,
+.app-shell .workspace-drawer-panel .workspace-create-kbd,
 .app-shell .workspace-drawer-panel .workspace-brand-copy,
 .app-shell .workspace-drawer-panel .sidebar-section-action {
   display: revert;

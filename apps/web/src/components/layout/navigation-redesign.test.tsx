@@ -98,6 +98,7 @@ describe("EGA-654 navigation structure", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     // Icon-only states hide the text wrappers explicitly, not only via font-size.
     expect(css).toMatch(/data-collapsed="true"[\s\S]*?\.workspace-nav-label,/);
+    expect(css).toMatch(/data-collapsed="true"[\s\S]*?\.workspace-create-kbd/);
     expect(css).toContain("max-height: min(31dvh, 18rem);");
     expect(css).toContain("overflow-y: auto;");
     // The tablet rail width is a token override, owned by tokens.css.
