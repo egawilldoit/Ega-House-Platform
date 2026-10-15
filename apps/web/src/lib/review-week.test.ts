@@ -5,8 +5,8 @@ import { formatDateTime } from "./review-week";
 
 test("formatDateTime renders profile timezone without a UTC suffix", () => {
   assert.equal(
-    formatDateTime("2026-10-14T16:57:00.000Z", "Africa/Casablanca"),
-    "Oct 14, 2026, 5:57 PM",
+    formatDateTime("2026-10-14T16:57:00.000Z", "Asia/Tokyo"),
+    "Oct 15, 2026, 1:57 AM",
   );
 });
 
