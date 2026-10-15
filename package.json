@@ -15,7 +15,7 @@
     "check:architecture": "node scripts/architecture/check-boundaries.mjs",
     "ci:purity": "node scripts/ci/package-purity.mjs",
     "ci:security": "node scripts/ci/security-proofs.mjs",
-    "ci:workspace": "node --test scripts/ci/audit-production.test.mjs && node scripts/ci/workspace-proofs.mjs",
+    "ci:workspace": "node --test scripts/ci/audit-production.test.mjs scripts/ci/security-backports.test.mjs && node scripts/ci/workspace-proofs.mjs",
     "contracts:test": "npm run test --workspace @ega/contracts",
     "contracts:typecheck": "npm run typecheck --workspace @ega/contracts",
     "data-access:test": "npm run test --workspace @ega/data-access",
@@ -119,7 +119,9 @@
     "compression": "1.8.2",
     "shell-quote": "1.11.0",
     "source-map-js": "1.2.2",
-    "undici@^6": "6.28.1"
+    "undici@^6": "6.28.1",
+    "braces": "https://codeload.github.com/FSDevelop/braces/tar.gz/28d440b5dd449dbf1fe6f3506cf94ecca4d02660",
+    "node-forge": "https://codeload.github.com/Krysthyan/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65"
   },
   "optionalDependencies": {
     "@next/swc-linux-x64-gnu": "16.3.8",
