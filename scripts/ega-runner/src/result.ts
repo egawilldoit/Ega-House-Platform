@@ -110,8 +110,8 @@ export function verifyResult(
   }
 
   let branch: string | null = result.branch || null;
-  let commitSha: string | null = result.commit || null;
-  let prNumber: number | null = result.pr || null;
+  const commitSha: string | null = result.commit || null;
+  const prNumber: number | null = result.pr || null;
 
   if (branch) {
     try {
