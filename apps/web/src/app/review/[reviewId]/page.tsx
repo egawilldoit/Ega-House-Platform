@@ -62,7 +62,7 @@ export default async function ReviewDetailPage({ params }: ReviewDetailPageProps
 
   let reviewTimezone = "UTC";
   try {
-    reviewTimezone = (await getWebTimeContext()).persistedTimezone ?? "UTC";
+    reviewTimezone = (await getWebTimeContext()).timezone;
   } catch {
     reviewTimezone = "UTC";
   }
