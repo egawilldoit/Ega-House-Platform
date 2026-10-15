@@ -102,6 +102,7 @@ type TrendChartPoint = {
 };
 
 type FocusTrendChartProps = {
+  groupBy?: "day" | "week" | "month";
   data: WorkAnalyticsDaily[];
   ariaLabel: string;
   tableCaption: string;
@@ -121,6 +122,7 @@ type FocusTrendChartProps = {
 };
 
 export function FocusTrendChart({
+  groupBy = "day",
   data,
   ariaLabel,
   tableCaption,
@@ -380,7 +382,7 @@ export function FocusTrendChart({
               className="h-2.5 w-2.5 shrink-0 rounded-[3px]"
               style={{ background: CHART_BAR_FILL }}
             />
-            Daily focus
+            {groupBy === "week" ? "Weekly focus" : groupBy === "month" ? "Monthly focus" : "Daily focus"}
           </li>
           {showsTrendLine ? (
             <li className="inline-flex items-center gap-1.5">

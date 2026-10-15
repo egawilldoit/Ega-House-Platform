@@ -495,6 +495,7 @@ function AnalyticsSection({
         action={<Badge tone="muted">{selectedRangeLabel}</Badge>}
       >
         <FocusTrendChart
+          groupBy={groupBy}
           data={primarySeries}
           variant="bars"
           showTrendLine={showsTrendLine}
