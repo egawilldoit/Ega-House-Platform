@@ -6,9 +6,11 @@ import { SHORTCUT_HELP_SECTIONS } from "@/lib/keyboard-shortcuts";
 
 import { HelpDirectory, type HelpGroup } from "./help-directory";
 
+const WORKFLOW_LOOP = "Projects → Goals → Tasks → Timer → Review";
+
 export const metadata: Metadata = {
   title: "Help",
-  description: "Practical guidance for running the Project -> Goal -> Task -> Timer -> Review loop.",
+  description: `Practical guidance for running the ${WORKFLOW_LOOP} loop.`,
 };
 
 const workflowSteps = [
@@ -104,7 +106,7 @@ const helpGroups: HelpGroup[] = [
   {
     id: "workflow-guides",
     title: "Workflow Guides",
-    description: "Project -> Goal -> Task -> Timer -> Review.",
+    description: WORKFLOW_LOOP,
     entries: workflowSteps.map((step, index) => ({
       id: `workflow-${index}`,
       title: step.title,
@@ -127,7 +129,7 @@ export default async function HelpPage() {
   return (
     <AppShell
       title="Help Center"
-      description="Workflow guide — Projects → Goals → Tasks → Timer → Review."
+      description={`Workflow guide — ${WORKFLOW_LOOP}.`}
       actions={
         <Link
           href="/today"
