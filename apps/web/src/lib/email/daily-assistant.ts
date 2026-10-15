@@ -396,7 +396,7 @@ function getDailyAssistantTemplate(data: AssistantEmailData): DailyAssistantTemp
           },
           {
             title: "Next week planning",
-            html: renderParagraph("Pick the few priorities that should shape next week's Project -> Goal -> Task -> Timer -> Review loop."),
+            html: renderParagraph("Pick the few priorities that should shape next week's Projects → Goals → Tasks → Timer → Review loop."),
           },
         ],
         ctaLabel: "Open Review",

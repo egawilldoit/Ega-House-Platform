@@ -19,4 +19,6 @@ test("help page defines metadata and required operational sections", () => {
   assert.match(source, /\/goals/);
   assert.match(source, /\/timer/);
   assert.match(source, /\/review/);
+  assert.doesNotMatch(source, /->/);
+  assert.match(source, /Projects → Goals → Tasks → Timer → Review/);
 });
