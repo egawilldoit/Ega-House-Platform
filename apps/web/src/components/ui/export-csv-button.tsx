@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -9,12 +9,9 @@ export type ExportCsvButtonProps = Omit<
   "onClick"
 > & {
   href: string;
-  label?: string;
-  children?: React.ReactNode;
-  pendingLabel?: string;
-  successMessage?: string;
   defaultFilename?: string;
   className?: string;
+  children?: React.ReactNode;
 };
 
 function parseFilenameFromContentDisposition(header: string | null): string | null {
@@ -35,19 +32,15 @@ function parseFilenameFromContentDisposition(header: string | null): string | nu
 
 export function ExportCsvButton({
   href,
-  label,
-  children,
-  pendingLabel = "Preparing export…",
-  successMessage,
   defaultFilename,
   className,
+  children,
   disabled,
   ...props
 }: ExportCsvButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
   const [message, setMessage] = useState("");
-  const anchorRef = useRef<HTMLAnchorElement | null>(null);
 
   async function handleExport() {
     if (isExporting) return;
@@ -58,14 +51,21 @@ export function ExportCsvButton({
 
     try {
       const response = await fetch(href, { credentials: "same-origin" });
+      const contentType = response.headers.get("content-type") ?? "";
 
-      if (!response.ok) {
+      if (!response.ok || response.redirected || !contentType.toLowerCase().includes("text/csv")) {
         let errorMessage = "Export failed. Please try again.";
         try {
           const body = (await response.json()) as { error?: string };
           if (body?.error) errorMessage = body.error;
         } catch {
-          // Response may not be JSON.
+          if (response.redirected) {
+            errorMessage = "Your session expired. Please sign in and try again.";
+          } else if (!response.ok) {
+            errorMessage = "Export failed. Please try again.";
+          } else {
+            errorMessage = "Export did not return a CSV file. Please try again.";
+          }
         }
         throw new Error(errorMessage);
       }
@@ -82,12 +82,14 @@ export function ExportCsvButton({
       anchor.download = filename;
       document.body.appendChild(anchor);
       anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(objectUrl);
+      window.setTimeout(() => {
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+      }, 0);
 
       setIsExporting(false);
       setStatus("success");
-      setMessage(successMessage ? `${successMessage} ${filename}`.trim() : `Downloaded ${filename}`);
+      setMessage(`Downloaded ${filename}`);
     } catch (error) {
       setIsExporting(false);
       setStatus("error");
@@ -109,7 +111,7 @@ export function ExportCsvButton({
         aria-busy={isExporting}
         onClick={handleExport}
       >
-        {isExporting ? pendingLabel : children ?? label ?? "Export CSV"}
+        {isExporting ? "Preparing export…" : children ?? "Export CSV"}
       </Button>
       {status === "success" ? (
         <span
@@ -129,7 +131,6 @@ export function ExportCsvButton({
           {message}
         </span>
       ) : null}
-      <span ref={anchorRef} hidden />
     </>
   );
 }

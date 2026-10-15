@@ -58,8 +58,8 @@ describe("GET /timer/export", () => {
   });
 
   it("pages beyond 1000 rows and sets content-disposition", async () => {
-    const firstPage = Array.from({ length: 500 }, (_, index) => ({
-      id: `session-${index}`,
+    const allRows = Array.from({ length: 1250 }, (_, index) => ({
+      id: `session-${String(1249 - index).padStart(4, "0")}`,
       task_id: "task-1",
       started_at: "2026-04-18T09:00:00.000Z",
       ended_at: null,
@@ -68,26 +68,10 @@ describe("GET /timer/export", () => {
       updated_at: "2026-04-18T09:00:00.000Z",
       tasks: null,
     }));
-    const secondPage = Array.from({ length: 500 }, (_, index) => ({
-      id: `session-${500 + index}`,
-      task_id: "task-1",
-      started_at: "2026-04-18T09:00:00.000Z",
-      ended_at: null,
-      duration_seconds: null,
-      created_at: "2026-04-18T09:00:00.000Z",
-      updated_at: "2026-04-18T09:00:00.000Z",
-      tasks: null,
-    }));
-    const thirdPage = Array.from({ length: 250 }, (_, index) => ({
-      id: `session-${1000 + index}`,
-      task_id: "task-1",
-      started_at: "2026-04-18T09:00:00.000Z",
-      ended_at: null,
-      duration_seconds: null,
-      created_at: "2026-04-18T09:00:00.000Z",
-      updated_at: "2026-04-18T09:00:00.000Z",
-      tasks: null,
-    }));
+
+    const firstPage = allRows.slice(0, 500);
+    const secondPage = allRows.slice(500, 1000);
+    const thirdPage = allRows.slice(1000);
 
     query.range
       .mockResolvedValueOnce({ data: firstPage, error: null })
@@ -99,6 +83,14 @@ describe("GET /timer/export", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-disposition")).toContain("attachment");
     expect(response.headers.get("content-disposition")).toContain("timer-sessions.csv");
+
+    const csv = await response.text();
+    const dataLines = csv.trim().split("\n").slice(1);
+    expect(dataLines).toHaveLength(1250);
+    expect(csv).toContain("session-1249");
+    expect(dataLines[0]).toContain("session-1249");
+    expect(dataLines[dataLines.length - 1]).toContain("session-0000");
+
     expect(query.range).toHaveBeenNthCalledWith(1, 0, 499);
     expect(query.range).toHaveBeenNthCalledWith(2, 500, 999);
     expect(query.range).toHaveBeenNthCalledWith(3, 1000, 1499);
