@@ -124,13 +124,13 @@ export function formatIsoDate(isoDate: string) {
   });
 }
 
-export function formatDateTime(isoDateTime: string) {
+export function formatDateTime(isoDateTime: string, timezone?: string) {
   return new Date(isoDateTime).toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "numeric",
     minute: "2-digit",
-    timeZoneName: "short",
+    timeZone: timezone ?? "UTC",
   });
 }
