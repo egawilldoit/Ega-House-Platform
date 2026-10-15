@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { verifySecurityBackports } from './security-backports.mjs';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
@@ -138,6 +139,7 @@ export function runAuditCommand({ spawn = spawnSync, npm = process.platform === 
 export function evaluateAuditReport(report, options = {}) {
   const {
     exceptions = SECURITY_AUDIT_EXCEPTIONS,
+    verifiedBackports = new Map(),
     now = new Date(),
     wsPackageJsonPath = 'node_modules/ws/package.json',
     checkWs = true,
@@ -189,6 +191,12 @@ export function evaluateAuditReport(report, options = {}) {
     const allowedLeafSources = [];
 
     for (const leaf of leaves) {
+      // Accept only the exact advisory whose installed patch was verified.
+      // All other advisories, including new ones on the same package, still block.
+      if (verifiedBackports.get(leaf.source) === leaf.name) {
+        allowedLeafSources.push(leaf.source);
+        continue;
+      }
       const exception = exceptions.find((ex) => {
         if (ex.source !== undefined && ex.source === leaf.source) return true;
         if (ex.advisory && ((leaf.url && leaf.url.includes(ex.advisory)) || leaf.advisory === ex.advisory)) {
@@ -304,12 +312,21 @@ export function main() {
   }
 
   const report = JSON.parse(result.stdout);
-  const evaluation = evaluateAuditReport(report);
+  let verifiedBackports;
+  try {
+    verifiedBackports = verifySecurityBackports();
+  } catch (error) {
+    process.stderr.write(`dependency-audit: security backport proof failed: ${error.message}\n`);
+    process.exitCode = 1;
+    return;
+  }
+  const evaluation = evaluateAuditReport(report, { verifiedBackports });
 
   console.log(
     JSON.stringify(
       {
         counts: report.metadata?.vulnerabilities,
+        verifiedBackports: [...verifiedBackports].map(([source, name]) => ({ source, name })),
         allowedHighCritical: evaluation.allowedHighCritical,
         blockingHighCritical: evaluation.blockingHighCritical,
       },
