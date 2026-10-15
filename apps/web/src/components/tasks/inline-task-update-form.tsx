@@ -419,6 +419,7 @@ export function InlineTaskUpdateForm({
                   <ConfirmDeleteTaskButton
                     taskTitle={taskTitle}
                     formRef={deleteFormRef}
+                    dataTestId={`task-inline-delete-${taskId}`}
                     triggerLabel="Delete task"
                     className="min-h-11 w-full justify-center"
                   />
