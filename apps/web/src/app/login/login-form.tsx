@@ -3,15 +3,13 @@
 import { Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition, type CSSProperties, type FormEvent } from "react";
 
 import { AuthFeedback } from "@/app/auth-ui/auth-feedback";
 import { AuthField } from "@/app/auth-ui/auth-field";
-import { AuthGeometry } from "@/app/auth-ui/auth-geometry";
 import { AuthHeader } from "@/app/auth-ui/auth-header";
 import { AuthReveal } from "@/app/auth-ui/auth-motion";
 import { AuthShell } from "@/app/auth-ui/auth-shell";
-import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
 import { AuthSubmit } from "@/app/auth-ui/auth-submit";
 import { createClient } from "@/lib/supabase/client";
 
@@ -108,7 +106,7 @@ export function LoginForm({ signupHref }: LoginFormProps) {
   }
 
   return (
-    <AuthShell theme="black-signal">
+    <AuthShell theme="house-cream">
       <AuthHeader
         status="AUTH / SIGN IN"
         actionHref={signupHref}
@@ -116,16 +114,39 @@ export function LoginForm({ signupHref }: LoginFormProps) {
       />
 
       <div className="auth-stage">
-        <AuthStudyLabel number="AUTH 01" title="SIGN IN" direction="BLACK SIGNAL" />
-
         <div className="auth-layout">
           <section className="auth-story" aria-labelledby="login-story-title">
-            <AuthGeometry variant="focus" />
             <AuthReveal>
               <p className="auth-kicker">The operating loop is waiting.</p>
-              <h1 id="login-story-title" className="auth-display">
-                Return to
-                <span className="auth-display__accent">the system.</span>
+              <h1 id="login-story-title" className="auth-display" aria-label="Return to the system.">
+                <span className="auth-display__line" aria-hidden="true">
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 200, "--auth-i": 0 } as CSSProperties}
+                  >
+                    Return
+                  </span>{" "}
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 420, "--auth-i": 1 } as CSSProperties}
+                  >
+                    to
+                  </span>
+                </span>
+                <span className="auth-display__line" aria-hidden="true">
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 520, "--auth-i": 2 } as CSSProperties}
+                  >
+                    the
+                  </span>{" "}
+                  <span
+                    className="auth-word"
+                    style={{ "--auth-w": 800, "--auth-i": 3 } as CSSProperties}
+                  >
+                    system.
+                  </span>
+                </span>
               </h1>
               <p className="auth-lead">
                 Reconnect to the workspace where goals become plans, focused sessions become
@@ -239,6 +260,14 @@ export function LoginForm({ signupHref }: LoginFormProps) {
           </section>
         </div>
       </div>
+
+      <footer className="auth-footer">
+        <span>© 2026 EGA House</span>
+        <nav aria-label="Account">
+          <Link href="/">Home</Link>
+          <Link href={signupHref}>Create account</Link>
+        </nav>
+      </footer>
     </AuthShell>
   );
 }

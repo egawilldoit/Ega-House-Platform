@@ -5,7 +5,6 @@ import { Suspense } from "react";
 import { AuthFeedback } from "@/app/auth-ui/auth-feedback";
 import { AuthHeader } from "@/app/auth-ui/auth-header";
 import { AuthShell } from "@/app/auth-ui/auth-shell";
-import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
 import { createClient } from "@/lib/supabase/server";
 
 import { LoginForm } from "./login-form";
@@ -19,14 +18,13 @@ export const metadata: Metadata = {
 
 function LoginFormFallback({ signupHref }: { signupHref: string }) {
   return (
-    <AuthShell theme="black-signal">
+    <AuthShell theme="house-cream">
       <AuthHeader
         status="AUTH / SIGN IN"
         actionHref={signupHref}
         actionLabel="Create account"
       />
       <div className="auth-stage" aria-label="Loading sign in">
-        <AuthStudyLabel number="AUTH 01" title="SIGN IN" direction="BLACK SIGNAL" />
         <div className="auth-layout">
           <section className="auth-story">
             <p className="auth-kicker">The operating loop is waiting.</p>
