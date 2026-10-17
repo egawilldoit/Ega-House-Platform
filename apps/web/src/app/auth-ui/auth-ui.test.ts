@@ -29,7 +29,7 @@ describe("shared auth editorial system", () => {
   it("defines both approved auth themes and reduced-motion behavior", () => {
     const css = read("src/app/auth-ui/auth.css");
 
-    expect(css).toContain('[data-auth-theme="black-signal"]');
+    expect(css).toContain('[data-auth-theme="house-cream"]');
     expect(css).toContain('[data-auth-theme="signal-cream"]');
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
     expect(css).toContain("--auth-signal: #ff4b2b");
@@ -44,14 +44,14 @@ describe("shared auth editorial system", () => {
     expect(motion).toContain('reducedMotion="user"');
   });
 
-  it("keeps login and signup on complementary editorial themes", () => {
+  it("keeps login on the public home treatment and signup on signal cream", () => {
     const login = read("src/app/login/login-form.tsx");
     const signup = read("src/app/signup/signup-form.tsx");
 
-    expect(login).toContain('theme="black-signal"');
-    expect(login).toContain("Return to");
-    expect(login).toContain("the system.");
-    expect(login).toContain("AUTH 01");
+    expect(login).toContain('theme="house-cream"');
+    expect(login).toContain('aria-label="Return to the system."');
+    expect(login).toContain("--auth-w");
+    expect(login).not.toContain("AUTH 01");
     expect(signup).toContain('theme="signal-cream"');
     expect(signup).toContain("Build your");
     expect(signup).toContain("control room.");
@@ -61,10 +61,10 @@ describe("shared auth editorial system", () => {
   it("keeps the desktop login story and form inside the safe viewport", () => {
     const css = read("src/app/auth-ui/auth-login-viewport.css");
 
-    expect(css).toContain('[data-auth-theme="black-signal"] .auth-layout');
+    expect(css).toContain('[data-auth-theme="house-cream"] .auth-layout');
     expect(css).toContain("align-items: start");
-    expect(css).toContain('[data-auth-theme="black-signal"] .auth-display');
-    expect(css).toContain('[data-auth-theme="black-signal"] .auth-operation-list');
-    expect(css).toContain('@media (min-width: 861px) and (max-height: 1080px)');
+    expect(css).toContain('[data-auth-theme="house-cream"] .auth-display');
+    expect(css).toContain('[data-auth-theme="house-cream"] .auth-operation-list');
+    expect(css).toContain('@media (min-width: 861px) and (max-height: 900px)');
   });
 });
