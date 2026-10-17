@@ -4,7 +4,6 @@ import { Suspense } from "react";
 
 import { AuthHeader } from "@/app/auth-ui/auth-header";
 import { AuthShell } from "@/app/auth-ui/auth-shell";
-import { AuthStudyLabel } from "@/app/auth-ui/auth-study-label";
 import { createClient } from "@/lib/supabase/server";
 
 import { SignupForm } from "./signup-form";
@@ -16,10 +15,9 @@ export const metadata: Metadata = {
 
 function SignupFallback() {
   return (
-    <AuthShell theme="signal-cream">
+    <AuthShell theme="house-cream">
       <AuthHeader status="AUTH / CREATE" actionHref="/login" actionLabel="Sign in" />
       <div className="auth-stage" aria-label="Loading signup">
-        <AuthStudyLabel number="AUTH 02" title="CREATE" direction="SIGNAL CREAM" />
         <div className="auth-layout">
           <section className="auth-story">
             <p className="auth-kicker">A workspace starts with one deliberate account.</p>

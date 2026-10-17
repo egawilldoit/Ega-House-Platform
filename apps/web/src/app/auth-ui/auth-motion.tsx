@@ -39,5 +39,3 @@ export function AuthReveal({ children, className, delay = 0 }: AuthRevealProps) 
     </motion.div>
   );
 }
-
-export const AuthMotionDiv = motion.div;
