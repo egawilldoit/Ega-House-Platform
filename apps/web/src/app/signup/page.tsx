@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 function SignupFallback() {
   return (
     <AuthShell theme="house-cream">
-      <AuthHeader status="AUTH / CREATE" actionHref="/login" actionLabel="Sign in" />
+      <AuthHeader status="Create account" actionHref="/login" actionLabel="Sign in" />
       <div className="auth-stage" aria-label="Loading signup">
         <div className="auth-layout">
           <section className="auth-story">

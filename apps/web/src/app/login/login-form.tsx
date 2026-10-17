@@ -108,7 +108,7 @@ export function LoginForm({ signupHref }: LoginFormProps) {
   return (
     <AuthShell theme="house-cream">
       <AuthHeader
-        status="AUTH / SIGN IN"
+        status="Sign in"
         actionHref={signupHref}
         actionLabel="Create account"
       />
@@ -194,11 +194,7 @@ export function LoginForm({ signupHref }: LoginFormProps) {
                       placeholder="you@example.com"
                       onChange={(event) => setEmail(event.target.value)}
                     />
-                    <Mail
-                      aria-hidden="true"
-                      size={17}
-                      style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
-                    />
+                    <Mail className="auth-field__icon" aria-hidden="true" size={17} />
                   </AuthField>
 
                   <AuthField

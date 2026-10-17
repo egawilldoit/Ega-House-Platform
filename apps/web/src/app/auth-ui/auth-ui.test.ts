@@ -64,4 +64,20 @@ describe("shared auth presentation system", () => {
     expect(css).toContain('[data-auth-theme="house-cream"] .auth-operation-list');
     expect(css).toContain('@media (min-width: 861px) and (max-height: 900px)');
   });
+
+  it("shares the scroll-aware navigation frame with the public home", () => {
+    const header = read("src/app/auth-ui/auth-header.tsx");
+    const css = read("src/app/auth-ui/auth.css");
+    const navFrame = read("src/components/marketing/nav-frame.tsx");
+
+    expect(header).toContain("NavFrame");
+    expect(header).toContain("auth-header__inner");
+    expect(navFrame).toContain('"use client"');
+    expect(navFrame).toContain("requestAnimationFrame");
+    expect(navFrame).toContain("data-scrolled");
+    expect(css).toContain("position: sticky");
+    expect(css).toContain('[data-scrolled="true"]');
+    expect(css).toContain("auth-nav-in");
+    expect(css).toContain("auth-field__icon");
+  });
 });
