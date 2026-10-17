@@ -1,7 +1,7 @@
 {
   "capturedAt": "2026-08-09T22:19:17.749Z",
   "sha": "b5e59ee66bcbda0012286133a8ad157cc1ccd78d",
-  "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design \u00a78). PR7 must re-capture after moving src/** to apps/web/src/**.",
+  "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.",
   "totals": {
     "errors": 38,
     "warnings": 52
@@ -651,30 +651,6 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/home/components/animated-rule.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/components/home-cta.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/components/home-motion.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/components/study-header.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/components/study-label.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/components/study-shell.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
     "apps/web/src/app/home/home-data.ts": {
       "errors": 0,
       "warnings": 0
@@ -684,34 +660,6 @@
       "warnings": 0
     },
     "apps/web/src/app/home/home-page.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/home.types.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/sections/conversion-study.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/sections/focus-study.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/sections/goals-study.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/sections/hero-study.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/sections/planning-study.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/home/sections/review-study.tsx": {
       "errors": 0,
       "warnings": 0
     },
