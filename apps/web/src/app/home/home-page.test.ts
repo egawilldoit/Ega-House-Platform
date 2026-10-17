@@ -151,6 +151,8 @@ describe("public homepage", () => {
     expect(header).toContain("NavFrame");
     expect(header).toContain("home-top__page-link");
     expect(header).toContain("home-top__inner");
+    expect(header).toContain("home-top__actions");
+    expect(header).toContain("home-top__login");
     expect(styles).toContain("position: sticky");
     expect(styles).toContain('[data-scrolled="true"]');
     expect(styles).toContain("home-nav-in");

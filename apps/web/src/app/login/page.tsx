@@ -20,7 +20,7 @@ function LoginFormFallback({ signupHref }: { signupHref: string }) {
   return (
     <AuthShell theme="house-cream">
       <AuthHeader
-        status="AUTH / SIGN IN"
+        status="Sign in"
         actionHref={signupHref}
         actionLabel="Create account"
       />

@@ -71,6 +71,7 @@ describe("shared auth presentation system", () => {
     const navFrame = read("src/components/marketing/nav-frame.tsx");
 
     expect(header).toContain("NavFrame");
+    expect(header).toContain("auth-header__inner");
     expect(navFrame).toContain('"use client"');
     expect(navFrame).toContain("requestAnimationFrame");
     expect(navFrame).toContain("data-scrolled");

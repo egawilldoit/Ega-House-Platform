@@ -194,7 +194,7 @@ export function SignupForm() {
 
   return (
     <AuthShell theme="house-cream">
-      <AuthHeader status="AUTH / CREATE" actionHref={loginHref} actionLabel="Sign in" />
+      <AuthHeader status="Create account" actionHref={loginHref} actionLabel="Sign in" />
 
       <div className="auth-stage">
         <div className="auth-layout">
