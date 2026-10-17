@@ -475,10 +475,6 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/auth-ui/auth-geometry.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
     "apps/web/src/app/auth-ui/auth-header.tsx": {
       "errors": 0,
       "warnings": 0
@@ -488,10 +484,6 @@
       "warnings": 0
     },
     "apps/web/src/app/auth-ui/auth-shell.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/auth-ui/auth-study-label.tsx": {
       "errors": 0,
       "warnings": 0
     },
