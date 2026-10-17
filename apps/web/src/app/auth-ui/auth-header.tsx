@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { NavFrame } from "@/components/marketing/nav-frame";
+
 type AuthHeaderProps = {
   status: string;
   actionHref: string;
@@ -8,7 +10,7 @@ type AuthHeaderProps = {
 
 export function AuthHeader({ status, actionHref, actionLabel }: AuthHeaderProps) {
   return (
-    <header className="auth-header">
+    <NavFrame className="auth-header">
       <Link className="auth-header__brand" href="/">
         <span className="auth-header__logo" aria-hidden="true" />
         EGA House
@@ -17,6 +19,6 @@ export function AuthHeader({ status, actionHref, actionLabel }: AuthHeaderProps)
       <Link className="auth-header__action" href={actionHref}>
         {actionLabel}
       </Link>
-    </header>
+    </NavFrame>
   );
 }

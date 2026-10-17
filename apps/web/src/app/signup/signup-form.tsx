@@ -326,11 +326,7 @@ export function SignupForm() {
                             }
                           }}
                         />
-                        <UserRound
-                          aria-hidden="true"
-                          size={17}
-                          style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
-                        />
+                        <UserRound className="auth-field__icon" aria-hidden="true" size={17} />
                         {errors.fullName ? (
                           <span id="signup-name-error" className={styles.srOnly}>
                             {errors.fullName}
@@ -369,11 +365,7 @@ export function SignupForm() {
                             }
                           }}
                         />
-                        <Mail
-                          aria-hidden="true"
-                          size={17}
-                          style={{ position: "absolute", right: "1rem", top: "1.1rem", opacity: 0.48 }}
-                        />
+                        <Mail className="auth-field__icon" aria-hidden="true" size={17} />
                         {errors.email ? (
                           <span id="signup-email-error" className={styles.srOnly}>
                             {errors.email}

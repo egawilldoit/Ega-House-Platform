@@ -80,12 +80,37 @@ html:has(.home-page) {
 
 /* top bar */
 .home-top {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  border-bottom: 1px solid var(--home-line);
+  background: transparent;
+  transition:
+    background 0.25s ease,
+    box-shadow 0.25s ease;
+  animation: home-nav-in 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.home-top[data-scrolled="true"] {
+  background: color-mix(in srgb, var(--home-bg) 86%, transparent);
+  box-shadow: 0 18px 40px -34px rgba(18, 19, 15, 0.6);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+@keyframes home-nav-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+.home-top__inner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding-block: 1.1rem;
-  border-bottom: 1px solid var(--home-line);
 }
 
 .home-brand {
@@ -114,6 +139,11 @@ html:has(.home-page) {
   height: 9px;
   border-radius: 50%;
   background: var(--home-signal);
+  transition: transform 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.home-brand:hover .home-logo::after {
+  transform: scale(1.25);
 }
 
 .home-top nav {
@@ -124,12 +154,33 @@ html:has(.home-page) {
 }
 
 .home-top nav a:not(.home-btn) {
+  position: relative;
   color: var(--home-muted);
   text-decoration: none;
 }
 
-.home-top nav a:not(.home-btn):hover {
+.home-top nav a:not(.home-btn)::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.4rem;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--home-signal);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.22s ease;
+}
+
+.home-top nav a:not(.home-btn):hover,
+.home-top nav a:not(.home-btn):focus-visible {
   color: var(--home-ink);
+}
+
+.home-top nav a:not(.home-btn):hover::after,
+.home-top nav a:not(.home-btn):focus-visible::after {
+  transform: scaleX(1);
 }
 
 .home-btn {
@@ -144,9 +195,14 @@ html:has(.home-page) {
   transition:
     background 0.15s,
     color 0.15s,
-    border-color 0.15s;
+    border-color 0.15s,
+    transform 0.12s ease;
   cursor: pointer;
   background: transparent;
+}
+
+.home-btn:active {
+  transform: translateY(1px) scale(0.985);
 }
 
 .home-btn:hover {
@@ -231,6 +287,7 @@ html:has(.home-page) {
 @keyframes home-grow {
   from {
     font-weight: 100;
+    opacity: 0.35;
   }
 }
 
@@ -249,9 +306,33 @@ html:has(.home-page) {
   margin-top: 1.6rem;
 }
 
+@keyframes home-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+.home-hero .home-lead {
+  animation: home-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.45s both;
+}
+
+.home-hero .home-actions {
+  animation: home-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) 0.6s both;
+}
+
+.home-hero .home-board {
+  animation: home-rise 0.85s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both;
+}
+
+.home-hero .home-hint {
+  animation: home-rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.85s both;
+}
+
 /* live board */
 .home-board {
   margin-top: clamp(2.5rem, 6vw, 4.5rem);
+  scroll-margin-top: 5.5rem;
   background: var(--home-surface);
   border: 1px solid var(--home-line);
   border-radius: 14px;
@@ -530,6 +611,7 @@ html:has(.home-page) {
 /* loop */
 .home-loop {
   padding-top: clamp(4.5rem, 10vw, 8rem);
+  scroll-margin-top: 5.5rem;
 }
 
 .home-loop h2 {
@@ -826,10 +908,6 @@ html:has(.home-page) {
 }
 
 @media (max-width: 860px) {
-  .home-top nav a:not(.home-btn) {
-    display: none;
-  }
-
   .home-board__cols {
     grid-template-columns: 1fr;
   }
@@ -861,6 +939,24 @@ html:has(.home-page) {
   }
 }
 
+@media (max-width: 760px) {
+  .home-top__page-link {
+    display: none;
+  }
+
+  .home-top__inner {
+    gap: 0.75rem;
+  }
+
+  .home-top nav {
+    gap: 0.9rem;
+  }
+
+  .home-brand {
+    font-size: 1rem;
+  }
+}
+
 @media (max-width: 520px) {
   .home-steps {
     grid-template-columns: 1fr;
@@ -883,6 +979,7 @@ html:has(.home-page) {
   .home-page *::before,
   .home-page *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     transition-delay: 0s !important;

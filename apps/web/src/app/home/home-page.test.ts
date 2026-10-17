@@ -146,4 +146,17 @@ describe("public homepage", () => {
     expect(styles).toContain("@media (max-width: 860px)");
     expect(styles).toContain("@media (max-width: 520px)");
   });
+
+  it("keeps one scroll-aware nav with staged content motion", () => {
+    expect(header).toContain("NavFrame");
+    expect(header).toContain("home-top__page-link");
+    expect(header).toContain("home-top__inner");
+    expect(styles).toContain("position: sticky");
+    expect(styles).toContain('[data-scrolled="true"]');
+    expect(styles).toContain("home-nav-in");
+    expect(styles).toContain("home-rise");
+    expect(styles).toContain("animation-delay: 0s !important");
+    expect(styles).toContain("scroll-margin-top: 5.5rem");
+    expect(styles).toContain("@media (max-width: 760px)");
+  });
 });
