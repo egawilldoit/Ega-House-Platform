@@ -78,24 +78,30 @@ html:has(.home-page) {
   transform: translateY(0);
 }
 
-/* top bar */
+/* top bar: floating rounded nav */
 .home-top {
   position: sticky;
   top: 0;
   z-index: 100;
-  border-bottom: 1px solid var(--home-line);
+  padding-block: 0.9rem;
+  padding-inline: clamp(1.1rem, 4vw, 2rem);
   background: transparent;
-  transition:
-    background 0.25s ease,
-    box-shadow 0.25s ease;
   animation: home-nav-in 0.65s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
 
-.home-top[data-scrolled="true"] {
-  background: color-mix(in srgb, var(--home-bg) 86%, transparent);
-  box-shadow: 0 18px 40px -34px rgba(18, 19, 15, 0.6);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+.home-top::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 -0.75rem;
+  z-index: -1;
+  background: linear-gradient(var(--home-bg) 58%, transparent);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.home-top[data-scrolled="true"]::before {
+  opacity: 1;
 }
 
 @keyframes home-nav-in {
@@ -108,18 +114,36 @@ html:has(.home-page) {
 .home-top__inner {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding-block: 1.1rem;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding: 0.5rem 0.55rem 0.5rem 1.15rem;
+  border: 1px solid var(--home-line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--home-surface) 90%, transparent);
+  box-shadow: 0 18px 40px -30px rgba(18, 19, 15, 0.35);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  transition:
+    background 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.home-top[data-scrolled="true"] .home-top__inner {
+  background: color-mix(in srgb, var(--home-surface) 96%, transparent);
+  box-shadow: 0 22px 50px -32px rgba(18, 19, 15, 0.5);
 }
 
 .home-brand {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 0.65rem;
   font: 700 1.05rem var(--font-display);
   letter-spacing: -0.02em;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .home-logo {
@@ -146,20 +170,23 @@ html:has(.home-page) {
   transform: scale(1.25);
 }
 
-.home-top nav {
+.home-top__links {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 1.6rem;
+  margin-right: auto;
   font-size: 0.95rem;
 }
 
-.home-top nav a:not(.home-btn) {
+.home-top__links a {
   position: relative;
   color: var(--home-muted);
   text-decoration: none;
+  transition: color 0.2s ease;
 }
 
-.home-top nav a:not(.home-btn)::after {
+.home-top__links a::after {
   content: "";
   position: absolute;
   left: 0;
@@ -173,19 +200,52 @@ html:has(.home-page) {
   transition: transform 0.22s ease;
 }
 
-.home-top nav a:not(.home-btn):hover,
-.home-top nav a:not(.home-btn):focus-visible {
+.home-top__links a:hover,
+.home-top__links a:focus-visible {
   color: var(--home-ink);
 }
 
-.home-top nav a:not(.home-btn):hover::after,
-.home-top nav a:not(.home-btn):focus-visible::after {
+.home-top__links a:hover::after,
+.home-top__links a:focus-visible::after {
   transform: scaleX(1);
+}
+
+.home-top__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.home-top__login {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  padding: 0.55rem 1.05rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--home-ink) 8%, transparent);
+  color: var(--home-ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background 0.15s ease,
+    transform 0.12s ease;
+}
+
+.home-top__login:hover {
+  background: color-mix(in srgb, var(--home-ink) 14%, transparent);
+}
+
+.home-top__login:active {
+  transform: scale(0.97);
 }
 
 .home-btn {
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   padding: 0.85rem 1.5rem;
   border-radius: 999px;
   font: 600 0.95rem var(--font-body);
@@ -946,14 +1006,36 @@ html:has(.home-page) {
 
   .home-top__inner {
     gap: 0.75rem;
+    padding-left: 0.9rem;
   }
 
-  .home-top nav {
+  .home-top__links {
     gap: 0.9rem;
   }
 
   .home-brand {
     font-size: 1rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .home-top {
+    padding-inline: 0.7rem;
+  }
+
+  .home-top__inner {
+    padding: 0.4rem 0.4rem 0.4rem 0.8rem;
+    border-radius: 14px;
+  }
+
+  .home-top__login {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.85rem;
+  }
+
+  .home-btn--sm {
+    padding: 0.5rem 0.85rem;
+    font-size: 0.85rem;
   }
 }
 
