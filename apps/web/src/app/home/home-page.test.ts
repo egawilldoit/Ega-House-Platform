@@ -7,93 +7,143 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8"
 const page = read("src/app/page.tsx");
 const homePage = read("src/app/home/home-page.tsx");
 const data = read("src/app/home/home-data.ts");
-const heroStudy = read("src/app/home/sections/hero-study.tsx");
-const focusStudy = read("src/app/home/sections/focus-study.tsx");
-const conversionStudy = read("src/app/home/sections/conversion-study.tsx");
-const styles = [
-  read("src/app/home/home.css"),
-  read("src/app/home/home-polish.css"),
-].join("\n");
-const motionLayer = read("src/app/home/components/home-motion.tsx");
+const styles = read("src/app/home/home.css");
+const layout = read("src/app/layout.tsx");
+const hero = read("src/app/home/sections/hero.tsx");
+const loop = read("src/app/home/sections/loop.tsx");
+const closing = read("src/app/home/sections/closing.tsx");
+const header = read("src/app/home/components/site-header.tsx");
+const footer = read("src/app/home/components/site-footer.tsx");
+const liveBoard = read("src/app/home/components/live-board.tsx");
+const revealOnView = read("src/app/home/components/reveal-on-view.tsx");
+const heroGrid = read("src/app/home/components/hero-grid.tsx");
+const weightRamp = read("src/app/home/components/weight-ramp.tsx");
+const surfaces = [homePage, hero, loop, closing, header, footer].join("\n");
 
-describe("homepage operational studies", () => {
+describe("public homepage", () => {
   it("keeps authentication server-owned", () => {
     expect(page).toContain('redirect("/home")');
     expect(page).toContain("<HomePage />");
+    expect(page).toContain("const user = await getCurrentUser()");
   });
 
-  it("renders six stable study anchors", () => {
-    for (const id of ["intro", "goals", "planning", "focus", "review", "workspace"]) {
-      expect(data).toContain(`id: "${id}"`);
+  it("composes the redesigned marketing tree", () => {
+    expect(homePage).toContain('import "./home.css"');
+    expect(homePage).not.toContain("home-polish.css");
+    expect(homePage).toContain("<SiteHeader />");
+    expect(homePage).toContain("<Hero />");
+    expect(homePage).toContain("<Loop />");
+    expect(homePage).toContain("<Closing />");
+    expect(homePage).toContain("<SiteFooter />");
+    expect(homePage).not.toContain("Study");
+    expect(homePage).not.toContain("HomeMotion");
+  });
+
+  it("keeps the client boundary to the three interactive pieces", () => {
+    for (const source of [liveBoard, revealOnView, heroGrid]) {
+      expect(source).toContain('"use client"');
     }
 
-    expect(homePage).toContain('import "./home-polish.css"');
-    expect(homePage).toContain("<HeroStudy");
-    expect(homePage).toContain("<GoalsStudy");
-    expect(homePage).toContain("<PlanningStudy");
-    expect(homePage).toContain("<FocusStudy");
-    expect(homePage).toContain("<ReviewStudy");
-    expect(homePage).toContain("<ConversionStudy");
+    for (const source of [homePage, hero, loop, closing, header, footer, weightRamp]) {
+      expect(source).not.toContain('"use client"');
+    }
+
+    expect(liveBoard).toContain('from "motion/react"');
+    expect(liveBoard).toContain("useReducedMotion");
+    expect(revealOnView).toContain("IntersectionObserver");
+    expect(heroGrid).toContain('matchMedia("(hover: hover)")');
+    expect(heroGrid).toContain("--home-mx");
+    expect(heroGrid).toContain("--home-my");
   });
 
-  it("uses Motion with a reduced-motion path", () => {
-    expect(motionLayer).toContain('from "motion/react"');
-    expect(motionLayer).toContain("MotionConfig");
-    expect(motionLayer).toContain('reducedMotion="user"');
+  it("has a reduced-motion path that ends in the final state", () => {
     expect(styles).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(styles).toContain("animation: none !important");
+    expect(revealOnView).toContain('matchMedia("(prefers-reduced-motion: reduce)")');
+    expect(revealOnView).toContain('setState("in")');
+    expect(liveBoard).toContain("reduceMotion ||");
+    expect(heroGrid).toContain('matchMedia("(prefers-reduced-motion: reduce)")');
+  });
+
+  it("arms reveal states on the element that carries the reveal attribute", () => {
+    expect(loop).toContain("<RevealOnView");
+    expect(closing).toContain("<RevealOnView");
+    expect(styles).toContain('[data-reveal="armed"] .home-mini');
+    expect(styles).toContain('[data-reveal="armed"].home-close');
+    expect(styles).toContain('[data-reveal="in"].home-close');
   });
 
   it("keeps native scrolling authoritative", () => {
     expect(styles).not.toContain("scroll-snap-type: y mandatory");
-    expect(homePage).not.toContain("Lenis");
-    expect(homePage).not.toContain("gsap");
+    expect(surfaces).not.toContain("Lenis");
+    expect(surfaces).not.toContain("gsap");
+    expect(styles).toContain("html:has(.home-page)");
+    expect(styles).toContain("scroll-behavior: smooth");
   });
 
-  it("keeps the approved study environments", () => {
-    for (const theme of ["signal", "sea-glass", "terracotta", "citrus", "review", "conversion"]) {
-      expect(styles).toContain(`[data-theme="${theme}"]`);
-    }
+  it("uses one canonical account-creation CTA", () => {
+    expect(surfaces.match(/Create account/g)).toHaveLength(4);
+    expect(surfaces).not.toContain("Create your account");
+    expect(surfaces).not.toContain("Sign up");
   });
 
-  it("defines presentation safeguards for normal zoom and wide screens", () => {
-    expect(styles).toContain("--home-content-max");
-    expect(styles).toContain("@media (min-width: 1680px)");
-    expect(styles).toContain("@media (max-width: 1180px)");
-    expect(styles).toContain("text-wrap: balance");
+  it("ramps headline weight through per-word CSS variables", () => {
+    expect(weightRamp).toContain('className="home-ramp"');
+    expect(weightRamp).toContain('className="home-ramp__word"');
+    expect(weightRamp).toContain('"--w": w.weight');
+    expect(weightRamp).toContain('"--i": i++');
+    expect(styles).toContain("font-weight: var(--w)");
+    expect(hero).toContain('{ text: "Turn", weight: 200 }');
+    expect(hero).toContain('{ text: "execution.", weight: 800 }');
+    expect(closing).toContain('{ text: "Return", weight: 200 }');
+    expect(closing).toContain('{ text: "system.", weight: 800 }');
+  });
+
+  it("keeps live board display values derived from task state", () => {
+    expect(data).toContain("BOARD_TASKS");
+    expect(data).toContain("LOOP_STEPS");
+    expect(data).toContain("DIRECTION");
+    expect(data).not.toContain("HOME_STUDIES");
+    expect(liveBoard).toContain("const count = done.filter(Boolean).length");
+    expect(liveBoard).toContain("const closed = count === total");
+    expect(liveBoard).toContain("18 + pct * 0.72");
+    expect(liveBoard).toContain('"All done. Loop closed."');
+    expect(liveBoard).toContain('type="checkbox"');
+    expect(liveBoard).toContain("aria-live");
+    expect(liveBoard).toContain("{ threshold: 0.2 }");
+    expect(liveBoard).toContain("900 + (index - 1) * 900");
   });
 
   it("prevents vertical clipping and mid-word heading breaks", () => {
     expect(styles).toContain("overflow-x: clip");
-    expect(styles).toContain("overflow-y: visible");
     expect(styles).toContain("overflow-wrap: normal");
     expect(styles).toContain("word-break: normal");
     expect(styles).toContain("hyphens: none");
+    expect(styles).toContain("text-wrap: balance");
     expect(styles).not.toContain("overflow-wrap: anywhere");
-    expect(focusStudy).toContain("into momentum.");
+    expect(styles).toContain("display: inline-block");
   });
 
-  it("keeps the fixed header inside the safe viewport", () => {
-    expect(styles).toContain("grid-template-columns: auto minmax(0, 1fr) auto");
-    expect(styles).toContain("min-width: max-content");
-    expect(styles).toContain("white-space: nowrap");
+  it("scopes design tokens and layout to the marketing page", () => {
+    expect(styles).not.toContain(":root");
+    expect(styles).not.toMatch(/(^|\n)body\s*\{/);
+    expect(styles).toContain(".home-page {");
+    expect(styles).toContain("--home-signal:");
+    expect(styles).toContain("--home-citrus:");
+    expect(styles).toContain("--home-teal:");
+    expect(styles).toContain("padding-top: env(safe-area-inset-top, 0px)");
   });
 
-  it("anchors the large intro and workspace indices", () => {
-    expect(heroStudy).toContain('className="home-index-lockup home-index-lockup--intro"');
-    expect(heroStudy).toContain('className="home-index-lockup__label">Introduction');
-    expect(conversionStudy).toContain('className="home-index-lockup home-index-lockup--workspace"');
-    expect(conversionStudy).toContain('className="home-index-lockup__label">Workspace');
+  it("keeps the dark theme scoped and the display axis variable", () => {
+    expect(styles).toContain("@media (prefers-color-scheme: dark)");
+    expect(styles).toContain("--home-bg: #0f100d");
+    expect(layout).not.toMatch(/Sora\(\{[^}]*weight:/);
+    expect(layout).toContain("Instrument_Sans");
   });
 
-  it("uses one canonical account-creation CTA", () => {
-    expect(heroStudy).toContain("Create account");
-    expect(conversionStudy).toContain("Create account");
-    expect(conversionStudy).not.toContain("Create your account");
-  });
-
-  it("defines explicit target viewport contracts", () => {
-    expect(styles).toContain("@media (max-width: 1440px)");
-    expect(styles).toContain("@media (max-width: 1024px)");
-    expect(styles).toContain("@media (max-width: 390px)");
+  it("defines the design breakpoints", () => {
+    expect(styles).toContain("@media (min-width: 960px)");
+    expect(styles).toContain("@media (max-width: 860px)");
+    expect(styles).toContain("@media (max-width: 520px)");
   });
 });

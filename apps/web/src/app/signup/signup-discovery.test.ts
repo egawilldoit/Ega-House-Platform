@@ -6,8 +6,11 @@ const loginPage = readFileSync(resolve(process.cwd(), "src/app/login/page.tsx"),
 const loginForm = readFileSync(resolve(process.cwd(), "src/app/login/login-form.tsx"), "utf8");
 const homeSources = [
   "src/app/home/home-data.ts",
-  "src/app/home/sections/hero-study.tsx",
-  "src/app/home/sections/conversion-study.tsx",
+  "src/app/home/sections/hero.tsx",
+  "src/app/home/sections/loop.tsx",
+  "src/app/home/sections/closing.tsx",
+  "src/app/home/components/site-header.tsx",
+  "src/app/home/components/site-footer.tsx",
 ]
   .map((path) => readFileSync(resolve(process.cwd(), path), "utf8"))
   .join("\n");
@@ -24,12 +27,12 @@ describe("public signup discovery", () => {
     expect(loginForm).toContain("Create your account");
   });
 
-  it("offers same-origin signup in the homepage hero and final workspace study", () => {
+  it("offers same-origin signup throughout the public homepage", () => {
     expect(homeSources).toContain(`SIGNUP_HREF = "${signupPath}"`);
     expect(homeSources).not.toContain("www.egawilldoit.online/signup");
-    expect(homeSources.match(/Create account/g)).toHaveLength(2);
+    expect(homeSources.match(/Create account/g)).toHaveLength(4);
     expect(homeSources).not.toContain("Create your account");
-    expect(homeSources).toContain("Build the week.");
+    expect(homeSources).toContain("A loop, not a list.");
   });
 
   it("keeps existing-user navigation available", () => {

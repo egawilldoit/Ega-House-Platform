@@ -14,7 +14,6 @@ const instrumentSans = Instrument_Sans({
 
 const sora = Sora({
   subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
   variable: "--font-display-next",
   display: "swap",
 });
