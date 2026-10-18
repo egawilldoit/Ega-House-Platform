@@ -2,8 +2,35 @@
 
 Repository-wide contract; follow higher-priority system/developer instructions
 and explicit user scope. Applicable nested `AGENTS.md` files specialize local
-rules without weakening repository safety. Last instruction review: 2026-09-27
+rules without weakening repository safety. Last instruction review: 2026-10-05
 (repository guidance only; not deployment or harness-discovery proof).
+
+## Commands
+
+Copy-paste; include the workspace. Root `npm test`, `npm run typecheck`, and
+`npm run build` are **web-only** — run affected workspace and consumer checks
+explicitly, per the validation matrix in
+[`testing-and-validation`](docs/agent-context/testing-and-validation.md).
+
+- Test one workspace: `npm run test --workspace @ega/<name>`
+- Typecheck one workspace: `npm run typecheck --workspace @ega/<name>`
+- Workspaces: `@ega/web`, `@ega/server`, `@ega/mobile`, `@ega/api-client`,
+  `@ega/application`, `@ega/contracts`, `@ega/data-access`, `@ega/domain`
+- Build web: `npm run build`
+- Lint: `npm run lint` (changed-only: `npm run lint:changed`)
+- Architecture boundaries: `npm run check:architecture`
+- Agent-context self-test: `npm run test:agent-context`
+- Dev server (web): `npm run dev`
+- DB: `npm run db:generate`, `db:migrate`, `db:push`, `db:studio`
+  (drizzle-kit; schema edits do not apply migrations — see Authority and safety)
+
+## Code style
+
+- TypeScript `strict: true` in every workspace. `no-explicit-any` is enforced
+  in source and lifted only in tests — use `unknown` plus narrowing or precise
+  types, never `any` as a shortcut, and never mask type errors with casts.
+- Tests live in per-workspace `test/` directories (`__tests__/` in mobile)
+  as `*.test.ts`, next to the code they cover.
 
 ## Orient and analyze
 
