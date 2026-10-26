@@ -10,7 +10,8 @@ import { WORKSPACE_THEME_INIT_SCRIPT } from "@/lib/theme-preference";
 // Fonts are committed under ./fonts with their SIL OFL 1.1 licence files so the
 // production build never performs a font-host network fetch. `scripts/ci/font-egress.mjs`
 // guards that boundary. Each file is the upstream Google Fonts latin-subset
-// variable font, so the declared weight range covers every weight in use.
+// variable font; the declared ranges reproduce the previous build's lowest and
+// highest faces, so heavier requests clamp to the same master as before.
 const instrumentSans = localFont({
   src: "./fonts/instrument-sans-latin-var.woff2",
   weight: "400 700",

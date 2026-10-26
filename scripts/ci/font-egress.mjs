@@ -8,12 +8,13 @@
  * lightweight source check fails when the boundary is broken:
  *
  *  1. No `next/font/google` import and no `fonts.googleapis.com` /
- *     `fonts.gstatic.com` string in the scanned web build inputs
- *     (`apps/web/src`, `apps/web/public` text assets, `next.config.*`,
- *     `postcss.config.*`).
- *  2. `apps/web/src/app/layout.tsx` still imports `next/font/local`, and each
- *     committed font binary is loaded from `./fonts/<file>` by a `localFont`
- *     call that still assigns its CSS variable. Deleting or renaming a loader
+ *     `fonts.gstatic.com` string (matched case-insensitively) in the scanned web
+ *     build inputs: `apps/web/src` and `apps/web/public` files with a known text
+ *     extension, plus `next.config.*` and `postcss.config.*`.
+ *  2. `apps/web/src/app/layout.tsx` still imports `next/font/local`, each
+ *     committed font binary is loaded from `./fonts/<file>` with its expected
+ *     `weight` and CSS variable, and each `${constant}.variable` still reaches
+ *     the root element. Deleting, renaming or no longer applying a loader
  *     cannot silently drop the product typography back to system fonts.
  *  3. Each committed font binary starts with the WOFF2 signature and its header
  *     `length` field matches the file size (catches truncation and appended
@@ -35,21 +36,37 @@ const webSrc = path.join(webRoot, 'src');
 const fontDir = path.join(webSrc, 'app', 'fonts');
 const layoutPath = path.join(webSrc, 'app', 'layout.tsx');
 
-// [font binary, licence file, CSS variable assigned by layout.tsx]
+// Each entry: the committed binary, its licence text, the CSS variable it must
+// assign, the JS constant that must apply that variable, and the declared weight
+// descriptor (parity with the faces the previous configuration exposed).
 const REQUIRED_FONTS = [
-  [
-    'instrument-sans-latin-var.woff2',
-    'OFL-instrument-sans.txt',
-    '--font-body-next',
-  ],
-  ['sora-latin-var.woff2', 'OFL-sora.txt', '--font-display-next'],
-  ['jetbrains-mono-latin-var.woff2', 'OFL-jetbrains-mono.txt', '--font-mono-next'],
+  {
+    file: 'instrument-sans-latin-var.woff2',
+    licence: 'OFL-instrument-sans.txt',
+    variable: '--font-body-next',
+    constant: 'instrumentSans',
+    weight: '400 700',
+  },
+  {
+    file: 'sora-latin-var.woff2',
+    licence: 'OFL-sora.txt',
+    variable: '--font-display-next',
+    constant: 'sora',
+    weight: '100 800',
+  },
+  {
+    file: 'jetbrains-mono-latin-var.woff2',
+    licence: 'OFL-jetbrains-mono.txt',
+    variable: '--font-mono-next',
+    constant: 'jetbrainsMono',
+    weight: '400 600',
+  },
 ];
 
 const FORBIDDEN = [
   { pattern: /next\/font\/google/, label: 'next/font/google import' },
-  { pattern: /fonts\.googleapis\.com/, label: 'fonts.googleapis.com reference' },
-  { pattern: /fonts\.gstatic\.com/, label: 'fonts.gstatic.com reference' },
+  { pattern: /fonts\.googleapis\.com/i, label: 'fonts.googleapis.com reference' },
+  { pattern: /fonts\.gstatic\.com/i, label: 'fonts.gstatic.com reference' },
 ];
 
 const SCAN_EXTENSIONS = new Set([
@@ -128,9 +145,12 @@ function walk(target, out = [], seen = new Set()) {
 
 function isTestFile(file) {
   const rel = path.relative(repoRoot, file).replaceAll(path.sep, '/');
-  return (
-    /(^|\/)(tests?|__tests__)\//.test(rel) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel)
-  );
+  // Only genuine test locations: the Playwright suite, private __tests__
+  // folders, and *.test.*/*.spec.* files. `src/app/tests/**` is a real route
+  // segment and must stay scanned.
+  if (rel.startsWith('apps/web/tests/')) return true;
+  if (/(^|\/)__tests__\//.test(rel)) return true;
+  return /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
 }
 
 function scannable(target) {
@@ -200,36 +220,44 @@ function checkLoader() {
     if (match) byFontFile.set(match[1], block);
   }
 
-  for (const [fontFile, , variable] of REQUIRED_FONTS) {
-    const block = byFontFile.get(fontFile);
+  for (const { file, variable, constant, weight } of REQUIRED_FONTS) {
+    const block = byFontFile.get(file);
     if (!block) {
-      fail(`layout.tsx does not load ./fonts/${fontFile}`);
-    } else if (!block.includes(`variable: "${variable}"`)) {
-      fail(`layout.tsx loads ./fonts/${fontFile} without variable: "${variable}"`);
+      fail(`layout.tsx does not load ./fonts/${file}`);
+      continue;
+    }
+    if (!block.includes(`variable: "${variable}"`)) {
+      fail(`layout.tsx loads ./fonts/${file} without variable: "${variable}"`);
+    } else if (!block.includes(`weight: "${weight}"`)) {
+      fail(`layout.tsx loads ./fonts/${file} without weight: "${weight}"`);
+    } else if (!layout.includes(`\${${constant}.variable}`)) {
+      // Assigning the variable is not enough: it must reach the root element,
+      // otherwise the family silently falls back to the globals.css stack.
+      fail(`layout.tsx no longer applies \${${constant}.variable} to the root element`);
     } else {
-      ok(`layout.tsx loads ./fonts/${fontFile} as ${variable}`);
+      ok(`layout.tsx loads ./fonts/${file} as ${variable} (${weight}) and applies it`);
     }
   }
 }
 
 function checkBinaries() {
-  for (const [fontFile, licenceFile] of REQUIRED_FONTS) {
-    const fontPath = path.join(fontDir, fontFile);
+  for (const { file, licence: licenceFile } of REQUIRED_FONTS) {
+    const fontPath = path.join(fontDir, file);
 
     if (!fs.existsSync(fontPath)) {
-      fail(`missing committed font binary apps/web/src/app/fonts/${fontFile}`);
+      fail(`missing committed font binary apps/web/src/app/fonts/${file}`);
     } else {
       const buf = fs.readFileSync(fontPath);
       // WOFF2 header: signature, flavor, then `length` = total file size.
       if (buf.length < 12 || !buf.subarray(0, 4).equals(WOFF2_MAGIC)) {
-        fail(`apps/web/src/app/fonts/${fontFile} is not a WOFF2 file`);
+        fail(`apps/web/src/app/fonts/${file} is not a WOFF2 file`);
       } else if (buf.readUInt32BE(8) !== buf.length) {
         fail(
-          `apps/web/src/app/fonts/${fontFile} is truncated or has extra bytes ` +
+          `apps/web/src/app/fonts/${file} is truncated or has extra bytes ` +
             `(header says ${buf.readUInt32BE(8)} bytes, file is ${buf.length})`,
         );
       } else {
-        ok(`committed font binary ${fontFile} (${buf.length} bytes)`);
+        ok(`committed font binary ${file} (${buf.length} bytes)`);
       }
     }
 
