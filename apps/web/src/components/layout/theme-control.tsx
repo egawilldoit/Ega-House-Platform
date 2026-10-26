@@ -48,8 +48,12 @@ export function ThemeControl({ className }: { className?: string }) {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || !details.open) return;
       event.preventDefault();
+      const active = document.activeElement;
+      const focusIsInside = active instanceof Node && details.contains(active);
       details.open = false;
-      details.querySelector<HTMLElement>("summary")?.focus();
+      if (focusIsInside) {
+        details.querySelector<HTMLElement>("summary")?.focus();
+      }
     };
 
     document.addEventListener("pointerdown", closeIfOutside);

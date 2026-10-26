@@ -161,14 +161,17 @@ for (const [paletteName, block] of [
   });
 }
 
-test("the dark palette is scoped to the authenticated workspace marker", () => {
-  assert.match(
-    tokensCss,
-    /html\[data-theme="dark"\]:has\(\[data-workspace-theme="workspace"\]\)/,
-  );
-  assert.doesNotMatch(
-    tokensCss,
-    /^:root\[data-theme="dark"\]/m,
-    "a root dark selector would leak into public marketing/auth surfaces",
-  );
+test("every dark selector is scoped to the authenticated workspace marker", () => {
+  const darkSelectorLines = tokensCss
+    .split("\n")
+    .filter((line) => line.includes('[data-theme="dark"]'));
+
+  assert.ok(darkSelectorLines.length > 0, "expected at least one dark selector");
+  for (const line of darkSelectorLines) {
+    assert.match(
+      line,
+      /:has\(\[data-workspace-theme="workspace"\]\)/,
+      `unscoped dark selector would leak into public surfaces: ${line.trim()}`,
+    );
+  }
 });

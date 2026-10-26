@@ -1,11 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WORKSPACE_THEME_STORAGE_KEY } from "./theme-preference";
-import {
-  getWorkspaceThemeServerSnapshot,
-  getWorkspaceThemeSnapshot,
-  setWorkspaceThemePreference,
-} from "./workspace-theme-store";
 
 type MatchMediaFixture = {
   setDark: (value: boolean) => void;
@@ -231,11 +226,15 @@ describe("workspace theme store", () => {
     expect(store.getWorkspaceThemeSnapshot()).toBe("dark");
   });
 
-  it("does not leak an explicit light choice into the OS-dark default before storage is read", () => {
+  it("hydrates a stored light preference under a dark OS without changing the server snapshot", async () => {
+    vi.resetModules();
     installMatchMedia(true);
-    setWorkspaceThemePreference("system");
-    expect(getWorkspaceThemeServerSnapshot()).toBe("system");
-    expect(getWorkspaceThemeSnapshot()).toBe("system");
-    expect(document.documentElement.dataset.theme).toBe("dark");
+    localStorage.setItem(WORKSPACE_THEME_STORAGE_KEY, "light");
+    const store = await import("./workspace-theme-store");
+
+    expect(store.getWorkspaceThemeServerSnapshot()).toBe("system");
+    expect(store.getWorkspaceThemeSnapshot()).toBe("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.documentElement.dataset.themePreference).toBe("light");
   });
 });

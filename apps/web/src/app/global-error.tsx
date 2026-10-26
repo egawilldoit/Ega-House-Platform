@@ -4,6 +4,7 @@ import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 
 import { WorkspaceErrorFallback } from "@/components/layout/workspace-error-fallback";
+import { WorkspaceThemeController } from "@/lib/hooks/workspace-theme";
 import { WORKSPACE_THEME_INIT_SCRIPT } from "@/lib/theme-preference";
 
 type GlobalErrorPageProps = {
@@ -25,6 +26,7 @@ export default function GlobalErrorPage({ error, reset }: GlobalErrorPageProps) 
         />
       </head>
       <body className="min-h-full" suppressHydrationWarning>
+        <WorkspaceThemeController />
         <WorkspaceErrorFallback reset={reset} scopeLabel="EGA House" />
       </body>
     </html>

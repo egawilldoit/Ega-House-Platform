@@ -9,7 +9,7 @@ No production credentials or data were used.
 - Next.js production build of `feat/web-dark-mode` at `f0b0a0f0`
   (security remediation from `main` merged in).
 - Supabase local API `http://127.0.0.1:54321`, Postgres `127.0.0.1:54322`.
-- Local migrations: `0000`–`0034` and `0037`–`0063`. The automation-only
+- Local migrations: `0000`–`0034`, `0037`–`0042`, and `0044`–`0063`. The automation-only
   migrations `0035`/`0036` and the production-owner reconciliation `0043` were
   not applicable to a fresh local database:
   - `0035`/`0036` assume the production `automation.implementation_runs` table,

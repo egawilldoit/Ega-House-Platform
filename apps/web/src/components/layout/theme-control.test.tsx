@@ -65,6 +65,16 @@ async function click(element: Element) {
   });
 }
 
+async function openThemeMenu() {
+  const details = container.querySelector<HTMLDetailsElement>(".theme-control");
+  const summary = container.querySelector<HTMLElement>(".theme-control-trigger");
+  assert.ok(details && summary);
+  expect(details.open).toBe(false);
+  await click(summary);
+  expect(details.open).toBe(true);
+  return details;
+}
+
 beforeEach(async () => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   localStorage.clear();
@@ -105,6 +115,7 @@ describe("ThemeControl", () => {
   });
 
   it("switches light → dark → light without navigation and persists the choice", async () => {
+    await openThemeMenu();
     await click(option("Dark"));
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(localStorage.getItem(WORKSPACE_THEME_STORAGE_KEY)).toBe("dark");
@@ -112,6 +123,7 @@ describe("ThemeControl", () => {
     expect(option("System").getAttribute("aria-pressed")).toBe("false");
     expect(container.querySelector(".theme-control")?.hasAttribute("open")).toBe(false);
 
+    await openThemeMenu();
     await click(option("Light"));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem(WORKSPACE_THEME_STORAGE_KEY)).toBe("light");
@@ -120,6 +132,7 @@ describe("ThemeControl", () => {
 
 
   it("keeps the selected theme when the shell remounts on client navigation", async () => {
+    await openThemeMenu();
     await click(option("Dark"));
     expect(document.documentElement.dataset.theme).toBe("dark");
 
@@ -141,7 +154,9 @@ describe("ThemeControl", () => {
   });
 
   it("returns to System and follows OS changes live", async () => {
+    await openThemeMenu();
     await click(option("Dark"));
+    await openThemeMenu();
     await click(option("System"));
 
     expect(document.documentElement.dataset.themePreference).toBe("system");
@@ -157,11 +172,10 @@ describe("ThemeControl", () => {
   });
 
   it("closes the disclosure on Escape and returns focus to the trigger", async () => {
-    const details = container.querySelector<HTMLDetailsElement>(".theme-control");
+    const details = await openThemeMenu();
     const summary = container.querySelector<HTMLElement>(".theme-control-trigger");
-    assert.ok(details && summary);
+    assert.ok(summary);
 
-    details.open = true;
     summary.focus();
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -169,6 +183,22 @@ describe("ThemeControl", () => {
 
     expect(details.open).toBe(false);
     expect(document.activeElement).toBe(summary);
+  });
+
+  it("does not steal focus from an unrelated control when Escape closes the menu", async () => {
+    const details = await openThemeMenu();
+    const outside = document.createElement("button");
+    document.body.append(outside);
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    expect(details.open).toBe(false);
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
   });
 
   it("server-renders the deterministic System state for hydration", () => {
