@@ -4,7 +4,7 @@ Unified CI blocks every new or directly-owned **high/critical** npm advisory. Th
 file records the exceptions enforced by advisory source ID in
 `scripts/ci/audit-production.mjs`, plus the remediation history.
 
-Re-reviewed **2026-09-25**. There are currently **no active high/critical
+Re-reviewed **2026-10-26**. There are currently **no active high/critical
 production-audit exceptions**. Any high/critical advisory is blocking.
 
 ## Active exceptions
@@ -28,6 +28,11 @@ the advisory.
 | `nanoid` | GHSA-2v37-7h3g-55p8 (source 1139427) | override `nanoid -> 3.3.18` (within the `^3.3.8` parent ranges) | `npm audit` no longer lists `nanoid` |
 | `@xmldom/xmldom` | GHSA-6mj3-qw4j-hgrw, GHSA-w2rr-34g9-rvrj, GHSA-4w3w-2rp5-g8jm and related (new sources) | scoped overrides `@xmldom/xmldom@^0.9 -> 0.9.12`, `@xmldom/xmldom@^0.8 -> 0.8.15` | `npm audit` no longer lists `@xmldom/xmldom` |
 | `fast-uri` | (previously excepted, source 1130720) | resolved by the existing `fast-uri -> 3.1.7` override; no longer surfaces in the production audit | `npm audit` no longer lists `fast-uri` |
+| `next` (2026-10-26 advisories, direct critical/high) | GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r, GHSA-673q-mjm6-r5xr (`>=16.0.0 <=16.4.0`) | `next 16.3.8 -> 16.4.3` (non-major); `eslint-config-next` and `@next/swc-linux-x64-gnu` moved with it | production audit high/critical `5 -> 0`; Next pin updated in `workspace-proofs` |
+| `@sentry/nextjs` (direct, critical) | GHSA-mchm-gjx6-7h55 (`>=10.0.0-alpha.0 <10.75.2`) | `10.68.0 -> 10.76.2` (non-major) | production audit no longer lists `@sentry/nextjs` |
+| `dompurify` | GHSA-cg2g-xh64-v4q7 (critical), GHSA-mrv2-3pqr-j5jr (high), plus related moderate/low sources | override `3.4.12 -> 3.4.17` (patched, reached via `posthog-js`) | production audit no longer lists `dompurify` |
+| `undici` | GHSA-xjj6-f33q-929c (high), GHSA-4qv8-2p9j-2685 (moderate) | scoped override `undici@^6 -> 6.29.1` (reached via Expo CLI) | production audit no longer lists `undici` |
+| `zod` | GHSA-mrhx-c7xc-m3w5 (`<4.6.6`) | removed the unused direct v3 dependency; moved `zod-v4` alias to `4.6.7`; MCP transitive resolution deduped to `4.6.7` | production audit no longer lists `zod`; web/MCP tests pass |
 
 Remediation constraints honoured: **no breaking downgrades** and **no
 `npm audit fix --force`**. The Metro move stays on the maintained `0.83.x`

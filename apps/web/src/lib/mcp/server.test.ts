@@ -1,6 +1,6 @@
 import type { McpServer } from "@modelcontextprotocol/server";
 import { describe, expect, it, vi } from "vitest";
-import type { z } from "zod";
+import type { z } from "zod-v4";
 
 import {
   registerMcpReadTools,
