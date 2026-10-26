@@ -97,7 +97,7 @@ DERIVED (to add)
 - Keep compatibility shims in `globals.css` mapping old vars → new:
   ` --accent: var(--ega-gold) ` etc., then migrate callers incrementally.
 - Remove `workspace-citrus`, `workspace-signal`, `ega-green` after callers moved (Wave 8 cleanup).
-- Font: replace `@import url('https://fonts.googleapis.com/...')` with `next/font/google` (Sora + Instrument Sans or Inter/Geist per taste) in `layout.tsx`.
+- Font: replace `@import url('https://fonts.googleapis.com/...')` with `next/font/google` (Sora + Instrument Sans or Inter/Geist per taste) in `layout.tsx` — **superseded by EGA-778**: fonts are self-hosted `next/font/local` binaries under `apps/web/src/app/fonts/`, and `npm run check:font-egress` rejects a Google Fonts dependency.
 
 ## 3. Typography (current vs target)
 

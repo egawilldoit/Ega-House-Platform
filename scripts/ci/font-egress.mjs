@@ -8,13 +8,17 @@
  * lightweight source check fails when the boundary is broken:
  *
  *  1. No `next/font/google` import and no `fonts.googleapis.com` /
- *     `fonts.gstatic.com` URL in any web build input (source, build config,
- *     public assets).
- *  2. `apps/web/src/app/layout.tsx` still loads each committed font with
- *     `next/font/local`, so deleting the loader cannot silently drop the
- *     product typography back to system fonts.
- *  3. Every committed font binary is a real WOFF2 and ships with its SIL OFL
- *     1.1 licence text.
+ *     `fonts.gstatic.com` string in the scanned web build inputs
+ *     (`apps/web/src`, `apps/web/public` text assets, `next.config.*`,
+ *     `postcss.config.*`).
+ *  2. `apps/web/src/app/layout.tsx` still imports `next/font/local`, and each
+ *     committed font binary is loaded from `./fonts/<file>` by a `localFont`
+ *     call that still assigns its CSS variable. Deleting or renaming a loader
+ *     cannot silently drop the product typography back to system fonts.
+ *  3. Each committed font binary starts with the WOFF2 signature and its header
+ *     `length` field matches the file size (catches truncation and appended
+ *     bytes, not arbitrary corruption inside a same-length file), and each has
+ *     a non-empty SIL OFL 1.1 licence text next to it.
  *
  * Not a test suite: it does not re-derive the layout edit, only the boundary
  * that the build must keep.
@@ -31,11 +35,15 @@ const webSrc = path.join(webRoot, 'src');
 const fontDir = path.join(webSrc, 'app', 'fonts');
 const layoutPath = path.join(webSrc, 'app', 'layout.tsx');
 
-// [font binary, licence file] pairs that must ship with the local build.
+// [font binary, licence file, CSS variable assigned by layout.tsx]
 const REQUIRED_FONTS = [
-  ['instrument-sans-latin-var.woff2', 'OFL-instrument-sans.txt'],
-  ['sora-latin-var.woff2', 'OFL-sora.txt'],
-  ['jetbrains-mono-latin-var.woff2', 'OFL-jetbrains-mono.txt'],
+  [
+    'instrument-sans-latin-var.woff2',
+    'OFL-instrument-sans.txt',
+    '--font-body-next',
+  ],
+  ['sora-latin-var.woff2', 'OFL-sora.txt', '--font-display-next'],
+  ['jetbrains-mono-latin-var.woff2', 'OFL-jetbrains-mono.txt', '--font-mono-next'],
 ];
 
 const FORBIDDEN = [
@@ -56,12 +64,14 @@ const SCAN_EXTENSIONS = new Set([
   '.md',
   '.mdx',
   '.html',
+  '.svg',
 ]);
 
-// Provenance prose in the fonts folder legitimately names the hosts it came from.
+// The provenance note legitimately names the hosts the fonts came from.
 const PROVENANCE_FILES = new Set(['README.md']);
 
 const WOFF2_MAGIC = Buffer.from('wOF2', 'ascii');
+const OFL_MARKER = 'SIL OPEN FONT LICENSE';
 
 let failures = 0;
 
@@ -74,18 +84,41 @@ function fail(message) {
   console.error(`FAIL: ${message}`);
 }
 
-function walk(target, out = []) {
-  if (!fs.existsSync(target)) return out;
-  const stat = fs.statSync(target);
+function walk(target, out = [], seen = new Set()) {
+  // `existsSync` is false for a broken symlink, so entry existence is decided by
+  // lstat and a resolvable target by stat.
+  try {
+    fs.lstatSync(target);
+  } catch {
+    return out;
+  }
+
+  let stat;
+  let real;
+  try {
+    stat = fs.statSync(target);
+    real = stat.isDirectory() ? fs.realpathSync(target) : null;
+  } catch {
+    // Broken symlink: fail loudly rather than silently skipping the path.
+    fail(`broken symlink or unreadable path ${path.relative(repoRoot, target)}`);
+    return out;
+  }
+
+  if (real) {
+    if (seen.has(real)) return out;
+    seen.add(real);
+  }
+
   if (stat.isFile()) {
     out.push(target);
     return out;
   }
+
   for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
     const full = path.join(target, entry.name);
-    if (entry.isDirectory()) {
+    if (entry.isDirectory() || entry.isSymbolicLink()) {
       if (entry.name === 'node_modules' || entry.name === '.next') continue;
-      walk(full, out);
+      walk(full, out, seen);
     } else {
       out.push(full);
     }
@@ -95,33 +128,36 @@ function walk(target, out = []) {
 
 function isTestFile(file) {
   const rel = path.relative(repoRoot, file).replaceAll(path.sep, '/');
-  return /(^|\/)tests?\//.test(rel) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
+  return (
+    /(^|\/)(tests?|__tests__)\//.test(rel) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel)
+  );
 }
 
 function scannable(target) {
   return walk(target).filter((file) => {
     const name = path.basename(file);
-    if (path.dirname(file) === fontDir) {
-      // Only the licence texts and provenance notes may name the font hosts;
-      // any other file added to this folder is still scanned.
-      if (PROVENANCE_FILES.has(name) || /^OFL-.*\.txt$/.test(name)) return false;
-    }
+    if (path.dirname(file) === fontDir && PROVENANCE_FILES.has(name)) return false;
     // Tests are not shipped build inputs and may assert on the forbidden string.
     if (isTestFile(file)) return false;
     return SCAN_EXTENSIONS.has(path.extname(name));
   });
 }
 
-function main() {
-  if (!fs.existsSync(webSrc)) {
-    fail(`web source tree not found at ${path.relative(repoRoot, webSrc)}`);
-    return;
-  }
+/** Every `localFont({ ... })` call body in layout.tsx. */
+function localFontBlocks(layout) {
+  return [...layout.matchAll(/localFont\(\{([\s\S]*?)\n\}\)/g)].map((m) => m[0]);
+}
 
-  // 1. Forbidden font-host dependency anywhere in the web build inputs.
-  const webConfigFiles = ['next.config.ts', 'next.config.mjs', 'postcss.config.mjs', 'postcss.config.js']
+function checkFontHostBoundary() {
+  const webConfigFiles = [
+    'next.config.ts',
+    'next.config.mjs',
+    'postcss.config.mjs',
+    'postcss.config.js',
+  ]
     .map((name) => path.join(webRoot, name))
     .filter((file) => fs.existsSync(file));
+
   const scanned = [
     ...scannable(webSrc),
     ...scannable(path.join(webRoot, 'public')),
@@ -132,9 +168,7 @@ function main() {
   for (const file of scanned) {
     const text = fs.readFileSync(file, 'utf8');
     for (const { pattern, label } of FORBIDDEN) {
-      if (pattern.test(text)) {
-        hits.push(`${path.relative(repoRoot, file)} — ${label}`);
-      }
+      if (pattern.test(text)) hits.push(`${path.relative(repoRoot, file)} — ${label}`);
     }
   }
 
@@ -143,54 +177,85 @@ function main() {
   } else {
     ok(`no Google Fonts import or URL in ${scanned.length} web build inputs`);
   }
+}
 
-  // 2. The loader that makes the committed binaries reachable still exists.
+function checkLoader() {
   if (!fs.existsSync(layoutPath)) {
     fail('apps/web/src/app/layout.tsx not found');
-  } else {
-    const layout = fs.readFileSync(layoutPath, 'utf8');
-    if (/from ['"]next\/font\/local['"]/.test(layout)) {
-      ok('layout.tsx loads next/font/local');
-    } else {
-      fail('layout.tsx no longer imports next/font/local');
-    }
-    for (const [fontFile] of REQUIRED_FONTS) {
-      if (layout.includes(`./fonts/${fontFile}`)) {
-        ok(`layout.tsx loads ./fonts/${fontFile}`);
-      } else {
-        fail(`layout.tsx does not load ./fonts/${fontFile}`);
-      }
-    }
+    return;
   }
 
-  // 3. Committed binaries are real WOFF2 files with their licence texts.
+  const layout = fs.readFileSync(layoutPath, 'utf8');
+
+  if (/from ['"]next\/font\/local['"]/.test(layout)) {
+    ok('layout.tsx loads next/font/local');
+  } else {
+    fail('layout.tsx no longer imports next/font/local');
+  }
+
+  const blocks = localFontBlocks(layout);
+  const byFontFile = new Map();
+  for (const block of blocks) {
+    const match = block.match(/src: "\.\/fonts\/([^"]+)"/);
+    if (match) byFontFile.set(match[1], block);
+  }
+
+  for (const [fontFile, , variable] of REQUIRED_FONTS) {
+    const block = byFontFile.get(fontFile);
+    if (!block) {
+      fail(`layout.tsx does not load ./fonts/${fontFile}`);
+    } else if (!block.includes(`variable: "${variable}"`)) {
+      fail(`layout.tsx loads ./fonts/${fontFile} without variable: "${variable}"`);
+    } else {
+      ok(`layout.tsx loads ./fonts/${fontFile} as ${variable}`);
+    }
+  }
+}
+
+function checkBinaries() {
   for (const [fontFile, licenceFile] of REQUIRED_FONTS) {
     const fontPath = path.join(fontDir, fontFile);
+
     if (!fs.existsSync(fontPath)) {
       fail(`missing committed font binary apps/web/src/app/fonts/${fontFile}`);
     } else {
       const buf = fs.readFileSync(fontPath);
-      // WOFF2 header: signature, flavor, then `length` = total file size in
-      // bytes, so a truncated or corrupted download is rejected.
+      // WOFF2 header: signature, flavor, then `length` = total file size.
       if (buf.length < 12 || !buf.subarray(0, 4).equals(WOFF2_MAGIC)) {
         fail(`apps/web/src/app/fonts/${fontFile} is not a WOFF2 file`);
       } else if (buf.readUInt32BE(8) !== buf.length) {
         fail(
-          `apps/web/src/app/fonts/${fontFile} is truncated or corrupt (header says ` +
-            `${buf.readUInt32BE(8)} bytes, file is ${buf.length})`,
+          `apps/web/src/app/fonts/${fontFile} is truncated or has extra bytes ` +
+            `(header says ${buf.readUInt32BE(8)} bytes, file is ${buf.length})`,
         );
       } else {
-        ok(`committed font binary ${fontFile}`);
+        ok(`committed font binary ${fontFile} (${buf.length} bytes)`);
       }
     }
 
     const licencePath = path.join(fontDir, licenceFile);
-    if (fs.existsSync(licencePath) && fs.statSync(licencePath).size > 0) {
-      ok(`committed licence ${licenceFile}`);
-    } else {
+    if (!fs.existsSync(licencePath)) {
       fail(`missing licence file apps/web/src/app/fonts/${licenceFile}`);
+      continue;
+    }
+    const licence = fs.readFileSync(licencePath, 'utf8');
+    if (licence.includes(OFL_MARKER)) {
+      ok(`committed SIL OFL 1.1 licence ${licenceFile}`);
+    } else {
+      fail(`apps/web/src/app/fonts/${licenceFile} is not a SIL OFL 1.1 text`);
     }
   }
+}
+
+function main() {
+  if (!fs.existsSync(webSrc)) {
+    fail(`web source tree not found at ${path.relative(repoRoot, webSrc)}`);
+    return;
+  }
+
+  checkFontHostBoundary();
+  checkLoader();
+  checkBinaries();
 
   if (failures > 0) {
     console.error(`\n${failures} font-egress failure(s).`);
