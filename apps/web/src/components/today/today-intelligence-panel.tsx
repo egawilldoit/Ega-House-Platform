@@ -43,11 +43,11 @@ export function TodayIntelligencePanel({
 
   return (
     <details
-      className="group rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--surface-primary)] overflow-hidden"
+      className="group rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface)] overflow-hidden"
       aria-label="Today intelligence"
       data-testid="today-intelligence-panel"
     >
-      <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium text-[color:var(--ega-text)] select-none hover:bg-[var(--surface-secondary)] transition-colors">
+      <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium text-[color:var(--ega-text)] select-none hover:bg-[var(--ega-surface-hover)] transition-colors">
         <span className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-[color:var(--ega-text-secondary)]" aria-hidden="true" />
           <span>Workload &amp; friction diagnostics</span>

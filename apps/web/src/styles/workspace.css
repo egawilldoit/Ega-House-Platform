@@ -270,7 +270,7 @@
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--ega-ink);
-  color: #ffffff;
+  color: var(--ega-on-ink);
   font-size: var(--text-body);
   font-weight: 500;
   cursor: pointer;
@@ -614,6 +614,102 @@
   height: 17px;
 }
 
+/* Theme control — native disclosure so Light/Dark/System labels stay
+   available on phone widths without widening the top bar. */
+.theme-control {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.theme-control-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ega-text-secondary);
+  cursor: pointer;
+  list-style: none;
+  transition: background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.theme-control-trigger::-webkit-details-marker {
+  display: none;
+}
+
+.theme-control-trigger:hover,
+.theme-control[open] > .theme-control-trigger {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.theme-control-trigger svg {
+  width: 17px;
+  height: 17px;
+}
+
+.theme-control-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 10.5rem;
+  padding: 4px;
+  border: 1px solid var(--ega-border);
+  border-radius: var(--radius-md);
+  background: var(--ega-surface-elevated);
+  box-shadow: var(--ega-shadow-md);
+}
+
+.theme-control-option {
+  display: flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--ega-text-secondary);
+  font-size: var(--text-meta-lg);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-default),
+    color var(--duration-fast) var(--ease-default);
+}
+
+.theme-control-option:hover {
+  background: var(--ega-surface-hover);
+  color: var(--ega-text);
+}
+
+.theme-control-option[aria-pressed="true"] {
+  background: var(--ega-surface-muted);
+  color: var(--ega-text);
+}
+
+.theme-control-option-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
+.theme-control-option-label {
+  flex: 1;
+}
+
+.theme-control-option-check {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
 .topbar-account {
   display: flex;
   align-items: center;
@@ -906,7 +1002,7 @@
   border: 1px solid var(--ega-ink);
   border-radius: var(--radius-sm);
   background: var(--ega-ink);
-  color: #ffffff;
+  color: var(--ega-on-ink);
   font-size: var(--text-body);
   font-weight: 500;
   white-space: nowrap;
@@ -918,7 +1014,7 @@
 .btn-instrument:hover {
   background: var(--ega-ink-hover);
   border-color: var(--ega-ink-hover);
-  color: #ffffff;
+  color: var(--ega-on-ink);
 }
 
 .btn-instrument-muted,
@@ -937,7 +1033,7 @@
 
 .input-instrument,
 .ega-glass-input {
-  border: 1px solid var(--ega-border);
+  border: 1px solid var(--ega-control-border);
   border-radius: var(--radius-sm);
   background: var(--ega-surface);
   color: var(--ega-text);
@@ -949,7 +1045,7 @@
 
 .input-instrument:hover,
 .ega-glass-input:hover {
-  border-color: var(--ega-border-strong);
+  border-color: var(--ega-text-tertiary);
 }
 
 .input-instrument:focus,
@@ -998,11 +1094,11 @@ select.ega-glass-input {
 .filter-pill-active {
   border-color: var(--ega-text);
   background: var(--ega-ink);
-  color: #ffffff;
+  color: var(--ega-on-ink);
 }
 
 .filter-pill-active:hover {
-  color: #ffffff;
+  color: var(--ega-on-ink);
 }
 
 .ega-glass-empty,

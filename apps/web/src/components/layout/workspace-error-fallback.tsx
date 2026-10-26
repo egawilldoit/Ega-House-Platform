@@ -30,7 +30,10 @@ export function WorkspaceErrorFallback({
   homeHref = "/",
 }: WorkspaceErrorFallbackProps) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--ega-bg)] px-6 py-12">
+    <main
+      data-workspace-theme="workspace"
+      className="flex min-h-screen items-center justify-center bg-[var(--ega-bg)] px-6 py-12"
+    >
       <section className="w-full max-w-xl" aria-labelledby="workspace-error-title">
         <Card>
           <CardContent className="flex flex-col gap-4">

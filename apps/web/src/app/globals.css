@@ -57,13 +57,16 @@
   --color-ega-surface-subtle: var(--ega-surface-subtle);
   --color-ega-surface-hover: var(--ega-surface-hover);
   --color-ega-surface-muted: var(--ega-surface-muted);
+  --color-ega-surface-elevated: var(--ega-surface-elevated);
   --color-ega-border: var(--ega-border);
   --color-ega-border-strong: var(--ega-border-strong);
+  --color-ega-control-border: var(--ega-control-border);
   --color-ega-divider: var(--ega-divider);
   --color-ega-text: var(--ega-text);
   --color-ega-text-secondary: var(--ega-text-secondary);
   --color-ega-text-tertiary: var(--ega-text-tertiary);
   --color-ega-ink: var(--ega-ink);
+  --color-ega-on-ink: var(--ega-on-ink);
 
   --color-data-blue: var(--ega-data-blue);
   --color-data-orange: var(--ega-data-orange);

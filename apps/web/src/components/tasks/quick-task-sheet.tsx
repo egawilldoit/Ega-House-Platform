@@ -962,7 +962,7 @@ export function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex items-center justify-between border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex items-center justify-between border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[var(--ega-shadow-footer)] sm:-mx-6 sm:px-6">
                   <DialogPrimitive.Close asChild>
                     <Button
                       type="button"
@@ -1255,7 +1255,7 @@ export function QuickTaskSheetPanel({
                   </div>
                 ) : null}
 
-                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex flex-col items-stretch justify-between gap-2 border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[0_-8px_18px_rgba(22,31,44,0.04)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
+                <div className="sticky bottom-[-1rem] z-10 -mx-5 flex flex-col items-stretch justify-between gap-2 border-t border-[var(--ega-border)] bg-[var(--ega-surface)] px-5 py-4 shadow-[var(--ega-shadow-footer)] sm:-mx-6 sm:flex-row sm:items-center sm:gap-3 sm:px-6">
                   <p className="text-xs text-[color:var(--muted-foreground)]" aria-live="polite">
                     {invalidDraftCount > 0
                       ? `${invalidDraftCount} of ${drafts.length} task${drafts.length === 1 ? "" : "s"} need attention`
@@ -1366,7 +1366,7 @@ export function QuickTaskSheet({
 
       <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
-          className="fixed inset-0 z-[90] bg-[rgba(17,17,15,0.58)] backdrop-blur-[1px] transition-opacity"
+          className="fixed inset-0 z-[90] bg-[var(--ega-overlay)] backdrop-blur-[1px] transition-opacity"
         />
         <DialogPrimitive.Content
           id="quick-task-modal"
@@ -1380,7 +1380,7 @@ export function QuickTaskSheet({
             }
             lastFocusedElementRef.current = null;
           }}
-          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[91] flex max-h-[min(50rem,calc(100dvh-2rem))] w-[calc(100vw-1rem)] max-w-[38rem] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[var(--ega-shadow-lg)] outline-none"
         >
           {open ? (
             <QuickTaskSheetPanel
