@@ -27,9 +27,11 @@ const sora = localFont({
   display: "swap",
 });
 
+// 400–600 matches the mono faces the design system previously declared, so a
+// `font-weight: 900` label keeps resolving to the 600 master as it did before.
 const jetbrainsMono = localFont({
   src: "./fonts/jetbrains-mono-latin-var.woff2",
-  weight: "100 800",
+  weight: "400 600",
   style: "normal",
   variable: "--font-mono-next",
   display: "swap",
