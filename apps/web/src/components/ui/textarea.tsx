@@ -7,7 +7,7 @@ export function Textarea({ className, ...props }: TextareaProps) {
   return (
     <textarea
       className={cn(
-        "input-instrument min-h-[120px] resize-y",
+        "input-instrument min-h-[120px] w-full resize-y",
         className,
       )}
       {...props}
