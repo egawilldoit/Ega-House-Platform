@@ -98,6 +98,7 @@ jobs:
               - 'drizzle.config.ts'
               - 'packages/**'
               - 'apps/server/**'
+              - 'scripts/ci/**'
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/**'

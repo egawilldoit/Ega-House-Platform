@@ -5,12 +5,16 @@
  * EGA-778 replaced `next/font/google` with `next/font/local` so that a
  * restricted-network or locked-down build still compiles. That guarantee is
  * invisible in a normal green build (the hosted runner has egress), so this
- * lightweight source check fails when a font-host dependency comes back:
+ * lightweight source check fails when the boundary is broken:
  *
- *  1. No `next/font/google` import under `apps/web/src`.
- *  2. No `fonts.googleapis.com` / `fonts.gstatic.com` URL under `apps/web/src`.
- *  3. Every family declared in `apps/web/src/app/fonts/` still has its
- *     committed WOFF2 binary and its SIL OFL licence file.
+ *  1. No `next/font/google` import and no `fonts.googleapis.com` /
+ *     `fonts.gstatic.com` URL in any web build input (source, build config,
+ *     public assets).
+ *  2. `apps/web/src/app/layout.tsx` still loads each committed font with
+ *     `next/font/local`, so deleting the loader cannot silently drop the
+ *     product typography back to system fonts.
+ *  3. Every committed font binary is a real WOFF2 and ships with its SIL OFL
+ *     1.1 licence text.
  *
  * Not a test suite: it does not re-derive the layout edit, only the boundary
  * that the build must keep.
@@ -22,8 +26,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = path.resolve(import.meta.dirname, '..', '..');
-const webSrc = path.join(repoRoot, 'apps', 'web', 'src');
+const webRoot = path.join(repoRoot, 'apps', 'web');
+const webSrc = path.join(webRoot, 'src');
 const fontDir = path.join(webSrc, 'app', 'fonts');
+const layoutPath = path.join(webSrc, 'app', 'layout.tsx');
 
 // [font binary, licence file] pairs that must ship with the local build.
 const REQUIRED_FONTS = [
@@ -52,6 +58,11 @@ const SCAN_EXTENSIONS = new Set([
   '.html',
 ]);
 
+// Provenance prose in the fonts folder legitimately names the hosts it came from.
+const PROVENANCE_FILES = new Set(['README.md']);
+
+const WOFF2_MAGIC = Buffer.from('wOF2', 'ascii');
+
 let failures = 0;
 
 function ok(message) {
@@ -63,17 +74,42 @@ function fail(message) {
   console.error(`FAIL: ${message}`);
 }
 
-function walk(dir, out = []) {
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
+function walk(target, out = []) {
+  if (!fs.existsSync(target)) return out;
+  const stat = fs.statSync(target);
+  if (stat.isFile()) {
+    out.push(target);
+    return out;
+  }
+  for (const entry of fs.readdirSync(target, { withFileTypes: true })) {
+    const full = path.join(target, entry.name);
     if (entry.isDirectory()) {
       if (entry.name === 'node_modules' || entry.name === '.next') continue;
       walk(full, out);
-    } else if (SCAN_EXTENSIONS.has(path.extname(entry.name))) {
+    } else {
       out.push(full);
     }
   }
   return out;
+}
+
+function isTestFile(file) {
+  const rel = path.relative(repoRoot, file).replaceAll(path.sep, '/');
+  return /(^|\/)tests?\//.test(rel) || /\.(test|spec)\.[cm]?[jt]sx?$/.test(rel);
+}
+
+function scannable(target) {
+  return walk(target).filter((file) => {
+    const name = path.basename(file);
+    if (path.dirname(file) === fontDir) {
+      // Only the licence texts and provenance notes may name the font hosts;
+      // any other file added to this folder is still scanned.
+      if (PROVENANCE_FILES.has(name) || /^OFL-.*\.txt$/.test(name)) return false;
+    }
+    // Tests are not shipped build inputs and may assert on the forbidden string.
+    if (isTestFile(file)) return false;
+    return SCAN_EXTENSIONS.has(path.extname(name));
+  });
 }
 
 function main() {
@@ -82,13 +118,18 @@ function main() {
     return;
   }
 
-  const files = walk(webSrc);
-  const hits = [];
+  // 1. Forbidden font-host dependency anywhere in the web build inputs.
+  const webConfigFiles = ['next.config.ts', 'next.config.mjs', 'postcss.config.mjs', 'postcss.config.js']
+    .map((name) => path.join(webRoot, name))
+    .filter((file) => fs.existsSync(file));
+  const scanned = [
+    ...scannable(webSrc),
+    ...scannable(path.join(webRoot, 'public')),
+    ...webConfigFiles,
+  ];
 
-  for (const file of files) {
-    // The provenance notes intentionally name the hosts in prose; only
-    // executable source can reintroduce a runtime dependency.
-    if (path.dirname(file) === fontDir) continue;
+  const hits = [];
+  for (const file of scanned) {
     const text = fs.readFileSync(file, 'utf8');
     for (const { pattern, label } of FORBIDDEN) {
       if (pattern.test(text)) {
@@ -98,19 +139,52 @@ function main() {
   }
 
   if (hits.length > 0) {
-    fail('web source depends on Google Fonts hosts:\n  ' + hits.join('\n  '));
+    fail('web build depends on Google Fonts hosts:\n  ' + hits.join('\n  '));
   } else {
-    ok(`no Google Fonts import or URL in ${files.length} web source files`);
+    ok(`no Google Fonts import or URL in ${scanned.length} web build inputs`);
   }
 
+  // 2. The loader that makes the committed binaries reachable still exists.
+  if (!fs.existsSync(layoutPath)) {
+    fail('apps/web/src/app/layout.tsx not found');
+  } else {
+    const layout = fs.readFileSync(layoutPath, 'utf8');
+    if (/from ['"]next\/font\/local['"]/.test(layout)) {
+      ok('layout.tsx loads next/font/local');
+    } else {
+      fail('layout.tsx no longer imports next/font/local');
+    }
+    for (const [fontFile] of REQUIRED_FONTS) {
+      if (layout.includes(`./fonts/${fontFile}`)) {
+        ok(`layout.tsx loads ./fonts/${fontFile}`);
+      } else {
+        fail(`layout.tsx does not load ./fonts/${fontFile}`);
+      }
+    }
+  }
+
+  // 3. Committed binaries are real WOFF2 files with their licence texts.
   for (const [fontFile, licenceFile] of REQUIRED_FONTS) {
     const fontPath = path.join(fontDir, fontFile);
-    const licencePath = path.join(fontDir, licenceFile);
-    if (fs.existsSync(fontPath) && fs.statSync(fontPath).size > 0) {
-      ok(`committed font binary ${fontFile}`);
-    } else {
+    if (!fs.existsSync(fontPath)) {
       fail(`missing committed font binary apps/web/src/app/fonts/${fontFile}`);
+    } else {
+      const buf = fs.readFileSync(fontPath);
+      // WOFF2 header: signature, flavor, then `length` = total file size in
+      // bytes, so a truncated or corrupted download is rejected.
+      if (buf.length < 12 || !buf.subarray(0, 4).equals(WOFF2_MAGIC)) {
+        fail(`apps/web/src/app/fonts/${fontFile} is not a WOFF2 file`);
+      } else if (buf.readUInt32BE(8) !== buf.length) {
+        fail(
+          `apps/web/src/app/fonts/${fontFile} is truncated or corrupt (header says ` +
+            `${buf.readUInt32BE(8)} bytes, file is ${buf.length})`,
+        );
+      } else {
+        ok(`committed font binary ${fontFile}`);
+      }
     }
+
+    const licencePath = path.join(fontDir, licenceFile);
     if (fs.existsSync(licencePath) && fs.statSync(licencePath).size > 0) {
       ok(`committed licence ${licenceFile}`);
     } else {

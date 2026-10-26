@@ -13,7 +13,7 @@
     "application:typecheck": "npm run typecheck --workspace @ega/application",
     "build": "npm run build --workspace @ega/web",
     "check:architecture": "node scripts/architecture/check-boundaries.mjs",
-  "check:font-egress": "node scripts/ci/font-egress.mjs",
+    "check:font-egress": "node scripts/ci/font-egress.mjs",
     "ci:purity": "node scripts/ci/package-purity.mjs",
     "ci:security": "node scripts/ci/security-proofs.mjs",
     "ci:workspace": "node --test scripts/ci/audit-production.test.mjs scripts/ci/security-backports.test.mjs && node scripts/ci/workspace-proofs.mjs",
