@@ -67,8 +67,8 @@ function NowCardIllustration() {
       aria-hidden="true"
       focusable="false"
     >
-      <circle cx="330" cy="52" r="26" fill="#fde68a" opacity="0.85" />
-      <circle cx="330" cy="52" r="40" fill="#fde68a" opacity="0.25" />
+      <circle cx="330" cy="52" r="26" fill="color-mix(in srgb, var(--ega-data-yellow) 55%, var(--ega-surface))" opacity="0.85" />
+      <circle cx="330" cy="52" r="40" fill="color-mix(in srgb, var(--ega-data-yellow) 55%, var(--ega-surface))" opacity="0.25" />
       <path
         d="M-20 220 L120 78 L210 170 L300 60 L440 220 Z"
         fill="color-mix(in srgb, var(--status-healthy) 12%, var(--ega-surface))"

@@ -4,18 +4,43 @@ import { join } from "node:path";
 import test from "node:test";
 
 /**
- * Contrast contract for the workspace text ramp.
+ * Contrast contract for the workspace palettes.
  *
- * The values were previously chosen by eye and two of them measured below
- * WCAG AA on the surfaces they are actually used on. This test computes the
- * ratios from the token file itself so a future palette tweak cannot silently
- * reintroduce unreadable text.
+ * The test reads the light `:root` block and the scoped dark block from
+ * `styles/tokens.css` separately. Finding a token by name alone would always
+ * return the light declaration and silently validate the same palette twice.
  */
 
 const tokensCss = readFileSync(join(process.cwd(), "src/styles/tokens.css"), "utf8");
 
-function token(name: string): string {
-  const match = tokensCss.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`));
+const LIGHT_SELECTOR = ":root {";
+const DARK_SELECTOR = 'html[data-theme="dark"]:has([data-workspace-theme="workspace"]) {';
+
+function blockFor(selector: string): string {
+  const start = tokensCss.indexOf(selector);
+  assert.ok(start >= 0, `missing token block: ${selector}`);
+
+  const opening = tokensCss.indexOf("{", start);
+  assert.ok(opening >= 0, `incomplete token block: ${selector}`);
+
+  let depth = 0;
+  for (let index = opening; index < tokensCss.length; index += 1) {
+    if (tokensCss[index] === "{") depth += 1;
+    if (tokensCss[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return tokensCss.slice(opening + 1, index);
+    }
+  }
+
+  throw new Error(`unterminated token block: ${selector}`);
+}
+
+const LIGHT = blockFor(LIGHT_SELECTOR);
+const DARK = blockFor(DARK_SELECTOR);
+
+function token(block: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = block.match(new RegExp(`${escaped}:\\s*(#[0-9a-fA-F]{6})`));
   assert.ok(match, `token ${name} must be a hex colour`);
   return match[1] as string;
 }
@@ -39,66 +64,111 @@ function contrast(foreground: string, background: string): number {
 }
 
 const AA_NORMAL = 4.5;
+const AA_NON_TEXT = 3;
 
 const SURFACES = [
   "--ega-surface",
   "--ega-bg",
   "--ega-surface-subtle",
   "--ega-surface-hover",
+  "--ega-surface-selected",
   "--ega-surface-muted",
+  "--ega-surface-elevated",
 ] as const;
 
 const TEXT_TOKENS = ["--ega-text", "--ega-text-secondary", "--ega-text-tertiary"] as const;
 
-test("every text-ramp token meets WCAG AA on every surface it is used on", () => {
-  const failures: string[] = [];
+const STATUS_PAIRS: Array<[string, string]> = [
+  ["--status-healthy", "--status-healthy-bg"],
+  ["--status-risk", "--status-risk-bg"],
+  ["--status-overdue", "--status-overdue-bg"],
+  ["--status-pending", "--status-pending-bg"],
+  ["--status-info", "--status-info-bg"],
+  ["--priority-high", "--priority-high-bg"],
+  ["--priority-medium", "--priority-medium-bg"],
+  ["--priority-low", "--priority-low-bg"],
+];
 
-  for (const textToken of TEXT_TOKENS) {
-    const foreground = token(textToken);
-    for (const surfaceToken of SURFACES) {
-      const ratio = contrast(foreground, token(surfaceToken));
-      if (ratio < AA_NORMAL) {
-        failures.push(
-          `${textToken} (${foreground}) on ${surfaceToken}: ${ratio.toFixed(2)}:1`,
-        );
+for (const [paletteName, block] of [
+  ["light", LIGHT],
+  ["dark", DARK],
+] as const) {
+  test(`${paletteName}: every text-ramp token meets WCAG AA on every workspace surface`, () => {
+    const failures: string[] = [];
+
+    for (const textToken of TEXT_TOKENS) {
+      const foreground = token(block, textToken);
+      for (const surfaceToken of SURFACES) {
+        const ratio = contrast(foreground, token(block, surfaceToken));
+        if (ratio < AA_NORMAL) {
+          failures.push(
+            `${textToken} (${foreground}) on ${surfaceToken}: ${ratio.toFixed(2)}:1`,
+          );
+        }
       }
     }
-  }
 
-  assert.deepEqual(failures, [], `contrast failures:\n${failures.join("\n")}`);
-});
+    assert.deepEqual(failures, [], `${paletteName} contrast failures:\n${failures.join("\n")}`);
+  });
 
-test("the text ramp keeps a visible step between levels", () => {
-  const primary = luminance(token("--ega-text"));
-  const secondary = luminance(token("--ega-text-secondary"));
-  const tertiary = luminance(token("--ega-text-tertiary"));
+  test(`${paletteName}: the text ramp keeps a visible step between levels`, () => {
+    const primary = luminance(token(block, "--ega-text"));
+    const secondary = luminance(token(block, "--ega-text-secondary"));
+    const tertiary = luminance(token(block, "--ega-text-tertiary"));
 
-  assert.ok(primary < secondary, "secondary must be lighter than primary text");
-  assert.ok(secondary < tertiary, "tertiary must be lighter than secondary text");
-  // A step of at least ~10% relative luminance keeps the levels distinguishable.
-  assert.ok((secondary - primary) / secondary > 0.5);
-  assert.ok((tertiary - secondary) / tertiary > 0.1);
-});
-
-test("status text colours meet AA on their own tinted backgrounds", () => {
-  const pairs: Array<[string, string]> = [
-    ["--status-healthy", "--status-healthy-bg"],
-    ["--status-risk", "--status-risk-bg"],
-    ["--status-overdue", "--status-overdue-bg"],
-    ["--status-pending", "--status-pending-bg"],
-    ["--status-info", "--status-info-bg"],
-    ["--priority-high", "--priority-high-bg"],
-    ["--priority-medium", "--priority-medium-bg"],
-    ["--priority-low", "--priority-low-bg"],
-  ];
-
-  const failures: string[] = [];
-  for (const [foreground, background] of pairs) {
-    const ratio = contrast(token(foreground), token(background));
-    if (ratio < AA_NORMAL) {
-      failures.push(`${foreground} on ${background}: ${ratio.toFixed(2)}:1`);
+    if (paletteName === "light") {
+      assert.ok(primary < secondary, "secondary must be lighter than primary text");
+      assert.ok(secondary < tertiary, "tertiary must be lighter than secondary text");
+      assert.ok((secondary - primary) / secondary > 0.5);
+      assert.ok((tertiary - secondary) / tertiary > 0.1);
+      return;
     }
-  }
 
-  assert.deepEqual(failures, [], `status contrast failures:\n${failures.join("\n")}`);
+    assert.ok(primary > secondary, "secondary must be darker than primary text");
+    assert.ok(secondary > tertiary, "tertiary must be darker than secondary text");
+    assert.ok((primary - secondary) / primary > 0.3);
+    assert.ok((secondary - tertiary) / secondary > 0.2);
+  });
+
+  test(`${paletteName}: status and priority text meets AA on its own tinted background`, () => {
+    const failures: string[] = [];
+    for (const [foreground, background] of STATUS_PAIRS) {
+      const ratio = contrast(token(block, foreground), token(block, background));
+      if (ratio < AA_NORMAL) {
+        failures.push(`${foreground} on ${background}: ${ratio.toFixed(2)}:1`);
+      }
+    }
+
+    assert.deepEqual(failures, [], `${paletteName} status failures:\n${failures.join("\n")}`);
+  });
+
+  test(`${paletteName}: form-control boundaries meet non-text contrast`, () => {
+    const border = token(block, "--ega-control-border");
+    const failures: string[] = [];
+
+    for (const surfaceToken of ["--ega-surface", "--ega-surface-subtle", "--ega-surface-hover"] as const) {
+      const ratio = contrast(border, token(block, surfaceToken));
+      if (ratio < AA_NON_TEXT) {
+        failures.push(`${surfaceToken}: ${ratio.toFixed(2)}:1`);
+      }
+    }
+
+    assert.deepEqual(
+      failures,
+      [],
+      `${paletteName} control-border failures:\n${failures.join("\n")}`,
+    );
+  });
+}
+
+test("the dark palette is scoped to the authenticated workspace marker", () => {
+  assert.match(
+    tokensCss,
+    /html\[data-theme="dark"\]:has\(\[data-workspace-theme="workspace"\]\)/,
+  );
+  assert.doesNotMatch(
+    tokensCss,
+    /^:root\[data-theme="dark"\]/m,
+    "a root dark selector would leak into public marketing/auth surfaces",
+  );
 });
