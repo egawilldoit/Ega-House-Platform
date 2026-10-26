@@ -185,6 +185,42 @@ describe("workspace theme store", () => {
     expect(document.documentElement.dataset.theme).toBe("dark");
   });
 
+  it("ignores preference events from unrelated storage areas", async () => {
+    vi.resetModules();
+    installMatchMedia(false);
+    const store = await import("./workspace-theme-store");
+    unsubscribe = store.subscribeWorkspaceTheme(() => undefined);
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: WORKSPACE_THEME_STORAGE_KEY,
+        newValue: "dark",
+        storageArea: window.sessionStorage,
+      }),
+    );
+
+    expect(store.getWorkspaceThemeSnapshot()).toBe("system");
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("accepts preference events from the workspace localStorage area", async () => {
+    vi.resetModules();
+    installMatchMedia(false);
+    const store = await import("./workspace-theme-store");
+    unsubscribe = store.subscribeWorkspaceTheme(() => undefined);
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: WORKSPACE_THEME_STORAGE_KEY,
+        newValue: "dark",
+        storageArea: window.localStorage,
+      }),
+    );
+
+    expect(store.getWorkspaceThemeSnapshot()).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
   it("has a deterministic server snapshot for hydration", async () => {
     vi.resetModules();
     installMatchMedia(false);

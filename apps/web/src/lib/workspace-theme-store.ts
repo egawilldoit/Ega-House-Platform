@@ -82,6 +82,11 @@ function onSystemThemeChange() {
 function onStorageChange(event: StorageEvent) {
   if (event.key !== null && event.key !== WORKSPACE_THEME_STORAGE_KEY) return;
 
+  // `storage` also fires for sessionStorage and other Storage areas. Only the
+  // workspace preference area may change the authenticated theme.
+  const storage = getStorage();
+  if (storage && event.storageArea && event.storageArea !== storage) return;
+
   preference = event.newValue
     ? parseWorkspaceThemePreference(event.newValue)
     : "system";
