@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const nextConfig: NextConfig = {
   transpilePackages: ["@ega/application", "@ega/contracts", "@ega/data-access", "@ega/domain"],
