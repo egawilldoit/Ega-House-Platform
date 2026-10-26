@@ -73,7 +73,7 @@ export function TimerStopOutcomePrompt({
               <label
                 htmlFor={outcomeInputId}
                 key={option.value}
-                className="flex cursor-pointer items-start gap-3 rounded-[0.8rem] border border-[var(--border)] bg-white px-3 py-3 text-sm transition hover:border-[var(--signal-live)]"
+                className="flex cursor-pointer items-start gap-3 rounded-[0.8rem] border border-[var(--border)] bg-[var(--ega-surface)] px-3 py-3 text-sm transition hover:border-[var(--signal-live)]"
               >
                 <span className="sr-only">{option.label}</span>
                 <input

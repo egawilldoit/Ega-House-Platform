@@ -39,7 +39,7 @@ function formatQualityTone(quality: HealthWorkloadSnapshotDto["quality"]["qualit
 export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }: Props) {
   if (errorMessage) {
     return (
-      <Card className="border-[var(--border)] bg-white" data-testid="health-coach-error">
+      <Card className="border-[var(--border)]" data-testid="health-coach-error">
         <CardHeader>
           <CardTitle className="text-sm">Workload &amp; Recovery — Snapshot</CardTitle>
           <CardDescription>Lightweight workload guidance from your tracked sessions.</CardDescription>
@@ -53,7 +53,7 @@ export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }:
 
   if (!snapshot) {
     return (
-      <Card className="border-[var(--border)] bg-white" data-testid="health-coach-empty">
+      <Card className="border-[var(--border)]" data-testid="health-coach-empty">
         <CardHeader>
           <CardTitle className="text-sm">Workload &amp; Recovery — Snapshot</CardTitle>
           <CardDescription>Lightweight workload guidance from your tracked sessions.</CardDescription>
@@ -70,7 +70,7 @@ export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }:
   const isProvisional = snapshot.quality.quality === "provisional";
 
   return (
-    <Card className="border-[var(--border)] bg-white" data-testid="health-coach-snapshot">
+    <Card className="border-[var(--border)]" data-testid="health-coach-snapshot">
       <CardHeader>
         <CardTitle className="text-sm">Workload &amp; Recovery — Snapshot</CardTitle>
         <CardDescription>
@@ -91,13 +91,13 @@ export function HealthCoachSnapshot({ snapshot, recommendations, errorMessage }:
         ) : null}
 
         {isProvisional ? (
-          <p className="text-sm leading-6 text-amber-700">
+          <p className="text-sm leading-6 text-[color:var(--status-risk)]">
             Includes time from an active session that has not been stopped yet. Totals will settle once the session is completed.
           </p>
         ) : null}
 
         {isSuspect ? (
-          <p className="text-sm leading-6 text-amber-700">
+          <p className="text-sm leading-6 text-[color:var(--status-risk)]">
             Some sessions had incomplete timing data and were excluded. If this persists, check that sessions are stopping cleanly.
           </p>
         ) : null}

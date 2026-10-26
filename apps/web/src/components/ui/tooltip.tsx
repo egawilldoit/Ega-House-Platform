@@ -62,7 +62,7 @@ export function Tooltip({ content, children, side = "top", delayMs = 300, classN
             <div
               role="tooltip"
               className={cn(
-                "pointer-events-none fixed z-[100] max-w-xs rounded-md border border-[var(--ega-border)] bg-[var(--ega-sidebar)] px-2.5 py-1.5 text-xs font-medium leading-4 text-white shadow-[var(--ega-shadow-md)]",
+                "pointer-events-none fixed z-[100] max-w-xs rounded-md border border-[var(--ega-border)] bg-[var(--ega-ink)] px-2.5 py-1.5 text-xs font-medium leading-4 text-[color:var(--ega-on-ink)] shadow-[var(--ega-shadow-md)]",
                 side === "top" && "-translate-x-1/2 -translate-y-full -mt-2",
                 side === "bottom" && "-translate-x-1/2 mt-2",
                 side === "left" && "-translate-x-full -translate-y-1/2 -ml-2",

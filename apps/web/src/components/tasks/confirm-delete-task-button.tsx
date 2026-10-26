@@ -41,10 +41,10 @@ export function ConfirmDeleteTaskButton({
       </DialogPrimitive.Trigger>
 
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-[95] bg-[rgba(17,17,15,0.58)] transition-opacity" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-[95] bg-[var(--ega-overlay)] transition-opacity" />
         <DialogPrimitive.Content
           aria-label={`Delete task ${taskTitle}`}
-          className="fixed left-1/2 top-1/2 z-[96] w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] p-5 shadow-[0_28px_80px_rgba(17,17,15,0.3)] outline-none"
+          className="fixed left-1/2 top-1/2 z-[96] w-[calc(100vw-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-[var(--ega-border)] bg-[var(--ega-surface)] p-5 shadow-[var(--ega-shadow-lg)] outline-none"
         >
           <DialogPrimitive.Title className="text-[length:var(--text-section)] font-semibold tracking-[var(--tracking-tight)] text-[color:var(--ega-text)]">
             Delete task

@@ -172,6 +172,133 @@ test.describe("EGA-648 responsive layout geometry", () => {
 });
 
 
+test.describe("workspace dark palette contract", () => {
+  test("dark tokens stay scoped and readable in a real browser", async ({ page }) => {
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
+
+    const shellStyles = [
+      readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8"),
+      readFileSync(resolve(process.cwd(), "src/styles/workspace.css"), "utf8"),
+    ];
+    await page.addStyleTag({ content: shellStyles.join("\n") });
+
+    // Without the authenticated marker, an explicit dark document must not
+    // change the public auth surface.
+    await page.evaluate(() => {
+      document.documentElement.dataset.theme = "dark";
+    });
+    const publicAuth = await page.evaluate(() => ({
+      background: getComputedStyle(document.querySelector(".auth-root")!).backgroundColor,
+      scheme: getComputedStyle(document.querySelector(".auth-root")!).colorScheme,
+    }));
+    expect(publicAuth.background).toBe("rgb(241, 242, 236)");
+    expect(publicAuth.scheme).toBe("light");
+
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.id = "dark-contract-host";
+      host.className = "ega-app-shell app-shell";
+      host.dataset.workspaceTheme = "workspace";
+      host.dataset.collapsed = "false";
+      host.style.cssText =
+        "position:fixed;inset:0;z-index:99999;overflow:hidden;display:block";
+      host.innerHTML = `
+        <header class="app-topbar workspace-topbar">
+          <div class="app-topbar-actions">
+            <span class="topbar-avatar">EG</span>
+          </div>
+        </header>
+        <main class="app-main workspace-main">
+          <div class="app-page">
+            <header class="app-page-header">
+              <h1 class="app-page-title">Dark contract</h1>
+              <p class="app-page-description">Readable secondary copy on the dark canvas.</p>
+            </header>
+            <div class="app-content">
+              <section class="panel">
+                <div class="panel-header"><h2 class="panel-title">Panel title</h2></div>
+                <div class="panel-body">
+                  <p class="row-meta">Row metadata</p>
+                  <span class="status-badge status-badge-active">Active</span>
+                  <input class="input-instrument" value="Task title" />
+                </div>
+              </section>
+            </div>
+          </div>
+        </main>`;
+      document.body.append(host);
+    });
+
+    const measured = await page.evaluate(() => {
+      const parse = (value: string) => value.match(/[\d.]+/g)!.slice(0, 3).map(Number);
+      const luminance = (value: string) => {
+        const [r, g, b] = parse(value).map((channel) => {
+          const srgb = channel / 255;
+          return srgb <= 0.04045 ? srgb / 12.92 : ((srgb + 0.055) / 1.055) ** 2.4;
+        });
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      };
+      const contrast = (foreground: string, background: string) => {
+        const a = luminance(foreground);
+        const b = luminance(background);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      };
+      const effectiveBackground = (element: Element) => {
+        let node: Element | null = element;
+        while (node) {
+          const background = getComputedStyle(node).backgroundColor;
+          const channels = background.match(/[\d.]+/g)?.map(Number) ?? [];
+          if ((channels[3] ?? 1) > 0.9) return background;
+          node = node.parentElement;
+        }
+        return "rgb(255, 255, 255)";
+      };
+      const host = document.querySelector<HTMLElement>("#dark-contract-host")!;
+      const title = host.querySelector<HTMLElement>(".app-page-title")!;
+      const secondary = host.querySelector<HTMLElement>(".app-page-description")!;
+      const panelTitle = host.querySelector<HTMLElement>(".panel-title")!;
+      const input = host.querySelector<HTMLInputElement>(".input-instrument")!;
+      const whiteCards = Array.from(host.querySelectorAll("*")).filter((element) => {
+        const background = getComputedStyle(element).backgroundColor;
+        const channels = background.match(/\d+/g)?.map(Number) ?? [];
+        return channels.length >= 3 && channels.slice(0, 3).every((channel) => channel > 245);
+      }).length;
+
+      return {
+        htmlScheme: getComputedStyle(document.documentElement).colorScheme,
+        shellBackground: getComputedStyle(host).backgroundColor,
+        panelBackground: getComputedStyle(host.querySelector<HTMLElement>(".panel")!).backgroundColor,
+        whiteCards,
+        titleContrast: contrast(getComputedStyle(title).color, effectiveBackground(title)),
+        secondaryContrast: contrast(
+          getComputedStyle(secondary).color,
+          effectiveBackground(secondary),
+        ),
+        panelTitleContrast: contrast(
+          getComputedStyle(panelTitle).color,
+          effectiveBackground(panelTitle),
+        ),
+        inputBorderContrast: contrast(
+          getComputedStyle(input).borderColor,
+          getComputedStyle(input).backgroundColor,
+        ),
+        inputScheme: getComputedStyle(input).colorScheme,
+      };
+    });
+
+    expect(measured.htmlScheme).toBe("dark");
+    expect(measured.shellBackground).toBe("rgb(16, 17, 20)");
+    expect(measured.panelBackground).toBe("rgb(23, 24, 29)");
+    expect(measured.whiteCards).toBe(0);
+    expect(measured.titleContrast).toBeGreaterThanOrEqual(4.5);
+    expect(measured.secondaryContrast).toBeGreaterThanOrEqual(4.5);
+    expect(measured.panelTitleContrast).toBeGreaterThanOrEqual(4.5);
+    expect(measured.inputBorderContrast).toBeGreaterThanOrEqual(3);
+    expect(measured.inputScheme).toBe("dark");
+  });
+});
+
+
 test.describe("workspace shell contract", () => {
   test("light sidebar rail geometry, contrast, and collapsed labels at 761, 900, 1180, and 1200px", async ({
     page,

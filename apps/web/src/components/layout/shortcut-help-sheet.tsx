@@ -46,7 +46,7 @@ export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps
             <section
               key={section.title}
               aria-labelledby={`shortcut-section-${section.title.toLowerCase()}`}
-              className="rounded-[1rem] border border-[var(--border)] bg-white/90 p-4"
+              className="rounded-[1rem] border border-[var(--border)] bg-[var(--ega-surface-subtle)] p-4"
             >
               <div className="mb-3 flex items-center gap-2">
                 <span className="flex h-8 w-8 items-center justify-center rounded-[0.8rem] border border-[var(--border)] bg-[color:var(--instrument)] text-[color:var(--muted-foreground)]">
@@ -67,7 +67,7 @@ export function ShortcutHelpSheet({ open, onOpenChange }: ShortcutHelpSheetProps
                     className="flex items-center justify-between gap-3 rounded-[0.9rem] border border-[var(--border)] bg-[color:var(--instrument)] px-3 py-2.5"
                   >
                     <span className="text-sm text-[color:var(--foreground)]">{shortcut.description}</span>
-                    <kbd className="rounded-md border border-[var(--border)] bg-white px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
+                    <kbd className="rounded-md border border-[var(--border)] bg-[var(--ega-surface)] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--muted-foreground)]">
                       {shortcut.combo}
                     </kbd>
                   </li>
