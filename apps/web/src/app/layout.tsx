@@ -4,6 +4,8 @@ import "./globals.css";
 import "../styles/workspace.css";
 import { MotionProvider } from "@/components/motion-provider";
 import { DisplayTimezoneBootstrap } from "@/lib/hooks/display-timezone-bootstrap";
+import { WorkspaceThemeController } from "@/lib/hooks/workspace-theme";
+import { WORKSPACE_THEME_INIT_SCRIPT } from "@/lib/theme-preference";
 
 const instrumentSans = Instrument_Sans({
   subsets: ["latin"],
@@ -57,9 +59,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`h-full antialiased ${instrumentSans.variable} ${sora.variable} ${jetbrainsMono.variable}`}
     >
+      <head>
+        <script
+          id="ega-workspace-theme"
+          dangerouslySetInnerHTML={{ __html: WORKSPACE_THEME_INIT_SCRIPT }}
+        />
+      </head>
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
+        <WorkspaceThemeController />
         <MotionProvider>
           <DisplayTimezoneBootstrap />
           {children}

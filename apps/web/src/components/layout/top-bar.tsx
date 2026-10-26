@@ -6,6 +6,7 @@ import { Bell } from "lucide-react";
 
 import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
+import { ThemeControl } from "./theme-control";
 
 type TopBarProps = {
   metrics: WorkspaceShellMetrics;
@@ -32,6 +33,7 @@ export function TopBar({ metrics, identity, mobileNavigation }: TopBarProps) {
       <div className="app-topbar-context">{mobileNavigation}</div>
 
       <div className="app-topbar-actions">
+        <ThemeControl />
         <Link
           href={canonicalUrl.resolve("/notifications")}
           className="topbar-icon-button topbar-notification"
