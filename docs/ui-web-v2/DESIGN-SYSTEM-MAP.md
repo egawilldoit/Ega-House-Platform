@@ -174,7 +174,7 @@ app/<route>/_components/ → route-specific composition
 
 ## 9. Cleanup Checklist (post-migration) — Updated 2026-08-26
 
-- [x] Remove `@import` fonts → replaced with `next/font/google` (Instrument_Sans, Sora, JetBrains_Mono) in `layout.tsx`
+- [x] Remove `@import` fonts → replaced with `next/font` (Instrument_Sans, Sora, JetBrains_Mono) in `layout.tsx`; since EGA-778 the families are self-hosted `next/font/local` binaries under `apps/web/src/app/fonts/`, so the build no longer needs font-host egress (see that folder's README)
 - [x] Remap `workspace-citrus`/`workspace-signal`/`workspace-cream`/`workspace-paper` to EGA tokens via shim in `globals.css:56-69` (prevents drift; full removal deferred to keep editorial-shell.css stable)
 - [x] Remap `ega-green`/`ega-green-strong`/`ega-border-glass` to `--status-healthy`/`--ega-border` via shim; self-cycles removed
 - [x] Audit for raw hex (`#173b2d`→`#161F2C`, `#0f241c`→`#161F2C`, `#177b52`→`#3E8F6B`, `#10b981`→`#3E8F6B`, `rgba(23,123,82`→`rgba(62,143,107`, `rgba(46,125,50`→`rgba(62,143,107`) — semantic legacy residues replaced with `--ega-*`/`--status-healthy`
