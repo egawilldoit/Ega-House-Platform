@@ -90,7 +90,7 @@
     "@hono/node-server": "2.0.11",
     "@xmldom/xmldom@^0.8": "0.8.15",
     "@xmldom/xmldom@^0.9": "0.9.12",
-    "dompurify": "3.4.12",
+    "dompurify": "3.4.17",
     "fast-uri": "3.1.7",
     "js-yaml@^3": "3.15.2",
     "js-yaml@^4": "4.3.2",
@@ -119,12 +119,12 @@
     "compression": "1.8.2",
     "shell-quote": "1.11.0",
     "source-map-js": "1.2.2",
-    "undici@^6": "6.28.1",
+    "undici@^6": "6.29.1",
     "braces": "https://codeload.github.com/FSDevelop/braces/tar.gz/28d440b5dd449dbf1fe6f3506cf94ecca4d02660",
     "node-forge": "https://codeload.github.com/Krysthyan/forge/tar.gz/ceba34402e329f0365134f23fe19898756527d65"
   },
   "optionalDependencies": {
-    "@next/swc-linux-x64-gnu": "16.3.8",
+    "@next/swc-linux-x64-gnu": "16.4.3",
     "@rolldown/binding-linux-x64-gnu": "1.0.0-rc.18",
     "@rollup/rollup-linux-x64-gnu": "4.60.3",
     "@tailwindcss/oxide-linux-x64-gnu": "4.3.0",
