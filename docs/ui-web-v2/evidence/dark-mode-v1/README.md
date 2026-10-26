@@ -124,7 +124,7 @@ Executed from the final worktree:
 
 ```text
 npm run web:typecheck          PASS
-npm run web:test               PASS — 242 files, 1815 tests
+npm run web:test               PASS — 242 files, 1817 tests
 npm run web:build              PASS — with local dummy Supabase env (no secrets)
 npm run check:architecture     PASS
 npm run test:architecture      PASS — 21 tests
