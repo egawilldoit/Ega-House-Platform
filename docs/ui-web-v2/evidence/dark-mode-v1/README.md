@@ -1,12 +1,13 @@
 # Web Workspace Dark Mode V1 — Audit and Evidence
 
-- **Base:** `d8bc7d4ea3b7871cf9aa6674305e4cb0c56e1aab` (`origin/main`)
+- **Base:** `5fe662388211aeab9046416e9711eabdf7ad4c7b` (`origin/main`, after security PR #299)
 - **Branch:** `feat/web-dark-mode`
 - **Final head:** recorded in the PR metadata after the final commit.
 - **Scope:** authenticated web workspace in `apps/web`; no mobile, backend,
   database, auth-contract, or public marketing/auth redesign.
-- **Status:** implementation and local verification complete; authenticated
-  route-level browser QA and independent review remain external gates.
+- **Status:** implementation, local verification, and authenticated route-level
+  browser QA are complete; independent review and final exact-head CI remain
+  external gates.
 
 ## 1. Verified baseline findings
 
@@ -109,6 +110,7 @@ assistive-technology screen-reader passes, and cross-device OS theme changes.
   `apps/web/src/components/layout/sidebar-create-button.tsx`
 - Hardcoded light fixes: health snapshot, timer stop prompt, Today intelligence,
   the five modal/overlay call sites, Home illustration
+- Authenticated QA fix: shared `Textarea` now fills its form column
 - Docs/tests: design-system doc, token tests, store/control tests,
   Playwright dark contract
 
@@ -139,6 +141,31 @@ disclosure tests, `startup-planner-service.test.ts`). The same command on
 `origin/main` reports the same 8 errors and 20 warnings. `eslint` over every
 file changed by this branch reports no findings.
 
+### Authenticated route QA (local seeded account)
+
+A dedicated isolated local Supabase stack was started and seeded with one test
+owner, project, goal, tasks, sessions, notifications, review, and inbox items.
+The production build was then driven with a real session in Chromium:
+
+- 18 authenticated routes checked at 1440px in dark mode; representative routes
+  also checked in light mode.
+- 9 authenticated routes checked at 390px touch viewport in dark and light.
+- Command palette, task edit dialog, and mobile drawer checked as portalled /
+  overlay surfaces.
+- Zero white/near-white surfaces in the authenticated workspace in dark mode.
+- No document horizontal overflow. Mobile Analytics reported a 9px
+  `documentElement` delta from the vertical scrollbar; `body.scrollWidth` equals
+  its client width and the wide table/heatmap scroll in their own containers.
+- No uncaught page errors and no theme-related console errors.
+- Theme control Light → Dark → reload persisted; System followed OS media
+  changes live.
+- Review textarea width defect found and fixed in the shared primitive.
+
+Details and screenshots:
+[`authenticated/README.md`](./authenticated/README.md).
+
+### Harness checks
+
 Browser checks used Chromium against a production build. The workspace harness
 mounted the real `WorkspaceShell`, shared UI primitives, theme control, custom
 sheet, and tooltip. Results:
@@ -158,9 +185,25 @@ sheet, and tooltip. Results:
 
 ### Screenshots
 
-These are from the temporary visual harness (real shell/primitives, synthetic
-content). The harness route was removed before the final diff. They are visual
-support, not proof of an authenticated production route.
+Authenticated route evidence (local seeded Supabase) is in
+[`authenticated/`](./authenticated/README.md):
+
+- [Desktop Home dark](./authenticated/desktop-home-dark.png) ·
+  [Light](./authenticated/desktop-home-light.png)
+- [Desktop Today dark](./authenticated/desktop-today-dark.png)
+- [Desktop Tasks dark](./authenticated/desktop-tasks-dark.png)
+- [Desktop Review dark](./authenticated/desktop-review-dark.png)
+- [Desktop command palette dark](./authenticated/desktop-command-palette-dark.png)
+- [Desktop task edit dialog dark](./authenticated/desktop-edit-dialog-dark.png)
+- [Mobile Home dark](./authenticated/mobile-home-dark.png)
+- [Mobile Today dark](./authenticated/mobile-today-dark.png)
+- [Mobile Tasks dark](./authenticated/mobile-tasks-dark.png)
+- [Mobile Analytics dark](./authenticated/mobile-analytics-dark.png)
+- [Mobile drawer dark](./authenticated/mobile-drawer-dark.png)
+
+The remaining screenshots are from the temporary visual harness (real
+shell/primitives, synthetic content). The harness route was removed before the
+final diff. They supplement the authenticated route evidence above.
 
 | Light | Dark |
 |---|---|
@@ -174,11 +217,10 @@ support, not proof of an authenticated production route.
 
 ## 6. Known limitations and manual QA
 
-1. **Authenticated route E2E is unverified.** No Supabase credentials or seeded
-   user were available. `tests/visual-a11y.spec.ts` accepts a `/login` redirect,
-   so its green run does not prove protected screens rendered. The shared
-   primitives were exercised in the harness; route-specific layouts still need
-   an authenticated browser pass.
+1. **Authenticated QA is local-only.** It used an isolated local Supabase stack
+   and seeded account. Production/staging authentication, real user data, and
+   environment-specific integrations were not exercised. The committed
+   Playwright suite still accepts a `/login` redirect for protected routes.
 2. **PWA standalone splash is static.** `public/manifest.webmanifest` keeps
    `background_color: #f6f7f2` and `theme_color: #177b52`. The in-app workspace
    uses `color-scheme: dark`; manifest splash colors cannot vary per user
@@ -190,15 +232,13 @@ support, not proof of an authenticated production route.
    deliberately avoiding a server request or account-setting subsystem.
 5. **Light control border.** `--ega-control-border` is darker than the previous
    structural border to meet 3:1. This is a deliberate accessibility correction.
-6. **Manual QA required before merge:** authenticated desktop/mobile pass over
-   Home, Today, Tasks (list + board + dialogs), Goals, Timer, Review, Analytics,
-   Notifications, Backlog, Startup/Shutdown, Settings, command palette, and
-   error/loading boundaries; OS theme change while a modal is open; PWA
-   standalone on iOS/Android.
+6. **Remaining manual QA:** production/staging authenticated pass, OS theme
+   change while a modal is open, browser zoom/text scaling, and PWA standalone
+   on iOS/Android.
 
 ## 7. Verdict
 
-Implementation and local verification are complete. The PR is open and ready
-for independent review and explicit user approval; it is **not merged or
-deployed**. Merge remains blocked on authenticated route-level QA and independent
-review, not on a known code failure.
+Implementation, local verification, and authenticated route QA are complete.
+The PR is open and **not merged or deployed**. Merge remains blocked on
+independent review and green exact-head CI, not on a known implementation
+failure.
