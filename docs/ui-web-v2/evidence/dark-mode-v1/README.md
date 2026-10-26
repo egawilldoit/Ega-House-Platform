@@ -61,8 +61,8 @@ assistive-technology screen-reader passes, and cross-device OS theme changes.
 - `src/lib/theme-preference.ts` owns supported values, parsing, resolution, and
   the pre-paint script string.
 - `src/lib/workspace-theme-store.ts` owns the browser store: safe storage access,
-  matchMedia subscription, storage-event cross-tab sync, document painting, and
-  subscription notification.
+  matchMedia subscription, localStorage-scoped storage-event cross-tab sync,
+  document painting, and subscription notification.
 - `src/lib/hooks/workspace-theme.ts` binds the store to
   `useSyncExternalStore`; the server snapshot is always `system`.
 - `WorkspaceThemeController` is mounted once in the root layout. The top-bar
@@ -84,7 +84,7 @@ assistive-technology screen-reader passes, and cross-device OS theme changes.
 | Storage get/set throws | System/in-memory switch still works |
 | Reload | Stored preference reapplied before paint |
 | Client navigation / shell remount | Selected preference and control state persist |
-| Cross-tab update | `storage` event updates open workspace |
+| Cross-tab update | `storage` event for the workspace `localStorage` updates; sessionStorage/other areas are ignored |
 | Portal dialog/tooltip | Inherits dark tokens |
 | Public login with workspace Dark | Auth stays on its own OS-driven palette |
 | Public homepage with workspace Light and OS dark | Homepage stays OS dark |
@@ -122,7 +122,7 @@ Executed from the final worktree:
 
 ```text
 npm run web:typecheck          PASS
-npm run web:test               PASS — 242 files, 1813 tests
+npm run web:test               PASS — 242 files, 1815 tests
 npm run web:build              PASS — with local dummy Supabase env (no secrets)
 npm run check:architecture     PASS
 npm run test:architecture      PASS — 21 tests
