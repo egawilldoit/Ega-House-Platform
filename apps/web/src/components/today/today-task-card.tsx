@@ -63,7 +63,13 @@ export function getTodayTaskStatusOptions(task: TodayPlannerTask) {
 }
 
 export function canShowTodayTaskStartTimer(task: Pick<TodayPlannerTask, "status">) {
-  return !isTaskCompletedStatus(task.status) && !isTaskCanceledStatus(task.status);
+  // Review is a hand-off state: starting a timer requires an explicit return to
+  // in progress, matching the timer service's guard.
+  return (
+    !isTaskCompletedStatus(task.status) &&
+    !isTaskCanceledStatus(task.status) &&
+    task.status !== "review"
+  );
 }
 
 export function getTodayTaskStartTimerActionMeta(

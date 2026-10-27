@@ -347,6 +347,7 @@ export type MobileStatusTone =
   | 'todo'
   | 'planned'
   | 'in_progress'
+  | 'review'
   | 'active'
   | 'done'
   | 'blocked'
@@ -365,6 +366,8 @@ export function statusTone(status: MobileStatusTone): ChipTone {
       return { background: '#dcfce7', color: '#166534', dot: '#22c55e' };
     case 'in_progress':
       return { background: '#fef3c7', color: '#92400e', dot: '#f59e0b' };
+    case 'review':
+      return { background: '#ede9fe', color: '#5b21b6', dot: '#8b5cf6' };
     case 'active':
       return { background: '#dbeafe', color: '#1d4ed8', dot: '#3b82f6' };
     case 'blocked':

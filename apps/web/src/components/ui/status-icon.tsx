@@ -1,9 +1,10 @@
-import { Ban, CheckCircle2, Circle, CircleDot } from "lucide-react";
+import { Ban, CheckCircle2, Circle, CircleDot, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const STATUS_LABELS = {
   todo: "To do",
   in_progress: "In progress",
+  review: "In review",
   done: "Done",
   blocked: "Blocked",
 } as const;
@@ -13,6 +14,7 @@ export type TaskStatusIconName = keyof typeof STATUS_LABELS;
 const STATUS_ICONS = {
   todo: Circle,
   in_progress: CircleDot,
+  review: Eye,
   done: CheckCircle2,
   blocked: Ban,
 } as const;
@@ -20,6 +22,7 @@ const STATUS_ICONS = {
 const STATUS_CLASSES: Record<TaskStatusIconName, string> = {
   todo: "text-[color:var(--ega-text-tertiary)]",
   in_progress: "text-[color:var(--status-info)]",
+  review: "text-[color:var(--status-review)]",
   done: "text-[color:var(--status-healthy)]",
   blocked: "text-[color:var(--status-overdue)]",
 };

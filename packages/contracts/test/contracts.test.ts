@@ -68,14 +68,18 @@ test("enriched mobile task list item exposes canonical project and goal projecti
 test("enriched mobile task counters include per-priority counts over the filtered scope", () => {
   const counters: MobileTaskCounters = {
     total: 3,
-    byStatus: { todo: 2, in_progress: 1, done: 0, blocked: 0 },
+    byStatus: { todo: 2, in_progress: 1, review: 0, done: 0, blocked: 0 },
     byPriority: { low: 0, medium: 1, high: 1, urgent: 1 },
     pinned: 1,
     overdue: 1,
     dueToday: 2,
   };
 
-  assert.equal(counters.total, counters.byStatus.todo + counters.byStatus.in_progress + counters.byStatus.done + counters.byStatus.blocked);
+  assert.equal(counters.total, counters.byStatus.todo +
+      counters.byStatus.in_progress +
+      counters.byStatus.review +
+      counters.byStatus.done +
+      counters.byStatus.blocked);
   assert.deepEqual(Object.keys(counters.byPriority), ["low", "medium", "high", "urgent"]);
 });
 
@@ -85,7 +89,7 @@ test("mobile task list response carries enriched filters echo including priority
     tasks: [],
     counters: {
       total: 0,
-      byStatus: { todo: 0, in_progress: 0, done: 0, blocked: 0 },
+      byStatus: { todo: 0, in_progress: 0, review: 0, done: 0, blocked: 0 },
       byPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
       pinned: 0,
       overdue: 0,
