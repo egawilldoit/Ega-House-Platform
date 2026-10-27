@@ -9,6 +9,7 @@ import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon
 import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priority-icon";
 import { TaskDrawer } from "./task-drawer";
 import { TaskDrawerDetailForm } from "./task-drawer-detail-form";
+import { TaskDrawerShortcuts } from "./task-drawer-shortcuts";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 
 const KNOWN_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
@@ -114,6 +115,8 @@ type TaskDrawerHostProps = {
   updateFieldAction: TaskFieldAction;
   /** Draft-preserving action used by the title and description editors. */
   updateDraftAction: TaskFieldDraftAction;
+  /** Owner for the character-shortcut preference; null when unauthenticated. */
+  ownerId?: string | null;
   /** Field-patch failure surfaced by the action's redirect. */
   updateError?: string | null;
   /** Field-patch success surfaced by the action's redirect. */
@@ -133,6 +136,7 @@ export function TaskDrawerHost({
   loadFailed = false,
   updateFieldAction,
   updateDraftAction,
+  ownerId = null,
   updateError = null,
   updateSuccess = null,
 }: TaskDrawerHostProps) {
@@ -140,6 +144,7 @@ export function TaskDrawerHost({
   // Scoped to the task it belongs to: a stale flag must never make a later,
   // unrelated task ask to discard nothing.
   const [dirtyTaskId, setDirtyTaskId] = useState<string | null>(null);
+  const [shortcutMessage, setShortcutMessage] = useState<string | null>(null);
   const dirty = Boolean(taskId) && dirtyTaskId === taskId;
   const handleDirtyChange = useCallback(
     (next: boolean) => setDirtyTaskId(next ? taskId : null),
@@ -276,6 +281,20 @@ export function TaskDrawerHost({
           {updateSuccess}
         </p>
       ) : null}
+      <TaskDrawerShortcuts
+        key={`shortcuts-${task.id}`}
+        task={task}
+        action={updateDraftAction}
+        ownerId={ownerId}
+        onMessage={setShortcutMessage}
+      />
+
+      {shortcutMessage ? (
+        <p role="status" className="mb-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+          {shortcutMessage}
+        </p>
+      ) : null}
+
       <TaskDrawerDetailForm
         key={task.id}
         task={task}
