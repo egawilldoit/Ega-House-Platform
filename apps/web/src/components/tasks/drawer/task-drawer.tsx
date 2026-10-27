@@ -16,6 +16,11 @@ type TaskDrawerProps = {
   task: TaskDrawerTask | null;
   mode: TaskDrawerMode;
   onClose: () => void;
+  /**
+   * Dismissal requested by Escape, the close button or the mobile scrim. The
+   * host may refuse it while a draft is dirty; the drawer does not decide that.
+   */
+  onRequestClose?: () => void;
   onModeChange: (mode: TaskDrawerMode) => void;
   /**
    * Element to focus when the drawer closes. Defaults to whatever was focused
@@ -41,11 +46,14 @@ export function TaskDrawer({
   task,
   mode,
   onClose,
+  onRequestClose,
   onModeChange,
   restoreFocusRef,
   children,
 }: TaskDrawerProps) {
+  const requestClose = onRequestClose ?? onClose;
   const [isNarrow, setIsNarrow] = useState(false);
+  const contentRef = useRef<HTMLDivElement | null>(null);
   // Captured before Radix moves focus into the dialog.
   const openerRef = useRef<HTMLElement | null>(null);
   const taskId = task?.id ?? null;
@@ -73,7 +81,7 @@ export function TaskDrawer({
       open={task !== null}
       modal={isNarrow}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) requestClose();
       }}
     >
       <Dialog.Portal>
@@ -84,7 +92,19 @@ export function TaskDrawer({
             the drawer consumes it first, and only the drawer layer closes the
             dialog (single onOpenChange -> onClose). */}
         <Dialog.Content
+          ref={contentRef}
           aria-describedby={undefined}
+          onEscapeKeyDown={(event) => {
+            // Escape in a text field cancels that field's draft first; the
+            // field's own key handler restores the saved value. Radix's
+            // document-level listener would otherwise close the drawer.
+            const active = document.activeElement;
+            if (!active || !contentRef.current?.contains(active)) return;
+            const tag = active.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || (active as HTMLElement).isContentEditable) {
+              event.preventDefault();
+            }
+          }}
           onInteractOutside={(event) => {
             // A non-modal panel must not dismiss on background clicks: the list
             // stays usable, and clicking another row should switch selection.

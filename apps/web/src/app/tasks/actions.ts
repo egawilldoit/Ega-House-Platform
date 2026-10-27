@@ -37,6 +37,7 @@ import {
   unpinTaskInFocusQueue,
 } from "@/lib/services/focus-queue-service";
 import { updateTaskFieldForOwner } from "@/lib/services/task-service";
+import type { TaskFieldDraftState } from "@/lib/task-field-draft";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import {
   redirectWithWorkspaceFeedback,
@@ -145,18 +146,28 @@ function createBulkErrorState(
   };
 }
 
+const TASK_SURFACE_PREFIXES = ["/tasks", "/today", "/dashboard"] as const;
+
+/**
+ * Only in-app task surfaces can be redirect targets. `//host` and absolute URLs
+ * are rejected so a submitted `returnTo` can never become an open redirect.
+ */
+function isTaskSurfacePath(pathname: string): boolean {
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) return false;
+  return TASK_SURFACE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 function getTasksReturnPath(rawReturnTo: unknown) {
   const returnTo = String(rawReturnTo ?? "").trim();
-  return returnTo.startsWith("/tasks") ? returnTo : "/tasks";
+  if (!returnTo.startsWith("/")) return "/tasks";
+  const pathname = returnTo.split("?")[0] ?? "";
+  return isTaskSurfacePath(pathname) ? returnTo : "/tasks";
 }
 
 function getTaskSurfaceReturnPath(rawReturnTo: unknown) {
-  const returnTo = String(rawReturnTo ?? "").trim();
-  if (returnTo.startsWith("/tasks") || returnTo.startsWith("/dashboard")) {
-    return returnTo;
-  }
-
-  return "/tasks";
+  return getTasksReturnPath(rawReturnTo);
 }
 
 function redirectWithTasksError(
@@ -679,6 +690,42 @@ export async function updateTaskFieldAction(formData: FormData) {
     anchor: taskId ? `task-${taskId}` : undefined,
     ...(returnPath.includes("task=") ? { taskId } : {}),
   });
+}
+
+export type { TaskFieldDraftState } from "@/lib/task-field-draft";
+
+/**
+ * Draft-preserving field save for the drawer's text editors.
+ *
+ * The redirecting `updateTaskFieldAction` is fine for pickers, but a title or
+ * description draft must survive a rejected save. This returns state instead and
+ * revalidates only after a successful write, so the editor can keep the text and
+ * show a field-level error.
+ */
+export async function updateTaskFieldDraftAction(
+  _previous: TaskFieldDraftState,
+  formData: FormData,
+): Promise<TaskFieldDraftState> {
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const field = String(formData.get("field") ?? "");
+  const value = String(formData.get("value") ?? "");
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+
+  const accountTimezoneResult = await resolveAccountTimezone();
+  const { errorMessage } = await updateTaskFieldForOwner(
+    { taskId, field, value },
+    {
+      accountTimezone: accountTimezoneResult.timezone ?? undefined,
+      fallbackAnchorDate: accountTimezoneResult.localDate ?? undefined,
+    },
+  );
+
+  if (errorMessage) {
+    return { errorMessage, successMessage: null, savedValue: null };
+  }
+
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  return { errorMessage: null, successMessage: "Saved.", savedValue: value };
 }
 
 export type UpdateTaskEditorFormState = {

@@ -10,6 +10,7 @@ import {
   unpinTaskAction,
   updateTaskInlineAction,
   updateTaskEditorAction,
+  updateTaskFieldDraftAction,
   updateTaskReminderAction,
 } from "@/app/tasks/actions";
 import { startTimerAction } from "@/app/timer/actions";
@@ -325,6 +326,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
           task={selectedTask}
           loadFailed={selectedTaskError}
           updateFieldAction={updateTaskFieldAction}
+          updateDraftAction={updateTaskFieldDraftAction}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />

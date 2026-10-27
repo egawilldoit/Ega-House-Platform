@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatTaskToken } from "@/lib/task-domain";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
@@ -7,6 +8,7 @@ import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon";
 import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priority-icon";
 import { TaskDrawer } from "./task-drawer";
+import { TaskDrawerDetailForm } from "./task-drawer-detail-form";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 
 const KNOWN_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
@@ -31,7 +33,7 @@ type PropertyFieldProps = {
   field: "status" | "priority" | "dueDate" | "estimateMinutes" | "blockedReason" | "title";
   label: string;
   value: string;
-  type?: "date";
+  type?: "date" | "number";
   options?: Array<{ value: string; label: string }>;
 };
 
@@ -97,6 +99,12 @@ function PropertyField({
 /** Server action passed from the page so the client bundle stays server-free. */
 export type TaskFieldAction = (formData: FormData) => void | Promise<void>;
 
+/** `useActionState` action that returns state instead of redirecting. */
+export type TaskFieldDraftAction = (
+  state: import("@/lib/task-field-draft").TaskFieldDraftState,
+  formData: FormData,
+) => Promise<import("@/lib/task-field-draft").TaskFieldDraftState>;
+
 type TaskDrawerHostProps = {
   /** Owner-scoped detail loaded by the page model, or null. */
   task: TaskDrawerDetail | null;
@@ -104,6 +112,8 @@ type TaskDrawerHostProps = {
   loadFailed?: boolean;
   /** One-field patch action for the inline property editors. */
   updateFieldAction: TaskFieldAction;
+  /** Draft-preserving action used by the title and description editors. */
+  updateDraftAction: TaskFieldDraftAction;
   /** Field-patch failure surfaced by the action's redirect. */
   updateError?: string | null;
   /** Field-patch success surfaced by the action's redirect. */
@@ -122,10 +132,58 @@ export function TaskDrawerHost({
   task,
   loadFailed = false,
   updateFieldAction,
+  updateDraftAction,
   updateError = null,
   updateSuccess = null,
 }: TaskDrawerHostProps) {
   const { taskId, mode, close, setMode } = useTaskDrawerParam();
+  // Scoped to the task it belongs to: a stale flag must never make a later,
+  // unrelated task ask to discard nothing.
+  const [dirtyTaskId, setDirtyTaskId] = useState<string | null>(null);
+  const dirty = Boolean(taskId) && dirtyTaskId === taskId;
+  const handleDirtyChange = useCallback(
+    (next: boolean) => setDirtyTaskId(next ? taskId : null),
+    [taskId],
+  );
+  const requestClose = useCallback(() => {
+    // Dirty drafts are the user's work: never discard them silently. A plain
+    // confirm keeps the check available without adding a second modal system.
+    if (dirty && !window.confirm("Discard unsaved changes to this task?")) return;
+    setDirtyTaskId(null);
+    close();
+  }, [close, dirty]);
+
+  // Switching to another task is the same discard decision as closing, and the
+  // entry points are links. While a draft is dirty, intercept those links (and
+  // leave the browser to its native unload prompt for Back/refresh).
+  useEffect(() => {
+    if (!dirty) return;
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      const url = new URL(anchor.href, window.location.origin);
+      if (url.origin !== window.location.origin) return;
+      const nextTask = url.searchParams.get("task");
+      if (!nextTask || nextTask === taskId) return;
+      if (!window.confirm("Discard unsaved changes to this task?")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [dirty, taskId]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -149,7 +207,15 @@ export function TaskDrawerHost({
   })();
 
   if (!taskId) {
-    return <TaskDrawer task={null} mode={mode} onClose={close} onModeChange={setMode} />;
+    return (
+      <TaskDrawer
+        task={null}
+        mode={mode}
+        onClose={close}
+        onRequestClose={requestClose}
+        onModeChange={setMode}
+      />
+    );
   }
 
   if (loadFailed) {
@@ -158,6 +224,7 @@ export function TaskDrawerHost({
         task={{ id: taskId, title: "Task details unavailable", status: "unknown" }}
         mode={mode}
         onClose={close}
+        onRequestClose={requestClose}
         onModeChange={setMode}
       >
         <p className="text-sm text-[color:var(--ega-text-secondary)]">
@@ -180,6 +247,7 @@ export function TaskDrawerHost({
         task={{ id: taskId, title: "Task unavailable", status: "unknown" }}
         mode={mode}
         onClose={close}
+        onRequestClose={requestClose}
         onModeChange={setMode}
       >
         <p className="text-sm text-[color:var(--ega-text-secondary)]">
@@ -195,6 +263,7 @@ export function TaskDrawerHost({
       task={{ id: task.id, title: task.title, status: task.status }}
       mode={mode}
       onClose={close}
+      onRequestClose={requestClose}
       onModeChange={setMode}
     >
       {updateError ? (
@@ -207,7 +276,15 @@ export function TaskDrawerHost({
           {updateSuccess}
         </p>
       ) : null}
-      <dl className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-y-2 text-sm">
+      <TaskDrawerDetailForm
+        key={task.id}
+        task={task}
+        action={updateDraftAction}
+        returnTo={returnTo}
+        onDirtyChange={handleDirtyChange}
+      />
+
+      <dl className="mt-4 grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-y-2 text-sm">
         <dt className="text-[color:var(--ega-text-tertiary)]">Status</dt>
         <dd className="flex items-center gap-1.5 text-[color:var(--ega-text)]">
           {isStatus(task.status) ? <StatusIcon status={task.status} decorative /> : null}
@@ -255,6 +332,36 @@ export function TaskDrawerHost({
             type="date"
           />
         </dd>
+        <dt className="text-[color:var(--ega-text-tertiary)]">Estimate</dt>
+        <dd className="text-[color:var(--ega-text)]">
+          <PropertyField
+            action={updateFieldAction}
+            taskId={task.id}
+            returnTo={returnTo}
+            field="estimateMinutes"
+            label="Estimate minutes"
+            value={task.estimate_minutes ? String(task.estimate_minutes) : ""}
+            type="number"
+          />
+          <span className="ml-1 text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
+            minutes
+          </span>
+        </dd>
+        {task.status === "blocked" ? (
+          <>
+            <dt className="text-[color:var(--ega-text-tertiary)]">Blocked reason</dt>
+            <dd className="text-[color:var(--ega-text)]">
+              <PropertyField
+                action={updateFieldAction}
+                taskId={task.id}
+                returnTo={returnTo}
+                field="blockedReason"
+                label="Blocked reason"
+                value={task.blocked_reason ?? ""}
+              />
+            </dd>
+          </>
+        ) : null}
       </dl>
     </TaskDrawer>
   );
