@@ -16,6 +16,11 @@ import {
   normalizeGoalViewFilter,
   normalizeProjectViewFilter,
   normalizeTaskRecurrenceRuleInput,
+  normalizeSubtaskTitle,
+  nextSubtaskPosition,
+  moveSubtaskPosition,
+  getSubtaskProgress,
+  SUBTASK_TITLE_MAX,
 } from "../src/index";
 
 test("canonical task and goal values remain stable", () => {
@@ -60,4 +65,46 @@ test("recurrence normalization and scheduling preserve existing rules", () => {
     getNextTaskRecurrenceDateFromAnchor("monthly:day-of-month", "2026-01-31", "2026-01-31"),
     "2026-02-28",
   );
+});
+
+test("subtask titles reuse the task title limit and reject blanks", () => {
+  assert.deepEqual(normalizeSubtaskTitle("  Write   the plan  "), {
+    ok: true,
+    title: "Write the plan",
+  });
+  assert.equal(normalizeSubtaskTitle("   ").ok, false);
+  assert.equal(normalizeSubtaskTitle("x".repeat(SUBTASK_TITLE_MAX + 1)).ok, false);
+});
+
+test("subtask positions append densely and reordering keeps every item", () => {
+  assert.equal(nextSubtaskPosition([]), 0);
+  assert.equal(nextSubtaskPosition([0, 1, 2]), 3);
+  assert.equal(nextSubtaskPosition([0, 4]), 5);
+
+  const items = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  assert.deepEqual(
+    moveSubtaskPosition(items, "b", "up").map((item) => item.id),
+    ["b", "a", "c"],
+  );
+  assert.deepEqual(
+    moveSubtaskPosition(items, "b", "down").map((item) => item.id),
+    ["a", "c", "b"],
+  );
+  // Edges are no-ops rather than losing the item.
+  assert.deepEqual(
+    moveSubtaskPosition(items, "a", "up").map((item) => item.id),
+    ["a", "b", "c"],
+  );
+  assert.deepEqual(
+    moveSubtaskPosition(items, "missing", "down").map((item) => item.id),
+    ["a", "b", "c"],
+  );
+});
+
+test("subtask progress is a plain count, never a parent completion signal", () => {
+  assert.deepEqual(
+    getSubtaskProgress([{ done: true }, { done: false }, { done: true }]),
+    { done: 2, total: 3, label: "2/3" },
+  );
+  assert.deepEqual(getSubtaskProgress([]), { done: 0, total: 0, label: "0/0" });
 });

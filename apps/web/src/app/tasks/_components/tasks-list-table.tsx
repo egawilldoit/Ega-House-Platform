@@ -47,6 +47,7 @@ export type TaskListActions = {
 type TasksListTableProps = {
   tasks: TaskRecord[];
   taskTotalDurations: Record<string, number>;
+  subtaskCounts?: Record<string, { done: number; total: number }>;
   returnTo: string;
   taskUpdateTaskId: string | null;
   taskUpdateError: string | null;
@@ -73,6 +74,7 @@ type TasksListTableProps = {
 export function TasksListTable({
   tasks,
   taskTotalDurations,
+  subtaskCounts = {},
   returnTo,
   taskUpdateTaskId,
   taskUpdateError,
@@ -176,6 +178,7 @@ export function TasksListTable({
               key={task.id}
               task={task}
               trackedSeconds={taskTotalDurations[task.id]}
+              subtaskCount={subtaskCounts[task.id] ?? null}
               returnTo={returnTo}
               inlineError={taskUpdateTaskId === task.id ? taskUpdateError : null}
               projectOptions={projectOptions}
@@ -297,6 +300,7 @@ function TaskListRow({
   actions,
   selected,
   onToggleSelected,
+  subtaskCount,
 }: {
   task: TaskRecord;
   trackedSeconds?: number;
@@ -307,6 +311,7 @@ function TaskListRow({
   actions: TaskListActions;
   selected: boolean;
   onToggleSelected: () => void;
+  subtaskCount?: { done: number; total: number } | null;
 }) {
   const archived = isTaskArchived(task.archived_at);
   const done = isTaskCompletedStatus(task.status);
@@ -450,6 +455,14 @@ function TaskListRow({
             {estimateLabel ? (
               <Badge tone="muted" className="max-[761px]:hidden shrink-0">
                 Est. {estimateLabel}
+              </Badge>
+            ) : null}
+            {subtaskCount && subtaskCount.total > 0 ? (
+              <Badge
+                tone="muted"
+                aria-label={`${subtaskCount.done} of ${subtaskCount.total} subtasks done`}
+              >
+                ☑ {subtaskCount.done}/{subtaskCount.total}
               </Badge>
             ) : null}
             {isPinned ? <Badge tone="info">Pinned #{task.focus_rank}</Badge> : null}
