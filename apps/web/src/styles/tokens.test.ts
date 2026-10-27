@@ -112,6 +112,23 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(violations, `self-referential lines: ${violations.join("; ")}`).toEqual([]);
   });
 
+  it("defines the drag shadow in both palettes", () => {
+    const tokens = read("src/styles/tokens.css");
+    const darkSelector = 'html[data-theme="dark"]:has([data-workspace-theme="workspace"]) {';
+    const darkStart = tokens.indexOf(darkSelector);
+    expect(darkStart).toBeGreaterThan(0);
+
+    const lightBlock = tokens.slice(0, darkStart);
+    const darkBlock = tokens.slice(darkStart);
+
+    // Each palette must declare the token itself; counting occurrences would
+    // pass even if the dark block lost it and the light one duplicated it.
+    expect(lightBlock).toContain("--ega-shadow-drag:");
+    expect(darkBlock).toContain("--ega-shadow-drag:");
+    expect(lightBlock).toContain("rgba(23, 23, 23, 0.18)");
+    expect(darkBlock).toContain("rgba(0, 0, 0, 0.65)");
+  });
+
   it("resolves computed vars via jsdom (browser regression)", async () => {
     const tokens = read("src/styles/tokens.css");
     const globals = read("src/app/globals.css");
