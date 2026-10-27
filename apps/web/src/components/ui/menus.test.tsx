@@ -107,18 +107,46 @@ describe("ContextMenu", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  it("marks the trigger as a menu target for assistive tech", () => {
+  it("uses the danger token for destructive items", () => {
     act(() =>
       root.render(
-        <ContextMenu>
+        <ContextMenu open>
           <ContextMenuTrigger>Task row</ContextMenuTrigger>
           <ContextMenuContent aria-label="Task actions">
-            <ContextMenuItem>Open</ContextMenuItem>
+            <ContextMenuItem tone="danger">Delete</ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>,
       ),
     );
-    // Radix marks the trigger with data-state for the closed menu.
-    expect(container.textContent).toContain("Task row");
+    const item = document.body.querySelector('[role="menuitem"]');
+    expect(item?.className).toContain("--status-overdue");
+  });
+
+  it("moves focus with ArrowDown and requests close on Escape", async () => {
+    const onOpenChange = vi.fn();
+    act(() =>
+      root.render(
+        <ContextMenu open onOpenChange={onOpenChange}>
+          <ContextMenuTrigger>Task row</ContextMenuTrigger>
+          <ContextMenuContent aria-label="Task actions">
+            <ContextMenuItem>Open</ContextMenuItem>
+            <ContextMenuItem>Archive</ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>,
+      ),
+    );
+
+    const menu = document.body.querySelector('[role="menu"]') as HTMLElement;
+    const items = Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+
+    await act(async () => {
+      menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    });
+    expect([items[0], items[1]]).toContain(document.activeElement);
+
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 });

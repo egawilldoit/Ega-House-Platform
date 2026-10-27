@@ -169,9 +169,9 @@ is owned by the tickets that actually mount it.
 | Context menu (`context-menu.tsx`) | built + tested | first consumer: EGA-786 |
 | Dropdown menu (`dropdown-menu.tsx`) | built + tested | first consumer: EGA-786 (task row actions) |
 | Bulk bar | not built | EGA-786 |
-| `MiniCalendar` | not built; the drawer uses a native date input, which the ticket prefers until a consumer proves the need | EGA-793 |
-| Motion accents (`check`/`strike`/`land`/`add`) | added to `styles/motion.css`, guarded by `prefers-reduced-motion: no-preference` | first consumer: EGA-785/786 |
-| Radix Dialog task overlay | built in EGA-781 stage 1 (`task-drawer.tsx`) | — |
+| `MiniCalendar` | not built — the ticket prefers a native date input, and the drawer uses one; no owner until a consumer proves the need | none |
+| Motion accents (`check`/`strike`/`land`/`add`) | added to `styles/motion.css`; animation gated by `prefers-reduced-motion: no-preference`, the static strike stays visible for reduced motion | EGA-785 (`land`), EGA-786 (`check`/`add`) |
+| Radix Dialog task overlay | built in EGA-781 stage 1 (`components/tasks/drawer/task-drawer.tsx`) | — |
 | `components/motion-provider.tsx` change | not needed yet — the current provider already scopes reduced motion for these primitives | EGA-781 if the drawer needs a new variant |
 | Command palette | not built | EGA-795 (combobox semantics) |
 

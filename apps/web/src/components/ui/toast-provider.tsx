@@ -56,7 +56,7 @@ export const TOAST_MAX_VISIBLE = 3;
 const OUTCOME_COPY: Record<ToastActionResult, string> = {
   success: "Done",
   conflict: "Could not undo — the item changed since. Reload to see the current state.",
-  failure: "Could not undo. Nothing was changed.",
+  failure: "Could not undo — check the current state before retrying.",
 };
 
 /**
@@ -82,7 +82,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (input: ToastInput) => {
       const id = nextId.current++;
       const duration = input.durationMs ?? TOAST_DEFAULT_DURATION_MS;
-      setToasts((current) => [...current, { ...input, id, pending: false }].slice(-TOAST_MAX_VISIBLE));
+      setToasts((current) => {
+        const next = [...current, { ...input, id, pending: false }];
+        const evicted = next.slice(0, Math.max(0, next.length - TOAST_MAX_VISIBLE));
+        for (const toast of evicted) {
+          const timer = timers.current.get(toast.id);
+          if (timer) clearTimeout(timer);
+          timers.current.delete(toast.id);
+        }
+        return next.slice(-TOAST_MAX_VISIBLE);
+      });
       const timer = setTimeout(() => dismiss(id), duration);
       timers.current.set(id, timer);
       return id;
@@ -99,30 +108,49 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 
   const runAction = useCallback(async (toast: ToastRecord) => {
-    if (!toast.action) return;
+    if (!toast.action || toast.pending) return;
     setToasts((current) =>
       current.map((entry) => (entry.id === toast.id ? { ...entry, pending: true } : entry)),
     );
     let outcome: ToastActionResult = "failure";
     try {
-      outcome = (await toast.action.run()) ?? "success";
+      // Never infer success: an action that returns nothing has not told us the
+      // server committed anything.
+      outcome = (await toast.action.run()) ?? "failure";
     } catch {
       outcome = "failure";
     }
     setToasts((current) =>
       current.map((entry) =>
         entry.id === toast.id
-          ? { ...entry, pending: false, outcome, message: OUTCOME_COPY[outcome] }
+          ? {
+              ...entry,
+              pending: false,
+              outcome,
+              message: OUTCOME_COPY[outcome],
+              // The inverse has run (or been refused); offering it again would
+              // invite a duplicate.
+              action: undefined,
+            }
           : entry,
       ),
     );
   }, []);
+
+  const latestPoliteMessage =
+    [...toasts].reverse().find((toast) => toast.tone !== "error")?.message ?? "";
 
   const value = useMemo<ToastQueue>(() => ({ show, dismiss, toasts }), [show, dismiss, toasts]);
 
   return (
     <ToastContext.Provider value={value}>
       {children}
+      {/* A live region must exist before its content changes to be announced
+          reliably, so this node is always mounted and mirrors the newest
+          non-error message. Errors use role="alert" on their own toast. */}
+      <div aria-live="polite" aria-atomic="true" className="sr-only">
+        {latestPoliteMessage}
+      </div>
       <div
         role="region"
         aria-label="Notifications"
