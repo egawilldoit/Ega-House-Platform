@@ -137,8 +137,9 @@ describe("public homepage", () => {
   it("keeps the dark theme scoped and the display axis variable", () => {
     expect(styles).toContain("@media (prefers-color-scheme: dark)");
     expect(styles).toContain("--home-bg: #0f100d");
-    expect(layout).not.toMatch(/Sora\(\{[^}]*weight:/);
-    expect(layout).toContain("Instrument_Sans");
+    expect(layout).not.toContain("next/font/google");
+    expect(layout).toMatch(/sora = localFont\(\{[\s\S]*?weight: "100 800"/);
+    expect(layout).toMatch(/instrumentSans = localFont\(\{[\s\S]*?variable: "--font-body-next"/);
   });
 
   it("defines the design breakpoints", () => {

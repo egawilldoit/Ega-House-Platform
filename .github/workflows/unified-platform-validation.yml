@@ -98,6 +98,7 @@ jobs:
               - 'drizzle.config.ts'
               - 'packages/**'
               - 'apps/server/**'
+              - 'scripts/ci/**'
               - 'package.json'
               - 'package-lock.json'
               - '.github/workflows/**'
@@ -368,6 +369,8 @@ jobs:
         run: node scripts/ci/verify-platform-optionals.mjs
       - name: Web typecheck
         run: npm run typecheck
+      - name: Web font egress guard
+        run: npm run check:font-egress
       - name: Web tests
         run: npm test
       - name: Web production build
