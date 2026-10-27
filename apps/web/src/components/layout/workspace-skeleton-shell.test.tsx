@@ -47,8 +47,10 @@ describe("authenticated loading boundaries", () => {
       ).not.toMatch(/@\/lib\/workspace-shell/);
       expect(
         source,
-        `${relative} must use the data-free skeleton shell`,
-      ).toMatch(/@\/components\/layout\/workspace-skeleton-shell/);
+        `${relative} must use the data-free skeleton shell (directly or via the shared route skeleton)`,
+      ).toMatch(
+        /@\/components\/layout\/(workspace-skeleton-shell|workspace-route-skeleton)/,
+      );
     }
   });
 
