@@ -269,40 +269,45 @@ describe("TasksListTable dense inventory", () => {
       }),
     ]);
 
-    const titleButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="task-title-edit-task-1"]',
+    const titleLink = container.querySelector<HTMLAnchorElement>(
+      '[data-testid="task-title-open-task-1"]',
     );
-    expect(titleButton).not.toBeNull();
-    expect(titleButton?.className).toContain("task-row-title-btn");
-    expect(titleButton?.getAttribute("title")).toBe(
+    expect(titleLink).not.toBeNull();
+    expect(titleLink?.className).toContain("task-row-title-btn");
+    expect(titleLink?.getAttribute("title")).toBe(
       "A genuinely long operational task title that would otherwise explode into many wrapped lines and hurt scanability across the 187-task inventory",
     );
-    expect(titleButton?.getAttribute("aria-label")).toBe(
-      "Edit A genuinely long operational task title that would otherwise explode into many wrapped lines and hurt scanability across the 187-task inventory",
+    expect(titleLink?.getAttribute("aria-label")).toBe(
+      "Open A genuinely long operational task title that would otherwise explode into many wrapped lines and hurt scanability across the 187-task inventory details",
     );
   });
 
-  it("opens the shared EditTaskModal from the title and never submits anything", async () => {
+  it("links the title to the URL-addressable drawer and keeps editing on the row actions", async () => {
     const actions = buildActions();
     await renderTable([buildTask()], actions);
 
-    const titleButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="task-title-edit-task-1"]',
+    const titleLink = container.querySelector<HTMLAnchorElement>(
+      '[data-testid="task-title-open-task-1"]',
     );
-    expect(titleButton).not.toBeNull();
+    expect(titleLink).not.toBeNull();
+    expect(titleLink?.getAttribute("href")).toBe("/tasks?status=todo&layout=kanban&task=task-1");
 
+    // jsdom cannot perform document navigation; cancel the default so the test
+    // observes the click handler's effect rather than an unimplemented nav.
+    const cancelNavigation = (event: Event) => event.preventDefault();
+    titleLink?.addEventListener("click", cancelNavigation);
     await act(async () => {
-      titleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      titleLink?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
+    titleLink?.removeEventListener("click", cancelNavigation);
 
-    const dialogs = document.querySelectorAll('[role="dialog"]');
-    expect(dialogs.length).toBe(1);
-    expect(dialogs[0].getAttribute("aria-label")).toBe("Edit task Draft weekly execution review");
+    // A plain link navigation must not open the editor modal.
+    expect(document.querySelectorAll('[role="dialog"]').length).toBe(0);
     expect(document.body.querySelector("form form")).toBeNull();
     for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
   });
 
-  it("keeps the ••• trigger and the title wired to one editor per row", async () => {
+  it("keeps the ••• trigger opening the shared editor", async () => {
     await renderTable();
 
     const moreOptions = container.querySelector('[data-testid="task-more-options-task-1"]');
@@ -364,14 +369,14 @@ describe("TasksListTable dense inventory", () => {
     expect(dialogs[0].textContent).toContain("Could not save task");
   });
 
-  it("restores focus to the title when a title-opened editor is dismissed", async () => {
+  it("restores focus to the row actions trigger when its editor is dismissed", async () => {
     await renderTable();
 
-    const titleButton = container.querySelector<HTMLButtonElement>(
-      '[data-testid="task-title-edit-task-1"]',
+    const opener = container.querySelector<HTMLButtonElement>(
+      '[data-testid="task-more-options-task-1"]',
     );
     await act(async () => {
-      titleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      opener?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(document.querySelectorAll('[role="dialog"]').length).toBe(1);
 
@@ -383,7 +388,7 @@ describe("TasksListTable dense inventory", () => {
     // which lands on a later tick than the dismiss itself. Wait for the
     // documented behavior instead of assuming a single act() flush.
     await vi.waitFor(() => {
-      expect(document.activeElement).toBe(titleButton);
+      expect(document.activeElement).toBe(opener);
     });
   });
 
