@@ -183,9 +183,11 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
         task: {
           id: selectedTaskFromList.id,
           title: selectedTaskFromList.title,
+          description: selectedTaskFromList.description ?? null,
           status: selectedTaskFromList.status,
           priority: selectedTaskFromList.priority,
           due_date: selectedTaskFromList.due_date,
+          estimate_minutes: selectedTaskFromList.estimate_minutes ?? null,
           blocked_reason: selectedTaskFromList.blocked_reason,
           project_id: selectedTaskFromList.project_id,
           goal_id: selectedTaskFromList.goal_id,

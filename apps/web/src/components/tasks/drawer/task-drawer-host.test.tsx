@@ -19,9 +19,11 @@ import { TaskDrawerHost } from "./task-drawer-host";
 const TASK = {
   id: "t1",
   title: "Draft weekly execution review",
+  description: "Existing description",
   status: "in_progress",
   priority: "high",
   due_date: "2026-05-01",
+  estimate_minutes: 90,
   blocked_reason: null as string | null,
   project_id: "p1",
   goal_id: "g1",
@@ -47,7 +49,25 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+/** React tracks the last value it wrote; set through the native setter first. */
+function setNativeValue(
+  element: HTMLInputElement | HTMLTextAreaElement,
+  value: string,
+) {
+  const prototype =
+    element instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, "value")?.set?.call(element, value);
+  element.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 const updateFieldAction = vi.fn();
+const updateDraftAction = vi.fn(async (_state: unknown, _formData: FormData) => ({
+  errorMessage: null,
+  successMessage: null,
+  savedValue: null,
+}));
 
 function render(
   task: typeof TASK | null,
@@ -60,6 +80,7 @@ function render(
         task={task}
         loadFailed={loadFailed}
         updateFieldAction={updateFieldAction}
+        updateDraftAction={updateDraftAction}
         {...extra}
       />,
     ),
@@ -85,6 +106,128 @@ describe("TaskDrawerHost", () => {
     expect(selects.map((select) => select.value)).toEqual(["in_progress", "high"]);
     const dueDate = document.body.querySelector<HTMLInputElement>('input[type="date"]');
     expect(dueDate?.value).toBe("2026-05-01");
+  });
+
+  it("edits the title, description and estimate in place", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+
+    const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    expect(title?.value).toBe("Draft weekly execution review");
+
+    const description = document.body.querySelector<HTMLTextAreaElement>("textarea");
+    expect(description?.value).toBe("Existing description");
+
+    const estimate = document.body.querySelector<HTMLInputElement>('input[type="number"][name="value"]');
+    expect(estimate?.value).toBe("90");
+    expect(estimate?.form?.querySelector<HTMLInputElement>('input[name="field"]')?.value).toBe(
+      "estimateMinutes",
+    );
+  });
+
+  it("offers a blocked reason editor only while the task is blocked", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render({ ...TASK, status: "blocked", blocked_reason: "Waiting on review" });
+
+    const reasonForm = Array.from(
+      document.body.querySelectorAll<HTMLInputElement>('input[name="field"]'),
+    )
+      .map((input) => input.form)
+      .find(
+        (form) =>
+          form?.querySelector<HTMLInputElement>('input[name="field"]')?.value === "blockedReason",
+      );
+    expect(reasonForm).toBeTruthy();
+    expect(reasonForm?.querySelector<HTMLInputElement>('input[name="value"]')?.value).toBe(
+      "Waiting on review",
+    );
+
+    // A non-blocked task must not offer an editor that can only fail validation.
+    act(() => root.unmount());
+    root = createRoot(container);
+    render(TASK);
+    const fields = Array.from(
+      document.body.querySelectorAll<HTMLInputElement>('input[name="field"]'),
+    ).map((input) => input.value);
+    expect(fields).not.toContain("blockedReason");
+  });
+
+  it("keeps a typed title when the server refreshes while it is dirty", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+
+    const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    act(() => {
+      if (title) setNativeValue(title, "My unsaved title");
+    });
+
+    // A realtime/RSC refresh hands the drawer a newer saved title.
+    act(() => root.render(
+      <TaskDrawerHost
+        task={{ ...TASK, title: "Server changed this" }}
+        updateFieldAction={updateFieldAction}
+        updateDraftAction={updateDraftAction}
+      />,
+    ));
+
+    const after = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    expect(after?.value).toBe("My unsaved title");
+  });
+
+  it("confirms before discarding a dirty draft and keeps it when refused", () => {
+    currentParams = new URLSearchParams("task=t1&layout=board");
+    render(TASK);
+
+    const description = document.body.querySelector<HTMLTextAreaElement>("textarea");
+    act(() => {
+      if (description) setNativeValue(description, "Half-written plan");
+    });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const close = document.body.querySelector('[aria-label="Close task details"]');
+    act(() => {
+      (close as HTMLButtonElement).click();
+    });
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(replace).not.toHaveBeenCalled();
+    expect(document.body.querySelector<HTMLTextAreaElement>("textarea")?.value).toBe(
+      "Half-written plan",
+    );
+
+    confirmSpy.mockReturnValue(true);
+    act(() => {
+      (close as HTMLButtonElement).click();
+    });
+    expect(replace).toHaveBeenCalledTimes(1);
+    confirmSpy.mockRestore();
+  });
+
+  it("keeps a rejected draft and shows the field error", async () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockResolvedValueOnce({
+      errorMessage: "Title is too long.",
+      successMessage: null,
+      savedValue: null,
+    } as never);
+    render(TASK);
+
+    const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    act(() => {
+      if (title) setNativeValue(title, "Renamed");
+    });
+    const save = Array.from(document.body.querySelectorAll("button")).find(
+      (button) => button.textContent === "Save title",
+    );
+    await act(async () => {
+      (save as HTMLButtonElement).click();
+    });
+
+    expect(document.body.querySelector<HTMLInputElement>('input[maxlength="256"]')?.value).toBe(
+      "Renamed",
+    );
+    expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
+      "Title is too long.",
+    );
   });
 
   it("shows an indistinguishable unavailable state for a missing task", () => {
