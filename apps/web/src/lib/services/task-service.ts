@@ -1780,6 +1780,12 @@ export async function updateTaskInline(
     supabase?: SupabaseServerClient;
     updatedAtIso?: string;
     /**
+     * Optimistic-concurrency precondition: the row must still carry this
+     * `updated_at` or the write is rejected. Used by single-field patches so a
+     * second editor cannot silently write back the values it read earlier.
+     */
+    expectedUpdatedAt?: string;
+    /**
      * Canonical account local date (YYYY-MM-DD) from the owner's Time Context.
      * Used as the recurrence anchor fallback instead of the runtime-local date
      * so web writes agree with the Hono transport near account midnight.
@@ -1795,7 +1801,7 @@ export async function updateTaskInline(
 
   let { data: currentTask, error: currentTaskError } = await supabase
     .from("tasks")
-    .select("id, owner_user_id, project_id, goal_id, status, completed_at, archived_at")
+    .select("id, owner_user_id, project_id, goal_id, status, completed_at, archived_at, updated_at")
     .eq("id", input.taskId)
     .maybeSingle();
   let completedAtUnavailable = false;
@@ -1803,7 +1809,7 @@ export async function updateTaskInline(
   if (currentTaskError && isMissingTasksCompletedAtColumn(currentTaskError)) {
     const fallbackResult = await supabase
       .from("tasks")
-      .select("id, owner_user_id, project_id, goal_id, status, archived_at")
+      .select("id, owner_user_id, project_id, goal_id, status, archived_at, updated_at")
       .eq("id", input.taskId)
       .maybeSingle();
 
@@ -1903,20 +1909,22 @@ export async function updateTaskInline(
         : null;
   }
 
-  let { data: updatedTask, error } = await supabase
-    .from("tasks")
-    .update(updatePayload)
-    .eq("id", input.taskId)
+  const expectedUpdatedAt = options?.expectedUpdatedAt;
+  const guard = <T extends { eq: (column: string, value: string) => T }>(query: T): T =>
+    expectedUpdatedAt ? query.eq("updated_at", expectedUpdatedAt) : query;
+
+  let { data: updatedTask, error } = await guard(
+    supabase.from("tasks").update(updatePayload).eq("id", input.taskId),
+  )
     .select("id")
     .maybeSingle();
 
   if (error && isTasksBlockedReasonMissing(error)) {
     const fallbackPayload = { ...updatePayload };
     delete fallbackPayload.blocked_reason;
-    const fallbackResult = await supabase
-      .from("tasks")
-      .update(fallbackPayload)
-      .eq("id", input.taskId)
+    const fallbackResult = await guard(
+      supabase.from("tasks").update(fallbackPayload).eq("id", input.taskId),
+    )
       .select("id")
       .maybeSingle();
     updatedTask = fallbackResult.data;
@@ -1926,10 +1934,9 @@ export async function updateTaskInline(
   if (error && isMissingTasksCompletedAtColumn(error)) {
     const fallbackPayload = { ...updatePayload };
     delete fallbackPayload.completed_at;
-    const fallbackResult = await supabase
-      .from("tasks")
-      .update(fallbackPayload)
-      .eq("id", input.taskId)
+    const fallbackResult = await guard(
+      supabase.from("tasks").update(fallbackPayload).eq("id", input.taskId),
+    )
       .select("id")
       .maybeSingle();
     updatedTask = fallbackResult.data;
@@ -1941,7 +1948,11 @@ export async function updateTaskInline(
   }
 
   if (!updatedTask) {
-    return { errorMessage: "Task was not found or is no longer available." };
+    return {
+      errorMessage: expectedUpdatedAt
+        ? "This task changed since you opened it. Reload and try again."
+        : "Task was not found or is no longer available.",
+    };
   }
 
   if (input.recurrenceRule !== undefined) {
@@ -2366,7 +2377,6 @@ export function buildTaskFieldPatchInput(
     blockedReason: current.blocked_reason,
   };
 
-  if (field === "description") input.description = value;
   if (field === "status") input.status = value;
   if (field === "priority") input.priority = value;
   if (field === "dueDate") input.dueDate = value;
@@ -2404,7 +2414,7 @@ export async function updateTaskFieldForOwner(
 
   const { data: current, error: loadError } = await supabase
     .from("tasks")
-    .select("title, description, status, priority, due_date, estimate_minutes, blocked_reason")
+    .select("title, description, status, priority, due_date, estimate_minutes, blocked_reason, updated_at")
     .eq("id", taskId)
     .eq("owner_user_id", userId)
     .maybeSingle();
@@ -2433,5 +2443,6 @@ export async function updateTaskFieldForOwner(
   return updateTaskInline(validation.data, {
     supabase,
     fallbackAnchorDate: options?.fallbackAnchorDate,
+    expectedUpdatedAt: String((current as { updated_at?: string }).updated_at ?? ""),
   });
 }

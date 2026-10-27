@@ -15,6 +15,8 @@ type FieldDraftAction = (
 type TaskDrawerDetailFormProps = {
   task: TaskDrawerDetail;
   action: FieldDraftAction;
+  /** Current surface path, used for cache revalidation after a save. */
+  returnTo: string;
   /** Called with true while a title or description draft differs from the saved row. */
   onDirtyChange?: (dirty: boolean) => void;
 };
@@ -23,11 +25,12 @@ function normalize(value: string | null | undefined) {
   return (value ?? "").trim();
 }
 
-function fieldFormData(taskId: string, field: string, value: string) {
+function fieldFormData(taskId: string, field: string, value: string, returnTo: string) {
   const formData = new FormData();
   formData.set("taskId", taskId);
   formData.set("field", field);
   formData.set("value", value);
+  formData.set("returnTo", returnTo);
   return formData;
 }
 
@@ -42,6 +45,7 @@ function fieldFormData(taskId: string, field: string, value: string) {
 export function TaskDrawerDetailForm({
   task,
   action,
+  returnTo,
   onDirtyChange,
 }: TaskDrawerDetailFormProps) {
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
@@ -73,7 +77,7 @@ export function TaskDrawerDetailForm({
     try {
       const result = await action(
         EMPTY_TASK_FIELD_DRAFT_STATE,
-        fieldFormData(task.id, "title", title),
+        fieldFormData(task.id, "title", title, returnTo),
       );
       if (result.errorMessage) {
         setTitleError(result.errorMessage);
@@ -82,6 +86,8 @@ export function TaskDrawerDetailForm({
       setTitleDraft(null);
       reportDirty({ title: false, description: descriptionChanged });
       startTransition(() => router.refresh());
+    } catch {
+      setTitleError("Unable to save right now. Your text is kept — try again.");
     } finally {
       titleSubmittingRef.current = false;
       setPendingField(null);
@@ -95,7 +101,7 @@ export function TaskDrawerDetailForm({
     try {
       const result = await action(
         EMPTY_TASK_FIELD_DRAFT_STATE,
-        fieldFormData(task.id, "description", description),
+        fieldFormData(task.id, "description", description, returnTo),
       );
       if (result.errorMessage) {
         setDescriptionError(result.errorMessage);
@@ -104,6 +110,8 @@ export function TaskDrawerDetailForm({
       setDescriptionDraft(null);
       reportDirty({ title: titleChanged, description: false });
       startTransition(() => router.refresh());
+    } catch {
+      setDescriptionError("Unable to save right now. Your text is kept — try again.");
     } finally {
       setPendingField(null);
     }
@@ -140,9 +148,6 @@ export function TaskDrawerDetailForm({
           id={titleId}
           value={title}
           onChange={(event) => updateTitle(event.target.value)}
-          onBlur={() => {
-            if (titleChanged && !titleIsEmpty) void saveTitle();
-          }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
@@ -155,12 +160,19 @@ export function TaskDrawerDetailForm({
             }
           }}
           aria-invalid={titleIsEmpty || Boolean(titleError)}
-          aria-describedby={titleError ? `${titleId}-error` : undefined}
+          aria-describedby={
+            [titleIsEmpty ? `${titleId}-hint` : null, titleError ? `${titleId}-error` : null]
+              .filter(Boolean)
+              .join(" ") || undefined
+          }
           maxLength={256}
           className="input-instrument min-h-9 w-full px-2 py-1 text-sm"
         />
         {titleIsEmpty ? (
-          <p className="text-[length:var(--text-meta)] text-[color:var(--status-overdue)]">
+          <p
+            id={`${titleId}-hint`}
+            className="text-[length:var(--text-meta)] text-[color:var(--status-overdue)]"
+          >
             A title is required.
           </p>
         ) : null}

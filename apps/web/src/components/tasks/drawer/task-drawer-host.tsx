@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatTaskToken } from "@/lib/task-domain";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
@@ -137,14 +137,53 @@ export function TaskDrawerHost({
   updateSuccess = null,
 }: TaskDrawerHostProps) {
   const { taskId, mode, close, setMode } = useTaskDrawerParam();
-  const [dirty, setDirty] = useState(false);
-  const handleDirtyChange = useCallback((next: boolean) => setDirty(next), []);
+  // Scoped to the task it belongs to: a stale flag must never make a later,
+  // unrelated task ask to discard nothing.
+  const [dirtyTaskId, setDirtyTaskId] = useState<string | null>(null);
+  const dirty = Boolean(taskId) && dirtyTaskId === taskId;
+  const handleDirtyChange = useCallback(
+    (next: boolean) => setDirtyTaskId(next ? taskId : null),
+    [taskId],
+  );
   const requestClose = useCallback(() => {
     // Dirty drafts are the user's work: never discard them silently. A plain
     // confirm keeps the check available without adding a second modal system.
     if (dirty && !window.confirm("Discard unsaved changes to this task?")) return;
+    setDirtyTaskId(null);
     close();
   }, [close, dirty]);
+
+  // Switching to another task is the same discard decision as closing, and the
+  // entry points are links. While a draft is dirty, intercept those links (and
+  // leave the browser to its native unload prompt for Back/refresh).
+  useEffect(() => {
+    if (!dirty) return;
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey) return;
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) return;
+      const url = new URL(anchor.href, window.location.origin);
+      if (url.origin !== window.location.origin) return;
+      const nextTask = url.searchParams.get("task");
+      if (!nextTask || nextTask === taskId) return;
+      if (!window.confirm("Discard unsaved changes to this task?")) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [dirty, taskId]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -241,6 +280,7 @@ export function TaskDrawerHost({
         key={task.id}
         task={task}
         action={updateDraftAction}
+        returnTo={returnTo}
         onDirtyChange={handleDirtyChange}
       />
 
