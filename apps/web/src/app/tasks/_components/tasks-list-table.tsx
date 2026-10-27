@@ -6,7 +6,9 @@ import { TaskCardActions } from "@/components/tasks/task-card-actions";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { buildTaskDrawerHref } from "@/components/tasks/drawer/use-task-drawer-param";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useTaskEditorOpenState } from "@/components/tasks/use-task-editor-open-state";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
@@ -300,22 +302,24 @@ function TaskListRow({
     />
   );
 
-  const titleButton = (
-    <button
-      type="button"
+  // The title is the drawer entry point: it links to the URL-addressable detail
+  // view, so middle-click/new-tab and back/forward work. Editing stays on the
+  // ••• control, which owns the existing modal and its focus restoration.
+  const drawerHref = (() => {
+    const base = new URL(returnTo, "http://ega.local");
+    return buildTaskDrawerHref(base.pathname, base.searchParams, { taskId: task.id });
+  })();
+
+  const titleLink = (
+    <Link
+      href={drawerHref}
       className="task-row-title-btn"
       title={task.title}
-      aria-haspopup="dialog"
-      aria-label={`Edit ${task.title}`}
-      data-testid={`task-title-edit-${task.id}`}
-      onClick={(event) => {
-        event.currentTarget.focus();
-        editorOpenerRef.current = event.currentTarget;
-        handleOpenChange(true);
-      }}
+      aria-label={`Open ${task.title} details`}
+      data-testid={`task-title-open-${task.id}`}
     >
       {task.title}
-    </button>
+    </Link>
   );
 
   return (
@@ -328,7 +332,7 @@ function TaskListRow({
       <td className="max-[761px]:contents">
         <div className="row-main">
           <div className="flex min-w-0 items-center gap-2">
-            {titleButton}
+            {titleLink}
             {task.description ? (
               <span className="max-[761px]:hidden min-w-0 flex-1 truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
                 {task.description}
