@@ -22,6 +22,7 @@ const TASK = {
   status: "in_progress",
   priority: "high",
   due_date: "2026-05-01",
+  blocked_reason: null as string | null,
   project_id: "p1",
   goal_id: "g1",
   archived_at: null as string | null,
@@ -48,13 +49,18 @@ afterEach(() => {
 
 const updateFieldAction = vi.fn();
 
-function render(task: typeof TASK | null, loadFailed = false) {
+function render(
+  task: typeof TASK | null,
+  loadFailed = false,
+  extra: { updateError?: string | null; updateSuccess?: string | null } = {},
+) {
   act(() =>
     root.render(
       <TaskDrawerHost
         task={task}
         loadFailed={loadFailed}
         updateFieldAction={updateFieldAction}
+        {...extra}
       />,
     ),
   );
@@ -108,19 +114,66 @@ describe("TaskDrawerHost", () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it("submits a single-field patch for the inline property editors", () => {
+  it("submits exactly one changed field with the drawer context", async () => {
     currentParams = new URLSearchParams("task=t1&layout=board");
     render(TASK);
+    updateFieldAction.mockClear();
 
     const statusSelect = document.body.querySelector<HTMLSelectElement>('select[name="value"]');
     expect(statusSelect).not.toBeNull();
     const form = statusSelect?.form as HTMLFormElement;
-    expect(form).not.toBeNull();
     expect(form.querySelector<HTMLInputElement>('input[name="field"]')?.value).toBe("status");
     expect(form.querySelector<HTMLInputElement>('input[name="taskId"]')?.value).toBe("t1");
-    expect(form.querySelector<HTMLInputElement>('input[name="returnTo"]')?.value).toContain(
-      "task=t1",
+
+    await act(async () => {
+      if (statusSelect) statusSelect.value = "done";
+      form.requestSubmit();
+    });
+
+    expect(updateFieldAction).toHaveBeenCalledTimes(1);
+    const submitted = updateFieldAction.mock.calls[0][0] as FormData;
+    expect(submitted.get("field")).toBe("status");
+    expect(submitted.get("value")).toBe("done");
+    expect(submitted.get("taskId")).toBe("t1");
+    expect(String(submitted.get("returnTo"))).toContain("task=t1");
+  });
+
+  it("does not auto-submit when a value changes", async () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+    updateFieldAction.mockClear();
+
+    const select = document.body.querySelector<HTMLSelectElement>('select[name="value"]');
+    await act(async () => {
+      if (select) select.value = "done";
+      select?.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(updateFieldAction).not.toHaveBeenCalled();
+  });
+
+  it("stops offering blocked when the task has no blocked reason", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+    const options = Array.from(document.body.querySelectorAll<HTMLOptionElement>("option")).map(
+      (option) => option.value,
     );
+    expect(options).not.toContain("blocked");
+  });
+
+  it("shows the patch error inside the drawer, not only on the row", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK, false, { updateError: "Blocked reason is required when status is Blocked." });
+    const alert = document.body.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Blocked reason is required");
+  });
+
+  it("does not replay flash parameters from the current URL", () => {
+    currentParams = new URLSearchParams("task=t1&taskUpdateError=old&taskUpdateTaskId=t1");
+    render(TASK);
+    const returnTo = document.body.querySelector<HTMLInputElement>('input[name="returnTo"]');
+    expect(returnTo?.value).not.toContain("taskUpdateError");
+    expect(returnTo?.value).toContain("task=t1");
   });
 
   it("closes by removing only the drawer parameters", () => {

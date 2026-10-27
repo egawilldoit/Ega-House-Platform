@@ -1,7 +1,9 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { formatTaskToken } from "@/lib/task-domain";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon";
 import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priority-icon";
 import { TaskDrawer } from "./task-drawer";
@@ -61,7 +63,6 @@ function PropertyField({
           name="value"
           aria-label={label}
           defaultValue={value}
-          onChange={(event) => event.currentTarget.form?.requestSubmit()}
           className="h-7 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
         >
           {options.map((option) => (
@@ -79,12 +80,16 @@ function PropertyField({
           className="h-7 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
         />
       )}
-      <button
+      <PendingSubmitButton
         type="submit"
-        className="h-7 rounded-[var(--radius-sm)] border border-[var(--ega-border)] px-1.5 text-xs text-[color:var(--ega-text-secondary)] hover:bg-[var(--ega-surface-hover)]"
+        variant="secondary"
+        size="sm"
+        aria-label={`Save ${label}`}
+        className="h-7 px-1.5 text-xs"
+        pendingLabel="Saving…"
       >
         Save
-      </button>
+      </PendingSubmitButton>
     </form>
   );
 }
@@ -99,6 +104,10 @@ type TaskDrawerHostProps = {
   loadFailed?: boolean;
   /** One-field patch action for the inline property editors. */
   updateFieldAction: TaskFieldAction;
+  /** Field-patch failure surfaced by the action's redirect. */
+  updateError?: string | null;
+  /** Field-patch success surfaced by the action's redirect. */
+  updateSuccess?: string | null;
 };
 
 /**
@@ -113,12 +122,31 @@ export function TaskDrawerHost({
   task,
   loadFailed = false,
   updateFieldAction,
+  updateError = null,
+  updateSuccess = null,
 }: TaskDrawerHostProps) {
   const { taskId, mode, close, setMode } = useTaskDrawerParam();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const returnTo = `${pathname}?${searchParams.toString()}`;
+  // Strip workspace feedback flash params: they belong to the previous action and
+  // would otherwise be replayed into this form's redirect, keeping a stale error
+  // visible after a successful save.
+  const returnTo = (() => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const key of [
+      "taskUpdateError",
+      "taskUpdateSuccess",
+      "taskUpdateTaskId",
+      "statusUpdateError",
+      "viewError",
+      "viewSuccess",
+    ]) {
+      params.delete(key);
+    }
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  })();
 
   if (!taskId) {
     return <TaskDrawer task={null} mode={mode} onClose={close} onModeChange={setMode} />;
@@ -169,6 +197,16 @@ export function TaskDrawerHost({
       onClose={close}
       onModeChange={setMode}
     >
+      {updateError ? (
+        <p role="alert" className="mb-2 text-sm text-[color:var(--status-overdue)]">
+          {updateError}
+        </p>
+      ) : null}
+      {updateSuccess ? (
+        <p role="status" className="mb-2 text-sm text-[color:var(--status-healthy)]">
+          {updateSuccess}
+        </p>
+      ) : null}
       <dl className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-y-2 text-sm">
         <dt className="text-[color:var(--ega-text-tertiary)]">Status</dt>
         <dd className="flex items-center gap-1.5 text-[color:var(--ega-text)]">
@@ -180,7 +218,11 @@ export function TaskDrawerHost({
             field="status"
             label="Status"
             value={task.status}
-            options={KNOWN_STATUSES.map((status) => ({ value: status, label: statusLabel(status) }))}
+            options={KNOWN_STATUSES.filter(
+              // Blocked requires a reason, which this stage cannot capture yet;
+              // offering it would always fail validation.
+              (status) => status !== "blocked" || Boolean(task.blocked_reason),
+            ).map((status) => ({ value: status, label: statusLabel(status) }))}
           />
         </dd>
         <dt className="text-[color:var(--ega-text-tertiary)]">Priority</dt>
@@ -197,7 +239,7 @@ export function TaskDrawerHost({
             value={task.priority}
             options={KNOWN_PRIORITIES.map((priority) => ({
               value: priority,
-              label: priority.replace(/^./, (letter) => letter.toUpperCase()),
+              label: formatTaskToken(priority),
             }))}
           />
         </dd>

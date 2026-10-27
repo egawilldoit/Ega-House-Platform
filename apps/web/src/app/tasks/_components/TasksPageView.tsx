@@ -325,6 +325,8 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
           task={selectedTask}
           loadFailed={selectedTaskError}
           updateFieldAction={updateTaskFieldAction}
+          updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
+          updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />
       ) : null}
     </div>
