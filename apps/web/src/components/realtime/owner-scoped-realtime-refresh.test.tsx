@@ -7,7 +7,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { OwnerScopedRealtimeRefresh } from "./owner-scoped-realtime-refresh";
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPayload = Record<string, any>;
 // Track calls to relevant functions
 const routerRefreshCalls: number[] = [];
@@ -18,7 +17,6 @@ const subscribeCalls: {
   onPayload: ((payload: RealtimePostgresChangesPayload<AnyPayload>) => void) | null;
 }[] = [];
 let unsubscribedCount = 0;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 let activeOnPayload: ((payload: any) => void) | null = null;
 
 // Mock the dependencies before any imports that use them
@@ -39,7 +37,6 @@ vi.mock("@/lib/supabase/client", () => ({
 vi.mock("@/lib/supabase/realtime", () => {
   return {
     getRealtimePayloadUpdatedAt: (
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       payload: any,
     ) => {
       const newVal = payload.new?.updated_at as string | undefined;
@@ -53,7 +50,6 @@ vi.mock("@/lib/supabase/realtime", () => {
         ownerUserId: string;
         tables: readonly string[];
         channelPrefix: string;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onPayload: (payload: any) => void;
       },
     ) => {
