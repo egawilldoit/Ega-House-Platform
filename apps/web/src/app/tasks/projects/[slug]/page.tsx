@@ -65,6 +65,8 @@ import {
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import { formatTaskEstimate } from "@/lib/task-estimate";
 import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
+import { listTaskSubtasks } from "@/lib/services/subtask-service";
+import { TASK_SUBTASK_ACTIONS } from "@/lib/task-subtask-actions";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import {
@@ -286,6 +288,9 @@ export default async function ProjectDetailPage({
 
   const selectedTaskResult = selectedTaskId ? await getTaskDrawerDetail(selectedTaskId) : null;
   const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
+  const selectedTaskSubtasks = selectedTaskId
+    ? (await listTaskSubtasks(selectedTaskId)).data ?? []
+    : [];
 
   const filteredTasks = applyTaskListQuery(
     tasks.filter((task) => {
@@ -810,6 +815,8 @@ export default async function ProjectDetailPage({
           updateFieldAction={updateTaskFieldAction}
           updateDraftAction={updateTaskFieldDraftAction}
           ownerId={currentUser?.id ?? null}
+          subtasks={selectedTaskSubtasks}
+          subtaskActions={TASK_SUBTASK_ACTIONS}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />

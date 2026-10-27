@@ -1087,3 +1087,98 @@ export async function undoTaskOperationAction(
 
   return results.some((result) => result.outcome === "conflict") ? "conflict" : "failure";
 }
+
+// ---------------------------------------------------------------------------
+// Subtasks / checklist (EGA-782)
+// ---------------------------------------------------------------------------
+
+async function subtaskFeedback(
+  returnPath: string,
+  taskId: string,
+  result: { errorMessage: string | null },
+  successMessage: string,
+): Promise<never> {
+  if (result.errorMessage) {
+    redirectWithTasksError(returnPath, result.errorMessage, taskId);
+  }
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  redirectWithWorkspaceFeedback(returnPath, {
+    taskSuccessMessage: successMessage,
+    taskId,
+  });
+  // `redirect` inside redirectWithWorkspaceFeedback is `never`; keep TS happy.
+  throw new Error("unreachable");
+}
+
+export async function addSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { addTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await addTaskSubtask({
+    taskId,
+    title: String(formData.get("title") ?? ""),
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask added.");
+}
+
+export async function toggleSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { setTaskSubtaskDone } = await import("@/lib/services/subtask-service");
+  const result = await setTaskSubtaskDone({
+    subtaskId: String(formData.get("subtaskId") ?? "").trim(),
+    done: String(formData.get("done") ?? "") === "true",
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask updated.");
+}
+
+export async function renameSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { renameTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await renameTaskSubtask({
+    subtaskId: String(formData.get("subtaskId") ?? "").trim(),
+    title: String(formData.get("title") ?? ""),
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask renamed.");
+}
+
+export async function deleteSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { deleteTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await deleteTaskSubtask(String(formData.get("subtaskId") ?? "").trim());
+  return subtaskFeedback(returnPath, taskId, result, "Subtask deleted.");
+}
+
+export async function moveSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const direction = String(formData.get("direction") ?? "") === "up" ? "up" : "down";
+  const { moveTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await moveTaskSubtask({
+    taskId,
+    subtaskId: String(formData.get("subtaskId") ?? "").trim(),
+    direction,
+  });
+  return subtaskFeedback(returnPath, taskId, result, "Subtask reordered.");
+}
+
+export async function promoteSubtaskAction(formData: FormData): Promise<never> {
+  const returnPath = getTasksReturnPath(formData.get("returnTo"));
+  const taskId = String(formData.get("taskId") ?? "").trim();
+  const { promoteTaskSubtask } = await import("@/lib/services/subtask-service");
+  const result = await promoteTaskSubtask(String(formData.get("subtaskId") ?? "").trim());
+  if (result.errorMessage || !result.data) {
+    redirectWithTasksError(returnPath, result.errorMessage ?? "Unable to promote the subtask.", taskId);
+  }
+  revalidateWorkspaceFor("task", { returnTo: returnPath });
+  const target = new URL(returnPath, "https://egawilldoit.online");
+  target.searchParams.set("task", result.data.taskId);
+  target.searchParams.delete("taskMode");
+  redirectWithWorkspaceFeedback(`${target.pathname}?${target.searchParams.toString()}`, {
+    taskSuccessMessage: "Subtask promoted to a task.",
+    taskId: result.data.taskId,
+  });
+  throw new Error("unreachable");
+}

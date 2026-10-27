@@ -10,6 +10,8 @@ import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priorit
 import { TaskDrawer } from "./task-drawer";
 import { TaskDrawerDetailForm } from "./task-drawer-detail-form";
 import { TaskDrawerShortcuts } from "./task-drawer-shortcuts";
+import { TaskSubtasks } from "./task-subtasks";
+import type { SubtaskDto } from "@ega/contracts";
 import { useTaskDrawerParam } from "./use-task-drawer-param";
 
 const KNOWN_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
@@ -117,6 +119,17 @@ type TaskDrawerHostProps = {
   updateDraftAction: TaskFieldDraftAction;
   /** Owner for the character-shortcut preference; null when unauthenticated. */
   ownerId?: string | null;
+  /** Ordered checklist items for the selected task. */
+  subtasks?: SubtaskDto[];
+  /** Server actions for the checklist, passed from the page. */
+  subtaskActions?: {
+    addAction: (formData: FormData) => void | Promise<void>;
+    toggleAction: (formData: FormData) => void | Promise<void>;
+    renameAction: (formData: FormData) => void | Promise<void>;
+    deleteAction: (formData: FormData) => void | Promise<void>;
+    moveAction: (formData: FormData) => void | Promise<void>;
+    promoteAction: (formData: FormData) => void | Promise<void>;
+  };
   /** Field-patch failure surfaced by the action's redirect. */
   updateError?: string | null;
   /** Field-patch success surfaced by the action's redirect. */
@@ -137,6 +150,8 @@ export function TaskDrawerHost({
   updateFieldAction,
   updateDraftAction,
   ownerId = null,
+  subtasks = [],
+  subtaskActions,
   updateError = null,
   updateSuccess = null,
 }: TaskDrawerHostProps) {
@@ -382,6 +397,15 @@ export function TaskDrawerHost({
           </>
         ) : null}
       </dl>
+
+      {subtaskActions ? (
+        <TaskSubtasks
+          taskId={task.id}
+          returnTo={returnTo}
+          subtasks={subtasks}
+          actions={subtaskActions}
+        />
+      ) : null}
     </TaskDrawer>
   );
 }
