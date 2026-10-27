@@ -1,4 +1,12 @@
-export const TASK_STATUSES = ["todo", "in_progress", "done", "blocked"] as const;
+/**
+ * Canonical task statuses.
+ *
+ * `review` sits between in-progress and done: an agent or PR has produced work
+ * that is waiting for the owner's check. It is open (not completed) work, it is
+ * not part of the default execution queue, and a timer can only run on it after
+ * it returns to `in_progress`.
+ */
+export const TASK_STATUSES = ["todo", "in_progress", "review", "done", "blocked"] as const;
 export const TASK_STATUS_VALUES = TASK_STATUSES;
 export const TASK_PRIORITY_VALUES = ["low", "medium", "high", "urgent"] as const;
 export const GOAL_STATUS_VALUES = ["draft", "active", "done", "paused"] as const;

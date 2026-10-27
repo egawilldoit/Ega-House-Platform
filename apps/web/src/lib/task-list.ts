@@ -36,6 +36,7 @@ export function normalizeTaskDensity(value: string | null | undefined): TaskDens
 export const TASK_KANBAN_COLUMNS = [
   { status: "todo", label: "Todo" },
   { status: "in_progress", label: "In Progress" },
+  { status: "review", label: "In Review" },
   { status: "blocked", label: "Blocked" },
   { status: "done", label: "Done" },
 ] as const satisfies ReadonlyArray<{ status: TaskStatus; label: string }>;
@@ -63,6 +64,7 @@ export function buildTaskKanbanBoard<T extends TaskKanbanLike>(
   const tasksByStatus: Record<TaskStatus, T[]> = {
     todo: [],
     in_progress: [],
+    review: [],
     blocked: [],
     done: [],
   };

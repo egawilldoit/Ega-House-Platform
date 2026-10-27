@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 const STATUS_COPY: Record<string, string> = {
   todo: "To do",
   in_progress: "In progress",
+  review: "In review",
   done: "Done",
   blocked: "Blocked",
   due_today: "Due today",
@@ -18,6 +19,7 @@ const STATUS_COPY: Record<string, string> = {
 const STATUS_TONE: Record<string, "muted" | "info" | "warn" | "success" | "error"> = {
   todo: "muted",
   in_progress: "info",
+  review: "warn",
   done: "success",
   blocked: "error",
   due_today: "warn",
@@ -33,7 +35,7 @@ type StatusBadgeProps = {
   className?: string;
 };
 
-const ICON_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "done", "blocked"];
+const ICON_STATUSES: TaskStatusIconName[] = ["todo", "in_progress", "review", "done", "blocked"];
 
 export function StatusBadge({ status, label, className }: StatusBadgeProps) {
   const normalized = status.toLowerCase();

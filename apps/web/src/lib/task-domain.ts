@@ -30,6 +30,7 @@ export function getTaskStatusTone(status: string) {
 
   if (isTaskCompletedStatus(normalized)) return "success" as const;
   if (["blocked", "cancelled", "canceled"].includes(normalized)) return "danger" as const;
+  if (["in review", "review"].includes(normalized)) return "info" as const;
   if (["in progress", "in_progress", "active"].includes(normalized)) return "accent" as const;
   return "neutral" as const;
 }

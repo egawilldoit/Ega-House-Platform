@@ -443,6 +443,13 @@ export async function startTimerForTask(
     return { errorMessage: "Canceled tasks cannot start timers." };
   }
 
+  // Review means the work is with the owner for validation, not in execution.
+  // Returning to in-progress is an explicit decision, so a timer cannot start
+  // from review by accident.
+  if (task.status === "review") {
+    return { errorMessage: "Move this task to In progress before starting a timer." };
+  }
+
   const { error: insertError } = await supabase.from("task_sessions").insert({
     task_id: normalizedTaskId,
     started_at: options?.nowIso ?? new Date().toISOString(),

@@ -29,6 +29,9 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(tokens).toContain("--status-healthy");
     expect(tokens).toContain("--status-risk");
     expect(tokens).toContain("--status-overdue");
+    expect(tokens).toContain("--status-review: #6d28d9");
+    expect(tokens).toContain("--status-review-bg: #f5f3ff");
+    expect(tokens).toContain("--status-review-border: #ddd6fe");
 
     // Shell geometry
     expect(tokens).toContain("--sidebar-width: 264px");

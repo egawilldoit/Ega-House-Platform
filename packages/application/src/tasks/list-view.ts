@@ -137,7 +137,7 @@ export function computeMobileTaskCounters(
 ): MobileTaskCounters {
   const counters: MobileTaskCounters = {
     total: 0,
-    byStatus: { todo: 0, in_progress: 0, done: 0, blocked: 0 },
+    byStatus: { todo: 0, in_progress: 0, review: 0, done: 0, blocked: 0 },
     byPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
     pinned: 0,
     overdue: 0,
