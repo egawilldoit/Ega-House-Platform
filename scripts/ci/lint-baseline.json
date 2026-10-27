@@ -1,10 +1,10 @@
 {
-  "capturedAt": "2026-08-09T22:19:17.749Z",
-  "sha": "b5e59ee66bcbda0012286133a8ad157cc1ccd78d",
-  "note": "Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.",
+  "capturedAt": "2026-10-27T00:24:06.765Z",
+  "sha": "22c0d1c6d961952584bde6d8fb6735db5d5fa384",
+  "note": "Zero lint debt since EGA-779. The pre-EGA-779 live tree had 0 errors / 40 warnings (this JSON still recorded 38 errors / 52 warnings from an older revision). perFile is intentionally empty: with no baseline entry every changed file must be zero-problem. Updates only via deliberate PRs that also fix counted problems (design §8).",
   "totals": {
-    "errors": 38,
-    "warnings": 52
+    "errors": 0,
+    "warnings": 0
   },
   "perFile": {
     ".opencode/plugins/graphify.js": {
@@ -12,6 +12,14 @@
       "warnings": 0
     },
     "apps/mobile/__tests__/smoke.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/(tabs)/__tests__/profile.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/(tabs)/__tests__/timer.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -23,23 +31,31 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/mobile/app/(app)/(tabs)/profile.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/app/(app)/(tabs)/projects.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/app/(app)/(tabs)/tasks.tsx": {
+    "apps/mobile/app/(app)/(tabs)/inbox.tsx": {
       "errors": 0,
       "warnings": 0
     },
     "apps/mobile/app/(app)/(tabs)/timer.tsx": {
-      "errors": 17,
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/app/(app)/(tabs)/today.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/(tabs)/work.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/__tests__/friction.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/__tests__/notifications-a11y.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/__tests__/review.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -47,7 +63,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/app/(app)/friction.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/goals/[id].tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/app/(app)/goals/create.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/notifications.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/profile.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -59,12 +91,44 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/app/(app)/projects/index.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/review.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/search.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/settings/__tests__/timezone.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/settings/notifications.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/settings/timezone.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/app/(app)/tasks/[id].tsx": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/app/(app)/tasks/create.tsx": {
-      "errors": 1,
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/tasks/index.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(app)/updates.tsx": {
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/app/(public)/_layout.tsx": {
@@ -72,6 +136,10 @@
       "warnings": 0
     },
     "apps/mobile/app/(public)/login.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/(public)/onboarding.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -84,6 +152,10 @@
       "warnings": 0
     },
     "apps/mobile/app/+not-found.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/app/__tests__/index-gate.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -107,27 +179,31 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/components/__tests__/cards-a11y-test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/__tests__/empty-state-test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/__tests__/glass-a11y-test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/__tests__/segmented-control-test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/__tests__/skeleton-test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/__tests__/theme-contrast.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/components/mobile/ActionSheet.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/AnimatedPressable.tsx": {
-      "errors": 5,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/GoalCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/ProjectCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/TaskCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/TodayTaskCard.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -135,39 +211,107 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/mobile/components/mobile/glass/GlassBottomTab.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/glass/GlassButton.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/glass/GlassCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/glass/GlassInput.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/glass/GlassPill.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/mobile/components/mobile/glass/GlassSegmentedControl.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
     "apps/mobile/components/mobile/glass/index.ts": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/mobile/components/mobile/primitives.tsx": {
+    "apps/mobile/components/mobile/motion/AnimatedPressable.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/motion/FadeSlide.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/motion/ReducedMotion.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/motion/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/navigation/bottomChrome.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/mobile/components/mobile/theme.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/AppScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/BottomNavigation.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/Button.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/Card.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/Chip.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/EmptyState.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/FeedbackBanner.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/FloatingActionButton.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/FormField.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/FormSection.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/HeaderActions.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/IconButton.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/ProgressBar.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/ScreenHeader.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/SearchField.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/SegmentedControl.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/SelectionRow.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/Skeleton.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/components/mobile/ui/index.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -183,7 +327,39 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/features/friction/FrictionRadarView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/friction/__tests__/FrictionRadarView.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/friction/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/goals/__tests__/goal-detail.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/features/goals/__tests__/query.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/goals/components/GoalCard.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/goals/components/GoalsListView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/goals/create/GoalCreateScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/goals/detail/GoalDetailScreen.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -191,11 +367,83 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/features/health/components/HealthCoachSnapshot.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/health/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/__tests__/inbox-capture.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/__tests__/processing-query.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/__tests__/processing-surface.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/__tests__/virtualized-list.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/components/InboxCaptureSheet.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/components/InboxConvertSheet.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/components/InboxEditSheet.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/inbox/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/notifications/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/onboarding/OnboardingScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/onboarding/__tests__/onboarding-screen.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/features/projects/__tests__/form-utils.test.ts": {
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/features/projects/__tests__/project-detail.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/features/projects/__tests__/query.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/projects/components/ProjectCard.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/projects/components/ProjectsListView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/projects/create/ProjectCreateScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/projects/detail/ProjectDetailScreen.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -207,6 +455,78 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/features/search/__tests__/search.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/search/search.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/__tests__/query.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/__tests__/views.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/components/TaskCard.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/components/TaskFilters.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/components/TaskQuickFilters.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/components/TasksListView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/create/TaskCreateScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskDetailScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskDetailsSection.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskIdentityCard.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskReminderSection.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskSaveBar.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskScheduleSection.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/TaskStateSection.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/__tests__/task-detail-add-to-today.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/tasks/detail/formatters.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/features/tasks/form-utils.ts": {
       "errors": 0,
       "warnings": 0
@@ -215,7 +535,83 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/features/tasks/views.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/__tests__/query.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/__tests__/runtime.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/components/FocusQueue.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/components/TimerClock.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/components/TimerScreenContent.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/components/TrackedTimeSummary.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/timer/runtime.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/today/components/DailyMomentum.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/today/components/TodaySection.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/today/components/TodayTaskCard.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/today/components/TodayWorkspaceInsights.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/today/components/__tests__/TodayWorkspaceInsights.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/features/today/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/updates/UpdatesScreen.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/updates/__tests__/UpdatesScreen.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/weekly-review/query.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/features/work/WorkModeSelector.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/__tests__/client-base-url.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -227,7 +623,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/lib/api/__tests__/integration.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/lib/api/__tests__/projects.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/__tests__/refresh-single-flight.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/__tests__/tasks.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/__tests__/timer.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -243,7 +655,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/lib/api/friction.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/lib/api/goals.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/health.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/inbox.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/notifications.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -255,12 +683,104 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/lib/api/time-context.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/api/timer.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/lib/api/today.ts": {
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/lib/api/weekly-review.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/auth/__tests__/auth-context.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/auth/__tests__/logout-refresh-race.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/auth/__tests__/session-expiry.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/lib/auth/auth-context.tsx": {
-      "errors": 1,
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/auth/session-expiry.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/hooks/__tests__/use-account-timezone.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/hooks/use-account-timezone.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/lifecycle/__tests__/focus-manager.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/lifecycle/__tests__/resume-refresh.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/lifecycle/focus-manager.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/lifecycle/resume-refresh.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/navigation/__tests__/friction-target.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/navigation/friction-target.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/__tests__/target.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/channel.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/installation.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/permissions.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/provider.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/registration.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/target.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/notifications/token.ts": {
+      "errors": 0,
       "warnings": 0
     },
     "apps/mobile/lib/query/provider.tsx": {
@@ -271,7 +791,59 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/mobile/lib/storage/__tests__/onboarding.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/storage/onboarding.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/mobile/lib/storage/session.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/__tests__/native.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/__tests__/recovery.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/__tests__/service.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/__tests__/store-stability.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/__tests__/useAppUpdates-loop.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/native.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/recovery.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/types.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/mobile/lib/updates/useAppUpdates.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -284,6 +856,14 @@
       "warnings": 0
     },
     "apps/mobile/types/today.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/adapters/inbox-ai-stub.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -303,7 +883,31 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/server/src/routes/auth.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/friction.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/server/src/routes/goals.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/health.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/inbox.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/notifications.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/operator.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -311,11 +915,95 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/server/src/routes/tasks.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/time-context.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/timer.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/today.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/src/routes/weekly-review.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/server/src/serve.ts": {
       "errors": 0,
       "warnings": 0
     },
+    "apps/server/test/fixtures.task-parity.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/friction-server.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/harness.task-parity.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/inbox-fast-capture.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/inbox-server.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/notifications.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/platform-server.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/server-coverage-wave-02.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/server/test/server.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/task-mobile-parity.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/task-mutations-parity.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/task-recurrence-today-mutations.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/task-server.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/today-mobile-parity.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/transport-convergence.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/vercel-entrypoint.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/server/test/vercel-runtime-bundle.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -328,6 +1016,10 @@
       "warnings": 0
     },
     "apps/web/playwright.config.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/playwright.pwa-auth.config.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -353,7 +1045,7 @@
     },
     "apps/web/src/app/api/agent/capabilities/route.test.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/web/src/app/api/agent/capabilities/route.ts": {
       "errors": 0,
@@ -503,103 +1195,43 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/CommandCenterSpotlight.tsx": {
+    "apps/web/src/app/backlog/actions.ts": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/DashboardHeroSection.tsx": {
+    "apps/web/src/app/backlog/backlog-add-button.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/FocusPanelCard.tsx": {
+    "apps/web/src/app/backlog/backlog-archive-controls.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/GoalMovementCard.tsx": {
+    "apps/web/src/app/backlog/backlog-convert-form.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/McpComingSoonAnnouncement.test.tsx": {
+    "apps/web/src/app/backlog/backlog-item-form.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/McpComingSoonAnnouncement.tsx": {
+    "apps/web/src/app/backlog/backlog-item-form.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/PanelErrorBoundary.tsx": {
+    "apps/web/src/app/backlog/error.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/ProjectStateCard.tsx": {
+    "apps/web/src/app/backlog/loading.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/RelativeTime.tsx": {
+    "apps/web/src/app/backlog/page.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/dashboard/_components/ReviewPulseCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_components/TimerSummaryCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_components/TodayPlannerCard.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_components/WorkStatsPulse.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_components/dashboard-async-panels.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_components/skeletons.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/dashboard-data.test.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/dashboard-data.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/dashboard-helpers.test.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/dashboard-helpers.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/focus-panel.test.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/focus-panel.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/linear-dashboard.test.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/_lib/linear-dashboard.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/health/route.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/app/dashboard/loading.tsx": {
+    "apps/web/src/app/backlog/page.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -611,7 +1243,27 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/friction/loading.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/friction/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/global-error.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/goals/_components/GoalsPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/goals/_components/goals-composition.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/goals/_lib/goals-page-model.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -633,13 +1285,97 @@
     },
     "apps/web/src/app/goals/page.tsx": {
       "errors": 0,
-      "warnings": 1
+      "warnings": 0
+    },
+    "apps/web/src/app/help/help-directory.tsx": {
+      "errors": 0,
+      "warnings": 0
     },
     "apps/web/src/app/help/help-page.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/app/help/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_components/activity-pulse-section.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_components/activity-pulse-section.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_components/authenticated-home-page.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_components/authenticated-home-page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_components/home-quick-actions.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-activity-grid.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-activity-grid.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-activity-pulse.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-activity-pulse.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-greeting.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-greeting.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-page-model.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/_lib/home-page-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/components/hero-grid.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/components/live-board.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/components/reveal-on-view.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/components/site-footer.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/components/site-header.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/components/weight-ramp.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/error.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -655,23 +1391,39 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/ideas/actions.ts": {
+    "apps/web/src/app/home/home-routing.test.ts": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/ideas/create-idea-note-form.tsx": {
+    "apps/web/src/app/home/loading.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/ideas/edit-idea-note-form.tsx": {
+    "apps/web/src/app/home/page.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/app/ideas/idea-note-archive-controls.tsx": {
+    "apps/web/src/app/home/sections/closing.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/sections/hero.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/home/sections/loop.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/ideas/error.tsx": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/app/ideas/ideas-page.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/ideas/loading.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -703,7 +1455,51 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/not-found-routing.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/not-found.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/notifications/actions.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/notifications/loading.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/notifications/notifications-inbox.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/notifications/page.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/notifications/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/oauth/consent/consent-approval-label.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/oauth/consent/consent-approval-label.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/oauth/consent/page.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/oauth/consent/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/operator-acceptance.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -715,7 +1511,31 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/review/[reviewId]/page.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/review/[reviewId]/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/review/_components/ReviewPageView.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/review/_components/ReviewPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/review/_components/review-composition.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/review/_lib/review-page-model.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/review/_lib/review-page-model.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -728,6 +1548,10 @@
       "warnings": 0
     },
     "apps/web/src/app/review/error.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/review/export/route.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -783,6 +1607,14 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/search/actions.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/settings/account/account-settings-page.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/settings/account/actions.ts": {
       "errors": 0,
       "warnings": 0
@@ -791,11 +1623,35 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/settings/account/timezone-card.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/settings/account/timezone-card.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/settings/loading.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/shutdown/_components/ShutdownPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/shutdown/_lib/shutdown-page-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/shutdown/actions.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/app/shutdown/actions.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/shutdown/loading.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -821,7 +1677,7 @@
     },
     "apps/web/src/app/signup/signup-form.tsx": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/web/src/app/signup/signup-validation.test.ts": {
       "errors": 0,
@@ -831,11 +1687,59 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/startup/_components/StartupPageView.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/startup/_components/StartupPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/startup/_lib/startup-page-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/startup/actions.ts": {
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/startup/error.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/startup/loading.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/startup/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/_components/TasksPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/_components/tasks-list-table.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/_components/tasks-list-table.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/_components/tasks-page-view.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/_lib/tasks-page-model.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/_lib/tasks-page-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/actions-title-length.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -848,7 +1752,7 @@
       "warnings": 0
     },
     "apps/web/src/app/tasks/create-task-form.tsx": {
-      "errors": 2,
+      "errors": 0,
       "warnings": 0
     },
     "apps/web/src/app/tasks/error.tsx": {
@@ -863,7 +1767,19 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/tasks/projects/[slug]/delete/page.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/projects/[slug]/delete/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/tasks/projects/[slug]/loading.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/tasks/projects/[slug]/page.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -899,7 +1815,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/tasks/projects/purge-rpc-migration.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/tasks/saved-views-actions.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/timer/_components/TimerPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/timer/_components/timer-page-view.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/timer/_lib/timer-page-model.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -912,6 +1844,10 @@
       "warnings": 0
     },
     "apps/web/src/app/timer/error.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/timer/export/route.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -928,6 +1864,10 @@
       "warnings": 0
     },
     "apps/web/src/app/timer/loading.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/timer/page.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -967,11 +1907,59 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/today/operator-actions.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/today/page.tsx": {
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/today/today-page-presentation.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-activity/day-details/route.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/WorkActivityHeatmap.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/WorkActivityHeatmap.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/WorkAnalyticsPageView.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/WorkAnalyticsPageView.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/analytics-composition.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/analytics-redesign.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_components/analytics-scope-wiring.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/_lib/work-analytics-page-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/work-analytics/analytics-drilldown-context.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/app/work-analytics/analytics-drilldown-drawer.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -999,7 +1987,19 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/app/work-analytics/page-metadata.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/app/work-analytics/page.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/create/unified-create-sheet.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/create/unified-create-sheet.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1015,11 +2015,51 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/health/health-coach-snapshot.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/inbox/capture-action.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/inbox/inbox-capture-sheet.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/inbox/inbox-capture-trigger.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/inbox/inbox-capture.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/inbox/inbox-idempotency.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/layout/app-shell.tsx": {
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/components/layout/editorial-shell.test.ts": {
+    "apps/web/src/components/layout/command-palette-model.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/command-palette-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/command-palette.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/command-palette.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/global-quick-action-controllers.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1039,6 +2079,14 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/layout/navigation-redesign.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/quick-action-ownership.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/layout/shell-route-meta.ts": {
       "errors": 0,
       "warnings": 0
@@ -1055,11 +2103,31 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/layout/sidebar-collapse.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/sidebar-create-button.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/sidebar-create-task.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/sidebar-create-task.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/layout/sidebar-help-wiring.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/components/layout/sidebar-logout-wiring.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/sidebar-logout.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1079,6 +2147,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/layout/sidebar-workspace-refinement.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/layout/sidebar.test.tsx": {
       "errors": 0,
       "warnings": 0
@@ -1087,11 +2159,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/layout/theme-control.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/theme-control.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/layout/top-bar.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/components/layout/top-bar.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-drawer-context.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1104,6 +2188,38 @@
       "warnings": 0
     },
     "apps/web/src/components/layout/workspace-keyboard-shortcuts.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-search-trigger.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-search-trigger.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-shell.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-shell.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-skeleton-shell.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/layout/workspace-skeleton-shell.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/marketing/nav-frame.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/motion-provider.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1139,6 +2255,14 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/review/weekly-intelligence-summary.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/review/weekly-intelligence-summary.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/shutdown/shutdown-reflection-form.tsx": {
       "errors": 0,
       "warnings": 0
@@ -1159,12 +2283,44 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/tasks/bulk-archive-completed-tasks-form.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/confirm-delete-task-button.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/confirm-delete-task-dialog.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/edit-task-modal.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/edit-task-modal.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/tasks/focus-pin-toggle-form.tsx": {
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/tasks/inline-task-delete-confirm.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/inline-task-update-form.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/tasks/inline-task-update-form.tsx": {
-      "errors": 2,
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/quick-task-sheet.render.test.tsx": {
+      "errors": 0,
       "warnings": 0
     },
     "apps/web/src/components/tasks/quick-task-sheet.test.ts": {
@@ -1172,7 +2328,19 @@
       "warnings": 0
     },
     "apps/web/src/components/tasks/quick-task-sheet.tsx": {
-      "errors": 3,
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/quick-task-submit.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/task-card-actions.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/task-card-actions.tsx": {
+      "errors": 0,
       "warnings": 0
     },
     "apps/web/src/components/tasks/task-due-date-label.test.tsx": {
@@ -1183,7 +2351,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/tasks/task-edit-modal-trigger.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/task-filter-controls.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/tasks/task-filter-controls.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/task-filter-url.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/task-filter-url.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1192,6 +2376,10 @@
       "warnings": 0
     },
     "apps/web/src/components/tasks/task-kanban-card.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/task-kanban-delete-confirm.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1211,7 +2399,15 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/tasks/tasks-new-task-button.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/tasks/tasks-workspace-shell.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/tasks/use-task-editor-open-state.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1220,7 +2416,11 @@
       "warnings": 0
     },
     "apps/web/src/components/timer/live-duration.tsx": {
-      "errors": 1,
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/timer/session-timing-editor.test.tsx": {
+      "errors": 0,
       "warnings": 0
     },
     "apps/web/src/components/timer/session-timing-editor.tsx": {
@@ -1239,7 +2439,43 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/today/today-cockpit-panels.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/today/today-cockpit-panels.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-header-actions.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-intelligence-panel.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-kpi-row.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-kpi-row.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-lane-panel.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-lane-panel.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-operator-plan.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/today/today-progressive-disclosure.test.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1248,14 +2484,6 @@
       "warnings": 0
     },
     "apps/web/src/components/today/today-section.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/components/today/today-suggestions-panel.tsx": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/components/today/today-summary-bar.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1279,7 +2507,19 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/ui/dashboard-section.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/ui/empty-state.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/export-csv-button.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/export-csv-button.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1291,11 +2531,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/components/ui/metric.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/components/ui/pending-submit-button.tsx": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/components/ui/progress-bar.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/progress-semantics.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/section-header.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1320,6 +2572,26 @@
       "warnings": 0
     },
     "apps/web/src/components/ui/textarea.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/tooltip.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/tooltip.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/ui/trend-delta.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/work-analytics/analytics-charts.test.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/components/work-analytics/analytics-charts.tsx": {
       "errors": 0,
       "warnings": 0
     },
@@ -1348,6 +2620,18 @@
       "warnings": 0
     },
     "apps/web/src/lib/contracts/mobile.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/cron/operational-boundaries.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/cron/route-runtime.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/cron/route-runtime.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1419,6 +2703,18 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/hooks/display-timezone-bootstrap.tsx": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/hooks/use-display-timezone.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/hooks/workspace-theme.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/http/agent-capabilities-handler.ts": {
       "errors": 0,
       "warnings": 0
@@ -1429,11 +2725,11 @@
     },
     "apps/web/src/lib/http/agent-task-handlers.test.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/web/src/lib/http/agent-task-handlers.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/web/src/lib/idea-note-domain.ts": {
       "errors": 0,
@@ -1455,6 +2751,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/mcp/audit-event-rpc-migration.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/mcp/audit-repository.test.ts": {
       "errors": 0,
       "warnings": 0
@@ -1468,6 +2768,10 @@
       "warnings": 0
     },
     "apps/web/src/lib/mcp/audited-read-handlers.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/audited-write-handlers.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1519,6 +2823,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/mcp/grant-resolution-rpc-migration.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/mcp/handler-auth.test.ts": {
       "errors": 0,
       "warnings": 0
@@ -1535,7 +2843,31 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/mcp/inspector-config.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/mcp/mcp-database.types.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mcp-e2e-harness.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mcp-e2e-mocks.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mcp-e2e-real-client.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mcp-real-v2-client.e2e.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mcp-w2-w15.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1548,6 +2880,22 @@
       "warnings": 0
     },
     "apps/web/src/lib/mcp/metadata.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mrtr-binding.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mrtr-binding.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mutation-idempotency.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/mutation-idempotency.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1592,6 +2940,10 @@
       "warnings": 0
     },
     "apps/web/src/lib/mcp/read-tool-handlers.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/request-state.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1655,6 +3007,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/mcp/tool-discovery.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/mcp/web-transport-handler.test.ts": {
       "errors": 0,
       "warnings": 0
@@ -1663,11 +3019,63 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/mcp/write-tool-handlers.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/goals.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/goals.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/projects.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/projects.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/tasks.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/tasks.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/timer.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/timer.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/today.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/mcp/write/today.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/middleware-navigation.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/lib/monitoring/capture-server-exception.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/notification-target.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/notification-target.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1699,6 +3107,14 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/presentation-format.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/presentation-format.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/project-archive.test.ts": {
       "errors": 0,
       "warnings": 0
@@ -1712,6 +3128,14 @@
       "warnings": 0
     },
     "apps/web/src/lib/quick-task-command-parser.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/request-time-context.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/request-time-context.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1739,6 +3163,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/review-week.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/review-week.ts": {
       "errors": 0,
       "warnings": 0
@@ -1753,15 +3181,15 @@
     },
     "apps/web/src/lib/services/agent-task-service.test.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/web/src/lib/services/agent-task-service.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "apps/web/src/lib/services/agent-token-repository.ts": {
       "errors": 0,
-      "warnings": 1
+      "warnings": 0
     },
     "apps/web/src/lib/services/agent-token-scopes.test.ts": {
       "errors": 0,
@@ -1777,7 +3205,7 @@
     },
     "apps/web/src/lib/services/agent-token-service.ts": {
       "errors": 0,
-      "warnings": 1
+      "warnings": 0
     },
     "apps/web/src/lib/services/auth-service.ts": {
       "errors": 0,
@@ -1803,14 +3231,6 @@
       "errors": 0,
       "warnings": 0
     },
-    "apps/web/src/lib/services/dashboard-today-adapter.test.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "apps/web/src/lib/services/dashboard-today-adapter.ts": {
-      "errors": 0,
-      "warnings": 0
-    },
     "apps/web/src/lib/services/execution-evidence-service.test.ts": {
       "errors": 0,
       "warnings": 0
@@ -1823,11 +3243,19 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/services/friction-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/services/google-calendar-service.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/lib/services/google-calendar-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/health-snapshot-service.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1840,6 +3268,22 @@
       "warnings": 0
     },
     "apps/web/src/lib/services/mobile-auth-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/notification-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/operator-proposal-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/operator-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/request-identity-convergence.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1887,11 +3331,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/services/task-summary.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/task-title-length.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/services/task-transition-service.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/lib/services/task-transition-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/time-context-service.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -1939,9 +3395,45 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/services/work-activity-contract.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-data-adapter.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-data-adapter.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-grid.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-grid.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-read-model.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-read-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-service.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-activity-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/services/work-analytics-data-adapter.test.ts": {
       "errors": 0,
-      "warnings": 3
+      "warnings": 0
     },
     "apps/web/src/lib/services/work-analytics-data-adapter.ts": {
       "errors": 0,
@@ -1963,13 +3455,37 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/services/work-analytics-selected-range-integrity.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/services/work-analytics-service.test.ts": {
       "errors": 0,
       "warnings": 0
     },
     "apps/web/src/lib/services/work-analytics-service.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/work-analytics-window-integrity.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/workspace-search-service.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/services/workspace-search-service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/session-day-aggregation.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/session-day-aggregation.ts": {
+      "errors": 0,
+      "warnings": 0
     },
     "apps/web/src/lib/supabase-error.test.ts": {
       "errors": 0,
@@ -2051,6 +3567,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/task-navigation.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/task-recurrence.test.ts": {
       "errors": 0,
       "warnings": 0
@@ -2076,6 +3596,14 @@
       "warnings": 0
     },
     "apps/web/src/lib/task-session.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/theme-preference.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/theme-preference.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2119,6 +3647,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/validation/mobile-list-query.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/validation/mobile.ts": {
       "errors": 0,
       "warnings": 0
@@ -2131,7 +3663,15 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/lib/workspace-events.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/lib/workspace-responsive-layout.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/workspace-search.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2140,6 +3680,14 @@
       "warnings": 0
     },
     "apps/web/src/lib/workspace-shell.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/workspace-theme-store.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/lib/workspace-theme-store.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2155,6 +3703,14 @@
       "errors": 0,
       "warnings": 0
     },
+    "apps/web/src/styles/tokens-contrast.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/src/styles/tokens.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "apps/web/src/test-support/server-only.ts": {
       "errors": 0,
       "warnings": 0
@@ -2164,6 +3720,18 @@
       "warnings": 0
     },
     "apps/web/tests/auth-session.e2e.spec.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/tests/pwa-fixtures.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/tests/pwa-mobile.e2e.spec.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "apps/web/tests/visual-a11y.spec.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2179,6 +3747,10 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/api-client/src/auth.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/api-client/src/client.ts": {
       "errors": 0,
       "warnings": 0
@@ -2187,7 +3759,15 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/api-client/src/friction.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/api-client/src/goals.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/health.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2195,7 +3775,19 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/api-client/src/inbox.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/api-client/src/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/notifications.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/operator.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2203,7 +3795,27 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/api-client/src/tasks.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/time-context.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/timer.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/today.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/api-client/src/types.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/src/weekly-review.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2211,7 +3823,59 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/api-client/test/auth-refresh.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/test/convergence-api-client.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/test/friction-api-client.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/test/notifications.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/test/task-recurrence-today-mutations.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/api-client/test/task-today-api-client.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/ai/structured-suggestion-port.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/application/src/auth/actor.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/friction/context-switch.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/friction/estimate-accuracy.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/friction/neglected-goal.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/friction/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/friction/stale-blocked-signals.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/friction/workload-imbalance.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2227,7 +3891,63 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/application/src/health/recommendations.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/health/workload-snapshot.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/inbox/ai-classification-port.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/inbox/ai-suggest.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/inbox/convert.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/inbox/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/inbox/read-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/inbox/service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/application/src/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/notifications/delivery.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/notifications/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/notifications/service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/operator/lifecycle.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/operator/proposal.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/operator/snapshot.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2243,7 +3963,91 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/application/src/shared/duration.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/shared/execution-evidence.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/shared/hash.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/application/src/shared/result.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/shared/time-context.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/focus-queue.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/list-view.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/mutations-ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/read-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/recurrence.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/tasks/service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/timer/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/timer/service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/today/plan.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/today/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/today/read-model.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/today/service.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/weekly-review/comparison.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/weekly-review/draft.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/weekly-review/ports.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/src/weekly-review/read-model.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2251,11 +4055,171 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/application/test/auth-identity.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/execution-evidence.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/friction-estimate-context.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/friction-neglected-imbalance.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/friction-radar.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/friction-rolling-neglected.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/health-recommendations.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/health-workload-snapshot.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-ai-classification.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-application.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-audit-fixes.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-conversion-i2-i4.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-conversion.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-defect-regression.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/inbox-fast-capture.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/notifications.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/operator-apply-ega518.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/operator-lifecycle.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/operator-proposal.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/operator-snapshot.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/task-application.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/task-list-tz-invariance.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/task-recurrence-today-mutations.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/task-service-error-propagation.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/time-context.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/timer-application.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/today-plan.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/today-timer-canonical.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/today-tz.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/weekly-review-comparison.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/weekly-review-strict-previous.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/weekly-review-time-context.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/application/test/weekly-review.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/contracts/src/agent.ts": {
       "errors": 0,
       "warnings": 0
     },
+    "packages/contracts/src/auth.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/contracts/src/common/task-list.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/execution-evidence.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/friction.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/goals.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/health.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/inbox-ai.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/inbox.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2267,7 +4231,59 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/contracts/src/notifications.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/operator.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/projects.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/time-context.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/src/weekly-review.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/test/auth.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/contracts/test/contracts.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/test/friction.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/test/inbox-ai-contracts.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/test/inbox-contracts.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/test/mobile-auth-contracts.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/contracts/test/notifications.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/execution-evidence/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/friction/repository.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2275,7 +4291,31 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/data-access/src/inbox/ai-classification-stub.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/inbox/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/data-access/src/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/notifications/email-provider.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/notifications/fcm-provider.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/notifications/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/operator/repository.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2287,7 +4327,83 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/data-access/src/tasks/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/time-context/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/timer/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/today/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/src/weekly-review/repository.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/data-access/test/data-access.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/execution-evidence-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/friction-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/inbox-bounds.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/inbox-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/inbox-search-hardening.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/mcp-domain-fencing.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/notifications.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/operator-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/task-recurrence-today-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/task-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/time-context-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/timer-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/data-access/test/weekly-review-repository.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/domain/src/friction/index.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2307,11 +4423,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/domain/src/inbox-ai/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/domain/src/inbox/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/domain/src/index.ts": {
       "errors": 0,
       "warnings": 0
     },
     "packages/domain/src/projects/index.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/domain/src/tasks/due-date.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2327,19 +4455,23 @@
       "errors": 0,
       "warnings": 0
     },
+    "packages/domain/src/time-context.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
     "packages/domain/test/domain.test.ts": {
       "errors": 0,
       "warnings": 0
     },
-    "replace.js": {
-      "errors": 0,
-      "warnings": 2
-    },
-    "replace2.js": {
+    "packages/domain/test/friction.test.ts": {
       "errors": 0,
       "warnings": 0
     },
-    "replace3.js": {
+    "packages/domain/test/rolling-window.test.ts": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "packages/domain/test/time-context.test.ts": {
       "errors": 0,
       "warnings": 0
     },
@@ -2353,7 +4485,7 @@
     },
     "scripts/agent/validate-agent-context.mjs": {
       "errors": 0,
-      "warnings": 1
+      "warnings": 0
     },
     "scripts/agent/validate-agent-context.test.mjs": {
       "errors": 0,
@@ -2371,7 +4503,71 @@
       "errors": 0,
       "warnings": 0
     },
+    "scripts/ci/audit-production.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/check-native-version-bump.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/check-native-version-bump.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/feature-delivery-map.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/feature-delivery-map.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/font-egress.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/guard-ota-native-integration.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/guard-ota-native.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/guard-ota-native.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/lint-diagnostics.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
     "scripts/ci/lint-regression.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/mobile-delivery-guardrails.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/mobile-production-env-guardrail.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/mobile-release-selector.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/mobile-release-selector.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/mobile-verification-ladder.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/mobile-verification-ladder.test.mjs": {
       "errors": 0,
       "warnings": 0
     },
@@ -2379,7 +4575,27 @@
       "errors": 0,
       "warnings": 0
     },
+    "scripts/ci/security-backports.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/security-backports.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
     "scripts/ci/security-proofs.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/unified-ci-force-full.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/validate-mobile-delivery-ref.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ci/validate-mobile-delivery-ref.test.mjs": {
       "errors": 0,
       "warnings": 0
     },
@@ -2391,13 +4607,33 @@
       "errors": 0,
       "warnings": 0
     },
+    "scripts/db/mcp-normal-user-rls-verify.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/db/mcp-receipt-invariant-verify.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/db/project-purge-invariant-verify.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/db/task-status-events-invariant-verify.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/db/timer-invariant-verify.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
     "scripts/ega-runner/src/config.ts": {
       "errors": 0,
       "warnings": 0
     },
     "scripts/ega-runner/src/context.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "scripts/ega-runner/src/db.ts": {
       "errors": 0,
@@ -2408,11 +4644,11 @@
       "warnings": 0
     },
     "scripts/ega-runner/src/evidence.ts": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0
     },
     "scripts/ega-runner/src/github-checks.ts": {
-      "errors": 2,
+      "errors": 0,
       "warnings": 0
     },
     "scripts/ega-runner/src/github-command.ts": {
@@ -2421,7 +4657,7 @@
     },
     "scripts/ega-runner/src/github-git.ts": {
       "errors": 0,
-      "warnings": 8
+      "warnings": 0
     },
     "scripts/ega-runner/src/github-pr.ts": {
       "errors": 0,
@@ -2488,7 +4724,7 @@
       "warnings": 0
     },
     "scripts/ega-runner/src/result.ts": {
-      "errors": 2,
+      "errors": 0,
       "warnings": 0
     },
     "scripts/ega-runner/src/run-lease.ts": {
@@ -2501,7 +4737,7 @@
     },
     "scripts/ega-runner/src/scope.ts": {
       "errors": 0,
-      "warnings": 2
+      "warnings": 0
     },
     "scripts/ega-runner/src/validation.ts": {
       "errors": 0,
@@ -2517,7 +4753,7 @@
     },
     "scripts/ega-runner/test/execution-contract.test.mjs": {
       "errors": 0,
-      "warnings": 5
+      "warnings": 0
     },
     "scripts/ega-runner/test/hermes-executor.test.mjs": {
       "errors": 0,
@@ -2525,9 +4761,13 @@
     },
     "scripts/ega-runner/test/pipeline-integration.mjs": {
       "errors": 0,
-      "warnings": 3
+      "warnings": 0
     },
     "scripts/ega-runner/test/pr-loop-contract.test.mjs": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "scripts/ega-runner/test/pr-loop-deployment-lock.test.mjs": {
       "errors": 0,
       "warnings": 0
     },
@@ -2537,17 +4777,13 @@
     },
     "scripts/ega-runner/test/schema-preflight.test.mjs": {
       "errors": 0,
-      "warnings": 8
+      "warnings": 0
     },
     "scripts/ega-runner/test/smoke-integration.mjs": {
       "errors": 0,
       "warnings": 0
     },
     "scripts/ega-runner/test/worktree-cleanup.test.mjs": {
-      "errors": 0,
-      "warnings": 1
-    },
-    "scripts/export-sonar-reliability-issues.mjs": {
       "errors": 0,
       "warnings": 0
     },
