@@ -257,6 +257,7 @@ export default async function TodayPage({
           loadFailed={selectedTaskResult?.kind === "error"}
           updateFieldAction={updateTaskFieldAction}
           updateDraftAction={updateTaskFieldDraftAction}
+          ownerId={user?.id ?? null}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />

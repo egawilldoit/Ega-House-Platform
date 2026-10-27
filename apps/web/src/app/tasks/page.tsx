@@ -3,6 +3,7 @@ import Link from "next/link";
 import { FolderKanban } from "lucide-react";
 
 import { TasksWorkspaceShell } from "@/components/tasks/tasks-workspace-shell";
+import { getCurrentUser } from "@/lib/services/auth-service";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getTasksPageModel } from "./_lib/tasks-page-model";
@@ -44,7 +45,10 @@ type TasksPageProps = {
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const resolvedSearchParams = await searchParams;
-  const model = await getTasksPageModel(resolvedSearchParams);
+  const [model, user] = await Promise.all([
+    getTasksPageModel(resolvedSearchParams),
+    getCurrentUser(),
+  ]);
 
   return (
     <TasksWorkspaceShell
@@ -60,7 +64,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </Link>
       }
     >
-      <TasksPageView model={model} />
+      <TasksPageView model={model} ownerId={user?.id ?? null} />
     </TasksWorkspaceShell>
   );
 }
