@@ -397,3 +397,67 @@ describe("TaskDrawer character shortcuts", () => {
     expect(updateDraftAction).not.toHaveBeenCalled();
   });
 });
+
+describe("TaskDrawer subtasks", () => {
+  const actions = {
+    addAction: vi.fn(),
+    toggleAction: vi.fn(),
+    renameAction: vi.fn(),
+    deleteAction: vi.fn(),
+    moveAction: vi.fn(),
+    promoteAction: vi.fn(),
+  };
+
+  it("shows progress, the ordered checklist and the add form", () => {
+    currentParams = new URLSearchParams("task=t1");
+    act(() =>
+      root.render(
+        <TaskDrawerHost
+          task={TASK}
+          updateFieldAction={updateFieldAction}
+          updateDraftAction={updateDraftAction}
+          subtasks={[
+            {
+              id: "s1",
+              taskId: "t1",
+              title: "First item",
+              done: true,
+              position: 0,
+              completedAt: "2026-10-27T10:00:00.000Z",
+              createdAt: "2026-10-27T09:00:00.000Z",
+              updatedAt: "2026-10-27T10:00:00.000Z",
+            },
+            {
+              id: "s2",
+              taskId: "t1",
+              title: "Second item",
+              done: false,
+              position: 1,
+              completedAt: null,
+              createdAt: "2026-10-27T09:00:00.000Z",
+              updatedAt: "2026-10-27T09:00:00.000Z",
+            },
+          ]}
+          subtaskActions={actions}
+        />,
+      ),
+    );
+
+    expect(document.body.textContent).toContain("First item");
+    expect(document.body.textContent).toContain("1/2");
+    expect(
+      document.body.querySelector<HTMLInputElement>('input[name="title"]')?.placeholder,
+    ).toContain("Add a subtask");
+
+    const toggle = document.body.querySelector(
+      'button[aria-label="Complete Second item"]',
+    );
+    expect(toggle?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("does not render the checklist without the server action bundle", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+    expect(document.body.textContent).not.toContain("Add a subtask");
+  });
+});

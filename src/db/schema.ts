@@ -595,6 +595,34 @@ export const taskOperationReceipts = pgTable(
   ],
 );
 
+/**
+ * Ordered checklist items inside a task (EGA-782). These are deliberately not
+ * tasks: no timers, reminders, recurrence or completion evidence are copied or
+ * shared, and completion of every item never completes the parent task.
+ */
+export const taskSubtasks = pgTable(
+  "task_subtasks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    ownerUserId: uuid("owner_user_id").default(sql`auth.uid()`).notNull(),
+    taskId: uuid("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    title: varchar("title", { length: 256 }).notNull(),
+    done: boolean("done").notNull().default(false),
+    position: integer("position").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("task_subtasks_task_position_idx").on(table.taskId, table.position),
+    index("task_subtasks_owner_idx").on(table.ownerUserId),
+    check("task_subtasks_title_not_blank", sql`length(btrim(${table.title})) > 0`),
+    check("task_subtasks_position_check", sql`${table.position} >= 0`),
+  ],
+);
+
 export const taskSavedViews = pgTable(
   "task_saved_views",
   {

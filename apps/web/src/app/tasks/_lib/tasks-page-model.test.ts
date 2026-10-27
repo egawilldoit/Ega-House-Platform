@@ -34,7 +34,15 @@ const mockTasks = vi.hoisted(() => [
   },
 ]);
 
-vi.mock("@/lib/services/task-service", () => ({ getTasksWorkspaceData }));
+vi.mock("@/lib/services/task-service", () => ({
+  getTasksWorkspaceData,
+  getTaskDrawerDetail: vi.fn(async () => ({ kind: "unavailable" })),
+}));
+
+vi.mock("@/lib/services/subtask-service", () => ({
+  listTaskSubtasks: vi.fn(async () => ({ data: [], errorMessage: null })),
+  getSubtaskCountsForTasks: vi.fn(async () => ({})),
+}));
 
 const getWebTimeContext = vi.hoisted(() =>
   vi.fn(async () => ({

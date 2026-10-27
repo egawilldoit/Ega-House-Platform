@@ -16,6 +16,7 @@ import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
 import { getTaskDrawerDetail, type TaskDrawerDetail } from "@/lib/services/task-service";
+import { getSubtaskCountsForTasks, listTaskSubtasks } from "@/lib/services/subtask-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
@@ -200,12 +201,18 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
   const selectedTask: TaskDrawerDetail | null =
     drawerResult.kind === "found" ? drawerResult.task : null;
   const selectedTaskError = drawerResult.kind === "error";
+  const selectedTaskSubtasks = selectedTaskId
+    ? (await listTaskSubtasks(selectedTaskId)).data ?? []
+    : [];
+  const subtaskCounts = await getSubtaskCountsForTasks(tasks.map((task) => task.id));
 
   return {
     selectedTaskId,
     selectedTaskMode,
     selectedTask,
     selectedTaskError,
+    selectedTaskSubtasks,
+    subtaskCounts,
     parsed,
     projects,
     goals,
