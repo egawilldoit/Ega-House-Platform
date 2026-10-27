@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 "use client";
 
 import { act } from "react";
