@@ -193,7 +193,7 @@ export function MenuList({
       onKeyDown={handleKeyDown}
       className={cn("max-h-[min(18rem,50vh)] overflow-y-auto focus:outline-none", className)}
     >
-      {items.map((item, index) => {
+      {items.map((item) => {
         const isActive = activeItem === item;
         const isSelected = item.id === value;
         return (
