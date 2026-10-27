@@ -113,11 +113,17 @@ describe("TaskDrawer", () => {
     opener.remove();
   });
 
-  it("does not dismiss a non-modal panel on an outside click", () => {
+  it("does not dismiss a non-modal panel on an outside click", async () => {
     const { onClose } = render();
+    // Radix attaches its pointerdown listener in a macrotask, and a non-modal
+    // dialog defers dismissal to the following click, so the press must happen
+    // after that listener exists.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
     const outside = document.createElement("button");
     document.body.append(outside);
-
     act(() => {
       // jsdom has no PointerEvent; Radix only needs an event of that type.
       outside.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
@@ -126,6 +132,33 @@ describe("TaskDrawer", () => {
 
     expect(onClose).not.toHaveBeenCalled();
     outside.remove();
+  });
+
+  it("still dismisses the modal presentation from the scrim", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+
+    try {
+      const { onClose } = render();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const overlay = document.body.querySelector('[class*="bg-[var(--ega-overlay)]"]');
+      expect(overlay).not.toBeNull();
+      act(() => {
+        overlay?.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, cancelable: true }));
+        overlay?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      await vi.waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
   });
 
   it("renders no dialog when no task is selected", () => {

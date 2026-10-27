@@ -34,8 +34,8 @@ const MOBILE_QUERY = "(max-width: 760px)";
  * Desktop is a non-modal right-hand panel (the list stays usable); narrow
  * viewports get a modal full-screen presentation with a scrim, because a
  * non-modal panel that covers the screen would trap the user behind an inert
- * page. Radix owns focus trapping, focus restoration to the opening trigger,
- * Escape and outside-click dismissal.
+ * page. Radix owns focus trapping and Escape dismissal; focus restoration and
+ * the desktop no-dismiss-on-outside-click rule are explicit here.
  */
 export function TaskDrawer({
   task,
