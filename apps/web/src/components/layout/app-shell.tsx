@@ -103,7 +103,7 @@ export async function AppShell({
 
   return (
     <>
-      <WorkspaceKeyboardShortcuts />
+      <WorkspaceKeyboardShortcuts ownerId={identity.id} />
       <GlobalQuickActionControllers projects={projects} goals={goals} />
 
       <WorkspaceShell
