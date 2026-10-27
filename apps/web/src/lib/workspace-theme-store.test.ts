@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { WORKSPACE_THEME_STORAGE_KEY } from "./theme-preference";

@@ -1,7 +1,7 @@
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { describe, test, vi, beforeEach, afterEach } from "vitest";
-import React from "react";
-import { act } from "react-dom/test-utils";
+import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
 import { OwnerScopedRealtimeRefresh } from "./owner-scoped-realtime-refresh";
@@ -96,6 +96,7 @@ describe("OwnerScopedRealtimeRefresh", () => {
   let reactRoot: Root;
 
   beforeEach(() => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     resetMocks();
     vi.useFakeTimers();
     // Simulate document being visible by default

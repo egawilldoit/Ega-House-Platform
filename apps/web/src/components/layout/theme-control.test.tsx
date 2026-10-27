@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
