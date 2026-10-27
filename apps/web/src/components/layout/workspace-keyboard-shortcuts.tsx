@@ -53,7 +53,7 @@ export function focusShellHeadingFromShortcutNavigation(currentPathname: string)
   });
 }
 
-export function WorkspaceKeyboardShortcuts() {
+export function WorkspaceKeyboardShortcuts({ ownerId = null }: { ownerId?: string | null }) {
   const pathname = usePathname();
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -177,7 +177,7 @@ export function WorkspaceKeyboardShortcuts() {
   return (
     <>
       <ShortcutHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
-      <CommandPalette />
+      <CommandPalette ownerId={ownerId} />
     </>
   );
 }
