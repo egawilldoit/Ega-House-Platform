@@ -46,13 +46,17 @@ export function PropertyPill({
   const [open, setOpen] = useState(false);
   const selected = items.find((item) => item.id === value) ?? null;
   const shown = displayValue ?? selected?.label ?? "—";
+  // A non-string displayValue cannot be read into the trigger's accessible
+  // name, so fall back to the selected item's label rather than announcing
+  // "unset" for a value the user can see.
+  const accessibleValue = typeof shown === "string" ? shown : (selected?.label ?? "unset");
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         type="button"
         disabled={disabled}
-        aria-label={triggerLabel ?? `${label}: ${typeof shown === "string" ? shown : "unset"}`}
+        aria-label={triggerLabel ?? `${label}: ${accessibleValue}`}
         aria-haspopup="listbox"
         className={cn(
           "inline-flex h-7 items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-2",
