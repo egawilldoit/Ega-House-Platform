@@ -24,6 +24,11 @@ type MenuListProps = {
   className?: string;
   /** Id prefix for option elements; one is generated when omitted. */
   idPrefix?: string;
+  /**
+   * Move focus to the list on mount. Defaults to false: a popover already owns
+   * open-focus, and an inline list must not steal focus from the page.
+   */
+  autoFocus?: boolean;
 };
 
 /**
@@ -46,6 +51,7 @@ export function MenuList({
   emptyMessage = "No options",
   className,
   idPrefix,
+  autoFocus = false,
 }: MenuListProps) {
   const generatedPrefix = useId();
   const prefix = idPrefix ?? generatedPrefix;
@@ -69,8 +75,21 @@ export function MenuList({
   });
 
   useEffect(() => {
-    listRef.current?.focus();
-  }, []);
+    if (autoFocus) listRef.current?.focus();
+  }, [autoFocus]);
+
+  // `aria-activedescendant` is the only visible focus indicator here, so the
+  // active row must stay inside the scroll viewport (WCAG 2.4.7).
+  useEffect(() => {
+    if (!activeId) return;
+    // Ids come from `useId` and contain characters that need escaping in a CSS
+    // selector, so match by attribute value instead of building a selector.
+    const targetId = `${prefix}-option-${activeId}`;
+    const option = Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [],
+    ).find((element) => element.id === targetId);
+    option?.scrollIntoView?.({ block: "nearest" });
+  }, [activeId, prefix]);
 
   useEffect(
     () => () => {
@@ -94,17 +113,30 @@ export function MenuList({
 
   const handleTypeAhead = (key: string) => {
     const state = typeAhead.current;
+    const lower = key.toLowerCase();
+    const fresh = state.buffer.length === 0;
     if (state.timer) clearTimeout(state.timer);
-    state.buffer += key.toLowerCase();
+    // A repeated character keeps a one-character buffer so the second press
+    // cycles to that character's next match instead of building an impossible
+    // prefix like "dd".
+    state.buffer = !fresh && state.buffer.endsWith(lower) ? lower : state.buffer + lower;
     state.timer = setTimeout(() => {
       typeAhead.current.buffer = "";
       typeAhead.current.timer = null;
     }, 500);
 
-    const match = items.find(
+    const matches = items.filter(
       (item) => !item.disabled && item.label.toLowerCase().startsWith(state.buffer),
     );
-    if (match) setActiveId(match.id);
+    if (matches.length === 0) return;
+    if (fresh) {
+      setActiveId(matches[0].id);
+      return;
+    }
+    // Repeating one letter cycles through that letter's options instead of
+    // re-selecting the first match every time.
+    const currentIndex = matches.findIndex((item) => item.id === activeId);
+    setActiveId(matches[(currentIndex + 1) % matches.length].id);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -164,6 +196,7 @@ export function MenuList({
             key={item.id}
             id={optionId(item.id)}
             role="option"
+            aria-describedby={item.description ? `${optionId(item.id)}-description` : undefined}
             aria-selected={isSelected}
             aria-disabled={item.disabled || undefined}
             onMouseEnter={() => {
@@ -188,7 +221,11 @@ export function MenuList({
             ) : null}
             <span className="min-w-0 flex-1 truncate">{item.label}</span>
             {item.description ? (
-              <span className="shrink-0 text-xs text-[color:var(--ega-text-tertiary)]">
+              <span
+                id={`${optionId(item.id)}-description`}
+                aria-hidden="true"
+                className="shrink-0 text-xs text-[color:var(--ega-text-tertiary)]"
+              >
                 {item.description}
               </span>
             ) : null}

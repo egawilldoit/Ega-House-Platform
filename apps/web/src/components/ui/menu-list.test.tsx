@@ -56,9 +56,9 @@ describe("MenuList", () => {
     expect(options[2].getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("focuses the listbox on mount and tracks the active option", () => {
+  it("does not steal focus unless asked, and tracks the active option", () => {
     const { listbox } = renderList();
-    expect(document.activeElement).toBe(listbox);
+    expect(document.activeElement).not.toBe(listbox);
     expect(listbox.getAttribute("aria-activedescendant")).toBe(
       container.querySelector('[role="option"]')?.id,
     );
@@ -67,6 +67,24 @@ describe("MenuList", () => {
     expect(listbox.getAttribute("aria-activedescendant")).toBe(
       container.querySelectorAll('[role="option"]')[1].id,
     );
+  });
+
+  it("focuses the listbox when autoFocus is set", () => {
+    const { listbox } = renderList({ autoFocus: true });
+    expect(document.activeElement).toBe(listbox);
+  });
+
+  it("scrolls the active option into view", () => {
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      renderList();
+      press("ArrowDown");
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
   });
 
   it("wraps at the ends and skips disabled options", () => {
@@ -125,11 +143,52 @@ describe("MenuList", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
-  it("moves with type-ahead", () => {
-    const { listbox } = renderList();
+  it("moves with type-ahead and cycles repeated letters", () => {
+    act(() =>
+      root.render(
+        <MenuList
+          label="Status"
+          items={[
+            { id: "done", label: "Done" },
+            { id: "deferred", label: "Deferred" },
+          ]}
+          onSelect={vi.fn()}
+        />,
+      ),
+    );
+    const options = container.querySelectorAll('[role="option"]');
+    const listbox = container.querySelector('[role="listbox"]') as HTMLElement;
+
     press("d");
-    expect(listbox.getAttribute("aria-activedescendant")).toBe(
-      container.querySelectorAll('[role="option"]')[3].id,
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(options[0].id);
+
+    // A repeated "d" keeps the one-character buffer and advances to the next
+    // label starting with that letter instead of matching "dd".
+    press("d");
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(options[1].id);
+
+    // A different letter extends the prefix and re-matches from the start.
+    press("o");
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(options[0].id);
+  });
+
+  it("exposes an option description without folding it into the name", () => {
+    act(() =>
+      root.render(
+        <MenuList
+          label="Status"
+          items={[{ id: "done", label: "Done", description: "ship it" }]}
+          onSelect={vi.fn()}
+        />,
+      ),
+    );
+    const option = container.querySelector('[role="option"]') as HTMLElement;
+    expect(option.textContent).toContain("Done");
+    expect(option.getAttribute("aria-describedby")).toBe(
+      `${option.id}-description`,
+    );
+    expect(container.querySelector(`#${option.id}-description`)?.getAttribute("aria-hidden")).toBe(
+      "true",
     );
   });
 

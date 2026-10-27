@@ -73,6 +73,7 @@ export function PropertyPill({
       </PopoverTrigger>
       <PopoverContent className={contentClassName}>
         <MenuList
+          autoFocus
           label={label}
           items={items}
           value={value}

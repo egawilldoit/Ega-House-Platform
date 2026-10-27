@@ -65,7 +65,7 @@ Available for the Gr8r work (added by EGA-806):
 | Primitive | File | Semantics |
 | --- | --- | --- |
 | `Popover`, `PopoverTrigger`, `PopoverContent` | `components/ui/popover.tsx` | Radix shell: focus return, Escape/outside dismissal, collision-aware placement |
-| `MenuList` | `components/ui/menu-list.tsx` | `role="listbox"` + `role="option"`, roving active option via `aria-activedescendant`, arrow/Home/End/Enter/Space, type-ahead, skips disabled |
+| `MenuList` | `components/ui/menu-list.tsx` | `role="listbox"` + `role="option"`, active option announced via `aria-activedescendant` (not roving tabindex), arrow/Home/End/Enter/Space, type-ahead, disabled skipped, auto-scrolls the active row |
 | `PropertyPill` | `components/ui/property-pill.tsx` | Trigger with `aria-haspopup="listbox"` + `aria-expanded`, composes `Popover` + `MenuList`, closes and reports the selection |
 | `Kbd` | `components/ui/kbd.tsx` | Presentational `<kbd>`; the control owns the shortcut and should expose `aria-keyshortcuts` |
 | `StatusIcon` | `components/ui/status-icon.tsx` | `todo`/`in_progress`/`done`/`blocked`, `role="img"` + label, `decorative` when a visible label exists |
@@ -152,9 +152,26 @@ Map to existing tokens; never import Gr8r values.
 | `--st-done` | `--status-healthy` |
 | `--st-review` | **not defined** — EGA-790 is an unapproved owner decision |
 
-## Not yet built (tracked by later tickets)
+## EGA-806 stage ledger
 
-`ToastProvider` / undo toasts (EGA-786), context menu and bulk bar (EGA-786),
-`MiniCalendar` (EGA-793, prefer native date inputs until a consumer proves the
-need), command palette (EGA-795). Build each with its consumer; do not add them
-speculatively.
+The primitive ticket was split so nothing is built ahead of a consumer. The
+parent contract forbids a "generic component library upfront", so the remainder
+is owned by the tickets that actually mount it.
+
+| Deliverable | State | Owner of the missing part |
+| --- | --- | --- |
+| `Popover`, `MenuList`, `PropertyPill`, `Kbd` | built + tested | — |
+| `StatusIcon` | built + tested; consumed by `StatusBadge` | — |
+| `PriorityIcon` | built + tested; consumed by the tasks list priority badge | — |
+| `--ega-shadow-drag` | token in both palettes + test | consumed by EGA-785 (drag) |
+| `--status-review*` | **not defined** | EGA-790 is an unapproved owner decision |
+| Toast queue + undo | not built | EGA-786 (owns the server receipt/replay contract) |
+| Context menu, bulk bar | not built (dependency installed) | EGA-786 |
+| Dropdown menu primitive | not built (dependency installed) | first row-action consumer |
+| `MiniCalendar` | not built; prefer a native date input | EGA-793 |
+| Radix Dialog task overlay + motion keyframes | not built | EGA-781 (drawer) |
+| Command palette | not built | EGA-795 (combobox semantics) |
+
+`PropertyPill`/`Popover`/`MenuList`/`Kbd` are the exception to "with a consumer":
+they are the shared picker foundation every Wave-1 surface needs, and their
+behaviour is covered by direct tests until the drawer mounts them.
