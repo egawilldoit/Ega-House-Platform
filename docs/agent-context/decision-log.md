@@ -66,3 +66,15 @@ This log persists material **current-behavior vs normative-authority conflicts**
 - **Resolution / required decision:** unify evidence by claim/revision/environment; select applicable scopes; clarify existing authorization and explicit merge gates; route checks to affected workspaces and consumers. Add proportional investigation, recovery, review, and completion guidance without changing application/CI behavior.
 - **Status:** `OPEN` — proposed on `docs/agent-contract-quality-20260904`; this becomes `RESOLVED` only when the corrective change is observed on the canonical branch. Reconcile status at the next decision-log maintenance after that observation.
 - **Follow-up / evidence:** validate instruction links, commands, discovery budget, applicable architecture checks, independent semantic review, and exact-head CI. Writing guidance does not prove installed harness discovery or production behavior.
+
+### DEC-2026-10-27-01 — `review` task status semantics (EGA-790)
+
+- **Date:** 2026-10-27
+- **Scope:** task status set across domain, web, mobile, MCP/agent API, Today, timer and analytics.
+- **Conflict:** EGA-790 asks for a `review` status but marks the semantics as an owner product decision; the canonical status set had only `todo | in_progress | done | blocked`, so Today, timer start, analytics and agent surfaces had no agreed meaning for review work.
+- **Current-behavior evidence:** `packages/domain/src/tasks/status.ts`, `apps/web/src/lib/services/{timer-service,today-plan-builder}.ts`, `apps/web/src/lib/task-list.ts`, `packages/contracts/src/mobile.ts`, mobile `TaskCard`/`TodayTaskCard` status unions.
+- **Normative authority:** EGA-790 "Recommended proposal for decision" plus the delivery instruction to finish the 33-issue program; the recommendation is adopted as the working semantics and remains revisable by the owner.
+- **Classification:** `UNRESOLVED_PRODUCT_DECISION` — resolved by adopting the proposed semantics below; the owner may revise them.
+- **Resolution / required decision:** `review` is open, non-completed work awaiting owner validation. It appears wherever statuses appear (web board/filters/badges, mobile status control and chip colour, MCP/agent status enums, analytics open-work buckets). It is not promoted into the Today execution queue (never Start Here/focus) and a timer cannot start from review; starting a timer requires returning to `in_progress`. Agents may request it explicitly through the existing scoped status APIs; opening a PR does not change Runner behaviour. No historical backfill.
+- **Status:** `RESOLVED` for this program by the adopted proposal; `OPEN` for owner confirmation if different semantics are wanted.
+- **Follow-up / evidence:** domain/token/mobile tests, web typecheck and targeted tests on the EGA-790 PR; authenticated browser walkthrough of board/filter/status change is pending credentials.

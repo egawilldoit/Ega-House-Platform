@@ -144,7 +144,7 @@ test("kanban board without active status returns all columns", () => {
 
   assert.deepEqual(
     board.columns.map((column) => column.status),
-    ["todo", "in_progress", "blocked", "done"],
+    ["todo", "in_progress", "review", "blocked", "done"],
   );
 });
 

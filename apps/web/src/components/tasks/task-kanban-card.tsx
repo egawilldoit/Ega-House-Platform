@@ -46,9 +46,12 @@ type TaskKanbanCardProps = {
   error?: string | null;
 };
 
+// Review is an explicit hand-off, never an implicit next step: work enters it
+// from in progress and leaves it back to in progress or straight to done.
 const NEXT_STATUS_BY_STATUS = {
   todo: ["in_progress", "blocked", "done"],
-  in_progress: ["todo", "blocked", "done"],
+  in_progress: ["todo", "review", "blocked", "done"],
+  review: ["in_progress", "blocked", "done"],
   blocked: ["todo", "in_progress", "done"],
   done: ["todo"],
 } as const satisfies Record<TaskStatus, readonly TaskStatus[]>;
@@ -64,6 +67,10 @@ export function getTaskKanbanStatusActionLabel(status: TaskStatus) {
 
   if (status === "in_progress") {
     return "In Progress";
+  }
+
+  if (status === "review") {
+    return "Review";
   }
 
   if (status === "blocked") {
