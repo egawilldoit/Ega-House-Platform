@@ -192,6 +192,49 @@ describe("MenuList", () => {
     );
   });
 
+  it("seeds the active row from the first enabled option", () => {
+    act(() =>
+      root.render(
+        <MenuList
+          label="Status"
+          items={[
+            { id: "blocked", label: "Blocked", disabled: true },
+            { id: "done", label: "Done" },
+          ]}
+          onSelect={vi.fn()}
+        />,
+      ),
+    );
+    const listbox = container.querySelector('[role="listbox"]') as HTMLElement;
+    const options = container.querySelectorAll('[role="option"]');
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(options[1].id);
+  });
+
+  it("re-derives the active row when the active option becomes disabled", () => {
+    const base = [
+      { id: "todo", label: "To do" },
+      { id: "done", label: "Done" },
+    ];
+    act(() => root.render(<MenuList label="Status" items={base} onSelect={vi.fn()} />));
+    const listbox = container.querySelector('[role="listbox"]') as HTMLElement;
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(
+      container.querySelectorAll('[role="option"]')[0].id,
+    );
+
+    act(() =>
+      root.render(
+        <MenuList
+          label="Status"
+          items={[{ ...base[0], disabled: true }, base[1]]}
+          onSelect={vi.fn()}
+        />,
+      ),
+    );
+    expect(listbox.getAttribute("aria-activedescendant")).toBe(
+      container.querySelectorAll('[role="option"]')[1].id,
+    );
+  });
+
   it("renders an empty message when there are no options", () => {
     act(() => root.render(<MenuList label="Status" items={[]} onSelect={vi.fn()} />));
     expect(container.querySelector('[role="listbox"]')).toBeNull();

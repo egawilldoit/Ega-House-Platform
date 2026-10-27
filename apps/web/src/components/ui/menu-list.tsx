@@ -63,11 +63,15 @@ export function MenuList({
     const selected = items.find((item) => item.id === value && !item.disabled);
     return (selected ?? items.find((item) => !item.disabled))?.id ?? null;
   });
-  const activeIndex = Math.max(
-    0,
-    items.findIndex((item) => item.id === activeId),
-  );
-  const activeItem = items[activeIndex];
+  // Derive the active row defensively: the remembered id can disappear, or the
+  // option can become disabled, when a consumer swaps the option set. Falling
+  // back to `items[0]` would let aria-activedescendant name a disabled row.
+  const remembered = items.find((item) => item.id === activeId);
+  const activeItem =
+    remembered && !remembered.disabled
+      ? remembered
+      : (items.find((item) => !item.disabled) ?? null);
+  const activeIndex = activeItem ? items.indexOf(activeItem) : 0;
   const listRef = useRef<HTMLDivElement>(null);
   const typeAhead = useRef<{ buffer: string; timer: ReturnType<typeof setTimeout> | null }>({
     buffer: "",

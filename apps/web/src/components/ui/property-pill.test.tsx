@@ -123,6 +123,23 @@ describe("PropertyPill", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("names a node display value from the selected label", async () => {
+    await act(async () => {
+      root.render(
+        <PropertyPill
+          label="Status"
+          value="in_progress"
+          items={ITEMS}
+          onSelect={vi.fn()}
+          displayValue={<span>In progress (2)</span>}
+        />,
+      );
+    });
+    const trigger = container.querySelector("button") as HTMLButtonElement;
+    expect(trigger.textContent).toContain("In progress (2)");
+    expect(trigger.getAttribute("aria-label")).toBe("Status: In progress");
+  });
+
   it("closes on Escape and returns focus to the trigger", async () => {
     const { trigger } = await renderPill();
     await pointerClick(trigger);
