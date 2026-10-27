@@ -6,10 +6,11 @@ import { useToastQueue, type ToastActionResult } from "@/components/ui/toast-pro
 export type UndoToastInput = {
   message: string;
   /**
-   * Performs the inverse and reports what the server actually did. Returning
-   * nothing is treated as success; a rejection is reported as failure.
+   * Performs the inverse and reports what the server actually did. The result is
+   * required: a fire-and-forget callback cannot prove the inverse committed, and
+   * the queue never infers success.
    */
-  undo: () => Promise<ToastActionResult> | ToastActionResult | void;
+  undo: () => Promise<ToastActionResult> | ToastActionResult;
   durationMs?: number;
 };
 

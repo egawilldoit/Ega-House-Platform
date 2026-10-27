@@ -54,6 +54,20 @@ const region = () => document.body.querySelector('[role="region"][aria-label="No
 const toasts = () => Array.from(document.body.querySelectorAll('[role="status"], [role="alert"]'));
 
 describe("ToastProvider", () => {
+  it("mounts the polite live region before any message exists", () => {
+    const api = render();
+    const live = document.body.querySelector('[aria-live="polite"]');
+    expect(live).not.toBeNull();
+    expect(live?.textContent).toBe("");
+
+    act(() => {
+      api.show({ message: "Task archived" });
+    });
+    expect(document.body.querySelector('[aria-live="polite"]')?.textContent).toContain(
+      "Task archived",
+    );
+  });
+
   it("shows a message and dismisses itself after the default duration", () => {
     const api = render();
     act(() => {
@@ -163,7 +177,14 @@ describe("useUndoToast", () => {
       await Promise.resolve();
     });
 
-    expect(toasts()[0].textContent).toContain("Could not undo");
+    expect(toasts()[0].textContent).toContain("changed since");
+    expect(toasts()[0].textContent).not.toContain("Nothing was changed");
+    // The inverse must not be offered a second time.
+    expect(
+      Array.from(document.body.querySelectorAll("button")).some(
+        (button) => button.textContent === "Undo",
+      ),
+    ).toBe(false);
   });
 
   it("reports a thrown inverse as a failure", async () => {
@@ -185,6 +206,6 @@ describe("useUndoToast", () => {
       await Promise.resolve();
     });
 
-    expect(toasts()[0].textContent).toContain("Nothing was changed");
+    expect(toasts()[0].textContent).toContain("check the current state");
   });
 });
