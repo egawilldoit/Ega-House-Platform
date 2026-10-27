@@ -2237,3 +2237,49 @@ export async function deleteTaskSafely(
 
   return { errorMessage: null };
 }
+
+/**
+ * Minimal projection the task drawer needs for its header and read-only
+ * metadata. Mutations keep using the existing validated update services.
+ */
+export type TaskDrawerDetail = {
+  id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_date: string | null;
+  project_id: string | null;
+  goal_id: string | null;
+  archived_at: string | null;
+};
+
+/**
+ * Load one task for the detail drawer, scoped to the authenticated owner.
+ *
+ * RLS already restricts rows to the caller; the explicit `owner_user_id` filter
+ * makes the intent local and keeps an unknown id indistinguishable from another
+ * owner's id (both return null), so the drawer cannot disclose that a task
+ * exists elsewhere.
+ */
+export async function getTaskDrawerDetail(
+  taskId: string,
+  options?: { supabase?: SupabaseServerClient },
+): Promise<TaskDrawerDetail | null> {
+  const normalizedId = taskId.trim();
+  if (!normalizedId) return null;
+
+  const supabase = await resolveSupabaseClient(options?.supabase);
+  const userId = await getAuthenticatedUserId(supabase);
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("id, title, status, priority, due_date, project_id, goal_id, archived_at")
+    .eq("id", normalizedId)
+    .eq("owner_user_id", userId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+
+  return data as TaskDrawerDetail;
+}
