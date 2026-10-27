@@ -1,7 +1,24 @@
-import { SHORTCUT_ROUTE_MAP } from "@/lib/keyboard-shortcuts";
 import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
+import type { WorkspaceSearchScope } from "@/lib/workspace-search";
+import { WORKSPACE_COMMANDS, filterWorkspaceCommands } from "@/lib/workspace-commands";
 
-export type CommandPaletteGroupId = "go-to" | "tasks" | "projects" | "goals" | "quick-actions";
+export type CommandPaletteGroupId = "go-to" | "tasks" | "projects" | "goals" | "ideas" | "quick-actions";
+
+export type CommandPaletteMode = "search" | "commands" | "recents";
+
+export const COMMAND_PALETTE_MODES: Array<{ id: CommandPaletteMode; label: string; hint: string }> = [
+  { id: "search", label: "Search", hint: "Alt+1" },
+  { id: "commands", label: "Commands", hint: "Alt+2" },
+  { id: "recents", label: "Recents", hint: "Alt+3" },
+];
+
+export const COMMAND_PALETTE_SCOPE_LABELS: Record<WorkspaceSearchScope, string> = {
+  all: "All",
+  tasks: "Tasks",
+  projects: "Projects",
+  goals: "Goals",
+  ideas: "Ideas",
+};
 
 export type CommandPaletteItem = {
   id: string;
@@ -18,75 +35,111 @@ export type CommandPaletteSection = {
   items: CommandPaletteItem[];
 };
 
+/** A locally remembered entity, scoped to the signed-in owner. */
+export type RecentCommandEntity = {
+  id: string;
+  kind: "task" | "project" | "goal" | "idea";
+  label: string;
+  href: `/${string}`;
+};
+
 const GROUP_TITLES: Record<CommandPaletteGroupId, string> = {
   "go-to": "Go to",
   tasks: "Tasks",
   projects: "Projects",
   goals: "Goals",
+  ideas: "Ideas",
   "quick-actions": "Quick actions",
 };
 
-const NAVIGATION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href">> = [
-  { label: "Today", href: SHORTCUT_ROUTE_MAP.today },
-  { label: "Tasks", href: SHORTCUT_ROUTE_MAP.tasks },
-  { label: "Goals", href: SHORTCUT_ROUTE_MAP.goals },
-  { label: "Timer", href: SHORTCUT_ROUTE_MAP.timer },
-  { label: "Review", href: SHORTCUT_ROUTE_MAP.review },
-  { label: "Analytics", href: "/work-analytics" },
-  { label: "Backlog", href: "/backlog" },
-  { label: "Notifications", href: "/notifications" },
-  { label: "Startup", href: "/startup" },
-  { label: "Shutdown", href: "/shutdown" },
-  { label: "Apps", href: SHORTCUT_ROUTE_MAP.apps },
-  { label: "Help", href: "/help" },
-  { label: "Settings", href: "/settings/account" },
-];
+export const RECENTS_STORAGE_PREFIX = "ega:command-palette:recents";
+const RECENTS_LIMIT = 8;
 
-const QUICK_ACTION_ITEMS: Array<Pick<CommandPaletteItem, "label" | "href" | "hint" | "action">> = [
-  { label: "Add to Backlog", href: "/backlog", hint: "Capture", action: "capture" },
-  { label: "New task", href: "/tasks", hint: "Task", action: "quick-task" },
-  { label: "New Project", href: "/tasks/projects/new", hint: "Project" },
-];
+export function recentsStorageKey(ownerId: string | null): string {
+  return `${RECENTS_STORAGE_PREFIX}:${ownerId ?? "anonymous"}`;
+}
 
-function navigationItems(): CommandPaletteItem[] {
-  return NAVIGATION_ITEMS.map((item) => ({
-    id: `nav-${item.label.toLowerCase().replace(/\s+/g, "-")}`,
-    group: "go-to",
-    label: item.label,
-    hint: null,
-    href: item.href,
+/**
+ * Parse stored recents defensively. A payload written for another owner is
+ * ignored instead of being shown to the next account on the same browser.
+ */
+export function parseStoredRecents(raw: string | null, ownerId: string | null): RecentCommandEntity[] {
+  if (!raw || !ownerId) return [];
+  try {
+    const parsed = JSON.parse(raw) as { ownerId?: unknown; items?: unknown };
+    if (parsed.ownerId !== ownerId || !Array.isArray(parsed.items)) return [];
+    return parsed.items
+      .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null)
+      .map((item) => ({
+        id: String(item.id ?? ""),
+        kind: item.kind as RecentCommandEntity["kind"],
+        label: String(item.label ?? ""),
+        href: String(item.href ?? "/") as `/${string}`,
+      }))
+      .filter((item) => item.id && item.label && item.href.startsWith("/"))
+      .slice(0, RECENTS_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+export function serializeRecents(items: RecentCommandEntity[], ownerId: string | null): string {
+  return JSON.stringify({ ownerId, items: items.slice(0, RECENTS_LIMIT) });
+}
+
+export function rememberRecent(
+  items: RecentCommandEntity[],
+  next: RecentCommandEntity,
+): RecentCommandEntity[] {
+  return [next, ...items.filter((item) => !(item.kind === next.kind && item.id === next.id))].slice(
+    0,
+    RECENTS_LIMIT,
+  );
+}
+
+/** Split a label into plain and matched segments; callers render text nodes. */
+export function highlightMatch(
+  label: string,
+  query: string,
+): Array<{ text: string; match: boolean }> {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [{ text: label, match: false }];
+
+  const haystack = label.toLowerCase();
+  const segments: Array<{ text: string; match: boolean }> = [];
+  let cursor = 0;
+
+  while (cursor < label.length) {
+    const hit = haystack.indexOf(needle, cursor);
+    if (hit === -1) {
+      segments.push({ text: label.slice(cursor), match: false });
+      break;
+    }
+    if (hit > cursor) segments.push({ text: label.slice(cursor, hit), match: false });
+    segments.push({ text: label.slice(hit, hit + needle.length), match: true });
+    cursor = hit + needle.length;
+  }
+
+  return segments.filter((segment) => segment.text.length > 0);
+}
+
+function commandItems(group: "navigate" | "create", query: string): CommandPaletteItem[] {
+  return filterWorkspaceCommands(query, group).map((command) => ({
+    id: command.id,
+    group: group === "navigate" ? "go-to" : "quick-actions",
+    label: command.label,
+    hint: command.hint,
+    href: command.href ?? "/tasks",
+    action: command.event ?? undefined,
   }));
 }
 
 export function filterNavigationItems(query: string): CommandPaletteItem[] {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery) {
-    return navigationItems();
-  }
-
-  return navigationItems().filter((item) => item.label.toLowerCase().includes(normalizedQuery));
-}
-
-function quickActionItems(): CommandPaletteItem[] {
-  return QUICK_ACTION_ITEMS.map((item) => ({
-    id: `qa-${item.label.toLowerCase().replace(/\s+/g, "-")}`,
-    group: "quick-actions",
-    label: item.label,
-    hint: item.hint ?? null,
-    href: item.href,
-    action: item.action,
-  }));
+  return commandItems("navigate", query);
 }
 
 export function filterQuickActionItems(query: string): CommandPaletteItem[] {
-  const normalizedQuery = query.trim().toLowerCase();
-
-  if (!normalizedQuery) {
-    return quickActionItems();
-  }
-
-  return quickActionItems().filter((item) => item.label.toLowerCase().includes(normalizedQuery));
+  return commandItems("create", query);
 }
 
 export function buildWorkspaceSections(results: WorkspaceSearchResults): CommandPaletteSection[] {
@@ -99,9 +152,10 @@ export function buildWorkspaceSections(results: WorkspaceSearchResults): Command
       items: results.tasks.map((task) => ({
         id: `task-${task.id}`,
         group: "tasks",
+        // The drawer is the canonical task detail (EGA-781 URL contract).
+        href: `/tasks?task=${task.id}`,
         label: task.title,
         hint: task.projectName,
-        href: `/tasks#task-${task.id}`,
       })),
     });
   }
@@ -134,7 +188,65 @@ export function buildWorkspaceSections(results: WorkspaceSearchResults): Command
     });
   }
 
+  if (results.ideas.length > 0) {
+    sections.push({
+      id: "ideas",
+      title: GROUP_TITLES.ideas,
+      items: results.ideas.map((idea) => ({
+        id: `idea-${idea.id}`,
+        group: "ideas",
+        label: idea.title,
+        hint: idea.status,
+        href: "/backlog",
+      })),
+    });
+  }
+
   return sections;
+}
+
+export function recentsSection(items: RecentCommandEntity[]): CommandPaletteSection | null {
+  if (items.length === 0) return null;
+  return {
+    id: "go-to",
+    title: "Recent",
+    items: items.map((item) => ({
+      id: `recent-${item.kind}-${item.id}`,
+      group: "go-to",
+      label: item.label,
+      hint: item.kind,
+      href: item.href,
+    })),
+  };
+}
+
+/**
+ * Recover the entity behind a result href so recents can dedupe and re-open it.
+ * Only unambiguous entity routes are remembered; static pages are not.
+ */
+export function recentEntityFromHref(
+  href: string,
+  label: string,
+): RecentCommandEntity | null {
+  try {
+    const url = new URL(href, "https://ega.invalid");
+    const taskId = url.searchParams.get("task");
+    if (url.pathname === "/tasks" && taskId) {
+      return { id: taskId, kind: "task", label, href: `/tasks?task=${taskId}` };
+    }
+    const projectMatch = url.pathname.match(/^\/tasks\/projects\/([^/]+)$/);
+    if (projectMatch && projectMatch[1] !== "new") {
+      return {
+        id: projectMatch[1],
+        kind: "project",
+        label,
+        href: `/tasks/projects/${projectMatch[1]}` as `/${string}`,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export function flattenPaletteSections(sections: CommandPaletteSection[]): CommandPaletteItem[] {
@@ -152,3 +264,5 @@ export function nextActiveIndex(current: number, count: number, delta: number): 
 
   return (current + delta + count) % count;
 }
+
+export { WORKSPACE_COMMANDS };
