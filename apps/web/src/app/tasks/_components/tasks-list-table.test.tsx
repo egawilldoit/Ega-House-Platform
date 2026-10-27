@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 import type { TaskRecord } from "@/lib/services/task-service";
 import type { UpdateTaskEditorFormState } from "@/app/tasks/actions";
 
+import { ToastProvider } from "@/components/ui/toast-provider";
 import { TasksListTable, type TaskListActions } from "./tasks-list-table";
 
 let container: HTMLDivElement;
@@ -71,6 +72,9 @@ function buildActions(): TaskListActions {
     createReminderAction: vi.fn(),
     updateReminderAction: vi.fn(),
     cancelReminderAction: vi.fn(),
+    bulkFieldAction: vi.fn(),
+    bulkArchiveAction: vi.fn(),
+    undoAction: vi.fn(),
   };
 }
 
@@ -81,6 +85,7 @@ function renderTable(
 ) {
   return act(async () => {
     root.render(
+      <ToastProvider>
       <TasksListTable
         tasks={tasks}
         taskTotalDurations={{ "task-1": 3661 }}
@@ -91,7 +96,8 @@ function renderTable(
         goalOptions={[{ id: "goal-1", title: "Tighten weekly review", projectId: "project-1" }]}
         actions={actions}
         {...props}
-      />,
+      />
+      </ToastProvider>,
     );
   });
 }
@@ -118,6 +124,7 @@ describe("TasksListTable dense inventory", () => {
     const headers = Array.from(container.querySelectorAll("thead th")).map(
       (header) => header.textContent?.trim(),
     );
+    // The Task header also carries the select-all control.
     expect(headers).toEqual(["Task", "Priority", "Due", "Status", "Actions"]);
   });
 
@@ -512,5 +519,78 @@ describe("TasksListTable dense inventory", () => {
       vi.unstubAllGlobals();
       setDisplayTimezone("UTC");
     }
+  });
+});
+
+describe("TasksListTable selection and bulk actions", () => {
+  it("scopes selection to the rendered rows and shows the bulk toolbar", async () => {
+    await renderTable([
+      buildTask({ id: "task-1", title: "First task", task_recurrences: [] }),
+      buildTask({ id: "task-2", title: "Second task", task_recurrences: [] }),
+    ]);
+
+    const selectFirst = document.body.querySelector<HTMLInputElement>(
+      'input[aria-label="Select First task"]',
+    );
+    await act(async () => {
+      selectFirst?.click();
+    });
+
+    expect(document.body.textContent).toContain("1 selected");
+    const row = document.body.querySelector("#task-task-1");
+    expect(row?.getAttribute("aria-selected")).toBe("true");
+
+    const clear = Array.from(document.body.querySelectorAll("button")).find(
+      (button) => button.textContent === "Clear",
+    );
+    await act(async () => clear?.click());
+    expect(document.body.textContent).not.toContain("1 selected");
+  });
+
+  it("select-all covers exactly the rendered rows", async () => {
+    await renderTable([
+      buildTask({ id: "task-1", title: "First task", task_recurrences: [] }),
+      buildTask({ id: "task-2", title: "Second task", task_recurrences: [] }),
+    ]);
+
+    const selectAll = document.body.querySelector<HTMLInputElement>(
+      'input[aria-label="Select all tasks in this view"]',
+    );
+    await act(async () => selectAll?.click());
+
+    expect(document.body.textContent).toContain("2 selected");
+    expect(
+      document.body.querySelectorAll('input[aria-label^="Select "]:checked').length,
+    ).toBe(3);
+  });
+
+  it("archives the selected ids through the bulk action and reports the result", async () => {
+    const actions = buildActions();
+    actions.bulkArchiveAction = vi.fn(async () => ({
+      operationId: "op-1",
+      field: "archive" as const,
+      applied: 1,
+      results: [{ taskId: "task-1", outcome: "applied" as const, message: null }],
+      undoable: true,
+      errorMessage: null,
+    }));
+
+    await renderTable([buildTask({ task_recurrences: [] })], actions);
+
+    const checkbox = document.body.querySelector<HTMLInputElement>(
+      'input[aria-label^="Select "]',
+    );
+    await act(async () => checkbox?.click());
+
+    const archive = Array.from(document.body.querySelectorAll("button")).find(
+      (button) => button.textContent === "Archive",
+    );
+    await act(async () => archive?.click());
+    await act(async () => {});
+
+    expect(actions.bulkArchiveAction).toHaveBeenCalledWith(
+      expect.objectContaining({ taskIds: ["task-1"], archived: true }),
+    );
+    expect(document.body.textContent).toContain("1 task updated");
   });
 });

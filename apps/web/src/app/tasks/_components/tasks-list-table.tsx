@@ -1,12 +1,13 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { TaskCardActions } from "@/components/tasks/task-card-actions";
 import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal";
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import Link from "next/link";
+import * as ContextMenu from "@radix-ui/react-context-menu";
 import { Badge } from "@/components/ui/badge";
 import { buildTaskDrawerHref } from "@/components/tasks/drawer/use-task-drawer-param";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -24,6 +25,7 @@ import {
   formatDisplayToken,
 } from "@/lib/presentation-format";
 import type { TaskRecord } from "@/lib/services/task-service";
+import { TaskBulkBar, type TaskBulkActions } from "./task-bulk-bar";
 
 export type TaskListActions = {
   updateAction: (formData: FormData) => void | Promise<void>;
@@ -37,6 +39,9 @@ export type TaskListActions = {
   createReminderAction: (formData: FormData) => void | Promise<void>;
   updateReminderAction: (formData: FormData) => void | Promise<void>;
   cancelReminderAction: (formData: FormData) => void | Promise<void>;
+  bulkFieldAction: TaskBulkActions["bulkFieldAction"];
+  bulkArchiveAction: TaskBulkActions["bulkArchiveAction"];
+  undoAction: TaskBulkActions["undoAction"];
 };
 
 type TasksListTableProps = {
@@ -76,12 +81,81 @@ export function TasksListTable({
   density = "comfortable",
   actions,
 }: TasksListTableProps) {
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const visibleIds = tasks.map((task) => task.id);
+  const selectedVisibleIds = selectedIds.filter((id) => visibleIds.includes(id));
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+  const anyArchived = tasks.some(
+    (task) => selectedIds.includes(task.id) && isTaskArchived(task.archived_at),
+  );
+
+  const toggle = (id: string) =>
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
+
+  // Ctrl/Cmd+A applies only to this rendered selection surface, never while a
+  // text field owns focus; Escape clears it.
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      const editable =
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT");
+      if (editable) return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        setSelectedIds(tasks.map((task) => task.id));
+        return;
+      }
+      if (event.key === "Escape") {
+        setSelectedIds([]);
+      }
+    };
+    node.addEventListener("keydown", onKeyDown);
+    return () => node.removeEventListener("keydown", onKeyDown);
+  }, [tasks]);
+
   return (
-    <div className={`overflow-x-auto${density === "compact" ? " data-table--density-compact" : ""}`}>
+    <div
+      ref={containerRef}
+      tabIndex={-1}
+      className={`overflow-x-auto${density === "compact" ? " data-table--density-compact" : ""}`}
+    >
+      {selectedVisibleIds.length > 0 ? (
+        <TaskBulkBar
+          selectedIds={selectedVisibleIds}
+          returnTo={returnTo}
+          projectOptions={projectOptions}
+          anyArchived={anyArchived}
+          actions={actions}
+          onClear={() => setSelectedIds([])}
+        />
+      ) : null}
       <table className="data-table table-fixed max-[761px]:block min-[761px]:w-full min-[761px]:min-w-[40rem] [&_td]:px-2 [&_th]:px-2">
         <thead className="max-[761px]:hidden">
           <tr>
-            <th scope="col">Task</th>
+            <th scope="col">
+              <span className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={allVisibleSelected}
+                  onChange={() =>
+                    setSelectedIds(allVisibleSelected ? [] : tasks.map((task) => task.id))
+                  }
+                  aria-label="Select all tasks in this view"
+                />
+                Task
+              </span>
+            </th>
             <th scope="col" className="w-[10%]">
               Priority
             </th>
@@ -107,6 +181,8 @@ export function TasksListTable({
               projectOptions={projectOptions}
               goalOptions={goalOptions}
               actions={actions}
+              selected={selectedIds.includes(task.id)}
+              onToggleSelected={() => toggle(task.id)}
             />
           ))}
         </tbody>
@@ -219,6 +295,8 @@ function TaskListRow({
   projectOptions,
   goalOptions,
   actions,
+  selected,
+  onToggleSelected,
 }: {
   task: TaskRecord;
   trackedSeconds?: number;
@@ -227,6 +305,8 @@ function TaskListRow({
   projectOptions: Array<{ id: string; name: string }>;
   goalOptions: Array<{ id: string; title: string; projectId: string }>;
   actions: TaskListActions;
+  selected: boolean;
+  onToggleSelected: () => void;
 }) {
   const archived = isTaskArchived(task.archived_at);
   const done = isTaskCompletedStatus(task.status);
@@ -326,15 +406,41 @@ function TaskListRow({
   );
 
   return (
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
     <tr
       id={`task-${task.id}`}
       data-row-done={done || undefined}
       data-row-archived={archived || undefined}
-      className="scroll-mt-24 max-[761px]:flex max-[761px]:flex-col max-[761px]:gap-2.5 max-[761px]:border-b max-[761px]:border-[var(--ega-divider)] max-[761px]:px-3.5 max-[761px]:py-3 max-[761px]:last:border-b-0"
+      tabIndex={0}
+      aria-selected={selected}
+      onKeyDown={(event) => {
+        // Shift+F10 / the context-menu key open the same menu as right-click.
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          event.currentTarget.dispatchEvent(
+            new MouseEvent("contextmenu", {
+              bubbles: true,
+              cancelable: true,
+              clientX: rect.left + Math.min(rect.width / 2, 240),
+              clientY: rect.top + rect.height / 2,
+            }),
+          );
+        }
+      }}
+      className="scroll-mt-24 focus-visible:outline-[var(--ega-focus-outline)] focus-visible:outline-offset-[-2px] max-[761px]:flex max-[761px]:flex-col max-[761px]:gap-2.5 max-[761px]:border-b max-[761px]:border-[var(--ega-divider)] max-[761px]:px-3.5 max-[761px]:py-3 max-[761px]:last:border-b-0"
     >
       <td className="max-[761px]:contents">
         <div className="row-main">
           <div className="flex min-w-0 items-center gap-2">
+            <input
+              type="checkbox"
+              className="h-4 w-4 shrink-0"
+              checked={selected}
+              onChange={onToggleSelected}
+              aria-label={`Select ${task.title}`}
+            />
             {titleLink}
             {task.description ? (
               <span className="max-[761px]:hidden min-w-0 flex-1 truncate text-[length:var(--text-meta)] text-[color:var(--ega-text-tertiary)]">
@@ -399,5 +505,53 @@ function TaskListRow({
         </div>
       </td>
     </tr>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content
+          className="z-[80] min-w-[12rem] rounded-[var(--radius-md)] border border-[var(--ega-border)] bg-[var(--ega-surface)] p-1 text-sm shadow-[var(--ega-shadow-md)]"
+          aria-label={`Actions for ${task.title}`}
+        >
+          <ContextMenu.Item asChild>
+            <Link
+              href={drawerHref}
+              scroll={false}
+              className="flex cursor-default select-none items-center rounded-[var(--radius-sm)] px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--ega-surface-hover)]"
+            >
+              Open details
+            </Link>
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className="flex cursor-default select-none items-center rounded-[var(--radius-sm)] px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--ega-surface-hover)]"
+            onSelect={() => {
+              const url = new URL(drawerHref, window.location.origin).toString();
+              void navigator.clipboard?.writeText(url).catch(() => {
+                // Clipboard may be unavailable (permissions/insecure context).
+              });
+            }}
+          >
+            Copy link
+          </ContextMenu.Item>
+          <ContextMenu.Item
+            className="flex cursor-default select-none items-center rounded-[var(--radius-sm)] px-2 py-1.5 outline-none data-[highlighted]:bg-[var(--ega-surface-hover)]"
+            onSelect={onToggleSelected}
+          >
+            {selected ? "Deselect" : "Select"}
+          </ContextMenu.Item>
+          <ContextMenu.Separator className="my-1 h-px bg-[var(--ega-divider)]" />
+          <ContextMenu.Item asChild>
+            <form action={archived ? actions.unarchiveAction : actions.archiveAction}>
+              <input type="hidden" name="taskId" value={task.id} />
+              <input type="hidden" name="returnTo" value={returnTo} />
+              <button
+                type="submit"
+                className="flex w-full cursor-default select-none items-center rounded-[var(--radius-sm)] px-2 py-1.5 text-left outline-none data-[highlighted]:bg-[var(--ega-surface-hover)]"
+              >
+                {archived ? "Restore" : "Archive"}
+              </button>
+            </form>
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }

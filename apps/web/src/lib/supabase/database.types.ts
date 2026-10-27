@@ -411,6 +411,53 @@ export type Database = {
           },
         ]
       }
+      task_operation_receipts: {
+        Row: {
+          id: string
+          owner_user_id: string
+          operation_id: string
+          task_id: string
+          action: string
+          before_values: Json
+          after_values: Json
+          created_at: string
+          expires_at: string
+          undone_at: string | null
+        }
+        Insert: {
+          id?: string
+          owner_user_id?: string
+          operation_id: string
+          task_id: string
+          action: string
+          before_values: Json
+          after_values: Json
+          created_at?: string
+          expires_at: string
+          undone_at?: string | null
+        }
+        Update: {
+          id?: string
+          owner_user_id?: string
+          operation_id?: string
+          task_id?: string
+          action?: string
+          before_values?: Json
+          after_values?: Json
+          created_at?: string
+          expires_at?: string
+          undone_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_operation_receipts_task_id_tasks_id_fk"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_saved_views: {
         Row: {
           created_at: string
