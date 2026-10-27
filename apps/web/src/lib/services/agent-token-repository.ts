@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import type { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 
 import { agentIntegrationTokens } from "@/db/schema";
-import type { AgentTokenScopes, NewTokenRecord, TokenRecord } from "@/lib/contracts/agent";
+import type { NewTokenRecord, TokenRecord } from "@/lib/contracts/agent";
 import { normalizeStoredScopes } from "@/lib/services/agent-token-scopes";
 import * as schema from "@/db/schema";
 

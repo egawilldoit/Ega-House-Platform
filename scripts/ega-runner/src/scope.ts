@@ -165,8 +165,8 @@ export function collectChangedProductPaths(repoRoot: string, baseSha: string): s
 export function enforceScope(
   allowedPaths: string[],
   changedPaths: string[],
-  repoRoot: string,
-  baseSha: string,
+  _repoRoot: string,
+  _baseSha: string,
 ): ScopeViolation | null {
   const violations: string[] = [];
 

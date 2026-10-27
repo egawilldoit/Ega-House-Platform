@@ -3,22 +3,23 @@
  * lint-regression.mjs — baseline-aware lint gate + informational full-lint
  * report with drift detection (design §8).
  *
- * The repository carries an inherited lint debt baseline captured at the
- * start of the migration's Stage 9 (39 errors / 53 warnings — see
- * scripts/ci/lint-baseline.json). Full-repo lint must therefore never be a
- * hard gate; regressions are detected per changed path:
+ * The repository carried an inherited lint debt baseline from the start of the
+ * migration's Stage 9. EGA-779 cleared that debt, so the committed baseline in
+ * scripts/ci/lint-baseline.json is now zero. Full-repo lint stays informational;
+ * regressions are detected per changed path:
  *
  *   changed  — eslint runs ONLY on files changed vs a base ref; a file passes
  *              iff its error/warning counts do not exceed its baseline entry;
- *              NEW files (no baseline entry) must be zero-problem. This is
- *              effectively blocking for per-PR regressions.
+ *              files with no baseline entry must be zero-problem (that covers
+ *              new files and every file that never carried tolerated debt).
+ *              This is effectively blocking for per-PR regressions.
  *   report   — full-repo lint always runs; totals compared to the baseline;
- *              drift (> +1 warning, or any error above baseline) is reported
- *              as a failure but the job runs with continue-on-error so it
- *              never blocks the pipeline. Informational + drift detection.
- *   capture  — regenerates scripts/ci/lint-baseline.json from the live tree
- *              (deliberate baseline updates only, per design §8; PR7 must
- *              re-capture after moving src/** → apps/web/src/**).
+ *              any drift above the baseline is reported as a failure but the
+ *              job runs with continue-on-error so it never blocks the pipeline.
+ *              Informational + drift detection.
+ *   capture  — regenerates scripts/ci/lint-baseline.json from the live tree,
+ *              recording only files that carry tolerated problems (deliberate
+ *              baseline updates only, per design §8).
  *
  * Usage:
  *   node scripts/ci/lint-regression.mjs changed --base <sha|ref>
@@ -34,7 +35,7 @@ const cwd = process.cwd();
 const BASELINE_FILE = path.join(cwd, 'scripts/ci/lint-baseline.json');
 const ESLINT_BIN = path.join(cwd, 'node_modules/eslint/bin/eslint.js');
 const LINT_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx']);
-const MAX_WARNING_DRIFT = 1;
+const MAX_WARNING_DRIFT = 0;
 
 function runEslint(targets) {
   const result = spawnSync(process.execPath, [ESLINT_BIN, '--format', 'json', ...targets], {
@@ -85,16 +86,21 @@ function capture() {
   console.log('capturing full-repo eslint baseline…');
   const stdout = runEslint(['.']);
   const { perFile, totals } = parseEslintOutput(stdout, cwd);
+  // Only files with tolerated problems need an entry: `changed` already treats a
+  // missing entry as "must be zero-problem", so recording clean files would add
+  // thousands of lines that can never affect a decision.
+  const debt = [...perFile.entries()].filter(([, c]) => c.errors > 0 || c.warnings > 0);
   const baseline = {
     capturedAt: new Date().toISOString(),
     sha: git(['rev-parse', 'HEAD']),
-    note: 'Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.',
+    note: 'Lint baseline captured by `node scripts/ci/lint-regression.mjs capture`. perFile lists only files with tolerated problems; a changed file may not exceed its entry, and a file without an entry must be zero-problem. Updates only via deliberate PRs that also fix counted problems (design §8).',
     totals,
-    perFile: Object.fromEntries([...perFile.entries()].sort()),
+    perFile: Object.fromEntries(debt.sort()),
   };
   fs.writeFileSync(BASELINE_FILE, JSON.stringify(baseline, null, 2) + '\n');
   console.log(`wrote ${BASELINE_FILE}`);
   console.log(`totals: ${totals.errors} errors / ${totals.warnings} warnings`);
+  console.log(`files with tolerated problems: ${debt.length}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -125,9 +131,10 @@ function changed(base) {
     const entry = baseline.perFile?.[file];
     let status = 'ok';
     if (!entry) {
-      // new file: zero-problem rule
+      // No tolerated problems were ever recorded for this path, so it must be
+      // clean. It is not necessarily a new file: clean files have no entry.
       if (actual.errors > 0 || actual.warnings > 0) {
-        status = 'FAIL (new file must be zero-problem)';
+        status = 'FAIL (no baseline entry — must be zero-problem)';
         failures += 1;
       }
     } else if (actual.errors > entry.errors || actual.warnings > entry.warnings) {
@@ -142,7 +149,7 @@ function changed(base) {
   console.log(`${'file'.padEnd(width)} now      baseline`);
   for (const { file, actual, entry, status } of rows) {
     const now = `${actual.errors}E/${actual.warnings}W`;
-    const was = entry ? `${entry.errors}E/${entry.warnings}W` : '—(new)';
+    const was = entry ? `${entry.errors}E/${entry.warnings}W` : '—(none)';
     console.log(`${file.padEnd(width)} ${now.padEnd(9)} ${was.padEnd(10)} ${status}`);
   }
   console.log(`\n${changedFiles.length} changed file(s) linted, ${failures} regression(s)`);
@@ -177,7 +184,7 @@ function report() {
     '',
     `**Gate:** ${failed ? 'DRIFT DETECTED (informational — does not block; fix or re-capture deliberately)' : 'within baseline tolerance (informational — not blocking)'}`,
     '',
-    'Full-repo lint is intentionally non-blocking while the inherited debt baseline exists; the blocking gate is the `lint-changed` job (changed paths must not exceed their per-file baseline).',
+    'Full-repo lint is informational; the blocking gate is the `lint-changed` job (changed paths must not exceed their per-file baseline).',
   ];
   const summary = lines.join('\n');
   console.log(summary);
