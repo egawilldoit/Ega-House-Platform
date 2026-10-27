@@ -81,6 +81,7 @@ function render(
         loadFailed={loadFailed}
         updateFieldAction={updateFieldAction}
         updateDraftAction={updateDraftAction}
+        ownerId="owner-1"
         {...extra}
       />,
     ),
@@ -335,5 +336,64 @@ describe("TaskDrawerHost", () => {
     expect(params.has("task")).toBe(false);
     expect(params.get("layout")).toBe("board");
     expect(params.get("sort")).toBe("due");
+  });
+});
+
+describe("TaskDrawer character shortcuts", () => {
+  const press = (key: string) => {
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }));
+    });
+  };
+
+  it("sets status from the explicit number mapping", async () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    await act(async () => {
+      press("4");
+      await Promise.resolve();
+    });
+
+    expect(updateDraftAction).toHaveBeenCalledTimes(1);
+    const submitted = updateDraftAction.mock.calls[0][1] as FormData;
+    expect(submitted.get("field")).toBe("status");
+    expect(submitted.get("value")).toBe("done");
+  });
+
+  it("uses P as a prefix for priority and does not mutate on P alone", () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    press("p");
+
+    expect(updateDraftAction).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("Press 1 low");
+  });
+
+  it("refuses blocked without a reason instead of submitting an invalid patch", () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    press("5");
+
+    expect(updateDraftAction).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain("blocked reason");
+  });
+
+  it("ignores character shortcuts while typing in an editor", () => {
+    currentParams = new URLSearchParams("task=t1");
+    updateDraftAction.mockClear();
+    render(TASK);
+
+    const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    act(() => {
+      title?.dispatchEvent(new KeyboardEvent("keydown", { key: "4", bubbles: true }));
+    });
+
+    expect(updateDraftAction).not.toHaveBeenCalled();
   });
 });
