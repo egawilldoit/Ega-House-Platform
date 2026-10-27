@@ -165,11 +165,13 @@ is owned by the tickets that actually mount it.
 | `PriorityIcon` | built + tested; first consumer is the EGA-781 task drawer | EGA-781 |
 | `--ega-shadow-drag` | token in both palettes + test | consumed by EGA-785 (drag) |
 | `--status-review*` | **not defined** | EGA-790 is an unapproved owner decision |
-| Toast queue + undo | not built | EGA-786 (owns the server receipt/replay contract) |
-| Context menu, bulk bar | not built (dependency installed) | EGA-786 |
-| Dropdown menu primitive | not built (dependency installed) | EGA-786 (task row actions) |
-| `MiniCalendar` | not built; prefer a native date input | EGA-793 |
-| Radix Dialog task overlay + motion keyframes | not built | EGA-781 (drawer) |
+| Toast queue + undo (`toast-provider.tsx`, `use-undo-toast.ts`) | built + tested; provider not mounted yet | EGA-786 mounts it and owns the server receipt/replay contract |
+| Context menu (`context-menu.tsx`) | built + tested | first consumer: EGA-786 |
+| Dropdown menu (`dropdown-menu.tsx`) | built + tested | first consumer: EGA-786 (task row actions) |
+| Bulk bar | not built | EGA-786 |
+| `MiniCalendar` | not built — the ticket prefers a native date input, and the drawer uses one; no owner until a consumer proves the need | none |
+| Motion accents (`check`/`strike`/`land`/`add`) | added to `styles/motion.css`; animation gated by `prefers-reduced-motion: no-preference`, the static strike stays visible for reduced motion | EGA-785 (`land`), EGA-786 (`check`/`add`) |
+| Radix Dialog task overlay | built in EGA-781 stage 1 (`components/tasks/drawer/task-drawer.tsx`) | — |
 | `components/motion-provider.tsx` change | not needed yet — the current provider already scopes reduced motion for these primitives | EGA-781 if the drawer needs a new variant |
 | Command palette | not built | EGA-795 (combobox semantics) |
 
