@@ -1251,9 +1251,9 @@ select.ega-glass-input {
 }
 
 /* ── Tasks list refinements ──────────────────────────────
-   The row title is the list's primary scanning anchor and its edit
-   affordance: one line, ellipsis-truncated, full value discoverable via
-   the native tooltip and the edit modal. Focus stays keyboard-visible;
+   The row title is the list's primary scanning anchor and the task-drawer
+   entry point: one line, ellipsis-truncated, with the full value in the native
+   tooltip. The ••• control opens the edit modal. Focus stays keyboard-visible;
    completed rows go quiet but stay readable. */
 
 .task-row-title-btn {
