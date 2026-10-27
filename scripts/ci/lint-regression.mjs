@@ -10,8 +10,9 @@
  *
  *   changed  — eslint runs ONLY on files changed vs a base ref; a file passes
  *              iff its error/warning counts do not exceed its baseline entry;
- *              NEW files (no baseline entry) must be zero-problem. This is
- *              effectively blocking for per-PR regressions.
+ *              files with no baseline entry must be zero-problem (that covers
+ *              new files and every file that never carried tolerated debt).
+ *              This is effectively blocking for per-PR regressions.
  *   report   — full-repo lint always runs; totals compared to the baseline;
  *              any drift above the baseline is reported as a failure but the
  *              job runs with continue-on-error so it never blocks the pipeline.
@@ -130,9 +131,10 @@ function changed(base) {
     const entry = baseline.perFile?.[file];
     let status = 'ok';
     if (!entry) {
-      // new file: zero-problem rule
+      // No tolerated problems were ever recorded for this path, so it must be
+      // clean. It is not necessarily a new file: clean files have no entry.
       if (actual.errors > 0 || actual.warnings > 0) {
-        status = 'FAIL (new file must be zero-problem)';
+        status = 'FAIL (no baseline entry — must be zero-problem)';
         failures += 1;
       }
     } else if (actual.errors > entry.errors || actual.warnings > entry.warnings) {
@@ -147,7 +149,7 @@ function changed(base) {
   console.log(`${'file'.padEnd(width)} now      baseline`);
   for (const { file, actual, entry, status } of rows) {
     const now = `${actual.errors}E/${actual.warnings}W`;
-    const was = entry ? `${entry.errors}E/${entry.warnings}W` : '—(new)';
+    const was = entry ? `${entry.errors}E/${entry.warnings}W` : '—(none)';
     console.log(`${file.padEnd(width)} ${now.padEnd(9)} ${was.padEnd(10)} ${status}`);
   }
   console.log(`\n${changedFiles.length} changed file(s) linted, ${failures} regression(s)`);
