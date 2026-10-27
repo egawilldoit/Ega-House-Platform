@@ -7,7 +7,6 @@ import type { UpdateTaskEditorAction } from "@/components/tasks/edit-task-modal"
 import { FocusPinToggleForm } from "@/components/tasks/focus-pin-toggle-form";
 import { TaskDueDateLabel } from "@/components/tasks/task-due-date-label";
 import { Badge } from "@/components/ui/badge";
-import { PriorityIcon } from "@/components/ui/priority-icon";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useTaskEditorOpenState } from "@/components/tasks/use-task-editor-open-state";
 import { getLocalDateInTimezone } from "@ega/domain/time-context";
@@ -357,15 +356,7 @@ function TaskListRow({
           >
             <div className="flex flex-wrap items-center gap-1.5">
               <StatusBadge status={task.status} label={formatDisplayStatus(task.status)} />
-              <Badge
-                tone={task.priority === "urgent" || task.priority === "high" ? "warn" : "muted"}
-                className="gap-1"
-              >
-                <PriorityIcon
-                  priority={task.priority as "low" | "medium" | "high" | "urgent"}
-                  decorative
-                  className="size-3"
-                />
+              <Badge tone={task.priority === "urgent" || task.priority === "high" ? "warn" : "muted"}>
                 {formatDisplayToken(task.priority)}
               </Badge>
               {estimateLabel ? <Badge tone="muted">Est. {estimateLabel}</Badge> : null}
