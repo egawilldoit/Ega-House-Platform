@@ -76,6 +76,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     dueSoonCount,
     selectedTask,
     selectedTaskId,
+    selectedTaskError,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -318,7 +319,9 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
 
       {/* Only mount the client drawer when a task is selected, so the closed
           state costs no client hook and stays server-rendered. */}
-      {selectedTaskId ? <TaskDrawerHost task={selectedTask} /> : null}
+      {selectedTaskId ? (
+        <TaskDrawerHost task={selectedTask} loadFailed={selectedTaskError} />
+      ) : null}
     </div>
   );
 }

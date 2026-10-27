@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
 import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon";
 import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priority-icon";
@@ -20,6 +21,8 @@ function isPriority(value: string): value is TaskPriorityIconName {
 type TaskDrawerHostProps = {
   /** Owner-scoped detail loaded by the page model, or null. */
   task: TaskDrawerDetail | null;
+  /** The lookup failed operationally — distinct from "no such task". */
+  loadFailed?: boolean;
 };
 
 /**
@@ -30,11 +33,34 @@ type TaskDrawerHostProps = {
  * nothing the drawer still opens but shows an unavailable state that is
  * identical for a missing task and for another owner's task.
  */
-export function TaskDrawerHost({ task }: TaskDrawerHostProps) {
+export function TaskDrawerHost({ task, loadFailed = false }: TaskDrawerHostProps) {
   const { taskId, mode, close, setMode } = useTaskDrawerParam();
+  const router = useRouter();
 
   if (!taskId) {
     return <TaskDrawer task={null} mode={mode} onClose={close} onModeChange={setMode} />;
+  }
+
+  if (loadFailed) {
+    return (
+      <TaskDrawer
+        task={{ id: taskId, title: "Task details unavailable", status: "unknown" }}
+        mode={mode}
+        onClose={close}
+        onModeChange={setMode}
+      >
+        <p className="text-sm text-[color:var(--ega-text-secondary)]">
+          Unable to load this task right now.
+        </p>
+        <button
+          type="button"
+          onClick={() => router.refresh()}
+          className="mt-3 inline-flex h-8 items-center rounded-[var(--radius-sm)] border border-[var(--ega-border)] px-3 text-xs text-[color:var(--ega-text)] hover:bg-[var(--ega-surface-hover)]"
+        >
+          Try again
+        </button>
+      </TaskDrawer>
+    );
   }
 
   if (!task || task.id !== taskId) {

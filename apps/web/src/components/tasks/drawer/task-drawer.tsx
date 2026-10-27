@@ -1,7 +1,7 @@
 "use client";
 
 import * as Dialog from "@radix-ui/react-dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskDrawerMode } from "./use-task-drawer-param";
@@ -17,6 +17,11 @@ type TaskDrawerProps = {
   mode: TaskDrawerMode;
   onClose: () => void;
   onModeChange: (mode: TaskDrawerMode) => void;
+  /**
+   * Element to focus when the drawer closes. Defaults to whatever was focused
+   * when the drawer mounted (the row link that opened it).
+   */
+  restoreFocusRef?: RefObject<HTMLElement | null>;
   /** Extra content under the header; property sections arrive in stage 2. */
   children?: React.ReactNode;
 };
@@ -32,8 +37,25 @@ const MOBILE_QUERY = "(max-width: 760px)";
  * page. Radix owns focus trapping, focus restoration to the opening trigger,
  * Escape and outside-click dismissal.
  */
-export function TaskDrawer({ task, mode, onClose, onModeChange, children }: TaskDrawerProps) {
+export function TaskDrawer({
+  task,
+  mode,
+  onClose,
+  onModeChange,
+  restoreFocusRef,
+  children,
+}: TaskDrawerProps) {
   const [isNarrow, setIsNarrow] = useState(false);
+  // Captured before Radix moves focus into the dialog.
+  const openerRef = useRef<HTMLElement | null>(null);
+  const taskId = task?.id ?? null;
+
+  useEffect(() => {
+    if (!taskId) return;
+    openerRef.current = (document.activeElement as HTMLElement | null) ?? null;
+    // Only when a different task opens: later renders must not overwrite the
+    // opener with a control inside the drawer.
+  }, [taskId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -63,6 +85,20 @@ export function TaskDrawer({ task, mode, onClose, onModeChange, children }: Task
             dialog (single onOpenChange -> onClose). */}
         <Dialog.Content
           aria-describedby={undefined}
+          onInteractOutside={(event) => {
+            // A non-modal panel must not dismiss on background clicks: the list
+            // stays usable, and clicking another row should switch selection.
+            // modal={isNarrow} still dismisses via the scrim on mobile.
+            if (!isNarrow) event.preventDefault();
+          }}
+          onCloseAutoFocus={(event) => {
+            // Radix prevents its default restore when no Dialog.Trigger exists,
+            // so the opener (or an explicit target) is focused here.
+            const target = restoreFocusRef?.current ?? openerRef.current;
+            if (!target) return;
+            event.preventDefault();
+            target.focus();
+          }}
           className={cn(
             "fixed z-50 flex flex-col border-[var(--ega-border)] bg-[var(--ega-surface)] shadow-[var(--ega-shadow-lg)]",
             "focus:outline-none",

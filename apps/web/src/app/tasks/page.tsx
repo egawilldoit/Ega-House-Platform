@@ -32,6 +32,10 @@ type TasksPageProps = {
     taskUpdateError?: string;
     taskUpdateSuccess?: string;
     taskUpdateTaskId?: string;
+    /** Selected task for the detail drawer. */
+    task?: string;
+    /** `full` renders the detail full page instead of a side panel. */
+    taskMode?: string;
     statusUpdateError?: string;
     viewError?: string;
     viewSuccess?: string;

@@ -113,6 +113,7 @@ function buildModel(overrides: Partial<TasksPageViewModel> = {}): TasksPageViewM
     selectedTaskId: null,
     selectedTaskMode: "panel",
     selectedTask: null,
+    selectedTaskError: false,
     projects: [{ id: "project-1", name: "EGA House" }],
     goals: [{ id: "goal-1", title: "Tighten weekly review", project_id: "project-1" }],
     tasks,
