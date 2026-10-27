@@ -2248,6 +2248,7 @@ export type TaskDrawerDetail = {
   status: string;
   priority: string;
   due_date: string | null;
+  blocked_reason: string | null;
   project_id: string | null;
   goal_id: string | null;
   archived_at: string | null;
@@ -2280,7 +2281,9 @@ export async function getTaskDrawerDetail(
 
   const { data, error } = await supabase
     .from("tasks")
-    .select("id, title, status, priority, due_date, project_id, goal_id, archived_at")
+    .select(
+      "id, title, status, priority, due_date, blocked_reason, project_id, goal_id, archived_at",
+    )
     .eq("id", normalizedId)
     .eq("owner_user_id", userId)
     .maybeSingle();
@@ -2346,7 +2349,9 @@ export function buildTaskFieldPatchInput(
 
   const input: ValidateTaskInlineUpdateInput = {
     taskId,
-    title: current.title,
+    // Carried only when the patch targets it: `updateTaskInline` rewrites every
+    // field it receives, and a priority/due edit must not touch the title.
+    title: field === "title" ? value : undefined,
     status: current.status,
     priority: current.priority,
     dueDate: current.due_date ?? "",
@@ -2354,7 +2359,6 @@ export function buildTaskFieldPatchInput(
     blockedReason: current.blocked_reason,
   };
 
-  if (field === "title") input.title = value;
   if (field === "status") input.status = value;
   if (field === "priority") input.priority = value;
   if (field === "dueDate") input.dueDate = value;
