@@ -59,7 +59,13 @@ const TASK_VIEWS = [
   { value: "all", label: "All" },
 ] as const;
 
-export function TasksPageView({ model }: { model: TasksPageModel }) {
+export function TasksPageView({
+  model,
+  ownerId = null,
+}: {
+  model: TasksPageModel;
+  ownerId?: string | null;
+}) {
   const {
     parsed,
     projects,
@@ -327,6 +333,7 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
           loadFailed={selectedTaskError}
           updateFieldAction={updateTaskFieldAction}
           updateDraftAction={updateTaskFieldDraftAction}
+          ownerId={ownerId}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />

@@ -53,12 +53,14 @@ export type WorkspaceShellMetricsResult = {
 };
 
 export type ShellIdentity = {
+  id: string | null;
   name: string;
   email: string;
   initials: string;
 };
 
 type AuthenticatedUser = {
+  id?: string | null;
   email?: string | null;
   user_metadata?: Record<string, unknown> | null;
 } | null;
@@ -81,7 +83,7 @@ function deriveShellIdentity(user: AuthenticatedUser): ShellIdentity {
       .map((part) => part[0]?.toUpperCase() ?? "")
       .join("") || "EG";
 
-  return { name, email, initials };
+  return { id: user?.id ?? null, name, email, initials };
 }
 
 const FALLBACK_WORKSPACE_SHELL_SNAPSHOT: WorkspaceShellMetricsSnapshot = {
