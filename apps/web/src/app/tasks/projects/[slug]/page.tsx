@@ -49,7 +49,7 @@ import {
   isProjectArchivedStatus,
   normalizeProjectViewFilter,
 } from "@/lib/project-archive";
-import { requireAuthenticatedUser } from "@/lib/services/auth-service";
+import { getCurrentUser, requireAuthenticatedUser } from "@/lib/services/auth-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { createClient } from "@/lib/supabase/server";
 import { sortFocusQueueTasks } from "@/lib/focus-queue";
@@ -217,10 +217,11 @@ export default async function ProjectDetailPage({
   searchParams,
 }: ProjectDetailPageProps) {
   const [{ slug }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const [projectDetail, calendarSettingsResult, timeContext] = await Promise.all([
+  const [projectDetail, calendarSettingsResult, timeContext, currentUser] = await Promise.all([
     getProjectDetail(slug),
     getCalendarIntegrationSettings(),
     getWebTimeContext().catch(() => null),
+    getCurrentUser(),
   ]);
 
   if (!projectDetail) {
@@ -808,6 +809,7 @@ export default async function ProjectDetailPage({
           loadFailed={selectedTaskResult?.kind === "error"}
           updateFieldAction={updateTaskFieldAction}
           updateDraftAction={updateTaskFieldDraftAction}
+          ownerId={currentUser?.id ?? null}
           updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
           updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
         />

@@ -176,7 +176,7 @@ export function WorkspaceKeyboardShortcuts({ ownerId = null }: { ownerId?: strin
 
   return (
     <>
-      <ShortcutHelpSheet open={helpOpen} onOpenChange={setHelpOpen} />
+      <ShortcutHelpSheet open={helpOpen} onOpenChange={setHelpOpen} ownerId={ownerId} />
       <CommandPalette ownerId={ownerId} />
     </>
   );
