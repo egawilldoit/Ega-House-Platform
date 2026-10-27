@@ -5,34 +5,41 @@ import { Bell, ExternalLink } from "lucide-react";
 
 import {
   markNotificationReadAction,
+  markNotificationsReadAction,
   openNotificationAction,
 } from "./actions";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterPill } from "@/components/ui/filter-pill";
 import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { cn } from "@/lib/utils";
+import {
+  filterNotificationGroups,
+  toggleSelection,
+  type NotificationInboxGroup,
+  type NotificationInboxRow,
+  type NotificationInboxView,
+} from "@/lib/notification-inbox-model";
 
-export type NotificationInboxRow = {
-  id: string;
-  title: string;
-  body: string | null;
-  createdAt: string;
-  createdAtLabel: string;
-  targetHref: string | null;
-  isUnread: boolean;
-};
+export type { NotificationInboxGroup, NotificationInboxRow };
 
-export type NotificationInboxGroup = {
-  key: string;
-  label: string;
-  rows: NotificationInboxRow[];
-};
-
-type NotificationInboxView = "all" | "unread";
-
-function NotificationRow({ row }: { row: NotificationInboxRow }) {
+function NotificationRow({
+  row,
+  selected,
+  onToggle,
+}: {
+  row: NotificationInboxRow;
+  selected: boolean;
+  onToggle: (id: string) => void;
+}) {
   return (
     <li className="row items-start">
+      <input
+        type="checkbox"
+        className="mt-2 h-4 w-4 shrink-0"
+        checked={selected}
+        onChange={() => onToggle(row.id)}
+        aria-label={`Select "${row.title}"`}
+      />
       <span
         aria-hidden="true"
         className={cn(
@@ -122,30 +129,84 @@ export function NotificationsInbox({
   unreadCount: number;
 }) {
   const [view, setView] = useState<NotificationInboxView>("all");
+  const [selected, setSelected] = useState<string[]>([]);
 
-  const visibleGroups = groups
-    .map((group) => ({
-      ...group,
-      rows: view === "unread" ? group.rows.filter((row) => row.isUnread) : group.rows,
-    }))
-    .filter((group) => group.rows.length > 0);
+  const visibleGroups = filterNotificationGroups(groups, view);
+  const visibleRows = visibleGroups.flatMap((group) => group.rows);
+  const visibleIds = visibleRows.map((row) => row.id);
+  const visibleUnreadIds = visibleRows.filter((row) => row.isUnread).map((row) => row.id);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+  const selectedCount = selected.length;
 
   return (
     <>
       <div className="flex flex-wrap items-center gap-2 border-b border-[var(--ega-divider)] px-[18px] py-3">
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Notification views">
+          <FilterPill label="All" onClick={() => setView("all")} active={view === "all"} />
           <FilterPill
-            label="All"
-            onClick={() => setView("all")}
-            active={view === "all"}
-          />
-          <FilterPill
-            label="Unread"
+            label={unreadCount > 0 ? `Unread (${unreadCount})` : "Unread"}
             onClick={() => setView("unread")}
             active={view === "unread"}
           />
+          <FilterPill label="Read" onClick={() => setView("read")} active={view === "read"} />
         </div>
       </div>
+
+      {visibleRows.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--ega-divider)] px-[18px] py-2">
+          <label className="flex items-center gap-2 text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={allVisibleSelected}
+              onChange={() =>
+                setSelected(allVisibleSelected ? [] : Array.from(new Set([...selected, ...visibleIds])))
+              }
+              aria-label="Select all notifications on this page"
+            />
+            Select all
+          </label>
+
+          {selectedCount > 0 ? (
+            <>
+              <span role="status" className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)]">
+                {selectedCount} selected
+              </span>
+              <form action={markNotificationsReadAction} className="flex items-center gap-2">
+                {selected.map((id) => (
+                  <input key={id} type="hidden" name="notificationIds" value={id} />
+                ))}
+                <PendingSubmitButton
+                  type="submit"
+                  size="sm"
+                  variant="secondary"
+                  pendingLabel="Marking read..."
+                >
+                  Mark selected read
+                </PendingSubmitButton>
+              </form>
+              <button
+                type="button"
+                onClick={() => setSelected([])}
+                className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline-offset-2 hover:underline"
+              >
+                Clear selection
+              </button>
+            </>
+          ) : null}
+
+          {view === "unread" && visibleUnreadIds.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setSelected(visibleUnreadIds)}
+              className="text-[length:var(--text-meta)] text-[color:var(--ega-text-secondary)] underline-offset-2 hover:underline"
+            >
+              Select all unread
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       {visibleGroups.length === 0 ? (
         <EmptyState
@@ -155,14 +216,18 @@ export function NotificationsInbox({
               ? "No unread notifications on this page"
               : view === "unread"
                 ? "No unread notifications"
-                : "No notifications in this view"
+                : view === "read"
+                  ? "Nothing read yet"
+                  : "No notifications in this view"
           }
           description={
             view === "unread" && unreadCount > 0
               ? "Older unread reminders may still be waiting. Load older notifications to keep going."
               : view === "unread"
                 ? "You are caught up. New task reminders will appear here."
-                : "Nothing to show here yet."
+                : view === "read"
+                  ? "Notifications you open or mark read collect here."
+                  : "Nothing to show here yet."
           }
         />
       ) : (
@@ -176,7 +241,12 @@ export function NotificationsInbox({
             </h3>
             <ul className="rows" aria-label={group.label}>
               {group.rows.map((row) => (
-                <NotificationRow key={row.id} row={row} />
+                <NotificationRow
+                  key={row.id}
+                  row={row}
+                  selected={selected.includes(row.id)}
+                  onToggle={(id) => setSelected((current) => toggleSelection(current, id))}
+                />
               ))}
             </ul>
           </section>
