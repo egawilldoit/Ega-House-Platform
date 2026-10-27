@@ -1,7 +1,9 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { formatTaskToken } from "@/lib/task-domain";
 import type { TaskDrawerDetail } from "@/lib/services/task-service";
+import { PendingSubmitButton } from "@/components/ui/pending-submit-button";
 import { StatusIcon, type TaskStatusIconName } from "@/components/ui/status-icon";
 import { PriorityIcon, type TaskPriorityIconName } from "@/components/ui/priority-icon";
 import { TaskDrawer } from "./task-drawer";
@@ -18,11 +20,94 @@ function isPriority(value: string): value is TaskPriorityIconName {
   return (KNOWN_PRIORITIES as string[]).includes(value);
 }
 
+function statusLabel(status: TaskStatusIconName) {
+  return status.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
+}
+
+type PropertyFieldProps = {
+  action: TaskFieldAction;
+  taskId: string;
+  returnTo: string;
+  field: "status" | "priority" | "dueDate" | "estimateMinutes" | "blockedReason" | "title";
+  label: string;
+  value: string;
+  type?: "date";
+  options?: Array<{ value: string; label: string }>;
+};
+
+/**
+ * One-field inline editor.
+ *
+ * A native control posts to `updateTaskFieldAction`, which merges the single
+ * changed field into the server-side row. `onChange` submits so a picker closes
+ * in one action; the submit button keeps it usable with keyboard only and
+ * without JavaScript.
+ */
+function PropertyField({
+  action,
+  taskId,
+  returnTo,
+  field,
+  label,
+  value,
+  type,
+  options,
+}: PropertyFieldProps) {
+  return (
+    <form action={action} className="flex items-center gap-1">
+      <input type="hidden" name="taskId" value={taskId} />
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <input type="hidden" name="field" value={field} />
+      {options ? (
+        <select
+          name="value"
+          aria-label={label}
+          defaultValue={value}
+          className="h-7 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
+        >
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          name="value"
+          aria-label={label}
+          type={type ?? "text"}
+          defaultValue={value}
+          className="h-7 rounded-[var(--radius-sm)] border border-[var(--ega-border)] bg-[var(--ega-surface)] px-1.5 text-xs text-[color:var(--ega-text)]"
+        />
+      )}
+      <PendingSubmitButton
+        type="submit"
+        variant="secondary"
+        size="sm"
+        aria-label={`Save ${label}`}
+        className="h-7 px-1.5 text-xs"
+        pendingLabel="Saving…"
+      >
+        Save
+      </PendingSubmitButton>
+    </form>
+  );
+}
+
+/** Server action passed from the page so the client bundle stays server-free. */
+export type TaskFieldAction = (formData: FormData) => void | Promise<void>;
+
 type TaskDrawerHostProps = {
   /** Owner-scoped detail loaded by the page model, or null. */
   task: TaskDrawerDetail | null;
   /** The lookup failed operationally — distinct from "no such task". */
   loadFailed?: boolean;
+  /** One-field patch action for the inline property editors. */
+  updateFieldAction: TaskFieldAction;
+  /** Field-patch failure surfaced by the action's redirect. */
+  updateError?: string | null;
+  /** Field-patch success surfaced by the action's redirect. */
+  updateSuccess?: string | null;
 };
 
 /**
@@ -33,9 +118,35 @@ type TaskDrawerHostProps = {
  * nothing the drawer still opens but shows an unavailable state that is
  * identical for a missing task and for another owner's task.
  */
-export function TaskDrawerHost({ task, loadFailed = false }: TaskDrawerHostProps) {
+export function TaskDrawerHost({
+  task,
+  loadFailed = false,
+  updateFieldAction,
+  updateError = null,
+  updateSuccess = null,
+}: TaskDrawerHostProps) {
   const { taskId, mode, close, setMode } = useTaskDrawerParam();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Strip workspace feedback flash params: they belong to the previous action and
+  // would otherwise be replayed into this form's redirect, keeping a stale error
+  // visible after a successful save.
+  const returnTo = (() => {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const key of [
+      "taskUpdateError",
+      "taskUpdateSuccess",
+      "taskUpdateTaskId",
+      "statusUpdateError",
+      "viewError",
+      "viewSuccess",
+    ]) {
+      params.delete(key);
+    }
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  })();
 
   if (!taskId) {
     return <TaskDrawer task={null} mode={mode} onClose={close} onModeChange={setMode} />;
@@ -86,21 +197,64 @@ export function TaskDrawerHost({ task, loadFailed = false }: TaskDrawerHostProps
       onClose={close}
       onModeChange={setMode}
     >
-      <dl className="grid grid-cols-[7rem_minmax(0,1fr)] gap-y-2 text-sm">
+      {updateError ? (
+        <p role="alert" className="mb-2 text-sm text-[color:var(--status-overdue)]">
+          {updateError}
+        </p>
+      ) : null}
+      {updateSuccess ? (
+        <p role="status" className="mb-2 text-sm text-[color:var(--status-healthy)]">
+          {updateSuccess}
+        </p>
+      ) : null}
+      <dl className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-y-2 text-sm">
         <dt className="text-[color:var(--ega-text-tertiary)]">Status</dt>
         <dd className="flex items-center gap-1.5 text-[color:var(--ega-text)]">
           {isStatus(task.status) ? <StatusIcon status={task.status} decorative /> : null}
-          {task.status.replace(/_/g, " ")}
+          <PropertyField
+            action={updateFieldAction}
+            taskId={task.id}
+            returnTo={returnTo}
+            field="status"
+            label="Status"
+            value={task.status}
+            options={KNOWN_STATUSES.filter(
+              // Blocked requires a reason, which this stage cannot capture yet;
+              // offering it would always fail validation.
+              (status) => status !== "blocked" || Boolean(task.blocked_reason),
+            ).map((status) => ({ value: status, label: statusLabel(status) }))}
+          />
         </dd>
         <dt className="text-[color:var(--ega-text-tertiary)]">Priority</dt>
         <dd className="flex items-center gap-1.5 text-[color:var(--ega-text)]">
           {isPriority(task.priority) ? (
             <PriorityIcon priority={task.priority} decorative />
           ) : null}
-          {task.priority}
+          <PropertyField
+            action={updateFieldAction}
+            taskId={task.id}
+            returnTo={returnTo}
+            field="priority"
+            label="Priority"
+            value={task.priority}
+            options={KNOWN_PRIORITIES.map((priority) => ({
+              value: priority,
+              label: formatTaskToken(priority),
+            }))}
+          />
         </dd>
         <dt className="text-[color:var(--ega-text-tertiary)]">Due</dt>
-        <dd className="text-[color:var(--ega-text)]">{task.due_date ?? "No due date"}</dd>
+        <dd className="text-[color:var(--ega-text)]">
+          <PropertyField
+            action={updateFieldAction}
+            taskId={task.id}
+            returnTo={returnTo}
+            field="dueDate"
+            label="Due date"
+            value={task.due_date ?? ""}
+            type="date"
+          />
+        </dd>
       </dl>
     </TaskDrawer>
   );
