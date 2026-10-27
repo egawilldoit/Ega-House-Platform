@@ -235,6 +235,53 @@ describe("MenuList", () => {
     );
   });
 
+  it("marks no row active when every option is disabled", () => {
+    act(() =>
+      root.render(
+        <MenuList
+          label="Status"
+          items={[
+            { id: "blocked", label: "Blocked", disabled: true },
+            { id: "done", label: "Done", disabled: true },
+          ]}
+          onSelect={vi.fn()}
+        />,
+      ),
+    );
+    const listbox = container.querySelector('[role="listbox"]') as HTMLElement;
+    expect(listbox.getAttribute("aria-activedescendant")).toBeNull();
+    const active = Array.from(container.querySelectorAll('[role="option"]')).filter((option) =>
+      option.className.includes("bg-[var(--ega-surface-hover)]"),
+    );
+    expect(active).toHaveLength(0);
+  });
+
+  it("falls back and scrolls when the active option disappears", () => {
+    const many = Array.from({ length: 30 }, (_, index) => ({
+      id: `i${index}`,
+      label: `Item ${index}`,
+    }));
+    act(() => root.render(<MenuList label="Items" items={many} onSelect={vi.fn()} />));
+    for (let i = 0; i < 20; i += 1) press("ArrowDown");
+
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      act(() =>
+        root.render(
+          <MenuList label="Items" items={many.filter((item) => item.id !== "i20")} onSelect={vi.fn()} />,
+        ),
+      );
+      const listbox = container.querySelector('[role="listbox"]') as HTMLElement;
+      const activeId = listbox.getAttribute("aria-activedescendant");
+      expect(activeId).toBe(container.querySelectorAll('[role="option"]')[0].id);
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
   it("renders an empty message when there are no options", () => {
     act(() => root.render(<MenuList label="Status" items={[]} onSelect={vi.fn()} />));
     expect(container.querySelector('[role="listbox"]')).toBeNull();

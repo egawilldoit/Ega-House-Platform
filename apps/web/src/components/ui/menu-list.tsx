@@ -72,6 +72,7 @@ export function MenuList({
       ? remembered
       : (items.find((item) => !item.disabled) ?? null);
   const activeIndex = activeItem ? items.indexOf(activeItem) : 0;
+  const activeItemId = activeItem?.id ?? null;
   const listRef = useRef<HTMLDivElement>(null);
   const typeAhead = useRef<{ buffer: string; timer: ReturnType<typeof setTimeout> | null }>({
     buffer: "",
@@ -85,15 +86,15 @@ export function MenuList({
   // `aria-activedescendant` is the only visible focus indicator here, so the
   // active row must stay inside the scroll viewport (WCAG 2.4.7).
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeItemId) return;
     // Ids come from `useId` and contain characters that need escaping in a CSS
     // selector, so match by attribute value instead of building a selector.
-    const targetId = `${prefix}-option-${activeId}`;
+    const targetId = `${prefix}-option-${activeItemId}`;
     const option = Array.from(
       listRef.current?.querySelectorAll<HTMLElement>('[role="option"]') ?? [],
     ).find((element) => element.id === targetId);
     option?.scrollIntoView?.({ block: "nearest" });
-  }, [activeId, prefix]);
+  }, [activeItemId, prefix]);
 
   useEffect(
     () => () => {
@@ -193,7 +194,7 @@ export function MenuList({
       className={cn("max-h-[min(18rem,50vh)] overflow-y-auto focus:outline-none", className)}
     >
       {items.map((item, index) => {
-        const isActive = index === activeIndex;
+        const isActive = activeItem === item;
         const isSelected = item.id === value;
         return (
           <div
