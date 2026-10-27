@@ -25,6 +25,53 @@
   transition: transform var(--duration-enter) var(--ease-spring);
 }
 
+/* ── Task interaction accents ──────────────────────────────
+   Small, purposeful feedback for completing, deferring and adding work.
+   Declared only when the user has not asked for reduced motion; the global
+   reduce block below still collapses durations for anything else. */
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes ega-check-pop {
+    0% { transform: scale(0.6); opacity: 0; }
+    60% { transform: scale(1.08); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+
+  @keyframes ega-strike {
+    from { background-size: 0% 1.5px; }
+    to { background-size: 100% 1.5px; }
+  }
+
+  @keyframes ega-land {
+    0% { transform: translateY(-4px); opacity: 0; }
+    100% { transform: translateY(0); opacity: 1; }
+  }
+
+  @keyframes ega-add-wash {
+    from { background-color: var(--ega-accent-soft); }
+    to { background-color: transparent; }
+  }
+
+  .motion-check {
+    animation: ega-check-pop var(--duration-base) var(--ease-spring) both;
+  }
+
+  .motion-strike {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-repeat: no-repeat;
+    background-position: 0 55%;
+    background-size: 100% 1.5px;
+    animation: ega-strike var(--duration-slow) var(--ease-default) both;
+  }
+
+  .motion-land {
+    animation: ega-land var(--duration-enter) var(--ease-spring) both;
+  }
+
+  .motion-add-wash {
+    animation: ega-add-wash var(--duration-slow) var(--ease-default) both;
+  }
+}
+
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
