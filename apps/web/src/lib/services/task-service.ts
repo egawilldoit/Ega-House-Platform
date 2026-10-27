@@ -2258,8 +2258,9 @@ export type TaskDrawerDetail = {
  *
  * RLS already restricts rows to the caller; the explicit `owner_user_id` filter
  * makes the intent local and keeps an unknown id indistinguishable from another
- * owner's id (both return null), so the drawer cannot disclose that a task
- * exists elsewhere.
+ * owner's id (both `unavailable`), so the drawer cannot disclose that a task
+ * exists elsewhere. A query error is reported as `error`, never as a missing
+ * task.
  */
 export type TaskDrawerDetailResult =
   | { kind: "found"; task: TaskDrawerDetail }
