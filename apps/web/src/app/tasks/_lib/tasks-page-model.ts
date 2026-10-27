@@ -15,6 +15,7 @@ import {
 import { isTaskStatus, type TaskStatus } from "@/lib/task-domain";
 import { normalizeTaskViewFilter, type TaskViewFilter } from "@/lib/task-archive";
 import { normalizeTaskSavedViewFilters } from "@/lib/task-saved-views";
+import { getTaskDrawerDetail, type TaskDrawerDetail } from "@/lib/services/task-service";
 import { getTasksWorkspaceData } from "@/lib/services/task-service";
 import { getWebTimeContext } from "@/lib/services/time-context-service";
 import { isTaskDueSoon, isTaskOverdue } from "@/lib/task-due-date";
@@ -40,6 +41,10 @@ export type TasksSearchParams = {
   statusUpdateError?: string;
   viewError?: string;
   viewSuccess?: string;
+  /** Selected task for the detail drawer (?task=<id>). */
+  task?: string;
+  /** `?taskMode=full` renders the detail full page instead of a side panel. */
+  taskMode?: string;
 };
 
 export type ParsedTasksFilters = {
@@ -164,7 +169,40 @@ export async function getTasksPageModel(searchParams: TasksSearchParams) {
     isTaskDueSoon(t.due_date, t.status, accountLocalDate ?? undefined),
   ).length;
 
+  // The selected task may be outside the current list filters (archived tab,
+  // project filter), so fall back to a narrow owner-scoped load. A missing or
+  // other-owner id yields null and the drawer shows an unavailable state.
+  const selectedTaskId = searchParams.task?.trim() || null;
+  const selectedTaskMode = searchParams.taskMode === "full" ? "full" : "panel";
+  const selectedTaskFromList = selectedTaskId
+    ? (tasks.find((task) => task.id === selectedTaskId) ?? null)
+    : null;
+  const drawerResult = selectedTaskFromList
+    ? ({
+        kind: "found" as const,
+        task: {
+          id: selectedTaskFromList.id,
+          title: selectedTaskFromList.title,
+          status: selectedTaskFromList.status,
+          priority: selectedTaskFromList.priority,
+          due_date: selectedTaskFromList.due_date,
+          project_id: selectedTaskFromList.project_id,
+          goal_id: selectedTaskFromList.goal_id,
+          archived_at: selectedTaskFromList.archived_at,
+        },
+      } satisfies { kind: "found"; task: TaskDrawerDetail })
+    : selectedTaskId
+      ? await getTaskDrawerDetail(selectedTaskId)
+      : ({ kind: "unavailable" as const } as const);
+  const selectedTask: TaskDrawerDetail | null =
+    drawerResult.kind === "found" ? drawerResult.task : null;
+  const selectedTaskError = drawerResult.kind === "error";
+
   return {
+    selectedTaskId,
+    selectedTaskMode,
+    selectedTask,
+    selectedTaskError,
     parsed,
     projects,
     goals,

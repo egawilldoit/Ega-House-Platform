@@ -27,6 +27,7 @@ import { formatDisplayCount } from "@/lib/presentation-format";
 import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
 import { TasksListTable, type TaskListActions } from "./tasks-list-table";
+import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 
 function getTaskSignalTone(status: string, priority: string) {
   if (status === "blocked" || priority === "urgent") return "bg-[var(--status-overdue)]";
@@ -73,6 +74,9 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
     blockedCount,
     overdueCount,
     dueSoonCount,
+    selectedTask,
+    selectedTaskId,
+    selectedTaskError,
   } = model;
   const { activeStatus, activeView, activeLayout, activeDueFilter, savedViewDefinitionFilters } = parsed;
   const completedTaskIdsInScope = getArchivableCompletedTaskIds(tasks);  // Restore clears archived state only; it must never resurrect a completed
@@ -313,6 +317,11 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
         </Card>
       </div>
 
+      {/* Only mount the client drawer when a task is selected, so the closed
+          state costs no client hook and stays server-rendered. */}
+      {selectedTaskId ? (
+        <TaskDrawerHost task={selectedTask} loadFailed={selectedTaskError} />
+      ) : null}
     </div>
   );
 }
