@@ -213,7 +213,7 @@ describe("TasksPageView workspace composition", () => {
     expect(container.querySelector("table.data-table")).toBeNull();
     const board = container.querySelector(".tasks-kanban-board");
     expect(board).not.toBeNull();
-    expect(board?.querySelectorAll(".tasks-kanban-column").length).toBe(4);
+    expect(board?.querySelectorAll(".tasks-kanban-column").length).toBe(5);
   });
 
   it("renders one quiet summary line and exactly one page-level new-task CTA", async () => {
