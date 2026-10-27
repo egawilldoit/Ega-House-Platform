@@ -1,4 +1,5 @@
-import type { WorkspaceSearchResults, WorkspaceSearchScope } from "@/lib/services/workspace-search-service";
+import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
+import type { WorkspaceSearchScope } from "@/lib/workspace-search";
 import { WORKSPACE_COMMANDS, filterWorkspaceCommands } from "@/lib/workspace-commands";
 
 export type CommandPaletteGroupId = "go-to" | "tasks" | "projects" | "goals" | "ideas" | "quick-actions";

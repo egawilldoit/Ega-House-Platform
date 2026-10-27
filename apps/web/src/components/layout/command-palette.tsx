@@ -7,11 +7,8 @@ import { CornerDownLeft, Search, X } from "lucide-react";
 
 import { searchWorkspaceAction } from "@/app/search/actions";
 import { COMMAND_PALETTE_EVENT, INBOX_CAPTURE_EVENT, QUICK_TASK_EVENT } from "@/lib/workspace-events";
-import type {
-  WorkspaceSearchResults,
-  WorkspaceSearchScope,
-} from "@/lib/services/workspace-search-service";
-import { WORKSPACE_SEARCH_SCOPES } from "@/lib/services/workspace-search-service";
+import type { WorkspaceSearchResults } from "@/lib/services/workspace-search-service";
+import { WORKSPACE_SEARCH_SCOPES, type WorkspaceSearchScope } from "@/lib/workspace-search";
 import { WORKSPACE_SEARCH_MIN_QUERY_LENGTH } from "@/lib/workspace-search";
 import { useCanonicalUrl } from "@/lib/use-canonical-url";
 

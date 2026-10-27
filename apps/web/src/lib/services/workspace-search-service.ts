@@ -2,20 +2,16 @@ import { createClient } from "@/lib/supabase/server";
 import {
   WORKSPACE_SEARCH_MAX_QUERY_LENGTH,
   WORKSPACE_SEARCH_MIN_QUERY_LENGTH,
+  normalizeWorkspaceSearchScope,
+  type WorkspaceSearchScope,
 } from "@/lib/workspace-search";
 
+// The scope list is defined in the client-safe module so the palette never
+// imports this server module (which depends on next/headers).
+export { WORKSPACE_SEARCH_SCOPES, normalizeWorkspaceSearchScope } from "@/lib/workspace-search";
+export type { WorkspaceSearchScope } from "@/lib/workspace-search";
+
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
-
-/** Search scopes shown as tabs in the command palette. */
-export const WORKSPACE_SEARCH_SCOPES = ["all", "tasks", "projects", "goals", "ideas"] as const;
-export type WorkspaceSearchScope = (typeof WORKSPACE_SEARCH_SCOPES)[number];
-
-export function normalizeWorkspaceSearchScope(rawScope: unknown): WorkspaceSearchScope {
-  const normalized = String(rawScope ?? "").trim().toLowerCase();
-  return (WORKSPACE_SEARCH_SCOPES as readonly string[]).includes(normalized)
-    ? (normalized as WorkspaceSearchScope)
-    : "all";
-}
 
 export type WorkspaceSearchTaskHit = {
   id: string;
