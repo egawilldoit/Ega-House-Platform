@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Instrument_Sans, Sora, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import "../styles/workspace.css";
 import { MotionProvider } from "@/components/motion-provider";
@@ -7,22 +7,33 @@ import { DisplayTimezoneBootstrap } from "@/lib/hooks/display-timezone-bootstrap
 import { WorkspaceThemeController } from "@/lib/hooks/workspace-theme";
 import { WORKSPACE_THEME_INIT_SCRIPT } from "@/lib/theme-preference";
 
-const instrumentSans = Instrument_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Fonts are committed under ./fonts with their SIL OFL 1.1 licence files so the
+// production build never performs a font-host network fetch. `scripts/ci/font-egress.mjs`
+// guards that boundary. Each file is the upstream Google Fonts latin-subset
+// variable font; the declared ranges reproduce the previous build's lowest and
+// highest faces, so heavier requests clamp to the same master as before.
+const instrumentSans = localFont({
+  src: "./fonts/instrument-sans-latin-var.woff2",
+  weight: "400 700",
+  style: "normal",
   variable: "--font-body-next",
   display: "swap",
 });
 
-const sora = Sora({
-  subsets: ["latin"],
+const sora = localFont({
+  src: "./fonts/sora-latin-var.woff2",
+  weight: "100 800",
+  style: "normal",
   variable: "--font-display-next",
   display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+// 400–600 matches the mono faces the design system previously declared, so a
+// `font-weight: 900` label keeps resolving to the 600 master as it did before.
+const jetbrainsMono = localFont({
+  src: "./fonts/jetbrains-mono-latin-var.woff2",
+  weight: "400 600",
+  style: "normal",
   variable: "--font-mono-next",
   display: "swap",
 });
