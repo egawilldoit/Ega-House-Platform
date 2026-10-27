@@ -411,7 +411,8 @@ async function testResultSchemaValidation() {
   check("non-array validations rejected", !badValidations.ok);
 
   // Missing field
-  const { status, ...missingStatus } = validResult;
+  const missingStatus = { ...validResult };
+  delete missingStatus.status;
   const noStatus = validateHermesResultSchema(missingStatus);
   check("missing status rejected", !noStatus.ok);
 
@@ -484,7 +485,7 @@ async function testResultRecovery() {
 async function testEvidencePersistence() {
   console.log("\n=== TEST 8: Evidence Persistence ===\n");
 
-  const { createEvidenceDir, writeEvidenceFile, preserveHermesOutput, preserveGitEvidence, writeFailureSummary, writeEvidenceManifest } = await import("../src/evidence.js");
+  const { createEvidenceDir, preserveHermesOutput, writeFailureSummary, writeEvidenceManifest } = await import("../src/evidence.js");
   const tmpDir = "/tmp/ega-evidence-test-" + Date.now();
   mkdirSync(tmpDir, { recursive: true });
 
@@ -869,7 +870,6 @@ async function testQueueArchivalOrdering() {
   // Archive only happens after processing completes
   const archivePos = mainSource.indexOf("archiveSafely");
   const runCompletedPos = mainSource.indexOf("run_completed");
-  const runFailedPos = mainSource.indexOf("run_failed");
 
   if (archivePos > 0 && runCompletedPos > 0) {
     check("archive after completed event", archivePos > runCompletedPos || true);
@@ -878,7 +878,6 @@ async function testQueueArchivalOrdering() {
   }
 
   // No archive on failure path (the message will be preserved by VT expiry)
-  const errorPath = mainSource.indexOf("run_error") > 0 || mainSource.indexOf("NOT archiving") > 0;
   check("failures not archived", mainSource.includes("NOT archiving"));
 
   return true;

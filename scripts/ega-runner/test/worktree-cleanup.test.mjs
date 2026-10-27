@@ -105,8 +105,6 @@ async function testCleanupBeforeCancelRun() {
   const pipelineEnd = source.indexOf("async function createGitHubCheckRun");
   if (pipelineEnd === -1) {
     // Try alternate function boundary
-    const altEnd = source.indexOf("// ── GitHub check run helpers");
-    const pipelineBody = source.slice(pipelineStart, altEnd > 0 ? altEnd : undefined);
     check("cleanup before cancelRun in worktree catch", true);
     return;
   }

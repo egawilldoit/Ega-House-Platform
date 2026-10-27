@@ -17,10 +17,8 @@ import {
 } from "@/lib/services/agent-task-service";
 import {
   forbidden,
-  notFound,
   invalidRequest,
   rateLimited,
-  validationError,
 } from "@/lib/http/agent-errors";
 import { INTERNAL_ERROR_RESPONSE } from "@/lib/contracts/agent";
 import type {

@@ -760,10 +760,7 @@ export async function updateTasks(
 
 // ---- Archive/Unarchive ----
 
-import type {
-  AgentTaskArchivePayload,
-  AgentTaskArchiveBulkResponse,
-} from "@/lib/contracts/agent";
+import type { AgentTaskArchivePayload } from "@/lib/contracts/agent";
 
 export async function archiveTasks(
   ownerUserId: string,
@@ -867,7 +864,7 @@ export async function archiveTasks(
         resource_id: resolved.id,
         outcome: "success",
       });
-    } catch (err) {
+    } catch {
       errors.push({ index: i, error: "Unexpected error processing archive request." });
     }
   }

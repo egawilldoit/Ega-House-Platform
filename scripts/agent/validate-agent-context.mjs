@@ -255,9 +255,10 @@ async function validateCommands(root, errors, output) {
   ]) {
     try {
       const manifest = JSON.parse(await readFile(join(root, file), "utf8"));
-      for (const command of commands) manifest.scripts?.[command]
-        ? output.push(`COMMAND DECLARED ${file}#${command}`)
-        : errors.push(`${file}: missing documented npm script '${command}'`);
+      for (const command of commands) {
+        if (manifest.scripts?.[command]) output.push(`COMMAND DECLARED ${file}#${command}`);
+        else errors.push(`${file}: missing documented npm script '${command}'`);
+      }
     } catch (error) { errors.push(`${file}: invalid or unreadable JSON (${error.message})`); }
   }
   for (const file of ["execution-contract.test.mjs", "hermes-executor.test.mjs", "schema-preflight.test.mjs", "worktree-cleanup.test.mjs"].map((file) => `scripts/ega-runner/test/${file}`)) {

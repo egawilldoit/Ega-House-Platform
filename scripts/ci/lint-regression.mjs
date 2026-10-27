@@ -88,7 +88,7 @@ function capture() {
   const baseline = {
     capturedAt: new Date().toISOString(),
     sha: git(['rev-parse', 'HEAD']),
-    note: 'Inherited lint debt at Stage 9 start. Updates only via deliberate PRs that also fix counted problems (design §8). PR7 must re-capture after moving src/** to apps/web/src/**.',
+    note: 'Zero lint debt since EGA-779. The pre-EGA-779 live tree had 0 errors / 40 warnings (this JSON still recorded 38 errors / 52 warnings from an older revision). perFile is intentionally empty: with no baseline entry every changed file must be zero-problem. Updates only via deliberate PRs that also fix counted problems (design §8).',
     totals,
     perFile: Object.fromEntries([...perFile.entries()].sort()),
   };

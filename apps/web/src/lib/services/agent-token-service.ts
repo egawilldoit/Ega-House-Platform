@@ -6,7 +6,6 @@ import { parseBearerToken, verifyHash, hashToken, generateRawToken, validateHex6
 import type { TokenRepository } from "@/lib/services/agent-token-repository";
 import type {
   AgentAuthResult,
-  AgentAuthContext,
   AgentCapabilities,
   AgentTokenScopes,
 } from "@/lib/contracts/agent";
