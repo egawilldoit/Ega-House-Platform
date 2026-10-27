@@ -28,6 +28,7 @@ import { ListChecks } from "lucide-react";
 import type { TasksPageModel } from "../_lib/tasks-page-model";
 import { TasksListTable, type TaskListActions } from "./tasks-list-table";
 import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
+import { updateTaskFieldAction } from "@/app/tasks/actions";
 
 function getTaskSignalTone(status: string, priority: string) {
   if (status === "blocked" || priority === "urgent") return "bg-[var(--status-overdue)]";
@@ -320,7 +321,13 @@ export function TasksPageView({ model }: { model: TasksPageModel }) {
       {/* Only mount the client drawer when a task is selected, so the closed
           state costs no client hook and stays server-rendered. */}
       {selectedTaskId ? (
-        <TaskDrawerHost task={selectedTask} loadFailed={selectedTaskError} />
+        <TaskDrawerHost
+          task={selectedTask}
+          loadFailed={selectedTaskError}
+          updateFieldAction={updateTaskFieldAction}
+          updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
+          updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+        />
       ) : null}
     </div>
   );
