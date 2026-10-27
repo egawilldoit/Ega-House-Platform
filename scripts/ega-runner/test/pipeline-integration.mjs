@@ -44,17 +44,12 @@ const PROJECT_ID = "54a38782-a534-481c-9ca0-c9d46a6e48a2";
 
 // ── Test tracking ────────────────────────────────────────────────────────────
 
-const allResults = [];
 let suitePassed = true;
 
 let _suffixCounter = 0;
 function genId() {
   _suffixCounter++;
   return `${Date.now()}-${_suffixCounter}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function test(name, passFn) {
-  return { name, pass: passFn };
 }
 
 function check(label, pass, detail = "") {
@@ -451,7 +446,7 @@ async function testCancellationAndLease() {
   console.log("  5.2: Created stale run:", staleRun.id, "(lease expired 1h ago)");
 
   await enqueueMessage(staleRun.id);
-  const runnerOutput = runSmoke();
+  runSmoke();
 
   const [staleResult] = await sql`
     SELECT status, failure_code, claimed_by, attempt_number

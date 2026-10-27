@@ -41,14 +41,8 @@ async function testModuleExports() {
 
   // Verify the return type shape by calling with a mock that returns empty
   // (simulating all columns missing)
-  let callCount = 0;
-  const mockDb = (strings, ...args) => {
-    callCount++;
-    return { rows: [] };
-  };
   // Make it thenable so `await db\`...\`` works
-  const mockSql = (strings, ..._args) => {
-    callCount++;
+  const mockSql = (_strings, ..._args) => {
     return Promise.resolve([]);
   };
   mockSql.mockQuery = true;
@@ -70,8 +64,6 @@ async function testModuleExports() {
 async function testRequiredColumnsComplete() {
   console.log("\n=== Test 2: REQUIRED_COLUMNS covers all Runner columns ===\n");
 
-  const mainSource = readFileSync(resolve(RUNNER_DIR, "src/main.ts"), "utf8");
-  const leaseSource = readFileSync(resolve(RUNNER_DIR, "src/run-lease.ts"), "utf8");
   const preflightSource = readFileSync(resolve(RUNNER_DIR, "src/schema-preflight.ts"), "utf8");
 
   // Extract REQUIRED_COLUMNS from the source
@@ -79,19 +71,6 @@ async function testRequiredColumnsComplete() {
   const requiredList = requiredMatch
     ? [...requiredMatch[1].matchAll(/"(\w+)"/g)].map(m => m[1])
     : [];
-
-  // Columns written in main.ts UPDATE statements
-  const writtenInUpdates = [
-    ...mainSource.matchAll(/SET\s+([\w_]+)\s*=/g),
-  ].map(m => m[1]);
-
-  // Columns read in SELECTs (run-lease.ts)
-  const selectedColumns = [
-    ...leaseSource.matchAll(/\b(id|project_id|status|claimed_by|heartbeat_at|lease_expires_at|started_at|linear_issue_id|linear_issue_identifier|linear_issue_url|attempt_number)\b/g),
-  ].map(m => m[1]);
-
-  const uniqueWritten = [...new Set(writtenInUpdates)];
-  const uniqueSelected = [...new Set(selectedColumns)];
 
   // Columns used by the Runner that should be in REQUIRED_COLUMNS
   const runnerColumns = new Set([
