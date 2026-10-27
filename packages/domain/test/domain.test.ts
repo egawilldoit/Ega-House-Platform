@@ -19,7 +19,10 @@ import {
 } from "../src/index";
 
 test("canonical task and goal values remain stable", () => {
-  assert.deepEqual(TASK_STATUS_VALUES, ["todo", "in_progress", "done", "blocked"]);
+  assert.deepEqual(TASK_STATUS_VALUES, ["todo", "in_progress", "review", "done", "blocked"]);
+  assert.equal(isTaskStatus("review"), true);
+  // Review is open work: it must never be counted as completed.
+  assert.equal(isTaskCompletedStatus("review"), false);
   assert.deepEqual(TASK_PRIORITY_VALUES, ["low", "medium", "high", "urgent"]);
   assert.deepEqual(GOAL_HEALTH_VALUES, ["on_track", "at_risk", "off_track"]);
   assert.equal(isTaskStatus("in_progress"), true);

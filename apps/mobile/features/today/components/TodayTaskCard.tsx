@@ -22,7 +22,7 @@ export type TodayTaskCardProps = {
   title: string;
   project: string;
   goal?: string | null;
-  status: 'todo' | 'in_progress' | 'done' | 'blocked';
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'blocked';
   priority: 'low' | 'medium' | 'high' | 'urgent';
   dueLabel: string;
   blockedReason?: string | null;
