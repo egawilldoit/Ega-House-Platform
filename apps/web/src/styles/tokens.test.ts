@@ -112,6 +112,15 @@ describe("EGA House workspace tokens — single authority", () => {
     expect(violations, `self-referential lines: ${violations.join("; ")}`).toEqual([]);
   });
 
+  it("defines the drag shadow in both palettes", () => {
+    const tokens = read("src/styles/tokens.css");
+    // Light :root block and the scoped dark block must both carry the token, so
+    // a dragged surface never falls back to an undefined shadow.
+    const occurrences = tokens.match(/--ega-shadow-drag:/g) ?? [];
+    expect(occurrences).toHaveLength(2);
+    expect(tokens).toContain("--ega-shadow-drag: 0 18px 36px");
+  });
+
   it("resolves computed vars via jsdom (browser regression)", async () => {
     const tokens = read("src/styles/tokens.css");
     const globals = read("src/app/globals.css");

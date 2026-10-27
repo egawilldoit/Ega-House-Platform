@@ -128,11 +128,15 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 | Card | `ui/card.tsx` | Exists, `ega-glass` | Remap to `ega-surface` + `ega-border` + `shadow-sm` |
 | Input | `ui/input.tsx` | Exists | Keep, add `ega-gold` focus ring |
 | Tabs | `ui/tabs.tsx` | Exists | Keep (verify tasks board) |
-| Tooltip | — | Missing | **Create** (Radix or custom) for icon-only, collapsed sidebar, truncated text |
-| Popover | — | Missing | **Create** (for filter menus) |
+| Tooltip | `ui/tooltip.tsx` | Exists (custom portal + delay) | Keep; do not duplicate with Radix |
+| Popover | `ui/popover.tsx` | **Added by EGA-806** (Radix shell) | Focus return, Escape/outside dismissal, collision-aware placement |
+| MenuList | `ui/menu-list.tsx` | **Added by EGA-806** | `listbox`/`option` semantics, arrow/Home/End/Enter, type-ahead, disabled skip |
+| PropertyPill | `ui/property-pill.tsx` | **Added by EGA-806** | Property picker: `aria-haspopup="listbox"` + `aria-expanded` over Popover + MenuList |
+| Kbd | `ui/kbd.tsx` | **Added by EGA-806** | Presentational keycap; control owns `aria-keyshortcuts` |
+| StatusIcon / PriorityIcon | `ui/status-icon.tsx`, `ui/priority-icon.tsx` | **Added by EGA-806** | Canonical glyphs from `status-*` / `priority-*` tokens, `role="img"` or `decorative` |
 | Dialog | `ui/sheet.tsx` exists as Sheet | Exists as Sheet (drawer) | Enhance as Dialog for modal flows; add motion |
-| DropdownMenu | — | Missing | **Create** (for task row actions, avoid 5-button toolbars) |
-| ContextMenu | — | Missing | **Create** or use Dropdown for kanban |
+| DropdownMenu | — | Dependency added by EGA-806, primitive not built | Build with its first consumer (task row actions) |
+| ContextMenu | — | Dependency added by EGA-806, primitive not built | Build with EGA-786 (kanban right-click) |
 | EmptyState | `ui/empty-state.tsx` | Exists | Keep, polish |
 | Skeleton | `ui/skeleton.tsx` | Exists | Keep, geometry-match final content |
 | ProgressBar | `ui/progress-bar.tsx` | Exists | Keep |
@@ -144,7 +148,17 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 | PageHeader | — | Implicit in AppShell | **Create** `components/layout/page-header.tsx` |
 | FilterPill | `ui/filter-pill.tsx` | Exists | Keep, remap active to gold |
 
-**Decision**: Evolve existing `ui/` files; do NOT install shadcn as dependency — copy patterns if needed. Keep `motion` for all primitives.
+**Decision**: Evolve existing `ui/` files; do NOT install shadcn. Keep `motion`
+for all primitives.
+
+**Update (EGA-806)**: `@radix-ui/react-popover`, `@radix-ui/react-dropdown-menu`
+and `@radix-ui/react-context-menu` are installed (same major line as the
+existing `@radix-ui/react-dialog`) for the behaviour that is expensive to get
+right by hand — focus restoration, dismiss layers and collision-aware placement.
+Build a primitive only with the ticket that consumes it. `--ega-shadow-drag` is
+defined in both palettes; `--status-review*` is deliberately **not** defined
+while EGA-790 is an unapproved owner decision. See
+[`GR8R-IMPLEMENTATION-GUIDE.md`](GR8R-IMPLEMENTATION-GUIDE.md).
 
 ## 6. Motion (current vs target)
 
