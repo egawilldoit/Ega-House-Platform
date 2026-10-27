@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import type { ShellIdentity, WorkspaceShellMetrics } from "@/lib/workspace-shell";
 import { cn } from "@/lib/utils";
+import { OfflineBanner } from "./offline-banner";
 import { Sidebar, type SidebarProject } from "./sidebar";
 import { SidebarMobileDrawer } from "./sidebar-mobile-drawer";
 import { TopBar } from "./top-bar";
@@ -67,6 +68,7 @@ export function WorkspaceShell({
       />
 
       <main className="app-main workspace-main">
+        <OfflineBanner />
         <TopBar
           metrics={metrics}
           identity={identity}
