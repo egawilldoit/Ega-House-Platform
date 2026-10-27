@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -41,7 +42,12 @@ async function renderDrawer() {
         <button type="button" style={{ visibility: "hidden" }}>
           Visibility hidden control
         </button>
-        <a href="/dashboard" onClick={(event) => event.preventDefault()}>
+        {/* Fragment href: the drawer closes on nav-link clicks from its capture
+            handler, which unmounts the anchor before the anchor can cancel the
+            default action. A path href would make jsdom attempt (and log) an
+            unimplemented document navigation; `a[href]` still exercises the
+            close-on-navigation branch. */}
+        <a href="#dashboard">
           Dashboard
         </a>
       </WorkspaceNavigationDrawer>,
@@ -75,7 +81,7 @@ describe("WorkspaceNavigationDrawer", () => {
     ).not.toBeNull();
     expect(document.body.style.overflow).toBe("hidden");
 
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const link = container.querySelector<HTMLAnchorElement>('a[href="#dashboard"]');
     expect(link).not.toBeNull();
     expect(document.activeElement).toBe(link);
 
@@ -102,7 +108,7 @@ describe("WorkspaceNavigationDrawer", () => {
     ).toBeNull();
 
     await click(trigger);
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const link = container.querySelector<HTMLAnchorElement>('a[href="#dashboard"]');
     expect(link).not.toBeNull();
     await click(link as HTMLAnchorElement);
     expect(
@@ -116,7 +122,7 @@ describe("WorkspaceNavigationDrawer", () => {
     const trigger = getButton("Open workspace navigation");
     await click(trigger);
 
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const link = container.querySelector<HTMLAnchorElement>('a[href="#dashboard"]');
     const close = container.querySelector<HTMLButtonElement>(".workspace-drawer-close");
     expect(link).not.toBeNull();
     expect(close).not.toBeNull();
@@ -147,7 +153,7 @@ describe("WorkspaceNavigationDrawer", () => {
     const trigger = getButton("Open workspace navigation");
     await click(trigger);
 
-    const link = container.querySelector<HTMLAnchorElement>('a[href="/dashboard"]');
+    const link = container.querySelector<HTMLAnchorElement>('a[href="#dashboard"]');
     const hiddenControl = Array.from(container.querySelectorAll("button")).find(
       (button) => button.textContent === "Opacity hidden control",
     );

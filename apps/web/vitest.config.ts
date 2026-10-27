@@ -9,7 +9,10 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "jsdom",
+    // Pure logic tests default to the `node` environment: jsdom construction was
+    // the dominant cost (≈120 s of a ≈220 s run for 242 files). Files that need
+    // DOM APIs opt in with `// @vitest-environment jsdom` at the top.
+    environment: "node",
     globals: true,
     fileParallelism: false,
     maxConcurrency: 1,

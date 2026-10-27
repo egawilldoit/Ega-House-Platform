@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { describe, test, vi, beforeEach, afterEach } from "vitest";
 import React from "react";
