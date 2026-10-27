@@ -10,6 +10,7 @@ import {
 
 const CURRENT = {
   title: "Draft review",
+  description: "Existing body",
   status: "in_progress",
   priority: "high",
   due_date: "2026-05-01",
@@ -20,6 +21,7 @@ const CURRENT = {
 test("accepts exactly the whitelisted fields", () => {
   assert.deepEqual([...TASK_FIELD_PATCH_FIELDS], [
     "title",
+    "description",
     "status",
     "priority",
     "dueDate",
@@ -46,6 +48,18 @@ test("changes only the requested field and carries the rest forward", () => {
   // field it receives.
   assert.equal(result.input.title, undefined);
   assert.equal(result.input.blockedReason, null);
+  // An unrelated patch must not rewrite the description either.
+  assert.equal(result.input.description, undefined);
+});
+
+test("a description patch changes only the description", () => {
+  const result = buildTaskFieldPatchInput("task-1", CURRENT, "description", "New body");
+  assert.ok("input" in result);
+  assert.equal(result.input.description, "New body");
+  assert.equal(result.input.title, undefined);
+  assert.equal(result.input.status, "in_progress");
+  assert.equal(result.input.priority, "high");
+  assert.equal(result.input.dueDate, "2026-05-01");
 });
 
 test("a title patch changes the title and keeps the rest", () => {

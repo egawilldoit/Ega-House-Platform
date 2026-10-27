@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { clearCompletedFromTodayAction } from "@/app/today/actions";
+import { updateTaskFieldAction, updateTaskFieldDraftAction } from "@/app/tasks/actions";
+import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import { AppShell } from "@/components/layout/app-shell";
 import { OwnerScopedRealtimeRefresh } from "@/components/realtime/owner-scoped-realtime-refresh";
 import {
@@ -26,6 +28,8 @@ import { isTaskCompletedStatus } from "@/lib/task-domain";
 import { getCurrentUser } from "@/lib/services/auth-service";
 import { getOperatorSnapshotData } from "@/lib/services/operator-service";
 import { getActiveTimerSession } from "@/lib/services/timer-service";
+import { getTaskDrawerDetail } from "@/lib/services/task-service";
+import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { getHealthSnapshotData } from "@/lib/services/health-snapshot-service";
 import { getFrictionRadar } from "@/lib/services/friction-service";
 import { getOperatorProposalData } from "@/lib/services/operator-proposal-service";
@@ -77,6 +81,11 @@ export default async function TodayPage({
     actionSuccess?: string;
     stoppedTaskId?: string;
     operatorProposalId?: string;
+    task?: string;
+    taskMode?: string;
+    taskUpdateError?: string;
+    taskUpdateSuccess?: string;
+    taskUpdateTaskId?: string;
   }>;
 }) {
   const resolvedSearchParams = await searchParams;
@@ -84,6 +93,10 @@ export default async function TodayPage({
   const actionSuccess = resolvedSearchParams.actionSuccess?.slice(0, 180) ?? null;
   const stoppedTaskId = resolvedSearchParams.stoppedTaskId?.slice(0, 80) ?? null;
   const operatorProposalId = resolvedSearchParams.operatorProposalId?.slice(0, 80) ?? null;
+  const selectedTaskId = resolvedSearchParams.task?.slice(0, 80) ?? null;
+  const taskUpdateError = resolvedSearchParams.taskUpdateError?.slice(0, 180) ?? null;
+  const taskUpdateSuccess = resolvedSearchParams.taskUpdateSuccess?.slice(0, 180) ?? null;
+  const taskUpdateTaskId = resolvedSearchParams.taskUpdateTaskId?.slice(0, 80) ?? null;
 
   const [todayResult, healthResult, frictionResult, user, proposalResult, shellMetrics] =
     await Promise.all([
@@ -177,7 +190,11 @@ export default async function TodayPage({
     signals: snapshot.signals,
   };
 
-  const returnTo = "/today";
+  const returnTo = selectedTaskId ? buildTaskDrawerLink("/today", selectedTaskId) : "/today";
+  const selectedTaskResult = selectedTaskId
+    ? await getTaskDrawerDetail(selectedTaskId)
+    : null;
+  const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
   const activeTimerSessionId = todayData.activeTimer?.sessionId ?? null;
   const flexibleTodayActionable = todayData.flexibleTasks.filter(
     (task) => task.status !== "blocked" && !isTaskCompletedStatus(task.status),
@@ -233,6 +250,17 @@ export default async function TodayPage({
       ) : null}
 
       <TimerActionFeedback actionError={actionError} actionSuccess={actionSuccess} />
+
+      {selectedTaskId ? (
+        <TaskDrawerHost
+          task={selectedTask}
+          loadFailed={selectedTaskResult?.kind === "error"}
+          updateFieldAction={updateTaskFieldAction}
+          updateDraftAction={updateTaskFieldDraftAction}
+          updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
+          updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+        />
+      ) : null}
 
       <TodayKpiRow
         summary={todayData.summary}

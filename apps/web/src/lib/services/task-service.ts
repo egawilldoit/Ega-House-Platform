@@ -2245,9 +2245,11 @@ export async function deleteTaskSafely(
 export type TaskDrawerDetail = {
   id: string;
   title: string;
+  description: string | null;
   status: string;
   priority: string;
   due_date: string | null;
+  estimate_minutes: number | null;
   blocked_reason: string | null;
   project_id: string | null;
   goal_id: string | null;
@@ -2282,7 +2284,7 @@ export async function getTaskDrawerDetail(
   const { data, error } = await supabase
     .from("tasks")
     .select(
-      "id, title, status, priority, due_date, blocked_reason, project_id, goal_id, archived_at",
+      "id, title, description, status, priority, due_date, estimate_minutes, blocked_reason, project_id, goal_id, archived_at",
     )
     .eq("id", normalizedId)
     .eq("owner_user_id", userId)
@@ -2306,6 +2308,7 @@ export async function getTaskDrawerDetail(
  */
 export const TASK_FIELD_PATCH_FIELDS = [
   "title",
+  "description",
   "status",
   "priority",
   "dueDate",
@@ -2322,6 +2325,7 @@ export function isTaskFieldPatchField(value: string): value is TaskFieldPatchFie
 /** The current values a single-field patch must carry forward unchanged. */
 export type TaskFieldPatchCurrent = {
   title: string;
+  description: string | null;
   status: string;
   priority: string;
   due_date: string | null;
@@ -2352,6 +2356,9 @@ export function buildTaskFieldPatchInput(
     // Carried only when the patch targets it: `updateTaskInline` rewrites every
     // field it receives, and a priority/due edit must not touch the title.
     title: field === "title" ? value : undefined,
+    // Same rule as the title: only a description edit carries a description, so
+    // a status/priority patch can never overwrite text the drawer did not show.
+    description: field === "description" ? value : undefined,
     status: current.status,
     priority: current.priority,
     dueDate: current.due_date ?? "",
@@ -2359,6 +2366,7 @@ export function buildTaskFieldPatchInput(
     blockedReason: current.blocked_reason,
   };
 
+  if (field === "description") input.description = value;
   if (field === "status") input.status = value;
   if (field === "priority") input.priority = value;
   if (field === "dueDate") input.dueDate = value;
@@ -2396,7 +2404,7 @@ export async function updateTaskFieldForOwner(
 
   const { data: current, error: loadError } = await supabase
     .from("tasks")
-    .select("title, status, priority, due_date, estimate_minutes, blocked_reason")
+    .select("title, description, status, priority, due_date, estimate_minutes, blocked_reason")
     .eq("id", taskId)
     .eq("owner_user_id", userId)
     .maybeSingle();

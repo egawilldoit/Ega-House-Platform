@@ -19,9 +19,11 @@ import { TaskDrawerHost } from "./task-drawer-host";
 const TASK = {
   id: "t1",
   title: "Draft weekly execution review",
+  description: "Existing description",
   status: "in_progress",
   priority: "high",
   due_date: "2026-05-01",
+  estimate_minutes: 90,
   blocked_reason: null as string | null,
   project_id: "p1",
   goal_id: "g1",
@@ -48,6 +50,11 @@ afterEach(() => {
 });
 
 const updateFieldAction = vi.fn();
+const updateDraftAction = vi.fn(async (_state: unknown, _formData: FormData) => ({
+  errorMessage: null,
+  successMessage: null,
+  savedValue: null,
+}));
 
 function render(
   task: typeof TASK | null,
@@ -60,6 +67,7 @@ function render(
         task={task}
         loadFailed={loadFailed}
         updateFieldAction={updateFieldAction}
+        updateDraftAction={updateDraftAction}
         {...extra}
       />,
     ),
@@ -85,6 +93,35 @@ describe("TaskDrawerHost", () => {
     expect(selects.map((select) => select.value)).toEqual(["in_progress", "high"]);
     const dueDate = document.body.querySelector<HTMLInputElement>('input[type="date"]');
     expect(dueDate?.value).toBe("2026-05-01");
+  });
+
+  it("edits the title, description and estimate in place", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render(TASK);
+
+    const title = document.body.querySelector<HTMLInputElement>('input[maxlength="256"]');
+    expect(title?.value).toBe("Draft weekly execution review");
+
+    const description = document.body.querySelector<HTMLTextAreaElement>("textarea");
+    expect(description?.value).toBe("Existing description");
+
+    const estimate = document.body.querySelector<HTMLInputElement>('input[type="number"][name="value"]');
+    expect(estimate?.value).toBe("90");
+    expect(estimate?.form?.querySelector<HTMLInputElement>('input[name="field"]')?.value).toBe(
+      "estimateMinutes",
+    );
+  });
+
+  it("offers a blocked reason editor only while the task is blocked", () => {
+    currentParams = new URLSearchParams("task=t1");
+    render({ ...TASK, status: "blocked", blocked_reason: "Waiting on review" });
+
+    const reason = document.body.querySelector<HTMLInputElement>('input[name="value"]');
+    const fields = Array.from(
+      document.body.querySelectorAll<HTMLInputElement>('input[name="field"]'),
+    ).map((input) => input.value);
+    expect(fields).toContain("blockedReason");
+    expect(reason).not.toBeNull();
   });
 
   it("shows an indistinguishable unavailable state for a missing task", () => {
