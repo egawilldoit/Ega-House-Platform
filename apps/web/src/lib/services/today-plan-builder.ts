@@ -310,7 +310,14 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlannerData {
     ...suggestions.pinned,
     ...suggestions.inProgress,
   ])
-    .filter((task) => !isTaskCompletedStatus(task.status) && task.status !== "blocked")
+    // Review work is waiting for the owner, not for execution: it stays visible
+    // in its lane but never becomes Start Here or the next suggestion.
+    .filter(
+      (task) =>
+        !isTaskCompletedStatus(task.status) &&
+        task.status !== "blocked" &&
+        task.status !== "review",
+    )
     .slice(0, FOCUS_QUEUE_LIMIT);
   const startHere = focusQueue[0] ?? null;
   const plannedToday = selectedTasks

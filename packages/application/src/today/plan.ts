@@ -3,6 +3,7 @@ import {
   isTaskPriority,
   isTaskStatus,
   type TaskPriority,
+  type TaskStatus,
 } from "@ega/domain";
 
 import { formatDurationLabel } from "../shared/duration";
@@ -20,7 +21,7 @@ export type TodayPlanTask = Readonly<{
   title: string;
   description: string | null;
   blockedReason: string | null;
-  status: NormalizedTaskStatus;
+  status: TaskStatus;
   priority: TaskPriority;
   dueDate: string | null;
   estimateMinutes: number | null;
@@ -39,9 +40,7 @@ export type TodayPlanTask = Readonly<{
   dueBucket: DueBucket;
 }>;
 
-type NormalizedTaskStatus = "todo" | "in_progress" | "blocked" | "done";
-
-function normalizeStatus(status: string): NormalizedTaskStatus | null {
+function normalizeStatus(status: string): TaskStatus | null {
   const normalized = String(status ?? "").trim().toLowerCase();
   return isTaskStatus(normalized) ? normalized : null;
 }

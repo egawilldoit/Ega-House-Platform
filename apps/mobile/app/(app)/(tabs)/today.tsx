@@ -143,6 +143,11 @@ function getStatusActions(task: MobileTodayTask): Array<{ label: string; status:
         { label: 'Done', status: 'done' },
         { label: 'To do', status: 'todo' },
       ];
+    case 'review':
+      return [
+        { label: 'Start', status: 'in_progress' },
+        { label: 'Done', status: 'done' },
+      ];
     case 'done':
       return [{ label: 'Reopen', status: 'todo' }];
     case 'blocked':
