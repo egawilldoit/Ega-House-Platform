@@ -12,12 +12,15 @@ import {
 import { SupabaseProjectsRepository } from "@ega/data-access";
 
 import { CreateTaskForm } from "@/app/tasks/create-task-form";
+import { TaskDrawerHost } from "@/components/tasks/drawer/task-drawer-host";
 import {
   cancelTaskReminderAction,
   createTaskReminderAction,
   deleteTaskAction,
   pinTaskAction,
   unpinTaskAction,
+  updateTaskFieldAction,
+  updateTaskFieldDraftAction,
   updateTaskInlineAction,
 } from "@/app/tasks/actions";
 import {
@@ -61,9 +64,11 @@ import {
 } from "@/lib/task-list";
 import { formatDurationLabel, getTaskTotalDurationMap } from "@/lib/task-session";
 import { formatTaskEstimate } from "@/lib/task-estimate";
+import { buildTaskDrawerLink } from "@/lib/task-drawer-url";
 import { formatTaskRecurrenceRule } from "@/lib/task-recurrence";
 import { formatTimerDateTime } from "@/lib/timer-domain";
 import {
+  getTaskDrawerDetail,
   getTaskRecurrencesForTasks,
   getTaskRemindersForTasks,
 } from "@/lib/services/task-service";
@@ -118,6 +123,8 @@ type ProjectDetailPageProps = {
     projectUpdateError?: string;
     projectUpdateProjectId?: string;
     projectUpdateField?: string;
+    task?: string;
+    taskMode?: string;
   }>;
 };
 
@@ -243,6 +250,7 @@ export default async function ProjectDetailPage({
   const projectUpdateError = resolvedSearchParams.projectUpdateError?.slice(0, 180) ?? null;
   const projectUpdateProjectId = resolvedSearchParams.projectUpdateProjectId ?? null;
   const projectUpdateField = resolvedSearchParams.projectUpdateField ?? null;
+  const selectedTaskId = resolvedSearchParams.task?.slice(0, 80) ?? null;
 
   const { project, goals, tasks, statusCounts, taskTotalDurations } = projectDetail;
   const calendarFormDefaults = getCalendarTaskFormDefaults(calendarSettingsResult.data);
@@ -269,6 +277,15 @@ export default async function ProjectDetailPage({
     target.searchParams.set("view", activeView);
     returnTo = `${target.pathname}${target.search}`;
   }
+  if (selectedTaskId) {
+    // The drawer is the selected-task host for this page; the return path keeps
+    // the project filters and the selection so a picker save stays here.
+    returnTo = buildTaskDrawerLink(returnTo, selectedTaskId);
+  }
+
+  const selectedTaskResult = selectedTaskId ? await getTaskDrawerDetail(selectedTaskId) : null;
+  const selectedTask = selectedTaskResult?.kind === "found" ? selectedTaskResult.task : null;
+
   const filteredTasks = applyTaskListQuery(
     tasks.filter((task) => {
       if (activeStatus && task.status !== activeStatus) {
@@ -540,7 +557,12 @@ export default async function ProjectDetailPage({
                           <summary className="row cursor-pointer list-none">
                             <span className="row-main">
                               <span className="row-title">
-                                {task.title}
+                                <Link
+                                  href={buildTaskDrawerLink(returnTo, task.id)}
+                                  className="hover:underline focus-visible:outline-[var(--ega-focus-outline)] focus-visible:outline-offset-2"
+                                >
+                                  {task.title}
+                                </Link>
                                 {index === 0 ? <span className="sr-only"> (current focus)</span> : null}
                               </span>
                               <span className="row-meta">
@@ -779,6 +801,17 @@ export default async function ProjectDetailPage({
           </div>
         </div>
       </div>
+
+      {selectedTaskId ? (
+        <TaskDrawerHost
+          task={selectedTask}
+          loadFailed={selectedTaskResult?.kind === "error"}
+          updateFieldAction={updateTaskFieldAction}
+          updateDraftAction={updateTaskFieldDraftAction}
+          updateError={taskUpdateTaskId === selectedTaskId ? taskUpdateError : null}
+          updateSuccess={taskUpdateTaskId === selectedTaskId ? taskUpdateSuccess : null}
+        />
+      ) : null}
     </TasksWorkspaceShell>
   );
 }
