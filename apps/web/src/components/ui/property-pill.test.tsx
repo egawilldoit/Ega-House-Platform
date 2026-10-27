@@ -77,6 +77,43 @@ describe("PropertyPill", () => {
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
   });
 
+  it("is a named listbox popup, not an unnamed dialog", async () => {
+    const { trigger } = await renderPill();
+    trigger.focus();
+    await pointerClick(trigger);
+
+    const popup = document.body.querySelector("[data-radix-popper-content-wrapper] > *") as HTMLElement;
+    expect(popup).not.toBeNull();
+    expect(popup.getAttribute("role")).not.toBe("dialog");
+
+    const listbox = document.body.querySelector('[role="listbox"]');
+    expect(listbox?.getAttribute("aria-label")).toBe("Status");
+  });
+
+  it("moves focus into the list and selects with the keyboard", async () => {
+    const { onSelect, trigger } = await renderPill();
+    trigger.focus();
+    await pointerClick(trigger);
+
+    const listbox = document.body.querySelector('[role="listbox"]') as HTMLElement;
+    expect(document.activeElement).toBe(listbox);
+
+    await act(async () => {
+      listbox.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }),
+      );
+    });
+    await act(async () => {
+      listbox.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }),
+      );
+    });
+
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ id: "in_progress" });
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("closes on Escape and returns focus to the trigger", async () => {
     const { trigger } = await renderPill();
     await pointerClick(trigger);

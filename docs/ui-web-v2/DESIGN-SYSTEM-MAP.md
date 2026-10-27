@@ -151,10 +151,13 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 **Decision**: Evolve existing `ui/` files; do NOT install shadcn. Keep `motion`
 for all primitives.
 
-**Update (EGA-806)**: `@radix-ui/react-popover`, `@radix-ui/react-dropdown-menu`
-and `@radix-ui/react-context-menu` are installed (same major line as the
-existing `@radix-ui/react-dialog`) for the behaviour that is expensive to get
-right by hand — focus restoration, dismiss layers and collision-aware placement.
+**Update (EGA-806)**: `@radix-ui/react-popover`,
+`@radix-ui/react-dropdown-menu` and `@radix-ui/react-context-menu` are installed
+for the behaviour that is expensive to get right by hand — focus restoration,
+dismiss layers and collision-aware placement. They come from the same compatible
+Radix release family as the existing `@radix-ui/react-dialog`; majors differ
+(dialog/popover v1, dropdown/context v2), so pin by the lockfile rather than by
+major.
 Build a primitive only with the ticket that consumes it. `--ega-shadow-drag` is
 defined in both palettes; `--status-review*` is deliberately **not** defined
 while EGA-790 is an unapproved owner decision. See

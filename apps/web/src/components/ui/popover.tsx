@@ -20,11 +20,15 @@ export const PopoverClose = PopoverPrimitive.Close;
 export const PopoverContent = forwardRef<
   ElementRef<typeof PopoverPrimitive.Content>,
   ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(function PopoverContent({ className, align = "start", sideOffset = 6, ...props }, ref) {
+>(function PopoverContent(
+  { className, align = "start", sideOffset = 6, role = "presentation", ...props },
+  ref,
+) {
   return (
     <PopoverPrimitive.Portal>
       <PopoverPrimitive.Content
         ref={ref}
+        role={role}
         align={align}
         sideOffset={sideOffset}
         collisionPadding={8}
