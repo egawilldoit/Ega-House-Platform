@@ -290,7 +290,7 @@ describe("TasksListTable dense inventory", () => {
       '[data-testid="task-title-open-task-1"]',
     );
     expect(titleLink).not.toBeNull();
-    expect(titleLink?.getAttribute("href")).toContain("task=task-1");
+    expect(titleLink?.getAttribute("href")).toBe("/tasks?status=todo&layout=kanban&task=task-1");
 
     // jsdom cannot perform document navigation; cancel the default so the test
     // observes the click handler's effect rather than an unimplemented nav.
@@ -307,7 +307,7 @@ describe("TasksListTable dense inventory", () => {
     for (const mock of Object.values(actions)) expect(mock).not.toHaveBeenCalled();
   });
 
-  it("keeps the ••• trigger and the title wired to one editor per row", async () => {
+  it("keeps the ••• trigger opening the shared editor", async () => {
     await renderTable();
 
     const moreOptions = container.querySelector('[data-testid="task-more-options-task-1"]');

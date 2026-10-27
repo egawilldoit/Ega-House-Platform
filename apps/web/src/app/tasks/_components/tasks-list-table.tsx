@@ -239,8 +239,8 @@ function TaskListRow({
   const trackedLabel = typeof trackedSeconds === "number" ? trackedSeconds : null;
   const editorOpenerRef = useRef<HTMLElement | null>(null);
 
-  // The row owns the (error-aware) editor state so a title click drives the
-  // same `EditTaskModal` the ••• control mounts — no duplicate editor.
+  // The row owns the (error-aware) editor state for the ••• control's
+  // `EditTaskModal`; the title is a link to the drawer instead.
   const { open, handleOpenChange } = useTaskEditorOpenState({
     taskId: task.id,
     error: inlineError,
@@ -313,6 +313,9 @@ function TaskListRow({
   const titleLink = (
     <Link
       href={drawerHref}
+      // Keep the list where the user left it: the drawer is a side panel, and
+      // the stage-1 URL helpers already pass scroll:false for the same reason.
+      scroll={false}
       className="task-row-title-btn"
       title={task.title}
       aria-label={`Open ${task.title} details`}
