@@ -135,8 +135,9 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 | Kbd | `ui/kbd.tsx` | **Added by EGA-806** | Presentational keycap; control owns `aria-keyshortcuts` |
 | StatusIcon / PriorityIcon | `ui/status-icon.tsx`, `ui/priority-icon.tsx` | **Added by EGA-806** | Canonical glyphs from `status-*` / `priority-*` tokens, `role="img"` or `decorative` |
 | Dialog | `ui/sheet.tsx` exists as Sheet | Exists as Sheet (drawer) | Enhance as Dialog for modal flows; add motion |
-| DropdownMenu | — | Dependency added by EGA-806, primitive not built | Build with its first consumer (task row actions) |
-| ContextMenu | — | Dependency added by EGA-806, primitive not built | Build with EGA-786 (kanban right-click) |
+| DropdownMenu | `ui/dropdown-menu.tsx` | **Added by EGA-806** | Token-styled Radix wrapper (danger tone, separator); first consumer EGA-786 |
+| ContextMenu | `ui/context-menu.tsx` | **Added by EGA-806** | Token-styled Radix wrapper for row/kanban right-click; first consumer EGA-786 |
+| Toast + undo | `ui/toast-provider.tsx`, `ui/use-undo-toast.ts` | **Added by EGA-806** | Queue of 3, 6 s default, persistent polite live region, `role=alert` errors, real success/conflict/failure reporting; mounted by EGA-786 |
 | EmptyState | `ui/empty-state.tsx` | Exists | Keep, polish |
 | Skeleton | `ui/skeleton.tsx` | Exists | Keep, geometry-match final content |
 | ProgressBar | `ui/progress-bar.tsx` | Exists | Keep |
@@ -150,6 +151,11 @@ Target (mission): core scale 4/8/12/16/20/24/32, cards 10–14px, controls 8–1
 
 **Decision**: Evolve existing `ui/` files; do NOT install shadcn. Keep `motion`
 for all primitives.
+
+**Motion accents (EGA-806)**: `check`/`strike`/`land`/`add` keyframes live in
+`styles/motion.css` with matching `motion-*` classes; the animation is gated on
+`prefers-reduced-motion: no-preference` while the struck-through completed state
+renders regardless.
 
 **Update (EGA-806)**: `@radix-ui/react-popover`,
 `@radix-ui/react-dropdown-menu` and `@radix-ui/react-context-menu` are installed
