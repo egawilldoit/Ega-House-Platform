@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { act } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { createRoot, type Root } from "react-dom/client";
