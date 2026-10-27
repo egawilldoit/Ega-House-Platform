@@ -40,6 +40,14 @@ async function renderPill(value: string | null = "todo") {
 
 // jsdom has no PointerEvent; Radix opens on click and dismisses on pointerdown,
 // so a cancelable mouse click exercises the trigger path this component uses.
+// Radix restores focus in a setTimeout(0) during popover unmount, so a plain
+// await act() can observe the pre-restore state. Drain one macrotask.
+async function flushCloseFocus() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 function pointerClick(element: Element) {
   return act(async () => {
     element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
@@ -111,6 +119,7 @@ describe("PropertyPill", () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0]).toMatchObject({ id: "in_progress" });
+    await flushCloseFocus();
     expect(document.activeElement).toBe(trigger);
   });
 
@@ -124,6 +133,7 @@ describe("PropertyPill", () => {
     });
 
     expect(document.body.querySelector('[role="listbox"]')).toBeNull();
+    await flushCloseFocus();
     expect(document.activeElement).toBe(trigger);
   });
 

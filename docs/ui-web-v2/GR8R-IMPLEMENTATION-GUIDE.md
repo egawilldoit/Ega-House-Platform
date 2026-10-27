@@ -162,14 +162,15 @@ is owned by the tickets that actually mount it.
 | --- | --- | --- |
 | `Popover`, `MenuList`, `PropertyPill`, `Kbd` | built + tested | — |
 | `StatusIcon` | built + tested; consumed by `StatusBadge` | — |
-| `PriorityIcon` | built + tested; consumed by the tasks list priority badge | — |
+| `PriorityIcon` | built + tested; first consumer is the EGA-781 task drawer | EGA-781 |
 | `--ega-shadow-drag` | token in both palettes + test | consumed by EGA-785 (drag) |
 | `--status-review*` | **not defined** | EGA-790 is an unapproved owner decision |
 | Toast queue + undo | not built | EGA-786 (owns the server receipt/replay contract) |
 | Context menu, bulk bar | not built (dependency installed) | EGA-786 |
-| Dropdown menu primitive | not built (dependency installed) | first row-action consumer |
+| Dropdown menu primitive | not built (dependency installed) | EGA-786 (task row actions) |
 | `MiniCalendar` | not built; prefer a native date input | EGA-793 |
 | Radix Dialog task overlay + motion keyframes | not built | EGA-781 (drawer) |
+| `components/motion-provider.tsx` change | not needed yet — the current provider already scopes reduced motion for these primitives | EGA-781 if the drawer needs a new variant |
 | Command palette | not built | EGA-795 (combobox semantics) |
 
 `PropertyPill`/`Popover`/`MenuList`/`Kbd` are the exception to "with a consumer":

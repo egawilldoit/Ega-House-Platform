@@ -60,8 +60,8 @@ export function MenuList({
   // Tracking the active item by id (not index) means a shrinking or reordered
   // option set can never leave `aria-activedescendant` pointing at nothing.
   const [activeId, setActiveId] = useState<string | null>(() => {
-    const selected = items.find((item) => item.id === value);
-    return (selected ?? items[0])?.id ?? null;
+    const selected = items.find((item) => item.id === value && !item.disabled);
+    return (selected ?? items.find((item) => !item.disabled))?.id ?? null;
   });
   const activeIndex = Math.max(
     0,
